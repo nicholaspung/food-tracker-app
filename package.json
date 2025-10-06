@@ -1,0 +1,16 @@
+{
+  "name": "mobile-tracker-app",
+  "version": "1.0.0",
+  "description": "Mobile tracker application with React frontend and Go backend",
+  "scripts": {
+    "dev": "concurrently \"npm run frontend\" \"npm run backend\"",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "cd backend && go run . serve",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && go mod tidy",
+    "install:all": "npm run install:frontend && npm run install:backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
