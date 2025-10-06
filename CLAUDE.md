@@ -12,6 +12,12 @@ This is a mobile tracker application built with:
 - **State Management**: TanStack Query and TanStack Form
 - **Testing**: Playwright for end-to-end browser testing
 
+**IMPORTANT: Mobile-First Design**
+- This is a **mobile-native application** - all features MUST be designed for mobile devices
+- Design exclusively for mobile viewport - do NOT consider desktop or other responsive breakpoints
+- Use mobile-appropriate UI patterns (bottom navigation, mobile gestures, mobile-friendly touch targets)
+- Ignore desktop responsiveness - focus only on mobile UX
+
 ## Development Commands
 
 ### Frontend Development
@@ -74,6 +80,25 @@ When adding features:
 2. Add E2E tests in `frontend/e2e/` following the test structure in E2E_TESTING.md
 3. Run `npm run test:e2e` to verify tests pass
 4. Address any test failures before completion
+
+## Subagent Usage (for Claude Code)
+
+**Proactively use subagents** from `.claude/subagents/` for the following tasks:
+
+- **code-analyzer**: ALWAYS use BEFORE implementing new features to find reusable code
+- **feature-implementer**: Use when user requests a new feature or page
+- **test-runner**: Use after code changes to run and analyze E2E tests
+- **code-reviewer**: Use after implementing significant features (optional, can ask user first)
+- **bug-fixer**: Use when user reports a bug or issue
+- **refactoring-agent**: Use when user requests refactoring or code improvement
+- **documentation-writer**: Use when user requests documentation updates
+
+**Workflow example:**
+1. User: "Add a notifications page"
+2. Claude: Invoke `code-analyzer` to find reusable patterns
+3. Claude: Invoke `feature-implementer` to build the feature
+4. Claude: Invoke `test-runner` to verify tests pass
+5. Claude: (Optionally) Invoke `code-reviewer` to review the implementation
 
 ## Key Dependencies
 - **React**: v19.1.0
