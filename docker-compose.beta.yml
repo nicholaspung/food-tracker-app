@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  pocketbase_beta:
+    image: ghcr.io/pocketbase/pocketbase:latest
+    container_name: pocketbase_beta
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8091:8091"  # Beta runs on port 8091
+    volumes:
+      # Beta-specific data directories
+      - ./backend/pb_data_beta:/pb/pb_data
+      - ./backend/pb_migrations:/pb/pb_migrations
+      - ./backend/pb_hooks:/pb/pb_hooks
+    environment:
+      - TZ=America/Los_Angeles
+    command: serve --http=0.0.0.0:8091 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations
+
+    # Resource limits (prevent OOM kills)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'      # Limit to 1 CPU core
+          memory: 512M     # Limit to 512MB RAM
+        reservations:
+          cpus: '0.5'      # Reserve 0.5 CPU core
+          memory: 256M     # Reserve 256MB RAM
+
+    # Enhanced health check
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8091/api/health"]
+      interval: 30s        # Check every 30 seconds
+      timeout: 10s         # Timeout after 10 seconds
+      retries: 3           # Retry 3 times before marking unhealthy
+      start_period: 10s    # Wait 10 seconds before first check
+
+    # Security: Run as non-root user
+    user: "1000:1000"
+
+    # Logging configuration (prevent disk fill)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"    # Max log file size
+        max-file: "3"      # Keep 3 log files
