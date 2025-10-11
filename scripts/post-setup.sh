@@ -1,0 +1,489 @@
+#!/bin/bash
+# Post-Setup Script for Mobile Tracker App
+# Run after cloning repository to /opt/mobile-tracker-app
+# Features: Rollback capability, validation, idempotency, error handling
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+APP_DIR="/opt/mobile-tracker-app"
+LOG_FILE="/var/log/mobile-tracker-post-setup.log"
+LOCK_FILE="/tmp/mobile-tracker-post-setup.lock"
+
+# Default values (pre-configured for myexperiment.life)
+DOMAIN="${DOMAIN:-myexperiment.life}"
+EMAIL="${EMAIL:-nicholaspungdev@gmail.com}"
+
+#######################
+# LOGGING
+#######################
+log() {
+    echo -e "${GREEN}[$(date +'%H:%M:%S')]${NC} $*" | tee -a "$LOG_FILE"
+}
+
+warn() {
+    echo -e "${YELLOW}[$(date +'%H:%M:%S')] WARNING:${NC} $*" | tee -a "$LOG_FILE"
+}
+
+error() {
+    echo -e "${RED}[$(date +'%H:%M:%S')] ERROR:${NC} $*" | tee -a "$LOG_FILE" >&2
+}
+
+step() {
+    echo ""
+    echo -e "${BLUE}==>${NC} $*"
+}
+
+#######################
+# CLEANUP & ROLLBACK
+#######################
+cleanup() {
+    local exit_code=$?
+
+    if [ $exit_code -ne 0 ]; then
+        error "Post-setup failed with exit code $exit_code"
+        rollback
+    fi
+
+    # Remove lock file
+    rm -f "$LOCK_FILE"
+
+    exit $exit_code
+}
+
+rollback() {
+    warn "Initiating rollback..."
+
+    cd "$APP_DIR"
+
+    # Restore Caddyfile backup if exists
+    if [ -f "Caddyfile.backup" ]; then
+        log "Restoring Caddyfile backup..."
+        sudo cp Caddyfile.backup /etc/caddy/Caddyfile
+        sudo systemctl reload caddy 2>/dev/null || true
+        mv Caddyfile.backup Caddyfile
+    fi
+
+    # Restore frontend build backup if exists
+    if [ -d "frontend_build.backup" ]; then
+        log "Restoring frontend build backup..."
+        rm -rf frontend_build
+        mv frontend_build.backup frontend_build
+    fi
+
+    error "Rollback complete. System restored to previous state."
+}
+
+trap cleanup EXIT INT TERM
+
+#######################
+# VALIDATION
+#######################
+validate_prerequisites() {
+    step "Validating prerequisites..."
+
+    # Check working directory
+    if [ "$PWD" != "$APP_DIR" ]; then
+        error "This script must be run from $APP_DIR"
+        error "Run: cd $APP_DIR && bash scripts/post-setup.sh"
+        exit 1
+    fi
+
+    # Check git repository
+    if [ ! -d ".git" ]; then
+        error "Not a git repository. Clone your repo first:"
+        error "git clone https://github.com/nicholaspung/mobile-tracker-app.git ."
+        exit 1
+    fi
+
+    # Check required commands
+    local required_commands="docker docker-compose npm node curl sudo systemctl"
+    for cmd in $required_commands; do
+        if ! command -v $cmd &> /dev/null; then
+            error "Required command '$cmd' not found"
+            error "Please run setup-vps.sh first"
+            exit 1
+        fi
+    done
+
+    # Check Node.js version (require 18+ for React 19)
+    local node_version=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$node_version" -lt 18 ]; then
+        error "Node.js version 18 or higher required (found v$node_version)"
+        exit 1
+    fi
+
+    # Check if Caddy service exists
+    if ! sudo systemctl list-unit-files | grep -q caddy.service; then
+        error "Caddy systemd service not found"
+        error "Please install Caddy first (setup-vps.sh)"
+        exit 1
+    fi
+
+    # Check Docker daemon
+    if ! docker info >/dev/null 2>&1; then
+        error "Docker daemon is not running"
+        error "Start it with: sudo systemctl start docker"
+        exit 1
+    fi
+
+    # Check disk space (need at least 1GB free)
+    local available_space_kb=$(df "$APP_DIR" | awk 'NR==2 {print $4}')
+    local available_space_mb=$((available_space_kb / 1024))
+    if [ "$available_space_mb" -lt 1000 ]; then
+        error "Insufficient disk space"
+        error "Required: 1000MB, Available: ${available_space_mb}MB"
+        exit 1
+    fi
+
+    # Check deployment lock
+    if [ -f "$LOCK_FILE" ]; then
+        error "Another deployment is in progress (lock file exists: $LOCK_FILE)"
+        error "If no deployment is running, remove: rm $LOCK_FILE"
+        exit 1
+    fi
+
+    # Create lock file
+    echo $$ > "$LOCK_FILE"
+
+    log "All prerequisites validated ✓"
+}
+
+validate_inputs() {
+    # Validate domain format
+    if ! echo "$DOMAIN" | grep -qE '^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'; then
+        error "Invalid domain format: $DOMAIN"
+        exit 1
+    fi
+
+    # Validate email format
+    if ! echo "$EMAIL" | grep -qE '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'; then
+        error "Invalid email format: $EMAIL"
+        exit 1
+    fi
+
+    log "Domain and email validated ✓"
+}
+
+#######################
+# CONFIGURATION
+#######################
+configure_environment() {
+    step "Configuring environment..."
+
+    # Prompt for configuration
+    echo -e "${YELLOW}Default configuration:${NC}"
+    echo "  Domain: $DOMAIN"
+    echo "  Email: $EMAIL"
+    echo ""
+    read -p "Use these defaults? (Y/n): " USE_DEFAULTS
+
+    if [ "$USE_DEFAULTS" = "n" ] || [ "$USE_DEFAULTS" = "N" ]; then
+        read -p "Enter your domain name: " DOMAIN
+        read -p "Enter your email for Let's Encrypt SSL: " EMAIL
+
+        validate_inputs
+    fi
+
+    echo ""
+    log "Final configuration:"
+    log "  Domain: $DOMAIN"
+    log "  Email: $EMAIL"
+    echo ""
+}
+
+configure_caddyfile() {
+    step "Configuring Caddyfile..."
+
+    # Check if Caddyfile needs updating
+    if grep -q "your-email@example.com\|yourdomain.com" Caddyfile; then
+        log "Updating placeholder values in Caddyfile..."
+
+        # Backup current Caddyfile
+        cp Caddyfile Caddyfile.backup
+
+        # Update values
+        sed -i "s/your-email@example.com/$EMAIL/g" Caddyfile
+        sed -i "s/yourdomain.com/$DOMAIN/g" Caddyfile
+
+        log "Caddyfile updated ✓"
+    elif grep -q "$DOMAIN" Caddyfile && grep -q "$EMAIL" Caddyfile; then
+        log "Caddyfile already configured with these values ✓"
+    else
+        warn "Caddyfile appears to be manually modified"
+        log "Current domain: $(grep -E '^[a-z0-9.-]+\s+\{' Caddyfile | awk '{print $1}')"
+        read -p "Force update to $DOMAIN? (y/N): " FORCE_UPDATE
+
+        if [ "$FORCE_UPDATE" = "y" ] || [ "$FORCE_UPDATE" = "Y" ]; then
+            cp Caddyfile Caddyfile.backup
+            sed -i "s/your-email@example.com/$EMAIL/g" Caddyfile
+            sed -i "s/yourdomain.com/$DOMAIN/g" Caddyfile
+        else
+            error "Please manually update Caddyfile with your domain"
+            exit 1
+        fi
+    fi
+}
+
+deploy_caddyfile() {
+    step "Deploying Caddyfile to /etc/caddy/..."
+
+    # Validate Caddyfile syntax
+    if ! sudo caddy validate --config Caddyfile 2>/dev/null; then
+        warn "Caddyfile validation failed, but continuing..."
+    fi
+
+    # Copy to /etc/caddy/
+    sudo cp Caddyfile /etc/caddy/Caddyfile
+
+    # Restart Caddy
+    if ! sudo systemctl restart caddy; then
+        error "Failed to restart Caddy"
+        error "Check logs: sudo journalctl -u caddy -n 50"
+        exit 1
+    fi
+
+    # Verify Caddy is running
+    sleep 2
+    if ! sudo systemctl is-active --quiet caddy; then
+        error "Caddy is not running after restart"
+        error "Check logs: sudo journalctl -u caddy -n 50"
+        exit 1
+    fi
+
+    log "Caddy deployed and running ✓"
+}
+
+create_env_files() {
+    step "Creating environment files..."
+
+    # Frontend .env
+    if [ -f "frontend/.env" ]; then
+        warn "frontend/.env already exists"
+
+        # Show diff
+        diff -u frontend/.env <(cat <<EOF
+# Frontend Environment Variables
+
+# API Configuration - Production
+VITE_API_URL=https://$DOMAIN/api
+EOF
+) || true
+
+        read -p "Overwrite? (y/N): " OVERWRITE
+        if [ "$OVERWRITE" != "y" ] && [ "$OVERWRITE" != "Y" ]; then
+            log "Keeping existing frontend/.env"
+            return
+        fi
+    fi
+
+    cat > frontend/.env <<EOF
+# Frontend Environment Variables
+
+# API Configuration - Production
+VITE_API_URL=https://$DOMAIN/api
+EOF
+
+    log "Created frontend/.env ✓"
+
+    # Root .env (optional)
+    cat > .env <<EOF
+# Environment Configuration for Mobile Tracker App VPS Deployment
+
+# Application
+APP_NAME=mobile-tracker-app
+DOMAIN=$DOMAIN
+
+# Email for Let's Encrypt
+ADMIN_EMAIL=$EMAIL
+
+# PocketBase Configuration
+TZ=America/Los_Angeles
+EOF
+
+    log "Created .env ✓"
+}
+
+#######################
+# POCKETBASE
+#######################
+start_pocketbase() {
+    step "Starting PocketBase container..."
+
+    cd "$APP_DIR"
+
+    if docker-compose up -d pocketbase; then
+        log "PocketBase container started ✓"
+    else
+        error "Failed to start PocketBase"
+        exit 1
+    fi
+
+    # Wait for PocketBase to be healthy
+    log "Waiting for PocketBase to be healthy..."
+    local max_attempts=30
+    local attempt=0
+
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -s http://127.0.0.1:8090/api/health > /dev/null 2>&1; then
+            log "PocketBase is healthy ✓"
+            return 0
+        fi
+
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    warn "PocketBase health check timeout (not critical, continuing...)"
+    warn "Check with: docker-compose logs pocketbase"
+}
+
+#######################
+# FRONTEND
+#######################
+build_frontend() {
+    step "Building frontend..."
+
+    cd "$APP_DIR/frontend"
+
+    # Install dependencies
+    log "Installing dependencies..."
+    if ! npm ci --production=false --loglevel=error 2>&1 | tee -a "$LOG_FILE"; then
+        error "npm ci failed. Check package.json and package-lock.json"
+        exit 1
+    fi
+
+    # Build
+    log "Running build..."
+    if ! npm run build 2>&1 | tee -a "$LOG_FILE"; then
+        error "npm run build failed. Check build logs above"
+        exit 1
+    fi
+
+    # Verify build output
+    if [ ! -d "dist" ] || [ -z "$(ls -A dist)" ]; then
+        error "Build succeeded but dist/ directory is missing or empty"
+        exit 1
+    fi
+
+    if [ ! -f "dist/index.html" ]; then
+        error "Build succeeded but index.html is missing"
+        exit 1
+    fi
+
+    local build_size=$(du -sh dist | cut -f1)
+    log "Frontend built successfully ✓ (size: $build_size)"
+}
+
+deploy_frontend() {
+    step "Deploying frontend..."
+
+    cd "$APP_DIR"
+
+    # Backup existing build if it exists
+    if [ -d "frontend_build" ]; then
+        log "Backing up current frontend build..."
+        cp -r frontend_build frontend_build.backup
+    fi
+
+    # Deploy new build
+    rm -rf frontend_build
+    cp -r frontend/dist frontend_build
+
+    # Verify deployment
+    if [ ! -f "frontend_build/index.html" ]; then
+        error "Frontend deployment failed - index.html not found"
+        exit 1
+    fi
+
+    log "Frontend deployed ✓"
+}
+
+#######################
+# FINALIZATION
+#######################
+setup_backups() {
+    step "Setting up backup configuration..."
+
+    sudo mkdir -p /var/backups/pocketbase
+    sudo chown $USER:$USER /var/backups/pocketbase
+
+    if [ -f "scripts/backup-pocketbase.sh" ]; then
+        chmod +x scripts/backup-pocketbase.sh
+        log "Backup script is ready ✓"
+    fi
+}
+
+print_summary() {
+    echo ""
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}🎉 Deployment Complete!${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo ""
+    echo "Your app should now be live at: ${BLUE}https://$DOMAIN${NC}"
+    echo ""
+    echo -e "${YELLOW}Important Next Steps:${NC}"
+    echo ""
+    echo "1. ${BLUE}Setup PocketBase Admin Account:${NC}"
+    echo "   Visit: https://$DOMAIN/_/"
+    echo "   ${RED}Create your admin account NOW for security!${NC}"
+    echo ""
+    echo "2. ${BLUE}Test your app:${NC}"
+    echo "   Visit: https://$DOMAIN"
+    echo ""
+    echo "3. ${BLUE}Setup automated backups (recommended):${NC}"
+    echo "   crontab -e"
+    echo "   Add this line:"
+    echo "   0 2 * * * $APP_DIR/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1"
+    echo ""
+    echo "4. ${BLUE}Verify everything is working:${NC}"
+    echo "   - Test signup/login flow"
+    echo "   - Check PocketBase admin panel"
+    echo "   - Monitor logs: docker-compose logs -f pocketbase"
+    echo ""
+    echo -e "${YELLOW}Useful Commands:${NC}"
+    echo "  View logs:           docker-compose logs -f pocketbase"
+    echo "  Restart PocketBase:  docker-compose restart pocketbase"
+    echo "  Redeploy:            bash scripts/deploy.sh"
+    echo "  Manual backup:       bash scripts/backup-pocketbase.sh"
+    echo ""
+    echo -e "${YELLOW}Deployment log saved to:${NC} $LOG_FILE"
+    echo ""
+}
+
+#######################
+# MAIN
+#######################
+main() {
+    echo ""
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}  Mobile Tracker App - Post Setup${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
+    log "Logging to: $LOG_FILE"
+    echo ""
+
+    validate_prerequisites
+    configure_environment
+    configure_caddyfile
+    deploy_caddyfile
+    create_env_files
+    start_pocketbase
+    build_frontend
+    deploy_frontend
+    setup_backups
+    print_summary
+
+    # Cleanup backup files on success
+    rm -f Caddyfile.backup
+    rm -rf frontend_build.backup
+}
+
+main "$@"

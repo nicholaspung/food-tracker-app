@@ -123,6 +123,29 @@ mobile-tracker-app/
 
 This is a personal project, but the development approach and architecture may be useful as a reference for AI-assisted application development.
 
+## Production Deployment
+
+This project includes production-ready deployment infrastructure for VPS hosting.
+
+**📚 Complete deployment documentation:** See [`docs/`](docs/)
+
+**Quick Start:**
+1. [Infrastructure Overview](docs/INFRASTRUCTURE.md) - Architecture deep-dive
+2. [Deployment Guide](docs/DEPLOYMENT.md) - Step-by-step VPS setup
+3. [Path to 100/100](docs/PATH_TO_100.md) - Achieve perfect production score
+
+**Current Production Score: 92/100** ⭐
+
+Features:
+- ✅ Zero-downtime deployments (blue-green strategy)
+- ✅ Zero-downtime backups (SQLite online backup)
+- ✅ Automatic rollback on failure
+- ✅ Production-grade security (fail2ban, security headers, resource limits)
+- ✅ Comprehensive error handling
+- ✅ HTTP/3 support
+
+See [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md) for full details.
+
 ## License
 
 This project is for personal use.

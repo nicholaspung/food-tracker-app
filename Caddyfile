@@ -1,0 +1,274 @@
+{
+    email nicholaspungdev@gmail.com
+
+    # Global options for better performance
+    servers {
+        protocols h1 h2 h3  # Enable HTTP/1, HTTP/2, and HTTP/3 (QUIC)
+    }
+}
+
+# WWW to non-WWW redirect - Production
+www.myexperiment.life {
+    redir https://myexperiment.life{uri} permanent
+}
+
+# Production Environment
+myexperiment.life {
+    # Enhanced security headers
+    header {
+        # HSTS - Force HTTPS for 1 year
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # Prevent MIME sniffing
+        X-Content-Type-Options "nosniff"
+
+        # Clickjacking protection
+        X-Frame-Options "SAMEORIGIN"
+
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # XSS protection for older browsers
+        X-XSS-Protection "1; mode=block"
+
+        # Permissions Policy - disable unused browser features
+        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+
+        # Content Security Policy (relaxed for React/PocketBase)
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+
+        # Remove server identification
+        -Server
+    }
+
+    # Enable compression for all responses
+    encode {
+        gzip 6              # Gzip compression level 6 (balance of speed vs size)
+        zstd                # Zstandard compression (faster than gzip)
+        minimum_length 256  # Only compress responses > 256 bytes
+    }
+
+    # PocketBase API - with proper headers
+    handle /api/* {
+        reverse_proxy localhost:8090 {
+            # Proper header forwarding
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+
+            # Timeouts
+            transport http {
+                dial_timeout 10s
+                response_header_timeout 30s
+                read_timeout 60s
+                write_timeout 60s
+            }
+
+            # Health check
+            health_uri /api/health
+            health_interval 30s
+            health_timeout 10s
+        }
+    }
+
+    # PocketBase Admin UI
+    handle /_/* {
+        reverse_proxy localhost:8090 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+
+            transport http {
+                dial_timeout 10s
+                response_header_timeout 30s
+                read_timeout 60s
+                write_timeout 60s
+            }
+        }
+    }
+
+    # Serve React static files with aggressive caching
+    handle {
+        root * /opt/mobile-tracker-app/frontend_build
+
+        # Cache static assets (JS, CSS, images, fonts) for 1 year
+        @static {
+            path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
+        }
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        # Don't cache HTML files (for SPA updates)
+        @html {
+            path *.html /
+        }
+        header @html Cache-Control "no-cache, no-store, must-revalidate"
+        header @html Pragma "no-cache"
+        header @html Expires "0"
+
+        # SPA routing - serve index.html for all non-file requests
+        try_files {path} /index.html
+        file_server {
+            precompressed gzip zstd  # Serve .gz and .zst files if they exist
+        }
+    }
+
+    # Request size limit (prevents large file uploads via frontend)
+    request_body {
+        max_size 10MB
+    }
+
+    # Enhanced logging with more details
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100mb      # Rotate when file reaches 100MB
+            roll_keep 5          # Keep 5 old log files
+            roll_keep_days 30    # Delete logs older than 30 days
+        }
+        format json
+
+        # Log additional fields for debugging
+        format filter {
+            fields {
+                request>headers>User-Agent
+                request>headers>Referer
+                common_log
+            }
+        }
+    }
+}
+
+# Beta Environment
+beta.myexperiment.life {
+    # Enhanced security headers
+    header {
+        # HSTS - Force HTTPS for 1 year
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # Prevent MIME sniffing
+        X-Content-Type-Options "nosniff"
+
+        # Clickjacking protection
+        X-Frame-Options "SAMEORIGIN"
+
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # XSS protection for older browsers
+        X-XSS-Protection "1; mode=block"
+
+        # Permissions Policy - disable unused browser features
+        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+
+        # Content Security Policy (relaxed for React/PocketBase)
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+
+        # Remove server identification
+        -Server
+
+        # Beta environment indicator
+        X-Environment "beta"
+    }
+
+    # Enable compression for all responses
+    encode {
+        gzip 6              # Gzip compression level 6 (balance of speed vs size)
+        zstd                # Zstandard compression (faster than gzip)
+        minimum_length 256  # Only compress responses > 256 bytes
+    }
+
+    # PocketBase API - Beta (port 8091)
+    handle /api/* {
+        reverse_proxy localhost:8091 {
+            # Proper header forwarding
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+
+            # Timeouts
+            transport http {
+                dial_timeout 10s
+                response_header_timeout 30s
+                read_timeout 60s
+                write_timeout 60s
+            }
+
+            # Health check
+            health_uri /api/health
+            health_interval 30s
+            health_timeout 10s
+        }
+    }
+
+    # PocketBase Admin UI - Beta
+    handle /_/* {
+        reverse_proxy localhost:8091 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+
+            transport http {
+                dial_timeout 10s
+                response_header_timeout 30s
+                read_timeout 60s
+                write_timeout 60s
+            }
+        }
+    }
+
+    # Serve React static files with aggressive caching - Beta
+    handle {
+        root * /opt/mobile-tracker-app/frontend_build_beta
+
+        # Cache static assets (JS, CSS, images, fonts) for 1 year
+        @static {
+            path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
+        }
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        # Don't cache HTML files (for SPA updates)
+        @html {
+            path *.html /
+        }
+        header @html Cache-Control "no-cache, no-store, must-revalidate"
+        header @html Pragma "no-cache"
+        header @html Expires "0"
+
+        # SPA routing - serve index.html for all non-file requests
+        try_files {path} /index.html
+        file_server {
+            precompressed gzip zstd  # Serve .gz and .zst files if they exist
+        }
+    }
+
+    # Request size limit (prevents large file uploads via frontend)
+    request_body {
+        max_size 10MB
+    }
+
+    # Enhanced logging with more details - Beta
+    log {
+        output file /var/log/caddy/beta-access.log {
+            roll_size 100mb      # Rotate when file reaches 100MB
+            roll_keep 5          # Keep 5 old log files
+            roll_keep_days 30    # Delete logs older than 30 days
+        }
+        format json
+
+        # Log additional fields for debugging
+        format filter {
+            fields {
+                request>headers>User-Agent
+                request>headers>Referer
+                common_log
+            }
+        }
+    }
+}
