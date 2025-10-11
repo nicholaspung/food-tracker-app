@@ -344,6 +344,14 @@ start_pocketbase() {
 
     cd "$APP_DIR"
 
+    # Build the PocketBase image first (on first run or if Dockerfile changed)
+    log "Building PocketBase Docker image..."
+    if ! docker compose build pocketbase 2>&1 | tee -a "$LOG_FILE"; then
+        error "Failed to build PocketBase image"
+        exit 1
+    fi
+
+    # Start the container
     if docker compose up -d pocketbase; then
         log "PocketBase container started ✓"
     else
