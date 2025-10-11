@@ -81,29 +81,99 @@ adduser deploy
 # Add to sudo group
 usermod -aG sudo deploy
 
+# Setup SSH access for deploy user
+mkdir -p /home/deploy/.ssh
+cp ~/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys
+chown -R deploy:deploy /home/deploy/.ssh
+chmod 700 /home/deploy/.ssh
+chmod 600 /home/deploy/.ssh/authorized_keys
+
 # Switch to new user
 su - deploy
 ```
 
-### Step 3: Run Setup Script
+### Step 3: Setup GitHub SSH Access
 
-Copy the setup script to your VPS:
+Generate an SSH key on your VPS to access your GitHub repository:
+
 ```bash
-# Download the setup script
-curl -o setup-vps.sh https://raw.githubusercontent.com/nicholaspung/mobile-tracker-app/main/scripts/setup-vps.sh
+# Generate SSH key (press Enter to accept defaults)
+ssh-keygen -t ed25519 -C "your-email@example.com"
 
-# Make it executable
-chmod +x setup-vps.sh
+# Start the SSH agent
+eval "$(ssh-agent -s)"
 
-# Run it
-./setup-vps.sh
+# Add your SSH key
+ssh-add ~/.ssh/id_ed25519
+
+# Display your public key (copy this)
+cat ~/.ssh/id_ed25519.pub
 ```
 
-**Important:** Log out and log back in after the script completes for Docker permissions to take effect.
+Add the SSH key to GitHub:
+1. Copy the entire public key output
+2. Go to GitHub → Settings → SSH and GPG keys → New SSH key
+3. Give it a title (e.g., "VPS Deploy Server")
+4. Key type: **Authentication Key**
+5. Paste your public key and click "Add SSH key"
 
-### Step 3.5: Run Post-Setup Script (Automated)
+Verify the connection:
+```bash
+ssh -T git@github.com
+# Should see: "Hi username! You've successfully authenticated..."
+```
 
-After cloning the repo, you can use the automated post-setup script:
+### Step 4: Clone Repository
+
+Create the app directory and clone your repository:
+
+```bash
+# Create the app directory
+sudo mkdir -p /opt/mobile-tracker-app
+
+# Take ownership of the directory
+sudo chown $USER:$USER /opt/mobile-tracker-app
+
+# Clone the repository
+cd /opt/mobile-tracker-app
+git clone git@github.com:nicholaspung/mobile-tracker-app.git .
+```
+
+### Step 5: Run Setup Script
+
+Run the VPS setup script from the cloned repository:
+
+```bash
+cd /opt/mobile-tracker-app
+bash scripts/setup-vps.sh
+```
+
+**Important:** Log out and log back in after the script completes for Docker permissions to take effect:
+
+```bash
+exit
+ssh deploy@your-vps-ip
+```
+
+**Tip:** Create a convenience script for SSH access:
+```bash
+# On your local machine, copy and edit the SSH helper script
+cp scripts/ssh-vps.sh.example scripts/ssh-vps.sh
+nano scripts/ssh-vps.sh  # Update VPS_USER and VPS_HOST
+
+# Make it executable
+chmod +x scripts/ssh-vps.sh
+
+# Now you can SSH with:
+bash scripts/ssh-vps.sh
+```
+
+This script is gitignored and won't be committed to your repository.
+
+### Step 6: Run Post-Setup Script (Automated)
+
+After logging back in, run the automated post-setup script:
+
 ```bash
 cd /opt/mobile-tracker-app
 bash scripts/post-setup.sh
@@ -115,14 +185,7 @@ This will use the defaults:
 
 Just press `Y` when prompted to use defaults, and it will configure everything automatically!
 
-### Step 4: Clone Repository
-
-```bash
-cd /opt/mobile-tracker-app
-git clone https://github.com/nicholaspung/mobile-tracker-app.git .
-```
-
-### Step 5: Configure Environment
+### Step 7: Configure Environment
 
 **Caddyfile is already configured:**
 - Email: `nicholaspungdev@gmail.com`
@@ -144,7 +207,7 @@ In `frontend/.env`, set:
 VITE_API_URL=https://myexperiment.life/api
 ```
 
-### Step 6: Deploy Caddy Configuration
+### Step 8: Deploy Caddy Configuration
 
 ```bash
 cd /opt/mobile-tracker-app
@@ -158,7 +221,7 @@ Check Caddy logs if there are issues:
 sudo journalctl -u caddy -f
 ```
 
-### Step 7: Start PocketBase
+### Step 9: Start PocketBase
 
 ```bash
 cd /opt/mobile-tracker-app
@@ -176,7 +239,7 @@ Test the health endpoint:
 curl http://127.0.0.1:8090/api/health
 ```
 
-### Step 8: Build and Deploy Frontend
+### Step 10: Build and Deploy Frontend
 
 ```bash
 cd /opt/mobile-tracker-app
@@ -188,7 +251,7 @@ This will:
 - Deploy it to `/opt/mobile-tracker-app/frontend_build`
 - Reload Caddy
 
-### Step 9: Setup PocketBase Admin
+### Step 11: Setup PocketBase Admin
 
 Visit your domain's admin panel:
 ```
@@ -197,7 +260,7 @@ https://myexperiment.life/_/
 
 Create your admin account (do this immediately for security!)
 
-### Step 10: Setup Automated Backups
+### Step 12: Setup Automated Backups
 
 ```bash
 # Make backup script executable
@@ -215,7 +278,7 @@ Add this line:
 0 2 * * * /opt/mobile-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
 ```
 
-### Step 11: Verify Deployment
+### Step 13: Verify Deployment
 
 Test your app:
 ```bash

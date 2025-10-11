@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_DIR="/opt/mobile-tracker-app"
-LOG_FILE="/var/log/mobile-tracker-post-setup.log"
+LOG_FILE="/tmp/mobile-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
 LOCK_FILE="/tmp/mobile-tracker-post-setup.lock"
 
 # Default values (pre-configured for myexperiment.life)
