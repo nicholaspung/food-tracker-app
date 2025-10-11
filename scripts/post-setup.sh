@@ -104,7 +104,7 @@ validate_prerequisites() {
     fi
 
     # Check required commands
-    local required_commands="docker docker-compose npm node curl sudo systemctl"
+    local required_commands="docker npm node curl sudo systemctl"
     for cmd in $required_commands; do
         if ! command -v $cmd &> /dev/null; then
             error "Required command '$cmd' not found"
@@ -112,6 +112,13 @@ validate_prerequisites() {
             exit 1
         fi
     done
+
+    # Check Docker Compose (plugin or standalone)
+    if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
+        error "Docker Compose not found"
+        error "Please run setup-vps.sh first"
+        exit 1
+    fi
 
     # Check Node.js version (require 18+ for React 19)
     local node_version=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
@@ -319,7 +326,7 @@ start_pocketbase() {
 
     cd "$APP_DIR"
 
-    if docker-compose up -d pocketbase; then
+    if docker compose up -d pocketbase; then
         log "PocketBase container started ✓"
     else
         error "Failed to start PocketBase"
