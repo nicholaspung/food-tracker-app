@@ -129,15 +129,6 @@ myexperiment.life {
             roll_keep_for 720h   # Delete logs older than 30 days (720 hours)
         }
         format json
-
-        # Log additional fields for debugging
-        format filter {
-            fields {
-                request>headers>User-Agent
-                request>headers>Referer
-                common_log
-            }
-        }
     }
 }
 
@@ -261,14 +252,5 @@ beta.myexperiment.life {
             roll_keep_for 720h   # Delete logs older than 30 days (720 hours)
         }
         format json
-
-        # Log additional fields for debugging
-        format filter {
-            fields {
-                request>headers>User-Agent
-                request>headers>Referer
-                common_log
-            }
-        }
     }
 }
