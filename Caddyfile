@@ -126,7 +126,7 @@ myexperiment.life {
         output file /var/log/caddy/access.log {
             roll_size 100mb      # Rotate when file reaches 100MB
             roll_keep 5          # Keep 5 old log files
-            roll_keep_days 30    # Delete logs older than 30 days
+            roll_keep_for 720h   # Delete logs older than 30 days (720 hours)
         }
         format json
 
@@ -258,7 +258,7 @@ beta.myexperiment.life {
         output file /var/log/caddy/beta-access.log {
             roll_size 100mb      # Rotate when file reaches 100MB
             roll_keep 5          # Keep 5 old log files
-            roll_keep_days 30    # Delete logs older than 30 days
+            roll_keep_for 720h   # Delete logs older than 30 days (720 hours)
         }
         format json
 
