@@ -127,8 +127,8 @@ validate_prerequisites() {
         exit 1
     fi
 
-    # Check if Caddy service exists
-    if ! sudo systemctl list-unit-files | grep -q caddy.service; then
+    # Check if Caddy service exists (no sudo needed for listing)
+    if ! systemctl list-unit-files --no-pager 2>/dev/null | grep -q caddy.service; then
         error "Caddy systemd service not found"
         error "Please install Caddy first (setup-vps.sh)"
         exit 1
