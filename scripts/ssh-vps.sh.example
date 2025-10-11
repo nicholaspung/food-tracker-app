@@ -1,0 +1,11 @@
+#!/bin/bash
+# SSH into VPS - This file is gitignored
+# Usage: bash scripts/ssh-vps.sh
+
+# Replace these with your VPS details
+VPS_USER="deploy"
+VPS_HOST="your-vps-ip"
+VPS_PORT="22"
+
+# SSH into the VPS
+ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST"
