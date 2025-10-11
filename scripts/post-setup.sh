@@ -254,6 +254,17 @@ deploy_caddyfile() {
         warn "Caddyfile validation failed, but continuing..."
     fi
 
+    # Ensure log directory exists with proper permissions
+    sudo mkdir -p /var/log/caddy
+    sudo chown -R caddy:caddy /var/log/caddy
+    sudo chmod 755 /var/log/caddy
+
+    # Create log files if they don't exist
+    sudo touch /var/log/caddy/access.log
+    sudo touch /var/log/caddy/beta-access.log
+    sudo chown caddy:caddy /var/log/caddy/*.log
+    sudo chmod 644 /var/log/caddy/*.log
+
     # Copy to /etc/caddy/
     sudo cp Caddyfile /etc/caddy/Caddyfile
 
