@@ -1,0 +1,14 @@
+# Ignore data directories (they're mounted as volumes)
+pb_data/
+pb_data_beta/
+pb_data_production/
+pb_public/
+
+# Ignore temporary files
+*.log
+*.tmp
+.DS_Store
+
+# Ignore git
+.git/
+.gitignore
