@@ -175,9 +175,16 @@ install_caddy() {
         log "Caddy installed ✓"
     fi
 
-    # Setup log directory
+    # Setup log directory with proper permissions
     sudo mkdir -p /var/log/caddy
-    sudo chown caddy:caddy /var/log/caddy
+    sudo chown -R caddy:caddy /var/log/caddy
+    sudo chmod 755 /var/log/caddy
+
+    # Create log files with proper permissions
+    sudo touch /var/log/caddy/access.log
+    sudo touch /var/log/caddy/beta-access.log
+    sudo chown caddy:caddy /var/log/caddy/*.log
+    sudo chmod 644 /var/log/caddy/*.log
 }
 
 #######################
