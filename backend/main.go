@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base32"
 	"encoding/json"
 	"io"
 	"log"
@@ -86,32 +88,35 @@ func main() {
 		return e.Next()
 	})
 
-	// Hook to mark invite code as used after successful user creation
+	// Hook to mark invite code as used and generate new codes after successful user creation
 	app.OnRecordAfterCreateSuccess("users").BindFunc(func(e *core.RecordEvent) error {
 		// Get user email to look up the pending invite code
 		userEmail := e.Record.Email()
 		inviteCodeId, exists := pendingInviteCodes[userEmail]
 
-		if !exists || inviteCodeId == "" {
-			return e.Next() // No invite code to mark as used
+		if exists && inviteCodeId != "" {
+			// Clean up the pending map
+			delete(pendingInviteCodes, userEmail)
+
+			// Find and update the invite code
+			inviteCodeRecord, err := app.FindRecordById("invite_codes", inviteCodeId)
+			if err != nil {
+				log.Printf("Error finding invite code: %v", err)
+			} else {
+				// Mark as used
+				inviteCodeRecord.Set("used", true)
+				inviteCodeRecord.Set("usedBy", e.Record.Id)
+
+				if err := app.Save(inviteCodeRecord); err != nil {
+					log.Printf("Error marking invite code as used: %v", err)
+				}
+			}
 		}
 
-		// Clean up the pending map
-		delete(pendingInviteCodes, userEmail)
-
-		// Find and update the invite code
-		inviteCodeRecord, err := app.FindRecordById("invite_codes", inviteCodeId)
-		if err != nil {
-			log.Printf("Error finding invite code: %v", err)
-			return e.Next() // Don't fail user creation if we can't update invite code
-		}
-
-		// Mark as used
-		inviteCodeRecord.Set("used", true)
-		inviteCodeRecord.Set("usedBy", e.Record.Id)
-
-		if err := app.Save(inviteCodeRecord); err != nil {
-			log.Printf("Error marking invite code as used: %v", err)
+		// Generate 5 invite codes for the new user
+		if err := generateInviteCodesForUser(app, e.Record.Id); err != nil {
+			log.Printf("Error generating invite codes for user %s: %v", e.Record.Id, err)
+			// Don't fail user creation if code generation fails
 		}
 
 		return e.Next()
@@ -120,4 +125,56 @@ func main() {
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// generateRandomCode creates a random invite code
+func generateRandomCode() (string, error) {
+	// Generate 10 random bytes (will encode to ~16 characters)
+	bytes := make([]byte, 10)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+
+	// Encode to base32 (removes ambiguous characters)
+	code := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(bytes)
+
+	// Convert to lowercase and take first 12 characters
+	code = strings.ToLower(code)[:12]
+
+	return code, nil
+}
+
+// generateInviteCodesForUser creates 5 invite codes for a user
+func generateInviteCodesForUser(app core.App, userId string) error {
+	// Get the invite_codes collection
+	collection, err := app.FindCollectionByNameOrId("invite_codes")
+	if err != nil {
+		return err
+	}
+
+	// Generate 5 codes
+	for i := 0; i < 5; i++ {
+		// Generate random code
+		code, err := generateRandomCode()
+		if err != nil {
+			log.Printf("Error generating random code: %v", err)
+			continue
+		}
+
+		// Create the invite code record
+		record := core.NewRecord(collection)
+		record.Set("code", code)
+		record.Set("used", false)
+		record.Set("createdBy", userId)
+
+		// Save the record
+		if err := app.Save(record); err != nil {
+			log.Printf("Error saving invite code %s for user %s: %v", code, userId, err)
+			continue
+		}
+
+		log.Printf("Generated invite code %s for user %s", code, userId)
+	}
+
+	return nil
 }
