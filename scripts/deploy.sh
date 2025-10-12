@@ -180,6 +180,13 @@ create_backup() {
     local backup_timestamp=$(date +'%Y%m%d_%H%M%S')
     local backup_path="$BACKUP_DIR/$backup_timestamp"
 
+    # Ensure backup directory exists with proper permissions
+    if [ ! -d "$BACKUP_DIR" ]; then
+        sudo mkdir -p "$BACKUP_DIR"
+        sudo chown -R $USER:$USER /opt/mobile-tracker-backups
+        sudo chmod 755 /opt/mobile-tracker-backups
+    fi
+
     mkdir -p "$backup_path"
 
     # Backup current frontend build

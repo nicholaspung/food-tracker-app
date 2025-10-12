@@ -465,8 +465,15 @@ deploy_frontend() {
 setup_backups() {
     step "Setting up backup configuration..."
 
+    # PocketBase backups
     sudo mkdir -p /var/backups/pocketbase
     sudo chown $USER:$USER /var/backups/pocketbase
+
+    # Deployment backups
+    sudo mkdir -p /opt/mobile-tracker-backups/{beta,production}
+    sudo chown -R $USER:$USER /opt/mobile-tracker-backups
+    sudo chmod 755 /opt/mobile-tracker-backups
+    log "Backup directories created ✓"
 
     if [ -f "scripts/backup-pocketbase.sh" ]; then
         chmod +x scripts/backup-pocketbase.sh
