@@ -16,7 +16,7 @@ services:
       - ./backend/pb_public:/pb/pb_public          # Static files
     environment:
       - TZ=America/Los_Angeles
-    command: serve --http=0.0.0.0:8091 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations
+    command: ["pocketbase", "serve", "--http=0.0.0.0:8091", "--dir=/pb/pb_data", "--migrationsDir=/pb/pb_migrations"]
 
     # Resource limits (prevent OOM kills)
     deploy:
