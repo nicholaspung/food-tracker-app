@@ -417,7 +417,8 @@ health_check_frontend() {
 
     while [ $attempt -lt $max_attempts ]; do
         # Use curl to check if Caddy can serve the frontend for this environment
-        if curl -f -s -o /dev/null -w "%{http_code}" -H "Host: $DOMAIN" http://localhost/ | grep -q "200"; then
+        # -L follows redirects (HTTP -> HTTPS)
+        if curl -f -s -o /dev/null -w "%{http_code}" -L -H "Host: $DOMAIN" http://localhost/ | grep -q "200"; then
             log "Frontend is accessible via Caddy ✓"
             return 0
         fi
