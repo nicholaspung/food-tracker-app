@@ -269,6 +269,15 @@ build_frontend() {
 
     cd "$APP_DIR/frontend"
 
+    # Create environment-specific .env file
+    log "Creating frontend .env for $ENVIRONMENT environment..."
+    cat > .env <<EOF
+# Frontend Environment Variables - $ENVIRONMENT
+# PocketBase automatically appends /api/ to requests
+VITE_API_URL=https://$DOMAIN
+EOF
+    log "Frontend .env created with API URL: https://$DOMAIN"
+
     # Clean install dependencies
     log "Installing dependencies..."
     if ! npm ci --production=false --loglevel=error 2>&1 | tee -a "$LOG_FILE"; then

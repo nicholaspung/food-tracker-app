@@ -2,7 +2,7 @@ name: Deploy to Beta/Production
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -49,7 +49,7 @@ jobs:
     name: Deploy to Beta
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     environment:
       name: beta
       url: https://beta.myexperiment.life
@@ -66,7 +66,7 @@ jobs:
           port: ${{ secrets.VPS_PORT }}
           script: |
             cd /opt/mobile-tracker-app
-            git pull origin master
+            git pull origin main
             bash scripts/deploy.sh beta
 
       - name: Health check Beta
@@ -90,7 +90,7 @@ jobs:
     name: Deploy to Production
     needs: deploy-beta
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     environment:
       name: production
       url: https://myexperiment.life
@@ -107,7 +107,7 @@ jobs:
           port: ${{ secrets.VPS_PORT }}
           script: |
             cd /opt/mobile-tracker-app
-            git pull origin master
+            git pull origin main
             bash scripts/deploy.sh production
 
       - name: Health check Production

@@ -1,8 +1,9 @@
 import PocketBase from 'pocketbase';
 
 // Create a single PocketBase instance for the entire application
-// The backend runs on port 8090 by default
-export const pb = new PocketBase('http://127.0.0.1:8090');
+// Use environment variable for API URL, fallback to localhost for dev
+const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8090';
+export const pb = new PocketBase(apiUrl);
 
 // Enable auto cancellation for pending requests
 pb.autoCancellation(false);
