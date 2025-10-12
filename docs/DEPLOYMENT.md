@@ -431,28 +431,20 @@ curl -I https://beta.myexperiment.life
 2. Click **"New environment"**
 3. Name: `beta`
 4. Click **"Configure environment"**
-5. **Deployment protection rules**: Leave unchecked (beta deploys automatically)
-6. **Environment secrets**: Skip for now (we'll use repository secrets)
-7. Scroll down to **"Environment URL"** and enter: `https://beta.myexperiment.life`
-8. Click **"Save protection rules"** at the bottom
+5. Scroll down to **"Environment URL"** and enter: `https://beta.myexperiment.life`
+6. Click **"Save protection rules"** at the bottom
 
 #### Create Production Environment
 
 1. Back on the Environments page, click **"New environment"** again
 2. Name: `production`
 3. Click **"Configure environment"**
-4. **Deployment protection rules**: Check the box for **"Required reviewers"**
-   - A section will expand below
-   - Click the **"Add up to 6 reviewers"** field
-   - Select yourself (and any team members who should approve production deploys)
-   - You can also enable **"Prevent self-review"** if you want someone else to approve (optional)
-5. **Wait timer**: Optionally set a wait time before deployment (e.g., 5 minutes)
-6. Scroll down to **"Environment URL"** and enter: `https://myexperiment.life`
-7. Click **"Save protection rules"** at the bottom
+4. Scroll down to **"Environment URL"** and enter: `https://myexperiment.life`
+5. Click **"Save protection rules"** at the bottom
 
-**What this does:**
-- **Beta**: Deploys automatically when tests pass (no approval needed)
-- **Production**: Requires manual approval before deploying (you'll get a notification to review)
+**Note about protection rules:**
+- **GitHub Free plan (private repos)**: "Required reviewers" is not available. Production deployments use manual workflow triggers instead (see workflow instructions below).
+- **GitHub Team/Enterprise** or **Public repos**: You can optionally enable "Required reviewers" under "Deployment protection rules" for additional approval gates.
 
 ### Step 5: Add GitHub Secrets
 
@@ -529,22 +521,40 @@ For `VPS_SSH_KEY`, paste the entire private key including the header and footer 
 
 ### How the Pipeline Works
 
-When you push to `main`:
+**Automatic Beta Deployment (on push to `main`):**
 
 1. **Tests run** - TypeScript checks and E2E tests
-2. **Auto-deploy to Beta** - If tests pass, deploys to `beta.myexperiment.life`
-3. **Manual approval required** - Check beta, then approve in GitHub UI
-4. **Deploy to Production** - After approval, deploys to `myexperiment.life`
+2. **Auto-deploy to Beta** - If tests pass, automatically deploys to `beta.myexperiment.life`
 
-### Approving Production Deployments
+**Manual Production Deployment (workflow_dispatch):**
 
-1. Push code to `main`
-2. GitHub Actions will automatically deploy to beta
+Production deployments require manual triggering through the GitHub UI for safety.
+
+### Deploying to Production
+
+After testing your changes on beta, deploy to production:
+
+1. Push code to `main` (this automatically deploys to beta)
+2. GitHub Actions runs tests and deploys to beta
 3. Test the beta site: `https://beta.myexperiment.life`
-4. Go to **Actions** tab in GitHub
-5. Find the workflow run
-6. Click **Review deployments** button
-7. Select **production** and click **Approve and deploy**
+4. Once satisfied, go to **Actions** tab in GitHub
+5. Click on **"Deploy to Beta/Production"** workflow
+6. Click the **"Run workflow"** dropdown button (top right)
+7. Select `main` branch
+8. Choose **"production"** from the environment dropdown
+9. Click **"Run workflow"**
+
+The workflow will:
+- Run tests again
+- Deploy to production at `https://myexperiment.life`
+- Run health checks
+- Show deployment summary
+
+**Optional: Manually deploy to beta**
+
+You can also manually trigger a beta deployment:
+- Follow steps 4-6 above
+- Choose **"beta"** from the environment dropdown instead
 
 ### Manual Deployments
 
@@ -614,10 +624,10 @@ docker ps | grep beta
 docker compose -f docker-compose.beta.yml logs pocketbase_beta
 ```
 
-**Production deployment blocked:**
-- Ensure you've set up the "production" environment in GitHub Settings
-- Add yourself as a required reviewer
-- Check the Actions tab for the "Review deployments" button
+**Production deployment not triggered:**
+- Ensure you've set up the "production" environment in GitHub Settings → Environments
+- Production deploys are manual only - use the "Run workflow" button in the Actions tab
+- Select "production" from the environment dropdown when manually triggering
 
 ## Troubleshooting
 
