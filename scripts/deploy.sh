@@ -101,9 +101,9 @@ rollback() {
     # Rollback PocketBase if backup exists
     if [ -f "$BACKUP_DIR/latest/$COMPOSE_FILE" ]; then
         log "Rolling back PocketBase container..."
-        docker-compose -f "$COMPOSE_FILE" down "$POCKETBASE_CONTAINER"
+        docker compose -f "$COMPOSE_FILE" down "$POCKETBASE_CONTAINER"
         cp "$BACKUP_DIR/latest/$COMPOSE_FILE" "$APP_DIR/$COMPOSE_FILE"
-        docker-compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_CONTAINER"
+        docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_CONTAINER"
         log "PocketBase rolled back successfully"
     fi
 
@@ -129,12 +129,18 @@ preflight_checks() {
     echo $$ > "$LOCK_FILE"
 
     # Check required commands
-    for cmd in git npm docker docker-compose systemctl; do
+    for cmd in git npm docker systemctl; do
         if ! command -v $cmd &> /dev/null; then
             error "Required command not found: $cmd"
             exit 1
         fi
     done
+
+    # Check Docker Compose (V2 plugin)
+    if ! docker compose version &> /dev/null; then
+        error "Docker Compose not found (requires Docker Compose V2)"
+        exit 1
+    fi
 
     # Check if app directory exists
     if [ ! -d "$APP_DIR" ]; then
@@ -334,7 +340,7 @@ deploy_pocketbase() {
     cd "$APP_DIR"
 
     # Pull latest PocketBase image
-    if ! docker-compose -f "$COMPOSE_FILE" pull "$POCKETBASE_CONTAINER"; then
+    if ! docker compose -f "$COMPOSE_FILE" pull "$POCKETBASE_CONTAINER"; then
         error "Failed to pull PocketBase image"
         exit 1
     fi
@@ -343,7 +349,7 @@ deploy_pocketbase() {
     local old_container=$(docker ps -qf "name=$POCKETBASE_CONTAINER")
 
     # Update container (recreates if image changed)
-    if ! docker-compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_CONTAINER"; then
+    if ! docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_CONTAINER"; then
         error "Failed to start PocketBase container"
         exit 1
     fi
@@ -370,7 +376,7 @@ health_check_pocketbase() {
     local wait_time=2
 
     while [ $attempt -lt $max_attempts ]; do
-        if docker-compose -f "$COMPOSE_FILE" exec -T "$POCKETBASE_CONTAINER" wget --spider -q http://localhost:$POCKETBASE_PORT/api/health 2>/dev/null; then
+        if docker compose -f "$COMPOSE_FILE" exec -T "$POCKETBASE_CONTAINER" wget --spider -q http://localhost:$POCKETBASE_PORT/api/health 2>/dev/null; then
             log "PocketBase is healthy ✓"
             return 0
         fi
