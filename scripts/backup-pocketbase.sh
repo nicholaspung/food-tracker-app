@@ -70,7 +70,7 @@ create_online_backup() {
     cd "$APP_DIR" || error_exit "App directory not found: $APP_DIR"
 
     # Check container is running
-    if ! docker-compose ps pocketbase | grep -q "Up"; then
+    if ! docker compose ps pocketbase | grep -q "Up"; then
         error_exit "PocketBase container is not running"
     fi
 
