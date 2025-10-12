@@ -294,7 +294,7 @@ This pulls the latest code, builds, and deploys with zero downtime.
 ## Setting Up Beta/Production CI/CD Pipeline
 
 This project uses a **beta → production pipeline** where:
-1. Code pushes to `master` automatically deploy to **beta**
+1. Code pushes to `main` automatically deploy to **beta**
 2. After beta testing, you manually approve deployment to **production**
 
 ### Step 1: Setup DNS Records
@@ -333,7 +333,27 @@ dig www.myexperiment.life
 
 ### Step 2: Setup VPS for Both Environments
 
-SSH into your VPS and create beta data directories:
+SSH into your VPS and run the automated beta setup script:
+
+```bash
+cd /opt/mobile-tracker-app
+
+# Make the script executable
+chmod +x scripts/setup-beta.sh
+
+# Run the beta setup script
+bash scripts/setup-beta.sh
+```
+
+This script will automatically:
+- ✅ Create beta data directories
+- ✅ Start the beta PocketBase container
+- ✅ Deploy the beta frontend
+- ✅ Provide the installation URL for creating the beta admin account
+
+**Manual Setup (Alternative):**
+
+If you prefer to set up manually:
 ```bash
 cd /opt/mobile-tracker-app/backend
 mkdir -p pb_data_beta pb_data_production
@@ -345,10 +365,17 @@ fi
 
 # Create beta PocketBase admin (first time)
 cd /opt/mobile-tracker-app
-docker-compose -f docker-compose.beta.yml up -d
+docker compose -f docker-compose.beta.yml up -d
+
+# Deploy beta frontend
+bash scripts/deploy.sh beta
 ```
 
-Then visit `https://beta.myexperiment.life/_/` to create the beta admin account.
+Then get the installation token and visit the URL to create the beta admin account:
+```bash
+docker compose -f docker-compose.beta.yml logs pocketbase_beta | grep "pbinstal"
+# Visit: https://beta.myexperiment.life/_/#/pbinstal/YOUR_TOKEN
+```
 
 ### Step 3: Update Caddy Configuration
 
