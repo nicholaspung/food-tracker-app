@@ -12,6 +12,7 @@ interface SignUpPageProps {
 
 export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignUpPageProps) {
   const [email, setEmail] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
@@ -20,6 +21,12 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignU
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // Validate invite code
+    if (!inviteCode.trim()) {
+      setError("Invite code is required");
+      return;
+    }
 
     // Validate passwords match
     if (password !== passwordConfirm) {
@@ -36,11 +43,12 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignU
     setLoading(true);
 
     try {
-      // Create the user account
+      // Create the user account with invite code
       await pb.collection('users').create({
         email,
         password,
         passwordConfirm,
+        inviteCode,
       });
 
       // Automatically log in the user after successful registration
@@ -58,11 +66,13 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignU
           setError(`Email: ${errorData.email.message}`);
         } else if (errorData.password) {
           setError(`Password: ${errorData.password.message}`);
+        } else if (errorData.inviteCode) {
+          setError(`Invite code: ${errorData.inviteCode.message}`);
         } else {
           setError(err.message || "Failed to create account. Please try again.");
         }
       } else {
-        setError("Failed to create account. Please try again.");
+        setError(err.message || "Failed to create account. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -75,7 +85,7 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignU
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center" data-testid="signup-title">Create an account</CardTitle>
           <CardDescription className="text-center" data-testid="signup-description">
-            Enter your email and password to sign up
+            Enter your invite code, email and password to sign up
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSignUp} data-testid="signup-form">
@@ -96,6 +106,19 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignU
                 required
                 disabled={loading}
                 data-testid="signup-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="signup-invite-code">Invite Code</Label>
+              <Input
+                id="signup-invite-code"
+                type="text"
+                placeholder="Enter your invite code"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                required
+                disabled={loading}
+                data-testid="signup-invite-code"
               />
             </div>
             <div className="space-y-2">

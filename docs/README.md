@@ -1,61 +1,76 @@
 # Mobile Tracker App Documentation
 
-Complete production deployment documentation for the Mobile Tracker App.
+Complete documentation for the Mobile Tracker App, organized by functionality.
+
+## 📂 Documentation Structure
+
+```
+docs/
+├── README.md                           # This file - documentation index
+│
+├── setup/                              # 🚀 Setup & Deployment
+│   ├── INFRASTRUCTURE.md               # Architecture overview
+│   ├── DEPLOYMENT.md                   # Deployment guide
+│   └── ENV_GUIDE.md                    # Environment variables
+│
+├── features/                           # ✨ Feature Documentation
+│   ├── EMAIL_SETUP.md                  # Email configuration
+│   └── INVITE_CODES.md                 # Invite code system
+│
+├── operations/                         # 🔧 Operations & Maintenance
+│   └── DISASTER_RECOVERY.md            # Emergency procedures
+│
+└── planning/                           # 📋 Planning & Future Work
+    └── FUTURE_IMPROVEMENTS.md          # Architecture enhancements
+```
 
 ---
 
 ## 📚 Documentation Index
 
-### Getting Started
-1. **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)** - Architecture overview and technical deep-dive
+### 🚀 Setup & Deployment (`setup/`)
+1. **[INFRASTRUCTURE.md](setup/INFRASTRUCTURE.md)** - Architecture overview and technical deep-dive
    - VPS deployment architecture
    - Docker + Caddy setup
    - Data persistence explained
    - Security best practices
 
-2. **[DEPLOYMENT.md](DEPLOYMENT.md)** - Step-by-step deployment guide
+2. **[DEPLOYMENT.md](setup/DEPLOYMENT.md)** - Step-by-step deployment guide
    - VPS setup instructions
    - Initial deployment process
    - Future deployment workflow
    - Troubleshooting common issues
 
-3. **[ENV_GUIDE.md](ENV_GUIDE.md)** - Environment variable reference
+3. **[ENV_GUIDE.md](setup/ENV_GUIDE.md)** - Environment variable reference
    - What variables are needed
    - Local vs production configuration
    - When .env files are created (automatically!)
 
-4. **[EMAIL_SETUP.md](EMAIL_SETUP.md)** - Email configuration guide
+### ✨ Features (`features/`)
+
+4. **[EMAIL_SETUP.md](features/EMAIL_SETUP.md)** - Email configuration guide
    - SMTP provider setup (Gmail, Resend, SendGrid)
    - PocketBase email configuration
    - Programmatic email sending
    - Domain email setup
 
-### Maintenance & Operations
+5. **[INVITE_CODES.md](features/INVITE_CODES.md)** - Invite code system
+   - Backend implementation with hooks
+   - Frontend signup flow
+   - Creating and managing invite codes
+   - Testing the invite code flow
 
-5. **[IMPROVEMENTS.md](IMPROVEMENTS.md)** - What was improved and why
-   - Before/after comparison
-   - Security enhancements
-   - Performance improvements
-   - Production readiness score (92/100)
+### 🔧 Operations (`operations/`)
 
-6. **[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)** - Emergency procedures
+6. **[DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md)** - Emergency procedures
    - Recovery scenarios (VPS lost, DB corruption, etc.)
    - Step-by-step recovery procedures
    - Recovery testing schedule
    - Emergency contact information
 
-### Advanced
+### 📋 Planning (`planning/`)
 
-7. **[PATH_TO_100.md](PATH_TO_100.md)** - How to achieve perfect score
-   - Current: 92/100 (production-ready)
-   - Missing 8 points breakdown
-   - Monitoring & alerting setup
-   - Remote backup configuration
-   - CI/CD testing integration
-   - Total time: ~75 minutes
-   - Total cost: ~$0.50/month
-
-8. **[FUTURE_IMPROVEMENTS.md](FUTURE_IMPROVEMENTS.md)** - Architecture enhancements
+7. **[FUTURE_IMPROVEMENTS.md](planning/FUTURE_IMPROVEMENTS.md)** - Architecture enhancements
    - Notification system (Apprise + Ntfy.sh)
    - Centralized logging (Loki + Grafana)
    - Metrics monitoring (Prometheus)
@@ -69,50 +84,42 @@ Complete production deployment documentation for the Mobile Tracker App.
 ### I want to...
 
 **Deploy to production for the first time:**
-→ Read [DEPLOYMENT.md](DEPLOYMENT.md)
+→ Read [setup/DEPLOYMENT.md](setup/DEPLOYMENT.md)
 
 **Understand the architecture:**
-→ Read [INFRASTRUCTURE.md](INFRASTRUCTURE.md)
+→ Read [setup/INFRASTRUCTURE.md](setup/INFRASTRUCTURE.md)
 
 **Configure environment variables:**
-→ Read [ENV_GUIDE.md](ENV_GUIDE.md)
+→ Read [setup/ENV_GUIDE.md](setup/ENV_GUIDE.md)
 
 **Setup email sending:**
-→ Read [EMAIL_SETUP.md](EMAIL_SETUP.md)
+→ Read [features/EMAIL_SETUP.md](features/EMAIL_SETUP.md)
 
-**See what was improved:**
-→ Read [IMPROVEMENTS.md](IMPROVEMENTS.md)
+**Implement invite codes:**
+→ Read [features/INVITE_CODES.md](features/INVITE_CODES.md)
 
 **Handle an emergency:**
-→ Read [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)
-
-**Achieve perfect 100/100 score:**
-→ Read [PATH_TO_100.md](PATH_TO_100.md)
+→ Read [operations/DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md)
 
 **Plan future enhancements:**
-→ Read [FUTURE_IMPROVEMENTS.md](FUTURE_IMPROVEMENTS.md)
+→ Read [planning/FUTURE_IMPROVEMENTS.md](planning/FUTURE_IMPROVEMENTS.md)
 
 ---
 
 ## 📖 Reading Order
 
-### For First-Time Deployment:
-1. INFRASTRUCTURE.md (understand the architecture)
-2. DEPLOYMENT.md (follow step-by-step)
-3. ENV_GUIDE.md (reference when needed)
+### For First-Time Setup:
+1. [setup/INFRASTRUCTURE.md](setup/INFRASTRUCTURE.md) - Understand the architecture
+2. [setup/DEPLOYMENT.md](setup/DEPLOYMENT.md) - Follow step-by-step deployment
+3. [setup/ENV_GUIDE.md](setup/ENV_GUIDE.md) - Reference when needed
+
+### Implementing Features:
+4. [features/EMAIL_SETUP.md](features/EMAIL_SETUP.md) - Configure email sending
+5. [features/INVITE_CODES.md](features/INVITE_CODES.md) - Set up invite code system
 
 ### After Deployment:
-4. IMPROVEMENTS.md (understand what you have)
-5. DISASTER_RECOVERY.md (prepare for emergencies)
-6. PATH_TO_100.md (optional: perfect your setup)
-
----
-
-## 🎯 Current Production Score: 92/100
-
-Your infrastructure is **production-ready** right now! See [IMPROVEMENTS.md](IMPROVEMENTS.md) for details.
-
-To reach 100/100, see [PATH_TO_100.md](PATH_TO_100.md).
+6. [operations/DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md) - Prepare for emergencies
+7. [planning/FUTURE_IMPROVEMENTS.md](planning/FUTURE_IMPROVEMENTS.md) - Plan enhancements
 
 ---
 
@@ -131,6 +138,7 @@ All deployment scripts are in `/scripts/`:
 
 ## 💡 Key Features
 
+### Infrastructure
 ✅ **Zero-downtime deployments** (blue-green strategy)
 ✅ **Zero-downtime backups** (SQLite online backup)
 ✅ **Automatic rollback** on failure
@@ -141,6 +149,12 @@ All deployment scripts are in `/scripts/`:
 ✅ **Automated backups** with verification
 ✅ **Deployment locks** (prevent concurrent runs)
 ✅ **HTTP/3 support** (QUIC protocol)
+
+### Application Features
+✅ **Invite code system** - Control user registration with invite codes
+✅ **Email notifications** - Configurable SMTP email sending
+✅ **User authentication** - Secure PocketBase authentication
+✅ **Mobile-first design** - Optimized for mobile devices
 
 ---
 
