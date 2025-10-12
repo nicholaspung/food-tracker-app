@@ -498,8 +498,10 @@ cleanup_old_build() {
 
     # Keep old build for 5 minutes in case we need emergency rollback
     if [ -d "${FRONTEND_BUILD_DIR}_old" ]; then
-        (sleep 300 && rm -rf "${FRONTEND_BUILD_DIR}_old") &
-        log "Old build will be deleted in 5 minutes (PID: $!)"
+        # Properly detach the background process to avoid hanging SSH sessions
+        nohup bash -c "sleep 300 && rm -rf '${FRONTEND_BUILD_DIR}_old'" > /dev/null 2>&1 &
+        disown
+        log "Old build will be deleted in 5 minutes (detached process)"
     fi
 }
 
