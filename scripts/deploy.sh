@@ -411,13 +411,13 @@ health_check_frontend() {
         return 1
     fi
 
-    # Try to fetch the frontend via Caddy
+    # Try to fetch the frontend via Caddy with proper Host header
     local max_attempts=10
     local attempt=0
 
     while [ $attempt -lt $max_attempts ]; do
-        # Use curl to check if Caddy can serve the frontend
-        if curl -f -s -o /dev/null -w "%{http_code}" http://localhost:80/ | grep -q "200"; then
+        # Use curl to check if Caddy can serve the frontend for this environment
+        if curl -f -s -o /dev/null -w "%{http_code}" -H "Host: $DOMAIN" http://localhost/ | grep -q "200"; then
             log "Frontend is accessible via Caddy ✓"
             return 0
         fi
