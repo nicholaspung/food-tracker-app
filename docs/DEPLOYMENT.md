@@ -430,17 +430,17 @@ curl -I https://beta.myexperiment.life
 1. Go to your GitHub repository → **Settings** → **Environments**
 2. Click **"New environment"**
 3. Name: `beta`
-4. Click **"Configure environment"**
-5. Scroll down to **"Environment URL"** and enter: `https://beta.myexperiment.life`
-6. Click **"Save protection rules"** at the bottom
+4. Click **"Configure environment"** (optional - you can just save immediately)
+5. No other configuration needed - click **"Save"** or just navigate away
 
 #### Create Production Environment
 
 1. Back on the Environments page, click **"New environment"** again
 2. Name: `production`
-3. Click **"Configure environment"**
-4. Scroll down to **"Environment URL"** and enter: `https://myexperiment.life`
-5. Click **"Save protection rules"** at the bottom
+3. Click **"Configure environment"** (optional - you can just save immediately)
+4. No other configuration needed - click **"Save"** or just navigate away
+
+**Note:** The environment URLs (`https://beta.myexperiment.life` and `https://myexperiment.life`) are configured in the workflow file (`.github/workflows/deploy.yml`), not in the GitHub UI. They will automatically appear in the GitHub Actions UI after the first deployment.
 
 **Note about protection rules:**
 - **GitHub Free plan (private repos)**: "Required reviewers" is not available. Production deployments use manual workflow triggers instead (see workflow instructions below).
