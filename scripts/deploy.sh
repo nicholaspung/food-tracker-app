@@ -33,12 +33,14 @@ MAX_BACKUPS=5
 if [[ "$ENVIRONMENT" == "beta" ]]; then
     POCKETBASE_PORT="8091"
     POCKETBASE_CONTAINER="pocketbase_beta"
+    POCKETBASE_SERVICE="pocketbase_beta"
     FRONTEND_BUILD_DIR="frontend_build_beta"
     COMPOSE_FILE="docker-compose.beta.yml"
     DOMAIN="beta.myexperiment.life"
 else
     POCKETBASE_PORT="8090"
     POCKETBASE_CONTAINER="pocketbase"
+    POCKETBASE_SERVICE="pocketbase"
     FRONTEND_BUILD_DIR="frontend_build"
     COMPOSE_FILE="docker-compose.yml"
     DOMAIN="myexperiment.life"
@@ -101,9 +103,9 @@ rollback() {
     # Rollback PocketBase if backup exists
     if [ -f "$BACKUP_DIR/latest/$COMPOSE_FILE" ]; then
         log "Rolling back PocketBase container..."
-        docker compose -f "$COMPOSE_FILE" down "$POCKETBASE_CONTAINER"
+        docker compose -f "$COMPOSE_FILE" down "$POCKETBASE_SERVICE"
         cp "$BACKUP_DIR/latest/$COMPOSE_FILE" "$APP_DIR/$COMPOSE_FILE"
-        docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_CONTAINER"
+        docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_SERVICE"
         log "PocketBase rolled back successfully"
     fi
 
@@ -346,9 +348,10 @@ deploy_pocketbase() {
 
     cd "$APP_DIR"
 
-    # Pull latest PocketBase image
-    if ! docker compose -f "$COMPOSE_FILE" pull "$POCKETBASE_CONTAINER"; then
-        error "Failed to pull PocketBase image"
+    # Build PocketBase image (custom image, not from Docker Hub)
+    log "Building PocketBase image..."
+    if ! docker compose -f "$COMPOSE_FILE" build "$POCKETBASE_SERVICE" 2>&1 | tee -a "$LOG_FILE"; then
+        error "Failed to build PocketBase image"
         exit 1
     fi
 
@@ -356,7 +359,7 @@ deploy_pocketbase() {
     local old_container=$(docker ps -qf "name=$POCKETBASE_CONTAINER")
 
     # Update container (recreates if image changed)
-    if ! docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_CONTAINER"; then
+    if ! docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_SERVICE"; then
         error "Failed to start PocketBase container"
         exit 1
     fi
@@ -383,7 +386,7 @@ health_check_pocketbase() {
     local wait_time=2
 
     while [ $attempt -lt $max_attempts ]; do
-        if docker compose -f "$COMPOSE_FILE" exec -T "$POCKETBASE_CONTAINER" wget --spider -q http://localhost:$POCKETBASE_PORT/api/health 2>/dev/null; then
+        if docker compose -f "$COMPOSE_FILE" exec -T "$POCKETBASE_SERVICE" wget --spider -q http://localhost:$POCKETBASE_PORT/api/health 2>/dev/null; then
             log "PocketBase is healthy ✓"
             return 0
         fi
