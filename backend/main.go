@@ -13,7 +13,12 @@ func main() {
 	app := pocketbase.New()
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		// serves static files from the provided public dir (if exists)
+		// Health check endpoint (responds before static file handler)
+		se.Router.GET("/api/health", func(e *core.RequestEvent) error {
+			return e.JSON(200, map[string]string{"status": "ok"})
+		})
+
+		// Serves static files from the provided public dir (if exists)
 		se.Router.GET("/{path...}", apis.Static(os.DirFS("./pb_public"), false))
 
 		return se.Next()
