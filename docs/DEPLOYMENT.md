@@ -441,13 +441,76 @@ curl -I https://beta.myexperiment.life
 
 ### Step 5: Add GitHub Secrets
 
-Go to Settings → Secrets and variables → Actions
+#### Creating a Dedicated SSH Key for GitHub Actions (Recommended)
 
-Add these secrets:
-- `VPS_HOST` - Your VPS IP address
-- `VPS_USER` - SSH username (e.g., `deploy`)
-- `VPS_SSH_KEY` - Your private SSH key
-- `VPS_PORT` - SSH port (usually `22`)
+For security, create a separate SSH key specifically for GitHub Actions deployments:
+
+**On your local machine:**
+```bash
+# Generate a new key specifically for GitHub Actions
+ssh-keygen -t ed25519 -f ~/.ssh/github_actions_deploy -C "github-actions-deploy"
+
+# When prompted:
+# - Enter file: (already specified, press Enter)
+# - Passphrase: (leave empty, press Enter twice)
+
+# Display the public key (copy this)
+cat ~/.ssh/github_actions_deploy.pub
+```
+
+**On your VPS (as the deploy user):**
+```bash
+# Add the new public key to authorized_keys
+echo "PASTE_THE_PUBLIC_KEY_HERE" >> ~/.ssh/authorized_keys
+
+# Verify the key was added
+tail -1 ~/.ssh/authorized_keys
+```
+
+**Test the new key from your local machine:**
+```bash
+# Test SSH connection with the new key
+ssh -i ~/.ssh/github_actions_deploy deploy@YOUR_VPS_IP
+
+# If it works, exit and continue
+exit
+```
+
+**Get the private key for GitHub Secrets:**
+```bash
+# On your local machine, display the private key
+cat ~/.ssh/github_actions_deploy
+
+# Copy the ENTIRE output including:
+# -----BEGIN OPENSSH PRIVATE KEY-----
+# ... (all lines) ...
+# -----END OPENSSH PRIVATE KEY-----
+```
+
+#### Alternative: Use Your Existing SSH Key
+
+If you already SSH to your VPS, you can reuse that key:
+```bash
+# On your local machine
+cat ~/.ssh/id_ed25519
+```
+
+**Note:** Using a dedicated key (Option 1) is more secure because you can revoke it independently without affecting your personal SSH access.
+
+#### Add Secrets to GitHub
+
+Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**
+
+Click **"New repository secret"** and add each of these:
+
+| Secret Name | Value | Example |
+|-------------|-------|---------|
+| `VPS_HOST` | Your VPS IP address | `123.45.67.89` |
+| `VPS_USER` | SSH username | `deploy` |
+| `VPS_SSH_KEY` | Your **private** SSH key (entire contents) | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `VPS_PORT` | SSH port | `22` (or custom port) |
+
+For `VPS_SSH_KEY`, paste the entire private key including the header and footer lines.
 
 ### How the Pipeline Works
 
