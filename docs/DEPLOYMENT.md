@@ -137,7 +137,12 @@ sudo chown $USER:$USER /opt/mobile-tracker-app
 # Clone the repository
 cd /opt/mobile-tracker-app
 git clone git@github.com:nicholaspung/mobile-tracker-app.git .
+
+# Configure git to ignore file permission changes (important for deployment)
+git config core.fileMode false
 ```
+
+**Why `core.fileMode false`?** Scripts need to be executable (`chmod +x`), but we don't want git to track these permission changes on the VPS. This prevents conflicts when pulling updates.
 
 ### Step 5: Run Setup Script
 
@@ -375,6 +380,31 @@ Then get the installation token and visit the URL to create the beta admin accou
 ```bash
 docker compose -f docker-compose.beta.yml logs pocketbase_beta | grep "pbinstal"
 # Visit: https://beta.myexperiment.life/_/#/pbinstal/YOUR_TOKEN
+```
+
+**Troubleshooting: Production asking for admin again?**
+
+If production suddenly asks for a superuser after moving directories:
+
+```bash
+cd /opt/mobile-tracker-app
+
+# Stop containers
+docker compose down
+
+# Check which directory has your data (look for larger size)
+du -sh backend/pb_data* 2>/dev/null
+
+# If pb_data has your admin but container uses pb_data_production:
+# Move the correct data to production
+mv backend/pb_data_production backend/pb_data_production.old
+mv backend/pb_data backend/pb_data_production
+
+# Restart
+docker compose up -d
+
+# Clean up old data after verifying production works
+rm -rf backend/pb_data_production.old
 ```
 
 ### Step 3: Update Caddy Configuration
