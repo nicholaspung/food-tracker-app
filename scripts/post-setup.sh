@@ -313,7 +313,8 @@ EOF
 # Frontend Environment Variables
 
 # API Configuration - Production
-VITE_API_URL=https://$DOMAIN/api
+# PocketBase automatically appends /api/ to requests
+VITE_API_URL=https://$DOMAIN
 EOF
 
     log "Created frontend/.env ✓"

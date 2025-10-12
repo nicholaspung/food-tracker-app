@@ -451,7 +451,7 @@ Add these secrets:
 
 ### How the Pipeline Works
 
-When you push to `master`:
+When you push to `main`:
 
 1. **Tests run** - TypeScript checks and E2E tests
 2. **Auto-deploy to Beta** - If tests pass, deploys to `beta.myexperiment.life`
@@ -460,7 +460,7 @@ When you push to `master`:
 
 ### Approving Production Deployments
 
-1. Push code to `master`
+1. Push code to `main`
 2. GitHub Actions will automatically deploy to beta
 3. Test the beta site: `https://beta.myexperiment.life`
 4. Go to **Actions** tab in GitHub
@@ -506,10 +506,10 @@ docker ps
 **View logs:**
 ```bash
 # Beta logs
-docker-compose -f docker-compose.beta.yml logs -f pocketbase_beta
+docker compose -f docker-compose.beta.yml logs -f pocketbase_beta
 
 # Production logs
-docker-compose logs -f pocketbase
+docker compose logs -f pocketbase
 ```
 
 **Health checks:**
@@ -533,7 +533,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 
 # Check beta container
 docker ps | grep beta
-docker-compose -f docker-compose.beta.yml logs pocketbase_beta
+docker compose -f docker-compose.beta.yml logs pocketbase_beta
 ```
 
 **Production deployment blocked:**
@@ -556,11 +556,11 @@ sudo ufw status
 ### PocketBase not working
 ```bash
 # Check container status
-docker-compose ps
-docker-compose logs pocketbase
+docker compose ps
+docker compose logs pocketbase
 
 # Restart container
-docker-compose restart pocketbase
+docker compose restart pocketbase
 ```
 
 ### Frontend showing old version
@@ -590,7 +590,7 @@ dig yourdomain.com
 sudo tail -f /var/log/caddy/access.log
 
 # PocketBase logs
-docker-compose logs -f pocketbase
+docker compose logs -f pocketbase
 
 # System logs
 journalctl -f
