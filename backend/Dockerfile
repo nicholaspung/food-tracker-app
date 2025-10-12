@@ -26,7 +26,8 @@ FROM alpine:latest
 # Install runtime dependencies
 RUN apk add --no-cache \
     ca-certificates \
-    tzdata
+    tzdata \
+    su-exec
 
 # Create directories
 RUN mkdir -p /pb/pb_data /pb/pb_migrations /pb/pb_hooks /pb/pb_public
