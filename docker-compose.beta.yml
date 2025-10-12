@@ -36,8 +36,8 @@ services:
       retries: 3           # Retry 3 times before marking unhealthy
       start_period: 10s    # Wait 10 seconds before first check
 
-    # Security: Run as non-root user
-    user: "1000:1000"
+    # Security: Entrypoint drops to non-root after fixing permissions
+    # user: "1000:1000"  # Commented out to allow entrypoint to fix permissions
 
     # Logging configuration (prevent disk fill)
     logging:
