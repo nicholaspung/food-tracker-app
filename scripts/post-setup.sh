@@ -361,21 +361,41 @@ start_pocketbase() {
 
     # Wait for PocketBase to be healthy
     log "Waiting for PocketBase to be healthy..."
-    local max_attempts=30
+    local max_attempts=20
     local attempt=0
 
     while [ $attempt -lt $max_attempts ]; do
+        # Check if container is running
+        if ! docker compose ps pocketbase | grep -q "running"; then
+            warn "PocketBase container not running, checking logs..."
+            docker compose logs --tail=20 pocketbase
+            error "PocketBase container failed to start"
+            exit 1
+        fi
+
+        # Try health check
         if curl -s http://127.0.0.1:8090/api/health > /dev/null 2>&1; then
             log "PocketBase is healthy ✓"
             return 0
         fi
 
+        # Show progress every 5 attempts
+        if [ $((attempt % 5)) -eq 0 ] && [ $attempt -gt 0 ]; then
+            log "Still waiting... (attempt $attempt/$max_attempts)"
+        fi
+
         attempt=$((attempt + 1))
-        sleep 2
+        sleep 3
     done
 
+    # Final check before giving up
+    log "Checking PocketBase container status..."
+    docker compose ps pocketbase
+    docker compose logs --tail=30 pocketbase | tee -a "$LOG_FILE"
+
     warn "PocketBase health check timeout (not critical, continuing...)"
-    warn "Check with: docker-compose logs pocketbase"
+    warn "Container is running but health endpoint may be slow to respond"
+    warn "Check with: docker compose logs -f pocketbase"
 }
 
 #######################
