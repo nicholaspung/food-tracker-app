@@ -29,10 +29,30 @@ jobs:
           cd frontend
           npm run build
 
-      - name: Run E2E tests
+      - name: Get Playwright version
+        id: playwright-version
+        run: |
+          cd frontend
+          echo "version=$(npm list @playwright/test --json | jq -r '.dependencies["@playwright/test"].version')" >> $GITHUB_OUTPUT
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
           cd frontend
           npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: |
+          cd frontend
           npm run test:e2e
         env:
           CI: true
