@@ -179,90 +179,58 @@ cd /opt/mobile-tracker-app
 bash scripts/post-setup.sh
 ```
 
-This will use the defaults:
-- Domain: `myexperiment.life`
-- Email: `nicholaspungdev@gmail.com`
+This will automatically:
+- ✅ Configure Caddyfile with your domain and email
+- ✅ Deploy Caddy configuration and restart the service
+- ✅ Create environment files (frontend/.env and .env)
+- ✅ Build PocketBase Docker image from your Go application
+- ✅ Start PocketBase container with proper permissions
+- ✅ Build the React frontend (npm install + build)
+- ✅ Deploy frontend to `/opt/mobile-tracker-app/frontend_build`
 
-Just press `Y` when prompted to use defaults, and it will configure everything automatically!
+**When prompted:**
+- Press `Y` to use defaults (Domain: `myexperiment.life`, Email: `nicholaspungdev@gmail.com`)
 
-### Step 7: Configure Environment
+**What to expect:**
+- The script takes 5-10 minutes to complete
+- PocketBase container may show a health check timeout (this is normal on first build)
+- All Docker images and npm dependencies will be downloaded and cached
 
-**Caddyfile is already configured:**
-- Email: `nicholaspungdev@gmail.com`
-- Domain: `myexperiment.life`
+### Step 7: Setup PocketBase Admin
 
-**Create environment files:**
+Get the installation URL from the PocketBase logs:
 ```bash
-# Root .env (optional for now)
-cp .env.example .env
-
-# Frontend .env (important!)
-cd frontend
-cp .env.example .env
-nano .env
+docker compose logs pocketbase | grep "pbinstal"
 ```
 
-In `frontend/.env`, set:
-```bash
-VITE_API_URL=https://myexperiment.life/api
+You'll see output like:
+```
+pocketbase  | http://0.0.0.0:8090/_/#/pbinstal/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-### Step 8: Deploy Caddy Configuration
-
-```bash
-cd /opt/mobile-tracker-app
-sudo cp Caddyfile /etc/caddy/Caddyfile
-sudo systemctl restart caddy
-sudo systemctl status caddy
+**Copy the token part** (everything after `/_/#/pbinstal/`) and visit:
+```
+https://myexperiment.life/_/#/pbinstal/YOUR_TOKEN_HERE
 ```
 
-Check Caddy logs if there are issues:
-```bash
-sudo journalctl -u caddy -f
-```
-
-### Step 9: Start PocketBase
-
-```bash
-cd /opt/mobile-tracker-app
-docker-compose up -d
-```
-
-Verify it's running:
-```bash
-docker-compose ps
-docker-compose logs pocketbase
-```
-
-Test the health endpoint:
-```bash
-curl http://127.0.0.1:8090/api/health
-```
-
-### Step 10: Build and Deploy Frontend
-
-```bash
-cd /opt/mobile-tracker-app
-bash scripts/deploy.sh
-```
-
-This will:
-- Build the React app
-- Deploy it to `/opt/mobile-tracker-app/frontend_build`
-- Reload Caddy
-
-### Step 11: Setup PocketBase Admin
-
-Visit your domain's admin panel:
-```
-https://myexperiment.life/_/
-```
+Replace `YOUR_TOKEN_HERE` with the actual token from your logs.
 
 Create your admin account (do this immediately for security!)
 
-### Step 12: Setup Automated Backups
+**Note:** The installation token expires after a certain period. If it expires, restart PocketBase to generate a new one:
+```bash
+docker compose restart pocketbase
+docker compose logs pocketbase | grep "pbinstal"
+```
+
+### Step 8: Setup Automated Backups
 
 ```bash
+# Create log file with proper permissions
+sudo touch /var/log/pocketbase-backup.log
+sudo chown $USER:$USER /var/log/pocketbase-backup.log
+sudo chmod 644 /var/log/pocketbase-backup.log
+
 # Make backup script executable
 chmod +x /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
 
@@ -278,7 +246,7 @@ Add this line:
 0 2 * * * /opt/mobile-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
 ```
 
-### Step 13: Verify Deployment
+### Step 9: Verify Deployment
 
 Test your app:
 ```bash
