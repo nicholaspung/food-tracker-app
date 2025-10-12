@@ -62,6 +62,12 @@ if [ -d "$BACKEND_DIR/pb_data" ] && [ ! -L "$BACKEND_DIR/pb_data" ]; then
     info "Moving to pb_data_production..."
     mv "$BACKEND_DIR/pb_data" "$BACKEND_DIR/pb_data_production"
     pass "Moved pb_data to pb_data_production"
+
+    # Restart production container to use new directory
+    info "Restarting production container..."
+    docker compose restart pocketbase || warn "Failed to restart production container"
+    sleep 3
+    pass "Production container restarted"
 fi
 echo ""
 
