@@ -1,4 +1,39 @@
+# Node modules
 node_modules
+
+# Environment files (sensitive)
+.env
+frontend/.env
+
+# Build artifacts
+frontend_build/
+frontend_build_beta/
+dist/
+build/
 
 # VPS SSH script (contains sensitive server info)
 scripts/ssh-vps.sh
+
+# PocketBase data (generated on VPS)
+backend/pb_data/
+backend/pb_data_production/
+backend/pb_data_beta/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backups
+*.backup
+*.bak
