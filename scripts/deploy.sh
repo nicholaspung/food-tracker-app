@@ -445,7 +445,8 @@ smoke_test() {
     fi
 
     # Test frontend (check if Caddy is serving it correctly)
-    if ! curl -f -s -H "Host: $DOMAIN" http://localhost/ | grep -q "<!DOCTYPE html>"; then
+    # -L follows redirects (HTTP -> HTTPS)
+    if ! curl -f -s -L -H "Host: $DOMAIN" http://localhost/ | grep -q "<!DOCTYPE html>"; then
         error "Smoke test failed: Frontend not serving HTML for $DOMAIN"
         return 1
     fi
