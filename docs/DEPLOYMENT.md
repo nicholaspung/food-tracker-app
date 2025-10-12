@@ -241,10 +241,28 @@ chmod +x /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
 crontab -e
 ```
 
-Add this line:
+Add this line to the crontab:
 ```
 0 2 * * * /opt/mobile-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
 ```
+
+**Verify the backup setup:**
+```bash
+# Make the verification script executable
+chmod +x /opt/mobile-tracker-app/scripts/verify-backup-setup.sh
+
+# Run the verification script
+bash /opt/mobile-tracker-app/scripts/verify-backup-setup.sh
+```
+
+This script checks:
+- ✅ Backup script exists and is executable
+- ✅ Cron service is running
+- ✅ Crontab entry is configured
+- ✅ Log file permissions are correct
+- ✅ Backup directory exists with backup files
+- ✅ PocketBase container is running
+- ✅ Can run a test backup
 
 ### Step 9: Verify Deployment
 
