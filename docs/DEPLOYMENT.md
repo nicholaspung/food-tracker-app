@@ -425,19 +425,34 @@ curl -I https://beta.myexperiment.life
 
 ### Step 4: Configure GitHub Environments
 
+#### Create Beta Environment
+
 1. Go to your GitHub repository → **Settings** → **Environments**
-2. Create two environments:
+2. Click **"New environment"**
+3. Name: `beta`
+4. Click **"Configure environment"**
+5. **Deployment protection rules**: Leave unchecked (beta deploys automatically)
+6. **Environment secrets**: Skip for now (we'll use repository secrets)
+7. Scroll down to **"Environment URL"** and enter: `https://beta.myexperiment.life`
+8. Click **"Save protection rules"** at the bottom
 
-**Beta Environment:**
-- Name: `beta`
-- No protection rules needed
-- URL: `https://beta.myexperiment.life`
+#### Create Production Environment
 
-**Production Environment:**
-- Name: `production`
-- ✅ Enable "Required reviewers"
-- Add yourself (or team members) as required reviewers
-- URL: `https://myexperiment.life`
+1. Back on the Environments page, click **"New environment"** again
+2. Name: `production`
+3. Click **"Configure environment"**
+4. **Deployment protection rules**: Check the box for **"Required reviewers"**
+   - A section will expand below
+   - Click the **"Add up to 6 reviewers"** field
+   - Select yourself (and any team members who should approve production deploys)
+   - You can also enable **"Prevent self-review"** if you want someone else to approve (optional)
+5. **Wait timer**: Optionally set a wait time before deployment (e.g., 5 minutes)
+6. Scroll down to **"Environment URL"** and enter: `https://myexperiment.life`
+7. Click **"Save protection rules"** at the bottom
+
+**What this does:**
+- **Beta**: Deploys automatically when tests pass (no approval needed)
+- **Production**: Requires manual approval before deploying (you'll get a notification to review)
 
 ### Step 5: Add GitHub Secrets
 
