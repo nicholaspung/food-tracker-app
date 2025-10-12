@@ -8,11 +8,12 @@ import { pb } from "@/lib/pocketbase";
 interface SignUpPageProps {
   onNavigateToLogin: () => void;
   onSignUpSuccess?: () => void;
+  initialInviteCode?: string;
 }
 
-export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignUpPageProps) {
+export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess, initialInviteCode }: SignUpPageProps) {
   const [email, setEmail] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(initialInviteCode || "");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
@@ -85,11 +86,19 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess }: SignU
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center" data-testid="signup-title">Create an account</CardTitle>
           <CardDescription className="text-center" data-testid="signup-description">
-            Enter your invite code, email and password to sign up
+            {initialInviteCode
+              ? "🎉 You've been invited! Complete the form below to join."
+              : "Enter your invite code, email and password to sign up"
+            }
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSignUp} data-testid="signup-form">
           <CardContent className="space-y-4">
+            {initialInviteCode && (
+              <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="invite-welcome">
+                You're using invite code: <span className="font-mono font-semibold">{initialInviteCode}</span>
+              </div>
+            )}
             {error && (
               <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="signup-error">
                 {error}

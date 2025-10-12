@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { pb } from "@/lib/pocketbase";
+
+interface InviteCode {
+  id: string;
+  code: string;
+  used: boolean;
+  created: string;
+}
 
 interface ProfilePageProps {
   onNavigateBack?: () => void;
@@ -13,6 +20,53 @@ export default function ProfilePage({ onNavigateBack, onDeleteSuccess }: Profile
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
+  const [loadingCodes, setLoadingCodes] = useState(true);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  // Fetch user's invite codes
+  useEffect(() => {
+    const fetchInviteCodes = async () => {
+      if (!user?.id) return;
+
+      try {
+        const records = await pb.collection('invite_codes').getFullList({
+          filter: `createdBy = "${user.id}"`,
+        });
+
+        setInviteCodes(records as InviteCode[]);
+      } catch (err) {
+        console.error("Error fetching invite codes:", err);
+      } finally {
+        setLoadingCodes(false);
+      }
+    };
+
+    fetchInviteCodes();
+  }, [user?.id]);
+
+  const copyToClipboard = async (code: string) => {
+    try {
+      // Create signup URL with pre-populated invite code
+      const signupUrl = `${window.location.origin}/signup?code=${code}`;
+
+      // Create invitation message
+      const message = `Hey! You're invited to join our app! 🎉
+
+Use this link to sign up:
+${signupUrl}
+
+Your invite code: ${code}
+
+Looking forward to seeing you there!`;
+
+      await navigator.clipboard.writeText(message);
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy invitation:", err);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     if (!user?.id) {
@@ -87,6 +141,52 @@ export default function ProfilePage({ onNavigateBack, onDeleteSuccess }: Profile
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Invite Codes Section */}
+          <div className="space-y-3 pt-4 border-t">
+            <div>
+              <h3 className="text-sm font-medium mb-2">Your Invite Codes</h3>
+              {loadingCodes ? (
+                <p className="text-sm text-muted-foreground">Loading codes...</p>
+              ) : inviteCodes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No invite codes available</p>
+              ) : (
+                <div className="space-y-2">
+                  {inviteCodes.map((inviteCode) => (
+                    <div
+                      key={inviteCode.id}
+                      className={`flex items-center justify-between p-3 rounded-md border ${
+                        inviteCode.used
+                          ? 'bg-muted/50 border-muted'
+                          : 'bg-background border-border'
+                      }`}
+                      data-testid={`invite-code-${inviteCode.code}`}
+                    >
+                      <div className="flex-1">
+                        <p className={`font-mono text-sm ${inviteCode.used ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                          {inviteCode.code}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {inviteCode.used ? 'Used' : 'Available'}
+                        </p>
+                      </div>
+                      {!inviteCode.used && (
+                        <Button
+                          onClick={() => copyToClipboard(inviteCode.code)}
+                          variant="ghost"
+                          size="sm"
+                          className="ml-2 text-xs"
+                          data-testid={`copy-code-${inviteCode.code}`}
+                        >
+                          {copiedCode === inviteCode.code ? '✓ Copied!' : 'Copy Invite'}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

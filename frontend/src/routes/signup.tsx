@@ -1,6 +1,10 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate, useSearch } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import SignUpPage from '@/components/SignUpPage';
+
+type SignUpSearch = {
+  code?: string;
+};
 
 export const Route = createFileRoute('/signup')({
   beforeLoad: () => {
@@ -9,14 +13,21 @@ export const Route = createFileRoute('/signup')({
       throw redirect({ to: '/home' });
     }
   },
+  validateSearch: (search: Record<string, unknown>): SignUpSearch => {
+    return {
+      code: search.code as string | undefined,
+    };
+  },
   component: SignUp,
 });
 
 function SignUp() {
   const navigate = useNavigate();
+  const { code } = useSearch({ from: '/signup' });
 
   return (
     <SignUpPage
+      initialInviteCode={code}
       onNavigateToLogin={() => {
         navigate({ to: '/' });
       }}
