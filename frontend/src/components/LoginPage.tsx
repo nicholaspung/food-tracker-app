@@ -16,15 +16,27 @@ export default function LoginPage({ onNavigateToSignUp, onNavigateToForgotPasswo
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setVerificationSent(false);
     setLoading(true);
 
     try {
-      await pb.collection('users').authWithPassword(email, password);
+      const authData = await pb.collection('users').authWithPassword(email, password);
       console.log("Login successful:", pb.authStore.model);
+
+      // Check if user is verified
+      if (!authData.record.verified) {
+        // User is not verified, log them out
+        pb.authStore.clear();
+        setError("verify");
+        setLoading(false);
+        return;
+      }
 
       // Call success callback
       onLoginSuccess?.();
@@ -33,6 +45,21 @@ export default function LoginPage({ onNavigateToSignUp, onNavigateToForgotPasswo
       setError("Invalid email or password. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendingVerification(true);
+    setVerificationSent(false);
+
+    try {
+      await pb.collection('users').requestVerification(email);
+      setVerificationSent(true);
+    } catch (err: any) {
+      console.error("Resend verification error:", err);
+      setError("Failed to resend verification email. Please try again.");
+    } finally {
+      setResendingVerification(false);
     }
   };
 
@@ -47,7 +74,28 @@ export default function LoginPage({ onNavigateToSignUp, onNavigateToForgotPasswo
         </CardHeader>
         <form onSubmit={handleLogin} data-testid="login-form">
           <CardContent className="space-y-4">
-            {error && (
+            {error === "verify" && (
+              <div className="p-3 text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-md" data-testid="login-verify-error">
+                <div className="font-semibold mb-1">Email Not Verified</div>
+                <div className="mb-2">Please verify your email address before logging in. Check your inbox for the verification link.</div>
+                {verificationSent ? (
+                  <div className="text-green-700">Verification email sent! Check your inbox.</div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResendVerification}
+                    disabled={resendingVerification}
+                    className="mt-2"
+                    data-testid="login-resend-verification"
+                  >
+                    {resendingVerification ? "Sending..." : "Resend Verification Email"}
+                  </Button>
+                )}
+              </div>
+            )}
+            {error && error !== "verify" && (
               <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="login-error">
                 {error}
               </div>
