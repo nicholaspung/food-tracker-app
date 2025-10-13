@@ -124,6 +124,9 @@ jobs:
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'beta')
+    environment:
+      name: beta
+      url: https://beta.myexperiment.life
 
     steps:
       - uses: actions/checkout@v3
@@ -205,6 +208,9 @@ jobs:
     needs: test-local
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
+    environment:
+      name: beta
+      url: https://beta.myexperiment.life
 
     steps:
       - uses: actions/checkout@v3
