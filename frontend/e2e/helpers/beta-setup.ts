@@ -101,6 +101,9 @@ export async function setupBetaTestData(): Promise<BetaTestData> {
  */
 export async function cleanupBetaTestData(pb: PocketBase, inviteCode?: string): Promise<void> {
   try {
+    // Ensure we have admin authentication for cleanup
+    await ensureAdminAuth(pb);
+
     // Clean up test users (users created during tests)
     const testUsers = await pb.collection('users').getFullList({
       filter: 'email ~ "test-"',
@@ -117,7 +120,27 @@ export async function cleanupBetaTestData(pb: PocketBase, inviteCode?: string): 
       }
     }
 
-    // Clean up specific invite code if provided
+    // Clean up ALL test-generated invite codes (codes starting with "TEST")
+    // This is more aggressive than just cleaning up the specific code passed in
+    try {
+      const testCodes = await pb.collection('invite_codes').getFullList({
+        filter: 'code ~ "TEST"',
+        $autoCancel: false,
+      });
+
+      for (const code of testCodes) {
+        try {
+          await pb.collection('invite_codes').delete(code.id);
+          console.log(`🧹 Cleaned up test invite code: ${code.code}`);
+        } catch (err) {
+          console.log(`⚠️ Could not delete invite code ${code.code}: ${err}`);
+        }
+      }
+    } catch (err) {
+      console.log(`⚠️ Could not fetch test invite codes: ${err}`);
+    }
+
+    // Also clean up specific invite code if provided (for backwards compatibility)
     if (inviteCode) {
       try {
         const codes = await pb.collection('invite_codes').getFullList({
@@ -127,16 +150,38 @@ export async function cleanupBetaTestData(pb: PocketBase, inviteCode?: string): 
 
         for (const code of codes) {
           await pb.collection('invite_codes').delete(code.id);
-          console.log(`🧹 Cleaned up invite code: ${inviteCode}`);
         }
       } catch (err) {
-        console.log(`⚠️ Could not delete invite code ${inviteCode}: ${err}`);
+        // Already handled in the bulk cleanup above
       }
     }
   } catch (error) {
     console.error('❌ Cleanup failed:', error);
     // Don't throw - cleanup failures shouldn't fail the test
   }
+}
+
+/**
+ * Ensure the PocketBase instance is authenticated as admin
+ * Re-authenticates if the current auth is invalid
+ *
+ * @param pb - PocketBase instance
+ */
+export async function ensureAdminAuth(pb: PocketBase): Promise<void> {
+  // Check if already authenticated and valid
+  if (pb.authStore.isValid && pb.authStore.model?.collectionName === '_superusers') {
+    return;
+  }
+
+  // Re-authenticate as admin
+  const adminEmail = process.env.BETA_ADMIN_EMAIL;
+  const adminPassword = process.env.BETA_ADMIN_PASSWORD;
+
+  if (!adminEmail || !adminPassword) {
+    throw new Error('Admin credentials not configured');
+  }
+
+  await pb.collection('_superusers').authWithPassword(adminEmail, adminPassword);
 }
 
 /**
@@ -147,6 +192,9 @@ export async function cleanupBetaTestData(pb: PocketBase, inviteCode?: string): 
  * @returns Array of created invite codes
  */
 export async function createInviteCodes(pb: PocketBase, count: number = 1): Promise<string[]> {
+  // Ensure we have admin authentication before creating codes
+  await ensureAdminAuth(pb);
+
   const codes: string[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -169,6 +217,9 @@ export async function createInviteCodes(pb: PocketBase, count: number = 1): Prom
  * @param code - Invite code to mark as used
  */
 export async function markInviteCodeAsUsed(pb: PocketBase, code: string): Promise<void> {
+  // Ensure we have admin authentication
+  await ensureAdminAuth(pb);
+
   const records = await pb.collection('invite_codes').getFullList({
     filter: `code = "${code}"`,
   });
