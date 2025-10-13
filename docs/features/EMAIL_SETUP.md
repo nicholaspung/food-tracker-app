@@ -10,6 +10,214 @@ PocketBase can send emails in two ways:
 1. **SMTP** (recommended) - Use Gmail, Resend, SendGrid, or any SMTP provider
 2. **Sendmail** - Use system's sendmail command (requires mail server setup)
 
+**Quick Start**: If you want to get email working fast in production, jump to [Quick Start: Resend Setup](#quick-start-resend-setup) below.
+
+---
+
+## Quick Start: Resend Setup
+
+**Recommended for production deployments** - This guide gets you up and running with Resend in ~15 minutes.
+
+### Why Resend?
+
+- ✅ **3,000 emails/month free** (plenty for most apps)
+- ✅ Better deliverability than Gmail
+- ✅ Modern dashboard with analytics
+- ✅ Easy domain verification
+- ✅ **SMTP password automatically encrypted** by PocketBase settings encryption
+
+---
+
+### Step 1: Create Resend Account (5 minutes)
+
+1. **Sign up**: https://resend.com/signup
+
+2. **Verify your email** (check inbox)
+
+3. **Create an API Key**:
+   - Dashboard → **API Keys** → **Create API Key**
+   - Name: `PocketBase Production`
+   - Permission: **Sending access**
+   - Click **Create**
+   - **Copy the API key** (starts with `re_...`)
+   - ⚠️ Save it somewhere secure - you won't see it again!
+
+---
+
+### Step 2: Verify Your Domain (Recommended for Production)
+
+**Option A: Testing Domain (Quick - 2 minutes)**
+- Skip verification, use sender: `onboarding@resend.dev`
+- Good for testing, not production-ready
+
+**Option B: Verify Your Domain (Production - 10 minutes)**
+
+1. In Resend dashboard → **Domains** → **Add Domain**
+
+2. Enter your domain: `myexperiment.life`
+
+3. **Add DNS Records** to your domain provider (DigitalOcean, Namecheap, Cloudflare, etc.):
+
+   Resend will show you 3 records to add:
+
+   ```dns
+   # SPF Record
+   Type: TXT
+   Name: @
+   Value: v=spf1 include:_spf.resend.com ~all
+
+   # DKIM Record (exact values provided by Resend)
+   Type: TXT
+   Name: resend._domainkey
+   Value: [copy from Resend dashboard]
+
+   # DMARC Record (optional but recommended)
+   Type: TXT
+   Name: _dmarc
+   Value: v=DMARC1; p=none; rua=mailto:your-email@gmail.com
+   ```
+
+4. **Wait 5-10 minutes** for DNS propagation
+
+5. Click **"Verify"** in Resend dashboard
+
+6. ✅ Status should show **"Verified"**
+
+**Check DNS propagation**: https://dnschecker.org/
+
+---
+
+### Step 3: Configure PocketBase on VPS (5 minutes)
+
+**SSH into your VPS:**
+
+```bash
+ssh deploy@your-vps-ip
+cd /opt/mobile-tracker-app
+
+# Make sure containers are running
+docker compose ps
+```
+
+**Open PocketBase Admin UI:**
+
+- **Production**: https://myexperiment.life/_/
+- **Beta**: https://beta.myexperiment.life/_/
+
+**Configure SMTP:**
+
+1. **Login** with your admin credentials
+
+2. Click **Settings** (gear icon) → **Mail settings**
+
+3. **Fill in the form**:
+
+   ```
+   SMTP server host: smtp.resend.com
+   SMTP server port: 587
+   Username: resend
+   Password: [paste your Resend API key: re_...]
+
+   ☑ Use TLS (check this box)
+
+   Sender name: Mobile Tracker App
+   Sender address: noreply@myexperiment.life
+   ```
+
+   **Note**: If domain not verified yet, use `onboarding@resend.dev` as sender address
+
+4. **Test the configuration**:
+   - Scroll down to **"Test email template"**
+   - Enter your email address
+   - Click **"Send test email"**
+   - ✅ Check your inbox (and spam folder!)
+   - ✅ Check Resend dashboard → **Logs** to see delivery status
+
+5. **Save changes** (blue button at bottom)
+
+6. **Repeat for beta** environment at https://beta.myexperiment.life/_/ (optional)
+
+---
+
+### Step 4: Verify Encryption (2 minutes)
+
+Your Resend API key is now **encrypted at rest** using the ENCRYPTION_KEY we set up!
+
+**Verify encryption is active:**
+
+```bash
+# On your VPS
+cd /opt/mobile-tracker-app
+
+# Check encryption key is loaded
+docker compose exec pocketbase sh -c 'echo $ENCRYPTION_KEY' | wc -c
+# Should output: 33 (32 characters + newline)
+
+# If empty, generate keys:
+bash scripts/generate-encryption-keys.sh
+docker compose restart pocketbase
+```
+
+---
+
+### Step 5: Test Email Delivery
+
+**Test 1: Password Reset Email**
+
+1. Logout of your app
+2. Click **"Forgot Password"**
+3. Enter your email
+4. Check inbox for password reset email
+
+**Test 2: Monitor Resend Dashboard**
+
+1. Go to Resend dashboard → **Logs**
+2. See your test emails with delivery status
+3. Check open rates and click tracking
+
+---
+
+### Configuration Summary
+
+| Setting | Value |
+|---------|-------|
+| **Provider** | Resend |
+| **SMTP Host** | `smtp.resend.com` |
+| **SMTP Port** | `587` (TLS) |
+| **Username** | `resend` |
+| **Password** | Your API key (encrypted at rest!) |
+| **Sender** | `noreply@myexperiment.life` |
+| **Free Tier** | 3,000 emails/month |
+| **Paid Tier** | $20/month for 50,000 emails |
+
+✅ **Your SMTP password is automatically encrypted** by PocketBase using the ENCRYPTION_KEY environment variable!
+
+---
+
+### Troubleshooting Resend
+
+**"Test email not received"**
+1. Check spam folder
+2. Check Resend dashboard → **Logs** for errors
+3. Verify SMTP credentials are correct (username must be `resend`)
+4. Ensure port 587 is accessible (usually is by default)
+
+**"Authentication failed"**
+- Double-check API key starts with `re_...`
+- Username must be exactly `resend` (lowercase)
+- Try regenerating API key in Resend dashboard
+
+**"Emails go to spam"**
+- Verify your domain in Resend dashboard
+- Add SPF, DKIM, DMARC DNS records (shown in Step 2)
+- Use `noreply@myexperiment.life` instead of test domain
+
+**"Domain not verified"**
+- Wait 10-15 minutes after adding DNS records
+- Check DNS propagation: https://dnschecker.org/
+- Verify all 3 DNS records were added correctly
+- Click "Verify" button in Resend dashboard again
+
 ---
 
 ## Option 1: SMTP Configuration (Recommended)
