@@ -344,6 +344,9 @@ test.describe('Invite Code System', () => {
 
     test('should complete full viral invite flow with user deletion', async ({ page }) => {
       // This is a comprehensive test of the entire flow including user deletion
+      // Increased timeout because this test does many steps with network requests
+      test.setTimeout(60000); // 60 seconds instead of default 30 seconds
+
       const userAEmail = generateTestEmail();
       const userBEmail = generateTestEmail();
 

@@ -34,8 +34,12 @@ func main() {
 		return se.Next()
 	})
 
-	// Global map to store invite code IDs for marking as used after user creation
-	var pendingInviteCodes = make(map[string]string) // userId -> inviteCodeRecordId
+	// Global map to store invite code info for marking as used after user creation
+	type inviteCodeInfo struct {
+		recordId string
+		code     string
+	}
+	var pendingInviteCodes = make(map[string]inviteCodeInfo) // userEmail -> inviteCodeInfo
 
 	// Hook to validate invite code before user creation
 	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
@@ -78,11 +82,14 @@ func main() {
 			return apis.NewBadRequestError("invalid or already used invite code", nil)
 		}
 
-		// Store the invite code record ID for marking as used after creation
+		// Store the invite code info for marking as used after creation
 		// We'll use the user's email as a temporary key since we don't have the ID yet
 		userEmail, _ := requestData["email"].(string)
 		if userEmail != "" {
-			pendingInviteCodes[userEmail] = inviteCodeRecord.Id
+			pendingInviteCodes[userEmail] = inviteCodeInfo{
+				recordId: inviteCodeRecord.Id,
+				code:     inviteCode,
+			}
 		}
 
 		return e.Next()
@@ -92,14 +99,19 @@ func main() {
 	app.OnRecordAfterCreateSuccess("users").BindFunc(func(e *core.RecordEvent) error {
 		// Get user email to look up the pending invite code
 		userEmail := e.Record.Email()
-		inviteCodeId, exists := pendingInviteCodes[userEmail]
+		inviteCodeData, exists := pendingInviteCodes[userEmail]
 
-		if exists && inviteCodeId != "" {
+		var parentInviteCode string
+
+		if exists && inviteCodeData.recordId != "" {
 			// Clean up the pending map
 			delete(pendingInviteCodes, userEmail)
 
+			// Store the parent invite code for later use
+			parentInviteCode = inviteCodeData.code
+
 			// Find and update the invite code
-			inviteCodeRecord, err := app.FindRecordById("invite_codes", inviteCodeId)
+			inviteCodeRecord, err := app.FindRecordById("invite_codes", inviteCodeData.recordId)
 			if err != nil {
 				log.Printf("Error finding invite code: %v", err)
 			} else {
@@ -114,7 +126,8 @@ func main() {
 		}
 
 		// Generate 5 invite codes for the new user
-		if err := generateInviteCodesForUser(app, e.Record.Id); err != nil {
+		// Pass the parent invite code so we can propagate TEST prefix if needed
+		if err := generateInviteCodesForUser(app, e.Record.Id, parentInviteCode); err != nil {
 			log.Printf("Error generating invite codes for user %s: %v", e.Record.Id, err)
 			// Don't fail user creation if code generation fails
 		}
@@ -128,7 +141,8 @@ func main() {
 }
 
 // generateRandomCode creates a random invite code
-func generateRandomCode() (string, error) {
+// If prefix is provided, it will be prepended to the generated code
+func generateRandomCode(prefix string) (string, error) {
 	// Generate 10 random bytes (will encode to ~16 characters)
 	bytes := make([]byte, 10)
 	if _, err := rand.Read(bytes); err != nil {
@@ -141,21 +155,34 @@ func generateRandomCode() (string, error) {
 	// Convert to lowercase and take first 12 characters
 	code = strings.ToLower(code)[:12]
 
+	// Prepend prefix if provided
+	if prefix != "" {
+		code = prefix + code
+	}
+
 	return code, nil
 }
 
 // generateInviteCodesForUser creates 5 invite codes for a user
-func generateInviteCodesForUser(app core.App, userId string) error {
+// If the parent invite code starts with "TEST", the generated codes will also have the TEST prefix
+func generateInviteCodesForUser(app core.App, userId string, parentInviteCode string) error {
 	// Get the invite_codes collection
 	collection, err := app.FindCollectionByNameOrId("invite_codes")
 	if err != nil {
 		return err
 	}
 
+	// Check if parent invite code is a test code
+	var prefix string
+	if strings.HasPrefix(strings.ToUpper(parentInviteCode), "TEST") {
+		prefix = "TEST"
+		log.Printf("Parent invite code is a test code, generated codes will have TEST prefix")
+	}
+
 	// Generate 5 codes
 	for i := 0; i < 5; i++ {
-		// Generate random code
-		code, err := generateRandomCode()
+		// Generate random code with prefix if applicable
+		code, err := generateRandomCode(prefix)
 		if err != nil {
 			log.Printf("Error generating random code: %v", err)
 			continue
