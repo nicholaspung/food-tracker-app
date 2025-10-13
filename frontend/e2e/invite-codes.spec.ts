@@ -294,7 +294,7 @@ test.describe('Invite Code System', () => {
       }
     });
 
-    test('should show code status (Available vs Used)', async ({ page }) => {
+    test('should only show unused codes with Available status', async ({ page }) => {
       await page.goto('/profile');
       await page.waitForTimeout(1000);
 
@@ -302,36 +302,39 @@ test.describe('Invite Code System', () => {
       const count = await codeElements.count();
 
       if (count > 0) {
+        // All codes shown should have "Available" status (we only show unused codes)
         const firstCode = codeElements.first();
-        const statusText = firstCode.locator('text=/Available|Used/');
+        const statusText = firstCode.locator('text=Available');
         await expect(statusText).toBeVisible();
+
+        // Verify "Used" status is not shown anywhere (used codes are filtered out)
+        const usedText = page.locator('text=Used');
+        await expect(usedText).not.toBeVisible();
       }
     });
 
-    test('should not show copy button for used codes', async ({ page }) => {
+    test('should show copy button for all displayed codes', async ({ page }) => {
       await page.goto('/profile');
       await page.waitForTimeout(1000);
 
-      const usedCodes = page.locator('[data-testid^="invite-code-"]', {
-        has: page.locator('text=Used')
-      });
+      const codeElements = page.locator('[data-testid^="invite-code-"]');
+      const codeCount = await codeElements.count();
 
-      const usedCount = await usedCodes.count();
-      for (let i = 0; i < usedCount; i++) {
-        const codeContainer = usedCodes.nth(i);
-        const copyButton = codeContainer.locator('button:has-text("Copy")');
-        await expect(copyButton).not.toBeVisible();
-      }
+      // All displayed codes should have copy buttons (since we only show unused codes)
+      const copyButtons = page.locator('[data-testid^="copy-code-"]');
+      const copyButtonCount = await copyButtons.count();
+
+      expect(copyButtonCount).toBe(codeCount);
     });
 
-    test('should apply strikethrough styling to used codes', async ({ page }) => {
+    test('should not show strikethrough styling on codes', async ({ page }) => {
       await page.goto('/profile');
       await page.waitForTimeout(1000);
 
-      const usedCodeText = page.locator('[data-testid^="invite-code-"]').locator('.line-through');
-      if (await usedCodeText.count() > 0) {
-        await expect(usedCodeText.first()).toBeVisible();
-      }
+      // No strikethrough styling should exist (used codes are not displayed)
+      const strikethroughText = page.locator('[data-testid^="invite-code-"]').locator('.line-through');
+      const strikethroughCount = await strikethroughText.count();
+      expect(strikethroughCount).toBe(0);
     });
   });
 
@@ -579,12 +582,18 @@ test.describe('Invite Code System', () => {
       await page.getByTestId('login-submit').click();
       await page.waitForURL(/\/home/, { timeout: 10000 });
 
-      // Step 9: Verify User A's code is now marked as used
+      // Step 9: Verify User A's code is no longer in the list (it's been used, we only show unused codes)
       await page.goto('/profile');
       await page.waitForTimeout(2000);
 
+      // The used code should NOT be visible (we only show unused codes now)
       const usedCodeElement = page.locator(`[data-testid="invite-code-${userACode}"]`);
-      await expect(usedCodeElement.locator('text=Used')).toBeVisible();
+      await expect(usedCodeElement).not.toBeVisible();
+
+      // User A should have 4 remaining codes (started with 5, one was used by User B)
+      const remainingCodes = page.locator('[data-testid^="invite-code-"]');
+      const remainingCount = await remainingCodes.count();
+      expect(remainingCount).toBe(4);
 
       // Step 10: Delete User A's account
       await page.getByTestId('delete-account-button').click();
