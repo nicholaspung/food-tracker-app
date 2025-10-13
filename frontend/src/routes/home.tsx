@@ -23,6 +23,9 @@ function Home() {
       onNavigateToProfile={() => {
         navigate({ to: '/profile' });
       }}
+      onNavigateToWhatsNew={() => {
+        navigate({ to: '/whats-new' });
+      }}
     />
   );
 }

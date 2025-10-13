@@ -73,6 +73,7 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess, initial
           setError(err.message || "Failed to create account. Please try again.");
         }
       } else {
+        // Use the error message directly from the error object
         setError(err.message || "Failed to create account. Please try again.");
       }
     } finally {
