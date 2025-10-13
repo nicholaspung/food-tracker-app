@@ -9,8 +9,10 @@ export interface TestUser {
 
 /**
  * Creates a test user with an invite code and returns the user details
+ * @param pbInstance - PocketBase instance to use (should be admin-authenticated for deployed envs)
+ * @param inviteCode - Invite code to use for user creation
  */
-export async function createTestUser(inviteCode: string): Promise<TestUser> {
+export async function createTestUser(pbInstance: typeof pb, inviteCode: string): Promise<TestUser> {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(7);
   const email = `test-${timestamp}-${random}@example.com`;
@@ -18,7 +20,7 @@ export async function createTestUser(inviteCode: string): Promise<TestUser> {
 
   try {
     // Create user via API (will auto-generate invite codes)
-    const record = await pb.collection('users').create({
+    const record = await pbInstance.collection('users').create({
       email,
       password,
       passwordConfirm: password,
@@ -51,11 +53,14 @@ export async function loginUser(page: Page, email: string, password: string) {
 
 /**
  * Login via API (faster than UI login)
+ * @param pbInstance - PocketBase instance to use
+ * @param email - User email
+ * @param password - User password
  */
-export async function loginUserAPI(email: string, password: string) {
+export async function loginUserAPI(pbInstance: typeof pb, email: string, password: string) {
   try {
-    await pb.collection('users').authWithPassword(email, password);
-    return pb.authStore.token;
+    await pbInstance.collection('users').authWithPassword(email, password);
+    return pbInstance.authStore.token;
   } catch (error) {
     console.error('Failed to login user:', error);
     throw error;
@@ -64,10 +69,13 @@ export async function loginUserAPI(email: string, password: string) {
 
 /**
  * Setup authenticated page with stored auth token
+ * @param page - Playwright page instance
+ * @param pbInstance - PocketBase instance to use
+ * @param user - Test user credentials
  */
-export async function setupAuthenticatedPage(page: Page, user: TestUser) {
+export async function setupAuthenticatedPage(page: Page, pbInstance: typeof pb, user: TestUser) {
   // Login via API to get token
-  const token = await loginUserAPI(user.email, user.password);
+  const token = await loginUserAPI(pbInstance, user.email, user.password);
 
   // Inject auth token into page localStorage
   await page.goto('/');
@@ -78,7 +86,7 @@ export async function setupAuthenticatedPage(page: Page, user: TestUser) {
     }));
   }, {
     token,
-    model: pb.authStore.model
+    model: pbInstance.authStore.model
   });
 
   // Reload to apply auth state

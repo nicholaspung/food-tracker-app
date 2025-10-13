@@ -139,9 +139,13 @@ test.describe('Invite Code System', () => {
     test.beforeEach(async ({ page }) => {
       skipIfLocal();
 
+      if (!pb) {
+        throw new Error('PocketBase instance not available for test');
+      }
+
       // Create and authenticate a test user
-      testUser = await createTestUser(testInviteCode);
-      await setupAuthenticatedPage(page, testUser);
+      testUser = await createTestUser(pb, testInviteCode);
+      await setupAuthenticatedPage(page, pb, testUser);
     });
 
     test('should display invite codes section in profile', async ({ page }) => {
@@ -172,9 +176,13 @@ test.describe('Invite Code System', () => {
     test.beforeEach(async ({ page }) => {
       skipIfLocal();
 
+      if (!pb) {
+        throw new Error('PocketBase instance not available for test');
+      }
+
       // Create and authenticate a test user
-      testUser = await createTestUser(testInviteCode);
-      await setupAuthenticatedPage(page, testUser);
+      testUser = await createTestUser(pb, testInviteCode);
+      await setupAuthenticatedPage(page, pb, testUser);
     });
 
     test('should show copy button for available codes', async ({ page }) => {
@@ -211,9 +219,13 @@ test.describe('Invite Code System', () => {
     test.beforeEach(async ({ page }) => {
       skipIfLocal();
 
+      if (!pb) {
+        throw new Error('PocketBase instance not available for test');
+      }
+
       // Create and authenticate a test user
-      testUser = await createTestUser(testInviteCode);
-      await setupAuthenticatedPage(page, testUser);
+      testUser = await createTestUser(pb, testInviteCode);
+      await setupAuthenticatedPage(page, pb, testUser);
     });
 
     test('should show code status (Available vs Used)', async ({ page }) => {
@@ -300,7 +312,8 @@ test.describe('Invite Code System', () => {
       // Step 4: Navigate back to home and logout User A
       await page.goto('/home');
       await page.getByTestId('logout-button').click();
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 5000 });
+      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 10000 });
+      await expect(page.getByTestId('login-page')).toBeVisible();
 
       // Step 5: User B signs up with User A's code using the URL method
       await page.goto(`/signup?code=${userACode}`);
