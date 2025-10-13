@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(3);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,11 +40,6 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
     try {
       await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm);
       setSuccess(true);
-      
-      // Call success callback after a short delay
-      setTimeout(() => {
-        onResetSuccess?.();
-      }, 2000);
     } catch (err: any) {
       console.error("Password reset error:", err);
       setError(err?.message || "Failed to reset password. The link may be invalid or expired.");
@@ -51,6 +47,18 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
       setLoading(false);
     }
   };
+
+  // Auto-redirect countdown after successful password reset
+  useEffect(() => {
+    if (success && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (success && countdown === 0) {
+      onResetSuccess?.();
+    }
+  }, [success, countdown, onResetSuccess]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="reset-password-page">
@@ -72,7 +80,8 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
             )}
             {success && (
               <div className="p-3 text-sm text-green-500 bg-green-50 border border-green-200 rounded-md" data-testid="reset-password-success">
-                Password reset successfully! Redirecting to login...
+                <div>Password reset successfully!</div>
+                <div className="mt-1 text-xs text-green-600">Redirecting to login in {countdown}...</div>
               </div>
             )}
             <div className="space-y-2">
