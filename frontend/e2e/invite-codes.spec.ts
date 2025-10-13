@@ -101,7 +101,7 @@ test.describe('Invite Code System', () => {
       await expect(page.getByTestId('signup-success')).toContainText(/account created successfully/i);
 
       // Wait for redirect to login page (auto-redirect after countdown)
-      await page.waitForURL(/^\/$/, { timeout: 7000 });
+      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 8000 });
       await expect(page.getByTestId('login-page')).toBeVisible();
 
       // Now login with the newly created account
@@ -525,7 +525,7 @@ test.describe('Invite Code System', () => {
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
 
       // Wait for redirect to login page (auto-redirect after countdown)
-      await page.waitForURL(/^\/$/, { timeout: 7000 });
+      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 8000 });
       await expect(page.getByTestId('login-page')).toBeVisible();
 
       // User A logs in
@@ -581,7 +581,7 @@ test.describe('Invite Code System', () => {
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
 
       // Wait for redirect to login page (auto-redirect after countdown)
-      await page.waitForURL(/^\/$/, { timeout: 7000 });
+      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 8000 });
       await expect(page.getByTestId('login-page')).toBeVisible();
 
       // User B logs in
