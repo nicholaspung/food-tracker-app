@@ -20,6 +20,9 @@ function Index() {
       onNavigateToSignUp={() => {
         navigate({ to: '/signup' });
       }}
+      onNavigateToForgotPassword={() => {
+        navigate({ to: '/forgot-password' });
+      }}
       onLoginSuccess={() => {
         navigate({ to: '/home' });
       }}

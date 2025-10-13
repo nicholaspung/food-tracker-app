@@ -7,10 +7,11 @@ import { pb } from "@/lib/pocketbase";
 
 interface LoginPageProps {
   onNavigateToSignUp: () => void;
+  onNavigateToForgotPassword?: () => void;
   onLoginSuccess?: () => void;
 }
 
-export default function LoginPage({ onNavigateToSignUp, onLoginSuccess }: LoginPageProps) {
+export default function LoginPage({ onNavigateToSignUp, onNavigateToForgotPassword, onLoginSuccess }: LoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -65,7 +66,20 @@ export default function LoginPage({ onNavigateToSignUp, onLoginSuccess }: LoginP
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                {onNavigateToForgotPassword && (
+                  <button
+                    type="button"
+                    className="text-sm text-primary hover:underline"
+                    onClick={onNavigateToForgotPassword}
+                    disabled={loading}
+                    data-testid="login-forgot-password"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
               <Input
                 id="password"
                 type="password"
