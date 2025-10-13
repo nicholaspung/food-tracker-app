@@ -20,11 +20,13 @@ export async function createTestUser(pbInstance: typeof pb, inviteCode: string):
 
   try {
     // Create user via API (will auto-generate invite codes)
+    // Set verified: true to bypass email verification in tests
     const record = await pbInstance.collection('users').create({
       email,
       password,
       passwordConfirm: password,
       inviteCode,
+      verified: true, // Auto-verify test users to skip email verification flow
     });
 
     return {

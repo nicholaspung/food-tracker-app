@@ -11,6 +11,7 @@ interface VerifyEmailPageProps {
 export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmailPageProps) {
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
     const verifyEmail = async () => {
@@ -26,6 +27,18 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
 
     verifyEmail();
   }, [token]);
+
+  // Auto-redirect countdown after successful verification
+  useEffect(() => {
+    if (status === 'success' && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (status === 'success' && countdown === 0) {
+      onNavigateToLogin();
+    }
+  }, [status, countdown, onNavigateToLogin]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="verify-email-page">
@@ -52,6 +65,7 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
             <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="verify-email-success">
               <div className="font-semibold mb-1">Verification Complete!</div>
               <div>You can now log in to your account.</div>
+              <div className="mt-2 text-xs text-green-600">Redirecting to login in {countdown}...</div>
             </div>
           )}
           {status === 'error' && (

@@ -88,14 +88,28 @@ test.describe('Invite Code System', () => {
       skipIfLocal();
 
       const testEmail = generateTestEmail();
+      const testPassword = 'password123';
 
       await page.getByTestId('signup-email').fill(testEmail);
       await page.getByTestId('signup-invite-code').fill(testInviteCode);
-      await page.getByTestId('signup-password').fill('password123');
-      await page.getByTestId('signup-password-confirm').fill('password123');
+      await page.getByTestId('signup-password').fill(testPassword);
+      await page.getByTestId('signup-password-confirm').fill(testPassword);
       await page.getByTestId('signup-submit').click();
 
-      // Should navigate to home page on success
+      // Should show success message with countdown
+      await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
+      await expect(page.getByTestId('signup-success')).toContainText(/account created successfully/i);
+
+      // Wait for redirect to login page (auto-redirect after countdown)
+      await page.waitForURL(/^\/$/, { timeout: 7000 });
+      await expect(page.getByTestId('login-page')).toBeVisible();
+
+      // Now login with the newly created account
+      await page.getByTestId('login-email').fill(testEmail);
+      await page.getByTestId('login-password').fill(testPassword);
+      await page.getByTestId('login-submit').click();
+
+      // Should navigate to home page after login
       await page.waitForURL(/\/home/, { timeout: 10000 });
       await expect(page.getByTestId('home-page')).toBeVisible();
 
@@ -507,7 +521,19 @@ test.describe('Invite Code System', () => {
       await page.getByTestId('signup-password-confirm').fill('password123');
       await page.getByTestId('signup-submit').click();
 
-      // Wait for successful signup and redirect
+      // Wait for success message
+      await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
+
+      // Wait for redirect to login page (auto-redirect after countdown)
+      await page.waitForURL(/^\/$/, { timeout: 7000 });
+      await expect(page.getByTestId('login-page')).toBeVisible();
+
+      // User A logs in
+      await page.getByTestId('login-email').fill(userAEmail);
+      await page.getByTestId('login-password').fill('password123');
+      await page.getByTestId('login-submit').click();
+
+      // Wait for redirect to home
       await page.waitForURL(/\/home/, { timeout: 10000 });
 
       // Step 2: User A navigates to profile to get their codes
@@ -551,7 +577,19 @@ test.describe('Invite Code System', () => {
       await page.getByTestId('signup-password-confirm').fill('password123');
       await page.getByTestId('signup-submit').click();
 
-      // Should successfully signup
+      // Wait for success message
+      await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
+
+      // Wait for redirect to login page (auto-redirect after countdown)
+      await page.waitForURL(/^\/$/, { timeout: 7000 });
+      await expect(page.getByTestId('login-page')).toBeVisible();
+
+      // User B logs in
+      await page.getByTestId('login-email').fill(userBEmail);
+      await page.getByTestId('login-password').fill('password123');
+      await page.getByTestId('login-submit').click();
+
+      // Should successfully login and redirect to home
       await page.waitForURL(/\/home/, { timeout: 10000 });
 
       // Step 6: User B should also have invite codes

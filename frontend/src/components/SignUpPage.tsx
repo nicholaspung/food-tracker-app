@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(5);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +88,18 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
     }
   };
 
+  // Auto-redirect countdown after successful sign up
+  useEffect(() => {
+    if (success && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (success && countdown === 0) {
+      onNavigateToLogin();
+    }
+  }, [success, countdown, onNavigateToLogin]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="signup-page">
       <Card className="w-full max-w-sm">
@@ -110,6 +123,7 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
               <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="signup-success">
                 <div className="font-semibold mb-1">Account created successfully! 🎉</div>
                 <div>Please check your email inbox (and spam folder) for a verification link.</div>
+                <div className="mt-2 text-xs text-green-600">Redirecting to login in {countdown}...</div>
               </div>
             )}
             {error && !success && (
