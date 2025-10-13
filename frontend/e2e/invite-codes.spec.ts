@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { skipIfLocal, isDeployedEnvironment } from './helpers/test-environment';
 import { setupBetaTestData, cleanupBetaTestData, createInviteCodes, markInviteCodeAsUsed } from './helpers/beta-setup';
+import { createTestUser, setupAuthenticatedPage, type TestUser } from './helpers/auth';
 import type PocketBase from 'pocketbase';
 
 // Helper to generate random email for testing
@@ -133,11 +134,17 @@ test.describe('Invite Code System', () => {
   });
 
   test.describe('User Invite Codes in Profile', () => {
-    test('should display invite codes section in profile', async ({ page }) => {
-      // Note: Skipped in local environment (requires authentication)
-      // Runs in beta/production where backend is available
+    let testUser: TestUser;
+
+    test.beforeEach(async ({ page }) => {
       skipIfLocal();
 
+      // Create and authenticate a test user
+      testUser = await createTestUser(testInviteCode);
+      await setupAuthenticatedPage(page, testUser);
+    });
+
+    test('should display invite codes section in profile', async ({ page }) => {
       await page.goto('/profile');
 
       // Check for invite codes heading
@@ -146,10 +153,6 @@ test.describe('Invite Code System', () => {
     });
 
     test('should show loading state initially', async ({ page }) => {
-      // Note: Skipped in local environment (requires authentication)
-      // Runs in beta/production where backend is available
-      skipIfLocal();
-
       await page.goto('/profile');
 
       // On initial load, should show loading or codes
@@ -164,10 +167,14 @@ test.describe('Invite Code System', () => {
   });
 
   test.describe('Copy Invite Functionality', () => {
-    // Note: Skipped in local environment (requires authentication)
-    // Runs in beta/production where backend is available
-    test.beforeEach(() => {
+    let testUser: TestUser;
+
+    test.beforeEach(async ({ page }) => {
       skipIfLocal();
+
+      // Create and authenticate a test user
+      testUser = await createTestUser(testInviteCode);
+      await setupAuthenticatedPage(page, testUser);
     });
 
     test('should show copy button for available codes', async ({ page }) => {
@@ -199,10 +206,14 @@ test.describe('Invite Code System', () => {
   });
 
   test.describe('Invite Code Status', () => {
-    // Note: Skipped in local environment (requires authentication)
-    // Runs in beta/production where backend is available
-    test.beforeEach(() => {
+    let testUser: TestUser;
+
+    test.beforeEach(async ({ page }) => {
       skipIfLocal();
+
+      // Create and authenticate a test user
+      testUser = await createTestUser(testInviteCode);
+      await setupAuthenticatedPage(page, testUser);
     });
 
     test('should show code status (Available vs Used)', async ({ page }) => {
@@ -286,7 +297,8 @@ test.describe('Invite Code System', () => {
 
       expect(userACode.length).toBeGreaterThan(0);
 
-      // Step 4: Logout User A
+      // Step 4: Navigate back to home and logout User A
+      await page.goto('/home');
       await page.getByTestId('logout-button').click();
       await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 5000 });
 
