@@ -167,6 +167,7 @@ jobs:
           npm run test:e2e:beta
         env:
           CI: true
+          BASE_URL: https://beta.myexperiment.life
           BETA_ADMIN_EMAIL: ${{ secrets.BETA_ADMIN_EMAIL }}
           BETA_ADMIN_PASSWORD: ${{ secrets.BETA_ADMIN_PASSWORD }}
 
@@ -247,6 +248,7 @@ jobs:
           npm run test:e2e:beta
         env:
           CI: true
+          BASE_URL: https://beta.myexperiment.life
           BETA_ADMIN_EMAIL: ${{ secrets.BETA_ADMIN_EMAIL }}
           BETA_ADMIN_PASSWORD: ${{ secrets.BETA_ADMIN_PASSWORD }}
 
