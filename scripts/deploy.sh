@@ -131,12 +131,6 @@ preflight_checks() {
     # Create lock file
     echo $$ > "$LOCK_FILE"
 
-    # Ensure log directory exists
-    if [ ! -d "$LOG_DIR" ]; then
-        mkdir -p "$LOG_DIR"
-        chmod 755 "$LOG_DIR"
-    fi
-
     # Check required commands
     for cmd in git npm docker systemctl; do
         if ! command -v $cmd &> /dev/null; then
@@ -541,6 +535,10 @@ print_summary() {
 # MAIN DEPLOYMENT
 #######################
 main() {
+    # Ensure log directory exists before any logging
+    mkdir -p "$LOG_DIR"
+    chmod 755 "$LOG_DIR"
+
     echo ""
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}  Deploying Mobile Tracker App${NC}"
