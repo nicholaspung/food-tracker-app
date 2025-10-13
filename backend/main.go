@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -28,7 +30,74 @@ func main() {
 	})
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		// Custom API endpoint: Get unused invite codes for authenticated user
+		se.Router.GET("/api/invite-codes", func(e *core.RequestEvent) error {
+			authRecord := e.Auth
+			log.Printf("GET /api/invite-codes - Auth record: %v", authRecord)
+			if authRecord == nil {
+				log.Printf("GET /api/invite-codes - No auth record found")
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+			log.Printf("GET /api/invite-codes - User ID: %s", authRecord.Id)
+
+			// Find unused codes created by this user
+			records, err := app.FindRecordsByFilter(
+				"invite_codes",
+				"createdBy = {:userId} && used = false",
+				"", // no sorting needed
+				0,  // no limit
+				0,  // no offset
+				map[string]any{"userId": authRecord.Id},
+			)
+
+			if err != nil {
+				log.Printf("GET /api/invite-codes - Error fetching records: %v", err)
+				return apis.NewApiError(500, "failed to fetch invite codes: "+err.Error(), err)
+			}
+
+			log.Printf("GET /api/invite-codes - Found %d records", len(records))
+
+			// Map records to simple response format
+			codes := make([]map[string]any, len(records))
+			for i, record := range records {
+				codes[i] = map[string]any{
+					"id":   record.Id,
+					"code": record.GetString("code"),
+				}
+			}
+
+			return e.JSON(200, map[string]any{
+				"codes": codes,
+			})
+		})
+
+		// Custom API endpoint: Generate invite codes (initial user only)
+		se.Router.POST("/api/invite-codes/generate", func(e *core.RequestEvent) error {
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Check if this user is the initial user
+			isInitialUser := authRecord.GetBool("isInitialUser")
+			if !isInitialUser {
+				return apis.NewForbiddenError("only the initial user can generate unlimited invite codes", nil)
+			}
+
+			// Generate 5 new invite codes for this user
+			if err := generateInviteCodesForUser(app, authRecord.Id, ""); err != nil {
+				return apis.NewApiError(500, "failed to generate invite codes", err)
+			}
+
+			return e.JSON(200, map[string]any{
+				"success":   true,
+				"generated": 5,
+				"message":   "Successfully generated 5 new invite codes",
+			})
+		})
+
 		// Serves static files from the provided public dir (if exists)
+		// IMPORTANT: This must be registered LAST as it's a catch-all route
 		se.Router.GET("/{path...}", apis.Static(os.DirFS("./pb_public"), false))
 
 		return se.Next()
@@ -41,6 +110,17 @@ func main() {
 	}
 	var pendingInviteCodes = make(map[string]inviteCodeInfo) // userEmail -> inviteCodeInfo
 
+	// Rate limiting for invite code attempts
+	type rateLimitInfo struct {
+		attempts  int
+		lockedUntil int64 // Unix timestamp
+	}
+	var inviteCodeAttempts = make(map[string]*rateLimitInfo) // IP -> rateLimitInfo
+	const (
+		maxAttempts     = 5      // Maximum attempts before lockout
+		lockoutDuration = 15 * 60 // 15 minutes in seconds
+	)
+
 	// Hook to validate invite code before user creation
 	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
 		// Try to get invite code from the HTTP request if this is called from an API request
@@ -50,6 +130,31 @@ func main() {
 
 	// Hook to validate invite code from API requests
 	app.OnRecordCreateRequest("users").BindFunc(func(e *core.RecordRequestEvent) error {
+		// Get client IP address for rate limiting
+		clientIP := e.Request.RemoteAddr
+		// Strip port if present
+		if idx := strings.LastIndex(clientIP, ":"); idx != -1 {
+			clientIP = clientIP[:idx]
+		}
+
+		// Check rate limiting
+		now := time.Now().Unix()
+		if rateLimitData, exists := inviteCodeAttempts[clientIP]; exists {
+			// Check if still locked out
+			if rateLimitData.lockedUntil > now {
+				remainingSeconds := rateLimitData.lockedUntil - now
+				remainingMinutes := remainingSeconds / 60
+				log.Printf("Rate limit: IP %s is locked out for %d more seconds", clientIP, remainingSeconds)
+				return apis.NewBadRequestError(fmt.Sprintf("too many failed attempts, please try again in %d minutes", remainingMinutes), nil)
+			}
+
+			// Lockout expired, reset attempts
+			if rateLimitData.lockedUntil > 0 && rateLimitData.lockedUntil <= now {
+				rateLimitData.attempts = 0
+				rateLimitData.lockedUntil = 0
+			}
+		}
+
 		// Read and parse JSON body to get invite code
 		bodyBytes, err := io.ReadAll(e.Request.Body)
 		if err != nil {
@@ -79,7 +184,28 @@ func main() {
 		)
 
 		if err != nil || inviteCodeRecord == nil {
+			// Invalid invite code - increment failed attempts
+			if inviteCodeAttempts[clientIP] == nil {
+				inviteCodeAttempts[clientIP] = &rateLimitInfo{attempts: 0, lockedUntil: 0}
+			}
+			inviteCodeAttempts[clientIP].attempts++
+
+			log.Printf("Rate limit: IP %s failed attempt %d/%d", clientIP, inviteCodeAttempts[clientIP].attempts, maxAttempts)
+
+			// Check if should be locked out
+			if inviteCodeAttempts[clientIP].attempts >= maxAttempts {
+				inviteCodeAttempts[clientIP].lockedUntil = now + lockoutDuration
+				log.Printf("Rate limit: IP %s locked out for %d minutes", clientIP, lockoutDuration/60)
+				return apis.NewBadRequestError("too many failed attempts, please try again in 15 minutes", nil)
+			}
+
 			return apis.NewBadRequestError("invalid or already used invite code", nil)
+		}
+
+		// Valid invite code - clear any previous failed attempts
+		if inviteCodeAttempts[clientIP] != nil {
+			inviteCodeAttempts[clientIP].attempts = 0
+			inviteCodeAttempts[clientIP].lockedUntil = 0
 		}
 
 		// Store the invite code info for marking as used after creation
@@ -92,6 +218,41 @@ func main() {
 			}
 		}
 
+		return e.Next()
+	})
+
+	// Hook to delete unused invite codes before user deletion
+	app.OnRecordDelete("users").BindFunc(func(e *core.RecordEvent) error {
+		userId := e.Record.Id
+		log.Printf("User %s is being deleted, cleaning up unused invite codes...", userId)
+
+		// Find all unused invite codes created by this user
+		unusedCodes, err := app.FindRecordsByFilter(
+			"invite_codes",
+			"createdBy = {:userId} && used = false",
+			"",
+			0,
+			0,
+			map[string]any{"userId": userId},
+		)
+
+		if err != nil {
+			log.Printf("Error finding unused invite codes for user %s: %v", userId, err)
+			// Don't block deletion if we can't find codes
+			return e.Next()
+		}
+
+		// Delete each unused code
+		deletedCount := 0
+		for _, code := range unusedCodes {
+			if err := app.Delete(code); err != nil {
+				log.Printf("Error deleting invite code %s: %v", code.Id, err)
+			} else {
+				deletedCount++
+			}
+		}
+
+		log.Printf("Deleted %d unused invite codes for user %s", deletedCount, userId)
 		return e.Next()
 	})
 
@@ -115,6 +276,18 @@ func main() {
 			if err != nil {
 				log.Printf("Error finding invite code: %v", err)
 			} else {
+				// Check if this invite code has no creator (initial invite code)
+				createdBy := inviteCodeRecord.GetString("createdBy")
+				if createdBy == "" {
+					// This is the initial user, set the flag
+					e.Record.Set("isInitialUser", true)
+					if err := app.Save(e.Record); err != nil {
+						log.Printf("Error setting isInitialUser flag: %v", err)
+					} else {
+						log.Printf("Set isInitialUser=true for user %s", e.Record.Id)
+					}
+				}
+
 				// Mark as used
 				inviteCodeRecord.Set("used", true)
 				inviteCodeRecord.Set("usedBy", e.Record.Id)

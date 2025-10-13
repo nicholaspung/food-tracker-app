@@ -335,6 +335,152 @@ test.describe('Invite Code System', () => {
     });
   });
 
+  test.describe('Generate Invite Codes (Initial User Only)', () => {
+    let initialUser: TestUser;
+    let nonInitialUser: TestUser;
+    let initialUserInviteCode: string;
+
+    test.beforeEach(async ({ page }) => {
+      skipIfLocal();
+
+      if (!pb) {
+        throw new Error('PocketBase instance not available for test');
+      }
+
+      // Create an initial user (signs up with admin code that has no createdBy)
+      const freshCodes = await createInviteCodes(pb, 1);
+      initialUserInviteCode = freshCodes[0];
+      initialUser = await createTestUser(pb, initialUserInviteCode);
+
+      // Get one of the initial user's generated codes
+      const userCodes = await pb.collection('invite_codes').getFullList({
+        filter: `createdBy = "${initialUser.id}" && used = false`,
+        $autoCancel: false,
+      });
+
+      if (userCodes.length === 0) {
+        throw new Error('Initial user should have generated invite codes');
+      }
+
+      // Create a non-initial user (signs up with initial user's code)
+      nonInitialUser = await createTestUser(pb, userCodes[0].code);
+    });
+
+    test.afterEach(async () => {
+      // Cleanup test users and codes
+      if (pb && initialUser.id) {
+        try {
+          await pb.collection('users').delete(initialUser.id);
+        } catch (err) {
+          // Ignore if already deleted
+        }
+      }
+      if (pb && nonInitialUser.id) {
+        try {
+          await pb.collection('users').delete(nonInitialUser.id);
+        } catch (err) {
+          // Ignore if already deleted
+        }
+      }
+      if (pb && initialUserInviteCode) {
+        try {
+          const codes = await pb.collection('invite_codes').getFullList({
+            filter: `code = "${initialUserInviteCode}"`,
+            $autoCancel: false,
+          });
+          for (const code of codes) {
+            await pb.collection('invite_codes').delete(code.id);
+          }
+        } catch (err) {
+          // Ignore cleanup errors
+        }
+      }
+    });
+
+    test('initial user should see "Generate 5 More" button', async ({ page }) => {
+      await setupAuthenticatedPage(page, pb!, initialUser);
+      await page.goto('/profile');
+      await page.waitForTimeout(1000);
+
+      // Should see the generate button
+      await expect(page.getByTestId('generate-codes-button')).toBeVisible();
+    });
+
+    test('non-initial user should NOT see "Generate 5 More" button', async ({ page }) => {
+      await setupAuthenticatedPage(page, pb!, nonInitialUser);
+      await page.goto('/profile');
+      await page.waitForTimeout(1000);
+
+      // Should NOT see the generate button
+      await expect(page.getByTestId('generate-codes-button')).not.toBeVisible();
+    });
+
+    test('initial user can successfully generate more codes', async ({ page }) => {
+      await setupAuthenticatedPage(page, pb!, initialUser);
+      await page.goto('/profile');
+      await page.waitForTimeout(1000);
+
+      // Count existing codes
+      const initialCodeCount = await page.locator('[data-testid^="invite-code-"]').count();
+
+      // Click generate button
+      await page.getByTestId('generate-codes-button').click();
+
+      // Wait for generation to complete
+      await page.waitForTimeout(2000);
+
+      // Should have 5 more codes
+      const newCodeCount = await page.locator('[data-testid^="invite-code-"]').count();
+      expect(newCodeCount).toBe(initialCodeCount + 5);
+    });
+
+    test('initial user can generate codes when none exist', async ({ page }) => {
+      // Delete all codes for the initial user first
+      if (pb && initialUser.id) {
+        const userCodes = await pb.collection('invite_codes').getFullList({
+          filter: `createdBy = "${initialUser.id}"`,
+          $autoCancel: false,
+        });
+        for (const code of userCodes) {
+          await pb.collection('invite_codes').delete(code.id);
+        }
+      }
+
+      await setupAuthenticatedPage(page, pb!, initialUser);
+      await page.goto('/profile');
+      await page.waitForTimeout(1000);
+
+      // Should see "No invite codes available" message
+      await expect(page.locator('text=No invite codes available')).toBeVisible();
+
+      // Should see the "Generate Codes" button (not "Generate 5 More")
+      await expect(page.getByTestId('generate-first-codes-button')).toBeVisible();
+
+      // Click generate button
+      await page.getByTestId('generate-first-codes-button').click();
+
+      // Wait for generation to complete
+      await page.waitForTimeout(2000);
+
+      // Should now have codes
+      const codeCount = await page.locator('[data-testid^="invite-code-"]').count();
+      expect(codeCount).toBe(5);
+    });
+
+    test('button shows loading state during generation', async ({ page }) => {
+      await setupAuthenticatedPage(page, pb!, initialUser);
+      await page.goto('/profile');
+      await page.waitForTimeout(1000);
+
+      const generateButton = page.getByTestId('generate-codes-button');
+      await generateButton.click();
+
+      // Button should show "Generating..." text
+      await expect(generateButton).toContainText('Generating...');
+      await expect(generateButton).toBeDisabled();
+    });
+  });
+
   test.describe('Viral Network Flow', () => {
     // Note: Skipped in local environment (requires backend with seeded data)
     // Runs in beta/production where backend is available
