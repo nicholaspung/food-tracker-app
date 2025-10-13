@@ -58,12 +58,50 @@ We use three testing tiers:
 
 **Prerequisites:**
 1. **Deployed backend** at `beta.myexperiment.life` or `myexperiment.life`
-2. **Test data seeded** in production database
-3. **Valid invite codes** for signup tests
+2. **PocketBase admin account** configured in beta environment
+3. **GitHub Secrets** configured with admin credentials
 
-### Creating Test Invite Codes
+### GitHub Actions Setup
 
-Before running invite code tests, you need to seed a test invite code:
+Beta E2E tests dynamically generate fresh invite codes using PocketBase admin API. This solves the problem of invite codes being single-use!
+
+**How it works:**
+1. Before tests run, authenticate as PocketBase admin
+2. Generate fresh invite codes via API
+3. Use those codes in tests
+4. Clean up test data after tests complete
+
+**Setup Instructions:**
+
+1. **Ensure you have an admin account in beta PocketBase**
+   - Go to `https://beta.myexperiment.life/_/`
+   - Login or create an admin account
+   - Note the admin email and password
+
+2. **Add GitHub Secrets**:
+   - Go to repository Settings → Secrets and variables → Actions
+   - Add two secrets:
+     - **Name**: `BETA_ADMIN_EMAIL`
+       **Value**: Your PocketBase admin email
+     - **Name**: `BETA_ADMIN_PASSWORD`
+       **Value**: Your PocketBase admin password
+
+3. **Deploy and test!**
+   - The workflow will automatically:
+     - Authenticate as admin
+     - Generate fresh invite codes
+     - Run all tests
+     - Clean up test data
+
+**Benefits of this approach:**
+- ✅ No manual invite code creation needed
+- ✅ Tests always have fresh, unused codes
+- ✅ Automatic cleanup of test data
+- ✅ No risk of running out of invite codes
+
+### Creating Test Invite Codes (Local Development Only)
+
+For **local development**, you can manually create a test invite code. For **beta/production**, invite codes are generated automatically via admin API!
 
 #### Option 1: Via Admin UI (Manual)
 
@@ -84,7 +122,7 @@ open http://localhost:8090/_/
 
 #### Option 2: Via Migration (Automated)
 
-Create a test seed migration:
+For local development, you can create a test seed migration:
 
 ```bash
 cd backend
@@ -123,6 +161,8 @@ Then run:
 ```bash
 go run main.go migrate up
 ```
+
+> **Note:** Local test codes can be reused multiple times since local tests skip backend-dependent tests. Beta/production tests automatically generate and clean up their own codes.
 
 ## Test Status by Environment
 
@@ -243,10 +283,20 @@ npx playwright test -g "should successfully signup with valid invite code"
 - ⏭️ Apply strikethrough styling to used codes (requires auth)
 
 #### 6. **Viral Network Flow** (Skipped)
-- ⏭️ Complete end-to-end viral invite flow (requires DB setup)
+- ⏭️ Complete end-to-end viral invite flow with user deletion (requires deployed backend)
+  - Fresh invite code is generated via PocketBase admin API
+  - User A signs up with generated invite code
+  - User A navigates to profile and copies an invite code
+  - User A logs out
+  - User B signs up using User A's invite code via URL parameter
+  - User B deletes their account
+  - User A logs back in and verifies invite code is marked as "Used"
+  - User A deletes their account
+  - All test data is automatically cleaned up
+- ⏭️ Reject signup with fake invite code (requires backend)
 
-#### 7. **Error Handling** (Active)
-- ✅ Prevent reusing already-used codes (shows error)
+#### 7. **Error Handling**
+- ⏭️ Prevent reusing already-used codes (creates a used code via API, then tests rejection)
 - ✅ Handle network errors gracefully (offline mode)
 
 ### Auth Tests (`auth.spec.ts`)
@@ -317,12 +367,19 @@ Tests detect CI environment and adjust behavior:
 # CI mode (2 retries, sequential execution)
 CI=true npm run test:e2e:local
 
-# Beta environment testing
+# Beta environment testing (invite codes generated automatically)
+BETA_ADMIN_EMAIL=admin@example.com \
+BETA_ADMIN_PASSWORD=your_password \
 npm run test:e2e:beta  # Uses beta.myexperiment.life
 
 # Production environment testing
 npm run test:e2e:production  # Uses myexperiment.life
 ```
+
+**GitHub Actions automatically sets:**
+- `CI=true` (enables retries and sequential execution)
+- `BETA_ADMIN_EMAIL=${{ secrets.BETA_ADMIN_EMAIL }}` (PocketBase admin credentials)
+- `BETA_ADMIN_PASSWORD=${{ secrets.BETA_ADMIN_PASSWORD }}` (PocketBase admin credentials)
 
 ## Best Practices
 
