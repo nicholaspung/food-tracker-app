@@ -31,9 +31,6 @@ function SignUp() {
       onNavigateToLogin={() => {
         navigate({ to: '/' });
       }}
-      onSignUpSuccess={() => {
-        navigate({ to: '/home' });
-      }}
     />
   );
 }

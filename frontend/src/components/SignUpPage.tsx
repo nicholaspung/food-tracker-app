@@ -7,16 +7,16 @@ import { pb } from "@/lib/pocketbase";
 
 interface SignUpPageProps {
   onNavigateToLogin: () => void;
-  onSignUpSuccess?: () => void;
   initialInviteCode?: string;
 }
 
-export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess, initialInviteCode }: SignUpPageProps) {
+export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: SignUpPageProps) {
   const [email, setEmail] = useState("");
   const [inviteCode, setInviteCode] = useState(initialInviteCode || "");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -52,11 +52,17 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess, initial
         inviteCode,
       });
 
-      // Automatically log in the user after successful registration
-      await pb.collection('users').authWithPassword(email, password);
+      // Send verification email
+      await pb.collection('users').requestVerification(email);
 
-      // Call success callback
-      onSignUpSuccess?.();
+      // Show success message
+      setSuccess(true);
+
+      // Clear form
+      setEmail("");
+      setPassword("");
+      setPasswordConfirm("");
+      setInviteCode(initialInviteCode || "");
     } catch (err: any) {
       console.error("Sign up error:", err);
 
@@ -95,12 +101,18 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess, initial
         </CardHeader>
         <form onSubmit={handleSignUp} data-testid="signup-form">
           <CardContent className="space-y-4">
-            {initialInviteCode && (
+            {initialInviteCode && !success && (
               <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="invite-welcome">
                 You're using invite code: <span className="font-mono font-semibold">{initialInviteCode}</span>
               </div>
             )}
-            {error && (
+            {success && (
+              <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="signup-success">
+                <div className="font-semibold mb-1">Account created successfully! 🎉</div>
+                <div>Please check your email inbox (and spam folder) for a verification link.</div>
+              </div>
+            )}
+            {error && !success && (
               <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="signup-error">
                 {error}
               </div>
@@ -161,21 +173,29 @@ export default function SignUpPage({ onNavigateToLogin, onSignUpSuccess, initial
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading} data-testid="signup-submit">
-              {loading ? "Creating account..." : "Sign Up"}
-            </Button>
-            <div className="text-sm text-muted-foreground text-center">
-              Already have an account?{" "}
-              <button
-                type="button"
-                className="text-primary hover:underline font-medium"
-                onClick={onNavigateToLogin}
-                disabled={loading}
-                data-testid="signup-goto-login"
-              >
-                Sign in
-              </button>
-            </div>
+            {success ? (
+              <Button type="button" className="w-full" onClick={onNavigateToLogin} data-testid="signup-goto-login-success">
+                Back to Login
+              </Button>
+            ) : (
+              <Button type="submit" className="w-full" disabled={loading} data-testid="signup-submit">
+                {loading ? "Creating account..." : "Sign Up"}
+              </Button>
+            )}
+            {!success && (
+              <div className="text-sm text-muted-foreground text-center">
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline font-medium"
+                  onClick={onNavigateToLogin}
+                  disabled={loading}
+                  data-testid="signup-goto-login"
+                >
+                  Sign in
+                </button>
+              </div>
+            )}
           </CardFooter>
         </form>
       </Card>
