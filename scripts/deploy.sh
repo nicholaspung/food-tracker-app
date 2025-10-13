@@ -165,10 +165,19 @@ preflight_checks() {
         exit 1
     fi
 
-    # Check if PocketBase is running
+    # Check if PocketBase container exists and start it if needed
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
-        error "PocketBase container ($POCKETBASE_CONTAINER) is not running"
-        exit 1
+        warn "PocketBase container ($POCKETBASE_CONTAINER) is not running"
+        log "Attempting to start PocketBase container..."
+
+        cd "$APP_DIR"
+        if docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_SERVICE"; then
+            log "PocketBase container started successfully"
+            sleep 3  # Give it a moment to initialize
+        else
+            error "Failed to start PocketBase container"
+            exit 1
+        fi
     fi
 
     log "Pre-flight checks passed for $ENVIRONMENT environment ✓"
