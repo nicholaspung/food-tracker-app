@@ -34,19 +34,11 @@ echo "Beta Environment Setup"
 echo "========================================"
 echo ""
 
-# Setup log files with proper permissions
-echo "0. Setting up log files..."
-if ! [ -f "/var/log/mobile-tracker-deploy-beta.log" ]; then
-    sudo touch /var/log/mobile-tracker-deploy-beta.log
-    sudo chown $USER:$USER /var/log/mobile-tracker-deploy-beta.log
-    sudo chmod 644 /var/log/mobile-tracker-deploy-beta.log
-fi
-if ! [ -f "/var/log/mobile-tracker-deploy.log" ]; then
-    sudo touch /var/log/mobile-tracker-deploy.log
-    sudo chown $USER:$USER /var/log/mobile-tracker-deploy.log
-    sudo chmod 644 /var/log/mobile-tracker-deploy.log
-fi
-pass "Log files configured"
+# Setup log directory
+echo "0. Setting up log directory..."
+mkdir -p "$APP_DIR/logs"
+chmod 755 "$APP_DIR/logs"
+pass "Log directory configured"
 echo ""
 
 # Check if running in correct directory

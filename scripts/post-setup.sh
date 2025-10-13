@@ -481,13 +481,11 @@ setup_backups() {
         log "Backup script is ready ✓"
     fi
 
-    # Create deployment log files
-    log "Creating deployment log files..."
-    sudo touch /var/log/mobile-tracker-deploy.log
-    sudo touch /var/log/mobile-tracker-deploy-beta.log
-    sudo chown $USER:$USER /var/log/mobile-tracker-deploy*.log
-    sudo chmod 644 /var/log/mobile-tracker-deploy*.log
-    log "Deployment log files created ✓"
+    # Create deployment log directory
+    log "Creating deployment log directory..."
+    mkdir -p /opt/mobile-tracker-app/logs
+    chmod 755 /opt/mobile-tracker-app/logs
+    log "Deployment log directory created ✓"
 }
 
 print_summary() {

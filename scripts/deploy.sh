@@ -24,7 +24,8 @@ fi
 
 # Configuration based on environment
 APP_DIR="/opt/mobile-tracker-app"
-LOG_FILE="/var/log/mobile-tracker-deploy-${ENVIRONMENT}.log"
+LOG_DIR="/opt/mobile-tracker-app/logs"
+LOG_FILE="${LOG_DIR}/deploy-${ENVIRONMENT}.log"
 LOCK_FILE="/tmp/mobile-tracker-deploy-${ENVIRONMENT}.lock"
 BACKUP_DIR="/opt/mobile-tracker-backups/${ENVIRONMENT}"
 MAX_BACKUPS=5
@@ -129,6 +130,12 @@ preflight_checks() {
 
     # Create lock file
     echo $$ > "$LOCK_FILE"
+
+    # Ensure log directory exists
+    if [ ! -d "$LOG_DIR" ]; then
+        mkdir -p "$LOG_DIR"
+        chmod 755 "$LOG_DIR"
+    fi
 
     # Check required commands
     for cmd in git npm docker systemctl; do
