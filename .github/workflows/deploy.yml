@@ -167,6 +167,8 @@ jobs:
           npm run test:e2e:beta
         env:
           CI: true
+          BETA_ADMIN_EMAIL: ${{ secrets.BETA_ADMIN_EMAIL }}
+          BETA_ADMIN_PASSWORD: ${{ secrets.BETA_ADMIN_PASSWORD }}
 
       - name: Upload beta test results
         if: always()
@@ -245,6 +247,8 @@ jobs:
           npm run test:e2e:beta
         env:
           CI: true
+          BETA_ADMIN_EMAIL: ${{ secrets.BETA_ADMIN_EMAIL }}
+          BETA_ADMIN_PASSWORD: ${{ secrets.BETA_ADMIN_PASSWORD }}
 
       - name: Upload beta test results
         if: always()

@@ -40,7 +40,7 @@
     "@playwright/test": "^1.55.1",
     "@tanstack/router-plugin": "^1.132.41",
     "@tauri-apps/cli": "^2",
-    "@types/node": "^24.6.2",
+    "@types/node": "^24.7.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",

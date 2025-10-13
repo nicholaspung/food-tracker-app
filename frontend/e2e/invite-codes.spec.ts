@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { skipIfLocal } from './helpers/test-environment';
+import { skipIfLocal, isDeployedEnvironment } from './helpers/test-environment';
+import { setupBetaTestData, cleanupBetaTestData, createInviteCodes, markInviteCodeAsUsed } from './helpers/beta-setup';
+import type PocketBase from 'pocketbase';
 
 // Helper to generate random email for testing
 function generateTestEmail() {
@@ -7,13 +9,35 @@ function generateTestEmail() {
 }
 
 test.describe('Invite Code System', () => {
-  // Store test invite code for reuse across tests
+  // Store test invite code and PocketBase instance for reuse across tests
   let testInviteCode: string;
+  let pb: PocketBase | null = null;
 
   test.beforeAll(async () => {
-    // Note: Test invite code should be created manually in the database
-    // See e2e/README.md for setup instructions
-    testInviteCode = 'TEST2024CODE'; // Should be created manually or via migration
+    // For deployed environments (beta/production): Generate fresh invite codes via admin API
+    if (isDeployedEnvironment()) {
+      try {
+        const testData = await setupBetaTestData();
+        testInviteCode = testData.adminInviteCode;
+        pb = testData.pb;
+        console.log(`✅ Generated fresh admin invite code: ${testInviteCode}`);
+      } catch (error) {
+        console.error('❌ Failed to setup beta test data:', error);
+        throw error;
+      }
+    } else {
+      // For local testing: Use default test code (should be created manually)
+      testInviteCode = 'TEST2024CODE';
+      console.log(`📝 Using local test invite code: ${testInviteCode}`);
+    }
+  });
+
+  test.afterAll(async () => {
+    // Cleanup test data in deployed environments
+    if (pb) {
+      await cleanupBetaTestData(pb, testInviteCode);
+      console.log('✅ Beta test cleanup completed');
+    }
   });
 
   test.beforeEach(async ({ page }) => {
@@ -229,8 +253,8 @@ test.describe('Invite Code System', () => {
       skipIfLocal();
     });
 
-    test('should complete full viral invite flow', async ({ page }) => {
-      // This is a comprehensive test of the entire flow
+    test('should complete full viral invite flow with user deletion', async ({ page }) => {
+      // This is a comprehensive test of the entire flow including user deletion
       const userAEmail = generateTestEmail();
       const userBEmail = generateTestEmail();
 
@@ -266,10 +290,11 @@ test.describe('Invite Code System', () => {
       await page.getByTestId('logout-button').click();
       await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 5000 });
 
-      // Step 5: User B signs up with User A's code
-      await page.getByTestId('login-goto-signup').click();
+      // Step 5: User B signs up with User A's code using the URL method
+      await page.goto(`/signup?code=${userACode}`);
       await page.getByTestId('signup-email').fill(userBEmail);
-      await page.getByTestId('signup-invite-code').fill(userACode);
+      // Code should be pre-filled from URL
+      await expect(page.getByTestId('signup-invite-code')).toHaveValue(userACode);
       await page.getByTestId('signup-password').fill('password123');
       await page.getByTestId('signup-password-confirm').fill('password123');
       await page.getByTestId('signup-submit').click();
@@ -285,29 +310,93 @@ test.describe('Invite Code System', () => {
       const userBCodeCount = await userBCodes.count();
       expect(userBCodeCount).toBeGreaterThan(0);
 
-      // Cleanup
-      await page.getByTestId('logout-button').click();
+      // Step 7: Delete User B's account
+      await page.getByTestId('delete-account-button').click();
+      await expect(page.getByText(/are you sure/i)).toBeVisible();
+      await page.getByTestId('confirm-delete-button').click();
+
+      // Should redirect to login page after deletion
+      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 10000 });
+      await expect(page.getByTestId('login-page')).toBeVisible();
+
+      // Step 8: Log back in as User A
+      await page.getByTestId('login-email').fill(userAEmail);
+      await page.getByTestId('login-password').fill('password123');
+      await page.getByTestId('login-submit').click();
+      await page.waitForURL(/\/home/, { timeout: 10000 });
+
+      // Step 9: Verify User A's code is now marked as used
+      await page.goto('/profile');
+      await page.waitForTimeout(2000);
+
+      const usedCodeElement = page.locator(`[data-testid="invite-code-${userACode}"]`);
+      await expect(usedCodeElement.locator('text=Used')).toBeVisible();
+
+      // Step 10: Delete User A's account
+      await page.getByTestId('delete-account-button').click();
+      await expect(page.getByText(/are you sure/i)).toBeVisible();
+      await page.getByTestId('confirm-delete-button').click();
+
+      // Should redirect to login page after deletion
+      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 10000 });
+      await expect(page.getByTestId('login-page')).toBeVisible();
+    });
+
+    test('should reject signup with fake invite code', async ({ page }) => {
+      const fakeEmail = generateTestEmail();
+      const fakeInviteCode = 'FAKE' + Date.now() + Math.random().toString(36).substring(7).toUpperCase();
+
+      // Try to sign up with a fake invite code
+      await page.goto('/signup');
+      await page.getByTestId('signup-email').fill(fakeEmail);
+      await page.getByTestId('signup-invite-code').fill(fakeInviteCode);
+      await page.getByTestId('signup-password').fill('password123');
+      await page.getByTestId('signup-password-confirm').fill('password123');
+      await page.getByTestId('signup-submit').click();
+
+      // Should show an error
+      await expect(page.getByTestId('signup-error')).toBeVisible({ timeout: 10000 });
+
+      // Error message should indicate invalid code
+      const errorText = await page.getByTestId('signup-error').textContent();
+      expect(errorText?.toLowerCase()).toMatch(/invalid|not found|fail|error/);
+
+      // Should remain on signup page
+      await expect(page.getByTestId('signup-page')).toBeVisible();
     });
   });
 
   test.describe('Error Handling', () => {
     test('should prevent reusing an already-used invite code', async ({ page }) => {
-      // Attempt to signup with a code that's already been used
-      // This test assumes testInviteCode might be used
-      await page.goto('/signup');
+      // Note: Skipped in local environment (requires backend)
+      skipIfLocal();
 
+      if (!pb) {
+        throw new Error('PocketBase instance not available for test');
+      }
+
+      // Create a fresh invite code and mark it as used
+      const usedCodes = await createInviteCodes(pb, 1);
+      const usedCode = usedCodes[0];
+      await markInviteCodeAsUsed(pb, usedCode);
+
+      console.log(`Testing with pre-used invite code: ${usedCode}`);
+
+      // Attempt to signup with the already-used code
+      await page.goto('/signup');
       await page.getByTestId('signup-email').fill(generateTestEmail());
-      await page.getByTestId('signup-invite-code').fill(testInviteCode);
+      await page.getByTestId('signup-invite-code').fill(usedCode);
       await page.getByTestId('signup-password').fill('password123');
       await page.getByTestId('signup-password-confirm').fill('password123');
       await page.getByTestId('signup-submit').click();
 
-      // Might show error if code is already used, or succeed if fresh
-      // We wait for either error or success
-      await Promise.race([
-        expect(page.getByTestId('signup-error')).toBeVisible(),
-        page.waitForURL(/\/home/, { timeout: 10000 })
-      ]);
+      // Should show error message about invalid/used code
+      await expect(page.getByTestId('signup-error')).toBeVisible({ timeout: 10000 });
+      const errorText = await page.getByTestId('signup-error').textContent();
+      expect(errorText?.toLowerCase()).toMatch(/invalid|used|fail|error/);
+
+      // Should remain on signup page
+      await expect(page.getByTestId('signup-page')).toBeVisible();
     });
 
     test('should handle network errors gracefully', async ({ page }) => {
