@@ -269,7 +269,131 @@ This script checks:
 - ✅ PocketBase container is running
 - ✅ Can run a test backup
 
-### Step 9: Verify Deployment
+### Step 9: Production Security Hardening (Recommended)
+
+This step configures PocketBase production security features to protect your application and data.
+
+#### 9a. Settings Encryption (5 minutes)
+
+Encrypts sensitive application settings like SMTP passwords, S3 credentials, and OAuth secrets.
+
+**On your VPS:**
+```bash
+cd /opt/mobile-tracker-app
+
+# Generate encryption keys
+bash scripts/generate-encryption-keys.sh
+
+# Restart containers to apply encryption
+docker compose restart pocketbase
+docker compose -f docker-compose.beta.yml restart pocketbase_beta
+```
+
+**What gets encrypted:**
+- SMTP passwords (for email delivery)
+- S3/storage credentials
+- OAuth client secrets
+- API keys stored in PocketBase
+
+**Security notes:**
+- Keys are stored in `.env` (never commit to git!)
+- Backup `.env` file securely
+- If keys are lost, you'll need to re-enter encrypted settings in admin UI
+
+#### 9b. Enable MFA and Rate Limiting (3 minutes)
+
+Enable built-in PocketBase security features via the admin UI.
+
+**Enable Multi-Factor Authentication (MFA):**
+
+1. Visit your PocketBase admin panel:
+   - Production: `https://myexperiment.life/_/`
+   - Beta: `https://beta.myexperiment.life/_/`
+
+2. Navigate to **Settings** (gear icon) → **Admins**
+
+3. Click on your admin account
+
+4. Enable **"MFA (One-Time Password)"**
+
+5. Scan the QR code with an authenticator app:
+   - Google Authenticator
+   - Authy
+   - 1Password
+   - Bitwarden
+
+6. Enter the 6-digit code to confirm
+
+7. **Save your recovery codes** in a secure location
+
+**Enable Rate Limiting:**
+
+1. In the admin panel, go to **Settings** → **Application**
+
+2. Scroll to **"Security"** section
+
+3. Enable **"API rate limiting"**
+
+4. Recommended limits:
+   - Auth endpoints: `5` requests per minute
+   - API endpoints: `100` requests per minute
+   - Admin endpoints: `20` requests per minute
+
+5. Click **"Save changes"**
+
+**What this protects against:**
+- Brute force login attempts
+- API abuse
+- DDoS attacks
+- Unauthorized admin access
+
+#### 9c. Filesystem Encryption (Optional - Advanced)
+
+**⚠️ Advanced users only!** This encrypts your database files at rest using LUKS.
+
+**When to use this:**
+- You store sensitive PII (Personally Identifiable Information)
+- Compliance requirements (HIPAA, GDPR, etc.)
+- Extra protection against physical disk theft
+
+**What it does:**
+- Encrypts the entire PocketBase data directory
+- Uses LUKS (Linux Unified Key Setup)
+- Transparent to the application
+- Auto-mounts on boot
+
+**Prerequisites:**
+- Root/sudo access to VPS
+- Recent backups of your data
+- ~30-60 minutes downtime
+- Strong passphrase you'll remember
+
+**Setup:**
+```bash
+cd /opt/mobile-tracker-app
+sudo bash scripts/setup-filesystem-encryption.sh
+```
+
+The script will:
+1. Guide you through encryption setup
+2. Backup existing data
+3. Create encrypted LUKS volume
+4. Migrate data to encrypted storage
+5. Configure auto-mount on boot
+6. Update Docker volumes
+
+**Important:**
+- You will set an encryption passphrase
+- If you lose the passphrase, **your data is lost forever**
+- Keep secure backups of encryption keys
+- Test thoroughly after setup
+
+**Skip this step if:**
+- You don't have compliance requirements
+- Your VPS provider offers volume encryption
+- You're okay with regular HTTPS + settings encryption
+
+### Step 10: Verify Deployment
 
 Test your app:
 ```bash
@@ -705,6 +829,10 @@ ls -lh /var/backups/pocketbase/
 - [ ] Configured automated backups
 - [ ] HTTPS working with valid certificate
 - [ ] PocketBase only accessible via Caddy (not directly)
+- [ ] Enabled PocketBase settings encryption
+- [ ] Enabled MFA for admin accounts
+- [ ] Enabled rate limiting in PocketBase
+- [ ] (Optional) Configured filesystem encryption for PII
 
 ## Ubuntu 25.04 Compatibility
 

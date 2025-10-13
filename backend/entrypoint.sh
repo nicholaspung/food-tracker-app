@@ -2,6 +2,9 @@
 # Entrypoint script for PocketBase container
 # Ensures correct permissions on mounted volumes before starting the application
 
+# Increase open file descriptors limit for better concurrent connections
+ulimit -n 4096
+
 # Ensure directories exist (in case volumes aren't mounted yet)
 mkdir -p /pb/pb_data /pb/pb_migrations /pb/pb_hooks /pb/pb_public
 
