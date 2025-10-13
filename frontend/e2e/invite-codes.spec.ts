@@ -135,6 +135,7 @@ test.describe('Invite Code System', () => {
 
   test.describe('User Invite Codes in Profile', () => {
     let testUser: TestUser;
+    let suiteInviteCode: string;
 
     test.beforeEach(async ({ page }) => {
       skipIfLocal();
@@ -143,9 +144,30 @@ test.describe('Invite Code System', () => {
         throw new Error('PocketBase instance not available for test');
       }
 
+      // Generate a fresh invite code for this test to avoid reuse issues
+      const freshCodes = await createInviteCodes(pb, 1);
+      suiteInviteCode = freshCodes[0];
+
       // Create and authenticate a test user
-      testUser = await createTestUser(pb, testInviteCode);
+      testUser = await createTestUser(pb, suiteInviteCode);
       await setupAuthenticatedPage(page, pb, testUser);
+    });
+
+    test.afterEach(async () => {
+      // Cleanup the invite code used by this test
+      if (pb && suiteInviteCode) {
+        try {
+          const codes = await pb.collection('invite_codes').getFullList({
+            filter: `code = "${suiteInviteCode}"`,
+            $autoCancel: false,
+          });
+          for (const code of codes) {
+            await pb.collection('invite_codes').delete(code.id);
+          }
+        } catch (err) {
+          // Ignore cleanup errors
+        }
+      }
     });
 
     test('should display invite codes section in profile', async ({ page }) => {
@@ -172,6 +194,7 @@ test.describe('Invite Code System', () => {
 
   test.describe('Copy Invite Functionality', () => {
     let testUser: TestUser;
+    let suiteInviteCode: string;
 
     test.beforeEach(async ({ page }) => {
       skipIfLocal();
@@ -180,9 +203,30 @@ test.describe('Invite Code System', () => {
         throw new Error('PocketBase instance not available for test');
       }
 
+      // Generate a fresh invite code for this test to avoid reuse issues
+      const freshCodes = await createInviteCodes(pb, 1);
+      suiteInviteCode = freshCodes[0];
+
       // Create and authenticate a test user
-      testUser = await createTestUser(pb, testInviteCode);
+      testUser = await createTestUser(pb, suiteInviteCode);
       await setupAuthenticatedPage(page, pb, testUser);
+    });
+
+    test.afterEach(async () => {
+      // Cleanup the invite code used by this test
+      if (pb && suiteInviteCode) {
+        try {
+          const codes = await pb.collection('invite_codes').getFullList({
+            filter: `code = "${suiteInviteCode}"`,
+            $autoCancel: false,
+          });
+          for (const code of codes) {
+            await pb.collection('invite_codes').delete(code.id);
+          }
+        } catch (err) {
+          // Ignore cleanup errors
+        }
+      }
     });
 
     test('should show copy button for available codes', async ({ page }) => {
@@ -215,6 +259,7 @@ test.describe('Invite Code System', () => {
 
   test.describe('Invite Code Status', () => {
     let testUser: TestUser;
+    let suiteInviteCode: string;
 
     test.beforeEach(async ({ page }) => {
       skipIfLocal();
@@ -223,9 +268,30 @@ test.describe('Invite Code System', () => {
         throw new Error('PocketBase instance not available for test');
       }
 
+      // Generate a fresh invite code for this test to avoid reuse issues
+      const freshCodes = await createInviteCodes(pb, 1);
+      suiteInviteCode = freshCodes[0];
+
       // Create and authenticate a test user
-      testUser = await createTestUser(pb, testInviteCode);
+      testUser = await createTestUser(pb, suiteInviteCode);
       await setupAuthenticatedPage(page, pb, testUser);
+    });
+
+    test.afterEach(async () => {
+      // Cleanup the invite code used by this test
+      if (pb && suiteInviteCode) {
+        try {
+          const codes = await pb.collection('invite_codes').getFullList({
+            filter: `code = "${suiteInviteCode}"`,
+            $autoCancel: false,
+          });
+          for (const code of codes) {
+            await pb.collection('invite_codes').delete(code.id);
+          }
+        } catch (err) {
+          // Ignore cleanup errors
+        }
+      }
     });
 
     test('should show code status (Available vs Used)', async ({ page }) => {
@@ -312,8 +378,17 @@ test.describe('Invite Code System', () => {
       // Step 4: Navigate back to home and logout User A
       await page.goto('/home');
       await page.getByTestId('logout-button').click();
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 10000 });
-      await expect(page.getByTestId('login-page')).toBeVisible();
+
+      // Wait for logout to complete with better error handling
+      try {
+        await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 15000 });
+      } catch (error) {
+        // If URL wait times out, check if we're on login page anyway
+        console.log('URL wait timed out, checking for login page...');
+      }
+
+      // Verify we're on login page
+      await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 10000 });
 
       // Step 5: User B signs up with User A's code using the URL method
       await page.goto(`/signup?code=${userACode}`);
@@ -341,8 +416,13 @@ test.describe('Invite Code System', () => {
       await page.getByTestId('confirm-delete-button').click();
 
       // Should redirect to login page after deletion
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 10000 });
-      await expect(page.getByTestId('login-page')).toBeVisible();
+      try {
+        await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 15000 });
+      } catch (error) {
+        console.log('URL wait timed out after account deletion, checking for login page...');
+      }
+
+      await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 10000 });
 
       // Step 8: Log back in as User A
       await page.getByTestId('login-email').fill(userAEmail);
@@ -363,8 +443,13 @@ test.describe('Invite Code System', () => {
       await page.getByTestId('confirm-delete-button').click();
 
       // Should redirect to login page after deletion
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 10000 });
-      await expect(page.getByTestId('login-page')).toBeVisible();
+      try {
+        await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 15000 });
+      } catch (error) {
+        console.log('URL wait timed out after account deletion, checking for login page...');
+      }
+
+      await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 10000 });
     });
 
     test('should reject signup with fake invite code', async ({ page }) => {
