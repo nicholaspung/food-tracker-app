@@ -100,9 +100,11 @@ test.describe('Invite Code System', () => {
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
       await expect(page.getByTestId('signup-success')).toContainText(/account created successfully/i);
 
-      // Wait for redirect to login page (auto-redirect after countdown)
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 8000 });
-      await expect(page.getByTestId('login-page')).toBeVisible();
+      // Click "Back to Login" button instead of waiting for auto-redirect (faster and more reliable in CI)
+      await page.getByTestId('signup-goto-login-success').click();
+
+      // Should now be on login page
+      await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 3000 });
 
       // Now login with the newly created account
       await page.getByTestId('login-email').fill(testEmail);
@@ -524,9 +526,11 @@ test.describe('Invite Code System', () => {
       // Wait for success message
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
 
-      // Wait for redirect to login page (auto-redirect after countdown)
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 8000 });
-      await expect(page.getByTestId('login-page')).toBeVisible();
+      // Click "Back to Login" button instead of waiting for auto-redirect (faster and more reliable in CI)
+      await page.getByTestId('signup-goto-login-success').click();
+
+      // Should now be on login page
+      await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 3000 });
 
       // User A logs in
       await page.getByTestId('login-email').fill(userAEmail);
@@ -580,9 +584,11 @@ test.describe('Invite Code System', () => {
       // Wait for success message
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
 
-      // Wait for redirect to login page (auto-redirect after countdown)
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 8000 });
-      await expect(page.getByTestId('login-page')).toBeVisible();
+      // Click "Back to Login" button instead of waiting for auto-redirect (faster and more reliable in CI)
+      await page.getByTestId('signup-goto-login-success').click();
+
+      // Should now be on login page
+      await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 3000 });
 
       // User B logs in
       await page.getByTestId('login-email').fill(userBEmail);
