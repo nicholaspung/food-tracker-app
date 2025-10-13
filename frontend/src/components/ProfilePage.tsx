@@ -6,8 +6,6 @@ import { pb } from "@/lib/pocketbase";
 interface InviteCode {
   id: string;
   code: string;
-  used: boolean;
-  created: string;
 }
 
 interface ProfilePageProps {
@@ -23,25 +21,61 @@ export default function ProfilePage({ onNavigateBack, onDeleteSuccess }: Profile
   const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
   const [loadingCodes, setLoadingCodes] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [generatingCodes, setGeneratingCodes] = useState(false);
 
-  // Fetch user's invite codes
-  useEffect(() => {
-    const fetchInviteCodes = async () => {
-      if (!user?.id) return;
+  // Check if user is the initial user from the user record
+  const isInitialUser = user?.isInitialUser === true;
 
-      try {
-        const records = await pb.collection('invite_codes').getFullList({
-          filter: `createdBy = "${user.id}"`,
-        });
+  // Fetch user's unused invite codes
+  const fetchInviteCodes = async () => {
+    if (!user?.id) return;
 
-        setInviteCodes(records as InviteCode[]);
-      } catch (err) {
-        console.error("Error fetching invite codes:", err);
-      } finally {
-        setLoadingCodes(false);
+    try {
+      setLoadingCodes(true);
+      // Use PocketBase SDK's send method for proper authentication
+      const data = await pb.send('/api/invite-codes', {
+        method: 'GET',
+      });
+
+      console.log("Fetched invite codes:", data);
+      setInviteCodes(data.codes || []);
+    } catch (err) {
+      console.error("Error fetching invite codes:", err);
+    } finally {
+      setLoadingCodes(false);
+    }
+  };
+
+  // Generate more invite codes (initial user only)
+  const generateMoreCodes = async () => {
+    setGeneratingCodes(true);
+    setError("");
+
+    try {
+      // Use PocketBase SDK's send method for proper authentication
+      const data = await pb.send('/api/invite-codes/generate', {
+        method: 'POST',
+      });
+
+      console.log(`Generated ${data.generated} new invite codes`);
+
+      // Refresh the codes list
+      await fetchInviteCodes();
+    } catch (err: any) {
+      console.error("Error generating invite codes:", err);
+
+      // Check if it's a forbidden error (not initial user)
+      if (err.status === 403) {
+        setError('Only the initial user can generate unlimited invite codes');
+      } else {
+        setError(err.message || "Failed to generate invite codes");
       }
-    };
+    } finally {
+      setGeneratingCodes(false);
+    }
+  };
 
+  useEffect(() => {
     fetchInviteCodes();
   }, [user?.id]);
 
@@ -146,48 +180,67 @@ Looking forward to seeing you there!`;
 
           {/* Invite Codes Section */}
           <div className="space-y-3 pt-4 border-t">
-            <div>
-              <h3 className="text-sm font-medium mb-2">Your Invite Codes</h3>
-              {loadingCodes ? (
-                <p className="text-sm text-muted-foreground">Loading codes...</p>
-              ) : inviteCodes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No invite codes available</p>
-              ) : (
-                <div className="space-y-2">
-                  {inviteCodes.map((inviteCode) => (
-                    <div
-                      key={inviteCode.id}
-                      className={`flex items-center justify-between p-3 rounded-md border ${
-                        inviteCode.used
-                          ? 'bg-muted/50 border-muted'
-                          : 'bg-background border-border'
-                      }`}
-                      data-testid={`invite-code-${inviteCode.code}`}
-                    >
-                      <div className="flex-1">
-                        <p className={`font-mono text-sm ${inviteCode.used ? 'line-through text-muted-foreground' : 'font-medium'}`}>
-                          {inviteCode.code}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {inviteCode.used ? 'Used' : 'Available'}
-                        </p>
-                      </div>
-                      {!inviteCode.used && (
-                        <Button
-                          onClick={() => copyToClipboard(inviteCode.code)}
-                          variant="ghost"
-                          size="sm"
-                          className="ml-2 text-xs"
-                          data-testid={`copy-code-${inviteCode.code}`}
-                        >
-                          {copiedCode === inviteCode.code ? '✓ Copied!' : 'Copy Invite'}
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Your Invite Codes</h3>
+              {isInitialUser && (
+                <Button
+                  onClick={generateMoreCodes}
+                  variant="outline"
+                  size="sm"
+                  disabled={generatingCodes || loadingCodes}
+                  className="text-xs"
+                  data-testid="generate-codes-button"
+                >
+                  {generatingCodes ? 'Generating...' : 'Generate 5 More'}
+                </Button>
               )}
             </div>
+            {loadingCodes ? (
+              <p className="text-sm text-muted-foreground">Loading codes...</p>
+            ) : inviteCodes.length === 0 ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground mb-3">No invite codes available</p>
+                {isInitialUser && (
+                  <Button
+                    onClick={generateMoreCodes}
+                    variant="default"
+                    size="sm"
+                    disabled={generatingCodes}
+                    data-testid="generate-first-codes-button"
+                  >
+                    {generatingCodes ? 'Generating...' : 'Generate Codes'}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {inviteCodes.map((inviteCode) => (
+                  <div
+                    key={inviteCode.id}
+                    className="flex items-center justify-between p-3 rounded-md border bg-background border-border"
+                    data-testid={`invite-code-${inviteCode.code}`}
+                  >
+                    <div className="flex-1">
+                      <p className="font-mono text-sm font-medium">
+                        {inviteCode.code}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Available
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => copyToClipboard(inviteCode.code)}
+                      variant="ghost"
+                      size="sm"
+                      className="ml-2 text-xs"
+                      data-testid={`copy-code-${inviteCode.code}`}
+                    >
+                      {copiedCode === inviteCode.code ? '✓ Copied!' : 'Copy Invite'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {!showConfirm ? (
