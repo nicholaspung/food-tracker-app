@@ -56,6 +56,7 @@ test.describe('Authentication Flow', () => {
     test('should display sign up form with all elements', async ({ page }) => {
       await expect(page.getByTestId('signup-title')).toBeVisible();
       await expect(page.getByTestId('signup-email')).toBeVisible();
+      await expect(page.getByTestId('signup-invite-code')).toBeVisible();
       await expect(page.getByTestId('signup-password')).toBeVisible();
       await expect(page.getByTestId('signup-password-confirm')).toBeVisible();
       await expect(page.getByTestId('signup-submit')).toBeVisible();
@@ -69,6 +70,7 @@ test.describe('Authentication Flow', () => {
 
     test('should show error when passwords do not match', async ({ page }) => {
       await page.getByTestId('signup-email').fill('newuser@example.com');
+      await page.getByTestId('signup-invite-code').fill('TESTCODE');
       await page.getByTestId('signup-password').fill('password123');
       await page.getByTestId('signup-password-confirm').fill('password456');
       await page.getByTestId('signup-submit').click();
@@ -81,6 +83,7 @@ test.describe('Authentication Flow', () => {
       // Fill with password that's 7 characters (just under the 8 character minimum)
       // We need to use evaluate to bypass HTML5 validation
       await page.getByTestId('signup-email').fill('newuser@example.com');
+      await page.getByTestId('signup-invite-code').fill('TESTCODE');
 
       // Remove minlength attribute to bypass browser validation
       await page.getByTestId('signup-password').evaluate(el => el.removeAttribute('minlength'));
@@ -96,10 +99,12 @@ test.describe('Authentication Flow', () => {
 
     test('should require all fields', async ({ page }) => {
       const emailInput = page.getByTestId('signup-email');
+      const inviteCodeInput = page.getByTestId('signup-invite-code');
       const passwordInput = page.getByTestId('signup-password');
       const confirmPasswordInput = page.getByTestId('signup-password-confirm');
 
       await expect(emailInput).toHaveAttribute('required', '');
+      await expect(inviteCodeInput).toHaveAttribute('required', '');
       await expect(passwordInput).toHaveAttribute('required', '');
       await expect(confirmPasswordInput).toHaveAttribute('required', '');
       await expect(passwordInput).toHaveAttribute('minlength', '8');
@@ -110,6 +115,7 @@ test.describe('Authentication Flow', () => {
       const submitButton = page.getByTestId('signup-submit');
 
       await page.getByTestId('signup-email').fill('newuser@example.com');
+      await page.getByTestId('signup-invite-code').fill('TESTCODE');
       await page.getByTestId('signup-password').fill('password123');
       await page.getByTestId('signup-password-confirm').fill('password123');
 

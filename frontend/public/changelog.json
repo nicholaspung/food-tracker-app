@@ -1,0 +1,16 @@
+[
+  {
+    "version": "0.1.0",
+    "date": "2025-10-12",
+    "title": "Welcome to Mobile Tracker",
+    "summary": "The initial release brings you a powerful suite of tracking tools to organize your daily life.",
+    "features": [
+      "Track your time across different activities and projects",
+      "Monitor daily habits with streak tracking",
+      "Record journal entries with a clean, distraction-free interface",
+      "Manage relationships and interactions with the people tracker"
+    ],
+    "improvements": [],
+    "fixes": []
+  }
+]

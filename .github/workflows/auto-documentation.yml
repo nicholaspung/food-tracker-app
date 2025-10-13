@@ -1,0 +1,474 @@
+name: Auto-Generate Documentation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  generate-docs:
+    name: Generate Documentation with Claude
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch full history for changelog generation
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          # Get files changed in the last commit
+          git diff --name-only HEAD~1 HEAD > changed_files.txt
+          echo "Changed files:"
+          cat changed_files.txt
+
+      - name: Get commit message and diff
+        id: commit-info
+        run: |
+          # Get the last commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "commit_message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Get the diff for context
+          git diff HEAD~1 HEAD > latest_diff.txt
+
+      - name: Generate E2E Test Documentation
+        id: generate-e2e-docs
+        run: |
+          node << 'SCRIPT'
+          const fs = require('fs');
+          const https = require('https');
+
+          // Read changed files
+          const changedFiles = fs.readFileSync('changed_files.txt', 'utf8');
+          const commitMessage = process.env.COMMIT_MESSAGE;
+          const diff = fs.readFileSync('latest_diff.txt', 'utf8');
+
+          // Check if E2E tests were modified
+          if (!changedFiles.includes('frontend/e2e/')) {
+            console.log('No E2E test changes detected, skipping...');
+            process.exit(0);
+          }
+
+          // Read current E2E test files
+          const testFiles = fs.readdirSync('frontend/e2e')
+            .filter(f => f.endsWith('.spec.ts'))
+            .map(f => ({
+              name: f,
+              content: fs.readFileSync(`frontend/e2e/${f}`, 'utf8')
+            }));
+
+          const prompt = `Analyze the following E2E test files and generate/update documentation in frontend/E2E_TESTING.md.
+
+          Recent commit: ${commitMessage}
+
+          Changed files: ${changedFiles}
+
+          Test files:
+          ${testFiles.map(t => `File: ${t.name}\n${t.content}`).join('\n\n---\n\n')}
+
+          Please update the E2E_TESTING.md file to:
+          1. Document any new tests added
+          2. Update test coverage summary
+          3. Add examples of new test patterns
+          4. Keep existing documentation structure
+
+          Provide ONLY the updated markdown content for E2E_TESTING.md, no explanations.`;
+
+          // Call Claude API
+          const data = JSON.stringify({
+            model: 'claude-sonnet-4-5-20250929',
+            max_tokens: 4096,
+            messages: [{
+              role: 'user',
+              content: prompt
+            }]
+          });
+
+          const options = {
+            hostname: 'api.anthropic.com',
+            path: '/v1/messages',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'Content-Length': data.length
+            }
+          };
+
+          const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+              const response = JSON.parse(body);
+              const content = response.content[0].text;
+
+              // Write updated documentation
+              fs.writeFileSync('frontend/E2E_TESTING.md', content);
+              console.log('E2E documentation updated successfully');
+            });
+          });
+
+          req.on('error', (e) => {
+            console.error('Error calling Claude API:', e);
+            process.exit(1);
+          });
+
+          req.write(data);
+          req.end();
+          SCRIPT
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMMIT_MESSAGE: ${{ steps.commit-info.outputs.commit_message }}
+
+      - name: Generate API Documentation
+        id: generate-api-docs
+        run: |
+          node << 'SCRIPT'
+          const fs = require('fs');
+          const https = require('https');
+
+          // Read backend files to understand collection structure
+          const backendFiles = [
+            'backend/main.go'
+          ];
+
+          const backendCode = backendFiles
+            .filter(f => fs.existsSync(f))
+            .map(f => ({
+              name: f,
+              content: fs.readFileSync(f, 'utf8')
+            }));
+
+          // Read frontend API calls to understand endpoints used
+          const frontendFiles = fs.readdirSync('frontend/src', { recursive: true })
+            .filter(f => f.endsWith('.ts') || f.endsWith('.tsx'))
+            .map(f => `frontend/src/${f}`);
+
+          const apiCalls = frontendFiles
+            .map(f => fs.readFileSync(f, 'utf8'))
+            .join('\n');
+
+          const changedFiles = fs.readFileSync('changed_files.txt', 'utf8');
+          const commitMessage = process.env.COMMIT_MESSAGE;
+
+          const prompt = `Analyze the backend collections and API endpoints to generate documentation about access control.
+
+          Recent commit: ${commitMessage}
+          Changed files: ${changedFiles}
+
+          Backend code:
+          ${backendCode.map(f => `File: ${f.name}\n${f.content}`).join('\n\n---\n\n')}
+
+          Frontend API usage (sample):
+          ${apiCalls.substring(0, 5000)}
+
+          Generate documentation for docs/API_ACCESS.md that explains:
+          1. Each collection name
+          2. Who can read from each collection (authenticated users, owner only, admin only, etc.)
+          3. Who can write/update to each collection
+          4. Who can delete from each collection
+          5. Any special access rules or filters
+
+          Format as a clear markdown table with sections for each collection.
+          Provide ONLY the markdown content, no explanations.`;
+
+          const data = JSON.stringify({
+            model: 'claude-sonnet-4-5-20250929',
+            max_tokens: 4096,
+            messages: [{
+              role: 'user',
+              content: prompt
+            }]
+          });
+
+          const options = {
+            hostname: 'api.anthropic.com',
+            path: '/v1/messages',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'Content-Length': data.length
+            }
+          };
+
+          const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+              const response = JSON.parse(body);
+              const content = response.content[0].text;
+
+              // Ensure docs directory exists
+              if (!fs.existsSync('docs')) {
+                fs.mkdirSync('docs');
+              }
+
+              // Write API access documentation
+              fs.writeFileSync('docs/API_ACCESS.md', content);
+              console.log('API access documentation updated successfully');
+            });
+          });
+
+          req.on('error', (e) => {
+            console.error('Error calling Claude API:', e);
+            process.exit(1);
+          });
+
+          req.write(data);
+          req.end();
+          SCRIPT
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMMIT_MESSAGE: ${{ steps.commit-info.outputs.commit_message }}
+
+      - name: Update README with Features
+        id: update-readme
+        run: |
+          node << 'SCRIPT'
+          const fs = require('fs');
+          const https = require('https');
+
+          const changedFiles = fs.readFileSync('changed_files.txt', 'utf8');
+          const commitMessage = process.env.COMMIT_MESSAGE;
+          const diff = fs.readFileSync('latest_diff.txt', 'utf8');
+          const currentReadme = fs.readFileSync('README.md', 'utf8');
+
+          const prompt = `Analyze the recent changes and update the README.md to reflect new features.
+
+          Recent commit: ${commitMessage}
+          Changed files: ${changedFiles}
+          Diff (first 3000 chars): ${diff.substring(0, 3000)}
+
+          Current README.md:
+          ${currentReadme}
+
+          Update the README.md to:
+          1. Add new features to the "Project Vision" section if applicable
+          2. Update the "Tech Stack" section if new major dependencies were added
+          3. Update the "Development Workflow" section if workflow changed
+          4. Maintain all existing content and structure
+
+          If no significant feature changes were made, return the original README unchanged.
+          Provide ONLY the complete updated README.md content, no explanations.`;
+
+          const data = JSON.stringify({
+            model: 'claude-sonnet-4-5-20250929',
+            max_tokens: 4096,
+            messages: [{
+              role: 'user',
+              content: prompt
+            }]
+          });
+
+          const options = {
+            hostname: 'api.anthropic.com',
+            path: '/v1/messages',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'Content-Length': data.length
+            }
+          };
+
+          const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+              const response = JSON.parse(body);
+              const content = response.content[0].text;
+
+              fs.writeFileSync('README.md', content);
+              console.log('README.md updated successfully');
+            });
+          });
+
+          req.on('error', (e) => {
+            console.error('Error calling Claude API:', e);
+            process.exit(1);
+          });
+
+          req.write(data);
+          req.end();
+          SCRIPT
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMMIT_MESSAGE: ${{ steps.commit-info.outputs.commit_message }}
+
+      - name: Generate What's New Entry
+        id: generate-changelog
+        run: |
+          node << 'SCRIPT'
+          const fs = require('fs');
+          const https = require('https');
+
+          const changedFiles = fs.readFileSync('changed_files.txt', 'utf8');
+          const commitMessage = process.env.COMMIT_MESSAGE;
+          const diff = fs.readFileSync('latest_diff.txt', 'utf8');
+
+          // Read or initialize changelog
+          let changelog = [];
+          if (fs.existsSync('frontend/public/changelog.json')) {
+            changelog = JSON.parse(fs.readFileSync('frontend/public/changelog.json', 'utf8'));
+          }
+
+          const prompt = `Analyze the recent changes and create a user-friendly "What's New" changelog entry.
+
+          Recent commit: ${commitMessage}
+          Changed files: ${changedFiles}
+          Diff (first 3000 chars): ${diff.substring(0, 3000)}
+
+          Create a changelog entry in JSON format with:
+          {
+            "version": "auto-incremented from previous",
+            "date": "YYYY-MM-DD",
+            "title": "Brief catchy title (5-10 words)",
+            "summary": "1-2 sentence summary for regular users (non-technical)",
+            "features": ["array of new features added"],
+            "improvements": ["array of improvements made"],
+            "fixes": ["array of bugs fixed"]
+          }
+
+          Make it user-friendly - avoid technical jargon. Focus on what users will notice and benefit from.
+          If this is just a minor change, you can omit it by returning an empty object {}.
+
+          Provide ONLY the JSON object, no explanations or markdown.`;
+
+          const data = JSON.stringify({
+            model: 'claude-sonnet-4-5-20250929',
+            max_tokens: 2048,
+            messages: [{
+              role: 'user',
+              content: prompt
+            }]
+          });
+
+          const options = {
+            hostname: 'api.anthropic.com',
+            path: '/v1/messages',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'Content-Length': data.length
+            }
+          };
+
+          const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+              const response = JSON.parse(body);
+              const content = response.content[0].text;
+
+              // Parse the changelog entry
+              const newEntry = JSON.parse(content);
+
+              // Only add if it's not empty
+              if (Object.keys(newEntry).length > 0) {
+                // Auto-increment version
+                const lastVersion = changelog.length > 0
+                  ? changelog[0].version
+                  : '0.0.0';
+                const [major, minor, patch] = lastVersion.split('.').map(Number);
+                newEntry.version = `${major}.${minor}.${patch + 1}`;
+                newEntry.date = new Date().toISOString().split('T')[0];
+
+                // Prepend to changelog
+                changelog.unshift(newEntry);
+
+                // Ensure public directory exists
+                if (!fs.existsSync('frontend/public')) {
+                  fs.mkdirSync('frontend/public', { recursive: true });
+                }
+
+                fs.writeFileSync(
+                  'frontend/public/changelog.json',
+                  JSON.stringify(changelog, null, 2)
+                );
+                console.log('Changelog updated with new entry');
+              } else {
+                console.log('No significant changes for changelog');
+              }
+            });
+          });
+
+          req.on('error', (e) => {
+            console.error('Error calling Claude API:', e);
+            process.exit(1);
+          });
+
+          req.write(data);
+          req.end();
+          SCRIPT
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMMIT_MESSAGE: ${{ steps.commit-info.outputs.commit_message }}
+
+      - name: Create Pull Request with Documentation Updates
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            docs: Auto-update documentation
+
+            - Updated E2E test documentation
+            - Updated API access documentation
+            - Updated README with new features
+            - Added What's New changelog entry
+
+            Generated automatically by GitHub Actions
+          branch: docs/auto-update-${{ github.run_number }}
+          delete-branch: true
+          title: 'docs: Auto-generated documentation updates'
+          body: |
+            ## Auto-Generated Documentation Updates
+
+            This PR contains automatically generated documentation based on recent code changes.
+
+            ### Changes Included
+            - E2E test documentation updates
+            - API endpoint access documentation
+            - README feature updates
+            - What's New changelog entry
+
+            ### Review Checklist
+            - [ ] E2E documentation accurately reflects new tests
+            - [ ] API access documentation is correct
+            - [ ] README changes are appropriate
+            - [ ] What's New entry is user-friendly
+
+            **Generated by:** GitHub Actions (commit ${{ github.sha }})
+            **Triggered by:** ${{ github.event.head_commit.message }}
+          labels: documentation,automated
+          assignees: ${{ github.actor }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Documentation Generation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Documentation has been generated and a PR has been created." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Generated Documentation" >> $GITHUB_STEP_SUMMARY
+          echo "- E2E Test Documentation" >> $GITHUB_STEP_SUMMARY
+          echo "- API Access Documentation" >> $GITHUB_STEP_SUMMARY
+          echo "- README Updates" >> $GITHUB_STEP_SUMMARY
+          echo "- What's New Changelog" >> $GITHUB_STEP_SUMMARY
