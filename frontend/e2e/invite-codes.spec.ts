@@ -126,7 +126,8 @@ test.describe('Invite Code System', () => {
       await page.waitForURL(/\/home/, { timeout: 10000 });
       await expect(page.getByTestId('home-page')).toBeVisible();
 
-      // Cleanup: logout
+      // Cleanup: logout (now in profile page)
+      await page.goto('/profile');
       await page.getByTestId('logout-button').click();
     });
   });
@@ -579,8 +580,8 @@ test.describe('Invite Code System', () => {
 
       expect(userACode.length).toBeGreaterThan(0);
 
-      // Step 4: Navigate back to home and logout User A
-      await page.goto('/home');
+      // Step 4: Navigate to profile and logout User A
+      await page.goto('/profile');
       await page.getByTestId('logout-button').click();
 
       // Wait for logout to complete with better error handling
