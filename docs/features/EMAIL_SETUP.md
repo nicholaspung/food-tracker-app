@@ -135,7 +135,17 @@ docker compose ps
 
 5. **Save changes** (blue button at bottom)
 
-6. **Repeat for beta** environment at https://beta.myexperiment.life/_/ (optional)
+6. **Configure Application URL** (required for email links):
+   - In the same Settings page, scroll to the top
+   - Find **"Application URL"** field
+   - Enter your domain URL:
+     - **Production**: `https://myexperiment.life`
+     - **Beta**: `https://beta.myexperiment.life`
+   - Click **Save settings**
+
+   **Why this matters**: This URL is used in verification emails, password reset emails, and any email template that uses the `{APP_URL}` placeholder. Without this, emails will contain incorrect links!
+
+7. **Repeat for beta** environment at https://beta.myexperiment.life/_/ (optional)
 
 ---
 
@@ -342,7 +352,13 @@ Password: [Your API key]
    - Click "Send test email"
    - Check inbox (and spam folder)
 
-7. **Save settings**
+7. **Configure Application URL** (⚠️ Important!):
+   - Scroll to the top of Settings page
+   - Find **"Application URL"** field
+   - Enter: `https://myexperiment.life` (or your domain)
+   - This is used in verification emails, password reset links, etc.
+
+8. **Save settings**
 
 ---
 
@@ -624,6 +640,7 @@ curl http://localhost:8090/test-email
 
 - [ ] SMTP provider chosen (Resend, SendGrid, Gmail)
 - [ ] SMTP credentials configured in PocketBase admin UI
+- [ ] **Application URL configured** (Settings → Application URL)
 - [ ] Test email sent successfully
 - [ ] Sender address set to your domain (optional)
 - [ ] DNS records configured (if using custom domain email)
