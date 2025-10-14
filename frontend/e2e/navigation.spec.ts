@@ -37,8 +37,13 @@ test.describe('Mobile Navigation', () => {
       throw new Error('PocketBase instance not available for test');
     }
 
+    // Generate a fresh invite code for each test to avoid reuse issues
+    const { createInviteCodes } = await import('./helpers/beta-setup');
+    const freshCodes = await createInviteCodes(pb, 1);
+    const freshInviteCode = freshCodes[0];
+
     // Create and authenticate a test user
-    testUser = await createTestUser(pb, testInviteCode);
+    testUser = await createTestUser(pb, freshInviteCode);
     await setupAuthenticatedPage(page, pb, testUser);
   });
 
@@ -105,14 +110,18 @@ test.describe('Mobile Navigation', () => {
       await expect(profileIcon).toHaveClass(/text-blue-600/);
     });
 
-    test('should not display tabs on login page', async ({ page }) => {
+    test('should not display tabs on login page', async ({ page, context }) => {
+      // Clear all cookies to ensure we're logged out
+      await context.clearCookies();
       await page.goto('/');
 
       // Tabs should not be visible on login page
       await expect(page.getByTestId('bottom-tab-navigation')).not.toBeVisible();
     });
 
-    test('should not display tabs on signup page', async ({ page }) => {
+    test('should not display tabs on signup page', async ({ page, context }) => {
+      // Clear all cookies to ensure we're logged out
+      await context.clearCookies();
       await page.goto('/signup');
 
       // Tabs should not be visible on signup page
@@ -145,9 +154,9 @@ test.describe('Mobile Navigation', () => {
 
       await page.getByTestId('logout-button').click();
 
-      // Should redirect to login page
-      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 5000 });
-      await expect(page.getByTestId('login-page')).toBeVisible();
+      // Should redirect to login page (increased timeout for reliability)
+      await page.waitForURL(/^\/(?:\?.*)?$/, { timeout: 10000 });
+      await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 5000 });
     });
   });
 
