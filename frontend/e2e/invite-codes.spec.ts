@@ -100,6 +100,17 @@ test.describe('Invite Code System', () => {
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
       await expect(page.getByTestId('signup-success')).toContainText(/account created successfully/i);
 
+      // Verify the user via admin API (required for e2e tests to bypass email verification)
+      if (pb) {
+        const users = await pb.collection('users').getFullList({
+          filter: `email = "${testEmail}"`,
+          $autoCancel: false,
+        });
+        if (users.length > 0) {
+          await pb.collection('users').update(users[0].id, { verified: true });
+        }
+      }
+
       // Click "Back to Login" button instead of waiting for auto-redirect (faster and more reliable in CI)
       await page.getByTestId('signup-goto-login-success').click();
 
@@ -526,6 +537,17 @@ test.describe('Invite Code System', () => {
       // Wait for success message
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
 
+      // Verify User A via admin API (required for e2e tests to bypass email verification)
+      if (pb) {
+        const users = await pb.collection('users').getFullList({
+          filter: `email = "${userAEmail}"`,
+          $autoCancel: false,
+        });
+        if (users.length > 0) {
+          await pb.collection('users').update(users[0].id, { verified: true });
+        }
+      }
+
       // Click "Back to Login" button instead of waiting for auto-redirect (faster and more reliable in CI)
       await page.getByTestId('signup-goto-login-success').click();
 
@@ -583,6 +605,17 @@ test.describe('Invite Code System', () => {
 
       // Wait for success message
       await expect(page.getByTestId('signup-success')).toBeVisible({ timeout: 5000 });
+
+      // Verify User B via admin API (required for e2e tests to bypass email verification)
+      if (pb) {
+        const users = await pb.collection('users').getFullList({
+          filter: `email = "${userBEmail}"`,
+          $autoCancel: false,
+        });
+        if (users.length > 0) {
+          await pb.collection('users').update(users[0].id, { verified: true });
+        }
+      }
 
       // Click "Back to Login" button instead of waiting for auto-redirect (faster and more reliable in CI)
       await page.getByTestId('signup-goto-login-success').click();
