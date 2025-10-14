@@ -29,6 +29,25 @@ func main() {
 		Automigrate: isGoRun,
 	})
 
+	// Configure Application URL from environment variable (used in email templates)
+	app.OnBeforeServe().BindFunc(func(e *core.ServeEvent) error {
+		appUrl := os.Getenv("APP_URL")
+		if appUrl != "" {
+			settings, err := app.Settings().Clone()
+			if err != nil {
+				log.Printf("Error cloning settings: %v", err)
+				return e.Next()
+			}
+			settings.Meta.AppUrl = appUrl
+			if err := app.SaveSettings(settings); err != nil {
+				log.Printf("Error saving Application URL setting: %v", err)
+			} else {
+				log.Printf("Application URL set to: %s", appUrl)
+			}
+		}
+		return e.Next()
+	})
+
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		// Custom API endpoint: Get unused invite codes for authenticated user
 		se.Router.GET("/api/invite-codes", func(e *core.RequestEvent) error {
