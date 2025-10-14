@@ -17,14 +17,8 @@ function Home() {
 
   return (
     <HomePage
-      onLogout={() => {
-        navigate({ to: '/' });
-      }}
       onNavigateToProfile={() => {
         navigate({ to: '/profile' });
-      }}
-      onNavigateToWhatsNew={() => {
-        navigate({ to: '/whats-new' });
       }}
     />
   );

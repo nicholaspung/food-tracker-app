@@ -23,6 +23,12 @@ function Profile() {
       onDeleteSuccess={() => {
         navigate({ to: '/' });
       }}
+      onLogout={() => {
+        navigate({ to: '/' });
+      }}
+      onNavigateToWhatsNew={() => {
+        navigate({ to: '/whats-new' });
+      }}
     />
   );
 }

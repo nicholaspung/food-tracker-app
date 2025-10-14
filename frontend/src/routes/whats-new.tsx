@@ -67,7 +67,7 @@ function WhatsNewPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate({ to: '/home' })}
+              onClick={() => navigate({ to: '/profile' })}
               className="h-8 px-2 text-gray-600 hover:text-gray-900"
               data-testid="back-button"
             >

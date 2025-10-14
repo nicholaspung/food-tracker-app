@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { pb } from "@/lib/pocketbase";
+import { useQuery } from "@tanstack/react-query";
 
 interface InviteCode {
   id: string;
@@ -11,9 +13,21 @@ interface InviteCode {
 interface ProfilePageProps {
   onNavigateBack?: () => void;
   onDeleteSuccess?: () => void;
+  onLogout?: () => void;
+  onNavigateToWhatsNew?: () => void;
 }
 
-export default function ProfilePage({ onNavigateBack, onDeleteSuccess }: ProfilePageProps) {
+interface ChangelogEntry {
+  version: string;
+  date: string;
+  title: string;
+  summary: string;
+}
+
+const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
+const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
+
+export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew }: ProfilePageProps) {
   const user = pb.authStore.model;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -22,9 +36,32 @@ export default function ProfilePage({ onNavigateBack, onDeleteSuccess }: Profile
   const [loadingCodes, setLoadingCodes] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [generatingCodes, setGeneratingCodes] = useState(false);
+  const [dismissedProfileVersion, setDismissedProfileVersion] = useState<string | null>(null);
 
   // Check if user is the initial user from the user record
   const isInitialUser = user?.isInitialUser === true;
+
+  // Load dismissed profile version from localStorage on mount
+  useEffect(() => {
+    const dismissed = localStorage.getItem(DISMISSED_PROFILE_VERSION_KEY);
+    setDismissedProfileVersion(dismissed);
+  }, []);
+
+  // Fetch changelog to check for new releases
+  const { data: changelog } = useQuery<ChangelogEntry[]>({
+    queryKey: ['changelog'],
+    queryFn: async () => {
+      const response = await fetch('/changelog.json');
+      if (!response.ok) {
+        throw new Error('Failed to fetch changelog');
+      }
+      return response.json();
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  const latestVersion = changelog?.[0]?.version;
+  const hasNewReleaseInProfile = latestVersion && latestVersion !== dismissedProfileVersion;
 
   // Fetch user's unused invite codes
   const fetchInviteCodes = async () => {
@@ -129,23 +166,88 @@ Looking forward to seeing you there!`;
     }
   };
 
+  const handleLogout = () => {
+    pb.authStore.clear();
+    console.log("User logged out");
+    onLogout?.();
+  };
+
+  const handleDismissProfileUpdate = () => {
+    if (latestVersion) {
+      localStorage.setItem(DISMISSED_PROFILE_VERSION_KEY, latestVersion);
+      setDismissedProfileVersion(latestVersion);
+    }
+  };
+
+  const handleViewWhatsNew = () => {
+    if (latestVersion) {
+      localStorage.setItem(DISMISSED_PROFILE_VERSION_KEY, latestVersion);
+      localStorage.setItem(LAST_VIEWED_VERSION_KEY, latestVersion);
+      setDismissedProfileVersion(latestVersion);
+    }
+    onNavigateToWhatsNew?.();
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="profile-page">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center" data-testid="profile-title">
-            Profile
-          </CardTitle>
-          <CardDescription className="text-center" data-testid="profile-description">
-            Your account information
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error && (
-            <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="profile-error">
-              {error}
-            </div>
-          )}
+    <div className="min-h-screen bg-background p-4" data-testid="profile-page">
+      <div className="w-full max-w-md mx-auto space-y-4 py-4">
+        {/* What's New Card - shown at top if there's a new release */}
+        {hasNewReleaseInProfile && (
+          <Card className="border-blue-500 border-2 bg-blue-50" data-testid="profile-new-release-banner">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="default" className="bg-blue-600">
+                      New Update
+                    </Badge>
+                    <span className="text-xs font-semibold text-blue-900">
+                      v{latestVersion}
+                    </span>
+                  </div>
+                  <CardDescription className="text-blue-800 text-sm">
+                    {changelog?.[0]?.title}
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDismissProfileUpdate}
+                  className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                  data-testid="dismiss-profile-update-button"
+                  aria-label="Dismiss update notification"
+                >
+                  ✕
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <Button
+                onClick={handleViewWhatsNew}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                data-testid="view-profile-whats-new-button"
+              >
+                View What's New
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="w-full">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl text-center" data-testid="profile-title">
+              Profile
+            </CardTitle>
+            <CardDescription className="text-center" data-testid="profile-description">
+              Your account information
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {error && (
+              <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="profile-error">
+                {error}
+              </div>
+            )}
 
           <div className="space-y-3">
             <div className="p-4 bg-muted rounded-md" data-testid="user-info">
@@ -245,16 +347,25 @@ Looking forward to seeing you there!`;
 
           {!showConfirm ? (
             <>
-              <Button
-                onClick={onNavigateBack}
-                variant="outline"
-                className="w-full"
-                data-testid="back-button"
-              >
-                Back to Home
-              </Button>
+              <div className="pt-4 border-t space-y-3">
+                <Button
+                  onClick={handleViewWhatsNew}
+                  variant="outline"
+                  className="w-full"
+                  data-testid="whats-new-button"
+                >
+                  What's New
+                </Button>
 
-              <div className="pt-4 border-t">
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  className="w-full"
+                  data-testid="logout-button"
+                >
+                  Log Out
+                </Button>
+
                 <Button
                   onClick={() => setShowConfirm(true)}
                   variant="destructive"
@@ -301,6 +412,7 @@ Looking forward to seeing you there!`;
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
