@@ -18,7 +18,6 @@ services:
       - TZ=America/Los_Angeles
       - ENCRYPTION_KEY=${ENCRYPTION_KEY_PROD:-}
       - GOMEMLIMIT=460MiB
-      - APP_URL=https://myexperiment.life
     command: ["pocketbase", "serve", "--http=0.0.0.0:8090", "--dir=/pb/pb_data"]
 
     # Resource limits (prevent OOM kills)
