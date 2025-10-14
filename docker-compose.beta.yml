@@ -18,7 +18,8 @@ services:
       - TZ=America/Los_Angeles
       - ENCRYPTION_KEY=${ENCRYPTION_KEY_BETA:-}
       - GOMEMLIMIT=460MiB
-    command: ["pocketbase", "serve", "--http=0.0.0.0:8091", "--dir=/pb/pb_data", "--publicUrl=https://beta.myexperiment.life"]
+      - APP_URL=https://beta.myexperiment.life
+    command: ["pocketbase", "serve", "--http=0.0.0.0:8091", "--dir=/pb/pb_data"]
 
     # Resource limits (prevent OOM kills)
     deploy:
