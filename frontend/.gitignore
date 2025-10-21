@@ -23,10 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
-# Playwright
-test-results/
-playwright-report/
-playwright/.cache/
+# Cypress
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
 
 # TanStack Router
 routeTree.gen.ts

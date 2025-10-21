@@ -25,3 +25,35 @@ export interface User {
   created: string;
   updated: string;
 }
+
+// Food tracker types
+export interface Restaurant {
+  id: string;
+  name: string;
+  location: string;
+  cuisineType?: string;
+  user: string;
+  created: string;
+  updated: string;
+}
+
+export interface FoodItem {
+  id: string;
+  name: string;
+  description?: string;
+  restaurant: string;
+  user: string;
+  created: string;
+  updated: string;
+}
+
+export interface Rating {
+  id: string;
+  rating: number;
+  notes?: string;
+  visitDate: string;
+  foodItem: string;
+  user: string;
+  created: string;
+  updated: string;
+}

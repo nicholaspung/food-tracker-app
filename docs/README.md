@@ -162,8 +162,8 @@ All deployment scripts are in `/scripts/`:
 
 - **Primary Admin**: nicholaspungdev@gmail.com
 - **Repository**: https://github.com/nicholaspung/mobile-tracker-app
-- **Live App**: https://myexperiment.life
-- **Admin Panel**: https://myexperiment.life/_/
+- **Live App**: https://trackmyfoods.com
+- **Admin Panel**: https://trackmyfoods.com/_/
 
 ---
 
