@@ -14,8 +14,8 @@ func init() {
 		collection := core.NewBaseCollection("restaurants")
 
 		// Set collection rules (authenticated users can manage their own restaurants)
-		collection.ListRule = types.Pointer("@request.auth.id != ''")
-		collection.ViewRule = types.Pointer("@request.auth.id != ''")
+		collection.ListRule = types.Pointer("user = @request.auth.id")
+		collection.ViewRule = types.Pointer("user = @request.auth.id")
 		collection.CreateRule = types.Pointer("@request.auth.id != ''")
 		collection.UpdateRule = types.Pointer("user = @request.auth.id")
 		collection.DeleteRule = types.Pointer("user = @request.auth.id")
@@ -41,6 +41,41 @@ func init() {
 			Name:     "cuisineType",
 			Required: false,
 			Max:      100,
+		})
+
+		// Add latitude field (number, optional - for location-based features)
+		collection.Fields.Add(&core.NumberField{
+			Name:     "latitude",
+			Required: false,
+			Min:      types.Pointer(-90.0),
+			Max:      types.Pointer(90.0),
+		})
+
+		// Add longitude field (number, optional - for location-based features)
+		collection.Fields.Add(&core.NumberField{
+			Name:     "longitude",
+			Required: false,
+			Min:      types.Pointer(-180.0),
+			Max:      types.Pointer(180.0),
+		})
+
+		// Add placeId field (text, optional - for Google Places integration)
+		collection.Fields.Add(&core.TextField{
+			Name:     "placeId",
+			Required: false,
+			Max:      200,
+		})
+
+		// Add created timestamp field (auto-managed by PocketBase)
+		collection.Fields.Add(&core.AutodateField{
+			Name:     "created",
+			OnCreate: true,
+		})
+
+		// Add updated timestamp field (auto-managed by PocketBase)
+		collection.Fields.Add(&core.AutodateField{
+			Name:     "updated",
+			OnUpdate: true,
 		})
 
 		// Add user field (relation to users)

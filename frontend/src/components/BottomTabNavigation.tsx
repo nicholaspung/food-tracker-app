@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { Home, User, Utensils } from 'lucide-react';
+import { Home, User, Plus } from 'lucide-react';
 
 export function BottomTabNavigation() {
   const router = useRouterState();
@@ -13,10 +13,10 @@ export function BottomTabNavigation() {
       testId: 'tab-home',
     },
     {
-      name: 'Restaurants',
-      path: '/restaurants',
-      icon: Utensils,
-      testId: 'tab-restaurants',
+      name: 'Add',
+      path: '/add-visit',
+      icon: Plus,
+      testId: 'tab-add',
     },
     {
       name: 'Profile',
@@ -28,7 +28,7 @@ export function BottomTabNavigation() {
 
   return (
     <nav
-      className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[428px] bg-white border-t border-gray-200 shadow-lg"
+      className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg"
       data-testid="bottom-tab-navigation"
     >
       <div className="flex justify-around items-center h-16 px-2">

@@ -1,23 +1,23 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import RestaurantsPage from '@/components/RestaurantsPage';
+import AddVisitPage from '@/components/AddVisitPage';
 
-export const Route = createFileRoute('/restaurants')({
+export const Route = createFileRoute('/add-visit')({
   beforeLoad: () => {
     // Authentication guard
     if (!pb.authStore.isValid) {
       throw redirect({ to: '/' });
     }
   },
-  component: Restaurants,
+  component: AddVisit,
 });
 
-function Restaurants() {
+function AddVisit() {
   const navigate = useNavigate();
 
   return (
-    <RestaurantsPage
-      onNavigateToRestaurant={(id: string) => navigate({ to: `/restaurants/${id}` })}
+    <AddVisitPage
+      onVisitSaved={() => navigate({ to: '/home' })}
     />
   );
 }
