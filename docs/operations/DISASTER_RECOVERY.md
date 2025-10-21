@@ -54,9 +54,9 @@
 6. **Verify restoration**
    ```bash
    # Check users exist
-   curl https://myexperiment.life/api/health
+   curl https://trackmyfoods.com/api/health
    # Login to admin panel
-   open https://myexperiment.life/_/
+   open https://trackmyfoods.com/_/
    ```
 
 **Total Time:** ~2-4 hours (depending on backup size and download speed)
@@ -152,7 +152,7 @@ sudo systemctl reload caddy
 
 2. **Verify DNS**
    ```bash
-   dig myexperiment.life
+   dig trackmyfoods.com
    # Should point to your VPS IP
    ```
 
@@ -167,7 +167,7 @@ sudo systemctl reload caddy
    ```
 
 5. **Check Let's Encrypt rate limits**
-   - https://crt.sh/?q=myexperiment.life
+   - https://crt.sh/?q=trackmyfoods.com
    - Limit: 5 certs per week
 
 ---
@@ -333,7 +333,7 @@ Before major changes, backup:
 
 ```bash
 # Quick health check
-curl https://myexperiment.life/api/health
+curl https://trackmyfoods.com/api/health
 
 # View all logs
 docker-compose logs -f

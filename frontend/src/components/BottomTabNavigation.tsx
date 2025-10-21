@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { Home, User } from 'lucide-react';
+import { Home, User, Utensils } from 'lucide-react';
 
 export function BottomTabNavigation() {
   const router = useRouterState();
@@ -11,6 +11,12 @@ export function BottomTabNavigation() {
       path: '/home',
       icon: Home,
       testId: 'tab-home',
+    },
+    {
+      name: 'Restaurants',
+      path: '/restaurants',
+      icon: Utensils,
+      testId: 'tab-restaurants',
     },
     {
       name: 'Profile',
@@ -28,7 +34,7 @@ export function BottomTabNavigation() {
       <div className="flex justify-around items-center h-16 px-2">
         {tabs.map((tab) => {
           const Icon = tab.icon;
-          const isActive = currentPath === tab.path;
+          const isActive = currentPath === tab.path || currentPath.startsWith(tab.path + '/');
 
           return (
             <Link

@@ -1,0 +1,87 @@
+package migrations
+
+import (
+	"log"
+
+	"github.com/pocketbase/pocketbase/core"
+	m "github.com/pocketbase/pocketbase/migrations"
+	"github.com/pocketbase/pocketbase/tools/types"
+)
+
+func init() {
+	m.Register(func(app core.App) error {
+		// Create food_items collection
+		collection := core.NewBaseCollection("food_items")
+
+		// Set collection rules (authenticated users can manage their own food items)
+		collection.ListRule = types.Pointer("@request.auth.id != ''")
+		collection.ViewRule = types.Pointer("@request.auth.id != ''")
+		collection.CreateRule = types.Pointer("@request.auth.id != ''")
+		collection.UpdateRule = types.Pointer("user = @request.auth.id")
+		collection.DeleteRule = types.Pointer("user = @request.auth.id")
+
+		// Add name field (text, required)
+		collection.Fields.Add(&core.TextField{
+			Name:     "name",
+			Required: true,
+			Min:      1,
+			Max:      200,
+		})
+
+		// Add description field (text, optional)
+		collection.Fields.Add(&core.TextField{
+			Name:     "description",
+			Required: false,
+			Max:      500,
+		})
+
+		// Add restaurant field (relation to restaurants)
+		restaurantsCollection, err := app.FindCollectionByNameOrId("restaurants")
+		if err != nil {
+			log.Printf("Warning: Could not find restaurants collection to create relation: %v", err)
+		} else {
+			collection.Fields.Add(&core.RelationField{
+				Name:          "restaurant",
+				CollectionId:  restaurantsCollection.Id,
+				MaxSelect:     1,
+				Required:      true,
+				CascadeDelete: true, // Delete food items when restaurant is deleted
+			})
+		}
+
+		// Add user field (relation to users)
+		usersCollection, err := app.FindCollectionByNameOrId("users")
+		if err != nil {
+			log.Printf("Warning: Could not find users collection to create relation: %v", err)
+		} else {
+			collection.Fields.Add(&core.RelationField{
+				Name:          "user",
+				CollectionId:  usersCollection.Id,
+				MaxSelect:     1,
+				Required:      true,
+				CascadeDelete: true, // Delete food items when user is deleted
+			})
+		}
+
+		// Save the collection
+		if err := app.Save(collection); err != nil {
+			return err
+		}
+
+		log.Println("✓ Created food_items collection")
+		return nil
+	}, func(app core.App) error {
+		// Down migration - remove food_items collection
+		collection, err := app.FindCollectionByNameOrId("food_items")
+		if err != nil {
+			return err
+		}
+
+		if err := app.Delete(collection); err != nil {
+			return err
+		}
+
+		log.Println("✓ Deleted food_items collection")
+		return nil
+	})
+}

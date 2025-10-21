@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a mobile tracker application built with:
+This is a mobile food tracker application built with:
 - **Frontend**: Tauri v2 desktop app with React 19, TypeScript, and Vite
 - **Backend**: Go-based PocketBase server (v0.30.1) running on port 8090
 - **Routing**: TanStack Router with file-based routing
 - **Styling**: Tailwind CSS v4 with shadcn/ui components
 - **State Management**: TanStack Query and TanStack Form
-- **Testing**: Playwright for end-to-end browser testing
+- **Testing**: Cypress for end-to-end browser testing
 
 **IMPORTANT: Mobile-First Design**
 - This is a **mobile-native application** - all features MUST be designed for mobile devices
@@ -38,13 +38,14 @@ go run main.go serve     # Start PocketBase server (port 8090)
 ### E2E Testing
 ```bash
 cd frontend
-npm run test:e2e         # Run all tests headless
-npm run test:e2e:ui      # Interactive UI mode
-npm run test:e2e:headed  # Run with visible browser
-npm run test:e2e:report  # View last test report
+npm run test:e2e         # Run all tests (starts dev server automatically)
+npm run cypress:open     # Open Cypress test runner (interactive)
+npm run cypress:run      # Run tests headless (requires dev server running)
 ```
 
-Test files are in `frontend/e2e/`. Playwright auto-starts the dev server at http://localhost:1420.
+Test files are in `frontend/cypress/e2e/`. The `test:e2e` command auto-starts the dev server and runs tests.
+
+**Pre-push Hook**: Tests automatically run before `git push`. Set up with `./setup-hooks.sh` from project root.
 
 ## Architecture
 
@@ -55,9 +56,11 @@ Test files are in `frontend/e2e/`. Playwright auto-starts the dev server at http
   - `signup.tsx` - Sign up page
   - `home.tsx` - Home page (post-login)
   - `profile.tsx` - User profile page
+  - `restaurants.tsx` - Restaurants list page
+  - `restaurants/$restaurantId.tsx` - Restaurant detail page
   - Routes are auto-generated into `routeTree.gen.ts` by TanStack Router plugin
 - **PocketBase Client**: Singleton instance in `src/lib/pocketbase.ts` connecting to backend at http://127.0.0.1:8090
-- **Components**: Page components in `src/components/` (LoginPage, SignUpPage, HomePage, ProfilePage)
+- **Components**: Page components in `src/components/` (LoginPage, SignUpPage, HomePage, ProfilePage, RestaurantsPage, RestaurantDetailPage)
 - **Alias**: `@/` maps to `frontend/src/`
 
 ### Backend Architecture
@@ -66,6 +69,12 @@ Test files are in `frontend/e2e/`. Playwright auto-starts the dev server at http
   - Static file serving from `./pb_public` directory
   - Default admin UI at http://localhost:8090/_/
   - Auto-generated REST and realtime APIs
+- **Collections**:
+  - `users` - User authentication
+  - `invite_codes` - Invite code system
+  - `restaurants` - Restaurant tracking
+  - `food_items` - Food items at restaurants
+  - `ratings` - User ratings for food items
 
 ### Tauri Integration
 - Tauri configuration in `frontend/src-tauri/`
@@ -77,9 +86,15 @@ Test files are in `frontend/e2e/`. Playwright auto-starts the dev server at http
 
 When adding features:
 1. Implement the React component/functionality
-2. Add E2E tests in `frontend/e2e/` following the test structure in E2E_TESTING.md
+2. Add E2E tests in `frontend/cypress/e2e/`
 3. Run `npm run test:e2e` to verify tests pass
 4. Address any test failures before completion
+
+**Pre-push Testing**:
+- Tests automatically run before `git push` via pre-push hook
+- Hook checks if backend is running before running tests
+- Push is blocked if tests fail
+- Skip hook with `git push --no-verify` (not recommended)
 
 ## Subagent Usage (for Claude Code)
 
@@ -106,14 +121,15 @@ When adding features:
 - **TanStack Query**: v5.90.2 (server state)
 - **TanStack Form**: v1.23.5 (form management)
 - **PocketBase JS SDK**: v0.26.2
-- **Playwright**: v1.55.1 (E2E testing)
+- **Cypress**: v13.17.0 (E2E testing)
 - **Tailwind CSS**: v4.1.14
 - **TypeScript**: v5.8.3
 
 ## Testing Notes
-- Tests use semantic locators (role, label, text) over CSS selectors
+- Tests use `data-testid` attributes for selecting elements
 - Each test should be independent and isolated
-- Tests retry 2 times on CI (when CI=true env var is set)
-- HTML reports generated after test runs
+- localStorage is cleared before each test
 - Screenshots captured on test failures
-- Traces recorded on first retry for debugging
+- Tests run locally only (no CI) via pre-push git hook
+- Mobile viewport: 428x926
+- Custom commands: `cy.login(email, password)`, `cy.logout()`

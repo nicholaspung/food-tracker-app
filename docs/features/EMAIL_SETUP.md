@@ -54,7 +54,7 @@ PocketBase can send emails in two ways:
 
 1. In Resend dashboard → **Domains** → **Add Domain**
 
-2. Enter your domain: `myexperiment.life`
+2. Enter your domain: `trackmyfoods.com`
 
 3. **Add DNS Records** to your domain provider (DigitalOcean, Namecheap, Cloudflare, etc.):
 
@@ -101,8 +101,8 @@ docker compose ps
 
 **Open PocketBase Admin UI:**
 
-- **Production**: https://myexperiment.life/_/
-- **Beta**: https://beta.myexperiment.life/_/
+- **Production**: https://trackmyfoods.com/_/
+- **Beta**: https://beta.trackmyfoods.com/_/
 
 **Configure SMTP:**
 
@@ -121,7 +121,7 @@ docker compose ps
    ☑ Use TLS (check this box)
 
    Sender name: Mobile Tracker App
-   Sender address: noreply@myexperiment.life
+   Sender address: noreply@trackmyfoods.com
    ```
 
    **Note**: If domain not verified yet, use `onboarding@resend.dev` as sender address
@@ -139,13 +139,13 @@ docker compose ps
    - In the same Settings page, scroll to the top
    - Find **"Application URL"** field
    - Enter your domain URL:
-     - **Production**: `https://myexperiment.life`
-     - **Beta**: `https://beta.myexperiment.life`
+     - **Production**: `https://trackmyfoods.com`
+     - **Beta**: `https://beta.trackmyfoods.com`
    - Click **Save settings**
 
    **Why this matters**: This URL is used in verification emails, password reset emails, and any email template that uses the `{APP_URL}` placeholder. Without this, emails will contain incorrect links!
 
-7. **Repeat for beta** environment at https://beta.myexperiment.life/_/ (optional)
+7. **Repeat for beta** environment at https://beta.trackmyfoods.com/_/ (optional)
 
 ---
 
@@ -196,7 +196,7 @@ docker compose restart pocketbase
 | **SMTP Port** | `587` (TLS) |
 | **Username** | `resend` |
 | **Password** | Your API key (encrypted at rest!) |
-| **Sender** | `noreply@myexperiment.life` |
+| **Sender** | `noreply@trackmyfoods.com` |
 | **Free Tier** | 3,000 emails/month |
 | **Paid Tier** | $20/month for 50,000 emails |
 
@@ -220,7 +220,7 @@ docker compose restart pocketbase
 **"Emails go to spam"**
 - Verify your domain in Resend dashboard
 - Add SPF, DKIM, DMARC DNS records (shown in Step 2)
-- Use `noreply@myexperiment.life` instead of test domain
+- Use `noreply@trackmyfoods.com` instead of test domain
 
 **"Domain not verified"**
 - Wait 10-15 minutes after adding DNS records
@@ -337,7 +337,7 @@ Password: [Your API key]
 5. **Fill in SMTP settings**:
    ```
    Sender name: Mobile Tracker App
-   Sender address: noreply@myexperiment.life
+   Sender address: noreply@trackmyfoods.com
 
    SMTP server host: smtp.gmail.com (or other provider)
    Port: 587
@@ -355,7 +355,7 @@ Password: [Your API key]
 7. **Configure Application URL** (⚠️ Important!):
    - Scroll to the top of Settings page
    - Find **"Application URL"** field
-   - Enter: `https://myexperiment.life` (or your domain)
+   - Enter: `https://trackmyfoods.com` (or your domain)
    - This is used in verification emails, password reset links, etc.
 
 8. **Save settings**
@@ -385,7 +385,7 @@ services:
 
       # Email settings
       - MAIL_SENDER_NAME=Mobile Tracker App
-      - MAIL_SENDER_ADDRESS=noreply@myexperiment.life
+      - MAIL_SENDER_ADDRESS=noreply@trackmyfoods.com
 
     ports:
       - "127.0.0.1:8090:8090"
@@ -408,7 +408,7 @@ SMTP_PASSWORD=your-app-password-or-api-key
 
 ## Option 2: Domain Email Setup (Advanced)
 
-To send emails from `noreply@myexperiment.life` instead of Gmail:
+To send emails from `noreply@trackmyfoods.com` instead of Gmail:
 
 ### Step 1: Add DNS Records
 
@@ -438,7 +438,7 @@ Most SMTP providers (Resend, SendGrid, etc.) require domain verification:
 
 1. **Add TXT record** provided by your SMTP service
 2. **Verify domain** in provider dashboard
-3. **Set sender address** to `noreply@myexperiment.life`
+3. **Set sender address** to `noreply@trackmyfoods.com`
 
 ---
 
@@ -484,7 +484,7 @@ func main() {
 			HTML: `
 				<h1>Welcome!</h1>
 				<p>Thank you for signing up for Mobile Tracker App.</p>
-				<p>Get started by logging in at <a href="https://myexperiment.life">myexperiment.life</a></p>
+				<p>Get started by logging in at <a href="https://trackmyfoods.com">trackmyfoods.com</a></p>
 			`,
 		}
 
@@ -526,7 +526,7 @@ app.OnRecordAfterCreateSuccess("users").BindFunc(func(e *core.RecordEvent) error
 			<h1 style="color: #333;">Welcome to Mobile Tracker App!</h1>
 			<p>Hi ` + e.Record.GetString("name") + `,</p>
 			<p>Thank you for signing up. We're excited to have you on board!</p>
-			<a href="https://myexperiment.life" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+			<a href="https://trackmyfoods.com" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
 				Get Started
 			</a>
 		</div>
@@ -710,11 +710,11 @@ curl http://localhost:8090/test-email
 
 ## Recommended Setup for Production
 
-**For myexperiment.life:**
+**For trackmyfoods.com:**
 
 1. **Use Resend** (best deliverability + free tier):
    - Sign up: https://resend.com
-   - Verify domain `myexperiment.life`
+   - Verify domain `trackmyfoods.com`
    - Create API key
    - Configure in PocketBase:
      ```
@@ -722,7 +722,7 @@ curl http://localhost:8090/test-email
      Port: 587
      Username: resend
      Password: [API key]
-     Sender: noreply@myexperiment.life
+     Sender: noreply@trackmyfoods.com
      ```
 
 2. **Add DNS records** (in your domain registrar):

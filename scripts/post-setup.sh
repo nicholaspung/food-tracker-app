@@ -17,8 +17,8 @@ APP_DIR="/opt/mobile-tracker-app"
 LOG_FILE="/tmp/mobile-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
 LOCK_FILE="/tmp/mobile-tracker-post-setup.lock"
 
-# Default values (pre-configured for myexperiment.life)
-DOMAIN="${DOMAIN:-myexperiment.life}"
+# Default values (pre-configured for trackmyfoods.com)
+DOMAIN="${DOMAIN:-trackmyfoods.com}"
 EMAIL="${EMAIL:-22228236+nicholaspung@users.noreply.github.com}"
 
 #######################
