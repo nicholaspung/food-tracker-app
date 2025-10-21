@@ -17,9 +17,7 @@ function Home() {
 
   return (
     <HomePage
-      onNavigateToProfile={() => {
-        navigate({ to: '/profile' });
-      }}
+      onEditVisit={(visitId: string) => navigate({ to: `/edit-visit/${visitId}` })}
     />
   );
 }

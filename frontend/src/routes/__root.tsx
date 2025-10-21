@@ -1,6 +1,12 @@
-import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MobileLayout } from '@/components/MobileLayout';
+import {
+  createRootRoute,
+  Outlet,
+  useRouterState,
+} from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { BottomTabNavigation } from "@/components/BottomTabNavigation";
+import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
 // Create a query client instance
 const queryClient = new QueryClient({
@@ -13,18 +19,40 @@ const queryClient = new QueryClient({
 });
 
 // Routes that should show the bottom tab navigation
-const ROUTES_WITH_TABS = ['/home', '/profile', '/whats-new'];
+const ROUTES_WITH_TABS = ["/home", "/profile", "/whats-new", "/add-visit", "/edit-visit"];
 
 function RootComponent() {
   const router = useRouterState();
+  const mainRef = useRef<HTMLElement>(null);
   const currentPath = router.location.pathname;
-  const showTabs = ROUTES_WITH_TABS.includes(currentPath);
+
+  // Check if current path or any parent path should show tabs
+  const showTabs = ROUTES_WITH_TABS.some((route) =>
+    currentPath.startsWith(route)
+  );
+
+  // Scroll to top when route changes
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+  }, [currentPath]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MobileLayout showTabs={showTabs}>
-        <Outlet />
-      </MobileLayout>
+      <div className="h-screen bg-white flex flex-col overflow-hidden">
+        {/* Scrollable content area */}
+        <main
+          ref={mainRef}
+          className={`flex-1 overflow-y-auto ${showTabs ? "pb-20" : ""}`}
+        >
+          <Outlet />
+        </main>
+
+        {/* Persistent bottom tabs */}
+        {showTabs && <BottomTabNavigation />}
+        <TanStackRouterDevtools />
+      </div>
     </QueryClientProvider>
   );
 }

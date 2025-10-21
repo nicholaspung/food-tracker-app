@@ -14,8 +14,8 @@ func init() {
 		collection := core.NewBaseCollection("ratings")
 
 		// Set collection rules (authenticated users can manage their own ratings)
-		collection.ListRule = types.Pointer("@request.auth.id != ''")
-		collection.ViewRule = types.Pointer("@request.auth.id != ''")
+		collection.ListRule = types.Pointer("user = @request.auth.id")
+		collection.ViewRule = types.Pointer("user = @request.auth.id")
 		collection.CreateRule = types.Pointer("@request.auth.id != ''")
 		collection.UpdateRule = types.Pointer("user = @request.auth.id")
 		collection.DeleteRule = types.Pointer("user = @request.auth.id")
@@ -39,6 +39,18 @@ func init() {
 		collection.Fields.Add(&core.DateField{
 			Name:     "visitDate",
 			Required: true,
+		})
+
+		// Add created timestamp field (auto-managed by PocketBase)
+		collection.Fields.Add(&core.AutodateField{
+			Name:     "created",
+			OnCreate: true,
+		})
+
+		// Add updated timestamp field (auto-managed by PocketBase)
+		collection.Fields.Add(&core.AutodateField{
+			Name:     "updated",
+			OnUpdate: true,
 		})
 
 		// Add food_item field (relation to food_items)

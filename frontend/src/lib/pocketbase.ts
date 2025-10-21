@@ -32,7 +32,34 @@ export interface Restaurant {
   name: string;
   location: string;
   cuisineType?: string;
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
   user: string;
+  created: string;
+  updated: string;
+}
+
+// Google Places types
+export interface PlaceResult {
+  place_id: string;
+  name: string;
+  vicinity: string;
+  types?: string[];
+  geometry: {
+    location: {
+      lat: number;
+      lng: number;
+    };
+  };
+}
+
+export interface Visit {
+  id: string;
+  restaurant: string;
+  user: string;
+  visitDate: string;
+  notes?: string;
   created: string;
   updated: string;
 }
@@ -41,19 +68,29 @@ export interface FoodItem {
   id: string;
   name: string;
   description?: string;
-  restaurant: string;
+  visit: string;
+  rating: number;
+  notes?: string;
   user: string;
   created: string;
   updated: string;
 }
 
-export interface Rating {
+export interface MenuImage {
   id: string;
-  rating: number;
-  notes?: string;
-  visitDate: string;
-  foodItem: string;
-  user: string;
+  restaurant: string;
+  image: string; // filename
+  uploadedBy: string;
+  created: string;
+  updated: string;
+}
+
+export interface MenuItem {
+  id: string;
+  restaurant: string;
+  name: string;
+  description?: string;
+  sourceImage?: string; // relation to menu_images
   created: string;
   updated: string;
 }
