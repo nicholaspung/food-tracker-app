@@ -8,10 +8,12 @@
     "backend": "cd backend && go run . serve",
     "install:frontend": "cd frontend && npm install",
     "install:backend": "cd backend && go mod tidy",
-    "install:all": "npm run install:frontend && npm run install:backend"
+    "install:all": "npm run install:frontend && npm run install:backend",
+    "test:e2e": "start-server-and-test dev 'http://localhost:8090|http://localhost:1420' 'cd frontend && npm run cypress:run'"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "start-server-and-test": "^2.1.2"
   },
   "dependencies": {
     "tesseract.js": "^6.0.1"
