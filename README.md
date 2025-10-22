@@ -97,7 +97,7 @@ npm run tauri build     # Build Tauri desktop app
 ## Project Structure
 
 ```
-mobile-tracker-app/
+food-tracker-app/
 ├── frontend/                 # Tauri + React application
 │   ├── src/
 │   │   ├── routes/          # TanStack Router file-based routes

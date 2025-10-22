@@ -26,7 +26,7 @@ This document outlines potential enhancements to the infrastructure that could f
 pip3 install apprise
 
 # Configure notification endpoints
-cat > /opt/mobile-tracker-app/apprise.yml <<EOF
+cat > /opt/food-tracker-app/apprise.yml <<EOF
 urls:
   # Email
   - mailto://smtp.gmail.com:587?user=you@gmail.com&pass=app-password&to=admin@example.com
@@ -38,7 +38,7 @@ urls:
   - tgram://bot_token/chat_id
 
   # Ntfy.sh (self-hosted push notifications)
-  - ntfy://ntfy.sh/mobile-tracker-alerts
+  - ntfy://ntfy.sh/food-tracker-alerts
 
   # Pushover
   - pover://user_key@token
@@ -55,7 +55,7 @@ send_notification() {
     local type=${3:-info}  # info, success, warning, failure
 
     apprise -vv -t "$title" -b "$message" \
-        -c /opt/mobile-tracker-app/apprise.yml \
+        -c /opt/food-tracker-app/apprise.yml \
         -n "$type" 2>&1 | tee -a "$LOG_FILE"
 }
 
@@ -79,7 +79,7 @@ send_notification \
 
 ```bash
 # Send notification (no installation needed)
-curl -d "Deployment complete ✅" https://ntfy.sh/mobile-tracker-myexperiment
+curl -d "Deployment complete ✅" https://ntfy.sh/food-tracker-myexperiment
 
 # In scripts:
 notify() {
@@ -88,7 +88,7 @@ notify() {
     curl -H "Priority: $priority" \
          -H "Tags: rocket" \
          -d "$message" \
-         https://ntfy.sh/mobile-tracker-myexperiment
+         https://ntfy.sh/food-tracker-myexperiment
 }
 
 # Usage
@@ -399,17 +399,17 @@ Load Balancer (HAProxy)
 pip3 install apprise
 
 # Configure notifications
-cat > /opt/mobile-tracker-app/apprise.yml <<EOF
+cat > /opt/food-tracker-app/apprise.yml <<EOF
 urls:
-  - ntfy://ntfy.sh/mobile-tracker-alerts
+  - ntfy://ntfy.sh/food-tracker-alerts
   - mailto://smtp.gmail.com:587?user=you@gmail.com&pass=app-password&to=admin@example.com
 EOF
 
 # Test
-apprise -vv -t "Test Alert" -b "Notification system working!" -c /opt/mobile-tracker-app/apprise.yml
+apprise -vv -t "Test Alert" -b "Notification system working!" -c /opt/food-tracker-app/apprise.yml
 ```
 
-**Install ntfy mobile app** and subscribe to `mobile-tracker-alerts` channel.
+**Install ntfy mobile app** and subscribe to `food-tracker-alerts` channel.
 
 Now you'll get push notifications for all deployment and backup events! 🎉
 

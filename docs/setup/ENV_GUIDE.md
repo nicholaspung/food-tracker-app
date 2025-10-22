@@ -13,7 +13,7 @@ This is mainly for documentation. The values are used in Caddyfile and scripts.
 
 ```bash
 # Application
-APP_NAME=mobile-tracker-app
+APP_NAME=food-tracker-app
 DOMAIN=yourdomain.com          # Your actual domain
 
 # Email for Let's Encrypt
@@ -96,7 +96,7 @@ The app uses environment variables in this order:
 
 ### I want to deploy to VPS
 1. Run `scripts/setup-vps.sh` (installs Docker, Caddy, etc.)
-2. Clone your repo to `/opt/mobile-tracker-app`
+2. Clone your repo to `/opt/food-tracker-app`
 3. Run `scripts/post-setup.sh` (asks for domain & email, configures everything)
 
 **No manual .env editing required!**
@@ -111,8 +111,8 @@ The app uses environment variables in this order:
 
 ### I want to change my domain
 1. Update DNS A record to point to VPS IP
-2. Edit `/opt/mobile-tracker-app/Caddyfile` (change `yourdomain.com`)
-3. Edit `/opt/mobile-tracker-app/frontend/.env` (change VITE_API_URL)
+2. Edit `/opt/food-tracker-app/Caddyfile` (change `yourdomain.com`)
+3. Edit `/opt/food-tracker-app/frontend/.env` (change VITE_API_URL)
 4. Redeploy:
    ```bash
    sudo systemctl restart caddy
@@ -125,7 +125,7 @@ The app uses environment variables in this order:
 Check that `VITE_API_URL` is set correctly:
 ```bash
 # On VPS
-cat /opt/mobile-tracker-app/frontend/.env
+cat /opt/food-tracker-app/frontend/.env
 
 # Locally
 cat frontend/.env.local
@@ -139,7 +139,7 @@ cat frontend/.env.local
 ### "Frontend showing wrong API URL"
 The API URL is baked into the build. After changing `.env`, rebuild:
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 bash scripts/deploy.sh
 ```
 

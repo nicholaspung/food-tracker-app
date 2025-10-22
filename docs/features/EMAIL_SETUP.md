@@ -93,7 +93,7 @@ PocketBase can send emails in two ways:
 
 ```bash
 ssh deploy@your-vps-ip
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 
 # Make sure containers are running
 docker compose ps
@@ -157,7 +157,7 @@ Your Resend API key is now **encrypted at rest** using the ENCRYPTION_KEY we set
 
 ```bash
 # On your VPS
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 
 # Check encryption key is loaded
 docker compose exec pocketbase sh -c 'echo $ENCRYPTION_KEY' | wc -c

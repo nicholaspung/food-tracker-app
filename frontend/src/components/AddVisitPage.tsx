@@ -1,16 +1,41 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb, Restaurant, PlaceResult, MenuItem as DBMenuItem } from '@/lib/pocketbase';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Plus, X, Search, Calendar, Check, MapPin, Loader2, RefreshCw, Utensils, Camera } from 'lucide-react';
-import { useGeolocation } from '@/hooks/useGeolocation';
-import { searchNearbyRestaurants, getCuisineFromTypes } from '@/services/googlePlaces';
-import MenuScanStep from '@/components/MenuScanStep';
-import { getRestaurantMenuItems } from '@/services/ocrService';
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  pb,
+  Restaurant,
+  PlaceResult,
+  MenuItem as DBMenuItem,
+} from "@/lib/pocketbase";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Plus,
+  X,
+  Search,
+  Calendar,
+  Check,
+  MapPin,
+  Loader2,
+  RefreshCw,
+  Utensils,
+  Camera,
+} from "lucide-react";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import {
+  searchNearbyRestaurants,
+  getCuisineFromTypes,
+} from "@/services/googlePlaces";
+import MenuScanStep from "@/components/MenuScanStep";
+import { getRestaurantMenuItems } from "@/services/ocrService";
 
 interface VisitMenuItem {
   name: string;
@@ -20,11 +45,11 @@ interface VisitMenuItem {
 }
 
 const RATING_OPTIONS = [
-  { value: 1, label: "Don't eat ever", color: 'bg-red-500' },
-  { value: 2, label: 'Try once', color: 'bg-orange-500' },
-  { value: 3, label: 'Eat once in a while', color: 'bg-yellow-500' },
-  { value: 4, label: 'Eat occasionally', color: 'bg-lime-500' },
-  { value: 5, label: 'Eat often', color: 'bg-green-500' },
+  { value: 1, label: "Don't eat ever", color: "bg-red-500" },
+  { value: 2, label: "Try once", color: "bg-orange-500" },
+  { value: 3, label: "Eat once in a while", color: "bg-yellow-500" },
+  { value: 4, label: "Eat occasionally", color: "bg-lime-500" },
+  { value: 5, label: "Eat often", color: "bg-green-500" },
 ];
 
 interface AddVisitPageProps {
@@ -33,16 +58,19 @@ interface AddVisitPageProps {
 
 export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   const [step, setStep] = useState(1);
-  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [selectedRestaurant, setSelectedRestaurant] =
+    useState<Restaurant | null>(null);
   const [menuItems, setMenuItems] = useState<VisitMenuItem[]>([]);
-  const [visitDate, setVisitDate] = useState(new Date().toISOString().split('T')[0]);
+  const [visitDate, setVisitDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
   const [showDateEdit, setShowDateEdit] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [showAddRestaurant, setShowAddRestaurant] = useState(false);
-  const [newRestaurantName, setNewRestaurantName] = useState('');
-  const [newRestaurantLocation, setNewRestaurantLocation] = useState('');
-  const [newRestaurantCuisine, setNewRestaurantCuisine] = useState('');
-  const [error, setError] = useState('');
+  const [newRestaurantName, setNewRestaurantName] = useState("");
+  const [newRestaurantLocation, setNewRestaurantLocation] = useState("");
+  const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Menu scanning and selection states
@@ -53,50 +81,59 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   // Google Places integration
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceResult[]>([]);
   const [placesLoading, setPlacesLoading] = useState(false);
-  const [placesError, setPlacesError] = useState('');
+  const [placesError, setPlacesError] = useState("");
   const [showNearbyPlaces, setShowNearbyPlaces] = useState(false); // Default to saved restaurants
 
   // Location - only fetch when user requests nearby search
-  const { position, error: locationError, loading: locationLoading, refetch: refetchLocation } = useGeolocation(false);
+  const {
+    position,
+    error: locationError,
+    loading: locationLoading,
+    refetch: refetchLocation,
+  } = useGeolocation(false);
 
   const queryClient = useQueryClient();
 
   // Fetch restaurants
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
-    queryKey: ['restaurants'],
+    queryKey: ["restaurants"],
     queryFn: async () => {
-      return await pb.collection('restaurants').getFullList({
-        sort: '-created',
+      return await pb.collection("restaurants").getFullList({
+        sort: "-created",
       });
     },
   });
 
   // Add restaurant mutation (manual entry with current location)
   const addRestaurantMutation = useMutation({
-    mutationFn: async (data: { name: string; location: string; cuisineType?: string }) => {
+    mutationFn: async (data: {
+      name: string;
+      location: string;
+      cuisineType?: string;
+    }) => {
       const user = pb.authStore.record;
-      if (!user) throw new Error('User not authenticated');
+      if (!user) throw new Error("User not authenticated");
 
-      return await pb.collection('restaurants').create<Restaurant>({
+      return await pb.collection("restaurants").create<Restaurant>({
         name: data.name,
         location: data.location,
-        cuisineType: data.cuisineType || '',
+        cuisineType: data.cuisineType || "",
         latitude: position?.latitude,
         longitude: position?.longitude,
         user: user.id,
       });
     },
     onSuccess: (newRestaurant) => {
-      queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+      queryClient.invalidateQueries({ queryKey: ["restaurants"] });
       setSelectedRestaurant(newRestaurant);
       setShowAddRestaurant(false);
-      setNewRestaurantName('');
-      setNewRestaurantLocation('');
-      setNewRestaurantCuisine('');
+      setNewRestaurantName("");
+      setNewRestaurantLocation("");
+      setNewRestaurantCuisine("");
       setStep(2);
     },
     onError: (err: any) => {
-      setError(err.message || 'Failed to add restaurant');
+      setError(err.message || "Failed to add restaurant");
     },
   });
 
@@ -104,19 +141,19 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   const saveVisitMutation = useMutation({
     mutationFn: async () => {
       const user = pb.authStore.record;
-      if (!user || !selectedRestaurant) throw new Error('Missing data');
+      if (!user || !selectedRestaurant) throw new Error("Missing data");
 
       // Create visit
-      const visit = await pb.collection('visits').create({
+      const visit = await pb.collection("visits").create({
         restaurant: selectedRestaurant.id,
         user: user.id,
         visitDate,
-        notes: '',
+        notes: "",
       });
 
       // Create all food items
       for (const item of menuItems) {
-        await pb.collection('food_items').create({
+        await pb.collection("food_items").create({
           name: item.name,
           description: item.description,
           visit: visit.id,
@@ -129,39 +166,47 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       return visit;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visits'] });
-      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
-      queryClient.invalidateQueries({ queryKey: ['allFoodItems'] });
+      queryClient.invalidateQueries({ queryKey: ["visits"] });
+      queryClient.invalidateQueries({ queryKey: ["allVisits"] });
+      queryClient.invalidateQueries({ queryKey: ["allFoodItems"] });
       // Reset form
       setStep(1);
       setSelectedRestaurant(null);
       setMenuItems([]);
-      setVisitDate(new Date().toISOString().split('T')[0]);
-      setSearchQuery('');
-      setError('');
+      setVisitDate(new Date().toISOString().split("T")[0]);
+      setSearchQuery("");
+      setError("");
       // Navigate to home page
       onVisitSaved?.();
     },
     onError: (err: any) => {
-      setError(err.message || 'Failed to save visit');
+      setError(err.message || "Failed to save visit");
     },
   });
 
-  const filteredRestaurants = restaurants.filter((r) =>
-    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (r.cuisineType?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  const filteredRestaurants = restaurants.filter(
+    (r) =>
+      r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (r.cuisineType?.toLowerCase() || "").includes(searchQuery.toLowerCase())
   );
 
   const handleAddMenuItem = () => {
-    setMenuItems([...menuItems, { name: '', description: '', rating: 3, notes: '' }]);
+    setMenuItems([
+      ...menuItems,
+      { name: "", description: "", rating: 3, notes: "" },
+    ]);
   };
 
   const handleRemoveMenuItem = (index: number) => {
     setMenuItems(menuItems.filter((_, i) => i !== index));
   };
 
-  const handleUpdateMenuItem = (index: number, field: keyof VisitMenuItem, value: string | number) => {
+  const handleUpdateMenuItem = (
+    index: number,
+    field: keyof VisitMenuItem,
+    value: string | number
+  ) => {
     const updated = [...menuItems];
     updated[index] = { ...updated[index], [field]: value };
     setMenuItems(updated);
@@ -184,11 +229,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
   // Handle menu items extracted from OCR
   const handleMenuItemsExtracted = (items: DBMenuItem[]) => {
-    const visitItems: VisitMenuItem[] = items.map(item => ({
+    const visitItems: VisitMenuItem[] = items.map((item) => ({
       name: item.name,
-      description: item.description || '',
+      description: item.description || "",
       rating: 3, // default rating
-      notes: '',
+      notes: "",
     }));
     setMenuItems(visitItems);
     setShowMenuScan(false);
@@ -204,9 +249,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   const handleSelectExistingItem = (item: DBMenuItem) => {
     const visitItem: VisitMenuItem = {
       name: item.name,
-      description: item.description || '',
+      description: item.description || "",
       rating: 3,
-      notes: '',
+      notes: "",
     };
     setMenuItems([...menuItems, visitItem]);
   };
@@ -214,8 +259,8 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   // Handler to search nearby places
   const handleSearchNearby = async () => {
     setShowNearbyPlaces(true);
-    setPlacesError('');
-    setError('');
+    setPlacesError("");
+    setError("");
 
     // Get location first if we don't have it
     if (!position && !locationLoading) {
@@ -233,7 +278,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         });
         setNearbyPlaces(places);
       } catch (err) {
-        setPlacesError(err instanceof Error ? err.message : 'Failed to load nearby restaurants');
+        setPlacesError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load nearby restaurants"
+        );
       } finally {
         setPlacesLoading(false);
       }
@@ -242,10 +291,15 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
   // Watch for location changes when user is viewing nearby places
   useEffect(() => {
-    if (position && showNearbyPlaces && nearbyPlaces.length === 0 && !placesLoading) {
+    if (
+      position &&
+      showNearbyPlaces &&
+      nearbyPlaces.length === 0 &&
+      !placesLoading
+    ) {
       const fetchNearbyPlaces = async () => {
         setPlacesLoading(true);
-        setPlacesError('');
+        setPlacesError("");
         try {
           const places = await searchNearbyRestaurants({
             latitude: position.latitude,
@@ -254,7 +308,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
           });
           setNearbyPlaces(places);
         } catch (err) {
-          setPlacesError(err instanceof Error ? err.message : 'Failed to load nearby restaurants');
+          setPlacesError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load nearby restaurants"
+          );
         } finally {
           setPlacesLoading(false);
         }
@@ -265,15 +323,15 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   }, [position, showNearbyPlaces]);
 
   const handleSelectGooglePlace = async (place: PlaceResult) => {
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
       const user = pb.authStore.record;
-      if (!user) throw new Error('User not authenticated');
+      if (!user) throw new Error("User not authenticated");
 
       // Check if restaurant already exists with this placeId
-      const existing = restaurants.find(r => r.placeId === place.place_id);
+      const existing = restaurants.find((r) => r.placeId === place.place_id);
       if (existing) {
         setSelectedRestaurant(existing);
         setStep(2);
@@ -281,21 +339,23 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       }
 
       // Create new restaurant from Google Place and cache it in our database
-      const newRestaurant = await pb.collection('restaurants').create<Restaurant>({
-        name: place.name,
-        location: place.vicinity,
-        cuisineType: getCuisineFromTypes(place.types),
-        latitude: place.geometry.location.lat,
-        longitude: place.geometry.location.lng,
-        placeId: place.place_id,
-        user: user.id,
-      });
+      const newRestaurant = await pb
+        .collection("restaurants")
+        .create<Restaurant>({
+          name: place.name,
+          location: place.vicinity,
+          cuisineType: getCuisineFromTypes(place.types),
+          latitude: place.geometry.location.lat,
+          longitude: place.geometry.location.lng,
+          placeId: place.place_id,
+          user: user.id,
+        });
 
-      queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+      queryClient.invalidateQueries({ queryKey: ["restaurants"] });
       setSelectedRestaurant(newRestaurant);
       setStep(2);
     } catch (err: any) {
-      setError(err.message || 'Failed to add restaurant');
+      setError(err.message || "Failed to add restaurant");
     } finally {
       setLoading(false);
     }
@@ -303,7 +363,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
   const handleAddRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
@@ -318,7 +378,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   };
 
   const handleSaveVisit = async () => {
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
@@ -328,8 +388,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     }
   };
 
-  const canProceedFromStep2 = menuItems.length > 0 && menuItems.every(item => item.name.trim() !== '');
-  const canSave = menuItems.every(item => item.name.trim() !== '' && item.rating > 0);
+  const canProceedFromStep2 =
+    menuItems.length > 0 && menuItems.every((item) => item.name.trim() !== "");
+  const canSave = menuItems.every(
+    (item) => item.name.trim() !== "" && item.rating > 0
+  );
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -341,15 +404,15 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
             <div
               key={s}
               className={`flex-1 h-2 rounded-full ${
-                s <= step ? 'bg-blue-600' : 'bg-gray-200'
+                s <= step ? "bg-blue-600" : "bg-gray-200"
               }`}
             />
           ))}
         </div>
         <p className="text-sm text-gray-500 mt-2">
-          {step === 1 && 'Select a restaurant'}
-          {step === 2 && 'Add menu items'}
-          {step === 3 && 'Rate your items'}
+          {step === 1 && "Select a restaurant"}
+          {step === 2 && "Add menu items"}
+          {step === 3 && "Rate your items"}
         </p>
       </div>
 
@@ -399,8 +462,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     <CardContent className="pt-4 flex items-center gap-3">
                       <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
                       <div>
-                        <p className="text-sm font-medium text-blue-900">Getting your location...</p>
-                        <p className="text-xs text-blue-700">This helps find nearby restaurants</p>
+                        <p className="text-sm font-medium text-blue-900">
+                          Getting your location...
+                        </p>
+                        <p className="text-xs text-blue-700">
+                          This helps find nearby restaurants
+                        </p>
                       </div>
                     </CardContent>
                   </Card>
@@ -412,8 +479,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       <div className="flex items-start gap-3">
                         <MapPin className="w-5 h-5 text-yellow-600 mt-0.5" />
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-yellow-900">Location unavailable</p>
-                          <p className="text-xs text-yellow-700 mt-1">{locationError}</p>
+                          <p className="text-sm font-medium text-yellow-900">
+                            Location unavailable
+                          </p>
+                          <p className="text-xs text-yellow-700 mt-1">
+                            {locationError}
+                          </p>
                           <Button
                             variant="outline"
                             size="sm"
@@ -435,8 +506,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       <div className="flex items-center gap-3">
                         <MapPin className="w-5 h-5 text-green-600" />
                         <div>
-                          <p className="text-sm font-medium text-green-900">Found {nearbyPlaces.length} nearby</p>
-                          <p className="text-xs text-green-700">Within 1.5km of your location</p>
+                          <p className="text-sm font-medium text-green-900">
+                            Found {nearbyPlaces.length} nearby
+                          </p>
+                          <p className="text-xs text-green-700">
+                            Within 1.5km of your location
+                          </p>
                         </div>
                       </div>
                       <Button
@@ -458,7 +533,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 {placesLoading && (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-                    <span className="ml-2 text-sm text-gray-500">Finding nearby restaurants...</span>
+                    <span className="ml-2 text-sm text-gray-500">
+                      Finding nearby restaurants...
+                    </span>
                   </div>
                 )}
 
@@ -470,21 +547,26 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   </Card>
                 )}
 
-                {!placesLoading && nearbyPlaces.length === 0 && !placesError && position && (
-                  <Card className="bg-gray-50">
-                    <CardContent className="pt-4 text-center">
-                      <p className="text-sm text-gray-600">No nearby restaurants found</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowNearbyPlaces(false)}
-                        className="mt-3"
-                      >
-                        Add Manually
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
+                {!placesLoading &&
+                  nearbyPlaces.length === 0 &&
+                  !placesError &&
+                  position && (
+                    <Card className="bg-gray-50">
+                      <CardContent className="pt-4 text-center">
+                        <p className="text-sm text-gray-600">
+                          No nearby restaurants found
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowNearbyPlaces(false)}
+                          className="mt-3"
+                        >
+                          Add Manually
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
 
                 <div className="space-y-3">
                   {nearbyPlaces.map((place) => (
@@ -496,10 +578,13 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <CardTitle className="text-lg">{place.name}</CardTitle>
+                            <CardTitle className="text-lg">
+                              {place.name}
+                            </CardTitle>
                             <CardDescription className="mt-1">
                               {place.vicinity}
-                              {getCuisineFromTypes(place.types) && ` • ${getCuisineFromTypes(place.types)}`}
+                              {getCuisineFromTypes(place.types) &&
+                                ` • ${getCuisineFromTypes(place.types)}`}
                             </CardDescription>
                           </div>
                           <Badge variant="secondary" className="ml-2">
@@ -517,7 +602,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     onClick={() => {
                       setShowNearbyPlaces(false);
                       setNearbyPlaces([]);
-                      setPlacesError('');
+                      setPlacesError("");
                     }}
                     variant="outline"
                     className="w-full"
@@ -544,13 +629,18 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       )}
                     </CardHeader>
                     <CardContent>
-                      <form onSubmit={handleAddRestaurant} className="space-y-4">
+                      <form
+                        onSubmit={handleAddRestaurant}
+                        className="space-y-4"
+                      >
                         <div className="space-y-2">
                           <Label htmlFor="name">Restaurant Name *</Label>
                           <Input
                             id="name"
                             value={newRestaurantName}
-                            onChange={(e) => setNewRestaurantName(e.target.value)}
+                            onChange={(e) =>
+                              setNewRestaurantName(e.target.value)
+                            }
                             required
                           />
                         </div>
@@ -559,7 +649,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                           <Input
                             id="location"
                             value={newRestaurantLocation}
-                            onChange={(e) => setNewRestaurantLocation(e.target.value)}
+                            onChange={(e) =>
+                              setNewRestaurantLocation(e.target.value)
+                            }
                             required
                           />
                         </div>
@@ -568,11 +660,17 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                           <Input
                             id="cuisine"
                             value={newRestaurantCuisine}
-                            onChange={(e) => setNewRestaurantCuisine(e.target.value)}
+                            onChange={(e) =>
+                              setNewRestaurantCuisine(e.target.value)
+                            }
                           />
                         </div>
                         <div className="flex gap-2">
-                          <Button type="submit" disabled={loading} className="flex-1">
+                          <Button
+                            type="submit"
+                            disabled={loading}
+                            className="flex-1"
+                          >
                             Add & Continue
                           </Button>
                           <Button
@@ -608,10 +706,13 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                           }}
                         >
                           <CardHeader className="pb-3">
-                            <CardTitle className="text-lg">{restaurant.name}</CardTitle>
+                            <CardTitle className="text-lg">
+                              {restaurant.name}
+                            </CardTitle>
                             <CardDescription>
                               {restaurant.location}
-                              {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                              {restaurant.cuisineType &&
+                                ` • ${restaurant.cuisineType}`}
                             </CardDescription>
                           </CardHeader>
                         </Card>
@@ -629,7 +730,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
           <div className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">{selectedRestaurant.name}</CardTitle>
+                <CardTitle className="text-lg">
+                  {selectedRestaurant.name}
+                </CardTitle>
                 <CardDescription>{selectedRestaurant.location}</CardDescription>
               </CardHeader>
             </Card>
@@ -645,45 +748,58 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
             )}
 
             {/* Existing Menu Items Selection */}
-            {!showMenuScan && showExistingMenu && existingMenuItems.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Select from Menu</CardTitle>
-                  <CardDescription>
-                    {existingMenuItems.length} items available from previous scans
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {existingMenuItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleSelectExistingItem(item)}
-                      className="w-full p-3 text-left rounded-lg border hover:border-blue-500 hover:bg-blue-50 transition-all"
+            {!showMenuScan &&
+              showExistingMenu &&
+              existingMenuItems.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Select from Menu
+                    </CardTitle>
+                    <CardDescription>
+                      {existingMenuItems.length} items available from previous
+                      scans
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {existingMenuItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectExistingItem(item)}
+                        className="w-full p-3 text-left rounded-lg border hover:border-blue-500 hover:bg-blue-50 transition-all"
+                      >
+                        <div className="font-medium">{item.name}</div>
+                        {item.description && (
+                          <div className="text-sm text-gray-600 mt-1">
+                            {item.description}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowExistingMenu(false)}
+                      className="w-full mt-2"
                     >
-                      <div className="font-medium">{item.name}</div>
-                      {item.description && (
-                        <div className="text-sm text-gray-600 mt-1">
-                          {item.description}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowExistingMenu(false)}
-                    className="w-full mt-2"
-                  >
-                    <X className="w-4 h-4 mr-2" />
-                    Hide Menu
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+                      <X className="w-4 h-4 mr-2" />
+                      Hide Menu
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
             {/* Manual Add / Show Existing Menu / Scan Menu buttons */}
             {!showMenuScan && (
               <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowMenuScan(true)}
+                  className="w-full"
+                >
+                  <Camera className="w-4 h-4 mr-2" />
+                  Scan Menu Photo
+                </Button>
                 <div className="flex gap-2">
                   <Button onClick={handleAddMenuItem} className="flex-1">
                     <Plus className="w-4 h-4 mr-2" />
@@ -700,14 +816,6 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     </Button>
                   )}
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowMenuScan(true)}
-                  className="w-full"
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  Scan Menu Photo
-                </Button>
               </div>
             )}
 
@@ -728,12 +836,16 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   <Input
                     placeholder="Item name *"
                     value={item.name}
-                    onChange={(e) => handleUpdateMenuItem(index, 'name', e.target.value)}
+                    onChange={(e) =>
+                      handleUpdateMenuItem(index, "name", e.target.value)
+                    }
                   />
                   <Input
                     placeholder="Description (optional)"
                     value={item.description}
-                    onChange={(e) => handleUpdateMenuItem(index, 'description', e.target.value)}
+                    onChange={(e) =>
+                      handleUpdateMenuItem(index, "description", e.target.value)
+                    }
                   />
                 </CardContent>
               </Card>
@@ -768,11 +880,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500" />
                   <span className="text-sm">
-                    {new Date(visitDate).toLocaleDateString('en-US', {
-                      weekday: 'short',
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
+                    {new Date(visitDate).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
                     })}
                   </span>
                 </div>
@@ -788,7 +900,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     type="date"
                     value={visitDate}
                     onChange={(e) => setVisitDate(e.target.value)}
-                    max={new Date().toISOString().split('T')[0]}
+                    max={new Date().toISOString().split("T")[0]}
                   />
                   <Button
                     variant="outline"
@@ -806,7 +918,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">{item.name}</CardTitle>
                   {item.description && (
-                    <CardDescription className="text-sm">{item.description}</CardDescription>
+                    <CardDescription className="text-sm">
+                      {item.description}
+                    </CardDescription>
                   )}
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -815,16 +929,20 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       <button
                         key={option.value}
                         type="button"
-                        onClick={() => handleUpdateMenuItem(index, 'rating', option.value)}
+                        onClick={() =>
+                          handleUpdateMenuItem(index, "rating", option.value)
+                        }
                         className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
                           item.rating === option.value
-                            ? 'border-blue-600 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
+                            ? "border-blue-600 bg-blue-50"
+                            : "border-gray-200 hover:border-gray-300"
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full ${option.color}`} />
+                            <div
+                              className={`w-3 h-3 rounded-full ${option.color}`}
+                            />
                             <span className="font-medium">{option.label}</span>
                           </div>
                           {item.rating === option.value && (
@@ -837,7 +955,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   <Input
                     placeholder="Notes (optional)"
                     value={item.notes}
-                    onChange={(e) => handleUpdateMenuItem(index, 'notes', e.target.value)}
+                    onChange={(e) =>
+                      handleUpdateMenuItem(index, "notes", e.target.value)
+                    }
                   />
                 </CardContent>
               </Card>
@@ -852,7 +972,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 disabled={!canSave || loading}
                 className="flex-1"
               >
-                {loading ? 'Saving...' : 'Save Visit'}
+                {loading ? "Saving..." : "Save Visit"}
               </Button>
             </div>
           </div>

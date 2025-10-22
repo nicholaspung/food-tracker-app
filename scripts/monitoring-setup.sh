@@ -14,7 +14,7 @@ read -p "Enter your healthchecks.io ping URL (e.g., https://hc-ping.com/YOUR-UUI
 
 # Update backup script with healthcheck URL
 if [ -n "$HEALTHCHECK_URL" ]; then
-    sed -i "s|HEALTHCHECK_URL=\"\"|HEALTHCHECK_URL=\"$HEALTHCHECK_URL\"|" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+    sed -i "s|HEALTHCHECK_URL=\"\"|HEALTHCHECK_URL=\"$HEALTHCHECK_URL\"|" /opt/food-tracker-app/scripts/backup-pocketbase.sh
     echo "✅ Healthcheck URL configured in backup script"
 fi
 
@@ -27,7 +27,7 @@ read -p "Enter email for alerts (or press Enter to skip): " ALERT_EMAIL
 
 if [ -n "$ALERT_EMAIL" ]; then
     # Update backup script with alert email
-    sed -i "s|ALERT_EMAIL=\"\"|ALERT_EMAIL=\"$ALERT_EMAIL\"|" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+    sed -i "s|ALERT_EMAIL=\"\"|ALERT_EMAIL=\"$ALERT_EMAIL\"|" /opt/food-tracker-app/scripts/backup-pocketbase.sh
     echo "✅ Email notifications configured for backups"
     echo "Note: Ensure 'mail' command is available (apt install mailutils)"
 fi
@@ -54,4 +54,4 @@ echo "✅ Monitoring setup complete!"
 echo ""
 echo "Next: Update backup cron job to use healthcheck:"
 echo "  crontab -e"
-echo "  0 2 * * * HEALTHCHECK_URL=$HEALTHCHECK_URL /opt/mobile-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1"
+echo "  0 2 * * * HEALTHCHECK_URL=$HEALTHCHECK_URL /opt/food-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1"

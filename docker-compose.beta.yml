@@ -3,7 +3,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: mobile-tracker-pocketbase:latest
+    image: food-tracker-pocketbase:latest
     container_name: pocketbase_beta
     restart: unless-stopped
     ports:

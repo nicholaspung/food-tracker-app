@@ -1,6 +1,6 @@
 #!/bin/bash
 # Post-Setup Script for Mobile Tracker App
-# Run after cloning repository to /opt/mobile-tracker-app
+# Run after cloning repository to /opt/food-tracker-app
 # Features: Rollback capability, validation, idempotency, error handling
 
 set -euo pipefail
@@ -13,9 +13,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-APP_DIR="/opt/mobile-tracker-app"
-LOG_FILE="/tmp/mobile-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
-LOCK_FILE="/tmp/mobile-tracker-post-setup.lock"
+APP_DIR="/opt/food-tracker-app"
+LOG_FILE="/tmp/food-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
+LOCK_FILE="/tmp/food-tracker-post-setup.lock"
 
 # Default values (pre-configured for trackmyfoods.com)
 DOMAIN="${DOMAIN:-trackmyfoods.com}"
@@ -99,7 +99,7 @@ validate_prerequisites() {
     # Check git repository
     if [ ! -d ".git" ]; then
         error "Not a git repository. Clone your repo first:"
-        error "git clone https://github.com/nicholaspung/mobile-tracker-app.git ."
+        error "git clone https://github.com/nicholaspung/food-tracker-app.git ."
         exit 1
     fi
 
@@ -324,7 +324,7 @@ EOF
 # Environment Configuration for Mobile Tracker App VPS Deployment
 
 # Application
-APP_NAME=mobile-tracker-app
+APP_NAME=food-tracker-app
 DOMAIN=$DOMAIN
 
 # Email for Let's Encrypt
@@ -471,9 +471,9 @@ setup_backups() {
     sudo chown $USER:$USER /var/backups/pocketbase
 
     # Deployment backups
-    sudo mkdir -p /opt/mobile-tracker-backups/{beta,production}
-    sudo chown -R $USER:$USER /opt/mobile-tracker-backups
-    sudo chmod 755 /opt/mobile-tracker-backups
+    sudo mkdir -p /opt/food-tracker-backups/{beta,production}
+    sudo chown -R $USER:$USER /opt/food-tracker-backups
+    sudo chmod 755 /opt/food-tracker-backups
     log "Backup directories created ✓"
 
     if [ -f "scripts/backup-pocketbase.sh" ]; then
@@ -483,8 +483,8 @@ setup_backups() {
 
     # Create deployment log directory
     log "Creating deployment log directory..."
-    mkdir -p /opt/mobile-tracker-app/logs
-    chmod 755 /opt/mobile-tracker-app/logs
+    mkdir -p /opt/food-tracker-app/logs
+    chmod 755 /opt/food-tracker-app/logs
     log "Deployment log directory created ✓"
 }
 

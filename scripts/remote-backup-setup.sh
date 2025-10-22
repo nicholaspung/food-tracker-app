@@ -18,7 +18,7 @@ case $CHOICE in
         echo ""
         echo "📦 Backblaze B2 Setup:"
         echo "1. Sign up: https://www.backblaze.com/b2/sign-up.html"
-        echo "2. Create a bucket: mobile-tracker-backups"
+        echo "2. Create a bucket: food-tracker-backups"
         echo "3. Create application key with read/write access"
         echo ""
         read -p "Enter your application key ID: " B2_KEY_ID
@@ -36,13 +36,13 @@ case $CHOICE in
     # Upload to Backblaze B2\
     if command -v b2 \&> /dev/null; then\
         log "Uploading to Backblaze B2..."\
-        if b2 upload-file mobile-tracker-backups "$BACKUP_FILE" \\\
+        if b2 upload-file food-tracker-backups "$BACKUP_FILE" \\\
             "pocketbase/pb-$TIMESTAMP.tar.gz"; then\
             log "B2 upload successful"\
         else\
             error_exit "B2 upload failed"\
         fi\
-    fi' /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+    fi' /opt/food-tracker-app/scripts/backup-pocketbase.sh
 
         echo "✅ Backblaze B2 configured!"
         ;;
@@ -51,7 +51,7 @@ case $CHOICE in
         # AWS S3 setup
         echo ""
         echo "📦 AWS S3 Setup:"
-        echo "1. Create S3 bucket: mobile-tracker-backups"
+        echo "1. Create S3 bucket: food-tracker-backups"
         echo "2. Create IAM user with S3 permissions"
         echo "3. Get access key and secret"
         echo ""
@@ -78,11 +78,11 @@ output = json
 EOF
 
         # Update backup script
-        sed -i "s|# if command -v aws|if command -v aws|" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
-        sed -i "s|#     log \"Uploading to S3...\"|    log \"Uploading to S3...\"|" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
-        sed -i "s|#     if aws s3 cp|    if aws s3 cp|" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
-        sed -i "s|# fi|fi|" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
-        sed -i "s|s3://your-bucket/mobile-tracker-app/|s3://$S3_BUCKET/mobile-tracker-app/|" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+        sed -i "s|# if command -v aws|if command -v aws|" /opt/food-tracker-app/scripts/backup-pocketbase.sh
+        sed -i "s|#     log \"Uploading to S3...\"|    log \"Uploading to S3...\"|" /opt/food-tracker-app/scripts/backup-pocketbase.sh
+        sed -i "s|#     if aws s3 cp|    if aws s3 cp|" /opt/food-tracker-app/scripts/backup-pocketbase.sh
+        sed -i "s|# fi|fi|" /opt/food-tracker-app/scripts/backup-pocketbase.sh
+        sed -i "s|s3://your-bucket/food-tracker-app/|s3://$S3_BUCKET/food-tracker-app/|" /opt/food-tracker-app/scripts/backup-pocketbase.sh
 
         echo "✅ AWS S3 configured!"
         ;;
@@ -98,7 +98,7 @@ EOF
 
         # Setup SSH key if not exists
         if [ ! -f ~/.ssh/id_rsa ]; then
-            ssh-keygen -t rsa -b 4096 -C "backup@mobile-tracker-app" -N "" -f ~/.ssh/id_rsa
+            ssh-keygen -t rsa -b 4096 -C "backup@food-tracker-app" -N "" -f ~/.ssh/id_rsa
             echo ""
             echo "Copy this public key to your remote server:"
             cat ~/.ssh/id_rsa.pub
@@ -117,7 +117,7 @@ EOF
         else\
             error_exit \"Rsync upload failed\"\
         fi\
-    fi" /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+    fi" /opt/food-tracker-app/scripts/backup-pocketbase.sh
 
         echo "✅ Rsync configured!"
         ;;
@@ -125,7 +125,7 @@ esac
 
 echo ""
 echo "Testing backup with remote storage..."
-bash /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+bash /opt/food-tracker-app/scripts/backup-pocketbase.sh
 
 echo ""
 echo "✅ Remote backup storage setup complete!"

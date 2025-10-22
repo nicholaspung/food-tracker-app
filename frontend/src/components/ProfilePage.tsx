@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { pb } from "@/lib/pocketbase";
 import { useQuery } from "@tanstack/react-query";
@@ -189,90 +188,88 @@ Looking forward to seeing you there!`;
   };
 
   return (
-    <div className="min-h-screen bg-background p-4" data-testid="profile-page">
-      <div className="w-full max-w-md mx-auto space-y-4 py-4">
-        {/* What's New Card - shown at top if there's a new release */}
+    <div className="flex flex-col h-full bg-gray-50" data-testid="profile-page">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-4">
+        <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
+        <p className="text-sm text-gray-500 mt-1">Your account information</p>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* What's New Banner - shown at top if there's a new release */}
         {hasNewReleaseInProfile && (
-          <Card className="border-blue-500 border-2 bg-blue-50" data-testid="profile-new-release-banner">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="default" className="bg-blue-600">
-                      New Update
-                    </Badge>
-                    <span className="text-xs font-semibold text-blue-900">
-                      v{latestVersion}
-                    </span>
-                  </div>
-                  <CardDescription className="text-blue-800 text-sm">
-                    {changelog?.[0]?.title}
-                  </CardDescription>
+          <div className="border-2 border-blue-500 bg-blue-50 rounded-lg p-4" data-testid="profile-new-release-banner">
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="default" className="bg-blue-600">
+                    New Update
+                  </Badge>
+                  <span className="text-xs font-semibold text-blue-900">
+                    v{latestVersion}
+                  </span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDismissProfileUpdate}
-                  className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-100"
-                  data-testid="dismiss-profile-update-button"
-                  aria-label="Dismiss update notification"
-                >
-                  ✕
-                </Button>
+                <p className="text-blue-800 text-sm">
+                  {changelog?.[0]?.title}
+                </p>
               </div>
-            </CardHeader>
-            <CardContent className="pt-0">
               <Button
-                onClick={handleViewWhatsNew}
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                data-testid="view-profile-whats-new-button"
+                variant="ghost"
+                size="sm"
+                onClick={handleDismissProfileUpdate}
+                className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                data-testid="dismiss-profile-update-button"
+                aria-label="Dismiss update notification"
               >
-                View What's New
+                ✕
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+            <Button
+              onClick={handleViewWhatsNew}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              data-testid="view-profile-whats-new-button"
+            >
+              View What's New
+            </Button>
+          </div>
         )}
 
-        <Card className="w-full">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center" data-testid="profile-title">
-              Profile
-            </CardTitle>
-            <CardDescription className="text-center" data-testid="profile-description">
-              Your account information
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="profile-error">
-                {error}
-              </div>
-            )}
+        {/* Error Message */}
+        {error && (
+          <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="profile-error">
+            {error}
+          </div>
+        )}
+
+        {/* User Information Section */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Account Details</h2>
 
           <div className="space-y-3">
-            <div className="p-4 bg-muted rounded-md" data-testid="user-info">
-              <div className="space-y-2">
+            <div className="p-4 bg-gray-50 rounded-md" data-testid="user-info">
+              <div className="space-y-3">
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">Email</p>
-                  <p className="text-sm font-medium" data-testid="user-email">
+                  <p className="text-xs font-medium text-gray-500">Email</p>
+                  <p className="text-sm font-medium text-gray-900" data-testid="user-email">
                     {user?.email || 'Unknown'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">User ID</p>
-                  <p className="text-sm font-mono text-xs" data-testid="user-id">
+                  <p className="text-xs font-medium text-gray-500">User ID</p>
+                  <p className="text-sm font-mono text-xs text-gray-700" data-testid="user-id">
                     {user?.id || 'Unknown'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">Email Verified</p>
-                  <p className="text-sm" data-testid="user-verified">
+                  <p className="text-xs font-medium text-gray-500">Email Verified</p>
+                  <p className="text-sm text-gray-900" data-testid="user-verified">
                     {user?.verified ? 'Yes' : 'No'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">Account Created</p>
-                  <p className="text-sm" data-testid="user-created">
+                  <p className="text-xs font-medium text-gray-500">Account Created</p>
+                  <p className="text-sm text-gray-900" data-testid="user-created">
                     {user?.created ? new Date(user.created).toLocaleDateString() : 'Unknown'}
                   </p>
                 </div>
@@ -281,9 +278,9 @@ Looking forward to seeing you there!`;
           </div>
 
           {/* Invite Codes Section */}
-          <div className="space-y-3 pt-4 border-t">
+          <div className="space-y-3 pt-4 border-t border-gray-200">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium">Your Invite Codes</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Your Invite Codes</h3>
               {isInitialUser && (
                 <Button
                   onClick={generateMoreCodes}
@@ -298,10 +295,10 @@ Looking forward to seeing you there!`;
               )}
             </div>
             {loadingCodes ? (
-              <p className="text-sm text-muted-foreground">Loading codes...</p>
+              <p className="text-sm text-gray-500">Loading codes...</p>
             ) : inviteCodes.length === 0 ? (
               <div className="text-center py-4">
-                <p className="text-sm text-muted-foreground mb-3">No invite codes available</p>
+                <p className="text-sm text-gray-500 mb-3">No invite codes available</p>
                 {isInitialUser && (
                   <Button
                     onClick={generateMoreCodes}
@@ -319,14 +316,14 @@ Looking forward to seeing you there!`;
                 {inviteCodes.map((inviteCode) => (
                   <div
                     key={inviteCode.id}
-                    className="flex items-center justify-between p-3 rounded-md border bg-background border-border"
+                    className="flex items-center justify-between p-3 rounded-md border bg-white border-gray-200"
                     data-testid={`invite-code-${inviteCode.code}`}
                   >
                     <div className="flex-1">
-                      <p className="font-mono text-sm font-medium">
+                      <p className="font-mono text-sm font-medium text-gray-900">
                         {inviteCode.code}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-gray-500 mt-1">
                         Available
                       </p>
                     </div>
@@ -346,39 +343,37 @@ Looking forward to seeing you there!`;
           </div>
 
           {!showConfirm ? (
-            <>
-              <div className="pt-4 border-t space-y-3">
-                <Button
-                  onClick={handleViewWhatsNew}
-                  variant="outline"
-                  className="w-full"
-                  data-testid="whats-new-button"
-                >
-                  What's New
-                </Button>
+            <div className="pt-4 border-t border-gray-200 space-y-3">
+              <Button
+                onClick={handleViewWhatsNew}
+                variant="outline"
+                className="w-full"
+                data-testid="whats-new-button"
+              >
+                What's New
+              </Button>
 
-                <Button
-                  onClick={handleLogout}
-                  variant="outline"
-                  className="w-full"
-                  data-testid="logout-button"
-                >
-                  Log Out
-                </Button>
+              <Button
+                onClick={handleLogout}
+                variant="outline"
+                className="w-full"
+                data-testid="logout-button"
+              >
+                Log Out
+              </Button>
 
-                <Button
-                  onClick={() => setShowConfirm(true)}
-                  variant="destructive"
-                  className="w-full"
-                  data-testid="delete-account-button"
-                  disabled={loading}
-                >
-                  Delete Account
-                </Button>
-              </div>
-            </>
+              <Button
+                onClick={() => setShowConfirm(true)}
+                variant="destructive"
+                className="w-full"
+                data-testid="delete-account-button"
+                disabled={loading}
+              >
+                Delete Account
+              </Button>
+            </div>
           ) : (
-            <div className="space-y-4 pt-2">
+            <div className="space-y-4 pt-4 border-t border-gray-200">
               <div className="p-4 bg-red-50 border border-red-200 rounded-md">
                 <p className="text-sm font-medium text-red-900">
                   Are you sure you want to delete your account?
@@ -410,8 +405,7 @@ Looking forward to seeing you there!`;
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
       </div>
     </div>
   );

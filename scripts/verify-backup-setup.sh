@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 BACKUP_DIR="/var/backups/pocketbase"
 LOG_FILE="/var/log/pocketbase-backup.log"
-BACKUP_SCRIPT="/opt/mobile-tracker-app/scripts/backup-pocketbase.sh"
+BACKUP_SCRIPT="/opt/food-tracker-app/scripts/backup-pocketbase.sh"
 
 pass() {
     echo -e "${GREEN}✓${NC} $1"
@@ -135,7 +135,7 @@ if command -v docker &> /dev/null; then
         pass "PocketBase container is running"
     else
         fail "PocketBase container is not running"
-        info "Run: cd /opt/mobile-tracker-app && docker compose up -d"
+        info "Run: cd /opt/food-tracker-app && docker compose up -d"
         exit 1
     fi
 else

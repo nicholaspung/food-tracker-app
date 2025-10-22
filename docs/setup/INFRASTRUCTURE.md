@@ -24,7 +24,7 @@
 ### VPS Directory Structure
 
 ```
-/opt/mobile-tracker-app/
+/opt/food-tracker-app/
 ├── docker-compose.yml          # Only PocketBase
 ├── frontend/                   # React source code (from Git)
 │   ├── src/
@@ -103,7 +103,7 @@ yourdomain.com {
 
     # Serve React static files directly from disk
     handle {
-        root * /opt/mobile-tracker-app/frontend_build
+        root * /opt/food-tracker-app/frontend_build
         try_files {path} /index.html  # SPA routing
         file_server
     }
@@ -122,7 +122,7 @@ yourdomain.com {
 ```yaml
 volumes:
   - ./pb_data:/pb/pb_data
-  # ./pb_data = Directory on VPS disk (/opt/mobile-tracker-app/pb_data)
+  # ./pb_data = Directory on VPS disk (/opt/food-tracker-app/pb_data)
   # /pb/pb_data = Path inside container
   # Data lives on VPS, container just accesses it
 ```
@@ -150,7 +150,7 @@ set -e
 echo "🚀 Deploying to VPS..."
 
 # 1. Pull latest code from Git
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 git pull origin main
 
 # 2. Build frontend (NOT in Docker!)
@@ -161,7 +161,7 @@ npm run build
 
 # 3. Deploy frontend with blue-green strategy
 echo "🔄 Deploying frontend (blue-green)..."
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 rm -rf frontend_build_new
 cp -r frontend/dist frontend_build_new
 rm -rf frontend_build_old
@@ -221,7 +221,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
-            cd /opt/mobile-tracker-app
+            cd /opt/food-tracker-app
             git pull origin main
             bash scripts/deploy.sh
 ```
@@ -237,8 +237,8 @@ jobs:
 # scripts/setup-vps.sh
 
 # Create application directory
-sudo mkdir -p /opt/mobile-tracker-app
-sudo chown $USER:$USER /opt/mobile-tracker-app
+sudo mkdir -p /opt/food-tracker-app
+sudo chown $USER:$USER /opt/food-tracker-app
 
 # Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
@@ -270,10 +270,10 @@ sudo dpkg-reconfigure -plow unattended-upgrades
 
 echo "✅ VPS setup complete!"
 echo "Next steps:"
-echo "1. Clone your repository to /opt/mobile-tracker-app"
+echo "1. Clone your repository to /opt/food-tracker-app"
 echo "2. Copy docker-compose.yml and configure environment variables"
 echo "3. Copy Caddyfile to /etc/caddy/Caddyfile"
-echo "4. Run: cd /opt/mobile-tracker-app && docker-compose up -d"
+echo "4. Run: cd /opt/food-tracker-app && docker-compose up -d"
 echo "5. Run: sudo systemctl restart caddy"
 ```
 
@@ -284,7 +284,7 @@ echo "5. Run: sudo systemctl restart caddy"
 # scripts/backup-pocketbase.sh
 
 # Stop container for consistent backup
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 docker-compose stop pocketbase
 
 # Backup database and files
@@ -318,7 +318,7 @@ docker cp pocketbase:/pb/pb_data/backup-*.db /var/backups/
 crontab -e
 
 # Add daily backup at 2 AM
-0 2 * * * /opt/mobile-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
+0 2 * * * /opt/food-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
 ```
 
 ### Database Safety Best Practices
@@ -383,14 +383,14 @@ crontab -e
 
 ## Environment Variables
 
-Create `.env` file in `/opt/mobile-tracker-app/`:
+Create `.env` file in `/opt/food-tracker-app/`:
 
 ```bash
 # .env.example
 # Copy to .env and fill in values
 
 # Application
-APP_NAME=mobile-tracker-app
+APP_NAME=food-tracker-app
 DOMAIN=yourdomain.com
 
 # Email for Let's Encrypt
@@ -416,7 +416,7 @@ TZ=America/Los_Angeles
 bash scripts/setup-vps.sh
 
 # 2. Clone repository
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 git clone <your-repo-url> .
 
 # 3. Create environment file
@@ -440,7 +440,7 @@ cp -r frontend/dist frontend_build
 # 7. Setup automated backups
 sudo mkdir -p /var/backups/pocketbase
 crontab -e
-# Add: 0 2 * * * /opt/mobile-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
+# Add: 0 2 * * * /opt/food-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
 
 echo "✅ Deployment complete! Visit https://$DOMAIN"
 ```

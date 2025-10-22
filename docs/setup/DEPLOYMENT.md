@@ -129,14 +129,14 @@ Create the app directory and clone your repository:
 
 ```bash
 # Create the app directory
-sudo mkdir -p /opt/mobile-tracker-app
+sudo mkdir -p /opt/food-tracker-app
 
 # Take ownership of the directory
-sudo chown $USER:$USER /opt/mobile-tracker-app
+sudo chown $USER:$USER /opt/food-tracker-app
 
 # Clone the repository
-cd /opt/mobile-tracker-app
-git clone git@github.com:nicholaspung/mobile-tracker-app.git .
+cd /opt/food-tracker-app
+git clone git@github.com:nicholaspung/food-tracker-app.git .
 
 # Configure git to ignore file permission changes (important for deployment)
 git config core.fileMode false
@@ -149,7 +149,7 @@ git config core.fileMode false
 Run the VPS setup script from the cloned repository:
 
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 bash scripts/setup-vps.sh
 ```
 
@@ -180,7 +180,7 @@ This script is gitignored and won't be committed to your repository.
 After logging back in, run the automated post-setup script:
 
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 bash scripts/post-setup.sh
 ```
 
@@ -191,7 +191,7 @@ This will automatically:
 - ✅ Build PocketBase Docker image from your Go application
 - ✅ Start PocketBase container with proper permissions
 - ✅ Build the React frontend (npm install + build)
-- ✅ Deploy frontend to `/opt/mobile-tracker-app/frontend_build`
+- ✅ Deploy frontend to `/opt/food-tracker-app/frontend_build`
 
 **When prompted:**
 - Press `Y` to use defaults (Domain: `trackmyfoods.com`, Email: `nicholaspungdev@gmail.com`)
@@ -237,10 +237,10 @@ sudo chown $USER:$USER /var/log/pocketbase-backup.log
 sudo chmod 644 /var/log/pocketbase-backup.log
 
 # Make backup script executable
-chmod +x /opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+chmod +x /opt/food-tracker-app/scripts/backup-pocketbase.sh
 
 # Test the backup script
-/opt/mobile-tracker-app/scripts/backup-pocketbase.sh
+/opt/food-tracker-app/scripts/backup-pocketbase.sh
 
 # Setup cron job for daily backups at 2 AM
 crontab -e
@@ -248,16 +248,16 @@ crontab -e
 
 Add this line to the crontab:
 ```
-0 2 * * * /opt/mobile-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
+0 2 * * * /opt/food-tracker-app/scripts/backup-pocketbase.sh >> /var/log/pocketbase-backup.log 2>&1
 ```
 
 **Verify the backup setup:**
 ```bash
 # Make the verification script executable
-chmod +x /opt/mobile-tracker-app/scripts/verify-backup-setup.sh
+chmod +x /opt/food-tracker-app/scripts/verify-backup-setup.sh
 
 # Run the verification script
-bash /opt/mobile-tracker-app/scripts/verify-backup-setup.sh
+bash /opt/food-tracker-app/scripts/verify-backup-setup.sh
 ```
 
 This script checks:
@@ -279,7 +279,7 @@ Encrypts sensitive application settings like SMTP passwords, S3 credentials, and
 
 **On your VPS:**
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 
 # Generate encryption keys
 bash scripts/generate-encryption-keys.sh
@@ -372,7 +372,7 @@ Enable built-in PocketBase security features via the admin UI.
 
 **Setup:**
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 sudo bash scripts/setup-filesystem-encryption.sh
 ```
 
@@ -416,7 +416,7 @@ Visit in browser: `https://trackmyfoods.com`
 After the initial setup, deployments are simple:
 
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 bash scripts/deploy.sh
 ```
 
@@ -467,7 +467,7 @@ dig www.trackmyfoods.com
 SSH into your VPS and run the automated beta setup script:
 
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 
 # Make the script executable
 chmod +x scripts/setup-beta.sh
@@ -486,7 +486,7 @@ This script will automatically:
 
 If you prefer to set up manually:
 ```bash
-cd /opt/mobile-tracker-app/backend
+cd /opt/food-tracker-app/backend
 mkdir -p pb_data_beta pb_data_production
 
 # Move existing data to production folder
@@ -495,7 +495,7 @@ if [ -d "pb_data" ]; then
 fi
 
 # Create beta PocketBase admin (first time)
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 docker compose -f docker-compose.beta.yml up -d
 
 # Deploy beta frontend
@@ -513,7 +513,7 @@ docker compose -f docker-compose.beta.yml logs pocketbase_beta | grep "pbinstal"
 If production suddenly asks for a superuser after moving directories:
 
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 
 # Stop containers
 docker compose down
@@ -537,7 +537,7 @@ rm -rf backend/pb_data_production.old
 
 Deploy the updated Caddyfile (already configured for both environments):
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 sudo cp Caddyfile /etc/caddy/Caddyfile
 sudo systemctl restart caddy
 sudo systemctl status caddy
@@ -685,13 +685,13 @@ You can also manually deploy from the VPS:
 
 **Deploy to Beta:**
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 bash scripts/deploy.sh beta
 ```
 
 **Deploy to Production:**
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 bash scripts/deploy.sh production
 ```
 
@@ -777,10 +777,10 @@ docker compose restart pocketbase
 ### Frontend showing old version
 ```bash
 # Check build directory
-ls -la /opt/mobile-tracker-app/frontend_build/
+ls -la /opt/food-tracker-app/frontend_build/
 
 # Rebuild and deploy
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 bash scripts/deploy.sh
 ```
 
@@ -810,7 +810,7 @@ journalctl -f
 **Check disk space:**
 ```bash
 df -h
-du -sh /opt/mobile-tracker-app/pb_data/
+du -sh /opt/food-tracker-app/pb_data/
 ```
 
 **List backups:**
