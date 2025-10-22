@@ -37,14 +37,14 @@ if [[ "$ENVIRONMENT" == "beta" ]]; then
     POCKETBASE_SERVICE="pocketbase_beta"
     FRONTEND_BUILD_DIR="frontend_build_beta"
     COMPOSE_FILE="docker-compose.beta.yml"
-    DOMAIN="beta.trackmyfoods.com"
+    DOMAIN="beta.trackyourfoods.com"
 else
     POCKETBASE_PORT="8090"
     POCKETBASE_CONTAINER="pocketbase"
     POCKETBASE_SERVICE="pocketbase"
     FRONTEND_BUILD_DIR="frontend_build"
     COMPOSE_FILE="docker-compose.yml"
-    DOMAIN="trackmyfoods.com"
+    DOMAIN="trackyourfoods.com"
 fi
 
 #######################

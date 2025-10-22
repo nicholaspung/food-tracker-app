@@ -27,9 +27,9 @@ The GitHub Actions deployment workflow has been simplified to **deployment-only*
 - WWW: `www.myexperiment.life`
 
 **New Domain:**
-- Production: `trackmyfoods.com`
-- Beta: `beta.trackmyfoods.com`
-- WWW: `www.trackmyfoods.com`
+- Production: `trackyourfoods.com`
+- Beta: `beta.trackyourfoods.com`
+- WWW: `www.trackyourfoods.com`
 
 **Files Updated:**
 - `.github/workflows/deploy.yml` - Deployment workflow
@@ -58,7 +58,7 @@ on:
 
 jobs:
   deploy-beta:
-    # Automatically deploys to beta.trackmyfoods.com on push to main
+    # Automatically deploys to beta.trackyourfoods.com on push to main
     - Checkout code
     - SSH to VPS
     - Run deployment script
@@ -84,7 +84,7 @@ jobs:
    - Pre-push hook automatically runs Cypress tests
    - If tests fail → Push blocked, fix tests locally
    - If tests pass → Code pushed to GitHub
-4. **GitHub automatically deploys to beta:** `beta.trackmyfoods.com`
+4. **GitHub automatically deploys to beta:** `beta.trackyourfoods.com`
 5. **Test beta environment** manually
 6. **Promote to production** (manual, via GitHub UI)
 
@@ -115,13 +115,13 @@ git push --no-verify
 
 **Beta Deployment (Automatic):**
 - Trigger: Push to `main` branch
-- Target: `beta.trackmyfoods.com`
+- Target: `beta.trackyourfoods.com`
 - Actions: Pull code → Deploy → Health check
 - Time: ~30 seconds
 
 **Production Deployment (Manual):**
 - Trigger: GitHub Actions UI → "Run workflow" → Select "production"
-- Target: `trackmyfoods.com`
+- Target: `trackyourfoods.com`
 - Actions: Pull code → Deploy → Health check
 - Time: ~30 seconds
 
@@ -153,7 +153,7 @@ git push --no-verify
   - Food tracker (restaurants, food items, ratings)
 
 ### Manual Testing (Beta)
-- **Environment:** `beta.trackmyfoods.com`
+- **Environment:** `beta.trackyourfoods.com`
 - **When:** After every beta deployment
 - **What to test:**
   - New features work as expected
@@ -172,15 +172,15 @@ git push --no-verify
 If you're setting up a new VPS or migrating:
 
 ### DNS Setup
-- [ ] Add A record: `trackmyfoods.com` → VPS IP
-- [ ] Add A record: `beta.trackmyfoods.com` → VPS IP
-- [ ] Add A record: `www.trackmyfoods.com` → VPS IP
-- [ ] Verify DNS propagation: `dig trackmyfoods.com`
+- [ ] Add A record: `trackyourfoods.com` → VPS IP
+- [ ] Add A record: `beta.trackyourfoods.com` → VPS IP
+- [ ] Add A record: `www.trackyourfoods.com` → VPS IP
+- [ ] Verify DNS propagation: `dig trackyourfoods.com`
 
 ### VPS Configuration
 - [ ] Update Caddyfile: `sudo cp Caddyfile /etc/caddy/Caddyfile`
 - [ ] Restart Caddy: `sudo systemctl restart caddy`
-- [ ] Verify domains: `curl https://trackmyfoods.com`
+- [ ] Verify domains: `curl https://trackyourfoods.com`
 
 ### GitHub Secrets
 - [ ] `VPS_HOST` - Your VPS IP address

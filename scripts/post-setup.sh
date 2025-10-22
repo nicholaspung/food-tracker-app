@@ -17,8 +17,8 @@ APP_DIR="/opt/food-tracker-app"
 LOG_FILE="/tmp/food-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
 LOCK_FILE="/tmp/food-tracker-post-setup.lock"
 
-# Default values (pre-configured for trackmyfoods.com)
-DOMAIN="${DOMAIN:-trackmyfoods.com}"
+# Default values (pre-configured for trackyourfoods.com)
+DOMAIN="${DOMAIN:-trackyourfoods.com}"
 EMAIL="${EMAIL:-nicholaspungdev@gmail.com}"
 
 #######################
