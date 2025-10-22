@@ -23,11 +23,11 @@ if [[ "$ENVIRONMENT" != "beta" && "$ENVIRONMENT" != "production" ]]; then
 fi
 
 # Configuration based on environment
-APP_DIR="/opt/mobile-tracker-app"
-LOG_DIR="/opt/mobile-tracker-app/logs"
+APP_DIR="/opt/food-tracker-app"
+LOG_DIR="/opt/food-tracker-app/logs"
 LOG_FILE="${LOG_DIR}/deploy-${ENVIRONMENT}.log"
-LOCK_FILE="/tmp/mobile-tracker-deploy-${ENVIRONMENT}.lock"
-BACKUP_DIR="/opt/mobile-tracker-backups/${ENVIRONMENT}"
+LOCK_FILE="/tmp/food-tracker-deploy-${ENVIRONMENT}.lock"
+BACKUP_DIR="/opt/food-tracker-backups/${ENVIRONMENT}"
 MAX_BACKUPS=5
 
 # Environment-specific configuration
@@ -195,8 +195,8 @@ create_backup() {
     # Ensure backup directory exists with proper permissions
     if [ ! -d "$BACKUP_DIR" ]; then
         sudo mkdir -p "$BACKUP_DIR"
-        sudo chown -R $USER:$USER /opt/mobile-tracker-backups
-        sudo chmod 755 /opt/mobile-tracker-backups
+        sudo chown -R $USER:$USER /opt/food-tracker-backups
+        sudo chmod 755 /opt/food-tracker-backups
     fi
 
     mkdir -p "$backup_path"

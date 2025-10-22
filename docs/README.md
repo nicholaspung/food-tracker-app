@@ -161,7 +161,7 @@ All deployment scripts are in `/scripts/`:
 ## 🆘 Emergency Contacts
 
 - **Primary Admin**: 22228236+nicholaspung@users.noreply.github.com
-- **Repository**: https://github.com/nicholaspung/mobile-tracker-app
+- **Repository**: https://github.com/nicholaspung/food-tracker-app
 - **Live App**: https://trackmyfoods.com
 - **Admin Panel**: https://trackmyfoods.com/_/
 

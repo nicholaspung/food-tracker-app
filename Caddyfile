@@ -93,7 +93,7 @@ trackmyfoods.com {
 
     # Serve React static files with aggressive caching
     handle {
-        root * /opt/mobile-tracker-app/frontend_build
+        root * /opt/food-tracker-app/frontend_build
 
         # Cache static assets (JS, CSS, images, fonts) for 1 year
         @static {
@@ -216,7 +216,7 @@ beta.trackmyfoods.com {
 
     # Serve React static files with aggressive caching - Beta
     handle {
-        root * /opt/mobile-tracker-app/frontend_build_beta
+        root * /opt/food-tracker-app/frontend_build_beta
 
         # Cache static assets (JS, CSS, images, fonts) for 1 year
         @static {

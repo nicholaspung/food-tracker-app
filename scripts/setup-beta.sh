@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-APP_DIR="/opt/mobile-tracker-app"
+APP_DIR="/opt/food-tracker-app"
 BACKEND_DIR="$APP_DIR/backend"
 
 pass() {

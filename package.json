@@ -1,5 +1,5 @@
 {
-  "name": "mobile-tracker-app",
+  "name": "food-tracker-app",
   "version": "1.0.0",
   "description": "Mobile tracker application with React frontend and Go backend",
   "scripts": {

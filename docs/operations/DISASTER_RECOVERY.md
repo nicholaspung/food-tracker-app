@@ -19,7 +19,7 @@
 1. **Provision new VPS**
    ```bash
    # On new VPS
-   curl -o setup-vps.sh https://raw.githubusercontent.com/nicholaspung/mobile-tracker-app/master/scripts/setup-vps.sh
+   curl -o setup-vps.sh https://raw.githubusercontent.com/nicholaspung/food-tracker-app/master/scripts/setup-vps.sh
    chmod +x setup-vps.sh
    ./setup-vps.sh
    ```
@@ -28,17 +28,17 @@
 
 3. **Clone repository**
    ```bash
-   cd /opt/mobile-tracker-app
-   git clone https://github.com/nicholaspung/mobile-tracker-app.git .
+   cd /opt/food-tracker-app
+   git clone https://github.com/nicholaspung/food-tracker-app.git .
    ```
 
 4. **Restore from remote backup**
    ```bash
    # Download latest backup from S3/B2/Rsync
-   aws s3 cp s3://your-bucket/mobile-tracker-app/pb-LATEST.tar.gz /tmp/
+   aws s3 cp s3://your-bucket/food-tracker-app/pb-LATEST.tar.gz /tmp/
 
    # Or from Backblaze B2
-   b2 download-file-by-name mobile-tracker-backups pocketbase/pb-LATEST.tar.gz /tmp/pb-LATEST.tar.gz
+   b2 download-file-by-name food-tracker-backups pocketbase/pb-LATEST.tar.gz /tmp/pb-LATEST.tar.gz
 
    # Extract to pb_data
    mkdir -p backend/pb_data
@@ -72,7 +72,7 @@
 
 1. **Stop PocketBase**
    ```bash
-   cd /opt/mobile-tracker-app
+   cd /opt/food-tracker-app
    docker-compose down pocketbase
    ```
 
@@ -115,13 +115,13 @@
 
 #### Manual rollback:
 ```bash
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 
 # List available backups
-ls -lt /opt/mobile-tracker-backups/
+ls -lt /opt/food-tracker-backups/
 
 # Choose backup to restore
-BACKUP_DIR=/opt/mobile-tracker-backups/20250106_143022
+BACKUP_DIR=/opt/food-tracker-backups/20250106_143022
 
 # Restore frontend
 rm -rf frontend_build
@@ -181,7 +181,7 @@ sudo systemctl reload caddy
 1. **Check disk usage**
    ```bash
    df -h
-   du -sh /opt/mobile-tracker-app/* | sort -h
+   du -sh /opt/food-tracker-app/* | sort -h
    du -sh /var/backups/pocketbase/* | sort -h
    ```
 
@@ -189,7 +189,7 @@ sudo systemctl reload caddy
    ```bash
    # Remove backups older than 3 days
    find /var/backups/pocketbase -name "pb-*.tar.gz" -mtime +3 -delete
-   find /opt/mobile-tracker-backups -type d -mtime +7 -exec rm -rf {} +
+   find /opt/food-tracker-backups -type d -mtime +7 -exec rm -rf {} +
    ```
 
 3. **Clean Docker**
@@ -205,7 +205,7 @@ sudo systemctl reload caddy
 
 5. **Emergency: Clean node_modules**
    ```bash
-   rm -rf /opt/mobile-tracker-app/frontend/node_modules
+   rm -rf /opt/food-tracker-app/frontend/node_modules
    ```
 
 ---
@@ -303,7 +303,7 @@ rm -rf $TEST_DIR
 
 1. **Check automated rollback** (automatic on deployment failure)
 2. **Check logs** in `/var/log/`
-3. **Try manual rollback** from `/opt/mobile-tracker-backups/`
+3. **Try manual rollback** from `/opt/food-tracker-backups/`
 4. **Restore from remote backup** (S3/B2)
 5. **Rebuild VPS from scratch** (2-4 hours)
 6. **Contact emergency support** (if configured)
@@ -316,15 +316,15 @@ Before major changes, backup:
 ```bash
 # Configuration
 /etc/caddy/Caddyfile
-/opt/mobile-tracker-app/docker-compose.yml
-/opt/mobile-tracker-app/.env
-/opt/mobile-tracker-app/frontend/.env
+/opt/food-tracker-app/docker-compose.yml
+/opt/food-tracker-app/.env
+/opt/food-tracker-app/frontend/.env
 
 # Database
-/opt/mobile-tracker-app/backend/pb_data/
+/opt/food-tracker-app/backend/pb_data/
 
 # Scripts (already in git)
-/opt/mobile-tracker-app/scripts/
+/opt/food-tracker-app/scripts/
 ```
 
 ---
@@ -344,7 +344,7 @@ docker-compose restart
 sudo systemctl restart caddy
 
 # Nuclear option (clean slate)
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 docker-compose down
 rm -rf frontend_build
 bash scripts/deploy.sh
@@ -368,7 +368,7 @@ bash scripts/deploy.sh
 
 **In case of emergency:**
 1. Email: 22228236+nicholaspung@users.noreply.github.com
-2. GitHub Issues: https://github.com/nicholaspung/mobile-tracker-app/issues
+2. GitHub Issues: https://github.com/nicholaspung/food-tracker-app/issues
 3. Check monitoring alerts (healthchecks.io, Uptime Robot)
 
 **Service Providers:**

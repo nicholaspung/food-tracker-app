@@ -6,7 +6,7 @@ set -euo pipefail
 
 # Configuration
 BACKUP_DIR="/var/backups/pocketbase"
-APP_DIR="/opt/mobile-tracker-app"
+APP_DIR="/opt/food-tracker-app"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 TEMP_BACKUP_DIR="$BACKUP_DIR/temp-$TIMESTAMP"
 BACKUP_FILE="$BACKUP_DIR/pb-$TIMESTAMP.tar.gz"
@@ -173,7 +173,7 @@ upload_to_remote() {
     # Example: Upload to AWS S3 (uncomment and configure)
     # if command -v aws &> /dev/null; then
     #     log "Uploading to S3..."
-    #     if aws s3 cp "$BACKUP_FILE" "s3://your-bucket/mobile-tracker-app/" \
+    #     if aws s3 cp "$BACKUP_FILE" "s3://your-bucket/food-tracker-app/" \
     #         --storage-class STANDARD_IA \
     #         --metadata "timestamp=$TIMESTAMP,verified=true"; then
     #         log "S3 upload successful"
@@ -186,7 +186,7 @@ upload_to_remote() {
     # if command -v rsync &> /dev/null; then
     #     log "Uploading to remote server..."
     #     if rsync -avz --timeout=300 "$BACKUP_FILE" \
-    #         backup-user@backup-server.com:/backups/mobile-tracker-app/; then
+    #         backup-user@backup-server.com:/backups/food-tracker-app/; then
     #         log "Rsync upload successful"
     #     else
     #         error_exit "Rsync upload failed"

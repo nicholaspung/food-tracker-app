@@ -230,7 +230,7 @@ ls -la .git/hooks/pre-push
 ssh deploy@YOUR_VPS_IP
 
 # Check logs
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 docker compose -f docker-compose.beta.yml logs pocketbase_beta
 ```
 
@@ -240,7 +240,7 @@ docker compose -f docker-compose.beta.yml logs pocketbase_beta
 ssh deploy@YOUR_VPS_IP
 
 # Check logs
-cd /opt/mobile-tracker-app
+cd /opt/food-tracker-app
 docker compose logs pocketbase
 ```
 

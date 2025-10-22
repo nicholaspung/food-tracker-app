@@ -1,9 +1,19 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, Visit, Restaurant, FoodItem } from '@/lib/pocketbase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar, MapPin, Utensils, Pencil, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Calendar, MapPin, Utensils, Pencil, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 
 const RATING_LABELS = [
   "Don't eat ever",
@@ -21,7 +31,7 @@ const RATING_COLORS = [
   'bg-green-500',
 ];
 
-interface VisitWithDetails extends Visit {
+interface VisitWithDetails extends Omit<Visit, 'restaurant'> {
   restaurant?: Restaurant;
   foodItems?: FoodItem[];
 }
@@ -38,7 +48,8 @@ function getMonthKey(date: string): string {
 
 // Helper to get day key (YYYY-MM-DD)
 function getDayKey(date: string): string {
-  return date.split('T')[0];
+  // Handle both ISO format (YYYY-MM-DDTHH:mm:ss) and PocketBase format (YYYY-MM-DD HH:mm:ss)
+  return date.split(/[T ]/)[0];
 }
 
 // Helper to format month label
@@ -65,6 +76,8 @@ function getDateMonthsAgo(months: number): Date {
 export default function HomePage({ onEditVisit }: HomePageProps = {}) {
   const [monthsToLoad, setMonthsToLoad] = useState(1); // Start with 1 month
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set([getMonthKey(new Date().toISOString())])); // Current month expanded by default
+  const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(null);
+  const queryClient = useQueryClient();
 
   // Fetch all visits
   const { data: visits = [], isLoading: visitsLoading } = useQuery<Visit[]>({
@@ -91,6 +104,25 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
       return await pb.collection('food_items').getFullList({
         sort: '-created',
       });
+    },
+  });
+
+  // Delete visit mutation
+  const deleteVisitMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      // First delete all food items associated with this visit
+      const foodItemsToDelete = foodItems.filter(item => item.visit === visitId);
+      await Promise.all(
+        foodItemsToDelete.map(item => pb.collection('food_items').delete(item.id))
+      );
+      // Then delete the visit
+      await pb.collection('visits').delete(visitId);
+    },
+    onSuccess: () => {
+      // Invalidate and refetch queries
+      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
+      queryClient.invalidateQueries({ queryKey: ['allFoodItems'] });
+      setVisitToDelete(null);
     },
   });
 
@@ -257,14 +289,25 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
                                   {visit.restaurant?.cuisineType && ` • ${visit.restaurant.cuisineType}`}
                                 </CardDescription>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onEditVisit?.(visit.id)}
-                                data-testid={`edit-visit-${visit.id}`}
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onEditVisit?.(visit.id)}
+                                  data-testid={`edit-visit-${visit.id}`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setVisitToDelete(visit)}
+                                  data-testid={`delete-visit-${visit.id}`}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </div>
                           </CardHeader>
                           <CardContent>
@@ -320,6 +363,66 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!visitToDelete} onOpenChange={(open) => !open && setVisitToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Visit?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Are you sure you want to delete this visit? This action cannot be undone.
+                </p>
+                {visitToDelete && (
+                  <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                    <div>
+                      <p className="font-semibold text-gray-900">{visitToDelete.restaurant?.name}</p>
+                      <p className="text-sm text-gray-600">
+                        {visitToDelete.restaurant?.location}
+                        {visitToDelete.restaurant?.cuisineType && ` • ${visitToDelete.restaurant.cuisineType}`}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(visitToDelete.visitDate).toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                      </p>
+                    </div>
+                    {visitToDelete.foodItems && visitToDelete.foodItems.length > 0 && (
+                      <div className="border-t border-gray-200 pt-2">
+                        <p className="text-sm font-medium text-gray-700 mb-1">
+                          This will also delete {visitToDelete.foodItems.length} food item{visitToDelete.foodItems.length !== 1 ? 's' : ''}:
+                        </p>
+                        <ul className="text-sm text-gray-600 space-y-1">
+                          {visitToDelete.foodItems.map((item) => (
+                            <li key={item.id} className="flex items-center gap-2">
+                              <span className="text-gray-400">•</span>
+                              <span>{item.name}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteVisitMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => visitToDelete && deleteVisitMutation.mutate(visitToDelete.id)}
+              disabled={deleteVisitMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleteVisitMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

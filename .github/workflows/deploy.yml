@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy to'
+        description: "Environment to deploy to"
         required: true
         type: choice
         options:
           - production
-        default: 'production'
+        default: "production"
 
 jobs:
   deploy-beta:
@@ -33,7 +33,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
-            cd /opt/mobile-tracker-app
+            cd /opt/food-tracker-app
             git pull origin main
             bash scripts/deploy.sh beta
 
@@ -73,7 +73,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
-            cd /opt/mobile-tracker-app
+            cd /opt/food-tracker-app
             git pull origin main
             bash scripts/deploy.sh production
 

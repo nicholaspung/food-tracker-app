@@ -92,12 +92,12 @@ update_system() {
 create_app_directory() {
     step "Creating application directory..."
 
-    if [ -d "/opt/mobile-tracker-app" ]; then
-        log "Directory /opt/mobile-tracker-app already exists"
+    if [ -d "/opt/food-tracker-app" ]; then
+        log "Directory /opt/food-tracker-app already exists"
     else
-        sudo mkdir -p /opt/mobile-tracker-app
-        sudo chown $USER:$USER /opt/mobile-tracker-app
-        log "Created /opt/mobile-tracker-app ✓"
+        sudo mkdir -p /opt/food-tracker-app
+        sudo chown $USER:$USER /opt/food-tracker-app
+        log "Created /opt/food-tracker-app ✓"
     fi
 }
 
@@ -395,8 +395,8 @@ main() {
     echo "   ssh $(whoami)@$(hostname -I | awk '{print $1}')"
     echo ""
     echo "2. ${BLUE}Clone your repository:${NC}"
-    echo "   cd /opt/mobile-tracker-app"
-    echo "   git clone https://github.com/nicholaspung/mobile-tracker-app.git ."
+    echo "   cd /opt/food-tracker-app"
+    echo "   git clone https://github.com/nicholaspung/food-tracker-app.git ."
     echo ""
     echo "3. ${BLUE}Run automated deployment:${NC}"
     echo "   bash scripts/post-setup.sh"

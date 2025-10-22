@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="/opt/mobile-tracker-app"
+APP_DIR="/opt/food-tracker-app"
 ENCRYPTED_MOUNT="/mnt/encrypted_pocketbase"
 ENCRYPTION_KEY_FILE="/root/.pocketbase-encryption-key"
 LUKS_DEVICE="/dev/mapper/encrypted_pocketbase"

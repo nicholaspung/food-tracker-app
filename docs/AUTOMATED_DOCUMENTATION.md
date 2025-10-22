@@ -236,7 +236,7 @@ Location: `.claude/subagents/pre-push-documentation.md`
 ## Files in the System
 
 ```
-mobile-tracker-app/
+food-tracker-app/
 ├── .claude/
 │   ├── hooks/
 │   │   └── tool-call.sh              # Intercepts git push commands
