@@ -10,8 +10,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "cypress:open": "cypress open",
-    "cypress:run": "cypress run",
-    "test:e2e": "start-server-and-test dev http://localhost:1420 cypress:run"
+    "cypress:run": "cypress run"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.0.1",
