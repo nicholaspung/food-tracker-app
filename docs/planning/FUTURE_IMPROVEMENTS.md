@@ -62,7 +62,7 @@ send_notification() {
 # Usage
 send_notification \
     "Deployment Complete" \
-    "Mobile Tracker App deployed successfully to production\nhttps://trackmyfoods.com" \
+    "Mobile Tracker App deployed successfully to production\nhttps://trackyourfoods.com" \
     "success"
 ```
 
@@ -124,7 +124,7 @@ For deployment notifications within GitHub:
         repo: context.repo.repo,
         sha: context.sha,
         state: '${{ job.status }}',
-        target_url: 'https://trackmyfoods.com',
+        target_url: 'https://trackyourfoods.com',
         description: 'Deployment ${{ job.status }}',
         context: 'Production Deployment'
       })

@@ -20,7 +20,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: beta
-      url: https://beta.trackmyfoods.com
+      url: https://beta.trackyourfoods.com
 
     steps:
       - uses: actions/checkout@v3
@@ -40,14 +40,14 @@ jobs:
       - name: Health check Beta
         run: |
           sleep 10
-          curl -f https://beta.trackmyfoods.com/api/health || exit 1
+          curl -f https://beta.trackyourfoods.com/api/health || exit 1
 
       - name: Beta deployment summary
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             echo "✅ Beta deployment completed successfully"
-            echo "🌐 Beta App: https://beta.trackmyfoods.com"
+            echo "🌐 Beta App: https://beta.trackyourfoods.com"
             echo "📋 All tests passed locally via pre-push hook"
           else
             echo "❌ Beta deployment failed"
@@ -60,7 +60,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
     environment:
       name: production
-      url: https://trackmyfoods.com
+      url: https://trackyourfoods.com
 
     steps:
       - uses: actions/checkout@v3
@@ -80,14 +80,14 @@ jobs:
       - name: Health check Production
         run: |
           sleep 10
-          curl -f https://trackmyfoods.com/api/health || exit 1
+          curl -f https://trackyourfoods.com/api/health || exit 1
 
       - name: Production deployment summary
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             echo "✅ Production deployment completed successfully"
-            echo "🌐 Production App: https://trackmyfoods.com"
+            echo "🌐 Production App: https://trackyourfoods.com"
             echo "📋 All tests passed locally via pre-push hook"
           else
             echo "❌ Production deployment failed"

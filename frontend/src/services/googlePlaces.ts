@@ -1,10 +1,8 @@
-import { Loader } from '@googlemaps/js-api-loader';
 import { PlaceResult } from '@/lib/pocketbase';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
 
 let googleMapsLoaded = false;
-let placesService: google.maps.places.PlacesService | null = null;
 
 export interface NearbySearchParams {
   latitude: number;
@@ -13,11 +11,67 @@ export interface NearbySearchParams {
 }
 
 /**
+ * Load Google Maps API using the bootstrap loader
+ * This sets up the importLibrary function on the global window object
+ */
+function loadGoogleMapsBootstrap(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Check if bootstrap loader is already installed
+    if (typeof window.google?.maps?.importLibrary === 'function') {
+      resolve();
+      return;
+    }
+
+    // Check if script is already being loaded
+    const existingScript = document.querySelector(
+      'script[data-google-maps-bootstrap]'
+    );
+    if (existingScript) {
+      // Wait for it to load
+      const checkInterval = setInterval(() => {
+        if (typeof window.google?.maps?.importLibrary === 'function') {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 100);
+      return;
+    }
+
+    // Create the bootstrap loader script
+    const script = document.createElement('script');
+    script.setAttribute('data-google-maps-bootstrap', 'true');
+
+    // Bootstrap loader code from Google's documentation
+    script.text = `
+      (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=\`https://maps.\${c}apis.com/maps/api/js?\`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
+        key: "${API_KEY}",
+        v: "weekly",
+      });
+    `;
+
+    script.onload = () => {
+      // Wait a bit for the bootstrap to initialize
+      setTimeout(() => {
+        if (typeof window.google?.maps?.importLibrary === 'function') {
+          resolve();
+        } else {
+          reject(new Error('Bootstrap loader failed to initialize'));
+        }
+      }, 100);
+    };
+
+    script.onerror = () => reject(new Error('Failed to load Google Maps bootstrap'));
+
+    document.head.appendChild(script);
+  });
+}
+
+/**
  * Initialize Google Maps JavaScript API
  * Only loads once per session
  */
 async function initGoogleMaps(): Promise<void> {
-  if (googleMapsLoaded && placesService) {
+  if (googleMapsLoaded) {
     return;
   }
 
@@ -27,30 +81,14 @@ async function initGoogleMaps(): Promise<void> {
     );
   }
 
-  const loader = new Loader({
-    apiKey: API_KEY,
-    version: 'weekly',
-    libraries: ['places'],
-  });
+  // Load the bootstrap loader
+  await loadGoogleMapsBootstrap();
 
-  await loader.load();
-
-  // Create a hidden div for PlacesService (required by Google Maps API)
-  let mapDiv = document.getElementById('places-service-map');
-  if (!mapDiv) {
-    mapDiv = document.createElement('div');
-    mapDiv.id = 'places-service-map';
-    mapDiv.style.display = 'none';
-    document.body.appendChild(mapDiv);
-  }
-
-  const map = new google.maps.Map(mapDiv as HTMLElement);
-  placesService = new google.maps.places.PlacesService(map);
   googleMapsLoaded = true;
 }
 
 /**
- * Search for nearby restaurants using Google Places API
+ * Search for nearby restaurants using the new Google Places API
  * This should ONLY be called when user explicitly requests nearby search
  */
 export async function searchNearbyRestaurants(
@@ -61,40 +99,50 @@ export async function searchNearbyRestaurants(
   // Initialize Google Maps if not already loaded
   await initGoogleMaps();
 
-  if (!placesService) {
-    throw new Error('Failed to initialize Google Places service');
-  }
+  // Import the places library using the new API
+  const { Place } = (await google.maps.importLibrary(
+    'places'
+  )) as google.maps.PlacesLibrary;
 
-  return new Promise((resolve, reject) => {
-    const request: google.maps.places.PlaceSearchRequest = {
-      location: new google.maps.LatLng(latitude, longitude),
+  const center = { lat: latitude, lng: longitude };
+
+  const request: google.maps.places.SearchNearbyRequest = {
+    fields: ['displayName', 'location', 'types', 'id', 'formattedAddress'],
+    locationRestriction: {
+      center,
       radius,
-      type: 'restaurant',
-    };
+    },
+    includedTypes: ['restaurant'],
+    maxResultCount: 20,
+    rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
+  };
 
-    placesService!.nearbySearch(request, (results, status) => {
-      if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-        // Transform to our PlaceResult interface
-        const places: PlaceResult[] = results.map((place) => ({
-          place_id: place.place_id || '',
-          name: place.name || 'Unknown Restaurant',
-          vicinity: place.vicinity || '',
-          types: place.types || [],
-          geometry: {
-            location: {
-              lat: place.geometry?.location?.lat() || 0,
-              lng: place.geometry?.location?.lng() || 0,
-            },
-          },
-        }));
-        resolve(places);
-      } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-        resolve([]);
-      } else {
-        reject(new Error(`Google Places API error: ${status}`));
-      }
-    });
-  });
+  try {
+    const { places } = await Place.searchNearby(request);
+
+    if (!places || places.length === 0) {
+      return [];
+    }
+
+    // Transform to our PlaceResult interface
+    const results: PlaceResult[] = places.map((place) => ({
+      place_id: place.id || '',
+      name: place.displayName || 'Unknown Restaurant',
+      vicinity: place.formattedAddress || '',
+      types: place.types || [],
+      geometry: {
+        location: {
+          lat: place.location?.lat() || 0,
+          lng: place.location?.lng() || 0,
+        },
+      },
+    }));
+
+    return results;
+  } catch (error) {
+    console.error('Google Places API error:', error);
+    throw new Error(`Failed to search nearby restaurants: ${error}`);
+  }
 }
 
 /**
