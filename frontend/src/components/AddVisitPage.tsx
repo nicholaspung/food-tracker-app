@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   pb,
   Restaurant,
-  PlaceResult,
   MenuItem as DBMenuItem,
 } from "@/lib/pocketbase";
 import { Button } from "@/components/ui/button";
@@ -31,8 +30,8 @@ import {
 } from "lucide-react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import {
-  searchNearbyRestaurants,
-  getCuisineFromTypes,
+  searchAndCacheNearbyRestaurants,
+  searchAndCacheRestaurantsByText,
 } from "@/services/googlePlaces";
 import MenuScanStep from "@/components/MenuScanStep";
 import { getRestaurantMenuItems } from "@/services/ocrService";
@@ -78,11 +77,24 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   const [existingMenuItems, setExistingMenuItems] = useState<DBMenuItem[]>([]);
   const [showExistingMenu, setShowExistingMenu] = useState(false);
 
-  // Google Places integration
-  const [nearbyPlaces, setNearbyPlaces] = useState<PlaceResult[]>([]);
+  // Google Places integration (now cached as Restaurant objects)
+  const [nearbyPlaces, setNearbyPlaces] = useState<Restaurant[]>([]);
   const [placesLoading, setPlacesLoading] = useState(false);
   const [placesError, setPlacesError] = useState("");
   const [showNearbyPlaces, setShowNearbyPlaces] = useState(false); // Default to saved restaurants
+
+  // Manual location and text search
+  const [manualLocation, setManualLocation] = useState("");
+  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
+
+  // Nearby places text filter (for refining results after location search)
+  const [nearbySearchQuery, setNearbySearchQuery] = useState("");
+  const [currentLocationContext, setCurrentLocationContext] = useState<{
+    type: 'gps' | 'manual';
+    location?: string;
+    latitude?: number;
+    longitude?: number;
+  } | null>(null);
 
   // Location - only fetch when user requests nearby search
   const {
@@ -261,6 +273,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     setShowNearbyPlaces(true);
     setPlacesError("");
     setError("");
+    setNearbySearchQuery(""); // Reset search query
 
     // Get location first if we don't have it
     if (!position && !locationLoading) {
@@ -269,14 +282,21 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
     // If we already have position, fetch places immediately
     if (position) {
+      setCurrentLocationContext({
+        type: 'gps',
+        latitude: position.latitude,
+        longitude: position.longitude,
+      });
       setPlacesLoading(true);
       try {
-        const places = await searchNearbyRestaurants({
+        const restaurants = await searchAndCacheNearbyRestaurants({
           latitude: position.latitude,
           longitude: position.longitude,
           radius: 1500, // 1.5km radius
         });
-        setNearbyPlaces(places);
+        setNearbyPlaces(restaurants);
+        // Invalidate restaurants query to show new cached restaurants in saved list
+        queryClient.invalidateQueries({ queryKey: ["restaurants"] });
       } catch (err) {
         setPlacesError(
           err instanceof Error
@@ -298,15 +318,23 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       !placesLoading
     ) {
       const fetchNearbyPlaces = async () => {
+        // Set location context for GPS search
+        setCurrentLocationContext({
+          type: 'gps',
+          latitude: position.latitude,
+          longitude: position.longitude,
+        });
         setPlacesLoading(true);
         setPlacesError("");
         try {
-          const places = await searchNearbyRestaurants({
+          const restaurants = await searchAndCacheNearbyRestaurants({
             latitude: position.latitude,
             longitude: position.longitude,
             radius: 1500,
           });
-          setNearbyPlaces(places);
+          setNearbyPlaces(restaurants);
+          // Invalidate restaurants query to show new cached restaurants in saved list
+          queryClient.invalidateQueries({ queryKey: ["restaurants"] });
         } catch (err) {
           setPlacesError(
             err instanceof Error
@@ -322,42 +350,92 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     }
   }, [position, showNearbyPlaces]);
 
-  const handleSelectGooglePlace = async (place: PlaceResult) => {
-    setError("");
-    setLoading(true);
+  // Debounced search for nearby places text filter
+  useEffect(() => {
+    if (!showNearbyPlaces || !currentLocationContext) {
+      return;
+    }
+
+    // Don't search on empty query - just show the initial results
+    if (nearbySearchQuery.trim() === "") {
+      return;
+    }
+
+    const debounceTimer = setTimeout(async () => {
+      setPlacesLoading(true);
+      setPlacesError("");
+
+      try {
+        if (currentLocationContext.type === 'gps' && currentLocationContext.latitude && currentLocationContext.longitude) {
+          // Use text search with GPS location bias
+          const restaurants = await searchAndCacheRestaurantsByText({
+            query: nearbySearchQuery.trim(),
+            location: `${currentLocationContext.latitude},${currentLocationContext.longitude}`,
+            radius: 5000,
+          });
+          setNearbyPlaces(restaurants);
+          // Invalidate restaurants query to show new cached restaurants in saved list
+          queryClient.invalidateQueries({ queryKey: ["restaurants"] });
+        } else if (currentLocationContext.type === 'manual' && currentLocationContext.location) {
+          // Use text search with manual location
+          const restaurants = await searchAndCacheRestaurantsByText({
+            query: nearbySearchQuery.trim(),
+            location: currentLocationContext.location,
+            radius: 5000,
+          });
+          setNearbyPlaces(restaurants);
+          // Invalidate restaurants query to show new cached restaurants in saved list
+          queryClient.invalidateQueries({ queryKey: ["restaurants"] });
+        }
+      } catch (err) {
+        setPlacesError(
+          err instanceof Error
+            ? err.message
+            : "Failed to search restaurants"
+        );
+      } finally {
+        setPlacesLoading(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(debounceTimer);
+  }, [nearbySearchQuery, showNearbyPlaces, currentLocationContext]);
+
+  // Handle manual location and text search
+  const handleManualSearch = async () => {
+    if (!manualLocation.trim() && !restaurantSearchQuery.trim()) {
+      setPlacesError("Please enter a location or restaurant name to search");
+      return;
+    }
+
+    setPlacesLoading(true);
+    setPlacesError("");
+    setShowNearbyPlaces(true);
+    setNearbySearchQuery(""); // Reset search query
+
+    // Save location context for future refinements
+    setCurrentLocationContext({
+      type: 'manual',
+      location: manualLocation.trim(),
+    });
 
     try {
-      const user = pb.authStore.record;
-      if (!user) throw new Error("User not authenticated");
-
-      // Check if restaurant already exists with this placeId
-      const existing = restaurants.find((r) => r.placeId === place.place_id);
-      if (existing) {
-        setSelectedRestaurant(existing);
-        setStep(2);
-        return;
-      }
-
-      // Create new restaurant from Google Place and cache it in our database
-      const newRestaurant = await pb
-        .collection("restaurants")
-        .create<Restaurant>({
-          name: place.name,
-          location: place.vicinity,
-          cuisineType: getCuisineFromTypes(place.types),
-          latitude: place.geometry.location.lat,
-          longitude: place.geometry.location.lng,
-          placeId: place.place_id,
-          user: user.id,
-        });
-
+      const restaurants = await searchAndCacheRestaurantsByText({
+        query: restaurantSearchQuery.trim() || "restaurant",
+        location: manualLocation.trim() || undefined,
+        radius: 5000,
+      });
+      setNearbyPlaces(restaurants);
+      // Invalidate restaurants query to show new cached restaurants in saved list
       queryClient.invalidateQueries({ queryKey: ["restaurants"] });
-      setSelectedRestaurant(newRestaurant);
-      setStep(2);
-    } catch (err: any) {
-      setError(err.message || "Failed to add restaurant");
+    } catch (err) {
+      setPlacesError(
+        err instanceof Error
+          ? err.message
+          : "Failed to search restaurants"
+      );
     } finally {
-      setLoading(false);
+      setPlacesLoading(false);
     }
   };
 
@@ -441,15 +519,79 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   />
                 </div>
 
-                {/* Search nearby button - only calls API when clicked */}
-                <Button
-                  onClick={handleSearchNearby}
-                  variant="outline"
-                  className="w-full"
-                >
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Search Nearby Restaurants
-                </Button>
+                {/* Search options */}
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-gray-700">
+                    Or search for restaurants:
+                  </div>
+
+                  {/* Manual location search */}
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-location" className="text-xs text-gray-600">
+                      Location (city, zip code, or address)
+                    </Label>
+                    <Input
+                      id="manual-location"
+                      type="text"
+                      placeholder="e.g., 90210, Los Angeles, CA"
+                      value={manualLocation}
+                      onChange={(e) => setManualLocation(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleManualSearch();
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {/* Restaurant name/type search */}
+                  <div className="space-y-2">
+                    <Label htmlFor="restaurant-search" className="text-xs text-gray-600">
+                      Restaurant name or type (optional)
+                    </Label>
+                    <Input
+                      id="restaurant-search"
+                      type="text"
+                      placeholder="e.g., Pizza Hut, sushi, italian"
+                      value={restaurantSearchQuery}
+                      onChange={(e) => setRestaurantSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleManualSearch();
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleManualSearch}
+                    variant="default"
+                    className="w-full"
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Search Restaurants
+                  </Button>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-white px-2 text-gray-500">or</span>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleSearchNearby}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <MapPin className="w-4 h-4 mr-2" />
+                    Use My Current Location
+                  </Button>
+                </div>
               </>
             )}
 
@@ -524,6 +666,20 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* Text search input for refining results */}
+                {currentLocationContext && (
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search by restaurant name or type..."
+                      value={nearbySearchQuery}
+                      onChange={(e) => setNearbySearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                )}
               </>
             )}
 
@@ -569,22 +725,25 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   )}
 
                 <div className="space-y-3">
-                  {nearbyPlaces.map((place) => (
+                  {nearbyPlaces.map((restaurant) => (
                     <Card
-                      key={place.place_id}
+                      key={restaurant.id}
                       className="cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => handleSelectGooglePlace(place)}
+                      onClick={() => {
+                        setSelectedRestaurant(restaurant);
+                        setStep(2);
+                      }}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <CardTitle className="text-lg">
-                              {place.name}
+                              {restaurant.name}
                             </CardTitle>
                             <CardDescription className="mt-1">
-                              {place.vicinity}
-                              {getCuisineFromTypes(place.types) &&
-                                ` • ${getCuisineFromTypes(place.types)}`}
+                              {restaurant.location}
+                              {restaurant.cuisineType &&
+                                ` • ${restaurant.cuisineType}`}
                             </CardDescription>
                           </div>
                           <Badge variant="secondary" className="ml-2">
@@ -603,6 +762,8 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       setShowNearbyPlaces(false);
                       setNearbyPlaces([]);
                       setPlacesError("");
+                      setCurrentLocationContext(null);
+                      setNearbySearchQuery("");
                     }}
                     variant="outline"
                     className="w-full"

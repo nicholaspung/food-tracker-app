@@ -35,6 +35,8 @@ export interface Restaurant {
   latitude?: number;
   longitude?: number;
   placeId?: string;
+  isGooglePlace?: boolean;
+  googlePlaceCachedAt?: string;
   user: string;
   created: string;
   updated: string;
