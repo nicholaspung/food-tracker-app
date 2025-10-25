@@ -366,9 +366,10 @@ start_pocketbase() {
     local attempt=0
 
     while [ $attempt -lt $max_attempts ]; do
-        # Check if container is running
-        if ! docker compose ps pocketbase | grep -q "running"; then
-            warn "PocketBase container not running, checking logs..."
+        # Check if container is running (check for Up/running status, not exited/error)
+        local container_status=$(docker compose ps pocketbase --format json 2>/dev/null || docker compose ps pocketbase 2>/dev/null)
+        if echo "$container_status" | grep -qE "(exited|error|dead)"; then
+            warn "PocketBase container in error state, checking logs..."
             docker compose logs --tail=20 pocketbase
             error "PocketBase container failed to start"
             exit 1
