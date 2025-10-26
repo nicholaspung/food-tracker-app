@@ -630,6 +630,68 @@ cat ~/.ssh/id_ed25519
 
 **Note:** Using a dedicated key (Option 1) is more secure because you can revoke it independently without affecting your personal SSH access.
 
+#### Configure Passwordless Sudo for Deploy User
+
+The deployment script needs to reload Caddy and manage backup directories. Configure passwordless sudo for these operations:
+
+**On your VPS (as root or a user with sudo access):**
+
+1. Transfer the setup script to your VPS:
+```bash
+# From your local machine
+scp scripts/setup-deploy-sudo.sh deploy@YOUR_VPS_IP:/tmp/
+```
+
+2. SSH into your VPS and run the setup script:
+```bash
+# SSH to VPS
+ssh deploy@YOUR_VPS_IP
+
+# Run the script with sudo (use your deploy username)
+sudo bash /tmp/setup-deploy-sudo.sh deploy
+
+# Clean up
+rm /tmp/setup-deploy-sudo.sh
+```
+
+The script will configure passwordless sudo for:
+- Caddy web server management (reload, restart, status, validate)
+- Backup directory operations
+- Docker Compose commands
+
+3. Verify the setup:
+```bash
+# Test passwordless sudo
+sudo systemctl status caddy
+
+# Should work without asking for password
+```
+
+**Manual Setup (Alternative):**
+
+If you prefer to configure manually instead of using the script:
+
+```bash
+# Create sudoers file
+sudo visudo -f /etc/sudoers.d/deploy-deployment
+
+# Add these lines (replace 'deploy' with your username):
+deploy ALL=(ALL) NOPASSWD: /bin/systemctl reload caddy
+deploy ALL=(ALL) NOPASSWD: /bin/systemctl restart caddy
+deploy ALL=(ALL) NOPASSWD: /bin/systemctl status caddy
+deploy ALL=(ALL) NOPASSWD: /usr/bin/caddy validate *
+deploy ALL=(ALL) NOPASSWD: /bin/mkdir -p /opt/food-tracker-backups*
+deploy ALL=(ALL) NOPASSWD: /bin/chown * /opt/food-tracker-backups*
+deploy ALL=(ALL) NOPASSWD: /bin/chmod * /opt/food-tracker-backups*
+deploy ALL=(ALL) NOPASSWD: /usr/bin/docker-compose *
+deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose *
+
+# Save and exit (Ctrl+X, Y, Enter)
+
+# Set proper permissions
+sudo chmod 0440 /etc/sudoers.d/deploy-deployment
+```
+
 #### Add Secrets to GitHub
 
 Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**
