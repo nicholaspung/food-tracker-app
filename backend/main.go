@@ -30,6 +30,110 @@ func main() {
 	})
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		// Custom API endpoint: Get inviter info from invite code (public endpoint for signup)
+		se.Router.GET("/api/invite-codes/inviter/{code}", func(e *core.RequestEvent) error {
+			inviteCode := e.Request.PathValue("code")
+			if inviteCode == "" {
+				return apis.NewBadRequestError("invite code is required", nil)
+			}
+
+			// Find the invite code
+			inviteCodeRecord, err := app.FindFirstRecordByFilter(
+				"invite_codes",
+				"code = {:code}",
+				map[string]any{"code": inviteCode},
+			)
+
+			if err != nil || inviteCodeRecord == nil {
+				return apis.NewNotFoundError("invite code not found", nil)
+			}
+
+			// Get the creator user ID
+			createdBy := inviteCodeRecord.GetString("createdBy")
+			if createdBy == "" {
+				// No creator (initial invite code)
+				return e.JSON(200, map[string]any{
+					"hasInviter": false,
+				})
+			}
+
+			// Fetch the creator user record
+			inviterRecord, err := app.FindRecordById("users", createdBy)
+			if err != nil {
+				return apis.NewNotFoundError("inviter user not found", nil)
+			}
+
+			// Return inviter info (email and name are safe to expose here since it's for friend suggestion)
+			return e.JSON(200, map[string]any{
+				"hasInviter": true,
+				"inviter": map[string]any{
+					"id":    inviterRecord.Id,
+					"email": inviterRecord.Email(),
+					"name":  inviterRecord.GetString("name"),
+				},
+			})
+		})
+
+		// Custom API endpoint: Find user by friend code
+		se.Router.GET("/api/users/by-friend-code/{code}", func(e *core.RequestEvent) error {
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			friendCode := e.Request.PathValue("code")
+			if friendCode == "" {
+				return apis.NewBadRequestError("friend code is required", nil)
+			}
+
+			// Friend code is the first 8 chars of user ID (uppercase, alphanumeric only)
+			// We need to search all users to find matching ID
+			users, err := app.FindRecordsByFilter(
+				"users",
+				"", // no filter - we'll check IDs in Go
+				"",
+				0,
+				0,
+				nil,
+			)
+
+			if err != nil {
+				return apis.NewApiError(500, "failed to search users", err)
+			}
+
+			// Find user whose ID matches the friend code
+			for _, user := range users {
+				// Generate friend code from user ID
+				cleanId := ""
+				for _, char := range user.Id {
+					if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
+						cleanId += string(char)
+					}
+				}
+				cleanId = strings.ToUpper(cleanId)
+				if len(cleanId) > 8 {
+					cleanId = cleanId[:8]
+				}
+
+				if cleanId == strings.ToUpper(friendCode) {
+					// Found matching user
+					return e.JSON(200, map[string]any{
+						"found": true,
+						"user": map[string]any{
+							"id":    user.Id,
+							"email": user.Email(),
+							"name":  user.GetString("name"),
+						},
+					})
+				}
+			}
+
+			// No matching user found
+			return e.JSON(200, map[string]any{
+				"found": false,
+			})
+		})
+
 		// Custom API endpoint: Get unused invite codes for authenticated user
 		se.Router.GET("/api/invite-codes", func(e *core.RequestEvent) error {
 			authRecord := e.Auth

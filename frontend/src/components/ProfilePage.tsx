@@ -1,8 +1,19 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { pb } from "@/lib/pocketbase";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Check, X } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface InviteCode {
   id: string;
@@ -28,6 +39,7 @@ const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
 export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew }: ProfilePageProps) {
   const user = pb.authStore.model;
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -36,9 +48,91 @@ export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout,
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [generatingCodes, setGeneratingCodes] = useState(false);
   const [dismissedProfileVersion, setDismissedProfileVersion] = useState<string | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(user?.name || '');
+  const [showMandatoryNameDialog, setShowMandatoryNameDialog] = useState(false);
+  const [mandatoryName, setMandatoryName] = useState('');
 
   // Check if user is the initial user from the user record
   const isInitialUser = user?.isInitialUser === true;
+
+  // Check if user needs to set a name
+  useEffect(() => {
+    if (!user?.name) {
+      setShowMandatoryNameDialog(true);
+    }
+  }, [user?.name]);
+
+  // Update name mutation (for inline editing)
+  const updateNameMutation = useMutation({
+    mutationFn: async (newName: string) => {
+      const userId = pb.authStore.record?.id;
+      if (!userId) throw new Error('Not authenticated');
+
+      return await pb.collection('users').update(userId, {
+        name: newName,
+      });
+    },
+    onSuccess: () => {
+      setIsEditingName(false);
+      setError('');
+      // Refresh queries that might use the user name
+      queryClient.invalidateQueries({ queryKey: ['friendships'] });
+      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
+    },
+    onError: (err: any) => {
+      setError(err.message || 'Failed to update name');
+    },
+  });
+
+  const handleSaveName = () => {
+    if (!editedName.trim()) {
+      setError('Name cannot be empty');
+      return;
+    }
+    updateNameMutation.mutate(editedName.trim());
+  };
+
+  const handleCancelEditName = () => {
+    setEditedName(user?.name || '');
+    setIsEditingName(false);
+    setError('');
+  };
+
+  // Update name mutation (for mandatory dialog)
+  const updateMandatoryNameMutation = useMutation({
+    mutationFn: async (newName: string) => {
+      const userId = pb.authStore.record?.id;
+      if (!userId) throw new Error('Not authenticated');
+
+      return await pb.collection('users').update(userId, {
+        name: newName,
+      });
+    },
+    onSuccess: () => {
+      setShowMandatoryNameDialog(false);
+      setMandatoryName('');
+      setError('');
+      // Refresh queries that might use the user name
+      queryClient.invalidateQueries({ queryKey: ['friendships'] });
+      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
+    },
+    onError: (err: any) => {
+      setError(err.message || 'Failed to update name');
+    },
+  });
+
+  const handleSaveMandatoryName = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!mandatoryName.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+
+    updateMandatoryNameMutation.mutate(mandatoryName.trim());
+  };
 
   // Load dismissed profile version from localStorage on mount
   useEffect(() => {
@@ -188,12 +282,60 @@ Looking forward to seeing you there!`;
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50" data-testid="profile-page">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
-        <p className="text-sm text-gray-500 mt-1">Your account information</p>
-      </div>
+    <>
+      {/* Mandatory Name Dialog */}
+      <AlertDialog open={showMandatoryNameDialog} onOpenChange={() => {}}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Set Your Name</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>Please set your name before continuing. This will be shown to your friends when you share visits.</p>
+
+                {error && (
+                  <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md">
+                    {error}
+                  </div>
+                )}
+
+                <form onSubmit={handleSaveMandatoryName} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="mandatory-name">Your Name</Label>
+                    <Input
+                      id="mandatory-name"
+                      type="text"
+                      placeholder="Enter your name"
+                      value={mandatoryName}
+                      onChange={(e) => setMandatoryName(e.target.value)}
+                      disabled={updateMandatoryNameMutation.isPending}
+                      autoFocus
+                      data-testid="mandatory-name-input"
+                    />
+                  </div>
+                </form>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              type="submit"
+              onClick={handleSaveMandatoryName}
+              disabled={updateMandatoryNameMutation.isPending}
+              className="w-full"
+              data-testid="mandatory-name-submit"
+            >
+              {updateMandatoryNameMutation.isPending ? 'Saving...' : 'Save Name'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="flex flex-col h-full bg-gray-50" data-testid="profile-page">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-4 py-4">
+          <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
+          <p className="text-sm text-gray-500 mt-1">Your account information</p>
+        </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -249,6 +391,60 @@ Looking forward to seeing you there!`;
           <div className="space-y-3">
             <div className="p-4 bg-gray-50 rounded-md" data-testid="user-info">
               <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-medium text-gray-500">Name</p>
+                    {!isEditingName && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditingName(true)}
+                        className="h-6 w-6 p-0"
+                        data-testid="edit-name-button"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                  {isEditingName ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="text"
+                        value={editedName}
+                        onChange={(e) => setEditedName(e.target.value)}
+                        placeholder="Enter your name"
+                        disabled={updateNameMutation.isPending}
+                        className="text-sm"
+                        data-testid="name-input"
+                        autoFocus
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleSaveName}
+                        disabled={updateNameMutation.isPending}
+                        className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        data-testid="save-name-button"
+                      >
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCancelEditName}
+                        disabled={updateNameMutation.isPending}
+                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        data-testid="cancel-name-button"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium text-gray-900" data-testid="user-name">
+                      {user?.name || <span className="text-gray-400 italic">Not set</span>}
+                    </p>
+                  )}
+                </div>
                 <div>
                   <p className="text-xs font-medium text-gray-500">Email</p>
                   <p className="text-sm font-medium text-gray-900" data-testid="user-email">
@@ -407,6 +603,7 @@ Looking forward to seeing you there!`;
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

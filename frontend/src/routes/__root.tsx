@@ -19,7 +19,7 @@ const queryClient = new QueryClient({
 });
 
 // Routes that should show the bottom tab navigation
-const ROUTES_WITH_TABS = ["/home", "/profile", "/whats-new", "/add-visit", "/edit-visit"];
+const ROUTES_WITH_TABS = ["/home", "/profile", "/whats-new", "/add-visit", "/edit-visit", "/friends", "/feedback"];
 
 function RootComponent() {
   const router = useRouterState();

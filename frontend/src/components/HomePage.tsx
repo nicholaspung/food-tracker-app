@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, Visit, Restaurant, FoodItem } from '@/lib/pocketbase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Calendar, MapPin, Utensils, Pencil, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { Calendar, MapPin, Utensils, Pencil, ChevronDown, ChevronRight, Trash2, Users } from 'lucide-react';
 
 const RATING_LABELS = [
   "Don't eat ever",
@@ -34,6 +35,13 @@ const RATING_COLORS = [
 interface VisitWithDetails extends Omit<Visit, 'restaurant'> {
   restaurant?: Restaurant;
   foodItems?: FoodItem[];
+  expand?: {
+    user?: {
+      id: string;
+      email: string;
+      name?: string;
+    };
+  };
 }
 
 interface HomePageProps {
@@ -47,7 +55,11 @@ function getMonthKey(date: string): string {
 }
 
 // Helper to get day key (YYYY-MM-DD)
-function getDayKey(date: string): string {
+function getDayKey(date: string, isFriendVisit: boolean = false): string {
+  // For friend visits, return month key to mask exact date
+  if (isFriendVisit) {
+    return getMonthKey(date);
+  }
   // Handle both ISO format (YYYY-MM-DDTHH:mm:ss) and PocketBase format (YYYY-MM-DD HH:mm:ss)
   return date.split(/[T ]/)[0];
 }
@@ -60,7 +72,13 @@ function formatMonthLabel(monthKey: string): string {
 }
 
 // Helper to format day label
-function formatDayLabel(dayKey: string): string {
+function formatDayLabel(dayKey: string, isFriendVisit: boolean = false): string {
+  // For friend visits, dayKey is actually a month key (YYYY-MM)
+  if (isFriendVisit) {
+    const [year, month] = dayKey.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+  }
   const date = new Date(dayKey + 'T00:00:00');
   return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
@@ -79,12 +97,20 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(null);
   const queryClient = useQueryClient();
 
-  // Fetch all visits
+  // Helper to check if a visit is from a friend
+  const isFriendVisit = (visit: VisitWithDetails): boolean => {
+    const currentUserId = pb.authStore.record?.id;
+    return visit.user !== currentUserId;
+  };
+
+  // Fetch all visits (own + friends' public/friends visits)
+  // Backend rules handle the filtering automatically based on visibility
   const { data: visits = [], isLoading: visitsLoading } = useQuery<Visit[]>({
     queryKey: ['allVisits'],
     queryFn: async () => {
       return await pb.collection('visits').getFullList({
         sort: '-visitDate',
+        expand: 'user', // Expand user to get friend's name/email
       });
     },
   });
@@ -146,13 +172,14 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
   // Check if there are more visits to load
   const hasMoreVisits = visitsWithDetails.length > filteredVisits.length;
 
-  // Group visits by month, then by day
+  // Group visits by month, then by day (or month for friend visits)
   const groupedVisits = useMemo(() => {
     const byMonth: Record<string, Record<string, VisitWithDetails[]>> = {};
 
     filteredVisits.forEach((visit) => {
       const monthKey = getMonthKey(visit.visitDate);
-      const dayKey = getDayKey(visit.visitDate);
+      const isFriend = isFriendVisit(visit);
+      const dayKey = getDayKey(visit.visitDate, isFriend);
 
       if (!byMonth[monthKey]) {
         byMonth[monthKey] = {};
@@ -171,11 +198,17 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
       monthLabel: formatMonthLabel(monthKey),
       days: Object.keys(byMonth[monthKey])
         .sort((a, b) => b.localeCompare(a)) // Sort days descending
-        .map(dayKey => ({
-          dayKey,
-          dayLabel: formatDayLabel(dayKey),
-          visits: byMonth[monthKey][dayKey],
-        })),
+        .map(dayKey => {
+          const visitsInDay = byMonth[monthKey][dayKey];
+          // Check if this is a friend visit group (all visits in this group should be same type)
+          const isFriend = visitsInDay.length > 0 && isFriendVisit(visitsInDay[0]);
+          return {
+            dayKey,
+            dayLabel: formatDayLabel(dayKey, isFriend),
+            visits: visitsInDay,
+            isFriendGroup: isFriend,
+          };
+        }),
     }));
   }, [filteredVisits]);
 
@@ -207,10 +240,21 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-4">
         <Utensils className="w-16 h-16 text-gray-300 mb-4" />
-        <p className="text-gray-500 text-center mb-2">No visits yet</p>
-        <p className="text-sm text-gray-400 text-center">
-          Tap the + button to add your first visit
+        <p className="text-gray-500 text-center mb-2">No visits to show</p>
+        <p className="text-sm text-gray-400 text-center mb-4">
+          Track your restaurant visits by tapping the + button
         </p>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2 max-w-sm">
+          <div className="flex items-start gap-2">
+            <Users className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-blue-900 mb-1">See friends' visits</p>
+              <p className="text-blue-700">
+                Connect with friends to see their restaurant visits and recommendations
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -267,49 +311,75 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
             {/* Month Content */}
             {expandedMonths.has(monthKey) && (
               <div className="space-y-4 pl-2">
-                {days.map(({ dayKey, dayLabel, visits: dayVisits }) => (
+                {days.map(({ dayKey, dayLabel, visits: dayVisits, isFriendGroup }) => (
                   <div key={dayKey} className="space-y-3">
                     {/* Day Header */}
                     <div className="flex items-center gap-2 px-2">
-                      <Calendar className="w-4 h-4 text-gray-500" />
+                      {isFriendGroup ? (
+                        <Users className="w-4 h-4 text-blue-500" />
+                      ) : (
+                        <Calendar className="w-4 h-4 text-gray-500" />
+                      )}
                       <h3 className="text-sm font-medium text-gray-700">{dayLabel}</h3>
+                      {isFriendGroup && (
+                        <Badge variant="secondary" className="ml-auto text-xs bg-blue-100 text-blue-700">
+                          Friends
+                        </Badge>
+                      )}
                     </div>
 
                     {/* Visits for this day */}
                     <div className="space-y-3">
-                      {dayVisits.map((visit) => (
-                        <Card key={visit.id}>
-                          <CardHeader className="pb-3">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <CardTitle className="text-lg">{visit.restaurant?.name}</CardTitle>
-                                <CardDescription className="flex items-center gap-1 mt-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {visit.restaurant?.location}
-                                  {visit.restaurant?.cuisineType && ` • ${visit.restaurant.cuisineType}`}
-                                </CardDescription>
+                      {dayVisits.map((visit) => {
+                        const isFriend = isFriendVisit(visit);
+                        // Use name if available, otherwise fall back to email username
+                        const friendName = isFriend
+                          ? (visit.expand?.user?.name || visit.expand?.user?.email?.split('@')[0])
+                          : null;
+
+                        return (
+                          <Card key={visit.id} className={isFriend ? 'border-blue-200 bg-blue-50/30' : ''}>
+                            <CardHeader className="pb-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <CardTitle className="text-lg">{visit.restaurant?.name}</CardTitle>
+                                    {isFriend && (
+                                      <Badge variant="outline" className="text-xs border-blue-300 text-blue-700">
+                                        <Users className="w-3 h-3 mr-1" />
+                                        {friendName}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <CardDescription className="flex items-center gap-1 mt-1">
+                                    <MapPin className="w-3 h-3" />
+                                    {visit.restaurant?.location}
+                                    {visit.restaurant?.cuisineType && ` • ${visit.restaurant.cuisineType}`}
+                                  </CardDescription>
+                                </div>
+                                {!isFriend && (
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => onEditVisit?.(visit.id)}
+                                      data-testid={`edit-visit-${visit.id}`}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setVisitToDelete(visit)}
+                                      data-testid={`delete-visit-${visit.id}`}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => onEditVisit?.(visit.id)}
-                                  data-testid={`edit-visit-${visit.id}`}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setVisitToDelete(visit)}
-                                  data-testid={`delete-visit-${visit.id}`}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          </CardHeader>
+                            </CardHeader>
                           <CardContent>
                             {visit.foodItems && visit.foodItems.length > 0 ? (
                               <div className="space-y-2">
@@ -345,7 +415,8 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
                             )}
                           </CardContent>
                         </Card>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

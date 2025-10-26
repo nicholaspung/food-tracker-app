@@ -581,14 +581,14 @@ For security, create a separate SSH key specifically for GitHub Actions deployme
 **On your local machine:**
 ```bash
 # Generate a new key specifically for GitHub Actions
-ssh-keygen -t ed25519 -f ~/.ssh/github_actions_deploy -C "github-actions-deploy"
+ssh-keygen -t ed25519 -f ~/.ssh/github_actions_deploy_food -C "github-actions-deploy-food"
 
 # When prompted:
 # - Enter file: (already specified, press Enter)
 # - Passphrase: (leave empty, press Enter twice)
 
 # Display the public key (copy this)
-cat ~/.ssh/github_actions_deploy.pub
+cat ~/.ssh/github_actions_deploy_food.pub
 ```
 
 **On your VPS (as the deploy user):**
@@ -603,7 +603,7 @@ tail -1 ~/.ssh/authorized_keys
 **Test the new key from your local machine:**
 ```bash
 # Test SSH connection with the new key
-ssh -i ~/.ssh/github_actions_deploy deploy@YOUR_VPS_IP
+ssh -i ~/.ssh/github_actions_deploy_food deploy@YOUR_VPS_IP
 
 # If it works, exit and continue
 exit
@@ -612,7 +612,7 @@ exit
 **Get the private key for GitHub Secrets:**
 ```bash
 # On your local machine, display the private key
-cat ~/.ssh/github_actions_deploy
+cat ~/.ssh/github_actions_deploy_food
 
 # Copy the ENTIRE output including:
 # -----BEGIN OPENSSH PRIVATE KEY-----

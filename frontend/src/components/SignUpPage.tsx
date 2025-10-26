@@ -45,6 +45,31 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
     setLoading(true);
 
     try {
+      // Look up the invite code to find who invited this user
+      let inviterInfo = null;
+      try {
+        console.log('[SignUp] Looking up inviter for invite code:', inviteCode);
+        const response = await pb.send(`/api/invite-codes/inviter/${inviteCode}`, {
+          method: 'GET',
+        });
+
+        console.log('[SignUp] Inviter API response:', response);
+
+        if (response.hasInviter && response.inviter) {
+          inviterInfo = {
+            id: response.inviter.id,
+            email: response.inviter.email,
+            name: response.inviter.name,
+          };
+          console.log('[SignUp] Inviter info found:', inviterInfo);
+        } else {
+          console.log('[SignUp] No inviter for this invite code (initial code)');
+        }
+      } catch (inviteErr) {
+        console.error('[SignUp] Could not fetch inviter info:', inviteErr);
+        // Continue with signup even if we can't get inviter info
+      }
+
       // Create the user account with invite code
       await pb.collection('users').create({
         email,
@@ -55,6 +80,20 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
 
       // Send verification email
       await pb.collection('users').requestVerification(email);
+
+      // If we found an inviter, store their info for post-login friend suggestion
+      if (inviterInfo) {
+        const suggestionData = {
+          inviterId: inviterInfo.id,
+          inviterEmail: inviterInfo.email,
+          inviterName: inviterInfo.name,
+          newUserEmail: email,
+        };
+        localStorage.setItem('pendingFriendSuggestion', JSON.stringify(suggestionData));
+        console.log('[SignUp] Stored friend suggestion in localStorage:', suggestionData);
+      } else {
+        console.log('[SignUp] No inviter info to store - skipping friend suggestion');
+      }
 
       // Show success message
       setSuccess(true);

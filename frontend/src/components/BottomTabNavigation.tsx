@@ -1,9 +1,48 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { Home, User, Plus } from 'lucide-react';
+import { Home, User, Plus, Users, MessageSquare } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { pb, Feedback } from '@/lib/pocketbase';
 
 export function BottomTabNavigation() {
   const router = useRouterState();
   const currentPath = router.location.pathname;
+  const currentUser = pb.authStore.record;
+
+  // Query for pending received friend requests
+  const { data: pendingRequestsCount = 0 } = useQuery({
+    queryKey: ['pendingFriendRequestsCount'],
+    queryFn: async () => {
+      if (!currentUser?.id) return 0;
+
+      const friendships = await pb.collection('friendships').getFullList({
+        filter: `friend = "${currentUser.id}" && status = "pending"`,
+      });
+
+      return friendships.length;
+    },
+    enabled: !!currentUser?.id,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  // Query for unread feedback count (admins see all unread, users see their own)
+  const { data: feedbackUnreadCount = 0 } = useQuery({
+    queryKey: ['feedbackUnreadCount'],
+    queryFn: async () => {
+      if (!currentUser?.id) return 0;
+
+      const isAdmin = currentUser.isAdmin === true;
+      const feedbackList = await pb.collection('feedback').getFullList<Feedback>();
+
+      return feedbackList.reduce((count, feedback) => {
+        const unreadCount = isAdmin
+          ? feedback.admin_unread_count || 0
+          : feedback.user_unread_count || 0;
+        return count + (unreadCount > 0 ? 1 : 0);
+      }, 0);
+    },
+    enabled: !!currentUser?.id,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
 
   const tabs = [
     {
@@ -17,6 +56,18 @@ export function BottomTabNavigation() {
       path: '/add-visit',
       icon: Plus,
       testId: 'tab-add',
+    },
+    {
+      name: 'Friends',
+      path: '/friends',
+      icon: Users,
+      testId: 'tab-friends',
+    },
+    {
+      name: 'Feedback',
+      path: '/feedback',
+      icon: MessageSquare,
+      testId: 'tab-feedback',
     },
     {
       name: 'Profile',
@@ -36,20 +87,33 @@ export function BottomTabNavigation() {
           const Icon = tab.icon;
           const isActive = currentPath === tab.path || currentPath.startsWith(tab.path + '/');
 
+          const showBadge =
+            (tab.path === '/friends' && pendingRequestsCount > 0) ||
+            (tab.path === '/feedback' && feedbackUnreadCount > 0);
+
           return (
             <Link
               key={tab.path}
               to={tab.path}
-              className="flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors"
+              className="flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors relative"
               data-testid={tab.testId}
             >
-              <Icon
-                className={`w-6 h-6 ${
-                  isActive
-                    ? 'text-blue-600'
-                    : 'text-gray-400'
-                }`}
-              />
+              <div className="relative">
+                <Icon
+                  className={`w-6 h-6 ${
+                    isActive
+                      ? 'text-blue-600'
+                      : 'text-gray-400'
+                  }`}
+                />
+                {showBadge && (
+                  <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                    {tab.path === '/friends'
+                      ? (pendingRequestsCount > 9 ? '9+' : pendingRequestsCount)
+                      : (feedbackUnreadCount > 9 ? '9+' : feedbackUnreadCount)}
+                  </div>
+                )}
+              </div>
               <span
                 className={`text-xs font-medium ${
                   isActive

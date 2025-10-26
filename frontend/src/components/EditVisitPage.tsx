@@ -35,7 +35,6 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [visitDate, setVisitDate] = useState('');
   const [showDateEdit, setShowDateEdit] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -99,9 +98,8 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
       const user = pb.authStore.record;
       if (!user || !selectedRestaurant) throw new Error('Missing data');
 
-      // Update visit
+      // Update visit (restaurant field is not updated - user must delete to change restaurant)
       await pb.collection('visits').update(visitId, {
-        restaurant: selectedRestaurant.id,
         visitDate,
       });
 
@@ -145,11 +143,6 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
     },
   });
 
-  const filteredRestaurants = restaurants.filter((r) =>
-    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (r.cuisineType?.toLowerCase() || '').includes(searchQuery.toLowerCase())
-  );
 
   const handleAddMenuItem = () => {
     setMenuItems([...menuItems, { name: '', description: '', rating: 3, notes: '' }]);
@@ -217,7 +210,7 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
           <h1 className="text-xl font-bold text-gray-900">Edit Visit</h1>
         </div>
         <div className="flex items-center gap-2">
-          {[1, 2, 3].map((s) => (
+          {[1, 2].map((s) => (
             <div
               key={s}
               className={`flex-1 h-2 rounded-full ${
@@ -227,9 +220,8 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
           ))}
         </div>
         <p className="text-sm text-gray-500 mt-2">
-          {step === 1 && 'Change restaurant'}
-          {step === 2 && 'Edit menu items'}
-          {step === 3 && 'Update ratings'}
+          {step === 1 && 'Edit menu items'}
+          {step === 2 && 'Update ratings'}
         </p>
 
         {/* Always-visible date picker */}
@@ -285,60 +277,25 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
           </div>
         )}
 
-        {/* Step 1: Change Restaurant */}
-        {step === 1 && (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Current Restaurant</CardTitle>
-                <CardDescription>
-                  {selectedRestaurant?.name || 'Loading...'}
-                </CardDescription>
-              </CardHeader>
-            </Card>
+        {/* Restaurant Info - Read Only */}
+        <Card className="mb-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Restaurant</CardTitle>
+            <CardDescription>
+              {selectedRestaurant?.name || 'Loading...'}
+              {selectedRestaurant?.location && ` • ${selectedRestaurant.location}`}
+              {selectedRestaurant?.cuisineType && ` • ${selectedRestaurant.cuisineType}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-xs text-gray-500">
+              To change the restaurant, please delete this visit and create a new one.
+            </p>
+          </CardContent>
+        </Card>
 
-            <div className="relative">
-              <Input
-                type="text"
-                placeholder="Search to change restaurant..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            {searchQuery && (
-              <div className="space-y-3">
-                {filteredRestaurants.map((restaurant) => (
-                  <Card
-                    key={restaurant.id}
-                    className={`cursor-pointer hover:shadow-md transition-shadow ${
-                      selectedRestaurant?.id === restaurant.id ? 'border-blue-600 border-2' : ''
-                    }`}
-                    onClick={() => {
-                      setSelectedRestaurant(restaurant);
-                      setSearchQuery('');
-                    }}
-                  >
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-lg">{restaurant.name}</CardTitle>
-                      <CardDescription>
-                        {restaurant.location}
-                        {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
-                      </CardDescription>
-                    </CardHeader>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            <Button onClick={() => setStep(2)} className="w-full">
-              Next: Edit Items
-            </Button>
-          </div>
-        )}
-
-        {/* Step 2: Edit Menu Items */}
-        {step === 2 && selectedRestaurant && (
+        {/* Step 1: Edit Menu Items */}
+        {step === 1 && selectedRestaurant && (
           <div className="space-y-4">
             <Button onClick={handleAddMenuItem} className="w-full">
               <Plus className="w-4 h-4 mr-2" />
@@ -375,23 +332,18 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
               );
             })}
 
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)}>
-                Back
-              </Button>
-              <Button
-                onClick={() => setStep(3)}
-                disabled={!canProceedFromStep2}
-                className="flex-1"
-              >
-                Next: Update Ratings
-              </Button>
-            </div>
+            <Button
+              onClick={() => setStep(2)}
+              disabled={!canProceedFromStep2}
+              className="w-full"
+            >
+              Next: Update Ratings
+            </Button>
           </div>
         )}
 
-        {/* Step 3: Update Ratings */}
-        {step === 3 && (
+        {/* Step 2: Update Ratings */}
+        {step === 2 && (
           <div className="space-y-4">
             {activeMenuItems.map((item, actualIndex) => {
               const index = menuItems.findIndex(m => m === item);
@@ -439,7 +391,7 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
             })}
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(2)}>
+              <Button variant="outline" onClick={() => setStep(1)}>
                 Back
               </Button>
               <Button
