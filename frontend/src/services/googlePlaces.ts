@@ -479,3 +479,35 @@ export async function searchAndCacheRestaurantsByText(
 
   return cachedRestaurants;
 }
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * @returns Distance in miles
+ */
+export function calculateDistance(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 3959; // Earth's radius in miles (use 6371 for kilometers)
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in miles
+}
+
+/**
+ * Format distance for display
+ * @param miles Distance in miles
+ * @returns Formatted string like "2.3 mi" or "0.5 mi"
+ */
+export function formatDistance(miles: number): string {
+  return `${miles.toFixed(1)} mi`;
+}

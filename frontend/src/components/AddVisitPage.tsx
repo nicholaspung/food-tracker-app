@@ -4,6 +4,8 @@ import {
   pb,
   Restaurant,
   MenuItem as DBMenuItem,
+  Visit,
+  Friendship,
 } from "@/lib/pocketbase";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,11 +29,15 @@ import {
   RefreshCw,
   Utensils,
   Camera,
+  Users,
 } from "lucide-react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import {
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
+  calculateDistance,
+  formatDistance,
+  geocodeLocation,
 } from "@/services/googlePlaces";
 import MenuScanStep from "@/components/MenuScanStep";
 import { getRestaurantMenuItems } from "@/services/ocrService";
@@ -96,6 +102,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     longitude?: number;
   } | null>(null);
 
+  // Reference coordinates for distance calculation (from zip code or GPS)
+  const [referenceCoords, setReferenceCoords] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+
   // Location - only fetch when user requests nearby search
   const {
     position,
@@ -105,6 +117,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   } = useGeolocation(false);
 
   const queryClient = useQueryClient();
+  const user = pb.authStore.record;
 
   // Fetch restaurants
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
@@ -115,6 +128,67 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       });
     },
   });
+
+  // Fetch all visits for the current user
+  const { data: userVisits = [] } = useQuery<Visit[]>({
+    queryKey: ["userVisits", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      return await pb.collection("visits").getFullList({
+        filter: `user = "${user.id}"`,
+      });
+    },
+    enabled: !!user,
+  });
+
+  // Fetch friendships to get list of friends
+  const { data: friendships = [] } = useQuery<Friendship[]>({
+    queryKey: ["friendships", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      return await pb.collection("friendships").getFullList({
+        filter: `(user = "${user.id}" || friend = "${user.id}") && status = "accepted"`,
+      });
+    },
+    enabled: !!user,
+  });
+
+  // Fetch visits from friends
+  const { data: friendVisits = [] } = useQuery<Visit[]>({
+    queryKey: ["friendVisits", user?.id, friendships.length],
+    queryFn: async () => {
+      if (!user || friendships.length === 0) return [];
+
+      // Get list of friend IDs
+      const friendIds = friendships.map(f =>
+        f.user === user.id ? f.friend : f.user
+      );
+
+      if (friendIds.length === 0) return [];
+
+      // Fetch visits from all friends with visibility friends or public
+      const filterConditions = friendIds.map(id => `user = "${id}"`).join(" || ");
+      return await pb.collection("visits").getFullList({
+        filter: `(${filterConditions}) && (visibility = "friends" || visibility = "public")`,
+      });
+    },
+    enabled: !!user && friendships.length > 0,
+  });
+
+  // Calculate visit counts per restaurant
+  const getRestaurantStats = (restaurantId: string) => {
+    const userVisitCount = userVisits.filter(v => v.restaurant === restaurantId).length;
+
+    // Count unique friends who have visited this restaurant
+    const friendsWhoVisited = new Set(
+      friendVisits
+        .filter(v => v.restaurant === restaurantId)
+        .map(v => v.user)
+    );
+    const friendCount = friendsWhoVisited.size;
+
+    return { userVisitCount, friendCount };
+  };
 
   // Add restaurant mutation (manual entry with current location)
   const addRestaurantMutation = useMutation({
@@ -132,7 +206,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         cuisineType: data.cuisineType || "",
         latitude: position?.latitude,
         longitude: position?.longitude,
-        user: user.id,
+        createdBy: user.id,
       });
     },
     onSuccess: (newRestaurant) => {
@@ -160,6 +234,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         restaurant: selectedRestaurant.id,
         user: user.id,
         visitDate,
+        visibility: "friends", // Default to friends visibility
         notes: "",
       });
 
@@ -202,6 +277,32 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       r.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (r.cuisineType?.toLowerCase() || "").includes(searchQuery.toLowerCase())
   );
+
+  // Calculate distances for nearby places and sort by distance
+  const nearbyPlacesWithDistance = nearbyPlaces
+    .map((restaurant) => {
+      let distance: number | null = null;
+      if (
+        referenceCoords &&
+        restaurant.latitude != null &&
+        restaurant.longitude != null
+      ) {
+        distance = calculateDistance(
+          referenceCoords.lat,
+          referenceCoords.lng,
+          restaurant.latitude,
+          restaurant.longitude
+        );
+      }
+      return { restaurant, distance };
+    })
+    .sort((a, b) => {
+      // Sort by distance (nulls last)
+      if (a.distance === null && b.distance === null) return 0;
+      if (a.distance === null) return 1;
+      if (b.distance === null) return -1;
+      return a.distance - b.distance;
+    });
 
   const handleAddMenuItem = () => {
     setMenuItems([
@@ -282,6 +383,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
     // If we already have position, fetch places immediately
     if (position) {
+      // Store reference coordinates for distance calculation
+      setReferenceCoords({
+        lat: position.latitude,
+        lng: position.longitude,
+      });
+
       setCurrentLocationContext({
         type: 'gps',
         latitude: position.latitude,
@@ -318,6 +425,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       !placesLoading
     ) {
       const fetchNearbyPlaces = async () => {
+        // Store reference coordinates for distance calculation
+        setReferenceCoords({
+          lat: position.latitude,
+          lng: position.longitude,
+        });
+
         // Set location context for GPS search
         setCurrentLocationContext({
           type: 'gps',
@@ -413,13 +526,24 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     setShowNearbyPlaces(true);
     setNearbySearchQuery(""); // Reset search query
 
-    // Save location context for future refinements
-    setCurrentLocationContext({
-      type: 'manual',
-      location: manualLocation.trim(),
-    });
-
     try {
+      // Geocode the location to get coordinates for distance calculation
+      let coords: { lat: number; lng: number } | null = null;
+      if (manualLocation.trim()) {
+        coords = await geocodeLocation(manualLocation.trim());
+        if (coords) {
+          setReferenceCoords(coords);
+        }
+      }
+
+      // Save location context for future refinements
+      setCurrentLocationContext({
+        type: 'manual',
+        location: manualLocation.trim(),
+        latitude: coords?.lat,
+        longitude: coords?.lng,
+      });
+
       const restaurants = await searchAndCacheRestaurantsByText({
         query: restaurantSearchQuery.trim() || "restaurant",
         location: manualLocation.trim() || undefined,
@@ -642,17 +766,21 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   </Card>
                 )}
 
-                {position && !placesLoading && !placesError && (
+                {!placesLoading && !placesError && nearbyPlaces.length > 0 && (
                   <Card className="bg-green-50 border-green-200">
                     <CardContent className="pt-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <MapPin className="w-5 h-5 text-green-600" />
                         <div>
                           <p className="text-sm font-medium text-green-900">
-                            Found {nearbyPlaces.length} nearby
+                            Found {nearbyPlaces.length} restaurant{nearbyPlaces.length !== 1 ? 's' : ''}
                           </p>
                           <p className="text-xs text-green-700">
-                            Within 1.5km of your location
+                            {currentLocationContext?.type === 'gps'
+                              ? 'Sorted by distance from your location'
+                              : currentLocationContext?.location
+                                ? `Near ${currentLocationContext.location}`
+                                : 'Sorted by distance'}
                           </p>
                         </div>
                       </div>
@@ -725,35 +853,54 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   )}
 
                 <div className="space-y-3">
-                  {nearbyPlaces.map((restaurant) => (
-                    <Card
-                      key={restaurant.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => {
-                        setSelectedRestaurant(restaurant);
-                        setStep(2);
-                      }}
-                    >
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg">
-                              {restaurant.name}
-                            </CardTitle>
-                            <CardDescription className="mt-1">
-                              {restaurant.location}
-                              {restaurant.cuisineType &&
-                                ` • ${restaurant.cuisineType}`}
-                            </CardDescription>
+                  {nearbyPlacesWithDistance.map(({ restaurant, distance }) => {
+                    const stats = getRestaurantStats(restaurant.id);
+                    return (
+                      <Card
+                        key={restaurant.id}
+                        className="cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => {
+                          setSelectedRestaurant(restaurant);
+                          setStep(2);
+                        }}
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <CardTitle className="text-lg">
+                                {restaurant.name}
+                              </CardTitle>
+                              <CardDescription className="mt-1">
+                                {restaurant.location}
+                                {restaurant.cuisineType &&
+                                  ` • ${restaurant.cuisineType}`}
+                              </CardDescription>
+                            </div>
+                            <Badge variant="secondary" className="ml-2">
+                              <MapPin className="w-3 h-3 mr-1" />
+                              {distance !== null ? formatDistance(distance) : "Near"}
+                            </Badge>
                           </div>
-                          <Badge variant="secondary" className="ml-2">
-                            <MapPin className="w-3 h-3 mr-1" />
-                            Near
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                    </Card>
-                  ))}
+                          {(stats.userVisitCount > 0 || stats.friendCount > 0) && (
+                            <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
+                              {stats.userVisitCount > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  <span>You: {stats.userVisitCount} {stats.userVisitCount === 1 ? 'visit' : 'visits'}</span>
+                                </div>
+                              )}
+                              {stats.friendCount > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  <span>{stats.friendCount} {stats.friendCount === 1 ? 'friend' : 'friends'}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardHeader>
+                      </Card>
+                    );
+                  })}
                 </div>
 
                 {(nearbyPlaces.length > 0 || placesError || locationError) && (
@@ -764,6 +911,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       setPlacesError("");
                       setCurrentLocationContext(null);
                       setNearbySearchQuery("");
+                      setReferenceCoords(null);
                     }}
                     variant="outline"
                     className="w-full"
@@ -857,27 +1005,46 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     </Button>
 
                     <div className="space-y-3">
-                      {filteredRestaurants.map((restaurant) => (
-                        <Card
-                          key={restaurant.id}
-                          className="cursor-pointer hover:shadow-md transition-shadow"
-                          onClick={() => {
-                            setSelectedRestaurant(restaurant);
-                            setStep(2);
-                          }}
-                        >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-lg">
-                              {restaurant.name}
-                            </CardTitle>
-                            <CardDescription>
-                              {restaurant.location}
-                              {restaurant.cuisineType &&
-                                ` • ${restaurant.cuisineType}`}
-                            </CardDescription>
-                          </CardHeader>
-                        </Card>
-                      ))}
+                      {filteredRestaurants.map((restaurant) => {
+                        const stats = getRestaurantStats(restaurant.id);
+                        return (
+                          <Card
+                            key={restaurant.id}
+                            className="cursor-pointer hover:shadow-md transition-shadow"
+                            onClick={() => {
+                              setSelectedRestaurant(restaurant);
+                              setStep(2);
+                            }}
+                          >
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-lg">
+                                {restaurant.name}
+                              </CardTitle>
+                              <CardDescription>
+                                {restaurant.location}
+                                {restaurant.cuisineType &&
+                                  ` • ${restaurant.cuisineType}`}
+                              </CardDescription>
+                              {(stats.userVisitCount > 0 || stats.friendCount > 0) && (
+                                <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
+                                  {stats.userVisitCount > 0 && (
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" />
+                                      <span>You: {stats.userVisitCount} {stats.userVisitCount === 1 ? 'visit' : 'visits'}</span>
+                                    </div>
+                                  )}
+                                  {stats.friendCount > 0 && (
+                                    <div className="flex items-center gap-1">
+                                      <Users className="w-3 h-3" />
+                                      <span>{stats.friendCount} {stats.friendCount === 1 ? 'friend' : 'friends'}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </CardHeader>
+                          </Card>
+                        );
+                      })}
                     </div>
                   </>
                 )}

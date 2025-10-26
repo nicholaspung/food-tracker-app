@@ -22,6 +22,7 @@ export interface User {
   id: string;
   email: string;
   verified: boolean;
+  isAdmin?: boolean;
   created: string;
   updated: string;
 }
@@ -37,7 +38,7 @@ export interface Restaurant {
   placeId?: string;
   isGooglePlace?: boolean;
   googlePlaceCachedAt?: string;
-  user: string;
+  createdBy?: string; // Optional - shared restaurants may not have a creator
   created: string;
   updated: string;
 }
@@ -61,6 +62,7 @@ export interface Visit {
   restaurant: string;
   user: string;
   visitDate: string;
+  visibility: 'public' | 'friends' | 'private';
   notes?: string;
   created: string;
   updated: string;
@@ -95,4 +97,36 @@ export interface MenuItem {
   sourceImage?: string; // relation to menu_images
   created: string;
   updated: string;
+}
+
+export interface Friendship {
+  id: string;
+  user: string; // User who sent the friend request
+  friend: string; // User who received the friend request
+  status: 'pending' | 'accepted' | 'blocked';
+  created: string;
+  updated: string;
+}
+
+// Feedback system types
+export interface Feedback {
+  id: string;
+  user: string;
+  title: string;
+  description: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  admin_unread_count?: number;
+  user_unread_count?: number;
+  last_message_at?: string;
+  created: string;
+  updated: string;
+}
+
+export interface FeedbackMessage {
+  id: string;
+  feedback: string;
+  user: string;
+  message: string;
+  is_admin_message?: boolean;
+  created: string;
 }
