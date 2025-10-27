@@ -23,6 +23,7 @@ export interface User {
   email: string;
   verified: boolean;
   isAdmin?: boolean;
+  defaultVisitVisibility?: 'friends' | 'private';
   created: string;
   updated: string;
 }
@@ -62,7 +63,7 @@ export interface Visit {
   restaurant: string;
   user: string;
   visitDate: string;
-  visibility: 'public' | 'friends' | 'private';
+  visibility: 'friends' | 'private';
   notes?: string;
   created: string;
   updated: string;

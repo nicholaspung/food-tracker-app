@@ -29,6 +29,9 @@ function Profile() {
       onNavigateToWhatsNew={() => {
         navigate({ to: '/whats-new' });
       }}
+      onNavigateToSettings={() => {
+        navigate({ to: '/settings' });
+      }}
     />
   );
 }

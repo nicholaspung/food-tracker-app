@@ -70,6 +70,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     new Date().toISOString().split("T")[0]
   );
   const [showDateEdit, setShowDateEdit] = useState(false);
+  const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>('friends');
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddRestaurant, setShowAddRestaurant] = useState(false);
   const [newRestaurantName, setNewRestaurantName] = useState("");
@@ -166,10 +167,10 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
       if (friendIds.length === 0) return [];
 
-      // Fetch visits from all friends with visibility friends or public
+      // Fetch visits from all friends with visibility friends
       const filterConditions = friendIds.map(id => `user = "${id}"`).join(" || ");
       return await pb.collection("visits").getFullList({
-        filter: `(${filterConditions}) && (visibility = "friends" || visibility = "public")`,
+        filter: `(${filterConditions}) && visibility = "friends"`,
       });
     },
     enabled: !!user && friendships.length > 0,
@@ -234,7 +235,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         restaurant: selectedRestaurant.id,
         user: user.id,
         visitDate,
-        visibility: "friends", // Default to friends visibility
+        visibility: visitVisibility, // Use the selected visibility for this visit
         notes: "",
       });
 
@@ -339,6 +340,13 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       loadExistingMenuItems();
     }
   }, [selectedRestaurant, step]);
+
+  // Initialize visit visibility from user's default preference
+  useEffect(() => {
+    if (user?.defaultVisitVisibility) {
+      setVisitVisibility(user.defaultVisitVisibility);
+    }
+  }, [user?.defaultVisitVisibility]);
 
   // Handle menu items extracted from OCR
   const handleMenuItemsExtracted = (items: DBMenuItem[]) => {
@@ -1240,6 +1248,29 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 </CardContent>
               </Card>
             )}
+
+            {/* Visibility Checkbox */}
+            <div className="p-4 bg-white rounded-lg border">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={visitVisibility === 'friends'}
+                  onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm font-medium">Friends can view this visit</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {visitVisibility === 'friends'
+                      ? "Your friends will be able to see this visit and your ratings"
+                      : "Only you will be able to see this visit"}
+                  </p>
+                </div>
+              </label>
+            </div>
 
             {menuItems.map((item, index) => (
               <Card key={index}>
