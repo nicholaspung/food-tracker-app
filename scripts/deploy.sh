@@ -281,10 +281,21 @@ build_frontend() {
 
     # Create environment-specific .env file
     log "Creating frontend .env for $ENVIRONMENT environment..."
+
+    # Read Google Places API key from existing .env if it exists
+    GOOGLE_PLACES_API_KEY=""
+    if [ -f .env ]; then
+        GOOGLE_PLACES_API_KEY=$(grep "^VITE_GOOGLE_PLACES_API_KEY=" .env | cut -d '=' -f 2)
+    fi
+
+    # Create .env file with API URL and Google Places API key
     cat > .env <<EOF
 # Frontend Environment Variables - $ENVIRONMENT
 # PocketBase automatically appends /api/ to requests
 VITE_API_URL=https://$DOMAIN
+
+# Google Places API
+VITE_GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
 EOF
     log "Frontend .env created with API URL: https://$DOMAIN"
 
