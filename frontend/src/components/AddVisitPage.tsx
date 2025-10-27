@@ -90,6 +90,10 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   const [placesError, setPlacesError] = useState("");
   const [showNearbyPlaces, setShowNearbyPlaces] = useState(false); // Default to saved restaurants
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const RESULTS_PER_PAGE = 20;
+
   // Manual location and text search
   const [manualLocation, setManualLocation] = useState("");
   const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
@@ -279,8 +283,51 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       (r.cuisineType?.toLowerCase() || "").includes(searchQuery.toLowerCase())
   );
 
-  // Calculate distances for nearby places and sort by distance
-  const nearbyPlacesWithDistance = nearbyPlaces
+  // Pagination logic for nearby places
+  const totalPages = Math.ceil(nearbyPlaces.length / RESULTS_PER_PAGE);
+  const startIndex = (currentPage - 1) * RESULTS_PER_PAGE;
+  const endIndex = startIndex + RESULTS_PER_PAGE;
+  const paginatedPlaces = nearbyPlaces.slice(startIndex, endIndex);
+
+  // Calculate which pages to show in pagination
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxPagesToShow = 5;
+
+    if (totalPages <= maxPagesToShow) {
+      // Show all pages if total is small
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Always show first page
+      pages.push(1);
+
+      if (currentPage > 3) {
+        pages.push('...');
+      }
+
+      // Show pages around current page
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+
+      if (currentPage < totalPages - 2) {
+        pages.push('...');
+      }
+
+      // Always show last page
+      pages.push(totalPages);
+    }
+
+    return pages;
+  };
+
+  // Calculate distances for current page of nearby places and sort by distance
+  const nearbyPlacesWithDistance = paginatedPlaces
     .map((restaurant) => {
       let distance: number | null = null;
       if (
@@ -382,7 +429,8 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     setShowNearbyPlaces(true);
     setPlacesError("");
     setError("");
-    setNearbySearchQuery(""); // Reset search query
+    setNearbySearchQuery(""); // Reset search query for new search
+    setCurrentPage(1); // Reset to page 1
 
     // Get location first if we don't have it
     if (!position && !locationLoading) {
@@ -402,21 +450,25 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         latitude: position.latitude,
         longitude: position.longitude,
       });
+
       setPlacesLoading(true);
       try {
+        // Fetch more results to ensure we have enough for pagination
         const restaurants = await searchAndCacheNearbyRestaurants({
           latitude: position.latitude,
           longitude: position.longitude,
-          radius: 1500, // 1.5km radius
+          radius: 5000, // Larger radius to get more results
         });
+
         setNearbyPlaces(restaurants);
+
         // Invalidate restaurants query to show new cached restaurants in saved list
         queryClient.invalidateQueries({ queryKey: ["restaurants"] });
       } catch (err) {
         setPlacesError(
           err instanceof Error
             ? err.message
-            : "Failed to load nearby restaurants"
+            : "Failed to load nearby food places"
         );
       } finally {
         setPlacesLoading(false);
@@ -451,16 +503,18 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
           const restaurants = await searchAndCacheNearbyRestaurants({
             latitude: position.latitude,
             longitude: position.longitude,
-            radius: 1500,
+            radius: 5000,
           });
+
           setNearbyPlaces(restaurants);
+          setCurrentPage(1);
           // Invalidate restaurants query to show new cached restaurants in saved list
           queryClient.invalidateQueries({ queryKey: ["restaurants"] });
         } catch (err) {
           setPlacesError(
             err instanceof Error
               ? err.message
-              : "Failed to load nearby restaurants"
+              : "Failed to load nearby food places"
           );
         } finally {
           setPlacesLoading(false);
@@ -485,6 +539,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     const debounceTimer = setTimeout(async () => {
       setPlacesLoading(true);
       setPlacesError("");
+      setCurrentPage(1); // Reset to page 1
 
       try {
         if (currentLocationContext.type === 'gps' && currentLocationContext.latitude && currentLocationContext.longitude) {
@@ -494,6 +549,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
             location: `${currentLocationContext.latitude},${currentLocationContext.longitude}`,
             radius: 5000,
           });
+
           setNearbyPlaces(restaurants);
           // Invalidate restaurants query to show new cached restaurants in saved list
           queryClient.invalidateQueries({ queryKey: ["restaurants"] });
@@ -504,6 +560,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
             location: currentLocationContext.location,
             radius: 5000,
           });
+
           setNearbyPlaces(restaurants);
           // Invalidate restaurants query to show new cached restaurants in saved list
           queryClient.invalidateQueries({ queryKey: ["restaurants"] });
@@ -512,7 +569,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         setPlacesError(
           err instanceof Error
             ? err.message
-            : "Failed to search restaurants"
+            : "Failed to search food places"
         );
       } finally {
         setPlacesLoading(false);
@@ -525,7 +582,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   // Handle manual location and text search
   const handleManualSearch = async () => {
     if (!manualLocation.trim() && !restaurantSearchQuery.trim()) {
-      setPlacesError("Please enter a location or restaurant name to search");
+      setPlacesError("Please enter a location or food place name to search");
       return;
     }
 
@@ -533,6 +590,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     setPlacesError("");
     setShowNearbyPlaces(true);
     setNearbySearchQuery(""); // Reset search query
+    setCurrentPage(1); // Reset to page 1
 
     try {
       // Geocode the location to get coordinates for distance calculation
@@ -544,7 +602,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         }
       }
 
-      // Save location context for future refinements
+      // Save location context
       setCurrentLocationContext({
         type: 'manual',
         location: manualLocation.trim(),
@@ -553,18 +611,20 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       });
 
       const restaurants = await searchAndCacheRestaurantsByText({
-        query: restaurantSearchQuery.trim() || "restaurant",
+        query: restaurantSearchQuery.trim() || "food",
         location: manualLocation.trim() || undefined,
         radius: 5000,
       });
+
       setNearbyPlaces(restaurants);
+
       // Invalidate restaurants query to show new cached restaurants in saved list
       queryClient.invalidateQueries({ queryKey: ["restaurants"] });
     } catch (err) {
       setPlacesError(
         err instanceof Error
           ? err.message
-          : "Failed to search restaurants"
+          : "Failed to search food places"
       );
     } finally {
       setPlacesLoading(false);
@@ -654,7 +714,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 {/* Search options */}
                 <div className="space-y-3">
                   <div className="text-sm font-medium text-gray-700">
-                    Or search for restaurants:
+                    Or search for food places:
                   </div>
 
                   {/* Manual location search */}
@@ -680,12 +740,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   {/* Restaurant name/type search */}
                   <div className="space-y-2">
                     <Label htmlFor="restaurant-search" className="text-xs text-gray-600">
-                      Restaurant name or type (optional)
+                      Place name or type (optional)
                     </Label>
                     <Input
                       id="restaurant-search"
                       type="text"
-                      placeholder="e.g., Pizza Hut, sushi, italian"
+                      placeholder="e.g., Starbucks, cafe, bakery, dessert"
                       value={restaurantSearchQuery}
                       onChange={(e) => setRestaurantSearchQuery(e.target.value)}
                       onKeyDown={(e) => {
@@ -703,7 +763,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     className="w-full"
                   >
                     <Search className="w-4 h-4 mr-2" />
-                    Search Restaurants
+                    Search Food Places
                   </Button>
 
                   <div className="relative">
@@ -730,6 +790,72 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
             {/* Nearby places view (only when user clicks Search Nearby) */}
             {showNearbyPlaces && (
               <>
+                {/* Search inputs - keep visible for continued searching */}
+                <div className="space-y-3 pb-3 border-b border-gray-200">
+                  <div className="text-sm font-medium text-gray-700">
+                    Search again:
+                  </div>
+
+                  {/* Manual location search */}
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-location-nearby" className="text-xs text-gray-600">
+                      Location (city, zip code, or address)
+                    </Label>
+                    <Input
+                      id="manual-location-nearby"
+                      type="text"
+                      placeholder="e.g., 90210, Los Angeles, CA"
+                      value={manualLocation}
+                      onChange={(e) => setManualLocation(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleManualSearch();
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {/* Restaurant name/type search */}
+                  <div className="space-y-2">
+                    <Label htmlFor="restaurant-search-nearby" className="text-xs text-gray-600">
+                      Place name or type (optional)
+                    </Label>
+                    <Input
+                      id="restaurant-search-nearby"
+                      type="text"
+                      placeholder="e.g., Starbucks, cafe, bakery, dessert"
+                      value={restaurantSearchQuery}
+                      onChange={(e) => setRestaurantSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleManualSearch();
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleManualSearch()}
+                      variant="default"
+                      className="flex-1"
+                    >
+                      <Search className="w-4 h-4 mr-2" />
+                      New Search
+                    </Button>
+                    <Button
+                      onClick={() => handleSearchNearby()}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      <MapPin className="w-4 h-4 mr-2" />
+                      Use GPS
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Location status */}
                 {locationLoading && (
                   <Card className="bg-blue-50 border-blue-200">
@@ -781,7 +907,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                         <MapPin className="w-5 h-5 text-green-600" />
                         <div>
                           <p className="text-sm font-medium text-green-900">
-                            Found {nearbyPlaces.length} restaurant{nearbyPlaces.length !== 1 ? 's' : ''}
+                            Found {nearbyPlaces.length} place{nearbyPlaces.length !== 1 ? 's' : ''}
                           </p>
                           <p className="text-xs text-green-700">
                             {currentLocationContext?.type === 'gps'
@@ -809,7 +935,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                       type="text"
-                      placeholder="Search by restaurant name or type..."
+                      placeholder="Search by name or type (cafe, dessert, etc)..."
                       value={nearbySearchQuery}
                       onChange={(e) => setNearbySearchQuery(e.target.value)}
                       className="pl-9"
@@ -826,7 +952,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
                     <span className="ml-2 text-sm text-gray-500">
-                      Finding nearby restaurants...
+                      Finding nearby food places...
                     </span>
                   </div>
                 )}
@@ -846,7 +972,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     <Card className="bg-gray-50">
                       <CardContent className="pt-4 text-center">
                         <p className="text-sm text-gray-600">
-                          No nearby restaurants found
+                          No nearby food places found
                         </p>
                         <Button
                           variant="outline"
@@ -911,6 +1037,78 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   })}
                 </div>
 
+                {/* Pagination Controls */}
+                {nearbyPlaces.length > 0 && totalPages > 1 && !placesLoading && (
+                  <div className="flex items-center justify-center gap-1 py-4">
+                    {/* First/Previous buttons */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="px-2"
+                    >
+                      &lt;&lt;
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-2"
+                    >
+                      &lt;
+                    </Button>
+
+                    {/* Page numbers */}
+                    {getPageNumbers().map((page, idx) => (
+                      page === '...' ? (
+                        <span key={`ellipsis-${idx}`} className="px-2 text-gray-400">
+                          ...
+                        </span>
+                      ) : (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(page as number)}
+                          className="min-w-[2.5rem]"
+                        >
+                          {page}
+                        </Button>
+                      )
+                    ))}
+
+                    {/* Next/Last buttons */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-2"
+                    >
+                      &gt;
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                      className="px-2"
+                    >
+                      &gt;&gt;
+                    </Button>
+                  </div>
+                )}
+
+                {/* Page info */}
+                {nearbyPlaces.length > 0 && !placesLoading && (
+                  <div className="text-center text-sm text-gray-600">
+                    Showing {startIndex + 1}-{Math.min(endIndex, nearbyPlaces.length)} of {nearbyPlaces.length} places
+                    {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+                  </div>
+                )}
+
                 {(nearbyPlaces.length > 0 || placesError || locationError) && (
                   <Button
                     onClick={() => {
@@ -920,6 +1118,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       setCurrentLocationContext(null);
                       setNearbySearchQuery("");
                       setReferenceCoords(null);
+                      setCurrentPage(1);
                     }}
                     variant="outline"
                     className="w-full"

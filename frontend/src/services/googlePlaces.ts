@@ -8,6 +8,7 @@ export interface NearbySearchParams {
   latitude: number;
   longitude: number;
   radius?: number; // in meters, default 1500
+  excludePlaceIds?: string[]; // Place IDs to exclude from results (for pagination)
 }
 
 /**
@@ -97,13 +98,14 @@ async function initGoogleMaps(): Promise<void> {
 }
 
 /**
- * Search for nearby restaurants using the new Google Places API
+ * Search for nearby food establishments using the new Google Places API
+ * Includes restaurants, cafes, bakeries, coffee shops, dessert places, etc.
  * This should ONLY be called when user explicitly requests nearby search
  */
 export async function searchNearbyRestaurants(
   params: NearbySearchParams
 ): Promise<PlaceResult[]> {
-  const { latitude, longitude, radius = 1500 } = params;
+  const { latitude, longitude, radius = 1500, excludePlaceIds = [] } = params;
 
   // Initialize Google Maps if not already loaded
   await initGoogleMaps();
@@ -121,43 +123,56 @@ export async function searchNearbyRestaurants(
       center,
       radius,
     },
-    includedTypes: ['restaurant'],
+    includedTypes: [
+      'restaurant',
+      'cafe',
+      'bakery',
+      'coffee_shop',
+      'dessert_shop',
+      'ice_cream_shop',
+      'meal_takeaway',
+      'bar',
+    ],
     maxResultCount: 20,
     rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
   };
 
   try {
-    console.log('[GooglePlaces] Searching nearby restaurants...', { latitude, longitude, radius });
+    console.log('[GooglePlaces] Searching nearby food places...', { latitude, longitude, radius });
     const { places } = await Place.searchNearby(request);
 
     if (!places || places.length === 0) {
-      console.log('[GooglePlaces] No nearby restaurants found');
+      console.log('[GooglePlaces] No nearby food places found');
       return [];
     }
 
-    console.log(`[GooglePlaces] Found ${places.length} nearby restaurants`);
+    console.log(`[GooglePlaces] Found ${places.length} nearby food places`);
 
     // Transform to our PlaceResult interface
-    const results: PlaceResult[] = places.map((place) => ({
-      place_id: place.id || '',
-      name: place.displayName || 'Unknown Restaurant',
-      vicinity: place.formattedAddress || '',
-      types: place.types || [],
-      geometry: {
-        location: {
-          lat: place.location?.lat() || 0,
-          lng: place.location?.lng() || 0,
+    const results: PlaceResult[] = places
+      .map((place) => ({
+        place_id: place.id || '',
+        name: place.displayName || 'Unknown Place',
+        vicinity: place.formattedAddress || '',
+        types: place.types || [],
+        geometry: {
+          location: {
+            lat: place.location?.lat() || 0,
+            lng: place.location?.lng() || 0,
+          },
         },
-      },
-    }));
+      }))
+      // Filter out excluded place IDs (for pagination)
+      .filter((place) => !excludePlaceIds.includes(place.place_id));
 
+    console.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
     return results;
   } catch (error) {
     console.error('[GooglePlaces] Error during nearby search:', error);
     if (error instanceof Error && error.message.includes('API key')) {
       throw new Error('Google Maps API key issue. Check console for details.');
     }
-    throw new Error(`Failed to search nearby restaurants: ${error}`);
+    throw new Error(`Failed to search nearby food places: ${error}`);
   }
 }
 
@@ -200,19 +215,21 @@ export async function geocodeLocation(
 }
 
 export interface TextSearchParams {
-  query: string; // Restaurant name or type
+  query: string; // Food place name or type (restaurant, cafe, bakery, etc.)
   location?: string; // Optional: zip code, city, or address
   radius?: number; // in meters, default 5000
+  excludePlaceIds?: string[]; // Place IDs to exclude from results (for pagination)
 }
 
 /**
- * Search for restaurants by text query (name, type, etc.)
+ * Search for food establishments by text query (name, type, etc.)
+ * Includes restaurants, cafes, bakeries, coffee shops, dessert places, etc.
  * with optional location filter
  */
 export async function searchRestaurantsByText(
   params: TextSearchParams
 ): Promise<PlaceResult[]> {
-  const { query, location, radius = 5000 } = params;
+  const { query, location, radius = 5000, excludePlaceIds = [] } = params;
 
   // Initialize Google Maps if not already loaded
   await initGoogleMaps();
@@ -234,7 +251,8 @@ export async function searchRestaurantsByText(
   const request: google.maps.places.SearchByTextRequest = {
     textQuery: query,
     fields: ['displayName', 'location', 'types', 'id', 'formattedAddress'],
-    includedType: 'restaurant',
+    // No includedType restriction - allows finding all food establishments
+    // (restaurants, cafes, bakeries, coffee shops, dessert places, etc.)
     maxResultCount: 20,
   };
 
@@ -255,29 +273,33 @@ export async function searchRestaurantsByText(
       return [];
     }
 
-    console.log(`[GooglePlaces] Text search found ${places.length} restaurants`);
+    console.log(`[GooglePlaces] Text search found ${places.length} food places`);
 
     // Transform to our PlaceResult interface
-    const results: PlaceResult[] = places.map((place) => ({
-      place_id: place.id || '',
-      name: place.displayName || 'Unknown Restaurant',
-      vicinity: place.formattedAddress || '',
-      types: place.types || [],
-      geometry: {
-        location: {
-          lat: place.location?.lat() || 0,
-          lng: place.location?.lng() || 0,
+    const results: PlaceResult[] = places
+      .map((place) => ({
+        place_id: place.id || '',
+        name: place.displayName || 'Unknown Place',
+        vicinity: place.formattedAddress || '',
+        types: place.types || [],
+        geometry: {
+          location: {
+            lat: place.location?.lat() || 0,
+            lng: place.location?.lng() || 0,
+          },
         },
-      },
-    }));
+      }))
+      // Filter out excluded place IDs (for pagination)
+      .filter((place) => !excludePlaceIds.includes(place.place_id));
 
+    console.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
     return results;
   } catch (error) {
     console.error('[GooglePlaces] Text search error:', error);
     if (error instanceof Error && error.message.includes('API key')) {
       throw new Error('Google Maps API key issue. Check console for details.');
     }
-    throw new Error(`Failed to search restaurants: ${error}`);
+    throw new Error(`Failed to search food places: ${error}`);
   }
 }
 
@@ -306,6 +328,10 @@ export function getCuisineFromTypes(types?: string[]): string {
     cafe: 'Cafe',
     bakery: 'Bakery',
     bar: 'Bar',
+    coffee_shop: 'Coffee Shop',
+    dessert_shop: 'Dessert',
+    ice_cream_shop: 'Ice Cream',
+    meal_takeaway: 'Takeaway',
   };
 
   for (const type of types) {
@@ -449,7 +475,8 @@ export async function cacheGooglePlaces(
 }
 
 /**
- * Search for nearby restaurants and cache results in the database
+ * Search for nearby food establishments and cache results in the database
+ * Includes restaurants, cafes, bakeries, coffee shops, dessert places, etc.
  * Returns cached Restaurant objects instead of PlaceResult objects
  */
 export async function searchAndCacheNearbyRestaurants(
@@ -465,7 +492,8 @@ export async function searchAndCacheNearbyRestaurants(
 }
 
 /**
- * Search for restaurants by text and cache results in the database
+ * Search for food establishments by text and cache results in the database
+ * Includes restaurants, cafes, bakeries, coffee shops, dessert places, etc.
  * Returns cached Restaurant objects instead of PlaceResult objects
  */
 export async function searchAndCacheRestaurantsByText(

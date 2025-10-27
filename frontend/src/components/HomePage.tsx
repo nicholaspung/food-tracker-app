@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, Visit, Restaurant, FoodItem } from '@/lib/pocketbase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Calendar, MapPin, Utensils, Pencil, ChevronDown, ChevronRight, Trash2, Users } from 'lucide-react';
+import { Calendar, MapPin, Utensils, Pencil, ChevronDown, ChevronRight, Trash2, Users, Plus, Search, X } from 'lucide-react';
+import { WhatsNewDialog } from '@/components/WhatsNewDialog';
+import { Input } from '@/components/ui/input';
 
 const RATING_LABELS = [
   "Don't eat ever",
@@ -46,6 +48,7 @@ interface VisitWithDetails extends Omit<Visit, 'restaurant'> {
 
 interface HomePageProps {
   onEditVisit?: (visitId: string) => void;
+  onAddVisit?: () => void;
 }
 
 // Helper to get month key (YYYY-MM)
@@ -91,10 +94,12 @@ function getDateMonthsAgo(months: number): Date {
   return date;
 }
 
-export default function HomePage({ onEditVisit }: HomePageProps = {}) {
+export default function HomePage({ onEditVisit, onAddVisit }: HomePageProps = {}) {
   const [monthsToLoad, setMonthsToLoad] = useState(1); // Start with 1 month
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set([getMonthKey(new Date().toISOString())])); // Current month expanded by default
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [previousSearchQuery, setPreviousSearchQuery] = useState('');
   const queryClient = useQueryClient();
 
   // Helper to check if a visit is from a friend
@@ -162,15 +167,48 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
     [visits, restaurants, foodItems]
   );
 
-  // Filter visits based on monthsToLoad
+  // Filter visits based on monthsToLoad and search query
   const cutoffDate = useMemo(() => getDateMonthsAgo(monthsToLoad), [monthsToLoad]);
-  const filteredVisits = useMemo(() =>
-    visitsWithDetails.filter(visit => new Date(visit.visitDate) >= cutoffDate),
-    [visitsWithDetails, cutoffDate]
-  );
+  const filteredVisits = useMemo(() => {
+    // If searching, search ALL visits (ignore time filter)
+    // Otherwise, filter by time range
+    let filtered = searchQuery.trim()
+      ? visitsWithDetails
+      : visitsWithDetails.filter(visit => new Date(visit.visitDate) >= cutoffDate);
 
-  // Check if there are more visits to load
-  const hasMoreVisits = visitsWithDetails.length > filteredVisits.length;
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(visit => {
+        // Search in restaurant name
+        const restaurantName = visit.restaurant?.name?.toLowerCase() || '';
+        if (restaurantName.includes(query)) return true;
+
+        // Search in restaurant location
+        const restaurantLocation = visit.restaurant?.location?.toLowerCase() || '';
+        if (restaurantLocation.includes(query)) return true;
+
+        // Search in restaurant cuisine type
+        const cuisineType = visit.restaurant?.cuisineType?.toLowerCase() || '';
+        if (cuisineType.includes(query)) return true;
+
+        // Search in food items
+        const foodItemNames = visit.foodItems?.map(item => item.name?.toLowerCase() || '').join(' ') || '';
+        if (foodItemNames.includes(query)) return true;
+
+        // Search in notes
+        const notes = visit.notes?.toLowerCase() || '';
+        if (notes.includes(query)) return true;
+
+        return false;
+      });
+    }
+
+    return filtered;
+  }, [visitsWithDetails, cutoffDate, searchQuery]);
+
+  // Check if there are more visits to load (only when not searching)
+  const hasMoreVisits = !searchQuery.trim() && visitsWithDetails.length > filteredVisits.length;
 
   // Group visits by month, then by day (or month for friend visits)
   const groupedVisits = useMemo(() => {
@@ -228,6 +266,20 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
     setMonthsToLoad(prev => prev + 1);
   };
 
+  // Auto-expand all months when searching
+  useEffect(() => {
+    if (searchQuery.trim() && searchQuery !== previousSearchQuery) {
+      // When user starts searching or changes search, expand all months with results
+      const allMonthKeys = groupedVisits.map(g => g.monthKey);
+      setExpandedMonths(new Set(allMonthKeys));
+      setPreviousSearchQuery(searchQuery);
+    } else if (!searchQuery.trim() && previousSearchQuery) {
+      // When search is cleared, collapse to current month only
+      setExpandedMonths(new Set([getMonthKey(new Date().toISOString())]));
+      setPreviousSearchQuery('');
+    }
+  }, [searchQuery, groupedVisits, previousSearchQuery]);
+
   if (visitsLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -242,8 +294,18 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
         <Utensils className="w-16 h-16 text-gray-300 mb-4" />
         <p className="text-gray-500 text-center mb-2">No visits to show</p>
         <p className="text-sm text-gray-400 text-center mb-4">
-          Track your restaurant visits by tapping the + button
+          Start tracking your food experiences
         </p>
+        {onAddVisit && (
+          <Button
+            onClick={onAddVisit}
+            className="mb-4"
+            size="lg"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Your First Visit
+          </Button>
+        )}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2 max-w-sm">
           <div className="flex items-start gap-2">
             <Users className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -278,16 +340,66 @@ export default function HomePage({ onEditVisit }: HomePageProps = {}) {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
+      {/* What's New Dialog */}
+      <WhatsNewDialog />
+
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">My Visits</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Showing {filteredVisits.length} of {visits.length} visit{visits.length !== 1 ? 's' : ''}
-        </p>
+      <div className="bg-white border-b border-gray-200 px-4 py-4 space-y-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">My Visits</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {searchQuery.trim()
+              ? `Found ${filteredVisits.length} of ${visits.length} visit${visits.length !== 1 ? 's' : ''}`
+              : `Showing ${filteredVisits.length} of ${visits.length} visit${visits.length !== 1 ? 's' : ''}`
+            }
+          </p>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            type="text"
+            placeholder="Search restaurants, food, notes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* No search results */}
+        {searchQuery.trim() && filteredVisits.length === 0 && (
+          <Card>
+            <CardContent className="pt-6 text-center">
+              <Search className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <p className="text-gray-600 mb-2">No visits found</p>
+              <p className="text-sm text-gray-500">
+                Try searching for a different restaurant, food item, or location
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSearchQuery('')}
+                className="mt-4"
+              >
+                Clear Search
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {groupedVisits.map(({ monthKey, monthLabel, days }) => (
           <div key={monthKey} className="space-y-3">
             {/* Month Header */}

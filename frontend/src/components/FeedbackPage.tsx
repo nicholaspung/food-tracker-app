@@ -132,16 +132,30 @@ export default function FeedbackPage() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-blue-600" />
-            Feedback
-            {isAdmin && <Badge variant="secondary">Admin</Badge>}
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            {isAdmin
-              ? 'Manage user feedback and suggestions'
-              : 'Share your thoughts and get help'}
-          </p>
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <MessageSquare className="w-6 h-6 text-blue-600" />
+                Feedback
+                {isAdmin && <Badge variant="secondary">Admin</Badge>}
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">
+                {isAdmin
+                  ? 'Manage user feedback and suggestions'
+                  : 'Share your thoughts and get help'}
+              </p>
+            </div>
+            {!isAdmin && (
+              <Button
+                onClick={() => setShowNewFeedbackDialog(true)}
+                size="sm"
+                className="flex-shrink-0"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -216,17 +230,6 @@ export default function FeedbackPage() {
           })
         )}
       </div>
-
-      {/* Floating Action Button (for users only) */}
-      {!isAdmin && (
-        <button
-          onClick={() => setShowNewFeedbackDialog(true)}
-          className="fixed bottom-20 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 transition-colors z-20"
-          aria-label="Create new feedback"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
-      )}
 
       {/* New Feedback Dialog */}
       <Dialog open={showNewFeedbackDialog} onOpenChange={setShowNewFeedbackDialog}>

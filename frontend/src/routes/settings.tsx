@@ -18,7 +18,7 @@ function Settings() {
   return (
     <SettingsPage
       onNavigateBack={() => {
-        navigate({ to: '/home' });
+        navigate({ to: '/profile' });
       }}
     />
   );

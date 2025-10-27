@@ -1,5 +1,33 @@
 [
   {
+    "version": "0.2.0",
+    "date": "2025-01-15",
+    "title": "Enhanced Search, Pagination & UI Improvements",
+    "summary": "Major updates including visit search, traditional pagination for restaurant discovery, expanded food establishment types, and numerous UI/UX improvements.",
+    "features": [
+      "Search your visits: Find visits by restaurant name, location, food items, or notes",
+      "Traditional pagination: Navigate restaurant results with page numbers (<< < 1 2 3 4 5 > >>)",
+      "Expanded food places: Search now includes cafes, bakeries, coffee shops, dessert shops, ice cream shops, and more",
+      "What's New dialog: Automatic notification on app updates (shows once per version)",
+      "Quick add button: 'Add Your First Visit' button when you have no visits yet"
+    ],
+    "improvements": [
+      "Feedback button moved to header for easier access (removed floating button)",
+      "Settings page footer now visible for consistent navigation",
+      "Real-time feedback notification badge updates immediately when marking as read",
+      "Search visits auto-expands all matching months for better visibility",
+      "Restaurant search covers larger radius (5km) to find more options",
+      "Search inputs remain visible after getting results for easy refinement",
+      "Clear visual feedback for search results with result count"
+    ],
+    "fixes": [
+      "Settings back button now correctly returns to Profile page (not Home)",
+      "Feedback notification badge updates immediately after reading messages",
+      "Fixed search functionality to include all food establishment types",
+      "Pagination properly resets when starting a new search"
+    ]
+  },
+  {
     "version": "0.1.0",
     "date": "2025-10-27",
     "title": "Welcome to Track Your Foods",

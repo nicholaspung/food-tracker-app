@@ -130,6 +130,7 @@ function Home() {
     <>
       <HomePage
         onEditVisit={(visitId: string) => navigate({ to: `/edit-visit/${visitId}` })}
+        onAddVisit={() => navigate({ to: '/add-visit' })}
       />
 
       {/* Onboarding Dialog */}

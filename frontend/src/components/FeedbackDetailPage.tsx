@@ -79,10 +79,17 @@ export default function FeedbackDetailPage({
         : feedback.user_unread_count;
 
       if (currentCount && currentCount > 0) {
-        await pb.collection('feedback').update(feedbackId, {
-          [unreadField]: 0,
-        });
-        queryClient.invalidateQueries({ queryKey: ['feedback'] });
+        try {
+          await pb.collection('feedback').update(feedbackId, {
+            [unreadField]: 0,
+          });
+          queryClient.invalidateQueries({ queryKey: ['feedback'] });
+          queryClient.invalidateQueries({ queryKey: ['feedbackUnreadCount'] });
+        } catch (err) {
+          // Silently fail - user can still read and reply to feedback
+          // This might happen if permissions haven't been updated yet
+          console.error('Failed to mark feedback as read:', err);
+        }
       }
     };
 
@@ -129,6 +136,7 @@ export default function FeedbackDetailPage({
       queryClient.invalidateQueries({ queryKey: ['feedback_messages', feedbackId] });
       queryClient.invalidateQueries({ queryKey: ['feedback', feedbackId] });
       queryClient.invalidateQueries({ queryKey: ['feedback'] });
+      queryClient.invalidateQueries({ queryKey: ['feedbackUnreadCount'] });
     },
     onError: (err: Error) => {
       setError(err.message || 'Failed to send message');
@@ -145,6 +153,7 @@ export default function FeedbackDetailPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['feedback', feedbackId] });
       queryClient.invalidateQueries({ queryKey: ['feedback'] });
+      queryClient.invalidateQueries({ queryKey: ['feedbackUnreadCount'] });
     },
   });
 
