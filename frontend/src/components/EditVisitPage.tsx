@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Plus, X, Check, Trash2, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, X, Check, Trash2, Calendar, Users } from 'lucide-react';
 
 interface MenuItem {
   id?: string; // undefined if new item
@@ -35,6 +35,7 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [visitDate, setVisitDate] = useState('');
   const [showDateEdit, setShowDateEdit] = useState(false);
+  const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>('friends');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -77,6 +78,8 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
       // Ensure date is in YYYY-MM-DD format for date input
       const dateStr = visit.visitDate.split(' ')[0]; // Handle "YYYY-MM-DD HH:MM:SS" format
       setVisitDate(dateStr);
+      // Initialize visibility from visit data
+      setVisitVisibility(visit.visibility || 'friends');
     }
   }, [visit, restaurants]);
 
@@ -101,6 +104,7 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
       // Update visit (restaurant field is not updated - user must delete to change restaurant)
       await pb.collection('visits').update(visitId, {
         visitDate,
+        visibility: visitVisibility,
       });
 
       // Handle food items
@@ -267,6 +271,29 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
             )}
           </div>
         )}
+
+        {/* Visibility Checkbox */}
+        <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={visitVisibility === 'friends'}
+              onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-gray-600" />
+                <span className="text-sm font-medium">Friends can view this visit</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {visitVisibility === 'friends'
+                  ? "Your friends will be able to see this visit and your ratings"
+                  : "Only you will be able to see this visit"}
+              </p>
+            </div>
+          </label>
+        </div>
       </div>
 
       {/* Content */}

@@ -25,6 +25,7 @@ interface ProfilePageProps {
   onDeleteSuccess?: () => void;
   onLogout?: () => void;
   onNavigateToWhatsNew?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 interface ChangelogEntry {
@@ -37,7 +38,7 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew }: ProfilePageProps) {
+export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -547,6 +548,15 @@ Looking forward to seeing you there!`;
                 data-testid="whats-new-button"
               >
                 What's New
+              </Button>
+
+              <Button
+                onClick={onNavigateToSettings}
+                variant="outline"
+                className="w-full"
+                data-testid="settings-button"
+              >
+                Settings
               </Button>
 
               <Button
