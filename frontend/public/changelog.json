@@ -1,14 +1,23 @@
 [
   {
     "version": "0.1.0",
-    "date": "2025-10-12",
-    "title": "Welcome to Mobile Tracker",
-    "summary": "The initial release brings you a powerful suite of tracking tools to organize your daily life.",
+    "date": "2025-10-27",
+    "title": "Welcome to Track Your Foods",
+    "summary": "The initial release brings you a comprehensive food tracking experience with social features, location-based restaurant search, and privacy controls.",
     "features": [
-      "Track your time across different activities and projects",
-      "Monitor daily habits with streak tracking",
-      "Record journal entries with a clean, distraction-free interface",
-      "Manage relationships and interactions with the people tracker"
+      "Track restaurant visits with ratings, notes, and photos",
+      "Find nearby restaurants using Google Places API with GPS and manual location search",
+      "Rate food items with 5-star system (\"Don't eat ever\" to \"Eat often\")",
+      "Upload menu photos and use OCR scanning to extract menu items automatically",
+      "Add friends via QR codes or friend codes to share your food experiences",
+      "View friends' visits on your home feed (respecting privacy settings)",
+      "Control visit visibility - share with friends or keep private",
+      "Submit feedback and feature requests directly in the app",
+      "Invite-only system - first user can generate invite codes for friends",
+      "Chronological home feed grouped by month and day",
+      "Search restaurants by name, location, or cuisine type",
+      "Edit or delete your visits anytime",
+      "Customize profile with name and manage account settings"
     ],
     "improvements": [],
     "fixes": []
