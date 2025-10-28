@@ -48,8 +48,114 @@ async function initOCRWorker(progressCallback?: (progress: number) => void): Pro
 }
 
 /**
+ * Apply Gaussian blur for noise reduction (simplified bilateral filter)
+ */
+function applyGaussianBlur(data: Uint8ClampedArray, width: number, height: number, radius: number = 1): void {
+  // Gaussian kernel (3x3 for radius=1)
+  const kernel = [
+    1/16, 2/16, 1/16,
+    2/16, 4/16, 2/16,
+    1/16, 2/16, 1/16
+  ];
+
+  const tempData = new Uint8ClampedArray(data);
+
+  for (let y = radius; y < height - radius; y++) {
+    for (let x = radius; x < width - radius; x++) {
+      const idx = (y * width + x) * 4;
+      let sum = 0;
+
+      let ki = 0;
+      for (let ky = -radius; ky <= radius; ky++) {
+        for (let kx = -radius; kx <= radius; kx++) {
+          const kidx = ((y + ky) * width + (x + kx)) * 4;
+          sum += tempData[kidx] * kernel[ki];
+          ki++;
+        }
+      }
+
+      data[idx] = sum;
+      data[idx + 1] = sum;
+      data[idx + 2] = sum;
+    }
+  }
+}
+
+/**
+ * Apply adaptive thresholding (Otsu's method per region)
+ */
+function applyAdaptiveThreshold(data: Uint8ClampedArray, width: number, height: number, blockSize: number = 16): void {
+  const tempData = new Uint8ClampedArray(data);
+
+  for (let by = 0; by < height; by += blockSize) {
+    for (let bx = 0; bx < width; bx += blockSize) {
+      // Calculate threshold for this block
+      let sum = 0;
+      let count = 0;
+
+      for (let y = by; y < Math.min(by + blockSize, height); y++) {
+        for (let x = bx; x < Math.min(bx + blockSize, width); x++) {
+          const idx = (y * width + x) * 4;
+          sum += tempData[idx];
+          count++;
+        }
+      }
+
+      const threshold = sum / count;
+
+      // Apply threshold to this block
+      for (let y = by; y < Math.min(by + blockSize, height); y++) {
+        for (let x = bx; x < Math.min(bx + blockSize, width); x++) {
+          const idx = (y * width + x) * 4;
+          const value = tempData[idx] > threshold ? 255 : 0;
+          data[idx] = value;
+          data[idx + 1] = value;
+          data[idx + 2] = value;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Detect and correct image rotation using edge detection
+ */
+function detectRotation(data: Uint8ClampedArray, width: number, height: number): number {
+  // Sample horizontal and vertical edge strength
+  let horizontalEdges = 0;
+  let verticalEdges = 0;
+
+  // Sample middle third of image to avoid edges
+  const startY = Math.floor(height / 3);
+  const endY = Math.floor(2 * height / 3);
+  const startX = Math.floor(width / 3);
+  const endX = Math.floor(2 * width / 3);
+
+  for (let y = startY; y < endY - 1; y++) {
+    for (let x = startX; x < endX - 1; x++) {
+      const idx = (y * width + x) * 4;
+      const idxRight = (y * width + x + 1) * 4;
+      const idxDown = ((y + 1) * width + x) * 4;
+
+      // Horizontal edge strength
+      horizontalEdges += Math.abs(data[idx] - data[idxRight]);
+
+      // Vertical edge strength
+      verticalEdges += Math.abs(data[idx] - data[idxDown]);
+    }
+  }
+
+  // If vertical edges are much stronger, image might be rotated 90 degrees
+  if (verticalEdges > horizontalEdges * 1.5) {
+    return 90; // Rotate 90 degrees clockwise
+  }
+
+  return 0; // No rotation needed
+}
+
+/**
  * Preprocess image for better OCR accuracy
- * Applies: grayscale, contrast enhancement, sharpening, and upscaling to 300 DPI
+ * Advanced preprocessing: noise reduction, adaptive thresholding, rotation correction
  */
 async function preprocessImageForOCR(file: File): Promise<File> {
   return new Promise((resolve, reject) => {
@@ -62,10 +168,9 @@ async function preprocessImageForOCR(file: File): Promise<File> {
         const canvas = document.createElement('canvas');
 
         // Target ~300 DPI for better OCR
-        // Assuming typical phone photos are ~72-96 DPI, we upscale 3-4x
-        const scaleFactor = 3;
-        const width = img.width * scaleFactor;
-        const height = img.height * scaleFactor;
+        const scaleFactor = 2.5; // Slightly reduced for performance
+        let width = img.width * scaleFactor;
+        let height = img.height * scaleFactor;
 
         canvas.width = width;
         canvas.height = height;
@@ -80,60 +185,65 @@ async function preprocessImageForOCR(file: File): Promise<File> {
         ctx.drawImage(img, 0, 0, width, height);
 
         // Get image data for pixel manipulation
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
+        let imageData = ctx.getImageData(0, 0, width, height);
+        let data = imageData.data;
 
-        // Step 1: Convert to grayscale and enhance contrast moderately
+        console.log('Step 1: Converting to grayscale...');
+        // Step 1: Convert to grayscale with contrast enhancement
         for (let i = 0; i < data.length; i += 4) {
-          // Grayscale using luminosity method
           const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
 
-          // Moderate contrast enhancement (less aggressive)
-          const contrast = 1.2; // Moderate increase
+          // Moderate contrast enhancement
+          const contrast = 1.25;
           const factor = (259 * (contrast + 1)) / (259 - contrast);
           const enhanced = factor * (gray - 128) + 128;
           const clamped = Math.max(0, Math.min(255, enhanced));
 
-          data[i] = clamped;     // R
-          data[i + 1] = clamped; // G
-          data[i + 2] = clamped; // B
-          // Alpha stays the same
+          data[i] = clamped;
+          data[i + 1] = clamped;
+          data[i + 2] = clamped;
         }
 
-        // Step 2: Sharpen edges (helps with blurry text)
-        const kernel = [
-          0, -1,  0,
-         -1,  5, -1,
-          0, -1,  0
-        ];
+        console.log('Step 2: Detecting rotation...');
+        // Step 2: Detect if rotation is needed
+        const rotation = detectRotation(data, width, height);
+        if (rotation !== 0) {
+          console.log(`Rotating image ${rotation} degrees`);
 
-        const tempData = new Uint8ClampedArray(data);
-        for (let y = 1; y < height - 1; y++) {
-          for (let x = 1; x < width - 1; x++) {
-            const idx = (y * width + x) * 4;
-            let sum = 0;
+          // Rotate canvas
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = height; // Swap dimensions
+          tempCanvas.height = width;
+          const tempCtx = tempCanvas.getContext('2d');
 
-            for (let ky = -1; ky <= 1; ky++) {
-              for (let kx = -1; kx <= 1; kx++) {
-                const kidx = ((y + ky) * width + (x + kx)) * 4;
-                const k = kernel[(ky + 1) * 3 + (kx + 1)];
-                sum += tempData[kidx] * k;
-              }
-            }
+          if (tempCtx) {
+            tempCtx.translate(height / 2, width / 2);
+            tempCtx.rotate((rotation * Math.PI) / 180);
+            tempCtx.drawImage(canvas, -width / 2, -height / 2);
 
-            const sharpened = Math.max(0, Math.min(255, sum));
-            data[idx] = sharpened;
-            data[idx + 1] = sharpened;
-            data[idx + 2] = sharpened;
+            // Update canvas and dimensions
+            canvas.width = height;
+            canvas.height = width;
+            ctx.drawImage(tempCanvas, 0, 0);
+            [width, height] = [height, width];
+
+            imageData = ctx.getImageData(0, 0, width, height);
+            data = imageData.data;
           }
         }
 
-        // Don't apply aggressive thresholding - let Tesseract handle it
-        // The sharpening and contrast enhancement is usually enough
+        console.log('Step 3: Applying noise reduction (Gaussian blur)...');
+        // Step 3: Apply Gaussian blur for noise reduction
+        applyGaussianBlur(data, width, height, 1);
+
+        console.log('Step 4: Applying adaptive thresholding...');
+        // Step 4: Apply adaptive thresholding per region
+        applyAdaptiveThreshold(data, width, height, 16);
 
         // Put processed image back
         ctx.putImageData(imageData, 0, 0);
 
+        console.log('Preprocessing complete');
         // Convert to blob
         canvas.toBlob(
           (blob) => {
