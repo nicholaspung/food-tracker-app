@@ -7,3 +7,4 @@
 - allow user to take a picture of their food, and then "add ratings" onto the food item to be stitched into one picture to be uploaded to socials
     - allow user to either have pictures be individual with restaurant, menu item name, rating, or to be stitched into set of 2/3 for each section to be shared
     - allow user to create an image where it lists all the menu items and the ratings, along with a tiny photo of the item
+- use google cloud vision for ocr for menu images
