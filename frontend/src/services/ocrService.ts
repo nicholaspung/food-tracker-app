@@ -83,13 +83,13 @@ async function preprocessImageForOCR(file: File): Promise<File> {
         const imageData = ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
 
-        // Step 1: Convert to grayscale and enhance contrast
+        // Step 1: Convert to grayscale and enhance contrast moderately
         for (let i = 0; i < data.length; i += 4) {
           // Grayscale using luminosity method
           const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
 
-          // Enhance contrast (adjust midpoint and strength)
-          const contrast = 1.3; // Increase contrast
+          // Moderate contrast enhancement (less aggressive)
+          const contrast = 1.2; // Moderate increase
           const factor = (259 * (contrast + 1)) / (259 - contrast);
           const enhanced = factor * (gray - 128) + 128;
           const clamped = Math.max(0, Math.min(255, enhanced));
@@ -100,15 +100,36 @@ async function preprocessImageForOCR(file: File): Promise<File> {
           // Alpha stays the same
         }
 
-        // Step 2: Apply adaptive thresholding (simplified version)
-        // This helps separate text from background
-        const threshold = 128;
-        for (let i = 0; i < data.length; i += 4) {
-          const value = data[i] > threshold ? 255 : 0;
-          data[i] = value;
-          data[i + 1] = value;
-          data[i + 2] = value;
+        // Step 2: Sharpen edges (helps with blurry text)
+        const kernel = [
+          0, -1,  0,
+         -1,  5, -1,
+          0, -1,  0
+        ];
+
+        const tempData = new Uint8ClampedArray(data);
+        for (let y = 1; y < height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+            let sum = 0;
+
+            for (let ky = -1; ky <= 1; ky++) {
+              for (let kx = -1; kx <= 1; kx++) {
+                const kidx = ((y + ky) * width + (x + kx)) * 4;
+                const k = kernel[(ky + 1) * 3 + (kx + 1)];
+                sum += tempData[kidx] * k;
+              }
+            }
+
+            const sharpened = Math.max(0, Math.min(255, sum));
+            data[idx] = sharpened;
+            data[idx + 1] = sharpened;
+            data[idx + 2] = sharpened;
+          }
         }
+
+        // Don't apply aggressive thresholding - let Tesseract handle it
+        // The sharpening and contrast enhancement is usually enough
 
         // Put processed image back
         ctx.putImageData(imageData, 0, 0);
@@ -214,14 +235,21 @@ export async function performOCR(
   console.log('Image preprocessing complete');
 
   // Configure Tesseract parameters for menu text
-  // PSM 6: Assume uniform block of text (best for menus)
+  // Try PSM 4 first (single column of text) - often better for menus than PSM 6
   // OEM 3: Default LSTM engine (best accuracy)
   const {
     data: { text, confidence },
   } = await worker.recognize(preprocessedImage, {
-    tessedit_pageseg_mode: '6',  // PSM 6: Uniform block of text
+    tessedit_pageseg_mode: '4',  // PSM 4: Single column of text (good for vertical menus)
     tessedit_ocr_engine_mode: '3', // OEM 3: Default LSTM
   });
+
+  console.log(`OCR confidence: ${Math.round(confidence)}%`);
+
+  // Warn if confidence is very low
+  if (confidence < 50) {
+    console.warn('Low OCR confidence detected. Try retaking the photo with better lighting and focus.');
+  }
 
   // Clean up worker if we created a new one with progress callback
   if (onProgress) {
@@ -286,6 +314,18 @@ export function parseMenuItems(ocrText: string): ExtractedMenuItem[] {
     // Skip lines with mostly numbers or special characters
     const alphaCount = (line.match(/[a-zA-Z]/g) || []).length;
     if (alphaCount < Math.max(3, line.length * 0.4)) {
+      continue;
+    }
+
+    // Skip lines with excessive special characters (likely OCR noise)
+    const specialCharCount = (line.match(/[\\|]/g) || []).length;
+    if (specialCharCount > 2) {
+      continue;
+    }
+
+    // Skip lines with too many repeated characters (OCR artifacts)
+    const hasRepeatedChars = /(.)\1{4,}/.test(line);
+    if (hasRepeatedChars) {
       continue;
     }
 
@@ -387,6 +427,44 @@ export async function uploadMenuImage(
 }
 
 /**
+ * Sanitize text for use in PocketBase queries
+ * Escapes special characters that break query syntax
+ */
+function sanitizeForQuery(text: string): string {
+  // Remove or escape characters that break PocketBase filter syntax
+  return text
+    .replace(/\\/g, '\\\\')  // Escape backslashes
+    .replace(/"/g, '\\"')     // Escape quotes
+    .replace(/'/g, "\\'")     // Escape single quotes
+    .replace(/\n/g, ' ')      // Replace newlines with spaces
+    .replace(/\r/g, ' ')      // Replace carriage returns
+    .replace(/\t/g, ' ')      // Replace tabs
+    .trim();
+}
+
+/**
+ * Validate if a menu item name is reasonable
+ * Rejects garbage OCR results
+ */
+function isValidMenuItemName(name: string): boolean {
+  // Must have minimum length
+  if (name.length < 3) return false;
+
+  // Must have at least 50% alphabetic characters
+  const alphaCount = (name.match(/[a-zA-Z]/g) || []).length;
+  if (alphaCount < name.length * 0.5) return false;
+
+  // Must not be mostly special characters
+  const specialCount = (name.match(/[^a-zA-Z0-9\s]/g) || []).length;
+  if (specialCount > name.length * 0.4) return false;
+
+  // Must have at least 2 alphabetic characters
+  if (alphaCount < 2) return false;
+
+  return true;
+}
+
+/**
  * Create menu items from extracted items
  * Returns array of created MenuItem records
  */
@@ -399,9 +477,18 @@ export async function createMenuItems(
 
   for (const item of extractedItems) {
     try {
+      // Validate item name quality
+      if (!isValidMenuItemName(item.name)) {
+        console.warn(`Skipping invalid menu item: "${item.name}"`);
+        continue;
+      }
+
+      // Sanitize name for query
+      const sanitizedName = sanitizeForQuery(item.name);
+
       // Check if item already exists for this restaurant (case-insensitive)
       const existingItems = await pb.collection('menu_items').getFullList<MenuItem>({
-        filter: `restaurant = "${restaurantId}" && name ?~ "${item.name}"`,
+        filter: `restaurant = "${restaurantId}" && name ?~ "${sanitizedName}"`,
       });
 
       if (existingItems.length > 0) {
