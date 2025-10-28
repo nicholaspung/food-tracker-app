@@ -1,8 +1,8 @@
 # Stage 1: Build the Go application
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache git gcc musl-dev
+# Install build dependencies including C++ compiler for goheif/libde265
+RUN apk add --no-cache git gcc g++ musl-dev libheif-dev libde265-dev
 
 # Set working directory
 WORKDIR /build
@@ -23,11 +23,13 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o pocketbase .
 # Stage 2: Runtime image
 FROM alpine:latest
 
-# Install runtime dependencies
+# Install runtime dependencies including libheif for HEIC image processing
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
-    su-exec
+    su-exec \
+    libheif \
+    libde265
 
 # Create directories
 RUN mkdir -p /pb/pb_data /pb/pb_migrations /pb/pb_hooks /pb/pb_public
