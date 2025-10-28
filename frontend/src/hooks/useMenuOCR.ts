@@ -50,14 +50,21 @@ export function useMenuOCR() {
 
       const menuImage = await uploadMenuImage(restaurantId, compressedImage);
 
-      // Step 3: Perform OCR
+      // Step 3: Perform OCR with real-time progress updates
       setState((prev) => ({
         ...prev,
         status: 'processing',
         progress: 50,
       }));
 
-      const ocrResult = await performOCR(compressedImage);
+      const ocrResult = await performOCR(compressedImage, (ocrProgress) => {
+        // Map OCR progress (0-1) to our overall progress range (50-70%)
+        const mappedProgress = 50 + (ocrProgress * 20);
+        setState((prev) => ({
+          ...prev,
+          progress: Math.round(mappedProgress),
+        }));
+      });
 
       // Step 4: Parse menu items from OCR text
       setState((prev) => ({

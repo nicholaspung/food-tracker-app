@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMenuOCR } from '@/hooks/useMenuOCR';
 import { getLastMenuUploadDate } from '@/services/ocrService';
 import { MenuItem } from '@/lib/pocketbase';
+import { pb } from '@/lib/pocketbase';
 
 interface MenuScanStepProps {
   restaurantId: string;
@@ -24,6 +25,7 @@ export default function MenuScanStep({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lastUploadDate, setLastUploadDate] = useState<Date | null>(null);
   const [showConsent, setShowConsent] = useState(false);
+  const [isConvertingHeic, setIsConvertingHeic] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { status, progress, menuItems, error, processMenuImage, reset } = useMenuOCR();
@@ -37,15 +39,9 @@ export default function MenuScanStep({
     fetchLastUpload();
   }, [restaurantId]);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
-    }
 
     // Validate file size (max 10MB before compression)
     if (file.size > 10 * 1024 * 1024) {
@@ -53,7 +49,75 @@ export default function MenuScanStep({
       return;
     }
 
-    setSelectedImage(file);
+    let processedFile = file;
+
+    // Check if file is HEIF/HEIC and convert via backend
+    const isHEIF = file.type === 'image/heif' || file.type === 'image/heic' ||
+                   file.name.toLowerCase().endsWith('.heif') ||
+                   file.name.toLowerCase().endsWith('.heic');
+
+    if (isHEIF) {
+      try {
+        console.log('Converting HEIC image to JPEG via backend...');
+        setIsConvertingHeic(true);
+
+        // Create FormData and upload to backend for conversion
+        const formData = new FormData();
+        formData.append('image', file);
+
+        // Use fetch directly to get the blob response
+        const baseUrl = pb.baseUrl;
+        const token = pb.authStore.token;
+
+        const response = await fetch(`${baseUrl}/api/convert-heic`, {
+          method: 'POST',
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Conversion failed: ${response.statusText}`);
+        }
+
+        // Get the JPEG blob from response
+        const jpegBlob = await response.blob();
+
+        // Create a new File from the JPEG blob
+        processedFile = new File(
+          [jpegBlob],
+          file.name.replace(/\.(heif|heic)$/i, '.jpg'),
+          { type: 'image/jpeg' }
+        );
+
+        console.log('HEIC conversion successful via backend');
+        setIsConvertingHeic(false);
+      } catch (error) {
+        setIsConvertingHeic(false);
+        console.error('Failed to convert HEIC image:', error);
+        alert(
+          'Failed to convert HEIC image. The image may be corrupted or an unsupported format.\n\n' +
+          'Try:\n' +
+          '1. Taking a new photo\n' +
+          '2. Converting to JPEG first\n' +
+          '3. Changing iPhone settings to capture as JPEG (Settings > Camera > Formats > Most Compatible)'
+        );
+        // Reset the file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+    }
+
+    // Validate file type (after potential conversion)
+    if (!processedFile.type.startsWith('image/')) {
+      alert('Please select an image file (JPEG, PNG, etc.)');
+      return;
+    }
+
+    setSelectedImage(processedFile);
     setShowConsent(true);
 
     // Create preview
@@ -61,7 +125,7 @@ export default function MenuScanStep({
     reader.onload = (e) => {
       setImagePreview(e.target?.result as string);
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(processedFile);
   };
 
   const handleScan = async () => {
@@ -132,15 +196,25 @@ export default function MenuScanStep({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           capture="environment"
           onChange={handleFileSelect}
           className="hidden"
           data-testid="menu-image-input"
         />
 
+        {/* HEIC conversion loading */}
+        {isConvertingHeic && (
+          <Alert>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <AlertDescription>
+              Converting iPhone photo to JPEG...
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Image preview and consent */}
-        {imagePreview && (
+        {imagePreview && !isConvertingHeic && (
           <div className="space-y-4">
             <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-gray-100">
               <img

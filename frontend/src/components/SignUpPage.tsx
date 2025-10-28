@@ -76,6 +76,7 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
         password,
         passwordConfirm,
         inviteCode,
+        defaultVisitVisibility: 'friends', // Default visibility for new users
       });
 
       // Send verification email
