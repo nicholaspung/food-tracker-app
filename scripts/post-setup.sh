@@ -148,6 +148,21 @@ validate_prerequisites() {
         exit 1
     fi
 
+    # Check libheif for HEIC image conversion
+    if ! dpkg -l | grep -q libheif-dev; then
+        warn "libheif not installed - HEIC photo uploads will fail"
+        warn "Install with: sudo apt-get install -y libheif-dev"
+        warn "Or re-run setup-vps.sh to install all dependencies"
+        read -p "Continue without libheif? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            error "Installation cancelled. Please install libheif first."
+            exit 1
+        fi
+    else
+        log "libheif installed ✓ (HEIC photo conversion enabled)"
+    fi
+
     # Check disk space (need at least 1GB free)
     local available_space_kb=$(df "$APP_DIR" | awk 'NR==2 {print $4}')
     local available_space_mb=$((available_space_kb / 1024))

@@ -270,6 +270,21 @@ install_git() {
 }
 
 #######################
+# INSTALL LIBHEIF
+#######################
+install_libheif() {
+    step "Installing libheif for HEIC image support..."
+
+    if dpkg -l | grep -q libheif-dev; then
+        log "libheif already installed ($(dpkg -l | grep libheif-dev | awk '{print $3}'))"
+    else
+        sudo apt-get install -y libheif-dev
+        log "libheif installed ✓"
+        log "HEIC to JPEG conversion now supported for menu photo uploads"
+    fi
+}
+
+#######################
 # CREATE BACKUP DIRECTORY
 #######################
 create_backup_directory() {
@@ -378,6 +393,7 @@ main() {
     install_fail2ban
     enable_security_updates
     install_git
+    install_libheif
     create_backup_directory
     install_nodejs
     create_swap
