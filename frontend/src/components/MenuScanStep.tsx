@@ -158,6 +158,8 @@ export default function MenuScanStep({
 
   const getStatusMessage = () => {
     switch (status) {
+      case 'preprocessing':
+        return 'Enhancing image for OCR...';
       case 'compressing':
         return 'Optimizing image...';
       case 'uploading':
