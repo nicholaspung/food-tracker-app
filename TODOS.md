@@ -1,6 +1,6 @@
 - when editing a visit, if there's a restaurant that has been cached that has a similar name to the restaurant the user manually added, add a button that allows the user to switch the location to the cached location
+- when loading results, have a "load more" portion, or make it load a lot more places and paginate them, right now it's giving sparse information
 - (paid feature maybe) allow for advanced searching/filtering of their own visits as well as their friends visits
-- in the add route, load only up to 20 restaurants at a time, and add a "<< < next 1 2 3 4 5 previous >>>" pagination section for mobile
 - remove most of the console.logs from the website (maybe add a .env variable for stage and if prod, logging is suppresssed, but if dev/beta, logs show, maybe make a custom logging function for this)
 - add a feature that allows a user to input their receipt and be able to assign "friends" to each individual item, along with being able to add a tax percentage and tips to help split bills
     - add ability to make split even more advanced by allowing user to assign tip split percentage according to "friend"

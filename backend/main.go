@@ -6,12 +6,14 @@ import (
 	"encoding/base32"
 	"encoding/json"
 	"fmt"
+	"image/jpeg"
 	"io"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/jdeng/goheif"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -198,6 +200,58 @@ func main() {
 				"generated": 5,
 				"message":   "Successfully generated 5 new invite codes",
 			})
+		})
+
+		// Custom API endpoint: Convert HEIC to JPEG
+		se.Router.POST("/api/convert-heic", func(e *core.RequestEvent) error {
+			// Authentication required
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Parse multipart form
+			if err := e.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
+				return apis.NewBadRequestError("failed to parse multipart form", err)
+			}
+
+			// Get the uploaded file
+			file, header, err := e.Request.FormFile("image")
+			if err != nil {
+				return apis.NewBadRequestError("image file is required", err)
+			}
+			defer file.Close()
+
+			log.Printf("Converting HEIC file: %s, size: %d bytes", header.Filename, header.Size)
+
+			// Read the file into memory
+			heicData, err := io.ReadAll(file)
+			if err != nil {
+				return apis.NewApiError(500, "failed to read file", err)
+			}
+
+			// Decode HEIC image
+			img, err := goheif.Decode(bytes.NewReader(heicData))
+			if err != nil {
+				log.Printf("HEIC decode error: %v", err)
+				return apis.NewApiError(500, "failed to decode HEIC image", err)
+			}
+
+			// Convert to JPEG
+			var jpegBuffer bytes.Buffer
+			if err := jpeg.Encode(&jpegBuffer, img, &jpeg.Options{Quality: 90}); err != nil {
+				log.Printf("JPEG encode error: %v", err)
+				return apis.NewApiError(500, "failed to encode JPEG", err)
+			}
+
+			log.Printf("Successfully converted HEIC to JPEG, output size: %d bytes", jpegBuffer.Len())
+
+			// Return JPEG image
+			e.Response.Header().Set("Content-Type", "image/jpeg")
+			e.Response.Header().Set("Content-Length", fmt.Sprintf("%d", jpegBuffer.Len()))
+			e.Response.WriteHeader(200)
+			_, err = e.Response.Write(jpegBuffer.Bytes())
+			return err
 		})
 
 		// Serves static files from the provided public dir (if exists)

@@ -17,22 +17,34 @@ export interface ExtractedMenuItem {
  * Initialize Tesseract.js worker
  * Only creates worker once per session
  */
-async function initOCRWorker(): Promise<Worker> {
-  if (ocrWorker) {
-    return ocrWorker;
+async function initOCRWorker(progressCallback?: (progress: number) => void): Promise<Worker> {
+  // Always create a new worker if a progress callback is provided
+  // This ensures the callback is properly bound
+  if (progressCallback || !ocrWorker) {
+    const worker = await createWorker('eng', 1, {
+      logger: (m) => {
+        // Log progress for debugging
+        if (m.status === 'recognizing text') {
+          const progressPercent = Math.round(m.progress * 100);
+          console.log(`OCR Progress: ${progressPercent}%`);
+
+          // Call the progress callback if provided
+          if (progressCallback) {
+            progressCallback(m.progress);
+          }
+        }
+      },
+    });
+
+    // Only cache if no progress callback (default behavior)
+    if (!progressCallback) {
+      ocrWorker = worker;
+    }
+
+    return worker;
   }
 
-  const worker = await createWorker('eng', 1, {
-    logger: (m) => {
-      // Log progress for debugging
-      if (m.status === 'recognizing text') {
-        console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
-      }
-    },
-  });
-
-  ocrWorker = worker;
-  return worker;
+  return ocrWorker;
 }
 
 /**
@@ -96,13 +108,23 @@ export async function compressImage(file: File): Promise<File> {
 
 /**
  * Perform OCR on an image file
+ * @param imageFile - The image file to process
+ * @param onProgress - Optional callback to receive progress updates (0-1)
  */
-export async function performOCR(imageFile: File): Promise<OCRResult> {
-  const worker = await initOCRWorker();
+export async function performOCR(
+  imageFile: File,
+  onProgress?: (progress: number) => void
+): Promise<OCRResult> {
+  const worker = await initOCRWorker(onProgress);
 
   const {
     data: { text, confidence },
   } = await worker.recognize(imageFile);
+
+  // Clean up worker if we created a new one with progress callback
+  if (onProgress) {
+    await worker.terminate();
+  }
 
   return {
     text,

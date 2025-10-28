@@ -35,6 +35,12 @@ cd backend
 go run main.go serve     # Start PocketBase server (port 8090)
 ```
 
+**System Dependencies:**
+- **libheif** - Required for HEIC/HEIF image conversion
+  - Ubuntu/Debian: `sudo apt-get install libheif-dev`
+  - macOS: `brew install libheif`
+  - Required by the `/api/convert-heic` endpoint for iPhone photo uploads
+
 ### E2E Testing
 ```bash
 cd frontend
@@ -75,6 +81,14 @@ Test files are in `frontend/cypress/e2e/`. The `test:e2e` command auto-starts th
   - `restaurants` - Restaurant tracking
   - `food_items` - Food items at restaurants
   - `ratings` - User ratings for food items
+  - `menu_images` - Uploaded menu photos for OCR
+  - `menu_items` - Menu items extracted from photos
+- **Custom Endpoints**:
+  - `POST /api/convert-heic` - Converts HEIC/HEIF images to JPEG (requires auth)
+  - `GET /api/invite-codes/inviter/{code}` - Get inviter info from invite code
+  - `GET /api/users/by-friend-code/{code}` - Find user by friend code
+  - `GET /api/invite-codes` - Get unused invite codes for authenticated user
+  - `POST /api/invite-codes/generate` - Generate new invite codes (initial user only)
 
 ### Tauri Integration
 - Tauri configuration in `frontend/src-tauri/`
@@ -116,6 +130,8 @@ When adding features:
 5. Claude: (Optionally) Invoke `code-reviewer` to review the implementation
 
 ## Key Dependencies
+
+### Frontend
 - **React**: v19.1.0
 - **TanStack Router**: v1.132.41 (file-based routing)
 - **TanStack Query**: v5.90.2 (server state)
@@ -124,6 +140,11 @@ When adding features:
 - **Cypress**: v13.17.0 (E2E testing)
 - **Tailwind CSS**: v4.1.14
 - **TypeScript**: v5.8.3
+
+### Backend
+- **PocketBase**: v0.30.1 (Go-based BaaS)
+- **goheif**: github.com/jdeng/goheif (HEIC image conversion)
+- **System Dependency**: libheif library (for HEIC/HEIF support)
 
 ## Testing Notes
 - Tests use `data-testid` attributes for selecting elements
