@@ -9,7 +9,7 @@ import {
 } from '@/services/ocrService';
 import { MenuItem } from '@/lib/pocketbase';
 
-export type OCRStatus = 'idle' | 'compressing' | 'uploading' | 'processing' | 'complete' | 'error';
+export type OCRStatus = 'idle' | 'preprocessing' | 'compressing' | 'uploading' | 'processing' | 'complete' | 'error';
 
 export interface UseMenuOCRState {
   status: OCRStatus;
