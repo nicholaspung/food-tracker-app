@@ -1,5 +1,6 @@
 import { createWorker, Worker } from 'tesseract.js';
 import { pb, MenuImage, MenuItem } from '@/lib/pocketbase';
+import { logger } from '@/lib/logger';
 
 let ocrWorker: Worker | null = null;
 
@@ -26,7 +27,7 @@ async function initOCRWorker(progressCallback?: (progress: number) => void): Pro
         // Log progress for debugging
         if (m.status === 'recognizing text') {
           const progressPercent = Math.round(m.progress * 100);
-          console.log(`OCR Progress: ${progressPercent}%`);
+          logger.log(`OCR Progress: ${progressPercent}%`);
 
           // Call the progress callback if provided
           if (progressCallback) {
@@ -188,7 +189,7 @@ async function preprocessImageForOCR(file: File): Promise<File> {
         let imageData = ctx.getImageData(0, 0, width, height);
         let data = imageData.data;
 
-        console.log('Step 1: Converting to grayscale...');
+        logger.log('Step 1: Converting to grayscale...');
         // Step 1: Convert to grayscale with contrast enhancement
         for (let i = 0; i < data.length; i += 4) {
           const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
@@ -204,11 +205,11 @@ async function preprocessImageForOCR(file: File): Promise<File> {
           data[i + 2] = clamped;
         }
 
-        console.log('Step 2: Detecting rotation...');
+        logger.log('Step 2: Detecting rotation...');
         // Step 2: Detect if rotation is needed
         const rotation = detectRotation(data, width, height);
         if (rotation !== 0) {
-          console.log(`Rotating image ${rotation} degrees`);
+          logger.log(`Rotating image ${rotation} degrees`);
 
           // Rotate canvas
           const tempCanvas = document.createElement('canvas');
@@ -232,18 +233,18 @@ async function preprocessImageForOCR(file: File): Promise<File> {
           }
         }
 
-        console.log('Step 3: Applying noise reduction (Gaussian blur)...');
+        logger.log('Step 3: Applying noise reduction (Gaussian blur)...');
         // Step 3: Apply Gaussian blur for noise reduction
         applyGaussianBlur(data, width, height, 1);
 
-        console.log('Step 4: Applying adaptive thresholding...');
+        logger.log('Step 4: Applying adaptive thresholding...');
         // Step 4: Apply adaptive thresholding per region
         applyAdaptiveThreshold(data, width, height, 16);
 
         // Put processed image back
         ctx.putImageData(imageData, 0, 0);
 
-        console.log('Preprocessing complete');
+        logger.log('Preprocessing complete');
         // Convert to blob
         canvas.toBlob(
           (blob) => {
@@ -340,9 +341,9 @@ export async function performOCR(
   const worker = await initOCRWorker(onProgress);
 
   // Preprocess image for better OCR accuracy
-  console.log('Preprocessing image for OCR...');
+  logger.log('Preprocessing image for OCR...');
   const preprocessedImage = await preprocessImageForOCR(imageFile);
-  console.log('Image preprocessing complete');
+  logger.log('Image preprocessing complete');
 
   // Configure Tesseract parameters for menu text
   // Try PSM 4 first (single column of text) - often better for menus than PSM 6
@@ -352,13 +353,13 @@ export async function performOCR(
   } = await worker.recognize(preprocessedImage, {
     tessedit_pageseg_mode: '4',  // PSM 4: Single column of text (good for vertical menus)
     tessedit_ocr_engine_mode: '3', // OEM 3: Default LSTM
-  });
+  } as any);
 
-  console.log(`OCR confidence: ${Math.round(confidence)}%`);
+  logger.log(`OCR confidence: ${Math.round(confidence)}%`);
 
   // Warn if confidence is very low
   if (confidence < 50) {
-    console.warn('Low OCR confidence detected. Try retaking the photo with better lighting and focus.');
+    logger.warn('Low OCR confidence detected. Try retaking the photo with better lighting and focus.');
   }
 
   // Clean up worker if we created a new one with progress callback
@@ -589,7 +590,7 @@ export async function createMenuItems(
     try {
       // Validate item name quality
       if (!isValidMenuItemName(item.name)) {
-        console.warn(`Skipping invalid menu item: "${item.name}"`);
+        logger.warn(`Skipping invalid menu item: "${item.name}"`);
         continue;
       }
 
@@ -624,7 +625,7 @@ export async function createMenuItems(
       const record = await pb.collection('menu_items').create<MenuItem>(data);
       createdItems.push(record);
     } catch (error) {
-      console.error(`Failed to create menu item "${item.name}":`, error);
+      logger.error(`Failed to create menu item "${item.name}":`, error);
       // Continue with other items even if one fails
     }
   }
@@ -651,7 +652,7 @@ export async function getLastMenuUploadDate(
 
     return null;
   } catch (error) {
-    console.error('Failed to get last menu upload date:', error);
+    logger.error('Failed to get last menu upload date:', error);
     return null;
   }
 }
@@ -670,7 +671,7 @@ export async function getRestaurantMenuItems(
 
     return items;
   } catch (error) {
-    console.error('Failed to get restaurant menu items:', error);
+    logger.error('Failed to get restaurant menu items:', error);
     return [];
   }
 }

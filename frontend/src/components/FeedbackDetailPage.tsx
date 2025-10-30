@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { logger } from "@/lib/logger";
 import { pb, Feedback, FeedbackMessage } from '@/lib/pocketbase';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -88,7 +89,7 @@ export default function FeedbackDetailPage({
         } catch (err) {
           // Silently fail - user can still read and reply to feedback
           // This might happen if permissions haven't been updated yet
-          console.error('Failed to mark feedback as read:', err);
+          logger.error('Failed to mark feedback as read:', err);
         }
       }
     };

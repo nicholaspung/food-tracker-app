@@ -120,6 +120,11 @@ export default function HomePage({ onEditVisit, onAddVisit }: HomePageProps = {}
     },
   });
 
+  // Count user's own visits vs friends' visits
+  const currentUserId = pb.authStore.record?.id;
+  const userVisitsCount = visits.filter(v => v.user === currentUserId).length;
+  const friendVisitsCount = visits.filter(v => v.user !== currentUserId).length;
+
   // Fetch all restaurants
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
     queryKey: ['restaurants'],
@@ -325,8 +330,11 @@ export default function HomePage({ onEditVisit, onAddVisit }: HomePageProps = {}
     return (
       <div className="flex flex-col h-full bg-gray-50">
         <div className="bg-white border-b border-gray-200 px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">My Visits</h1>
-          <p className="text-sm text-gray-500 mt-1">{visits.length} total visits</p>
+          <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {userVisitsCount} your visit{userVisitsCount !== 1 ? 's' : ''}
+            {friendVisitsCount > 0 && ` • ${friendVisitsCount} friend${friendVisitsCount !== 1 ? 's' : ''}'`}
+          </p>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <p className="text-gray-500 text-center mb-4">No visits in the last month</p>
@@ -346,11 +354,15 @@ export default function HomePage({ onEditVisit, onAddVisit }: HomePageProps = {}
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4 space-y-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Visits</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
           <p className="text-sm text-gray-500 mt-1">
             {searchQuery.trim()
-              ? `Found ${filteredVisits.length} of ${visits.length} visit${visits.length !== 1 ? 's' : ''}`
-              : `Showing ${filteredVisits.length} of ${visits.length} visit${visits.length !== 1 ? 's' : ''}`
+              ? `Found ${filteredVisits.length} of ${visits.length} total`
+              : userVisitsCount > 0 && friendVisitsCount > 0
+                ? `${userVisitsCount} your visit${userVisitsCount !== 1 ? 's' : ''} • ${friendVisitsCount} friend${friendVisitsCount !== 1 ? 's' : ''}'`
+                : userVisitsCount > 0
+                  ? `${userVisitsCount} your visit${userVisitsCount !== 1 ? 's' : ''}`
+                  : `${friendVisitsCount} friend${friendVisitsCount !== 1 ? 's' : ''}'`
             }
           </p>
         </div>

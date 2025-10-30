@@ -329,13 +329,13 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
               Add Menu Item
             </Button>
 
-            {activeMenuItems.map((item, actualIndex) => {
+            {activeMenuItems.map((item) => {
               const index = menuItems.findIndex(m => m === item);
               return (
                 <Card key={index}>
                   <CardContent className="pt-6 space-y-3">
                     <div className="flex items-start justify-between">
-                      <Label>Item {actualIndex + 1}</Label>
+                      <Label>Item {index + 1}</Label>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -372,7 +372,7 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
         {/* Step 2: Update Ratings */}
         {step === 2 && (
           <div className="space-y-4">
-            {activeMenuItems.map((item, actualIndex) => {
+            {activeMenuItems.map((item) => {
               const index = menuItems.findIndex(m => m === item);
               return (
                 <Card key={index}>

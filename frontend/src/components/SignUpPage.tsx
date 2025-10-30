@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 
 interface SignUpPageProps {
@@ -48,12 +49,12 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
       // Look up the invite code to find who invited this user
       let inviterInfo = null;
       try {
-        console.log('[SignUp] Looking up inviter for invite code:', inviteCode);
+        logger.log('[SignUp] Looking up inviter for invite code:', inviteCode);
         const response = await pb.send(`/api/invite-codes/inviter/${inviteCode}`, {
           method: 'GET',
         });
 
-        console.log('[SignUp] Inviter API response:', response);
+        logger.log('[SignUp] Inviter API response:', response);
 
         if (response.hasInviter && response.inviter) {
           inviterInfo = {
@@ -61,12 +62,12 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
             email: response.inviter.email,
             name: response.inviter.name,
           };
-          console.log('[SignUp] Inviter info found:', inviterInfo);
+          logger.log('[SignUp] Inviter info found:', inviterInfo);
         } else {
-          console.log('[SignUp] No inviter for this invite code (initial code)');
+          logger.log('[SignUp] No inviter for this invite code (initial code)');
         }
       } catch (inviteErr) {
-        console.error('[SignUp] Could not fetch inviter info:', inviteErr);
+        logger.error('[SignUp] Could not fetch inviter info:', inviteErr);
         // Continue with signup even if we can't get inviter info
       }
 
@@ -91,9 +92,9 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
           newUserEmail: email,
         };
         localStorage.setItem('pendingFriendSuggestion', JSON.stringify(suggestionData));
-        console.log('[SignUp] Stored friend suggestion in localStorage:', suggestionData);
+        logger.log('[SignUp] Stored friend suggestion in localStorage:', suggestionData);
       } else {
-        console.log('[SignUp] No inviter info to store - skipping friend suggestion');
+        logger.log('[SignUp] No inviter info to store - skipping friend suggestion');
       }
 
       // Show success message
@@ -105,7 +106,7 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
       setPasswordConfirm("");
       setInviteCode(initialInviteCode || "");
     } catch (err: any) {
-      console.error("Sign up error:", err);
+      logger.error("Sign up error:", err);
 
       // Handle specific error messages from PocketBase
       if (err?.response?.data) {

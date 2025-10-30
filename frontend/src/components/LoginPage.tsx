@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { pb } from "@/lib/pocketbase";
+import { logger } from "@/lib/logger";
 
 interface LoginPageProps {
   onNavigateToSignUp: () => void;
@@ -27,7 +28,7 @@ export default function LoginPage({ onNavigateToSignUp, onNavigateToForgotPasswo
 
     try {
       const authData = await pb.collection('users').authWithPassword(email, password);
-      console.log("Login successful:", pb.authStore.model);
+      logger.log("Login successful:", pb.authStore.model);
 
       // Check if user is verified
       if (!authData.record.verified) {
@@ -41,7 +42,7 @@ export default function LoginPage({ onNavigateToSignUp, onNavigateToForgotPasswo
       // Call success callback
       onLoginSuccess?.();
     } catch (err: any) {
-      console.error("Login error:", err);
+      logger.error("Login error:", err);
       setError("Invalid email or password. Please try again.");
     } finally {
       setLoading(false);
@@ -56,7 +57,7 @@ export default function LoginPage({ onNavigateToSignUp, onNavigateToForgotPasswo
       await pb.collection('users').requestVerification(email);
       setVerificationSent(true);
     } catch (err: any) {
-      console.error("Resend verification error:", err);
+      logger.error("Resend verification error:", err);
       setError("Failed to resend verification email. Please try again.");
     } finally {
       setResendingVerification(false);

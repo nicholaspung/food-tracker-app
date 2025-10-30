@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 
 interface VerifyEmailPageProps {
@@ -19,7 +20,7 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
         await pb.collection('users').confirmVerification(token);
         setStatus('success');
       } catch (err: any) {
-        console.error("Email verification error:", err);
+        logger.error("Email verification error:", err);
         setStatus('error');
         setError(err?.message || "Failed to verify email. The link may be invalid or expired.");
       }

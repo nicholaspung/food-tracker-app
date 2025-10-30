@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { pb } from "@/lib/pocketbase";
+import { logger } from "@/lib/logger";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Check, X } from "lucide-react";
 import {
@@ -38,7 +39,7 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings }: ProfilePageProps) {
+export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -168,10 +169,10 @@ export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout,
         method: 'GET',
       });
 
-      console.log("Fetched invite codes:", data);
+      logger.log("Fetched invite codes:", data);
       setInviteCodes(data.codes || []);
     } catch (err) {
-      console.error("Error fetching invite codes:", err);
+      logger.error("Error fetching invite codes:", err);
     } finally {
       setLoadingCodes(false);
     }
@@ -188,12 +189,12 @@ export default function ProfilePage({ onNavigateBack, onDeleteSuccess, onLogout,
         method: 'POST',
       });
 
-      console.log(`Generated ${data.generated} new invite codes`);
+      logger.log(`Generated ${data.generated} new invite codes`);
 
       // Refresh the codes list
       await fetchInviteCodes();
     } catch (err: any) {
-      console.error("Error generating invite codes:", err);
+      logger.error("Error generating invite codes:", err);
 
       // Check if it's a forbidden error (not initial user)
       if (err.status === 403) {
@@ -229,7 +230,7 @@ Looking forward to seeing you there!`;
       setCopiedCode(code);
       setTimeout(() => setCopiedCode(null), 2000);
     } catch (err) {
-      console.error("Failed to copy invitation:", err);
+      logger.error("Failed to copy invitation:", err);
     }
   };
 
@@ -249,12 +250,12 @@ Looking forward to seeing you there!`;
       // Clear auth store
       pb.authStore.clear();
 
-      console.log("Account deleted successfully");
+      logger.log("Account deleted successfully");
 
       // Call success callback
       onDeleteSuccess?.();
     } catch (err: any) {
-      console.error("Delete account error:", err);
+      logger.error("Delete account error:", err);
       setError(err.message || "Failed to delete account. Please try again.");
       setLoading(false);
     }
@@ -262,7 +263,7 @@ Looking forward to seeing you there!`;
 
   const handleLogout = () => {
     pb.authStore.clear();
-    console.log("User logged out");
+    logger.log("User logged out");
     onLogout?.();
   };
 
