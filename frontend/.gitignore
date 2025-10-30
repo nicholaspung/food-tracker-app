@@ -34,3 +34,6 @@ cypress/downloads/
 
 # TanStack Router
 routeTree.gen.ts
+
+# PWA dev artifacts
+dev-dist

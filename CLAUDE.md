@@ -6,11 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a mobile food tracker application built with:
 - **Frontend**: Tauri v2 desktop app with React 19, TypeScript, and Vite
+- **PWA Support**: Progressive Web App capabilities via vite-plugin-pwa (works on Android & iOS browsers)
 - **Backend**: Go-based PocketBase server (v0.30.1) running on port 8090
 - **Routing**: TanStack Router with file-based routing
 - **Styling**: Tailwind CSS v4 with shadcn/ui components
 - **State Management**: TanStack Query and TanStack Form
 - **Testing**: Cypress for end-to-end browser testing
+
+**Distribution Options:**
+- **Native App**: Tauri wrapper for desktop/mobile (uses localhost:8090)
+- **Web App (PWA)**: Installable web app for browsers (requires deployed backend)
+- See `PWA_DEPLOYMENT.md` for complete PWA deployment guide
 
 **IMPORTANT: Mobile-First Design**
 - This is a **mobile-native application** - all features MUST be designed for mobile devices
