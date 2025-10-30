@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMenuOCR } from '@/hooks/useMenuOCR';
 import { getLastMenuUploadDate } from '@/services/ocrService';
+import { logger } from "@/lib/logger";
 import { MenuItem } from '@/lib/pocketbase';
 import { pb } from '@/lib/pocketbase';
 
@@ -58,7 +59,7 @@ export default function MenuScanStep({
 
     if (isHEIF) {
       try {
-        console.log('Converting HEIC image to JPEG via backend...');
+        logger.log('Converting HEIC image to JPEG via backend...');
         setIsConvertingHeic(true);
 
         // Create FormData and upload to backend for conversion
@@ -91,11 +92,11 @@ export default function MenuScanStep({
           { type: 'image/jpeg' }
         );
 
-        console.log('HEIC conversion successful via backend');
+        logger.log('HEIC conversion successful via backend');
         setIsConvertingHeic(false);
       } catch (error) {
         setIsConvertingHeic(false);
-        console.error('Failed to convert HEIC image:', error);
+        logger.error('Failed to convert HEIC image:', error);
         alert(
           'Failed to convert HEIC image. The image may be corrupted or an unsupported format.\n\n' +
           'Try:\n' +
@@ -138,7 +139,7 @@ export default function MenuScanStep({
         onItemsExtracted(items);
       }, 1500);
     } catch (err) {
-      console.error('OCR failed:', err);
+      logger.error('OCR failed:', err);
     }
   };
 

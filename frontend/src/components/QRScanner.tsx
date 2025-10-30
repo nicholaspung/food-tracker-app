@@ -3,6 +3,7 @@ import { BrowserMultiFormatReader } from '@zxing/browser';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { X, Camera } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface QRScannerProps {
   onScan: (result: string) => void;
@@ -24,7 +25,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         if (!videoRef.current) return;
 
         // Get video input devices
-        const videoInputDevices = await reader.listVideoInputDevices();
+        const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
 
         if (videoInputDevices.length === 0) {
           setError('No camera found on this device');
@@ -33,14 +34,14 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
 
         // Use the first camera (or back camera on mobile if available)
         const selectedDevice = videoInputDevices.find(
-          (device) => device.label.toLowerCase().includes('back')
+          (device: MediaDeviceInfo) => device.label.toLowerCase().includes('back')
         ) || videoInputDevices[0];
 
         // Start decoding from video
         await reader.decodeFromVideoDevice(
           selectedDevice.deviceId,
           videoRef.current,
-          (result, error) => {
+          (result) => {
             if (result) {
               const text = result.getText();
               if (text) {
@@ -52,7 +53,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           }
         );
       } catch (err) {
-        console.error('Scanner error:', err);
+        logger.error('Scanner error:', err);
         setError('Failed to access camera. Please check permissions.');
       }
     };
@@ -61,9 +62,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
 
     // Cleanup
     return () => {
-      if (readerRef.current) {
-        readerRef.current.reset();
-      }
+      // BrowserMultiFormatReader cleanup is handled automatically
+      // No manual reset needed
     };
   }, [onScan]);
 

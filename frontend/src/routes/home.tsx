@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
+import { logger } from '@/lib/logger';
 import HomePage from '@/components/HomePage';
 import OnboardingDialog from '@/components/OnboardingDialog';
 import {
@@ -51,36 +52,36 @@ function Home() {
 
   // Check for pending friend suggestion on mount
   useEffect(() => {
-    console.log('[Home] Checking for pending friend suggestion...');
-    console.log('[Home] Current user email:', pb.authStore.record?.email);
+    logger.log('[Home] Checking for pending friend suggestion...');
+    logger.log('[Home] Current user email:', pb.authStore.record?.email);
 
     const suggestionData = localStorage.getItem('pendingFriendSuggestion');
-    console.log('[Home] localStorage data:', suggestionData);
+    logger.log('[Home] localStorage data:', suggestionData);
 
     if (suggestionData) {
       try {
         const parsed = JSON.parse(suggestionData);
-        console.log('[Home] Parsed suggestion data:', parsed);
+        logger.log('[Home] Parsed suggestion data:', parsed);
 
         // Check if this suggestion is for the current logged-in user
         if (parsed.newUserEmail === pb.authStore.record?.email) {
-          console.log('[Home] Email match! Setting friend suggestion...');
+          logger.log('[Home] Email match! Setting friend suggestion...');
           setFriendSuggestion({
             inviterId: parsed.inviterId,
             inviterEmail: parsed.inviterEmail,
             inviterName: parsed.inviterName,
           });
         } else {
-          console.log('[Home] Email mismatch:', {
+          logger.log('[Home] Email mismatch:', {
             stored: parsed.newUserEmail,
             current: pb.authStore.record?.email,
           });
         }
       } catch (err) {
-        console.error('[Home] Failed to parse friend suggestion:', err);
+        logger.error('[Home] Failed to parse friend suggestion:', err);
       }
     } else {
-      console.log('[Home] No pending friend suggestion in localStorage');
+      logger.log('[Home] No pending friend suggestion in localStorage');
     }
   }, []);
 

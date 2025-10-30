@@ -1,4 +1,5 @@
 import { PlaceResult, Restaurant, pb } from '@/lib/pocketbase';
+import { logger } from '@/lib/logger';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
 
@@ -19,7 +20,7 @@ function loadGoogleMapsBootstrap(): Promise<void> {
   return new Promise((resolve, reject) => {
     // Check if bootstrap loader is already installed
     if (typeof window.google?.maps?.importLibrary === 'function') {
-      console.log('[GooglePlaces] Bootstrap already loaded');
+      logger.log('[GooglePlaces] Bootstrap already loaded');
       resolve();
       return;
     }
@@ -29,19 +30,19 @@ function loadGoogleMapsBootstrap(): Promise<void> {
       'script[data-google-maps-bootstrap]'
     );
     if (existingScript) {
-      console.log('[GooglePlaces] Bootstrap script already exists, waiting...');
+      logger.log('[GooglePlaces] Bootstrap script already exists, waiting...');
       // Wait for it to load
       const checkInterval = setInterval(() => {
         if (typeof window.google?.maps?.importLibrary === 'function') {
           clearInterval(checkInterval);
-          console.log('[GooglePlaces] Bootstrap loaded successfully');
+          logger.log('[GooglePlaces] Bootstrap loaded successfully');
           resolve();
         }
       }, 100);
       return;
     }
 
-    console.log('[GooglePlaces] Loading Google Maps bootstrap with API key:', API_KEY?.substring(0, 10) + '...');
+    logger.log('[GooglePlaces] Loading Google Maps bootstrap with API key:', API_KEY?.substring(0, 10) + '...');
 
     // Create the bootstrap loader script
     const script = document.createElement('script');
@@ -60,16 +61,16 @@ function loadGoogleMapsBootstrap(): Promise<void> {
     // Inline scripts execute synchronously, so check immediately
     setTimeout(() => {
       if (typeof window.google?.maps?.importLibrary === 'function') {
-        console.log('[GooglePlaces] Bootstrap initialized successfully');
+        logger.log('[GooglePlaces] Bootstrap initialized successfully');
         resolve();
       } else {
-        console.error('[GooglePlaces] Bootstrap failed to initialize importLibrary');
-        console.error('[GooglePlaces] Troubleshooting:');
-        console.error('  1. Check API key is valid in Google Cloud Console');
-        console.error('  2. Verify all 3 APIs are enabled: Maps JS API, Places API (New), Geocoding API');
-        console.error('  3. Check API key restrictions (HTTP referrers should include localhost)');
-        console.error('  4. Disable ad blockers/privacy extensions temporarily');
-        console.error('  5. Try in incognito mode');
+        logger.error('[GooglePlaces] Bootstrap failed to initialize importLibrary');
+        logger.error('[GooglePlaces] Troubleshooting:');
+        logger.error('  1. Check API key is valid in Google Cloud Console');
+        logger.error('  2. Verify all 3 APIs are enabled: Maps JS API, Places API (New), Geocoding API');
+        logger.error('  3. Check API key restrictions (HTTP referrers should include localhost)');
+        logger.error('  4. Disable ad blockers/privacy extensions temporarily');
+        logger.error('  5. Try in incognito mode');
         reject(new Error('Bootstrap loader failed to initialize. Check console for details.'));
       }
     }, 100);
@@ -138,15 +139,15 @@ export async function searchNearbyRestaurants(
   };
 
   try {
-    console.log('[GooglePlaces] Searching nearby food places...', { latitude, longitude, radius });
+    logger.log('[GooglePlaces] Searching nearby food places...', { latitude, longitude, radius });
     const { places } = await Place.searchNearby(request);
 
     if (!places || places.length === 0) {
-      console.log('[GooglePlaces] No nearby food places found');
+      logger.log('[GooglePlaces] No nearby food places found');
       return [];
     }
 
-    console.log(`[GooglePlaces] Found ${places.length} nearby food places`);
+    logger.log(`[GooglePlaces] Found ${places.length} nearby food places`);
 
     // Transform to our PlaceResult interface
     const results: PlaceResult[] = places
@@ -165,10 +166,10 @@ export async function searchNearbyRestaurants(
       // Filter out excluded place IDs (for pagination)
       .filter((place) => !excludePlaceIds.includes(place.place_id));
 
-    console.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
+    logger.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
     return results;
   } catch (error) {
-    console.error('[GooglePlaces] Error during nearby search:', error);
+    logger.error('[GooglePlaces] Error during nearby search:', error);
     if (error instanceof Error && error.message.includes('API key')) {
       throw new Error('Google Maps API key issue. Check console for details.');
     }
@@ -193,20 +194,20 @@ export async function geocodeLocation(
   const geocoder = new Geocoder();
 
   try {
-    console.log('[GooglePlaces] Geocoding location:', location);
+    logger.log('[GooglePlaces] Geocoding location:', location);
     const response = await geocoder.geocode({ address: location });
 
     if (response.results && response.results.length > 0) {
       const { lat, lng } = response.results[0].geometry.location;
       const coords = { lat: lat(), lng: lng() };
-      console.log('[GooglePlaces] Geocoding successful:', coords);
+      logger.log('[GooglePlaces] Geocoding successful:', coords);
       return coords;
     }
 
-    console.log('[GooglePlaces] Geocoding returned no results');
+    logger.log('[GooglePlaces] Geocoding returned no results');
     return null;
   } catch (error) {
-    console.error('[GooglePlaces] Geocoding error:', error);
+    logger.error('[GooglePlaces] Geocoding error:', error);
     if (error instanceof Error && error.message.includes('API key')) {
       throw new Error('Google Maps API key issue. Check console for details.');
     }
@@ -251,8 +252,10 @@ export async function searchRestaurantsByText(
   const request: google.maps.places.SearchByTextRequest = {
     textQuery: query,
     fields: ['displayName', 'location', 'types', 'id', 'formattedAddress'],
-    // No includedType restriction - allows finding all food establishments
-    // (restaurants, cafes, bakeries, coffee shops, dessert places, etc.)
+    // Restrict to food/drink establishments only
+    // Note: Text search only supports single includedType (not array like nearby search)
+    // Using 'restaurant' as it broadly covers food establishments
+    includedType: 'restaurant',
     maxResultCount: 20,
   };
 
@@ -265,15 +268,15 @@ export async function searchRestaurantsByText(
   }
 
   try {
-    console.log('[GooglePlaces] Text search:', { query, location, center, radius });
+    logger.log('[GooglePlaces] Text search:', { query, location, center, radius });
     const { places } = await Place.searchByText(request);
 
     if (!places || places.length === 0) {
-      console.log('[GooglePlaces] Text search returned no results');
+      logger.log('[GooglePlaces] Text search returned no results');
       return [];
     }
 
-    console.log(`[GooglePlaces] Text search found ${places.length} food places`);
+    logger.log(`[GooglePlaces] Text search found ${places.length} food places`);
 
     // Transform to our PlaceResult interface
     const results: PlaceResult[] = places
@@ -292,10 +295,10 @@ export async function searchRestaurantsByText(
       // Filter out excluded place IDs (for pagination)
       .filter((place) => !excludePlaceIds.includes(place.place_id));
 
-    console.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
+    logger.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
     return results;
   } catch (error) {
-    console.error('[GooglePlaces] Text search error:', error);
+    logger.error('[GooglePlaces] Text search error:', error);
     if (error instanceof Error && error.message.includes('API key')) {
       throw new Error('Google Maps API key issue. Check console for details.');
     }
@@ -370,7 +373,7 @@ export async function cacheGooglePlace(
   if (!user) throw new Error('User not authenticated');
 
   try {
-    console.log('[GooglePlaces] Caching place:', place.name, 'ID:', place.place_id);
+    logger.log('[GooglePlaces] Caching place:', place.name, 'ID:', place.place_id);
 
     // Check if current user already has this restaurant
     // Note: Collection rules only allow users to see their own restaurants
@@ -380,7 +383,7 @@ export async function cacheGooglePlace(
       placeId: place.place_id,
     });
 
-    console.log('[GooglePlaces] Checking for existing restaurant with filter');
+    logger.log('[GooglePlaces] Checking for existing restaurant with filter');
 
     const existingRestaurants = await pb
       .collection('restaurants')
@@ -391,7 +394,7 @@ export async function cacheGooglePlace(
     const now = new Date().toISOString();
 
     if (existingRestaurants.length > 0) {
-      console.log('[GooglePlaces] Found existing restaurant in cache');
+      logger.log('[GooglePlaces] Found existing restaurant in cache');
       const existing = existingRestaurants[0];
 
       // User already has this restaurant - check if cache is stale
@@ -400,12 +403,12 @@ export async function cacheGooglePlace(
         !isCacheStale(existing.googlePlaceCachedAt)
       ) {
         // Cache is fresh, return as-is
-        console.log('[GooglePlaces] Cache is fresh, returning existing restaurant');
+        logger.log('[GooglePlaces] Cache is fresh, returning existing restaurant');
         return existing;
       }
 
       // Cache is stale or doesn't exist, update it
-      console.log('[GooglePlaces] Cache is stale, updating restaurant data');
+      logger.log('[GooglePlaces] Cache is stale, updating restaurant data');
       const updated = await pb
         .collection('restaurants')
         .update<Restaurant>(existing.id, {
@@ -418,12 +421,12 @@ export async function cacheGooglePlace(
           isGooglePlace: true,
         });
 
-      console.log('[GooglePlaces] Restaurant updated successfully');
+      logger.log('[GooglePlaces] Restaurant updated successfully');
       return updated;
     }
 
     // Restaurant doesn't exist for current user, create it
-    console.log('[GooglePlaces] Creating new restaurant in database');
+    logger.log('[GooglePlaces] Creating new restaurant in database');
     const newRestaurant = await pb
       .collection('restaurants')
       .create<Restaurant>({
@@ -438,13 +441,13 @@ export async function cacheGooglePlace(
         user: user.id,
       });
 
-    console.log('[GooglePlaces] Restaurant created successfully:', newRestaurant.id);
+    logger.log('[GooglePlaces] Restaurant created successfully:', newRestaurant.id);
     return newRestaurant;
   } catch (error) {
-    console.error('[GooglePlaces] Error caching place:', error);
+    logger.error('[GooglePlaces] Error caching place:', error);
     // Log full error details for debugging
     if (error && typeof error === 'object') {
-      console.error('[GooglePlaces] Error details:', JSON.stringify(error, null, 2));
+      logger.error('[GooglePlaces] Error details:', JSON.stringify(error, null, 2));
     }
     throw error;
   }
@@ -463,7 +466,7 @@ export async function cacheGooglePlaces(
       const restaurant = await cacheGooglePlace(place);
       cachedRestaurants.push(restaurant);
     } catch (error) {
-      console.error(
+      logger.error(
         `[GooglePlaces] Failed to cache place ${place.name}:`,
         error
       );

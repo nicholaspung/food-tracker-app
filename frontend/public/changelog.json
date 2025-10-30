@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.2.1",
+    "date": "2025-01-29",
+    "title": "Streamlined Search & Performance",
+    "summary": "Improved restaurant search experience with unified filtering and cleaner production builds for better performance.",
+    "features": [
+      "Unified search results: Google Places results now merge with saved restaurants and filter together",
+      "Auto-dismiss notifications: Success messages automatically disappear after 3 seconds",
+      "Production-ready logging: Console logs now silent in production, active only in development"
+    ],
+    "improvements": [
+      "Simplified search interface: Single filter input now works for all restaurants (saved + new)",
+      "Cleaner console: Production builds no longer output debug logs for better performance",
+      "Better UX: Google Places search shows floating success notification instead of static banner",
+      "Removed duplicate filter: Eliminated redundant search input after location searches"
+    ],
+    "fixes": [
+      "Restaurant filtering now applies to combined results from all sources",
+      "Clear Search Results button properly resets notification state"
+    ]
+  },
+  {
     "version": "0.2.0",
     "date": "2025-01-15",
     "title": "Enhanced Search, Pagination & UI Improvements",

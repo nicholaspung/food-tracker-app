@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 
 interface ForgotPasswordPageProps {
@@ -26,7 +27,7 @@ export default function ForgotPasswordPage({ onNavigateToLogin }: ForgotPassword
       setSuccess(true);
       setEmail(""); // Clear the form
     } catch (err: any) {
-      console.error("Password reset request error:", err);
+      logger.error("Password reset request error:", err);
       setError("Failed to send password reset email. Please check your email address and try again.");
     } finally {
       setLoading(false);

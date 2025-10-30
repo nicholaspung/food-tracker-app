@@ -11,7 +11,7 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
-  const user = pb.authStore.model as User;
+  const user = pb.authStore.model as unknown as User;
   const queryClient = useQueryClient();
   const [selectedVisibility, setSelectedVisibility] = useState<'friends' | 'private'>(
     user?.defaultVisitVisibility || 'friends'

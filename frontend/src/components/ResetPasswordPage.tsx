@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 
 interface ResetPasswordPageProps {
@@ -41,7 +42,7 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
       await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm);
       setSuccess(true);
     } catch (err: any) {
-      console.error("Password reset error:", err);
+      logger.error("Password reset error:", err);
       setError(err?.message || "Failed to reset password. The link may be invalid or expired.");
     } finally {
       setLoading(false);
