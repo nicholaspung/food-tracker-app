@@ -332,8 +332,8 @@ export default function HomePage({ onEditVisit, onAddVisit }: HomePageProps = {}
         <div className="bg-white border-b border-gray-200 px-4 py-4">
           <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {userVisitsCount} your visit{userVisitsCount !== 1 ? 's' : ''}
-            {friendVisitsCount > 0 && ` • ${friendVisitsCount} friend${friendVisitsCount !== 1 ? 's' : ''}'`}
+            {userVisitsCount} visit{userVisitsCount !== 1 ? 's' : ''}
+            {friendVisitsCount > 0 && ` • ${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? 's' : ''}'`}
           </p>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center p-4">
@@ -359,7 +359,7 @@ export default function HomePage({ onEditVisit, onAddVisit }: HomePageProps = {}
             {searchQuery.trim()
               ? `Found ${filteredVisits.length} of ${visits.length} total`
               : userVisitsCount > 0 && friendVisitsCount > 0
-                ? `${userVisitsCount} your visit${userVisitsCount !== 1 ? 's' : ''} • ${friendVisitsCount} friend${friendVisitsCount !== 1 ? 's' : ''}'`
+                ? `${userVisitsCount} visit${userVisitsCount !== 1 ? 's' : ''} • ${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? 's' : ''}`
                 : userVisitsCount > 0
                   ? `${userVisitsCount} your visit${userVisitsCount !== 1 ? 's' : ''}`
                   : `${friendVisitsCount} friend${friendVisitsCount !== 1 ? 's' : ''}'`
@@ -428,7 +428,19 @@ export default function HomePage({ onEditVisit, onAddVisit }: HomePageProps = {}
                 <h2 className="text-lg font-semibold text-gray-900">{monthLabel}</h2>
               </div>
               <span className="text-sm text-gray-500">
-                {days.reduce((sum, day) => sum + day.visits.length, 0)} visit{days.reduce((sum, day) => sum + day.visits.length, 0) !== 1 ? 's' : ''}
+                {(() => {
+                  const allMonthVisits = days.flatMap(day => day.visits);
+                  const userVisits = allMonthVisits.filter(v => v.user === currentUserId).length;
+                  const friendVisits = allMonthVisits.filter(v => v.user !== currentUserId).length;
+
+                  if (userVisits > 0 && friendVisits > 0) {
+                    return `${userVisits} visit${userVisits !== 1 ? 's' : ''} • ${friendVisits} friend visit${friendVisits !== 1 ? 's' : ''}`;
+                  } else if (userVisits > 0) {
+                    return `${userVisits} visit${userVisits !== 1 ? 's' : ''}`;
+                  } else {
+                    return `${friendVisits} friend visit${friendVisits !== 1 ? 's' : ''}`;
+                  }
+                })()}
               </span>
             </button>
 
