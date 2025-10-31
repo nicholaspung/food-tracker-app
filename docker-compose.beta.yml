@@ -18,6 +18,8 @@ services:
       - TZ=America/Los_Angeles
       - ENCRYPTION_KEY=${ENCRYPTION_KEY_BETA:-}
       - GOMEMLIMIT=460MiB
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
     command: ["pocketbase", "serve", "--http=0.0.0.0:8091", "--dir=/pb/pb_data"]
 
     # Resource limits (prevent OOM kills)
