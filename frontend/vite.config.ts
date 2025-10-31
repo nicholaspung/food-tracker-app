@@ -54,7 +54,7 @@ export default defineConfig(async () => ({
       },
       workbox: {
         // Cache all static assets
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,json}'],
         // Runtime caching for API calls
         runtimeCaching: [
           {
