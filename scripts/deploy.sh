@@ -70,8 +70,35 @@ step() {
 #######################
 # CLEANUP & ROLLBACK
 #######################
+USER_CANCELLED=false
+
+handle_interrupt() {
+    echo ""
+    warn "Deployment interrupted by user (CTRL+C)"
+    USER_CANCELLED=true
+
+    # Ask user if they want to rollback
+    echo -n "Do you want to rollback the deployment? (y/N): "
+    read -t 10 -r response || response="n"
+
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        warn "User requested rollback..."
+        rollback
+    else
+        warn "Skipping rollback. Cleaning up and exiting..."
+        rm -f "$LOCK_FILE"
+        error "Deployment cancelled by user. System may be in an inconsistent state."
+        exit 130
+    fi
+}
+
 cleanup() {
     local exit_code=$?
+
+    # Don't trigger cleanup if user already cancelled
+    if [ "$USER_CANCELLED" = true ]; then
+        return
+    fi
 
     if [ $exit_code -ne 0 ]; then
         error "Deployment failed with exit code $exit_code"
@@ -113,7 +140,8 @@ rollback() {
     error "Rollback complete. System restored to previous state."
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT TERM
+trap handle_interrupt INT
 
 #######################
 # PRE-FLIGHT CHECKS
