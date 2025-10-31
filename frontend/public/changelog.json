@@ -1,69 +1,83 @@
 [
   {
-    "version": "0.2.2",
-    "date": "2025-10-30",
-    "title": "Backend Infrastructure Upgrade",
-    "summary": "Migrated to Google's new Places API (New) for improved reliability and future-proofing. All API calls now securely handled on the backend.",
-    "features": [],
+    "version": "0.2.3",
+    "date": "2025-10-31",
+    "title": "Multi-Step Visit Creation & Smarter Menu Scanning",
+    "summary": "Adding visits is now easier with three clear steps, and menu scanning is smarter - it checks if your photo is actually a menu before processing.",
+    "features": [
+      "Multi-step visit creation: Add visits in 3 easy steps (Select Restaurant → Add Items → Rate Items)",
+      "Auto-save progress: Never lose your work - your progress saves automatically as you go",
+      "Smart menu validation: App now checks if your photo is a menu before processing it",
+      "Daily scan limit: 5 menu scan attempts per day to prevent accidental overuse"
+    ],
     "improvements": [
-      "Upgraded to Google Places API (New): Modern API with better performance and features",
-      "Enhanced security: API keys now securely stored on backend instead of frontend",
-      "Environment variables: Backend now loads .env file for easier configuration",
-      "Better error handling: More detailed logging for API-related issues"
+      "Faster feedback: Get instant feedback if uploaded photo isn't a menu",
+      "Better error messages: Clearer explanations when something goes wrong"
     ],
     "fixes": [
-      "Fixed API key restrictions preventing restaurant search",
-      "Resolved IPv6 compatibility issues with Google Places API",
-      "Corrected field mask requirements for new Places API endpoints"
+      "Fixed app uploading non-menu photos to storage"
+    ]
+  },
+  {
+    "version": "0.2.2",
+    "date": "2025-10-30",
+    "title": "Improved Restaurant Search",
+    "summary": "Restaurant search is now more reliable with better performance and security improvements.",
+    "features": [],
+    "improvements": [
+      "More reliable restaurant search with improved performance",
+      "Enhanced security for location-based searches"
+    ],
+    "fixes": [
+      "Fixed restaurant search not working for some users",
+      "Fixed location search connectivity issues"
     ]
   },
   {
     "version": "0.2.1",
     "date": "2025-01-29",
-    "title": "Streamlined Search & Performance",
-    "summary": "Improved restaurant search experience with unified filtering and cleaner production builds for better performance.",
+    "title": "Streamlined Search Experience",
+    "summary": "Restaurant search is now simpler with unified filtering and cleaner notifications.",
     "features": [
-      "Unified search results: Google Places results now merge with saved restaurants and filter together",
-      "Auto-dismiss notifications: Success messages automatically disappear after 3 seconds",
-      "Production-ready logging: Console logs now silent in production, active only in development"
+      "Unified search: All restaurants (saved and new) now search and filter together",
+      "Auto-dismiss notifications: Success messages automatically disappear after 3 seconds"
     ],
     "improvements": [
-      "Simplified search interface: Single filter input now works for all restaurants (saved + new)",
-      "Cleaner console: Production builds no longer output debug logs for better performance",
-      "Better UX: Google Places search shows floating success notification instead of static banner",
-      "Removed duplicate filter: Eliminated redundant search input after location searches"
+      "Simplified search: Single filter input now works for all restaurants",
+      "Better notifications: Floating success messages instead of static banners",
+      "Cleaner interface: Removed duplicate search inputs"
     ],
     "fixes": [
-      "Restaurant filtering now applies to combined results from all sources",
-      "Clear Search Results button properly resets notification state"
+      "Fixed search filter not working on newly found restaurants",
+      "Fixed Clear Search Results button not resetting notifications"
     ]
   },
   {
     "version": "0.2.0",
     "date": "2025-01-15",
-    "title": "Enhanced Search, Pagination & UI Improvements",
-    "summary": "Major updates including visit search, traditional pagination for restaurant discovery, expanded food establishment types, and numerous UI/UX improvements.",
+    "title": "Search, Pagination & UI Improvements",
+    "summary": "Major updates including visit search, page-by-page restaurant browsing, more food places, and numerous UI improvements.",
     "features": [
       "Search your visits: Find visits by restaurant name, location, food items, or notes",
-      "Traditional pagination: Navigate restaurant results with page numbers (<< < 1 2 3 4 5 > >>)",
-      "Expanded food places: Search now includes cafes, bakeries, coffee shops, dessert shops, ice cream shops, and more",
-      "What's New dialog: Automatic notification on app updates (shows once per version)",
-      "Quick add button: 'Add Your First Visit' button when you have no visits yet"
+      "Page-by-page navigation: Browse restaurant results with page numbers (<< < 1 2 3 4 5 > >>)",
+      "More food places: Search now includes cafes, bakeries, coffee shops, dessert shops, ice cream shops, and more",
+      "What's New notifications: Get notified about app updates (shows once per version)",
+      "Quick add button: 'Add Your First Visit' button appears when you have no visits"
     ],
     "improvements": [
-      "Feedback button moved to header for easier access (removed floating button)",
+      "Feedback button moved to header for easier access",
       "Settings page footer now visible for consistent navigation",
-      "Real-time feedback notification badge updates immediately when marking as read",
-      "Search visits auto-expands all matching months for better visibility",
-      "Restaurant search covers larger radius (5km) to find more options",
-      "Search inputs remain visible after getting results for easy refinement",
-      "Clear visual feedback for search results with result count"
+      "Notification badges update instantly when you read feedback",
+      "Visit search auto-expands matching months for better visibility",
+      "Larger search radius (5km) to find more restaurant options",
+      "Search inputs stay visible after getting results for easy refinement",
+      "Clear result counts shown for searches"
     ],
     "fixes": [
-      "Settings back button now correctly returns to Profile page (not Home)",
-      "Feedback notification badge updates immediately after reading messages",
-      "Fixed search functionality to include all food establishment types",
-      "Pagination properly resets when starting a new search"
+      "Settings back button now correctly returns to Profile page",
+      "Feedback notification badge updates immediately after reading",
+      "Search now properly includes all food establishment types",
+      "Pagination resets correctly when starting a new search"
     ]
   },
   {
@@ -73,9 +87,9 @@
     "summary": "The initial release brings you a comprehensive food tracking experience with social features, location-based restaurant search, and privacy controls.",
     "features": [
       "Track restaurant visits with ratings, notes, and photos",
-      "Find nearby restaurants using Google Places API with GPS and manual location search",
+      "Find nearby restaurants using GPS or search by location",
       "Rate food items with 5-star system (\"Don't eat ever\" to \"Eat often\")",
-      "Upload menu photos and use OCR scanning to extract menu items automatically",
+      "Scan menu photos to automatically extract menu items",
       "Add friends via QR codes or friend codes to share your food experiences",
       "View friends' visits on your home feed (respecting privacy settings)",
       "Control visit visibility - share with friends or keep private",

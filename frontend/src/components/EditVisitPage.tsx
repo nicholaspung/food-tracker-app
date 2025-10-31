@@ -324,40 +324,58 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
         {/* Step 1: Edit Menu Items */}
         {step === 1 && selectedRestaurant && (
           <div className="space-y-4">
-            <Button onClick={handleAddMenuItem} className="w-full">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Menu Item
-            </Button>
+            {/* Quick Actions Container */}
+            <Card className="border-2 border-blue-200 bg-blue-50/30">
+              <CardContent className="pt-4 space-y-3">
+                <Button
+                  onClick={handleAddMenuItem}
+                  variant="outline"
+                  className="w-full bg-white"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Menu Item
+                </Button>
+              </CardContent>
+            </Card>
 
-            {activeMenuItems.map((item) => {
-              const index = menuItems.findIndex(m => m === item);
-              return (
-                <Card key={index}>
-                  <CardContent className="pt-6 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <Label>Item {index + 1}</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveMenuItem(index)}
-                      >
-                        {item.id ? <Trash2 className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                    <Input
-                      placeholder="Item name *"
-                      value={item.name}
-                      onChange={(e) => handleUpdateMenuItem(index, 'name', e.target.value)}
-                    />
-                    <Input
-                      placeholder="Description (optional)"
-                      value={item.description}
-                      onChange={(e) => handleUpdateMenuItem(index, 'description', e.target.value)}
-                    />
-                  </CardContent>
-                </Card>
-              );
-            })}
+            {/* Menu Items List Container */}
+            {activeMenuItems.length > 0 && (
+              <Card>
+                <CardContent className="pt-4 space-y-3">
+                  <div className="text-sm text-gray-600 mb-3">
+                    Your Items ({activeMenuItems.length})
+                  </div>
+
+                  {activeMenuItems.map((item) => {
+                    const index = menuItems.findIndex(m => m === item);
+                    return (
+                      <div key={index} className="p-3 rounded-lg border border-gray-200 bg-white space-y-3">
+                        <div className="flex items-start justify-between">
+                          <Label className="text-sm font-semibold">Item {index + 1}</Label>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveMenuItem(index)}
+                          >
+                            {item.id ? <Trash2 className="w-4 h-4 text-red-600" /> : <X className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                        <Input
+                          placeholder="Item name *"
+                          value={item.name}
+                          onChange={(e) => handleUpdateMenuItem(index, 'name', e.target.value)}
+                        />
+                        <Input
+                          placeholder="Description (optional)"
+                          value={item.description}
+                          onChange={(e) => handleUpdateMenuItem(index, 'description', e.target.value)}
+                        />
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
 
             <Button
               onClick={() => setStep(2)}
@@ -376,42 +394,46 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
               const index = menuItems.findIndex(m => m === item);
               return (
                 <Card key={index}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">{item.name}</CardTitle>
-                    {item.description && (
-                      <CardDescription className="text-sm">{item.description}</CardDescription>
-                    )}
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="space-y-2">
-                      {RATING_OPTIONS.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => handleUpdateMenuItem(index, 'rating', option.value)}
-                          className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
-                            item.rating === option.value
-                              ? 'border-blue-600 bg-blue-50'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-3 h-3 rounded-full ${option.color}`} />
-                              <span className="font-medium">{option.label}</span>
-                            </div>
-                            {item.rating === option.value && (
-                              <Check className="w-5 h-5 text-blue-600" />
-                            )}
-                          </div>
-                        </button>
-                      ))}
+                  <CardContent className="pt-6 space-y-3">
+                    <div>
+                      <Label className="font-semibold">{item.name}</Label>
+                      {item.description && (
+                        <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                      )}
                     </div>
-                    <Input
-                      placeholder="Notes (optional)"
-                      value={item.notes}
-                      onChange={(e) => handleUpdateMenuItem(index, 'notes', e.target.value)}
-                    />
+
+                    <div>
+                      <Label>Rating</Label>
+                      <div className="grid grid-cols-5 gap-2 mt-2">
+                        {RATING_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            onClick={() => handleUpdateMenuItem(index, 'rating', option.value)}
+                            className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
+                              option.color
+                            } ${
+                              item.rating === option.value
+                                ? 'ring-2 ring-offset-2 ring-blue-500'
+                                : 'opacity-60 hover:opacity-100'
+                            }`}
+                          >
+                            {option.value}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2 text-center">
+                        {RATING_OPTIONS.find((o) => o.value === item.rating)?.label}
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label>Notes (optional)</Label>
+                      <Input
+                        placeholder="Add notes..."
+                        value={item.notes}
+                        onChange={(e) => handleUpdateMenuItem(index, 'notes', e.target.value)}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               );

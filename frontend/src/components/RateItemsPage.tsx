@@ -1,0 +1,280 @@
+import { useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { pb } from "@/lib/pocketbase";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ChevronDown, ChevronUp, Calendar, Users } from "lucide-react";
+import { visitDraftService } from "@/services/visitDraftService";
+
+interface RateItemsPageProps {
+  onSubmit: () => void;
+  onBack: () => void;
+}
+
+const RATING_OPTIONS = [
+  { value: 1, label: "Don't eat ever", color: "bg-red-500" },
+  { value: 2, label: "Try once", color: "bg-orange-500" },
+  { value: 3, label: "Eat once in a while", color: "bg-yellow-500" },
+  { value: 4, label: "Eat occasionally", color: "bg-lime-500" },
+  { value: 5, label: "Eat often", color: "bg-green-500" },
+];
+
+export default function RateItemsPage({
+  onSubmit,
+  onBack,
+}: RateItemsPageProps) {
+  const queryClient = useQueryClient();
+  const draft = visitDraftService.getDraft();
+  const [items, setItems] = useState(draft.items);
+  const [visitDate, setVisitDate] = useState(draft.visitDate);
+  const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
+  const [showDateEdit, setShowDateEdit] = useState(false);
+
+  // Check if user has rated before - expand legend for first-timers
+  const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
+  const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
+
+  useEffect(() => {
+    visitDraftService.saveMetadata(visitDate, visitVisibility);
+  }, [visitDate, visitVisibility]);
+
+  const saveVisitMutation = useMutation({
+    mutationFn: async () => {
+      const user = pb.authStore.record;
+      if (!user || !draft.restaurant) throw new Error("Missing data");
+
+      const visit = await pb.collection("visits").create({
+        restaurant: draft.restaurant.id,
+        user: user.id,
+        visitDate,
+        visibility: visitVisibility,
+        notes: "",
+      });
+
+      for (const item of items) {
+        await pb.collection("food_items").create({
+          name: item.menuItem.name,
+          description: item.description,
+          visit: visit.id,
+          rating: item.rating,
+          notes: item.notes,
+          user: user.id,
+        });
+      }
+
+      return visit;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["visits"] });
+      queryClient.invalidateQueries({ queryKey: ["userVisits"] });
+      visitDraftService.clearDraft();
+
+      // Mark that user has rated before - legend will be collapsed next time
+      localStorage.setItem("hasRatedBefore", "true");
+
+      onSubmit();
+    },
+  });
+
+  const handleUpdateItem = (
+    index: number,
+    field: "rating" | "notes",
+    value: any
+  ) => {
+    const newItems = [...items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setItems(newItems);
+    visitDraftService.updateItem(index, { [field]: value });
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-4">
+        <h1 className="text-2xl font-bold text-gray-900">Rate Your Items</h1>
+        <p className="text-sm text-gray-500 mt-1">{draft.restaurant?.name}</p>
+
+        {/* Date picker */}
+        {visitDate && (
+          <div className="mt-3">
+            {!showDateEdit ? (
+              <div
+                className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => setShowDateEdit(true)}
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium text-gray-900">
+                    {new Date(visitDate).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                </div>
+                <span className="text-xs text-gray-500">Tap to change</span>
+              </div>
+            ) : (
+              <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+                <Label className="text-xs text-gray-600">Visit Date</Label>
+                <Input
+                  type="date"
+                  value={visitDate}
+                  onChange={(e) => setVisitDate(e.target.value)}
+                  max={new Date().toISOString().split("T")[0]}
+                  className="text-sm"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDateEdit(false)}
+                  className="w-full"
+                >
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Visibility Checkbox */}
+        <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={visitVisibility === "friends"}
+              onChange={(e) =>
+                setVisitVisibility(e.target.checked ? "friends" : "private")
+              }
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-gray-600" />
+                <span className="text-sm font-medium">
+                  Friends can view this visit
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {visitVisibility === "friends"
+                  ? "Your friends will be able to see this visit and your ratings"
+                  : "Only you will be able to see this visit"}
+              </p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="space-y-4">
+          {/* Collapsible Rating Legend */}
+          <Card className="border-2 border-blue-200 bg-blue-50/30">
+            <CardContent className="px-4">
+              <button
+                onClick={() => setIsLegendExpanded(!isLegendExpanded)}
+                className="w-full flex items-center justify-between"
+              >
+                <Label className="text-sm font-semibold text-gray-700 cursor-pointer">
+                  Rating Guide
+                </Label>
+                {isLegendExpanded ? (
+                  <ChevronUp className="w-4 h-4 text-gray-600" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-gray-600" />
+                )}
+              </button>
+              {isLegendExpanded && (
+                <div className="space-y-2 mt-3">
+                  {RATING_OPTIONS.map((option) => (
+                    <div key={option.value} className="flex items-center gap-3">
+                      <div
+                        className={`${option.color} text-white w-8 h-8 rounded-md flex items-center justify-center font-bold text-sm flex-shrink-0`}
+                      >
+                        {option.value}
+                      </div>
+                      <span className="text-sm text-gray-700">
+                        {option.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {items.map((item, index) => (
+            <Card key={index}>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label className="font-semibold">{item.menuItem.name}</Label>
+                  {item.description && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Label>Rating</Label>
+                  <div className="grid grid-cols-5 gap-2 mt-2">
+                    {RATING_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() =>
+                          handleUpdateItem(index, "rating", option.value)
+                        }
+                        className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
+                          option.color
+                        } ${
+                          item.rating === option.value
+                            ? "ring-2 ring-offset-2 ring-blue-500"
+                            : "opacity-60 hover:opacity-100"
+                        }`}
+                      >
+                        {option.value}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2 text-center">
+                    {RATING_OPTIONS.find((o) => o.value === item.rating)?.label}
+                  </p>
+                </div>
+
+                <div>
+                  <Label>Notes (optional)</Label>
+                  <Input
+                    placeholder="Add notes..."
+                    value={item.notes}
+                    onChange={(e) =>
+                      handleUpdateItem(index, "notes", e.target.value)
+                    }
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom Action Buttons */}
+      <div className="bg-white border-t border-gray-200 p-4">
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={onBack} className="flex-1">
+            Back
+          </Button>
+          <Button
+            onClick={() => saveVisitMutation.mutate()}
+            disabled={saveVisitMutation.isPending}
+            className="flex-1"
+          >
+            {saveVisitMutation.isPending ? "Saving..." : "Save Visit"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

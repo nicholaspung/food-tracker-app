@@ -39,7 +39,7 @@ import {
   formatDistance,
   geocodeLocation,
 } from "@/services/googlePlaces";
-import MenuScanStep from "@/components/MenuScanStep";
+import AddItemsToVisit from "@/components/AddItemsToVisit";
 import { getRestaurantMenuItems } from "@/services/ocrService";
 
 interface VisitMenuItem {
@@ -73,7 +73,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
     new Date().toISOString().split("T")[0]
   );
   const [showDateEdit, setShowDateEdit] = useState(false);
-  const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>('friends');
+  const [visitVisibility, setVisitVisibility] = useState<"friends" | "private">(
+    "friends"
+  );
   const [showAddRestaurant, setShowAddRestaurant] = useState(false);
   const [newRestaurantName, setNewRestaurantName] = useState("");
   const [newRestaurantLocation, setNewRestaurantLocation] = useState("");
@@ -101,13 +103,15 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   // Manual location and text search
   const [manualLocation, setManualLocation] = useState("");
   const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
-  const [highlightedRestaurants, setHighlightedRestaurants] = useState<Set<string>>(new Set());
+  const [highlightedRestaurants, setHighlightedRestaurants] = useState<
+    Set<string>
+  >(new Set());
 
   // Success notification for Google Places search
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 
   const [currentLocationContext, setCurrentLocationContext] = useState<{
-    type: 'gps' | 'manual';
+    type: "gps" | "manual";
     location?: string;
     latitude?: number;
     longitude?: number;
@@ -171,14 +175,16 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       if (!user || friendships.length === 0) return [];
 
       // Get list of friend IDs
-      const friendIds = friendships.map(f =>
+      const friendIds = friendships.map((f) =>
         f.user === user.id ? f.friend : f.user
       );
 
       if (friendIds.length === 0) return [];
 
       // Fetch visits from all friends with visibility friends
-      const filterConditions = friendIds.map(id => `user = "${id}"`).join(" || ");
+      const filterConditions = friendIds
+        .map((id) => `user = "${id}"`)
+        .join(" || ");
       return await pb.collection("visits").getFullList({
         filter: `(${filterConditions}) && visibility = "friends"`,
       });
@@ -188,13 +194,15 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
   // Calculate visit counts per restaurant
   const getRestaurantStats = (restaurantId: string) => {
-    const userVisitCount = userVisits.filter(v => v.restaurant === restaurantId).length;
+    const userVisitCount = userVisits.filter(
+      (v) => v.restaurant === restaurantId
+    ).length;
 
     // Count unique friends who have visited this restaurant
     const friendsWhoVisited = new Set(
       friendVisits
-        .filter(v => v.restaurant === restaurantId)
-        .map(v => v.user)
+        .filter((v) => v.restaurant === restaurantId)
+        .map((v) => v.user)
     );
     const friendCount = friendsWhoVisited.size;
 
@@ -284,28 +292,42 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
   // Combine nearby places with all restaurants when Google Places search is active
   const allRestaurantsToShow = showNearbyPlaces
-    ? [...restaurants, ...nearbyPlaces.filter(np => !restaurants.some(r => r.id === np.id))]
+    ? [
+        ...restaurants,
+        ...nearbyPlaces.filter(
+          (np) => !restaurants.some((r) => r.id === np.id)
+        ),
+      ]
     : restaurants;
 
   const filteredRestaurants = allRestaurantsToShow.filter(
     (r) =>
       r.name.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
       r.location.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
-      (r.cuisineType?.toLowerCase() || "").includes(restaurantSearchQuery.toLowerCase())
+      (r.cuisineType?.toLowerCase() || "").includes(
+        restaurantSearchQuery.toLowerCase()
+      )
   );
 
   // Filter restaurants for name suggestions in the add form
   const nameSuggestions = newRestaurantName.trim()
-    ? restaurants.filter((r) =>
-        r.name.toLowerCase().includes(newRestaurantName.toLowerCase())
-      ).slice(0, 5) // Limit to 5 suggestions
+    ? restaurants
+        .filter((r) =>
+          r.name.toLowerCase().includes(newRestaurantName.toLowerCase())
+        )
+        .slice(0, 5) // Limit to 5 suggestions
     : [];
 
   // Pagination logic for saved restaurants
-  const totalSavedPages = Math.ceil(filteredRestaurants.length / RESULTS_PER_PAGE);
+  const totalSavedPages = Math.ceil(
+    filteredRestaurants.length / RESULTS_PER_PAGE
+  );
   const savedStartIndex = (savedRestaurantsPage - 1) * RESULTS_PER_PAGE;
   const savedEndIndex = savedStartIndex + RESULTS_PER_PAGE;
-  const paginatedSavedRestaurants = filteredRestaurants.slice(savedStartIndex, savedEndIndex);
+  const paginatedSavedRestaurants = filteredRestaurants.slice(
+    savedStartIndex,
+    savedEndIndex
+  );
 
   // Pagination logic for nearby places
   const totalPages = Math.ceil(nearbyPlaces.length / RESULTS_PER_PAGE);
@@ -328,7 +350,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       pages.push(1);
 
       if (currentPageNum > 3) {
-        pages.push('...');
+        pages.push("...");
       }
 
       // Show pages around current page
@@ -340,7 +362,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       }
 
       if (currentPageNum < totalPagesNum - 2) {
-        pages.push('...');
+        pages.push("...");
       }
 
       // Always show last page
@@ -428,8 +450,8 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   useEffect(() => {
     if (savedRestaurantsRef.current && savedRestaurantsPage > 1) {
       savedRestaurantsRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
+        behavior: "smooth",
+        block: "start",
       });
     }
   }, [savedRestaurantsPage]);
@@ -438,17 +460,21 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   useEffect(() => {
     if (nearbyPlacesRef.current && currentPage > 1) {
       nearbyPlacesRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
+        behavior: "smooth",
+        block: "start",
       });
     }
   }, [currentPage]);
 
   // Highlight matching restaurants when search query changes
   useEffect(() => {
-    if (restaurantSearchQuery.trim() && filteredRestaurants.length > 0 && filteredRestaurants.length < restaurants.length) {
+    if (
+      restaurantSearchQuery.trim() &&
+      filteredRestaurants.length > 0 &&
+      filteredRestaurants.length < restaurants.length
+    ) {
       // Highlight all filtered restaurants
-      const matchingIds = new Set(filteredRestaurants.map(r => r.id));
+      const matchingIds = new Set(filteredRestaurants.map((r) => r.id));
       setHighlightedRestaurants(matchingIds);
 
       // Clear highlights after 2 seconds (2 flashes)
@@ -513,7 +539,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       });
 
       setCurrentLocationContext({
-        type: 'gps',
+        type: "gps",
         latitude: position.latitude,
         longitude: position.longitude,
       });
@@ -561,7 +587,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
         // Set location context for GPS search
         setCurrentLocationContext({
-          type: 'gps',
+          type: "gps",
           latitude: position.latitude,
           longitude: position.longitude,
         });
@@ -630,7 +656,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
       // Save location context
       setCurrentLocationContext({
-        type: 'manual',
+        type: "manual",
         location: manualLocation.trim(),
         latitude: coords?.lat,
         longitude: coords?.lng,
@@ -649,9 +675,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       queryClient.invalidateQueries({ queryKey: ["restaurants"] });
     } catch (err) {
       setPlacesError(
-        err instanceof Error
-          ? err.message
-          : "Failed to search food places"
+        err instanceof Error ? err.message : "Failed to search food places"
       );
     } finally {
       setPlacesLoading(false);
@@ -700,14 +724,15 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
             <Check className="w-5 h-5" />
             <div>
               <p className="font-medium">
-                Found {nearbyPlaces.length} place{nearbyPlaces.length !== 1 ? 's' : ''}!
+                Found {nearbyPlaces.length} place
+                {nearbyPlaces.length !== 1 ? "s" : ""}!
               </p>
               <p className="text-xs text-green-100">
-                {currentLocationContext?.type === 'gps'
-                  ? 'Sorted by distance from your location'
+                {currentLocationContext?.type === "gps"
+                  ? "Sorted by distance from your location"
                   : currentLocationContext?.location
                     ? `Near ${currentLocationContext.location}`
-                    : 'Results loaded successfully'}
+                    : "Results loaded successfully"}
               </p>
             </div>
           </div>
@@ -755,14 +780,14 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                       <Search className="w-5 h-5 text-blue-600" />
                       Search for Food Places
                     </CardTitle>
-                    <CardDescription>
-                      Find restaurants by name, type, or location
-                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {/* Restaurant name/type search */}
                     <div className="space-y-2">
-                      <Label htmlFor="restaurant-search" className="text-sm font-medium text-gray-700">
+                      <Label
+                        htmlFor="restaurant-search"
+                        className="text-sm font-medium text-gray-700"
+                      >
                         Place name or type
                       </Label>
                       <Input
@@ -770,9 +795,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                         type="text"
                         placeholder="e.g., Starbucks, cafe, bakery, dessert"
                         value={restaurantSearchQuery}
-                        onChange={(e) => setRestaurantSearchQuery(e.target.value)}
+                        onChange={(e) =>
+                          setRestaurantSearchQuery(e.target.value)
+                        }
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === "Enter") {
                             e.preventDefault();
                             handleManualSearch();
                           }
@@ -783,7 +810,10 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
                     {/* Manual location search */}
                     <div className="space-y-2">
-                      <Label htmlFor="manual-location" className="text-sm font-medium text-gray-700">
+                      <Label
+                        htmlFor="manual-location"
+                        className="text-sm font-medium text-gray-700"
+                      >
                         Location (city, zip code, or address)
                       </Label>
                       <Input
@@ -793,7 +823,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                         value={manualLocation}
                         onChange={(e) => setManualLocation(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === "Enter") {
                             e.preventDefault();
                             handleManualSearch();
                           }
@@ -816,7 +846,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                         <span className="w-full border-t border-gray-300" />
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-blue-50/30 px-2 text-gray-500">or</span>
+                        <span className="bg-blue-50/30 px-2 text-gray-500">
+                          or
+                        </span>
                       </div>
                     </div>
 
@@ -850,7 +882,10 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                   <CardContent className="space-y-3">
                     {/* Restaurant name/type search */}
                     <div className="space-y-2">
-                      <Label htmlFor="restaurant-search-nearby" className="text-sm font-medium text-gray-700">
+                      <Label
+                        htmlFor="restaurant-search-nearby"
+                        className="text-sm font-medium text-gray-700"
+                      >
                         Place name or type
                       </Label>
                       <Input
@@ -858,9 +893,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                         type="text"
                         placeholder="e.g., Starbucks, cafe, bakery, dessert"
                         value={restaurantSearchQuery}
-                        onChange={(e) => setRestaurantSearchQuery(e.target.value)}
+                        onChange={(e) =>
+                          setRestaurantSearchQuery(e.target.value)
+                        }
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === "Enter") {
                             e.preventDefault();
                             handleManualSearch();
                           }
@@ -871,7 +908,10 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
                     {/* Manual location search */}
                     <div className="space-y-2">
-                      <Label htmlFor="manual-location-nearby" className="text-sm font-medium text-gray-700">
+                      <Label
+                        htmlFor="manual-location-nearby"
+                        className="text-sm font-medium text-gray-700"
+                      >
                         Location (city, zip code, or address)
                       </Label>
                       <Input
@@ -881,7 +921,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                         value={manualLocation}
                         onChange={(e) => setManualLocation(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === "Enter") {
                             e.preventDefault();
                             handleManualSearch();
                           }
@@ -954,7 +994,6 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     </CardContent>
                   </Card>
                 )}
-
               </>
             )}
 
@@ -1025,21 +1064,34 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                             </div>
                             <Badge variant="secondary" className="ml-2">
                               <MapPin className="w-3 h-3 mr-1" />
-                              {distance !== null ? formatDistance(distance) : "Near"}
+                              {distance !== null
+                                ? formatDistance(distance)
+                                : "Near"}
                             </Badge>
                           </div>
-                          {(stats.userVisitCount > 0 || stats.friendCount > 0) && (
+                          {(stats.userVisitCount > 0 ||
+                            stats.friendCount > 0) && (
                             <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
                               {stats.userVisitCount > 0 && (
                                 <div className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
-                                  <span>You: {stats.userVisitCount} {stats.userVisitCount === 1 ? 'visit' : 'visits'}</span>
+                                  <span>
+                                    You: {stats.userVisitCount}{" "}
+                                    {stats.userVisitCount === 1
+                                      ? "visit"
+                                      : "visits"}
+                                  </span>
                                 </div>
                               )}
                               {stats.friendCount > 0 && (
                                 <div className="flex items-center gap-1">
                                   <Users className="w-3 h-3" />
-                                  <span>{stats.friendCount} {stats.friendCount === 1 ? 'friend' : 'friends'}</span>
+                                  <span>
+                                    {stats.friendCount}{" "}
+                                    {stats.friendCount === 1
+                                      ? "friend"
+                                      : "friends"}
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -1051,74 +1103,89 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 </div>
 
                 {/* Pagination Controls */}
-                {nearbyPlaces.length > 0 && totalPages > 1 && !placesLoading && (
-                  <div className="flex items-center justify-center gap-1 py-4">
-                    {/* First/Previous buttons */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
-                      className="px-2"
-                    >
-                      &lt;&lt;
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="px-2"
-                    >
-                      &lt;
-                    </Button>
+                {nearbyPlaces.length > 0 &&
+                  totalPages > 1 &&
+                  !placesLoading && (
+                    <div className="flex items-center justify-center gap-1 py-4">
+                      {/* First/Previous buttons */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        className="px-2"
+                      >
+                        &lt;&lt;
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((p) => Math.max(1, p - 1))
+                        }
+                        disabled={currentPage === 1}
+                        className="px-2"
+                      >
+                        &lt;
+                      </Button>
 
-                    {/* Page numbers */}
-                    {getPageNumbers(currentPage, totalPages).map((page, idx) => (
-                      page === '...' ? (
-                        <span key={`ellipsis-${idx}`} className="px-2 text-gray-400">
-                          ...
-                        </span>
-                      ) : (
-                        <Button
-                          key={page}
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(page as number)}
-                          className="min-w-[2.5rem]"
-                        >
-                          {page}
-                        </Button>
-                      )
-                    ))}
+                      {/* Page numbers */}
+                      {getPageNumbers(currentPage, totalPages).map(
+                        (page, idx) =>
+                          page === "..." ? (
+                            <span
+                              key={`ellipsis-${idx}`}
+                              className="px-2 text-gray-400"
+                            >
+                              ...
+                            </span>
+                          ) : (
+                            <Button
+                              key={page}
+                              variant={
+                                currentPage === page ? "default" : "outline"
+                              }
+                              size="sm"
+                              onClick={() => setCurrentPage(page as number)}
+                              className="min-w-[2.5rem]"
+                            >
+                              {page}
+                            </Button>
+                          )
+                      )}
 
-                    {/* Next/Last buttons */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="px-2"
-                    >
-                      &gt;
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(totalPages)}
-                      disabled={currentPage === totalPages}
-                      className="px-2"
-                    >
-                      &gt;&gt;
-                    </Button>
-                  </div>
-                )}
+                      {/* Next/Last buttons */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        disabled={currentPage === totalPages}
+                        className="px-2"
+                      >
+                        &gt;
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className="px-2"
+                      >
+                        &gt;&gt;
+                      </Button>
+                    </div>
+                  )}
 
                 {/* Page info */}
                 {nearbyPlaces.length > 0 && !placesLoading && (
                   <div className="text-center text-sm text-gray-600">
-                    Showing {startIndex + 1}-{Math.min(endIndex, nearbyPlaces.length)} of {nearbyPlaces.length} places
-                    {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+                    Showing {startIndex + 1}-
+                    {Math.min(endIndex, nearbyPlaces.length)} of{" "}
+                    {nearbyPlaces.length} places
+                    {totalPages > 1 &&
+                      ` (Page ${currentPage} of ${totalPages})`}
                   </div>
                 )}
 
@@ -1174,36 +1241,47 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                             onFocus={() => setShowNameSuggestions(true)}
                             onBlur={() => {
                               // Delay to allow click on suggestion
-                              setTimeout(() => setShowNameSuggestions(false), 200);
+                              setTimeout(
+                                () => setShowNameSuggestions(false),
+                                200
+                              );
                             }}
                             placeholder="Enter restaurant name"
                             autoComplete="off"
                           />
 
                           {/* Name Suggestions Dropdown */}
-                          {showNameSuggestions && nameSuggestions.length > 0 && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                              {nameSuggestions.map((restaurant) => (
-                                <button
-                                  key={restaurant.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setNewRestaurantName(restaurant.name);
-                                    setNewRestaurantLocation(restaurant.location || "");
-                                    setNewRestaurantCuisine(restaurant.cuisineType || "");
-                                    setShowNameSuggestions(false);
-                                  }}
-                                  className="w-full px-4 py-3 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
-                                >
-                                  <div className="font-medium text-gray-900">{restaurant.name}</div>
-                                  <div className="text-sm text-gray-600 mt-0.5">
-                                    {restaurant.location}
-                                    {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          {showNameSuggestions &&
+                            nameSuggestions.length > 0 && (
+                              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {nameSuggestions.map((restaurant) => (
+                                  <button
+                                    key={restaurant.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setNewRestaurantName(restaurant.name);
+                                      setNewRestaurantLocation(
+                                        restaurant.location || ""
+                                      );
+                                      setNewRestaurantCuisine(
+                                        restaurant.cuisineType || ""
+                                      );
+                                      setShowNameSuggestions(false);
+                                    }}
+                                    className="w-full px-4 py-3 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                                  >
+                                    <div className="font-medium text-gray-900">
+                                      {restaurant.name}
+                                    </div>
+                                    <div className="text-sm text-gray-600 mt-0.5">
+                                      {restaurant.location}
+                                      {restaurant.cuisineType &&
+                                        ` • ${restaurant.cuisineType}`}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="location">Location</Label>
@@ -1260,14 +1338,16 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     <div ref={savedRestaurantsRef} className="space-y-3">
                       {paginatedSavedRestaurants.map((restaurant) => {
                         const stats = getRestaurantStats(restaurant.id);
-                        const isHighlighted = highlightedRestaurants.has(restaurant.id);
+                        const isHighlighted = highlightedRestaurants.has(
+                          restaurant.id
+                        );
                         return (
                           <Card
                             key={restaurant.id}
                             className={`cursor-pointer hover:shadow-md transition-all ${
                               isHighlighted
-                                ? 'border-2 border-yellow-400 bg-yellow-50 animate-pulse shadow-lg'
-                                : ''
+                                ? "border-2 border-yellow-400 bg-yellow-50 animate-pulse shadow-lg"
+                                : ""
                             }`}
                             onClick={() => {
                               setSelectedRestaurant(restaurant);
@@ -1283,18 +1363,29 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                                 {restaurant.cuisineType &&
                                   ` • ${restaurant.cuisineType}`}
                               </CardDescription>
-                              {(stats.userVisitCount > 0 || stats.friendCount > 0) && (
+                              {(stats.userVisitCount > 0 ||
+                                stats.friendCount > 0) && (
                                 <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
                                   {stats.userVisitCount > 0 && (
                                     <div className="flex items-center gap-1">
                                       <Calendar className="w-3 h-3" />
-                                      <span>You: {stats.userVisitCount} {stats.userVisitCount === 1 ? 'visit' : 'visits'}</span>
+                                      <span>
+                                        You: {stats.userVisitCount}{" "}
+                                        {stats.userVisitCount === 1
+                                          ? "visit"
+                                          : "visits"}
+                                      </span>
                                     </div>
                                   )}
                                   {stats.friendCount > 0 && (
                                     <div className="flex items-center gap-1">
                                       <Users className="w-3 h-3" />
-                                      <span>{stats.friendCount} {stats.friendCount === 1 ? 'friend' : 'friends'}</span>
+                                      <span>
+                                        {stats.friendCount}{" "}
+                                        {stats.friendCount === 1
+                                          ? "friend"
+                                          : "friends"}
+                                      </span>
                                     </div>
                                   )}
                                 </div>
@@ -1322,7 +1413,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setSavedRestaurantsPage(p => Math.max(1, p - 1))}
+                            onClick={() =>
+                              setSavedRestaurantsPage((p) => Math.max(1, p - 1))
+                            }
                             disabled={savedRestaurantsPage === 1}
                             className="px-2"
                           >
@@ -1330,29 +1423,45 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                           </Button>
 
                           {/* Page numbers */}
-                          {getPageNumbers(savedRestaurantsPage, totalSavedPages).map((page, idx) => (
-                            page === '...' ? (
-                              <span key={`ellipsis-${idx}`} className="px-2 text-gray-400">
+                          {getPageNumbers(
+                            savedRestaurantsPage,
+                            totalSavedPages
+                          ).map((page, idx) =>
+                            page === "..." ? (
+                              <span
+                                key={`ellipsis-${idx}`}
+                                className="px-2 text-gray-400"
+                              >
                                 ...
                               </span>
                             ) : (
                               <Button
                                 key={page}
-                                variant={savedRestaurantsPage === page ? "default" : "outline"}
+                                variant={
+                                  savedRestaurantsPage === page
+                                    ? "default"
+                                    : "outline"
+                                }
                                 size="sm"
-                                onClick={() => setSavedRestaurantsPage(page as number)}
+                                onClick={() =>
+                                  setSavedRestaurantsPage(page as number)
+                                }
                                 className="min-w-[2.5rem]"
                               >
                                 {page}
                               </Button>
                             )
-                          ))}
+                          )}
 
                           {/* Next/Last buttons */}
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setSavedRestaurantsPage(p => Math.min(totalSavedPages, p + 1))}
+                            onClick={() =>
+                              setSavedRestaurantsPage((p) =>
+                                Math.min(totalSavedPages, p + 1)
+                              )
+                            }
                             disabled={savedRestaurantsPage === totalSavedPages}
                             className="px-2"
                           >
@@ -1361,7 +1470,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setSavedRestaurantsPage(totalSavedPages)}
+                            onClick={() =>
+                              setSavedRestaurantsPage(totalSavedPages)
+                            }
                             disabled={savedRestaurantsPage === totalSavedPages}
                             className="px-2"
                           >
@@ -1371,8 +1482,11 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
                         {/* Page info */}
                         <div className="text-center text-sm text-gray-600">
-                          Showing {savedStartIndex + 1}-{Math.min(savedEndIndex, filteredRestaurants.length)} of {filteredRestaurants.length} restaurants
-                          {totalSavedPages > 1 && ` (Page ${savedRestaurantsPage} of ${totalSavedPages})`}
+                          Showing {savedStartIndex + 1}-
+                          {Math.min(savedEndIndex, filteredRestaurants.length)}{" "}
+                          of {filteredRestaurants.length} restaurants
+                          {totalSavedPages > 1 &&
+                            ` (Page ${savedRestaurantsPage} of ${totalSavedPages})`}
                         </div>
                       </>
                     )}
@@ -1386,95 +1500,25 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         {/* Step 2: Add Menu Items */}
         {step === 2 && selectedRestaurant && (
           <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">
-                  {selectedRestaurant.name}
-                </CardTitle>
-                <CardDescription>{selectedRestaurant.location}</CardDescription>
-              </CardHeader>
-            </Card>
-
-            {/* Menu Scan Step */}
-            {showMenuScan && (
-              <MenuScanStep
+            {/* Add Items to Visit */}
+            {menuItems.length === 0 ? (
+              <AddItemsToVisit
                 restaurantId={selectedRestaurant.id}
                 restaurantName={selectedRestaurant.name}
-                onItemsExtracted={handleMenuItemsExtracted}
-                onSkip={handleSkipMenuScan}
+                onComplete={handleMenuItemsExtracted}
+                onCancel={() => setStep(1)}
               />
-            )}
-
-            {/* Existing Menu Items Selection */}
-            {!showMenuScan &&
-              showExistingMenu &&
-              existingMenuItems.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">
-                      Select from Menu
-                    </CardTitle>
-                    <CardDescription>
-                      {existingMenuItems.length} items available from previous
-                      scans
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {existingMenuItems.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => handleSelectExistingItem(item)}
-                        className="w-full p-3 text-left rounded-lg border hover:border-blue-500 hover:bg-blue-50 transition-all"
-                      >
-                        <div className="font-medium">{item.name}</div>
-                        {item.description && (
-                          <div className="text-sm text-gray-600 mt-1">
-                            {item.description}
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowExistingMenu(false)}
-                      className="w-full mt-2"
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Hide Menu
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-            {/* Manual Add / Show Existing Menu / Scan Menu buttons */}
-            {!showMenuScan && (
-              <div className="space-y-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowMenuScan(true)}
-                  className="w-full"
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  Scan Menu Photo
-                </Button>
-                <div className="flex gap-2">
-                  <Button onClick={handleAddMenuItem} className="flex-1">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Manually
-                  </Button>
-                  {existingMenuItems.length > 0 && !showExistingMenu && (
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowExistingMenu(true)}
-                      className="flex-1"
-                    >
-                      <Utensils className="w-4 h-4 mr-2" />
-                      Show Menu ({existingMenuItems.length})
-                    </Button>
-                  )}
-                </div>
-              </div>
+            ) : (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">
+                    {selectedRestaurant.name}
+                  </CardTitle>
+                  <CardDescription>
+                    {selectedRestaurant.location}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
             )}
 
             {/* Menu Items List */}
@@ -1509,8 +1553,20 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
               </Card>
             ))}
 
+            {/* Add more items button */}
+            {menuItems.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={handleAddMenuItem}
+                className="w-full"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Another Item
+              </Button>
+            )}
+
             {/* Navigation buttons */}
-            {!showMenuScan && (
+            {menuItems.length > 0 && (
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setStep(1)}>
                   Back
@@ -1576,17 +1632,21 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={visitVisibility === 'friends'}
-                  onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
+                  checked={visitVisibility === "friends"}
+                  onChange={(e) =>
+                    setVisitVisibility(e.target.checked ? "friends" : "private")
+                  }
                   className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm font-medium">Friends can view this visit</span>
+                    <span className="text-sm font-medium">
+                      Friends can view this visit
+                    </span>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    {visitVisibility === 'friends'
+                    {visitVisibility === "friends"
                       ? "Your friends will be able to see this visit and your ratings"
                       : "Only you will be able to see this visit"}
                   </p>
