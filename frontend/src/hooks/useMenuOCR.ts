@@ -66,13 +66,13 @@ export function useMenuOCR() {
         }));
       });
 
-      // Step 4: Parse menu items from OCR text
+      // Step 4: Parse menu items from CSV
       setState((prev) => ({
         ...prev,
         progress: 70,
       }));
 
-      const extracted = parseMenuItems(ocrResult.text);
+      const extracted = parseMenuItems(ocrResult.csv);
 
       if (extracted.length === 0) {
         throw new Error(

@@ -1,10 +1,6 @@
 import { PlaceResult, Restaurant, pb } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
 
-const API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
-
-let googleMapsLoaded = false;
-
 export interface NearbySearchParams {
   latitude: number;
   longitude: number;
@@ -13,93 +9,7 @@ export interface NearbySearchParams {
 }
 
 /**
- * Load Google Maps API using the bootstrap loader
- * This sets up the importLibrary function on the global window object
- */
-function loadGoogleMapsBootstrap(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Check if bootstrap loader is already installed
-    if (typeof window.google?.maps?.importLibrary === 'function') {
-      logger.log('[GooglePlaces] Bootstrap already loaded');
-      resolve();
-      return;
-    }
-
-    // Check if script is already being loaded
-    const existingScript = document.querySelector(
-      'script[data-google-maps-bootstrap]'
-    );
-    if (existingScript) {
-      logger.log('[GooglePlaces] Bootstrap script already exists, waiting...');
-      // Wait for it to load
-      const checkInterval = setInterval(() => {
-        if (typeof window.google?.maps?.importLibrary === 'function') {
-          clearInterval(checkInterval);
-          logger.log('[GooglePlaces] Bootstrap loaded successfully');
-          resolve();
-        }
-      }, 100);
-      return;
-    }
-
-    logger.log('[GooglePlaces] Loading Google Maps bootstrap with API key:', API_KEY?.substring(0, 10) + '...');
-
-    // Create the bootstrap loader script
-    const script = document.createElement('script');
-    script.setAttribute('data-google-maps-bootstrap', 'true');
-
-    // Bootstrap loader code from Google's documentation
-    script.text = `
-      (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=\`https://maps.\${c}apis.com/maps/api/js?\`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
-        key: "${API_KEY}",
-        v: "weekly",
-      });
-    `;
-
-    document.head.appendChild(script);
-
-    // Inline scripts execute synchronously, so check immediately
-    setTimeout(() => {
-      if (typeof window.google?.maps?.importLibrary === 'function') {
-        logger.log('[GooglePlaces] Bootstrap initialized successfully');
-        resolve();
-      } else {
-        logger.error('[GooglePlaces] Bootstrap failed to initialize importLibrary');
-        logger.error('[GooglePlaces] Troubleshooting:');
-        logger.error('  1. Check API key is valid in Google Cloud Console');
-        logger.error('  2. Verify all 3 APIs are enabled: Maps JS API, Places API (New), Geocoding API');
-        logger.error('  3. Check API key restrictions (HTTP referrers should include localhost)');
-        logger.error('  4. Disable ad blockers/privacy extensions temporarily');
-        logger.error('  5. Try in incognito mode');
-        reject(new Error('Bootstrap loader failed to initialize. Check console for details.'));
-      }
-    }, 100);
-  });
-}
-
-/**
- * Initialize Google Maps JavaScript API
- * Only loads once per session
- */
-async function initGoogleMaps(): Promise<void> {
-  if (googleMapsLoaded) {
-    return;
-  }
-
-  if (!API_KEY || API_KEY === 'your_google_places_api_key_here') {
-    throw new Error(
-      'Google Places API key not configured. Please set VITE_GOOGLE_PLACES_API_KEY in your .env file.'
-    );
-  }
-
-  // Load the bootstrap loader
-  await loadGoogleMapsBootstrap();
-
-  googleMapsLoaded = true;
-}
-
-/**
- * Search for nearby food establishments using the new Google Places API
+ * Search for nearby food establishments using backend Google Places API
  * Includes restaurants, cafes, bakeries, coffee shops, dessert places, etc.
  * This should ONLY be called when user explicitly requests nearby search
  */
@@ -108,109 +18,93 @@ export async function searchNearbyRestaurants(
 ): Promise<PlaceResult[]> {
   const { latitude, longitude, radius = 1500, excludePlaceIds = [] } = params;
 
-  // Initialize Google Maps if not already loaded
-  await initGoogleMaps();
-
-  // Import the places library using the new API
-  const { Place } = (await google.maps.importLibrary(
-    'places'
-  )) as google.maps.PlacesLibrary;
-
-  const center = { lat: latitude, lng: longitude };
-
-  const request: google.maps.places.SearchNearbyRequest = {
-    fields: ['displayName', 'location', 'types', 'id', 'formattedAddress'],
-    locationRestriction: {
-      center,
-      radius,
-    },
-    includedTypes: [
-      'restaurant',
-      'cafe',
-      'bakery',
-      'coffee_shop',
-      'dessert_shop',
-      'ice_cream_shop',
-      'meal_takeaway',
-      'bar',
-    ],
-    maxResultCount: 20,
-    rankPreference: google.maps.places.SearchNearbyRankPreference.DISTANCE,
-  };
-
   try {
-    logger.log('[GooglePlaces] Searching nearby food places...', { latitude, longitude, radius });
-    const { places } = await Place.searchNearby(request);
+    logger.log('[GooglePlaces] Searching nearby food places via backend...', { latitude, longitude, radius });
 
-    if (!places || places.length === 0) {
+    const baseUrl = pb.baseUrl;
+    const token = pb.authStore.token;
+
+    const response = await fetch(`${baseUrl}/api/places/nearby`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify({
+        latitude,
+        longitude,
+        radius,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('[GooglePlaces] Backend search failed:', errorText);
+      throw new Error(`Failed to search nearby places: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    const places: PlaceResult[] = result.places || [];
+
+    if (places.length === 0) {
       logger.log('[GooglePlaces] No nearby food places found');
       return [];
     }
 
     logger.log(`[GooglePlaces] Found ${places.length} nearby food places`);
 
-    // Transform to our PlaceResult interface
-    const results: PlaceResult[] = places
-      .map((place) => ({
-        place_id: place.id || '',
-        name: place.displayName || 'Unknown Place',
-        vicinity: place.formattedAddress || '',
-        types: place.types || [],
-        geometry: {
-          location: {
-            lat: place.location?.lat() || 0,
-            lng: place.location?.lng() || 0,
-          },
-        },
-      }))
-      // Filter out excluded place IDs (for pagination)
-      .filter((place) => !excludePlaceIds.includes(place.place_id));
+    // Filter out excluded place IDs (for pagination)
+    const filtered = places.filter((place) => !excludePlaceIds.includes(place.place_id));
 
-    logger.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
-    return results;
+    logger.log(`[GooglePlaces] After filtering: ${filtered.length} new food places`);
+    return filtered;
   } catch (error) {
     logger.error('[GooglePlaces] Error during nearby search:', error);
-    if (error instanceof Error && error.message.includes('API key')) {
-      throw new Error('Google Maps API key issue. Check console for details.');
-    }
     throw new Error(`Failed to search nearby food places: ${error}`);
   }
 }
 
 /**
- * Geocode a location string (city, zip code, address) to coordinates
+ * Geocode a location string (city, zip code, address) to coordinates using backend
  */
 export async function geocodeLocation(
   location: string
 ): Promise<{ lat: number; lng: number } | null> {
-  // Initialize Google Maps if not already loaded
-  await initGoogleMaps();
-
-  // Import the geocoding library
-  const { Geocoder } = (await google.maps.importLibrary(
-    'geocoding'
-  )) as google.maps.GeocodingLibrary;
-
-  const geocoder = new Geocoder();
-
   try {
-    logger.log('[GooglePlaces] Geocoding location:', location);
-    const response = await geocoder.geocode({ address: location });
+    logger.log('[GooglePlaces] Geocoding location via backend:', location);
 
-    if (response.results && response.results.length > 0) {
-      const { lat, lng } = response.results[0].geometry.location;
-      const coords = { lat: lat(), lng: lng() };
-      logger.log('[GooglePlaces] Geocoding successful:', coords);
-      return coords;
+    const baseUrl = pb.baseUrl;
+    const token = pb.authStore.token;
+
+    const response = await fetch(`${baseUrl}/api/places/geocode`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify({
+        location,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('[GooglePlaces] Geocoding failed:', errorText);
+      throw new Error(`Failed to geocode location: ${response.statusText}`);
     }
 
-    logger.log('[GooglePlaces] Geocoding returned no results');
-    return null;
+    const result = await response.json();
+
+    if (!result.found) {
+      logger.log('[GooglePlaces] Geocoding returned no results');
+      return null;
+    }
+
+    const coords = { lat: result.lat, lng: result.lng };
+    logger.log('[GooglePlaces] Geocoding successful:', coords);
+    return coords;
   } catch (error) {
     logger.error('[GooglePlaces] Geocoding error:', error);
-    if (error instanceof Error && error.message.includes('API key')) {
-      throw new Error('Google Maps API key issue. Check console for details.');
-    }
     throw new Error(`Failed to geocode location: ${error}`);
   }
 }
@@ -223,7 +117,7 @@ export interface TextSearchParams {
 }
 
 /**
- * Search for food establishments by text query (name, type, etc.)
+ * Search for food establishments by text query (name, type, etc.) using backend
  * Includes restaurants, cafes, bakeries, coffee shops, dessert places, etc.
  * with optional location filter
  */
@@ -232,76 +126,48 @@ export async function searchRestaurantsByText(
 ): Promise<PlaceResult[]> {
   const { query, location, radius = 5000, excludePlaceIds = [] } = params;
 
-  // Initialize Google Maps if not already loaded
-  await initGoogleMaps();
-
-  // If location is provided, geocode it first
-  let center: { lat: number; lng: number } | undefined;
-  if (location) {
-    const geocoded = await geocodeLocation(location);
-    if (geocoded) {
-      center = geocoded;
-    }
-  }
-
-  // Import the places library
-  const { Place } = (await google.maps.importLibrary(
-    'places'
-  )) as google.maps.PlacesLibrary;
-
-  const request: google.maps.places.SearchByTextRequest = {
-    textQuery: query,
-    fields: ['displayName', 'location', 'types', 'id', 'formattedAddress'],
-    // Restrict to food/drink establishments only
-    // Note: Text search only supports single includedType (not array like nearby search)
-    // Using 'restaurant' as it broadly covers food establishments
-    includedType: 'restaurant',
-    maxResultCount: 20,
-  };
-
-  // Add location bias if we have coordinates
-  if (center) {
-    request.locationBias = {
-      center,
-      radius,
-    };
-  }
-
   try {
-    logger.log('[GooglePlaces] Text search:', { query, location, center, radius });
-    const { places } = await Place.searchByText(request);
+    logger.log('[GooglePlaces] Text search via backend:', { query, location, radius });
 
-    if (!places || places.length === 0) {
+    const baseUrl = pb.baseUrl;
+    const token = pb.authStore.token;
+
+    const response = await fetch(`${baseUrl}/api/places/search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify({
+        query,
+        location: location || '',
+        radius,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('[GooglePlaces] Text search failed:', errorText);
+      throw new Error(`Failed to search places: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    const places: PlaceResult[] = result.places || [];
+
+    if (places.length === 0) {
       logger.log('[GooglePlaces] Text search returned no results');
       return [];
     }
 
     logger.log(`[GooglePlaces] Text search found ${places.length} food places`);
 
-    // Transform to our PlaceResult interface
-    const results: PlaceResult[] = places
-      .map((place) => ({
-        place_id: place.id || '',
-        name: place.displayName || 'Unknown Place',
-        vicinity: place.formattedAddress || '',
-        types: place.types || [],
-        geometry: {
-          location: {
-            lat: place.location?.lat() || 0,
-            lng: place.location?.lng() || 0,
-          },
-        },
-      }))
-      // Filter out excluded place IDs (for pagination)
-      .filter((place) => !excludePlaceIds.includes(place.place_id));
+    // Filter out excluded place IDs (for pagination)
+    const filtered = places.filter((place) => !excludePlaceIds.includes(place.place_id));
 
-    logger.log(`[GooglePlaces] After filtering: ${results.length} new food places`);
-    return results;
+    logger.log(`[GooglePlaces] After filtering: ${filtered.length} new food places`);
+    return filtered;
   } catch (error) {
     logger.error('[GooglePlaces] Text search error:', error);
-    if (error instanceof Error && error.message.includes('API key')) {
-      throw new Error('Google Maps API key issue. Check console for details.');
-    }
     throw new Error(`Failed to search food places: ${error}`);
   }
 }

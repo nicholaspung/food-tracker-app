@@ -282,20 +282,14 @@ build_frontend() {
     # Create environment-specific .env file
     log "Creating frontend .env for $ENVIRONMENT environment..."
 
-    # Read Google Places API key from existing .env if it exists
-    GOOGLE_PLACES_API_KEY=""
-    if [ -f .env ]; then
-        GOOGLE_PLACES_API_KEY=$(grep "^VITE_GOOGLE_PLACES_API_KEY=" .env | cut -d '=' -f 2)
-    fi
-
-    # Create .env file with API URL and Google Places API key
+    # Create .env file with API URL only (API keys are now in backend)
     cat > .env <<EOF
 # Frontend Environment Variables - $ENVIRONMENT
 # PocketBase automatically appends /api/ to requests
 VITE_API_URL=https://$DOMAIN
 
-# Google Places API
-VITE_GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
+# NOTE: Google Places API and Gemini API keys are now stored in the backend
+# See backend/.env for API key configuration
 EOF
     log "Frontend .env created with API URL: https://$DOMAIN"
 
@@ -368,6 +362,78 @@ deploy_frontend() {
     fi
 
     log "Frontend deployed ✓"
+}
+
+#######################
+# CONFIGURE BACKEND
+#######################
+configure_backend() {
+    step "Configuring backend environment variables ($ENVIRONMENT)..."
+
+    cd "$APP_DIR/backend"
+
+    # Backend .env file location (environment-specific storage)
+    local env_file_storage="/opt/food-tracker-secrets/${ENVIRONMENT}/.env"
+
+    # Ensure secrets directory exists with proper permissions
+    if [ ! -d "/opt/food-tracker-secrets/${ENVIRONMENT}" ]; then
+        sudo mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
+        sudo chown -R $USER:$USER /opt/food-tracker-secrets
+        sudo chmod 700 /opt/food-tracker-secrets
+        sudo chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
+    fi
+
+    # Read API keys from environment variables (set by GitHub Actions or manually on server)
+    local gemini_key="${GEMINI_API_KEY:-}"
+    local places_key="${GOOGLE_PLACES_API_KEY:-}"
+
+    # If env vars not set, try to read from existing env file
+    if [ -z "$gemini_key" ] && [ -f "$env_file_storage" ]; then
+        gemini_key=$(grep "^GEMINI_API_KEY=" "$env_file_storage" | cut -d '=' -f 2)
+    fi
+
+    if [ -z "$places_key" ] && [ -f "$env_file_storage" ]; then
+        places_key=$(grep "^GOOGLE_PLACES_API_KEY=" "$env_file_storage" | cut -d '=' -f 2)
+    fi
+
+    # Warn if API keys are missing
+    if [ -z "$gemini_key" ]; then
+        warn "GEMINI_API_KEY not set. Menu OCR features will not work."
+        warn "Set it via: export GEMINI_API_KEY=your_key"
+    fi
+
+    if [ -z "$places_key" ]; then
+        warn "GOOGLE_PLACES_API_KEY not set. Restaurant search features will not work."
+        warn "Set it via: export GOOGLE_PLACES_API_KEY=your_key"
+    fi
+
+    # Create backend .env file in secure location
+    cat > "$env_file_storage" <<EOF
+# Backend Environment Variables - $ENVIRONMENT
+# Generated on $(date)
+
+# Google Gemini API Key for menu OCR
+GEMINI_API_KEY=${gemini_key}
+
+# Google Places API Key for restaurant search
+GOOGLE_PLACES_API_KEY=${places_key}
+EOF
+
+    # Secure the env file
+    chmod 600 "$env_file_storage"
+
+    # Create symlink from backend directory to secrets location
+    ln -sf "$env_file_storage" "$APP_DIR/backend/.env"
+
+    log "Backend .env configured at $env_file_storage (symlinked to backend/.env)"
+
+    if [ -n "$gemini_key" ]; then
+        log "✓ GEMINI_API_KEY configured"
+    fi
+
+    if [ -n "$places_key" ]; then
+        log "✓ GOOGLE_PLACES_API_KEY configured"
+    fi
 }
 
 #######################
@@ -591,16 +657,19 @@ main() {
     # Step 7: Health check frontend
     health_check_frontend
 
-    # Step 8: Deploy PocketBase
+    # Step 8: Configure backend environment variables
+    configure_backend
+
+    # Step 9: Deploy PocketBase
     deploy_pocketbase
 
-    # Step 9: Health check PocketBase
+    # Step 10: Health check PocketBase
     health_check_pocketbase
 
-    # Step 10: Run smoke tests
+    # Step 11: Run smoke tests
     smoke_test
 
-    # Step 11: Cleanup
+    # Step 12: Cleanup
     cleanup_old_build
 
     # Success!

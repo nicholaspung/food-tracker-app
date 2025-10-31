@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.2.2",
+    "date": "2025-10-30",
+    "title": "Backend Infrastructure Upgrade",
+    "summary": "Migrated to Google's new Places API (New) for improved reliability and future-proofing. All API calls now securely handled on the backend.",
+    "features": [],
+    "improvements": [
+      "Upgraded to Google Places API (New): Modern API with better performance and features",
+      "Enhanced security: API keys now securely stored on backend instead of frontend",
+      "Environment variables: Backend now loads .env file for easier configuration",
+      "Better error handling: More detailed logging for API-related issues"
+    ],
+    "fixes": [
+      "Fixed API key restrictions preventing restaurant search",
+      "Resolved IPv6 compatibility issues with Google Places API",
+      "Corrected field mask requirements for new Places API endpoints"
+    ]
+  },
+  {
     "version": "0.2.1",
     "date": "2025-01-29",
     "title": "Streamlined Search & Performance",
