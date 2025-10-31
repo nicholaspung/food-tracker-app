@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/json"
@@ -13,16 +14,29 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/maps/places/apiv1"
+	"cloud.google.com/go/maps/places/apiv1/placespb"
+	"github.com/google/generative-ai-go/genai"
 	"github.com/jdeng/goheif"
+	"github.com/joho/godotenv"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	"google.golang.org/api/option"
+	"google.golang.org/genproto/googleapis/type/latlng"
+	"google.golang.org/grpc/metadata"
+	"googlemaps.github.io/maps"
 
 	_ "myapp/migrations"
 )
 
 func main() {
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
+
 	app := pocketbase.New()
 
 	// Register migrations with automigrate enabled when running with `go run`
@@ -254,6 +268,409 @@ func main() {
 			return err
 		})
 
+
+		// Custom API endpoint: Parse menu using Google Gemini
+		se.Router.POST("/api/parse-menu", func(e *core.RequestEvent) error {
+			// Authentication required
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Get Gemini API key from environment
+			geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+			if geminiAPIKey == "" {
+				log.Printf("ERROR: GEMINI_API_KEY environment variable not set")
+				return apis.NewApiError(500, "Gemini API key not configured", nil)
+			}
+
+			// Parse multipart form
+			if err := e.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
+				return apis.NewBadRequestError("failed to parse multipart form", err)
+			}
+
+			// Get the uploaded file
+			file, header, err := e.Request.FormFile("image")
+			if err != nil {
+				return apis.NewBadRequestError("image file is required", err)
+			}
+			defer file.Close()
+
+			log.Printf("Parsing menu image with Gemini: %s, size: %d bytes", header.Filename, header.Size)
+
+			// Read file into memory
+			imageData, err := io.ReadAll(file)
+			if err != nil {
+				return apis.NewApiError(500, "failed to read image file", err)
+			}
+
+			// Initialize Gemini client
+			ctx := context.Background()
+			client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey))
+			if err != nil {
+				log.Printf("Failed to create Gemini client: %v", err)
+				return apis.NewApiError(500, "failed to initialize Gemini API", err)
+			}
+			defer client.Close()
+
+			// Use Gemini Flash model
+			model := client.GenerativeModel("gemini-flash-latest")
+
+			// Configure model
+			model.SetTemperature(0)
+
+			// Prepare the image part
+			imagePart := genai.ImageData(header.Header.Get("Content-Type"), imageData)
+
+			// Prepare the prompt
+			prompt := `This is a picture of a menu. Can you help me generate a CSV table of menu item and pricing according to this menu? It should follow the general output:
+menu_item,price
+Example menu name,18.99
+Only output the CSV table, no need to explain what's happening`
+
+			// Generate content
+			resp, err := model.GenerateContent(ctx, genai.Text(prompt), imagePart)
+			if err != nil {
+				log.Printf("Gemini API error: %v", err)
+				return apis.NewApiError(500, "failed to parse menu with Gemini", err)
+			}
+
+			// Extract text from response
+			if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+				return apis.NewApiError(500, "no response from Gemini", nil)
+			}
+
+			var csvText string
+			for _, part := range resp.Candidates[0].Content.Parts {
+				if textPart, ok := part.(genai.Text); ok {
+					csvText += string(textPart)
+				}
+			}
+
+			log.Printf("Gemini response: %s", csvText)
+
+			// Return CSV text
+			return e.JSON(200, map[string]any{
+				"csv": csvText,
+			})
+		})
+
+		// Custom API endpoint: Search nearby restaurants using Google Places (New API)
+		se.Router.POST("/api/places/nearby", func(e *core.RequestEvent) error {
+			// Authentication required
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Get Google Places API key from environment
+			placesAPIKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+			if placesAPIKey == "" {
+				log.Printf("ERROR: GOOGLE_PLACES_API_KEY environment variable not set")
+				return apis.NewApiError(500, "Google Places API key not configured", nil)
+			}
+
+			// Parse request body
+			var requestData struct {
+				Latitude  float64  `json:"latitude"`
+				Longitude float64  `json:"longitude"`
+				Radius    int      `json:"radius"` // in meters
+			}
+
+			if err := e.BindBody(&requestData); err != nil {
+				return apis.NewBadRequestError("invalid request body", err)
+			}
+
+			// Default radius if not provided
+			if requestData.Radius == 0 {
+				requestData.Radius = 1500
+			}
+
+			log.Printf("Searching nearby places: lat=%f, lng=%f, radius=%d",
+				requestData.Latitude, requestData.Longitude, requestData.Radius)
+
+			// Initialize new Places API client
+			ctx := context.Background()
+			placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey))
+			if err != nil {
+				log.Printf("Failed to create Places API client: %v", err)
+				return apis.NewApiError(500, "failed to initialize Google Places API", err)
+			}
+			defer placesClient.Close()
+
+			// Build nearby search request
+			searchReq := &placespb.SearchNearbyRequest{
+				LocationRestriction: &placespb.SearchNearbyRequest_LocationRestriction{
+					Type: &placespb.SearchNearbyRequest_LocationRestriction_Circle{
+						Circle: &placespb.Circle{
+							Center: &latlng.LatLng{
+								Latitude:  requestData.Latitude,
+								Longitude: requestData.Longitude,
+							},
+							Radius: float64(requestData.Radius),
+						},
+					},
+				},
+				IncludedTypes: []string{"restaurant"},
+			}
+
+			// Set field mask in context to specify which fields to return
+			ctx = metadata.AppendToOutgoingContext(ctx,
+				"x-goog-fieldmask", "places.id,places.displayName,places.shortFormattedAddress,places.types,places.location")
+
+			// Perform nearby search
+			resp, err := placesClient.SearchNearby(ctx, searchReq)
+			if err != nil {
+				log.Printf("Google Places API error: %v", err)
+				return apis.NewApiError(500, "failed to search nearby places", err)
+			}
+
+			log.Printf("Found %d nearby places", len(resp.Places))
+
+			// Transform results to match frontend PlaceResult interface
+			places := make([]map[string]any, len(resp.Places))
+			for i, place := range resp.Places {
+				// Extract place ID (remove "places/" prefix if present)
+				placeID := place.Id
+				if strings.HasPrefix(placeID, "places/") {
+					placeID = strings.TrimPrefix(placeID, "places/")
+				}
+
+				// Extract location
+				var lat, lng float64
+				if place.Location != nil {
+					lat = place.Location.Latitude
+					lng = place.Location.Longitude
+				}
+
+				// Extract display name
+				displayName := ""
+				if place.DisplayName != nil {
+					displayName = place.DisplayName.Text
+				}
+
+				// Extract formatted address (use shortFormattedAddress as vicinity)
+				vicinity := place.ShortFormattedAddress
+
+				places[i] = map[string]any{
+					"place_id": placeID,
+					"name":     displayName,
+					"vicinity": vicinity,
+					"types":    place.Types,
+					"geometry": map[string]any{
+						"location": map[string]any{
+							"lat": lat,
+							"lng": lng,
+						},
+					},
+				}
+			}
+
+			return e.JSON(200, map[string]any{
+				"places": places,
+			})
+		})
+
+		// Custom API endpoint: Search restaurants by text using Google Places (New API)
+		se.Router.POST("/api/places/search", func(e *core.RequestEvent) error {
+			// Authentication required
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Get Google Places API key from environment
+			placesAPIKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+			if placesAPIKey == "" {
+				log.Printf("ERROR: GOOGLE_PLACES_API_KEY environment variable not set")
+				return apis.NewApiError(500, "Google Places API key not configured", nil)
+			}
+
+			// Parse request body
+			var requestData struct {
+				Query    string  `json:"query"`
+				Location string  `json:"location"`
+				Radius   int     `json:"radius"` // in meters
+			}
+
+			if err := e.BindBody(&requestData); err != nil {
+				return apis.NewBadRequestError("invalid request body", err)
+			}
+
+			// Default radius if not provided
+			if requestData.Radius == 0 {
+				requestData.Radius = 5000
+			}
+
+			log.Printf("Text search: query=%s, location=%s, radius=%d",
+				requestData.Query, requestData.Location, requestData.Radius)
+
+			// Initialize new Places API client
+			ctx := context.Background()
+			placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey))
+			if err != nil {
+				log.Printf("Failed to create Places API client: %v", err)
+				return apis.NewApiError(500, "failed to initialize Google Places API", err)
+			}
+			defer placesClient.Close()
+
+			// Build text search request
+			searchReq := &placespb.SearchTextRequest{
+				TextQuery: requestData.Query,
+				// Include restaurant type filtering
+				IncludedType: "restaurant",
+			}
+
+			// If location is provided, add location bias
+			if requestData.Location != "" {
+				// Use old Maps client for geocoding (Geocoding API is separate)
+				mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey))
+				if err == nil {
+					geocodeReq := &maps.GeocodingRequest{
+						Address: requestData.Location,
+					}
+					geocodeResp, err := mapsClient.Geocode(ctx, geocodeReq)
+					if err == nil && len(geocodeResp) > 0 {
+						location := geocodeResp[0].Geometry.Location
+						log.Printf("Geocoded location: lat=%f, lng=%f", location.Lat, location.Lng)
+
+						// Add location bias with circle
+						searchReq.LocationBias = &placespb.SearchTextRequest_LocationBias{
+							Type: &placespb.SearchTextRequest_LocationBias_Circle{
+								Circle: &placespb.Circle{
+									Center: &latlng.LatLng{
+										Latitude:  location.Lat,
+										Longitude: location.Lng,
+									},
+									Radius: float64(requestData.Radius),
+								},
+							},
+						}
+					}
+				}
+			}
+
+			// Set field mask in context to specify which fields to return
+			ctx = metadata.AppendToOutgoingContext(ctx,
+				"x-goog-fieldmask", "places.id,places.displayName,places.formattedAddress,places.types,places.location")
+
+			// Perform text search
+			resp, err := placesClient.SearchText(ctx, searchReq)
+			if err != nil {
+				log.Printf("Google Places text search error: %v", err)
+				return apis.NewApiError(500, "failed to search places", err)
+			}
+
+			log.Printf("Text search found %d places", len(resp.Places))
+
+			// Transform results to match frontend PlaceResult interface
+			places := make([]map[string]any, len(resp.Places))
+			for i, place := range resp.Places {
+				// Extract place ID (remove "places/" prefix if present)
+				placeID := place.Id
+				if strings.HasPrefix(placeID, "places/") {
+					placeID = strings.TrimPrefix(placeID, "places/")
+				}
+
+				// Extract location
+				var lat, lng float64
+				if place.Location != nil {
+					lat = place.Location.Latitude
+					lng = place.Location.Longitude
+				}
+
+				// Extract display name
+				displayName := ""
+				if place.DisplayName != nil {
+					displayName = place.DisplayName.Text
+				}
+
+				// Extract formatted address
+				formattedAddress := place.FormattedAddress
+
+				places[i] = map[string]any{
+					"place_id": placeID,
+					"name":     displayName,
+					"vicinity": formattedAddress,
+					"types":    place.Types,
+					"geometry": map[string]any{
+						"location": map[string]any{
+							"lat": lat,
+							"lng": lng,
+						},
+					},
+				}
+			}
+
+			return e.JSON(200, map[string]any{
+				"places": places,
+			})
+		})
+
+		// Custom API endpoint: Geocode location using Google Maps
+		se.Router.POST("/api/places/geocode", func(e *core.RequestEvent) error {
+			// Authentication required
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Get Google Places API key from environment
+			placesAPIKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+			if placesAPIKey == "" {
+				log.Printf("ERROR: GOOGLE_PLACES_API_KEY environment variable not set")
+				return apis.NewApiError(500, "Google Places API key not configured", nil)
+			}
+
+			// Parse request body
+			var requestData struct {
+				Location string `json:"location"`
+			}
+
+			if err := e.BindBody(&requestData); err != nil {
+				return apis.NewBadRequestError("invalid request body", err)
+			}
+
+			if requestData.Location == "" {
+				return apis.NewBadRequestError("location is required", nil)
+			}
+
+			log.Printf("Geocoding location: %s", requestData.Location)
+
+			// Initialize Google Maps client
+			ctx := context.Background()
+			mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey))
+			if err != nil {
+				log.Printf("Failed to create Google Maps client: %v", err)
+				return apis.NewApiError(500, "failed to initialize Google Maps API", err)
+			}
+
+			// Perform geocoding
+			request := &maps.GeocodingRequest{
+				Address: requestData.Location,
+			}
+
+			resp, err := mapsClient.Geocode(ctx, request)
+			if err != nil {
+				log.Printf("Geocoding error: %v", err)
+				return apis.NewApiError(500, "failed to geocode location", err)
+			}
+
+			if len(resp) == 0 {
+				return e.JSON(200, map[string]any{
+					"found": false,
+				})
+			}
+
+			location := resp[0].Geometry.Location
+			log.Printf("Geocoded to: lat=%f, lng:%f", location.Lat, location.Lng)
+
+			return e.JSON(200, map[string]any{
+				"found": true,
+				"lat":   location.Lat,
+				"lng":   location.Lng,
+			})
+		})
 		// Serves static files from the provided public dir (if exists)
 		// IMPORTANT: This must be registered LAST as it's a catch-all route
 		se.Router.GET("/{path...}", apis.Static(os.DirFS("./pb_public"), false))
