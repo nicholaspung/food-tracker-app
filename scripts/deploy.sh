@@ -377,10 +377,26 @@ configure_backend() {
 
     # Ensure secrets directory exists with proper permissions
     if [ ! -d "/opt/food-tracker-secrets/${ENVIRONMENT}" ]; then
-        sudo mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
-        sudo chown -R $USER:$USER /opt/food-tracker-secrets
-        sudo chmod 700 /opt/food-tracker-secrets
-        sudo chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
+        # Try to create without sudo first (for CI/CD environments)
+        if mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}" 2>/dev/null; then
+            chmod 700 /opt/food-tracker-secrets
+            chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
+            log "Created secrets directory without sudo"
+        elif [ -n "$SUDO_PASSWORD" ]; then
+            # Use sudo with password from environment variable (if provided)
+            echo "$SUDO_PASSWORD" | sudo -S mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
+            echo "$SUDO_PASSWORD" | sudo -S chown -R $USER:$USER /opt/food-tracker-secrets
+            echo "$SUDO_PASSWORD" | sudo -S chmod 700 /opt/food-tracker-secrets
+            echo "$SUDO_PASSWORD" | sudo -S chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
+            log "Created secrets directory with sudo"
+        else
+            error "Cannot create /opt/food-tracker-secrets/${ENVIRONMENT}"
+            error "Either:"
+            error "  1. Pre-create it manually: sudo mkdir -p /opt/food-tracker-secrets/${ENVIRONMENT} && sudo chown -R \$USER:\$USER /opt/food-tracker-secrets"
+            error "  2. Set SUDO_PASSWORD environment variable"
+            error "  3. Configure passwordless sudo for this user"
+            exit 1
+        fi
     fi
 
     # Read API keys from environment variables (set by GitHub Actions or manually on server)
