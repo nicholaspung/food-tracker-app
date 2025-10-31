@@ -469,14 +469,18 @@ EOF
     # Create symlink from backend directory to secrets location
     ln -sf "$env_file_storage" "$APP_DIR/backend/.env"
 
+    # Export environment variables so docker-compose can use them
+    export GEMINI_API_KEY="$gemini_key"
+    export GOOGLE_PLACES_API_KEY="$places_key"
+
     log "Backend .env configured at $env_file_storage (symlinked to backend/.env)"
 
     if [ -n "$gemini_key" ]; then
-        log "✓ GEMINI_API_KEY configured"
+        log "✓ GEMINI_API_KEY configured and exported"
     fi
 
     if [ -n "$places_key" ]; then
-        log "✓ GOOGLE_PLACES_API_KEY configured"
+        log "✓ GOOGLE_PLACES_API_KEY configured and exported"
     fi
 }
 
