@@ -10,7 +10,9 @@ import (
 	"image/jpeg"
 	"io"
 	"log"
+	"mime"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -319,14 +321,28 @@ func main() {
 			// Configure model
 			model.SetTemperature(0)
 
-			// Prepare the image part
-			imagePart := genai.ImageData(header.Header.Get("Content-Type"), imageData)
+			// Detect MIME type from filename extension
+			mimeType := mime.TypeByExtension(filepath.Ext(header.Filename))
+			if mimeType == "" {
+				// Default to jpeg if detection fails
+				mimeType = "image/jpeg"
+			}
+
+			// Extract format from MIME type (e.g., "image/jpeg" -> "jpeg")
+			// genai.ImageData expects just the format, not the full MIME type
+			format := strings.TrimPrefix(mimeType, "image/")
+			log.Printf("Detected MIME type: %s, format: %s for file: %s", mimeType, format, header.Filename)
+
+			// Prepare the image part (pass format only, not full MIME type)
+			imagePart := genai.ImageData(format, imageData)
 
 			// Prepare the prompt
-			prompt := `This is a picture of a menu. Can you help me generate a CSV table of menu item and pricing according to this menu? It should follow the general output:
+			prompt := `Please check if this picture is a picture of a menu. If it is a picture of a menu, please continue on. Otherwise, if it's not a picture of a menu, return a response that says it's not a menu image with the structure in a JSON object format:
+{statusCode: 400, error: "Image is not a menu"}
+If the picture is a menu, can you help me generate a CSV table of menu item and pricing according to this menu? It should follow the general output:
 menu_item,price
 Example menu name,18.99
-Only output the CSV table, no need to explain what's happening`
+Only output the CSV table or the JSON format, no need to explain what's happening`
 
 			// Generate content
 			resp, err := model.GenerateContent(ctx, genai.Text(prompt), imagePart)
@@ -340,18 +356,27 @@ Only output the CSV table, no need to explain what's happening`
 				return apis.NewApiError(500, "no response from Gemini", nil)
 			}
 
-			var csvText string
+			var responseText string
 			for _, part := range resp.Candidates[0].Content.Parts {
 				if textPart, ok := part.(genai.Text); ok {
-					csvText += string(textPart)
+					responseText += string(textPart)
 				}
 			}
 
-			log.Printf("Gemini response: %s", csvText)
+			log.Printf("Gemini response: %s", responseText)
+
+			// Check if response indicates it's not a menu image
+			// Try to parse as JSON error first
+			trimmedResponse := strings.TrimSpace(responseText)
+			if strings.Contains(trimmedResponse, "statusCode") && strings.Contains(trimmedResponse, "error") {
+				// This looks like an error response
+				log.Printf("Image is not a menu - Gemini returned error response")
+				return apis.NewApiError(400, "Image is not a menu", nil)
+			}
 
 			// Return CSV text
 			return e.JSON(200, map[string]any{
-				"csv": csvText,
+				"csv": responseText,
 			})
 		})
 

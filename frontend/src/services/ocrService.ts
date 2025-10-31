@@ -1,5 +1,10 @@
 import { pb, MenuImage, MenuItem } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
+import {
+  hasExceededDailyLimit,
+  getRemainingAttempts,
+  incrementFailedAttempts,
+} from './ocrRateLimitService';
 
 export interface OCRResult {
   csv: string;
@@ -80,6 +85,14 @@ export async function performOCR(
   imageFile: File,
   onProgress?: (progress: number) => void
 ): Promise<OCRResult> {
+  // Check rate limit before proceeding
+  if (hasExceededDailyLimit()) {
+    const remaining = getRemainingAttempts();
+    throw new Error(
+      `You have reached the daily limit for failed menu uploads. You have ${remaining} attempts remaining today. Please try again tomorrow.`
+    );
+  }
+
   logger.log('Sending image to Gemini for menu parsing...');
 
   // Update progress
@@ -109,6 +122,23 @@ export async function performOCR(
   if (!response.ok) {
     const errorText = await response.text();
     logger.error('Gemini parsing failed:', errorText);
+
+    // If status is 400 (not a menu), increment failed attempts counter
+    if (response.status === 400) {
+      incrementFailedAttempts();
+      const remaining = getRemainingAttempts();
+
+      if (remaining > 0) {
+        throw new Error(
+          `This image does not appear to be a menu. Please upload a clear picture of a menu. You have ${remaining} attempts remaining today.`
+        );
+      } else {
+        throw new Error(
+          `This image does not appear to be a menu. You have reached the daily limit for failed uploads. Please try again tomorrow.`
+        );
+      }
+    }
+
     throw new Error(`Failed to parse menu: ${response.statusText}`);
   }
 
@@ -237,14 +267,15 @@ function isValidMenuItemName(name: string): boolean {
 export async function createMenuItems(
   restaurantId: string,
   extractedItems: ExtractedMenuItem[],
-  sourceImageId?: string
+  sourceImageId?: string,
+  options?: { skipValidation?: boolean; isFromOCR?: boolean }
 ): Promise<MenuItem[]> {
   const createdItems: MenuItem[] = [];
 
   for (const item of extractedItems) {
     try {
-      // Validate item name quality
-      if (!isValidMenuItemName(item.name)) {
+      // Validate item name quality (skip for manually added items)
+      if (!options?.skipValidation && !isValidMenuItemName(item.name)) {
         logger.warn(`Skipping invalid menu item: "${item.name}"`);
         continue;
       }
@@ -275,6 +306,11 @@ export async function createMenuItems(
 
       if (sourceImageId) {
         data.sourceImage = sourceImageId;
+      }
+
+      // Add flag to indicate if this was created from OCR
+      if (options?.isFromOCR) {
+        data.isFromOCR = true;
       }
 
       const record = await pb.collection('menu_items').create<MenuItem>(data);
@@ -327,6 +363,90 @@ export async function getRestaurantMenuItems(
     return items;
   } catch (error) {
     logger.error('Failed to get restaurant menu items:', error);
+    return [];
+  }
+}
+
+/**
+ * Search menu items with fuzzy matching
+ * Returns items that contain the search term (case-insensitive)
+ */
+export async function searchMenuItems(
+  restaurantId: string,
+  searchTerm: string
+): Promise<MenuItem[]> {
+  try {
+    if (!searchTerm.trim()) {
+      return [];
+    }
+
+    const sanitized = sanitizeForQuery(searchTerm);
+
+    // Use ~ for case-insensitive partial match
+    const items = await pb.collection('menu_items').getFullList<MenuItem>({
+      filter: `restaurant = "${restaurantId}" && name ~ "${sanitized}"`,
+      sort: 'name',
+    });
+
+    return items;
+  } catch (error) {
+    logger.error('Failed to search menu items:', error);
+    return [];
+  }
+}
+
+/**
+ * Calculate similarity score between two strings (0-1)
+ * Higher score means more similar
+ */
+function calculateSimilarity(str1: string, str2: string): number {
+  const s1 = str1.toLowerCase();
+  const s2 = str2.toLowerCase();
+
+  // Exact match
+  if (s1 === s2) return 1.0;
+
+  // Contains match
+  if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+
+  // Word overlap
+  const words1 = s1.split(/\s+/);
+  const words2 = s2.split(/\s+/);
+  const commonWords = words1.filter(w => words2.some(w2 => w2.includes(w) || w.includes(w2)));
+
+  if (commonWords.length > 0) {
+    return 0.5 + (commonWords.length / Math.max(words1.length, words2.length)) * 0.3;
+  }
+
+  return 0;
+}
+
+/**
+ * Find best matching menu items for a parsed item
+ * Returns items sorted by similarity score
+ */
+export async function findMatchingMenuItems(
+  restaurantId: string,
+  itemName: string,
+  maxResults: number = 5
+): Promise<MenuItem[]> {
+  try {
+    // Get all menu items for the restaurant
+    const allItems = await getRestaurantMenuItems(restaurantId);
+
+    // Calculate similarity scores and sort
+    const scoredItems = allItems
+      .map(item => ({
+        item,
+        score: calculateSimilarity(itemName, item.name),
+      }))
+      .filter(({ score }) => score > 0.3) // Only keep reasonably similar items
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxResults);
+
+    return scoredItems.map(({ item }) => item);
+  } catch (error) {
+    logger.error('Failed to find matching menu items:', error);
     return [];
   }
 }

@@ -17,6 +17,7 @@ export interface UseMenuOCRState {
   extractedItems: ExtractedMenuItem[];
   menuItems: MenuItem[];
   error: string | null;
+  sourceImageId?: string;
 }
 
 export function useMenuOCR() {
@@ -26,6 +27,7 @@ export function useMenuOCR() {
     extractedItems: [],
     menuItems: [],
     error: null,
+    sourceImageId: undefined,
   });
 
   const processMenuImage = async (imageFile: File, restaurantId: string) => {
@@ -37,39 +39,31 @@ export function useMenuOCR() {
         extractedItems: [],
         menuItems: [],
         error: null,
+        sourceImageId: undefined,
       });
 
       const compressedImage = await compressImage(imageFile);
 
-      // Step 2: Upload to PocketBase
-      setState((prev) => ({
-        ...prev,
-        status: 'uploading',
-        progress: 30,
-      }));
-
-      const menuImage = await uploadMenuImage(restaurantId, compressedImage);
-
-      // Step 3: Perform OCR with real-time progress updates
+      // Step 2: Perform OCR with real-time progress updates (before uploading)
       setState((prev) => ({
         ...prev,
         status: 'processing',
-        progress: 50,
+        progress: 30,
       }));
 
       const ocrResult = await performOCR(compressedImage, (ocrProgress) => {
-        // Map OCR progress (0-1) to our overall progress range (50-70%)
-        const mappedProgress = 50 + (ocrProgress * 20);
+        // Map OCR progress (0-1) to our overall progress range (30-60%)
+        const mappedProgress = 30 + (ocrProgress * 30);
         setState((prev) => ({
           ...prev,
           progress: Math.round(mappedProgress),
         }));
       });
 
-      // Step 4: Parse menu items from CSV
+      // Step 3: Parse menu items from CSV
       setState((prev) => ({
         ...prev,
-        progress: 70,
+        progress: 60,
       }));
 
       const extracted = parseMenuItems(ocrResult.csv);
@@ -80,6 +74,15 @@ export function useMenuOCR() {
         );
       }
 
+      // Step 4: Upload to PocketBase (only after OCR succeeds)
+      setState((prev) => ({
+        ...prev,
+        status: 'uploading',
+        progress: 70,
+      }));
+
+      const menuImage = await uploadMenuImage(restaurantId, compressedImage);
+
       // Step 5: Create menu_items records in database
       setState((prev) => ({
         ...prev,
@@ -89,7 +92,8 @@ export function useMenuOCR() {
       const createdItems = await createMenuItems(
         restaurantId,
         extracted,
-        menuImage.id
+        menuImage.id,
+        { isFromOCR: true } // Mark items as created from OCR
       );
 
       // Step 6: Complete
@@ -99,6 +103,7 @@ export function useMenuOCR() {
         extractedItems: extracted,
         menuItems: createdItems,
         error: null,
+        sourceImageId: menuImage.id,
       });
 
       return createdItems;
@@ -123,6 +128,7 @@ export function useMenuOCR() {
       extractedItems: [],
       menuItems: [],
       error: null,
+      sourceImageId: undefined,
     });
   };
 

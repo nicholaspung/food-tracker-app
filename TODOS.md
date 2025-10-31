@@ -5,4 +5,3 @@
 - allow user to take a picture of their food, and then "add ratings" onto the food item to be stitched into one picture to be uploaded to socials
     - allow user to either have pictures be individual with restaurant, menu item name, rating, or to be stitched into set of 2/3 for each section to be shared
     - allow user to create an image where it lists all the menu items and the ratings, along with a tiny photo of the item
-- try to see if you can use OpenAI to upload an image and it will spit out the menu items in the right format (google cloud vision works really well, but the output is pretty hard to configure)

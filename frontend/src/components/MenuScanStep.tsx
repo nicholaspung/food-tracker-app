@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMenuOCR } from '@/hooks/useMenuOCR';
 import { getLastMenuUploadDate } from '@/services/ocrService';
+import { getRemainingAttempts, getFailedAttemptsToday } from '@/services/ocrRateLimitService';
 import { logger } from "@/lib/logger";
 import { MenuItem } from '@/lib/pocketbase';
 import { pb } from '@/lib/pocketbase';
@@ -134,10 +135,8 @@ export default function MenuScanStep({
 
     try {
       const items = await processMenuImage(selectedImage, restaurantId);
-      // Auto-advance after successful scan
-      setTimeout(() => {
-        onItemsExtracted(items);
-      }, 1500);
+      // Notify parent of scanned items
+      onItemsExtracted(items);
     } catch (err) {
       logger.error('OCR failed:', err);
     }
@@ -151,10 +150,6 @@ export default function MenuScanStep({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
-
-  const handleUseExtractedItems = () => {
-    onItemsExtracted(menuItems);
   };
 
   const getStatusMessage = () => {
@@ -178,13 +173,7 @@ export default function MenuScanStep({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Scan Menu (Optional)</CardTitle>
-        <CardDescription>
-          Take a photo or upload an image of the menu to auto-extract items for {restaurantName}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="pt-6 space-y-4">
         {/* Last upload info */}
         {lastUploadDate && (
           <Alert>
@@ -194,6 +183,32 @@ export default function MenuScanStep({
             </AlertDescription>
           </Alert>
         )}
+
+        {/* Rate limit info */}
+        {(() => {
+          const failedAttempts = getFailedAttemptsToday();
+          const remaining = getRemainingAttempts();
+
+          if (failedAttempts > 0) {
+            return (
+              <Alert variant={remaining === 0 ? 'destructive' : 'default'}>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {remaining === 0 ? (
+                    <span>
+                      You have used all 5 attempts for today. Please try again tomorrow with menu images.
+                    </span>
+                  ) : (
+                    <span>
+                      Failed menu uploads today: {failedAttempts}. You have {remaining} {remaining === 1 ? 'attempt' : 'attempts'} remaining.
+                    </span>
+                  )}
+                </AlertDescription>
+              </Alert>
+            );
+          }
+          return null;
+        })()}
 
         {/* File input (hidden, triggered by buttons) */}
         <input
@@ -261,18 +276,8 @@ export default function MenuScanStep({
             <CheckCircle className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-800">
               <div className="font-medium">{getStatusMessage()}</div>
-              <div className="mt-2 space-y-1">
-                {menuItems.slice(0, 5).map((item, idx) => (
-                  <div key={idx} className="text-xs">
-                    • {item.name}
-                    {item.description && ` - ${item.description.substring(0, 50)}${item.description.length > 50 ? '...' : ''}`}
-                  </div>
-                ))}
-                {menuItems.length > 5 && (
-                  <div className="text-xs italic">
-                    +{menuItems.length - 5} more items...
-                  </div>
-                )}
+              <div className="mt-2 text-xs">
+                Click "Use These Items" to add them to the search results.
               </div>
             </AlertDescription>
           </Alert>
@@ -314,7 +319,7 @@ export default function MenuScanStep({
                 onClick={onSkip}
                 data-testid="skip-scan-button"
               >
-                Skip - Add Items Manually
+                Skip Scan
               </Button>
             </>
           )}
@@ -356,11 +361,11 @@ export default function MenuScanStep({
                 type="button"
                 variant="default"
                 className="flex-1"
-                onClick={handleUseExtractedItems}
-                data-testid="use-scanned-items-button"
+                onClick={() => onItemsExtracted(menuItems)}
+                data-testid="use-items-button"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
-                Use These Items
+                Use These Items ({menuItems.length})
               </Button>
             </div>
           )}
