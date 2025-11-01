@@ -57,7 +57,7 @@
   },
   {
     "version": "0.2.1",
-    "date": "2025-01-29",
+    "date": "2025-10-29",
     "title": "Streamlined Search Experience",
     "summary": "Restaurant search is now simpler with unified filtering and cleaner notifications.",
     "features": [
@@ -76,7 +76,7 @@
   },
   {
     "version": "0.2.0",
-    "date": "2025-01-15",
+    "date": "2025-10-28",
     "title": "Search, Pagination & UI Improvements",
     "summary": "Major updates including visit search, page-by-page restaurant browsing, more food places, and numerous UI improvements.",
     "features": [
