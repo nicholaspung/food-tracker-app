@@ -130,7 +130,7 @@ function Home() {
   return (
     <>
       <HomePage
-        onEditVisit={(visitId: string) => navigate({ to: `/edit-visit/${visitId}` })}
+        onEditVisit={(visitId: string) => navigate({ to: '/edit-visit/$visitId/edit-items', params: { visitId } })}
         onAddVisit={() => navigate({ to: '/add-visit' })}
       />
 

@@ -1,18 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb, Restaurant, Visit, Friendship } from '@/lib/pocketbase';
-import { visitDraftService } from '@/services/visitDraftService';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { pb, Restaurant, Visit, Friendship } from "@/lib/pocketbase";
+import { visitDraftService } from "@/services/visitDraftService";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Plus,
   X,
@@ -23,15 +23,15 @@ import {
   Loader2,
   RefreshCw,
   Users,
-} from 'lucide-react';
-import { useGeolocation } from '@/hooks/useGeolocation';
+} from "lucide-react";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import {
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
   calculateDistance,
   formatDistance,
   geocodeLocation,
-} from '@/services/googlePlaces';
+} from "@/services/googlePlaces";
 
 interface SelectRestaurantPageProps {
   onRestaurantSelected: () => void;
@@ -46,17 +46,17 @@ export default function SelectRestaurantPage({
   const nearbyPlacesRef = useRef<HTMLDivElement>(null);
 
   const [showAddRestaurant, setShowAddRestaurant] = useState(false);
-  const [newRestaurantName, setNewRestaurantName] = useState('');
-  const [newRestaurantLocation, setNewRestaurantLocation] = useState('');
-  const [newRestaurantCuisine, setNewRestaurantCuisine] = useState('');
+  const [newRestaurantName, setNewRestaurantName] = useState("");
+  const [newRestaurantLocation, setNewRestaurantLocation] = useState("");
+  const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Google Places integration
   const [nearbyPlaces, setNearbyPlaces] = useState<Restaurant[]>([]);
   const [placesLoading, setPlacesLoading] = useState(false);
-  const [placesError, setPlacesError] = useState('');
+  const [placesError, setPlacesError] = useState("");
   const [showNearbyPlaces, setShowNearbyPlaces] = useState(false);
 
   // Pagination state
@@ -65,15 +65,17 @@ export default function SelectRestaurantPage({
   const RESULTS_PER_PAGE = 20;
 
   // Manual location and text search
-  const [manualLocation, setManualLocation] = useState('');
-  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState('');
-  const [highlightedRestaurants, setHighlightedRestaurants] = useState<Set<string>>(new Set());
+  const [manualLocation, setManualLocation] = useState("");
+  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
+  const [highlightedRestaurants, setHighlightedRestaurants] = useState<
+    Set<string>
+  >(new Set());
 
   // Success notification
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 
   const [currentLocationContext, setCurrentLocationContext] = useState<{
-    type: 'gps' | 'manual';
+    type: "gps" | "manual";
     location?: string;
     latitude?: number;
     longitude?: number;
@@ -109,20 +111,20 @@ export default function SelectRestaurantPage({
 
   // Fetch restaurants
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
-    queryKey: ['restaurants'],
+    queryKey: ["restaurants"],
     queryFn: async () => {
-      return await pb.collection('restaurants').getFullList({
-        sort: '-created',
+      return await pb.collection("restaurants").getFullList({
+        sort: "-created",
       });
     },
   });
 
   // Fetch all visits for the current user
   const { data: userVisits = [] } = useQuery<Visit[]>({
-    queryKey: ['userVisits', user?.id],
+    queryKey: ["userVisits", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      return await pb.collection('visits').getFullList({
+      return await pb.collection("visits").getFullList({
         filter: `user = "${user.id}"`,
       });
     },
@@ -131,10 +133,10 @@ export default function SelectRestaurantPage({
 
   // Fetch friendships to get list of friends
   const { data: friendships = [] } = useQuery<Friendship[]>({
-    queryKey: ['friendships', user?.id],
+    queryKey: ["friendships", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      return await pb.collection('friendships').getFullList({
+      return await pb.collection("friendships").getFullList({
         filter: `(user = "${user.id}" || friend = "${user.id}") && status = "accepted"`,
       });
     },
@@ -143,20 +145,22 @@ export default function SelectRestaurantPage({
 
   // Fetch visits from friends
   const { data: friendVisits = [] } = useQuery<Visit[]>({
-    queryKey: ['friendVisits', user?.id, friendships.length],
+    queryKey: ["friendVisits", user?.id, friendships.length],
     queryFn: async () => {
       if (!user || friendships.length === 0) return [];
 
       // Get list of friend IDs
-      const friendIds = friendships.map(f =>
+      const friendIds = friendships.map((f) =>
         f.user === user.id ? f.friend : f.user
       );
 
       if (friendIds.length === 0) return [];
 
       // Fetch visits from all friends with visibility friends
-      const filterConditions = friendIds.map(id => `user = "${id}"`).join(' || ');
-      return await pb.collection('visits').getFullList({
+      const filterConditions = friendIds
+        .map((id) => `user = "${id}"`)
+        .join(" || ");
+      return await pb.collection("visits").getFullList({
         filter: `(${filterConditions}) && visibility = "friends"`,
       });
     },
@@ -165,13 +169,15 @@ export default function SelectRestaurantPage({
 
   // Calculate visit counts per restaurant
   const getRestaurantStats = (restaurantId: string) => {
-    const userVisitCount = userVisits.filter(v => v.restaurant === restaurantId).length;
+    const userVisitCount = userVisits.filter(
+      (v) => v.restaurant === restaurantId
+    ).length;
 
     // Count unique friends who have visited this restaurant
     const friendsWhoVisited = new Set(
       friendVisits
-        .filter(v => v.restaurant === restaurantId)
-        .map(v => v.user)
+        .filter((v) => v.restaurant === restaurantId)
+        .map((v) => v.user)
     );
     const friendCount = friendsWhoVisited.size;
 
@@ -186,19 +192,19 @@ export default function SelectRestaurantPage({
       cuisineType?: string;
     }) => {
       const user = pb.authStore.record;
-      if (!user) throw new Error('User not authenticated');
+      if (!user) throw new Error("User not authenticated");
 
-      return await pb.collection('restaurants').create<Restaurant>({
+      return await pb.collection("restaurants").create<Restaurant>({
         name: data.name,
         location: data.location,
-        cuisineType: data.cuisineType || '',
+        cuisineType: data.cuisineType || "",
         latitude: position?.latitude,
         longitude: position?.longitude,
         createdBy: user.id,
       });
     },
     onSuccess: (newRestaurant) => {
-      queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+      queryClient.invalidateQueries({ queryKey: ["restaurants"] });
 
       // Save current search state
       visitDraftService.saveSearchState({
@@ -211,40 +217,54 @@ export default function SelectRestaurantPage({
       // Save to localStorage
       visitDraftService.saveRestaurant(newRestaurant);
       setShowAddRestaurant(false);
-      setNewRestaurantName('');
-      setNewRestaurantLocation('');
-      setNewRestaurantCuisine('');
+      setNewRestaurantName("");
+      setNewRestaurantLocation("");
+      setNewRestaurantCuisine("");
       onRestaurantSelected();
     },
     onError: (err: any) => {
-      setError(err.message || 'Failed to add restaurant');
+      setError(err.message || "Failed to add restaurant");
     },
   });
 
   // Combine nearby places with all restaurants when Google Places search is active
   const allRestaurantsToShow = showNearbyPlaces
-    ? [...restaurants, ...nearbyPlaces.filter(np => !restaurants.some(r => r.id === np.id))]
+    ? [
+        ...restaurants,
+        ...nearbyPlaces.filter(
+          (np) => !restaurants.some((r) => r.id === np.id)
+        ),
+      ]
     : restaurants;
 
   const filteredRestaurants = allRestaurantsToShow.filter(
     (r) =>
       r.name.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
       r.location.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
-      (r.cuisineType?.toLowerCase() || '').includes(restaurantSearchQuery.toLowerCase())
+      (r.cuisineType?.toLowerCase() || "").includes(
+        restaurantSearchQuery.toLowerCase()
+      )
   );
 
   // Filter restaurants for name suggestions in the add form
   const nameSuggestions = newRestaurantName.trim()
-    ? restaurants.filter((r) =>
-        r.name.toLowerCase().includes(newRestaurantName.toLowerCase())
-      ).slice(0, 5)
+    ? restaurants
+        .filter((r) =>
+          r.name.toLowerCase().includes(newRestaurantName.toLowerCase())
+        )
+        .slice(0, 5)
     : [];
 
   // Pagination logic for saved restaurants
-  const totalSavedPages = Math.ceil(filteredRestaurants.length / RESULTS_PER_PAGE);
+  const totalSavedPages = Math.ceil(
+    filteredRestaurants.length / RESULTS_PER_PAGE
+  );
   const savedStartIndex = (savedRestaurantsPage - 1) * RESULTS_PER_PAGE;
   const savedEndIndex = savedStartIndex + RESULTS_PER_PAGE;
-  const paginatedSavedRestaurants = filteredRestaurants.slice(savedStartIndex, savedEndIndex);
+  const paginatedSavedRestaurants = filteredRestaurants.slice(
+    savedStartIndex,
+    savedEndIndex
+  );
 
   // Pagination logic for nearby places
   const totalPages = Math.ceil(nearbyPlaces.length / RESULTS_PER_PAGE);
@@ -265,7 +285,7 @@ export default function SelectRestaurantPage({
       pages.push(1);
 
       if (currentPageNum > 3) {
-        pages.push('...');
+        pages.push("...");
       }
 
       const start = Math.max(2, currentPageNum - 1);
@@ -276,7 +296,7 @@ export default function SelectRestaurantPage({
       }
 
       if (currentPageNum < totalPagesNum - 2) {
-        pages.push('...');
+        pages.push("...");
       }
 
       pages.push(totalPagesNum);
@@ -313,8 +333,8 @@ export default function SelectRestaurantPage({
   // Handler to search nearby places
   const handleSearchNearby = async () => {
     setShowNearbyPlaces(true);
-    setPlacesError('');
-    setError('');
+    setPlacesError("");
+    setError("");
     setShowSuccessNotification(false);
     setCurrentPage(1);
 
@@ -329,7 +349,7 @@ export default function SelectRestaurantPage({
       });
 
       setCurrentLocationContext({
-        type: 'gps',
+        type: "gps",
         latitude: position.latitude,
         longitude: position.longitude,
       });
@@ -345,12 +365,12 @@ export default function SelectRestaurantPage({
         setNearbyPlaces(restaurants);
         setShowSuccessNotification(true);
 
-        queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+        queryClient.invalidateQueries({ queryKey: ["restaurants"] });
       } catch (err) {
         setPlacesError(
           err instanceof Error
             ? err.message
-            : 'Failed to load nearby food places'
+            : "Failed to load nearby food places"
         );
       } finally {
         setPlacesLoading(false);
@@ -373,12 +393,12 @@ export default function SelectRestaurantPage({
         });
 
         setCurrentLocationContext({
-          type: 'gps',
+          type: "gps",
           latitude: position.latitude,
           longitude: position.longitude,
         });
         setPlacesLoading(true);
-        setPlacesError('');
+        setPlacesError("");
         try {
           const restaurants = await searchAndCacheNearbyRestaurants({
             latitude: position.latitude,
@@ -389,12 +409,12 @@ export default function SelectRestaurantPage({
           setNearbyPlaces(restaurants);
           setCurrentPage(1);
           setShowSuccessNotification(true);
-          queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+          queryClient.invalidateQueries({ queryKey: ["restaurants"] });
         } catch (err) {
           setPlacesError(
             err instanceof Error
               ? err.message
-              : 'Failed to load nearby food places'
+              : "Failed to load nearby food places"
           );
         } finally {
           setPlacesLoading(false);
@@ -419,12 +439,12 @@ export default function SelectRestaurantPage({
   // Handle manual location and text search
   const handleManualSearch = async () => {
     if (!manualLocation.trim() && !restaurantSearchQuery.trim()) {
-      setPlacesError('Please enter a location or food place name to search');
+      setPlacesError("Please enter a location or food place name to search");
       return;
     }
 
     setPlacesLoading(true);
-    setPlacesError('');
+    setPlacesError("");
     setShowNearbyPlaces(true);
     setShowSuccessNotification(false);
     setCurrentPage(1);
@@ -439,14 +459,14 @@ export default function SelectRestaurantPage({
       }
 
       setCurrentLocationContext({
-        type: 'manual',
+        type: "manual",
         location: manualLocation.trim(),
         latitude: coords?.lat,
         longitude: coords?.lng,
       });
 
       const restaurants = await searchAndCacheRestaurantsByText({
-        query: restaurantSearchQuery.trim() || 'food',
+        query: restaurantSearchQuery.trim() || "food",
         location: manualLocation.trim() || undefined,
         radius: 5000,
       });
@@ -454,12 +474,10 @@ export default function SelectRestaurantPage({
       setNearbyPlaces(restaurants);
       setShowSuccessNotification(true);
 
-      queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+      queryClient.invalidateQueries({ queryKey: ["restaurants"] });
     } catch (err) {
       setPlacesError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to search food places'
+        err instanceof Error ? err.message : "Failed to search food places"
       );
     } finally {
       setPlacesLoading(false);
@@ -468,7 +486,7 @@ export default function SelectRestaurantPage({
 
   const handleAddRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
@@ -504,8 +522,8 @@ export default function SelectRestaurantPage({
   useEffect(() => {
     if (savedRestaurantsRef.current && savedRestaurantsPage > 1) {
       savedRestaurantsRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
+        behavior: "smooth",
+        block: "start",
       });
     }
   }, [savedRestaurantsPage]);
@@ -514,16 +532,20 @@ export default function SelectRestaurantPage({
   useEffect(() => {
     if (nearbyPlacesRef.current && currentPage > 1) {
       nearbyPlacesRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
+        behavior: "smooth",
+        block: "start",
       });
     }
   }, [currentPage]);
 
   // Highlight matching restaurants when search query changes
   useEffect(() => {
-    if (restaurantSearchQuery.trim() && filteredRestaurants.length > 0 && filteredRestaurants.length < restaurants.length) {
-      const matchingIds = new Set(filteredRestaurants.map(r => r.id));
+    if (
+      restaurantSearchQuery.trim() &&
+      filteredRestaurants.length > 0 &&
+      filteredRestaurants.length < restaurants.length
+    ) {
+      const matchingIds = new Set(filteredRestaurants.map((r) => r.id));
       setHighlightedRestaurants(matchingIds);
 
       const timer = setTimeout(() => {
@@ -545,14 +567,15 @@ export default function SelectRestaurantPage({
             <Check className="w-5 h-5" />
             <div>
               <p className="font-medium">
-                Found {nearbyPlaces.length} place{nearbyPlaces.length !== 1 ? 's' : ''}!
+                Found {nearbyPlaces.length} place
+                {nearbyPlaces.length !== 1 ? "s" : ""}!
               </p>
               <p className="text-xs text-green-100">
-                {currentLocationContext?.type === 'gps'
-                  ? 'Sorted by distance from your location'
+                {currentLocationContext?.type === "gps"
+                  ? "Sorted by distance from your location"
                   : currentLocationContext?.location
                     ? `Near ${currentLocationContext.location}`
-                    : 'Results loaded successfully'}
+                    : "Results loaded successfully"}
               </p>
             </div>
           </div>
@@ -580,20 +603,20 @@ export default function SelectRestaurantPage({
           {!showNearbyPlaces && (
             <>
               {/* Search options */}
-              <Card className="border-2 border-blue-200 bg-blue-50/30">
-                <CardHeader className="pb-3">
+              <Card className="border-2 border-blue-200 bg-blue-50/30 gap-0">
+                <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Search className="w-5 h-5 text-blue-600" />
                     Search for Food Places
                   </CardTitle>
-                  <CardDescription>
-                    Find restaurants by name, type, or location
-                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {/* Restaurant name/type search */}
                   <div className="space-y-2">
-                    <Label htmlFor="restaurant-search" className="text-sm font-medium text-gray-700">
+                    <Label
+                      htmlFor="restaurant-search"
+                      className="text-sm font-medium text-gray-700"
+                    >
                       Place name or type
                     </Label>
                     <Input
@@ -603,7 +626,7 @@ export default function SelectRestaurantPage({
                       value={restaurantSearchQuery}
                       onChange={(e) => setRestaurantSearchQuery(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === "Enter") {
                           e.preventDefault();
                           handleManualSearch();
                         }
@@ -614,7 +637,10 @@ export default function SelectRestaurantPage({
 
                   {/* Manual location search */}
                   <div className="space-y-2">
-                    <Label htmlFor="manual-location" className="text-sm font-medium text-gray-700">
+                    <Label
+                      htmlFor="manual-location"
+                      className="text-sm font-medium text-gray-700"
+                    >
                       Location (city, zip code, or address)
                     </Label>
                     <Input
@@ -624,7 +650,7 @@ export default function SelectRestaurantPage({
                       value={manualLocation}
                       onChange={(e) => setManualLocation(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === "Enter") {
                           e.preventDefault();
                           handleManualSearch();
                         }
@@ -647,7 +673,9 @@ export default function SelectRestaurantPage({
                       <span className="w-full border-t border-gray-300" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-blue-50/30 px-2 text-gray-500">or</span>
+                      <span className="bg-blue-50/30 px-2 text-gray-500">
+                        or
+                      </span>
                     </div>
                   </div>
 
@@ -680,7 +708,10 @@ export default function SelectRestaurantPage({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-2">
-                    <Label htmlFor="restaurant-search-nearby" className="text-sm font-medium text-gray-700">
+                    <Label
+                      htmlFor="restaurant-search-nearby"
+                      className="text-sm font-medium text-gray-700"
+                    >
                       Place name or type
                     </Label>
                     <Input
@@ -690,7 +721,7 @@ export default function SelectRestaurantPage({
                       value={restaurantSearchQuery}
                       onChange={(e) => setRestaurantSearchQuery(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === "Enter") {
                           e.preventDefault();
                           handleManualSearch();
                         }
@@ -700,7 +731,10 @@ export default function SelectRestaurantPage({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="manual-location-nearby" className="text-sm font-medium text-gray-700">
+                    <Label
+                      htmlFor="manual-location-nearby"
+                      className="text-sm font-medium text-gray-700"
+                    >
                       Location (city, zip code, or address)
                     </Label>
                     <Input
@@ -710,7 +744,7 @@ export default function SelectRestaurantPage({
                       value={manualLocation}
                       onChange={(e) => setManualLocation(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === "Enter") {
                           e.preventDefault();
                           handleManualSearch();
                         }
@@ -836,7 +870,7 @@ export default function SelectRestaurantPage({
                       className="cursor-pointer hover:shadow-md transition-shadow"
                       onClick={() => handleSelectRestaurant(restaurant)}
                     >
-                      <CardHeader className="pb-3">
+                      <CardHeader>
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <CardTitle className="text-lg">
@@ -850,21 +884,34 @@ export default function SelectRestaurantPage({
                           </div>
                           <Badge variant="secondary" className="ml-2">
                             <MapPin className="w-3 h-3 mr-1" />
-                            {distance !== null ? formatDistance(distance) : 'Near'}
+                            {distance !== null
+                              ? formatDistance(distance)
+                              : "Near"}
                           </Badge>
                         </div>
-                        {(stats.userVisitCount > 0 || stats.friendCount > 0) && (
+                        {(stats.userVisitCount > 0 ||
+                          stats.friendCount > 0) && (
                           <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
                             {stats.userVisitCount > 0 && (
                               <div className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                <span>You: {stats.userVisitCount} {stats.userVisitCount === 1 ? 'visit' : 'visits'}</span>
+                                <span>
+                                  You: {stats.userVisitCount}{" "}
+                                  {stats.userVisitCount === 1
+                                    ? "visit"
+                                    : "visits"}
+                                </span>
                               </div>
                             )}
                             {stats.friendCount > 0 && (
                               <div className="flex items-center gap-1">
                                 <Users className="w-3 h-3" />
-                                <span>{stats.friendCount} {stats.friendCount === 1 ? 'friend' : 'friends'}</span>
+                                <span>
+                                  {stats.friendCount}{" "}
+                                  {stats.friendCount === 1
+                                    ? "friend"
+                                    : "friends"}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -890,22 +937,25 @@ export default function SelectRestaurantPage({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
                     className="px-2"
                   >
                     &lt;
                   </Button>
 
-                  {getPageNumbers(currentPage, totalPages).map((page, idx) => (
-                    page === '...' ? (
-                      <span key={`ellipsis-${idx}`} className="px-2 text-gray-400">
+                  {getPageNumbers(currentPage, totalPages).map((page, idx) =>
+                    page === "..." ? (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        className="px-2 text-gray-400"
+                      >
                         ...
                       </span>
                     ) : (
                       <Button
                         key={page}
-                        variant={currentPage === page ? 'default' : 'outline'}
+                        variant={currentPage === page ? "default" : "outline"}
                         size="sm"
                         onClick={() => setCurrentPage(page as number)}
                         className="min-w-[2.5rem]"
@@ -913,12 +963,14 @@ export default function SelectRestaurantPage({
                         {page}
                       </Button>
                     )
-                  ))}
+                  )}
 
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
                     disabled={currentPage === totalPages}
                     className="px-2"
                   >
@@ -939,7 +991,9 @@ export default function SelectRestaurantPage({
               {/* Page info */}
               {nearbyPlaces.length > 0 && !placesLoading && (
                 <div className="text-center text-sm text-gray-600">
-                  Showing {startIndex + 1}-{Math.min(endIndex, nearbyPlaces.length)} of {nearbyPlaces.length} places
+                  Showing {startIndex + 1}-
+                  {Math.min(endIndex, nearbyPlaces.length)} of{" "}
+                  {nearbyPlaces.length} places
                   {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
                 </div>
               )}
@@ -949,7 +1003,7 @@ export default function SelectRestaurantPage({
                   onClick={() => {
                     setShowNearbyPlaces(false);
                     setNearbyPlaces([]);
-                    setPlacesError('');
+                    setPlacesError("");
                     setCurrentLocationContext(null);
                     setReferenceCoords(null);
                     setCurrentPage(1);
@@ -980,10 +1034,7 @@ export default function SelectRestaurantPage({
                     )}
                   </CardHeader>
                   <CardContent>
-                    <form
-                      onSubmit={handleAddRestaurant}
-                      className="space-y-4"
-                    >
+                    <form onSubmit={handleAddRestaurant} className="space-y-4">
                       <div className="space-y-2 relative">
                         <Label htmlFor="name">Restaurant Name</Label>
                         <Input
@@ -995,7 +1046,10 @@ export default function SelectRestaurantPage({
                           }}
                           onFocus={() => setShowNameSuggestions(true)}
                           onBlur={() => {
-                            setTimeout(() => setShowNameSuggestions(false), 200);
+                            setTimeout(
+                              () => setShowNameSuggestions(false),
+                              200
+                            );
                           }}
                           placeholder="Enter restaurant name"
                           autoComplete="off"
@@ -1010,16 +1064,23 @@ export default function SelectRestaurantPage({
                                 type="button"
                                 onClick={() => {
                                   setNewRestaurantName(restaurant.name);
-                                  setNewRestaurantLocation(restaurant.location || '');
-                                  setNewRestaurantCuisine(restaurant.cuisineType || '');
+                                  setNewRestaurantLocation(
+                                    restaurant.location || ""
+                                  );
+                                  setNewRestaurantCuisine(
+                                    restaurant.cuisineType || ""
+                                  );
                                   setShowNameSuggestions(false);
                                 }}
                                 className="w-full px-4 py-3 text-left hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
                               >
-                                <div className="font-medium text-gray-900">{restaurant.name}</div>
+                                <div className="font-medium text-gray-900">
+                                  {restaurant.name}
+                                </div>
                                 <div className="text-sm text-gray-600 mt-0.5">
                                   {restaurant.location}
-                                  {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                                  {restaurant.cuisineType &&
+                                    ` • ${restaurant.cuisineType}`}
                                 </div>
                               </button>
                             ))}
@@ -1081,18 +1142,20 @@ export default function SelectRestaurantPage({
                   <div ref={savedRestaurantsRef} className="space-y-3">
                     {paginatedSavedRestaurants.map((restaurant) => {
                       const stats = getRestaurantStats(restaurant.id);
-                      const isHighlighted = highlightedRestaurants.has(restaurant.id);
+                      const isHighlighted = highlightedRestaurants.has(
+                        restaurant.id
+                      );
                       return (
                         <Card
                           key={restaurant.id}
                           className={`cursor-pointer hover:shadow-md transition-all ${
                             isHighlighted
-                              ? 'border-2 border-yellow-400 bg-yellow-50 animate-pulse shadow-lg'
-                              : ''
+                              ? "border-2 border-yellow-400 bg-yellow-50 animate-pulse shadow-lg"
+                              : ""
                           }`}
                           onClick={() => handleSelectRestaurant(restaurant)}
                         >
-                          <CardHeader className="pb-3">
+                          <CardHeader>
                             <CardTitle className="text-lg">
                               {restaurant.name}
                             </CardTitle>
@@ -1101,18 +1164,29 @@ export default function SelectRestaurantPage({
                               {restaurant.cuisineType &&
                                 ` • ${restaurant.cuisineType}`}
                             </CardDescription>
-                            {(stats.userVisitCount > 0 || stats.friendCount > 0) && (
+                            {(stats.userVisitCount > 0 ||
+                              stats.friendCount > 0) && (
                               <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
                                 {stats.userVisitCount > 0 && (
                                   <div className="flex items-center gap-1">
                                     <Calendar className="w-3 h-3" />
-                                    <span>You: {stats.userVisitCount} {stats.userVisitCount === 1 ? 'visit' : 'visits'}</span>
+                                    <span>
+                                      You: {stats.userVisitCount}{" "}
+                                      {stats.userVisitCount === 1
+                                        ? "visit"
+                                        : "visits"}
+                                    </span>
                                   </div>
                                 )}
                                 {stats.friendCount > 0 && (
                                   <div className="flex items-center gap-1">
                                     <Users className="w-3 h-3" />
-                                    <span>{stats.friendCount} {stats.friendCount === 1 ? 'friend' : 'friends'}</span>
+                                    <span>
+                                      {stats.friendCount}{" "}
+                                      {stats.friendCount === 1
+                                        ? "friend"
+                                        : "friends"}
+                                    </span>
                                   </div>
                                 )}
                               </div>
@@ -1139,35 +1213,53 @@ export default function SelectRestaurantPage({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setSavedRestaurantsPage(p => Math.max(1, p - 1))}
+                          onClick={() =>
+                            setSavedRestaurantsPage((p) => Math.max(1, p - 1))
+                          }
                           disabled={savedRestaurantsPage === 1}
                           className="px-2"
                         >
                           &lt;
                         </Button>
 
-                        {getPageNumbers(savedRestaurantsPage, totalSavedPages).map((page, idx) => (
-                          page === '...' ? (
-                            <span key={`ellipsis-${idx}`} className="px-2 text-gray-400">
+                        {getPageNumbers(
+                          savedRestaurantsPage,
+                          totalSavedPages
+                        ).map((page, idx) =>
+                          page === "..." ? (
+                            <span
+                              key={`ellipsis-${idx}`}
+                              className="px-2 text-gray-400"
+                            >
                               ...
                             </span>
                           ) : (
                             <Button
                               key={page}
-                              variant={savedRestaurantsPage === page ? 'default' : 'outline'}
+                              variant={
+                                savedRestaurantsPage === page
+                                  ? "default"
+                                  : "outline"
+                              }
                               size="sm"
-                              onClick={() => setSavedRestaurantsPage(page as number)}
+                              onClick={() =>
+                                setSavedRestaurantsPage(page as number)
+                              }
                               className="min-w-[2.5rem]"
                             >
                               {page}
                             </Button>
                           )
-                        ))}
+                        )}
 
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setSavedRestaurantsPage(p => Math.min(totalSavedPages, p + 1))}
+                          onClick={() =>
+                            setSavedRestaurantsPage((p) =>
+                              Math.min(totalSavedPages, p + 1)
+                            )
+                          }
                           disabled={savedRestaurantsPage === totalSavedPages}
                           className="px-2"
                         >
@@ -1176,7 +1268,9 @@ export default function SelectRestaurantPage({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setSavedRestaurantsPage(totalSavedPages)}
+                          onClick={() =>
+                            setSavedRestaurantsPage(totalSavedPages)
+                          }
                           disabled={savedRestaurantsPage === totalSavedPages}
                           className="px-2"
                         >
@@ -1185,8 +1279,11 @@ export default function SelectRestaurantPage({
                       </div>
 
                       <div className="text-center text-sm text-gray-600">
-                        Showing {savedStartIndex + 1}-{Math.min(savedEndIndex, filteredRestaurants.length)} of {filteredRestaurants.length} restaurants
-                        {totalSavedPages > 1 && ` (Page ${savedRestaurantsPage} of ${totalSavedPages})`}
+                        Showing {savedStartIndex + 1}-
+                        {Math.min(savedEndIndex, filteredRestaurants.length)} of{" "}
+                        {filteredRestaurants.length} restaurants
+                        {totalSavedPages > 1 &&
+                          ` (Page ${savedRestaurantsPage} of ${totalSavedPages})`}
                       </div>
                     </>
                   )}
@@ -1199,11 +1296,7 @@ export default function SelectRestaurantPage({
 
       {/* Bottom buttons */}
       <div className="bg-white border-t border-gray-200 p-4">
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={onCancel}
-        >
+        <Button variant="outline" className="w-full" onClick={onCancel}>
           Cancel
         </Button>
       </div>

@@ -1,4 +1,5 @@
 import { Restaurant, MenuItem } from '@/lib/pocketbase';
+import { getTodayLocalDateString } from '@/lib/dateUtils';
 
 const VISIT_DRAFT_KEY = 'visitDraft';
 
@@ -27,7 +28,7 @@ export interface VisitDraft {
 const getEmptyDraft = (): VisitDraft => ({
   restaurant: null,
   items: [],
-  visitDate: new Date().toISOString().split('T')[0],
+  visitDate: getTodayLocalDateString(),
   visitVisibility: 'friends',
 });
 

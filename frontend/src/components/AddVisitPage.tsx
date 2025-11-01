@@ -7,6 +7,7 @@ import {
   Visit,
   Friendship,
 } from "@/lib/pocketbase";
+import { getTodayLocalDateString, localDateStringToUTC, formatLocalDateForDisplay } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -69,9 +70,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   const [selectedRestaurant, setSelectedRestaurant] =
     useState<Restaurant | null>(null);
   const [menuItems, setMenuItems] = useState<VisitMenuItem[]>([]);
-  const [visitDate, setVisitDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [visitDate, setVisitDate] = useState(getTodayLocalDateString());
   const [showDateEdit, setShowDateEdit] = useState(false);
   const [visitVisibility, setVisitVisibility] = useState<"friends" | "private">(
     "friends"
@@ -248,11 +247,14 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       const user = pb.authStore.record;
       if (!user || !selectedRestaurant) throw new Error("Missing data");
 
+      // Convert local date to UTC before saving
+      const visitDateUTC = localDateStringToUTC(visitDate);
+
       // Create visit
       const visit = await pb.collection("visits").create({
         restaurant: selectedRestaurant.id,
         user: user.id,
-        visitDate,
+        visitDate: visitDateUTC,
         visibility: visitVisibility, // Use the selected visibility for this visit
         notes: "",
       });
@@ -279,7 +281,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       setStep(1);
       setSelectedRestaurant(null);
       setMenuItems([]);
-      setVisitDate(new Date().toISOString().split("T")[0]);
+      setVisitDate(getTodayLocalDateString());
       setRestaurantSearchQuery("");
       setError("");
       // Navigate to home page
@@ -1594,12 +1596,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500" />
                   <span className="text-sm">
-                    {new Date(visitDate).toLocaleDateString("en-US", {
-                      weekday: "short",
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {formatLocalDateForDisplay(visitDate)}
                   </span>
                 </div>
                 <span className="text-xs text-gray-500">Tap to change</span>
@@ -1614,7 +1611,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                     type="date"
                     value={visitDate}
                     onChange={(e) => setVisitDate(e.target.value)}
-                    max={new Date().toISOString().split("T")[0]}
+                    max={getTodayLocalDateString()}
                   />
                   <Button
                     variant="outline"
