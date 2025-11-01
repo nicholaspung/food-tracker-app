@@ -19,7 +19,16 @@ const queryClient = new QueryClient({
 });
 
 // Routes that should show the bottom tab navigation
-const ROUTES_WITH_TABS = ["/home", "/profile", "/whats-new", "/add-visit", "/edit-visit", "/friends", "/feedback", "/settings"];
+const ROUTES_WITH_TABS = [
+  "/home",
+  "/profile",
+  "/whats-new",
+  "/add-visit",
+  "/edit-visit",
+  "/friends",
+  "/feedback",
+  "/settings",
+];
 
 function RootComponent() {
   const router = useRouterState();
@@ -44,7 +53,7 @@ function RootComponent() {
         {/* Scrollable content area */}
         <main
           ref={mainRef}
-          className={`flex-1 overflow-y-auto ${showTabs ? "pb-20" : ""}`}
+          className={`flex-1 overflow-y-auto ${showTabs ? "pb-[64px]" : ""}`}
         >
           <Outlet />
         </main>

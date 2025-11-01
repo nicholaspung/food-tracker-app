@@ -47,18 +47,15 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 pb-20">
+      <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           {onNavigateBack && (
-            <button
-              onClick={onNavigateBack}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+            <Button variant="ghost" size="sm" onClick={onNavigateBack}>
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
           )}
-          <h1 className="text-xl font-bold">Settings</h1>
+          <h1 className="text-xl font-bold text-gray-900">Settings</h1>
         </div>
       </div>
 
@@ -76,8 +73,8 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                 onClick={() => setSelectedVisibility('friends')}
                 className={`w-full p-4 rounded-lg border-2 transition-all ${
                   selectedVisibility === 'friends'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -85,7 +82,7 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                     className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                       selectedVisibility === 'friends'
                         ? 'border-blue-500 bg-blue-500'
-                        : 'border-gray-300 dark:border-gray-600'
+                        : 'border-gray-300'
                     }`}
                   >
                     {selectedVisibility === 'friends' && (
@@ -94,10 +91,10 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                   </div>
                   <div className="flex-1 text-left">
                     <div className="flex items-center gap-2 mb-1">
-                      <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <Users className="w-4 h-4 text-blue-600" />
                       <Label className="font-semibold text-base">Friends</Label>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="text-sm text-gray-600">
                       Your friends can see your visits and the food items you rated
                     </p>
                   </div>
@@ -108,8 +105,8 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                 onClick={() => setSelectedVisibility('private')}
                 className={`w-full p-4 rounded-lg border-2 transition-all ${
                   selectedVisibility === 'private'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -117,7 +114,7 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                     className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                       selectedVisibility === 'private'
                         ? 'border-blue-500 bg-blue-500'
-                        : 'border-gray-300 dark:border-gray-600'
+                        : 'border-gray-300'
                     }`}
                   >
                     {selectedVisibility === 'private' && (
@@ -126,10 +123,10 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                   </div>
                   <div className="flex-1 text-left">
                     <div className="flex items-center gap-2 mb-1">
-                      <Lock className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                      <Lock className="w-4 h-4 text-gray-600" />
                       <Label className="font-semibold text-base">Private</Label>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="text-sm text-gray-600">
                       Only you can see your visits. Keep your food tracking completely private
                     </p>
                   </div>
@@ -138,13 +135,13 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
+              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
             {successMessage && (
-              <div className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg text-sm flex items-center gap-2">
+              <div className="p-3 bg-green-50 text-green-600 rounded-lg text-sm flex items-center gap-2">
                 <Check className="w-4 h-4" />
                 {successMessage}
               </div>

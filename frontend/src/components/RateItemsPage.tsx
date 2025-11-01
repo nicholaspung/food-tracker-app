@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
+import { getTodayLocalDateString, localDateStringToUTC, formatLocalDateForDisplay } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -45,10 +46,13 @@ export default function RateItemsPage({
       const user = pb.authStore.record;
       if (!user || !draft.restaurant) throw new Error("Missing data");
 
+      // Convert local date to UTC before saving
+      const visitDateUTC = localDateStringToUTC(visitDate);
+
       const visit = await pb.collection("visits").create({
         restaurant: draft.restaurant.id,
         user: user.id,
-        visitDate,
+        visitDate: visitDateUTC,
         visibility: visitVisibility,
         notes: "",
       });
@@ -107,12 +111,7 @@ export default function RateItemsPage({
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-600" />
                   <span className="text-sm font-medium text-gray-900">
-                    {new Date(visitDate).toLocaleDateString("en-US", {
-                      weekday: "short",
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {formatLocalDateForDisplay(visitDate)}
                   </span>
                 </div>
                 <span className="text-xs text-gray-500">Tap to change</span>
@@ -124,7 +123,7 @@ export default function RateItemsPage({
                   type="date"
                   value={visitDate}
                   onChange={(e) => setVisitDate(e.target.value)}
-                  max={new Date().toISOString().split("T")[0]}
+                  max={getTodayLocalDateString()}
                   className="text-sm"
                 />
                 <Button
@@ -172,7 +171,7 @@ export default function RateItemsPage({
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
           {/* Collapsible Rating Legend */}
-          <Card className="border-2 border-blue-200 bg-blue-50/30">
+          <Card className="border-2 border-blue-200 bg-blue-50/30 py-4">
             <CardContent className="px-4">
               <button
                 onClick={() => setIsLegendExpanded(!isLegendExpanded)}
@@ -244,7 +243,7 @@ export default function RateItemsPage({
                   </p>
                 </div>
 
-                <div>
+                <div className="space-y-2">
                   <Label>Notes (optional)</Label>
                   <Input
                     placeholder="Add notes..."

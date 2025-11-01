@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
 
 export const Route = createFileRoute('/whats-new')({
   component: WhatsNewPage,
@@ -60,24 +61,18 @@ function WhatsNewPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Mobile Header - Fixed */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate({ to: '/profile' })}
-              className="h-8 px-2 text-gray-600 hover:text-gray-900"
-              data-testid="back-button"
-            >
-              ← Back
-            </Button>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">What's New</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Latest features and improvements
-          </p>
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate({ to: '/profile' })}
+            data-testid="back-button"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <h1 className="text-xl font-bold text-gray-900">What's New</h1>
         </div>
       </div>
 

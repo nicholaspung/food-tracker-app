@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, Restaurant, Visit, FoodItem } from '@/lib/pocketbase';
+import { getTodayLocalDateString, localDateStringToUTC, utcToLocalDateString, formatLocalDateForDisplay } from '@/lib/dateUtils';
+import { editVisitDraftService } from '@/services/editVisitDraftService';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -73,27 +75,58 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
   // Initialize form when data loads
   useEffect(() => {
     if (visit && restaurants.length > 0) {
-      const restaurant = restaurants.find(r => r.id === visit.restaurant);
-      setSelectedRestaurant(restaurant || null);
-      // Ensure date is in YYYY-MM-DD format for date input
-      const dateStr = visit.visitDate.split(' ')[0]; // Handle "YYYY-MM-DD HH:MM:SS" format
-      setVisitDate(dateStr);
-      // Initialize visibility from visit data
-      setVisitVisibility(visit.visibility || 'friends');
+      // Check if we have a draft for this visit
+      const draft = editVisitDraftService.getDraft(visitId);
+
+      if (draft) {
+        // Restore from draft
+        setSelectedRestaurant(draft.restaurant);
+        setMenuItems(draft.menuItems);
+        setVisitDate(draft.visitDate);
+        setVisitVisibility(draft.visitVisibility);
+        setStep(draft.step);
+      } else {
+        // Initialize from visit data
+        const restaurant = restaurants.find(r => r.id === visit.restaurant);
+        setSelectedRestaurant(restaurant || null);
+        // Convert UTC datetime to local date for date picker
+        const localDate = utcToLocalDateString(visit.visitDate);
+        setVisitDate(localDate);
+        // Initialize visibility from visit data
+        setVisitVisibility(visit.visibility || 'friends');
+      }
     }
-  }, [visit, restaurants]);
+  }, [visit, restaurants, visitId]);
 
   useEffect(() => {
     if (existingFoodItems.length > 0) {
-      setMenuItems(existingFoodItems.map(item => ({
-        id: item.id,
-        name: item.name,
-        description: item.description || '',
-        rating: item.rating,
-        notes: item.notes || '',
-      })));
+      // Only initialize menu items if there's no draft
+      const draft = editVisitDraftService.getDraft(visitId);
+      if (!draft) {
+        setMenuItems(existingFoodItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          description: item.description || '',
+          rating: item.rating,
+          notes: item.notes || '',
+        })));
+      }
     }
-  }, [existingFoodItems]);
+  }, [existingFoodItems, visitId]);
+
+  // Save draft whenever state changes
+  useEffect(() => {
+    if (selectedRestaurant && menuItems.length > 0) {
+      editVisitDraftService.saveDraft({
+        visitId,
+        restaurant: selectedRestaurant,
+        menuItems,
+        visitDate,
+        visitVisibility,
+        step,
+      });
+    }
+  }, [visitId, selectedRestaurant, menuItems, visitDate, visitVisibility, step]);
 
   // Update visit mutation
   const updateVisitMutation = useMutation({
@@ -101,9 +134,12 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
       const user = pb.authStore.record;
       if (!user || !selectedRestaurant) throw new Error('Missing data');
 
+      // Convert local date to UTC before saving
+      const visitDateUTC = localDateStringToUTC(visitDate);
+
       // Update visit (restaurant field is not updated - user must delete to change restaurant)
       await pb.collection('visits').update(visitId, {
-        visitDate,
+        visitDate: visitDateUTC,
         visibility: visitVisibility,
       });
 
@@ -140,6 +176,8 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
       queryClient.invalidateQueries({ queryKey: ['visit', visitId] });
       queryClient.invalidateQueries({ queryKey: ['foodItems', visitId] });
       queryClient.invalidateQueries({ queryKey: ['allFoodItems'] });
+      // Clear draft after successful save
+      editVisitDraftService.clearDraft();
       onNavigateBack?.();
     },
     onError: (err: any) => {
@@ -189,7 +227,10 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
   if (visitLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -208,7 +249,11 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4">
         <div className="flex items-center gap-3 mb-3">
-          <Button variant="ghost" size="sm" onClick={onNavigateBack}>
+          <Button variant="ghost" size="sm" onClick={() => {
+            // Clear draft when navigating back
+            editVisitDraftService.clearDraft();
+            onNavigateBack?.();
+          }}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="text-xl font-bold text-gray-900">Edit Visit</h1>
@@ -228,6 +273,24 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
           {step === 2 && 'Update ratings'}
         </p>
 
+        {/* Restaurant Info */}
+        {selectedRestaurant && (
+          <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="text-xs font-medium text-gray-500 mb-1">Restaurant</div>
+            <div className="font-semibold text-sm text-gray-900">{selectedRestaurant.name}</div>
+            {(selectedRestaurant.location || selectedRestaurant.cuisineType) && (
+              <div className="text-xs text-gray-600 mt-0.5">
+                {[selectedRestaurant.location, selectedRestaurant.cuisineType]
+                  .filter(Boolean)
+                  .join(' • ')}
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-2 italic">
+              To change the restaurant, please delete this visit and create a new one.
+            </p>
+          </div>
+        )}
+
         {/* Always-visible date picker */}
         {visitDate && (
           <div className="mt-3">
@@ -239,12 +302,7 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-600" />
                   <span className="text-sm font-medium text-gray-900">
-                    {new Date(visitDate).toLocaleDateString('en-US', {
-                      weekday: 'short',
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
+                    {formatLocalDateForDisplay(visitDate)}
                   </span>
                 </div>
                 <span className="text-xs text-gray-500">Tap to change</span>
@@ -256,7 +314,7 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
                   type="date"
                   value={visitDate}
                   onChange={(e) => setVisitDate(e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
+                  max={getTodayLocalDateString()}
                   className="text-sm"
                 />
                 <Button
@@ -303,23 +361,6 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
             {error}
           </div>
         )}
-
-        {/* Restaurant Info - Read Only */}
-        <Card className="mb-4">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Restaurant</CardTitle>
-            <CardDescription>
-              {selectedRestaurant?.name || 'Loading...'}
-              {selectedRestaurant?.location && ` • ${selectedRestaurant.location}`}
-              {selectedRestaurant?.cuisineType && ` • ${selectedRestaurant.cuisineType}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-xs text-gray-500">
-              To change the restaurant, please delete this visit and create a new one.
-            </p>
-          </CardContent>
-        </Card>
 
         {/* Step 1: Edit Menu Items */}
         {step === 1 && selectedRestaurant && (
@@ -376,14 +417,6 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
                 </CardContent>
               </Card>
             )}
-
-            <Button
-              onClick={() => setStep(2)}
-              disabled={!canProceedFromStep2}
-              className="w-full"
-            >
-              Next: Update Ratings
-            </Button>
           </div>
         )}
 
@@ -438,9 +471,41 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
                 </Card>
               );
             })}
+          </div>
+        )}
+      </div>
 
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)}>
+      {/* Bottom Action Buttons - Fixed Footer */}
+      <div className="bg-white border-t border-gray-200 p-4">
+        <div className="flex gap-3">
+          {step === 1 ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // Clear draft when canceling
+                  editVisitDraftService.clearDraft();
+                  onNavigateBack?.();
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => setStep(2)}
+                disabled={!canProceedFromStep2}
+                className="flex-1"
+              >
+                Next: Update Ratings
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setStep(1)}
+                className="flex-1"
+              >
                 Back
               </Button>
               <Button
@@ -450,9 +515,9 @@ export default function EditVisitPage({ visitId, onNavigateBack }: EditVisitPage
               >
                 {loading ? 'Saving...' : 'Save Changes'}
               </Button>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
