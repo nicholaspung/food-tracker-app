@@ -98,6 +98,9 @@ export interface MenuItem {
   name: string;
   description?: string;
   sourceImage?: string; // relation to menu_images
+  createdBy?: string; // relation to users
+  visibility?: 'private' | 'friends' | 'public';
+  isFromOCR?: boolean; // true if created from OCR/menu scan
   created: string;
   updated: string;
 }
@@ -107,6 +110,17 @@ export interface Friendship {
   user: string; // User who sent the friend request
   friend: string; // User who received the friend request
   status: 'pending' | 'accepted' | 'blocked';
+  created: string;
+  updated: string;
+}
+
+export interface MenuReviewRequest {
+  id: string;
+  restaurant: string; // relation to restaurants
+  requestedBy: string; // relation to users
+  reason?: string;
+  status: 'pending' | 'reviewed' | 'dismissed';
+  adminNotes?: string;
   created: string;
   updated: string;
 }

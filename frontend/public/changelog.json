@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.2.7",
+    "date": "2025-11-01",
+    "title": "Community Menu Items & Quality Reports",
+    "summary": "Scanned menu items are now shared with everyone to build a community menu database, plus you can report incorrect items for admin review.",
+    "features": [
+      "Community menu sharing: Menu items from photo scans are now public - everyone benefits from your scans",
+      "Private manual items: Items you add manually are shared only with friends by default",
+      "Report incorrect items: See wrong menu items? Flag them for admin review with one click"
+    ],
+    "improvements": [
+      "Better menu coverage: All users contribute to and benefit from scanned menu items",
+      "Quality control: Easy reporting system helps keep menu items accurate"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.2.6",
     "date": "2025-11-01",
     "title": "Privacy Controls for Restaurants",

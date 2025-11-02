@@ -144,27 +144,6 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                 </div>
               </button>
             </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="p-3 bg-green-50 text-green-600 rounded-lg text-sm flex items-center gap-2">
-                <Check className="w-4 h-4" />
-                {successMessage}
-              </div>
-            )}
-
-            <Button
-              onClick={handleSave}
-              disabled={updateVisibilityMutation.isPending}
-              className="w-full"
-            >
-              {updateVisibilityMutation.isPending ? 'Saving...' : 'Save Settings'}
-            </Button>
           </CardContent>
         </Card>
 
@@ -276,29 +255,29 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                 </button>
               )}
             </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="p-3 bg-green-50 text-green-600 rounded-lg text-sm flex items-center gap-2">
-                <Check className="w-4 h-4" />
-                {successMessage}
-              </div>
-            )}
-
-            <Button
-              onClick={handleSave}
-              disabled={updateVisibilityMutation.isPending}
-              className="w-full"
-            >
-              {updateVisibilityMutation.isPending ? 'Saving...' : 'Save Settings'}
-            </Button>
           </CardContent>
         </Card>
+
+        {error && (
+          <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="p-3 bg-green-50 text-green-600 rounded-lg text-sm flex items-center gap-2">
+            <Check className="w-4 h-4" />
+            {successMessage}
+          </div>
+        )}
+
+        <Button
+          onClick={handleSave}
+          disabled={updateVisibilityMutation.isPending}
+          className="w-full"
+        >
+          {updateVisibilityMutation.isPending ? 'Saving...' : 'Save Settings'}
+        </Button>
       </div>
     </div>
   );

@@ -298,6 +298,7 @@ export async function createMenuItems(
       const data: any = {
         restaurant: restaurantId,
         name: item.name,
+        createdBy: pb.authStore.model?.id,
       };
 
       if (item.description) {
@@ -309,9 +310,12 @@ export async function createMenuItems(
       }
 
       // Add flag to indicate if this was created from OCR
-      if (options?.isFromOCR) {
-        data.isFromOCR = true;
-      }
+      const isFromOCR = options?.isFromOCR ?? false;
+      data.isFromOCR = isFromOCR;
+
+      // Set visibility based on creation method
+      // OCR items are community visible (public), manual items are friends-only by default
+      data.visibility = isFromOCR ? 'public' : 'friends';
 
       const record = await pb.collection('menu_items').create<MenuItem>(data);
       createdItems.push(record);
