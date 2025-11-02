@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, X, CheckCircle, Camera, FileText } from "lucide-react";
+import { Search, Plus, X, CheckCircle, Camera, FileText, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,6 +16,7 @@ import { searchMenuItems, createMenuItems } from "@/services/ocrService";
 import { logger } from "@/lib/logger";
 import MenuScanStep from "@/components/MenuScanStep";
 import { visitDraftService } from "@/services/visitDraftService";
+import { requestMenuReview, hasPendingReviewRequest } from "@/services/menuReviewService";
 
 interface SelectedItemWithDescription {
   menuItem: MenuItem;
@@ -51,6 +52,8 @@ export default function AddItemsToVisit({
   const [newlyParsedItems, setNewlyParsedItems] = useState<Set<string>>(
     new Set()
   );
+  const [reviewRequested, setReviewRequested] = useState(false);
+  const [hasPendingReview, setHasPendingReview] = useState(false);
 
   // Load initial results only on mount
   useEffect(() => {
@@ -93,6 +96,15 @@ export default function AddItemsToVisit({
       visitDraftService.saveItems(items);
     }
   }, [selectedItems]);
+
+  // Check if there's already a pending review request
+  useEffect(() => {
+    const checkPendingReview = async () => {
+      const pending = await hasPendingReviewRequest(restaurantId);
+      setHasPendingReview(pending);
+    };
+    checkPendingReview();
+  }, [restaurantId]);
 
   const loadAllMenuItems = async () => {
     setIsSearching(true);
@@ -252,6 +264,20 @@ export default function AddItemsToVisit({
     return newlyParsedItems.has(itemId);
   };
 
+  const handleRequestReview = async () => {
+    try {
+      await requestMenuReview(
+        restaurantId,
+        "User reported incorrect menu items"
+      );
+      setReviewRequested(true);
+      setHasPendingReview(true);
+    } catch (error) {
+      logger.error("Failed to request menu review:", error);
+      alert("Failed to request review. Please try again.");
+    }
+  };
+
   // Get display results with selected items always on top
   const getDisplayResults = () => {
     // Get all selected items (always show these, even if they don't match search)
@@ -275,14 +301,44 @@ export default function AddItemsToVisit({
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Add Items to Your Visit
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {showScanMenu
-            ? `Scan a menu photo to auto-extract items for ${restaurantName}`
-            : `Search and select items you had at ${restaurantName}`}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900">
+              Add Items to Your Visit
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {showScanMenu
+                ? `Scan a menu photo to auto-extract items for ${restaurantName}`
+                : `Search and select items you had at ${restaurantName}`}
+            </p>
+          </div>
+
+          {/* Report incorrect items button */}
+          {!showScanMenu && (
+            <div className="flex-shrink-0">
+              {hasPendingReview ? (
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Flag className="w-4 h-4" />
+                  <span className="hidden sm:inline">Review requested</span>
+                </div>
+              ) : reviewRequested ? (
+                <div className="flex items-center gap-1.5 text-xs text-green-600">
+                  <CheckCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Request submitted</span>
+                </div>
+              ) : (
+                <button
+                  onClick={handleRequestReview}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors px-2 py-1 rounded hover:bg-gray-100"
+                  title="Report incorrect menu items"
+                >
+                  <Flag className="w-4 h-4" />
+                  <span className="hidden sm:inline">Report items</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Content */}
