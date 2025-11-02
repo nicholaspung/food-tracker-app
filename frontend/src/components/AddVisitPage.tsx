@@ -6,6 +6,7 @@ import {
   MenuItem as DBMenuItem,
   Visit,
   Friendship,
+  FoodItem,
 } from "@/lib/pocketbase";
 import { getTodayLocalDateString, localDateStringToUTC, formatLocalDateForDisplay } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,8 @@ import {
   Utensils,
   Camera,
   Users,
+  Lock,
+  Globe,
 } from "lucide-react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import {
@@ -79,6 +82,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
   const [newRestaurantName, setNewRestaurantName] = useState("");
   const [newRestaurantLocation, setNewRestaurantLocation] = useState("");
   const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
+  const [newRestaurantVisibility, setNewRestaurantVisibility] = useState<'private' | 'friends' | 'public'>('friends');
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -132,6 +136,13 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
 
   const queryClient = useQueryClient();
   const user = pb.authStore.record;
+
+  // Initialize restaurant visibility from user's default preference
+  useEffect(() => {
+    if (user?.defaultRestaurantVisibility) {
+      setNewRestaurantVisibility(user.defaultRestaurantVisibility);
+    }
+  }, [user?.defaultRestaurantVisibility]);
 
   // Fetch restaurants
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
@@ -214,6 +225,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       name: string;
       location: string;
       cuisineType?: string;
+      visibility: 'private' | 'friends' | 'public';
     }) => {
       const user = pb.authStore.record;
       if (!user) throw new Error("User not authenticated");
@@ -222,6 +234,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         name: data.name,
         location: data.location,
         cuisineType: data.cuisineType || "",
+        visibility: data.visibility,
         latitude: position?.latitude,
         longitude: position?.longitude,
         createdBy: user.id,
@@ -251,7 +264,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       const visitDateUTC = localDateStringToUTC(visitDate);
 
       // Create visit
-      const visit = await pb.collection("visits").create({
+      const visit = await pb.collection("visits").create<Visit>({
         restaurant: selectedRestaurant.id,
         user: user.id,
         visitDate: visitDateUTC,
@@ -260,8 +273,9 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       });
 
       // Create all food items
+      const createdFoodItems: FoodItem[] = [];
       for (const item of menuItems) {
-        await pb.collection("food_items").create({
+        const foodItem = await pb.collection("food_items").create<FoodItem>({
           name: item.name,
           description: item.description,
           visit: visit.id,
@@ -269,14 +283,29 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
           notes: item.notes,
           user: user.id,
         });
+        createdFoodItems.push(foodItem);
       }
 
-      return visit;
+      return { visit, foodItems: createdFoodItems };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["visits"] });
-      queryClient.invalidateQueries({ queryKey: ["allVisits"] });
-      queryClient.invalidateQueries({ queryKey: ["allFoodItems"] });
+    onSuccess: (data) => {
+      const { visit, foodItems } = data;
+
+      // Optimistically update the allVisits cache
+      queryClient.setQueryData<Visit[]>(["allVisits"], (oldVisits = []) => {
+        return [visit, ...oldVisits];
+      });
+
+      // Optimistically update the allFoodItems cache
+      queryClient.setQueryData<FoodItem[]>(["allFoodItems"], (oldItems = []) => {
+        return [...foodItems, ...oldItems];
+      });
+
+      // Also update the userVisits cache
+      queryClient.setQueryData<Visit[]>(["userVisits", user?.id], (oldVisits = []) => {
+        return [visit, ...oldVisits];
+      });
+
       // Reset form
       setStep(1);
       setSelectedRestaurant(null);
@@ -694,6 +723,7 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
         name: newRestaurantName,
         location: newRestaurantLocation,
         cuisineType: newRestaurantCuisine,
+        visibility: newRestaurantVisibility,
       });
     } finally {
       setLoading(false);
@@ -708,6 +738,20 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
       await saveVisitMutation.mutateAsync();
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Get visibility icon for restaurant
+  const getVisibilityIcon = (visibility?: 'private' | 'friends' | 'public') => {
+    switch (visibility) {
+      case 'private':
+        return <Lock className="w-3 h-3 text-gray-600" />;
+      case 'friends':
+        return <Users className="w-3 h-3 text-blue-600" />;
+      case 'public':
+        return <Globe className="w-3 h-3 text-green-600" />;
+      default:
+        return <Globe className="w-3 h-3 text-green-600" />; // Default to public for existing data
     }
   };
 
@@ -1055,9 +1099,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                         <CardHeader className="pb-3">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <CardTitle className="text-lg">
-                                {restaurant.name}
-                              </CardTitle>
+                              <div className="flex items-center gap-2">
+                                <CardTitle className="text-lg">
+                                  {restaurant.name}
+                                </CardTitle>
+                                {getVisibilityIcon(restaurant.visibility)}
+                              </div>
                               <CardDescription className="mt-1">
                                 {restaurant.location}
                                 {restaurant.cuisineType &&
@@ -1307,6 +1354,115 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                             placeholder="e.g., Italian, Japanese"
                           />
                         </div>
+
+                        {/* Visibility Selector */}
+                        <div className="space-y-3">
+                          <Label>Visibility</Label>
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setNewRestaurantVisibility('private')}
+                              className={`w-full p-3 rounded-lg border-2 transition-all ${
+                                newRestaurantVisibility === 'private'
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div
+                                  className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                    newRestaurantVisibility === 'private'
+                                      ? 'border-blue-500 bg-blue-500'
+                                      : 'border-gray-300'
+                                  }`}
+                                >
+                                  {newRestaurantVisibility === 'private' && (
+                                    <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                                  )}
+                                </div>
+                                <div className="flex-1 text-left">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <Lock className="w-4 h-4 text-gray-600" />
+                                    <span className="font-semibold text-sm">Private</span>
+                                  </div>
+                                  <p className="text-xs text-gray-600">
+                                    Only visible to you
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setNewRestaurantVisibility('friends')}
+                              className={`w-full p-3 rounded-lg border-2 transition-all ${
+                                newRestaurantVisibility === 'friends'
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div
+                                  className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                    newRestaurantVisibility === 'friends'
+                                      ? 'border-blue-500 bg-blue-500'
+                                      : 'border-gray-300'
+                                  }`}
+                                >
+                                  {newRestaurantVisibility === 'friends' && (
+                                    <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                                  )}
+                                </div>
+                                <div className="flex-1 text-left">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <Users className="w-4 h-4 text-blue-600" />
+                                    <span className="font-semibold text-sm">Friends</span>
+                                  </div>
+                                  <p className="text-xs text-gray-600">
+                                    Visible to your friends
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+
+                            {user?.isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => setNewRestaurantVisibility('public')}
+                                className={`w-full p-3 rounded-lg border-2 transition-all ${
+                                  newRestaurantVisibility === 'public'
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div
+                                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                      newRestaurantVisibility === 'public'
+                                        ? 'border-blue-500 bg-blue-500'
+                                        : 'border-gray-300'
+                                    }`}
+                                  >
+                                    {newRestaurantVisibility === 'public' && (
+                                      <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 text-left">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <Globe className="w-4 h-4 text-green-600" />
+                                      <span className="font-semibold text-sm">Public</span>
+                                      <Badge variant="secondary" className="text-xs">Admin Only</Badge>
+                                    </div>
+                                    <p className="text-xs text-gray-600">
+                                      Visible to everyone in the community
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
                         <div className="flex gap-2">
                           <Button
                             type="submit"
@@ -1357,9 +1513,12 @@ export default function AddVisitPage({ onVisitSaved }: AddVisitPageProps = {}) {
                             }}
                           >
                             <CardHeader className="pb-3">
-                              <CardTitle className="text-lg">
-                                {restaurant.name}
-                              </CardTitle>
+                              <div className="flex items-center gap-2">
+                                <CardTitle className="text-lg">
+                                  {restaurant.name}
+                                </CardTitle>
+                                {getVisibilityIcon(restaurant.visibility)}
+                              </div>
                               <CardDescription>
                                 {restaurant.location}
                                 {restaurant.cuisineType &&
