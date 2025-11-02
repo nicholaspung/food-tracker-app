@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.2.5",
+    "date": "2025-11-01",
+    "title": "Find More Places",
+    "summary": "Restaurant search now finds coffee shops, cafes, bakeries, and bars - not just traditional restaurants.",
+    "features": [],
+    "improvements": [
+      "Nearby search now finds coffee shops, cafes, bakeries, bars, and takeout spots",
+      "Name search no longer filters by type - find any food-related business"
+    ],
+    "fixes": [
+      "Fixed coffee shops and cafes not appearing in nearby search results",
+      "Fixed some restaurants not appearing when searching by exact name"
+    ]
+  },
+  {
     "version": "0.2.4",
     "date": "2025-10-31",
     "title": "Better Editing & Timezone Fixes",
