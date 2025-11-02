@@ -24,6 +24,7 @@ export interface User {
   verified: boolean;
   isAdmin?: boolean;
   defaultVisitVisibility?: 'friends' | 'private';
+  defaultRestaurantVisibility?: 'private' | 'friends' | 'public';
   created: string;
   updated: string;
 }
@@ -40,6 +41,7 @@ export interface Restaurant {
   isGooglePlace?: boolean;
   googlePlaceCachedAt?: string;
   createdBy?: string; // Optional - shared restaurants may not have a creator
+  visibility?: 'private' | 'friends' | 'public';
   created: string;
   updated: string;
 }

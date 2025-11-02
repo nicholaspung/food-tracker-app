@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.2.6",
+    "date": "2025-11-01",
+    "title": "Privacy Controls for Restaurants",
+    "summary": "Choose who can see the restaurants you add with new visibility controls, plus faster visit creation.",
+    "features": [
+      "Restaurant visibility: Set who can see restaurants you manually add (Private, Friends Only, or Public)",
+      "Default restaurant visibility: Save your preference in Settings to use automatically for new restaurants",
+      "Visibility indicators: See at a glance which restaurants are private, shared with friends, or public"
+    ],
+    "improvements": [
+      "Faster visit creation: Your new visits appear instantly while saving in the background",
+      "Better restaurant organization: Easily identify the privacy level of each restaurant you've added"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.2.5",
     "date": "2025-11-01",
     "title": "Find More Places",

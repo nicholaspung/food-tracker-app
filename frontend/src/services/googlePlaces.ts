@@ -304,7 +304,8 @@ export async function cacheGooglePlace(
         placeId: place.place_id,
         isGooglePlace: true,
         googlePlaceCachedAt: now,
-        user: user.id,
+        createdBy: user.id,
+        visibility: 'public', // Google Places are verified and public by default
       });
 
     logger.log('[GooglePlaces] Restaurant created successfully:', newRestaurant.id);

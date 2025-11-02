@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { pb, User } from "@/lib/pocketbase";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Lock, Users, Check } from "lucide-react";
+import { ArrowLeft, Lock, Users, Check, Globe } from "lucide-react";
 
 interface SettingsPageProps {
   onNavigateBack?: () => void;
@@ -16,16 +17,23 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
   const [selectedVisibility, setSelectedVisibility] = useState<'friends' | 'private'>(
     user?.defaultVisitVisibility || 'friends'
   );
+  const [selectedRestaurantVisibility, setSelectedRestaurantVisibility] = useState<'private' | 'friends' | 'public'>(
+    user?.defaultRestaurantVisibility || 'private'
+  );
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
   const updateVisibilityMutation = useMutation({
-    mutationFn: async (visibility: 'friends' | 'private') => {
+    mutationFn: async (data: {
+      visitVisibility: 'friends' | 'private';
+      restaurantVisibility: 'private' | 'friends' | 'public';
+    }) => {
       const userId = pb.authStore.record?.id;
       if (!userId) throw new Error('Not authenticated');
 
       return await pb.collection('users').update(userId, {
-        defaultVisitVisibility: visibility,
+        defaultVisitVisibility: data.visitVisibility,
+        defaultRestaurantVisibility: data.restaurantVisibility,
       });
     },
     onSuccess: () => {
@@ -43,7 +51,10 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
   });
 
   const handleSave = () => {
-    updateVisibilityMutation.mutate(selectedVisibility);
+    updateVisibilityMutation.mutate({
+      visitVisibility: selectedVisibility,
+      restaurantVisibility: selectedRestaurantVisibility,
+    });
   };
 
   return (
@@ -132,6 +143,138 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
                   </div>
                 </div>
               </button>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="p-3 bg-green-50 text-green-600 rounded-lg text-sm flex items-center gap-2">
+                <Check className="w-4 h-4" />
+                {successMessage}
+              </div>
+            )}
+
+            <Button
+              onClick={handleSave}
+              disabled={updateVisibilityMutation.isPending}
+              className="w-full"
+            >
+              {updateVisibilityMutation.isPending ? 'Saving...' : 'Save Settings'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Default Restaurant Visibility</CardTitle>
+            <CardDescription>
+              Choose who can see restaurants you add by default. You can always change this for individual restaurants later.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <button
+                onClick={() => setSelectedRestaurantVisibility('private')}
+                className={`w-full p-4 rounded-lg border-2 transition-all ${
+                  selectedRestaurantVisibility === 'private'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      selectedRestaurantVisibility === 'private'
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-gray-300'
+                    }`}
+                  >
+                    {selectedRestaurantVisibility === 'private' && (
+                      <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Lock className="w-4 h-4 text-gray-600" />
+                      <Label className="font-semibold text-base">Private</Label>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Only you can see restaurants you add
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedRestaurantVisibility('friends')}
+                className={`w-full p-4 rounded-lg border-2 transition-all ${
+                  selectedRestaurantVisibility === 'friends'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      selectedRestaurantVisibility === 'friends'
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-gray-300'
+                    }`}
+                  >
+                    {selectedRestaurantVisibility === 'friends' && (
+                      <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-blue-600" />
+                      <Label className="font-semibold text-base">Friends</Label>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Your friends can see restaurants you add
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              {user?.isAdmin && (
+                <button
+                  onClick={() => setSelectedRestaurantVisibility('public')}
+                  className={`w-full p-4 rounded-lg border-2 transition-all ${
+                    selectedRestaurantVisibility === 'public'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        selectedRestaurantVisibility === 'public'
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-gray-300'
+                      }`}
+                    >
+                      {selectedRestaurantVisibility === 'public' && (
+                        <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                      )}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Globe className="w-4 h-4 text-green-600" />
+                        <Label className="font-semibold text-base">Public</Label>
+                        <Badge variant="secondary" className="text-xs">Admin Only</Badge>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Everyone in the community can see restaurants you add
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              )}
             </div>
 
             {error && (

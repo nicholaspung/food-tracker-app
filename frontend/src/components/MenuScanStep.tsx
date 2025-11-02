@@ -215,7 +215,6 @@ export default function MenuScanStep({
           ref={fileInputRef}
           type="file"
           accept="image/*,.heic,.heif"
-          capture="environment"
           onChange={handleFileSelect}
           className="hidden"
           data-testid="menu-image-input"
