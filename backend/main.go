@@ -436,7 +436,7 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 						},
 					},
 				},
-				IncludedTypes: []string{"restaurant"},
+				IncludedTypes: []string{"restaurant", "cafe", "bakery", "bar", "meal_takeaway"},
 			}
 
 			// Set field mask in context to specify which fields to return
@@ -542,8 +542,8 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			// Build text search request
 			searchReq := &placespb.SearchTextRequest{
 				TextQuery: requestData.Query,
-				// Include restaurant type filtering
-				IncludedType: "restaurant",
+				// No type filtering - let the text query determine what's relevant
+				// This allows finding cafes, bakeries, coffee shops, etc.
 			}
 
 			// If location is provided, add location bias
