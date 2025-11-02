@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, X, CheckCircle, Camera, FileText, Flag } from "lucide-react";
+import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -264,6 +264,35 @@ export default function AddItemsToVisit({
     return newlyParsedItems.has(itemId);
   };
 
+  // Get visibility badge for menu item
+  const getVisibilityBadge = (visibility?: 'private' | 'friends' | 'public') => {
+    switch (visibility) {
+      case 'private':
+        return (
+          <Badge variant="outline" className="text-xs flex items-center gap-1">
+            <Lock className="w-3 h-3 text-gray-600" />
+            <span>Private</span>
+          </Badge>
+        );
+      case 'friends':
+        return (
+          <Badge variant="outline" className="text-xs flex items-center gap-1">
+            <Users className="w-3 h-3 text-blue-600" />
+            <span>Friends</span>
+          </Badge>
+        );
+      case 'public':
+        return (
+          <Badge variant="outline" className="text-xs flex items-center gap-1">
+            <Globe className="w-3 h-3 text-green-600" />
+            <span>Community</span>
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   const handleRequestReview = async () => {
     try {
       await requestMenuReview(
@@ -498,16 +527,19 @@ export default function AddItemsToVisit({
                                       onClick={() => handleToggleItem(item)}
                                       className="flex-1 text-left min-w-0"
                                     >
-                                      <div className="font-medium flex items-center gap-2">
-                                        {item.name}
-                                        {isNew && (
-                                          <Badge
-                                            variant="secondary"
-                                            className="text-xs"
-                                          >
-                                            New
-                                          </Badge>
-                                        )}
+                                      <div className="font-medium flex items-center gap-2 flex-wrap">
+                                        <span>{item.name}</span>
+                                        <div className="flex items-center gap-1.5">
+                                          {isNew && (
+                                            <Badge
+                                              variant="secondary"
+                                              className="text-xs"
+                                            >
+                                              New
+                                            </Badge>
+                                          )}
+                                          {getVisibilityBadge(item.visibility)}
+                                        </div>
                                       </div>
                                       {item.description && (
                                         <div className="text-sm text-gray-500 mt-1">
