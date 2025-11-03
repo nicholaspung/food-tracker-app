@@ -1,32 +1,35 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Copy, RotateCcw, Loader2, Check, Store, AlertTriangle } from 'lucide-react';
+import { Camera, Copy, RotateCcw, Loader2, Check, Store, AlertTriangle, X } from 'lucide-react';
 import { pb } from '@/lib/pocketbase';
-import ExpandableImageWithBox from '@/components/ExpandableImageWithBox';
+
+interface RestaurantOption {
+  name: string;
+  confidence: 'high' | 'medium' | 'low';
+  reason?: string;
+}
 
 interface RestaurantNameResponse {
   found: boolean;
-  restaurantName?: string;
-  confidence?: 'high' | 'medium' | 'low';
+  options?: RestaurantOption[];
   language?: string;
   allText?: string;
   error?: string;
   reason?: string;
 }
 
-type Step = 'capture' | 'preview' | 'select-region' | 'processing' | 'result';
+type Step = 'capture' | 'preview' | 'processing' | 'result';
 
 export default function RestaurantNameFinder() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentStep, setCurrentStep] = useState<Step>('capture');
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [result, setResult] = useState<RestaurantNameResponse | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -42,7 +45,6 @@ export default function RestaurantNameFinder() {
       return;
     }
 
-    setSelectedImage(file);
     setError('');
     setResult(null);
 
@@ -53,8 +55,8 @@ export default function RestaurantNameFinder() {
     };
     reader.readAsDataURL(file);
 
-    // Move to preview step
-    setCurrentStep('preview');
+    // Automatically process the image
+    await findRestaurantName(file);
   };
 
   const findRestaurantName = async (imageFile: File) => {
@@ -69,8 +71,8 @@ export default function RestaurantNameFinder() {
       formData.append('image', imageFile);
 
       // Use PocketBase SDK to send authenticated request
-      const baseUrl = pb.baseUrl;
       const token = pb.authStore.token;
+      const baseUrl = pb.baseUrl;
 
       const response = await fetch(`${baseUrl}/api/find-restaurant-name`, {
         method: 'POST',
@@ -109,49 +111,12 @@ export default function RestaurantNameFinder() {
     }
   };
 
-  const handleRegionSelect = async (croppedImageBlob: Blob) => {
-    // Convert blob to File
-    const croppedFile = new File(
-      [croppedImageBlob],
-      'cropped.jpg',
-      { type: 'image/jpeg' }
-    );
-
-    // Find restaurant name in the cropped image
-    await findRestaurantName(croppedFile);
-  };
-
-  const handleSkipRegionSelection = async () => {
-    // Process the full image without cropping
-    if (selectedImage) {
-      await findRestaurantName(selectedImage);
-    }
-  };
-
-  const handleCancelRegionSelection = () => {
-    setCurrentStep('preview');
-  };
-
-  const handleProceedToRegionSelection = () => {
-    setCurrentStep('select-region');
-  };
-
   const handleRetake = () => {
     setCurrentStep('capture');
-    setSelectedImage(null);
     setImagePreview(null);
     setResult(null);
     setError('');
     setCopied(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleCancelPreview = () => {
-    setCurrentStep('capture');
-    setSelectedImage(null);
-    setImagePreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -183,19 +148,34 @@ export default function RestaurantNameFinder() {
     }
   };
 
-  // Step 2 & 3: Combined Preview + Region Selection with Expandable Image
-  if ((currentStep === 'preview' || currentStep === 'select-region') && imagePreview) {
+  // Step 2: Preview while processing
+  if (currentStep === 'preview' && imagePreview) {
     return (
-      <ExpandableImageWithBox
-        imageSrc={imagePreview}
-        onConfirm={handleRegionSelect}
-        onSkip={handleSkipRegionSelection}
-        onBack={handleCancelPreview}
-      />
+      <div className="flex flex-col h-full bg-gray-900">
+        {/* Header */}
+        <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
+          <h3 className="text-white font-semibold">Preview</h3>
+          <button
+            onClick={handleRetake}
+            className="text-gray-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Full Screen Image Preview */}
+        <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
+          <img
+            src={imagePreview}
+            alt="Preview"
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+      </div>
     );
   }
 
-  // Step 4: Processing & Results
+  // Step 3: Processing & Results
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* File input (hidden, triggered by button) */}
@@ -214,21 +194,15 @@ export default function RestaurantNameFinder() {
         <div className="bg-white border-b border-gray-200 px-4 py-3">
           <div className="flex items-center justify-center gap-2">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              currentStep === 'preview' ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'
+              currentStep === 'preview' || currentStep === 'processing' ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'
             }`}>1</div>
             <div className="w-12 h-0.5 bg-gray-300"></div>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              currentStep === 'select-region' ? 'bg-blue-600 text-white' :
-              currentStep === 'processing' || currentStep === 'result' ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'
-            }`}>2</div>
-            <div className="w-12 h-0.5 bg-gray-300"></div>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
               currentStep === 'processing' || currentStep === 'result' ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
-            }`}>3</div>
+            }`}>2</div>
           </div>
           <div className="flex justify-between mt-2 text-xs text-gray-600">
-            <span>Photo</span>
-            <span>Region</span>
+            <span>Analyzing</span>
             <span>Result</span>
           </div>
         </div>
@@ -269,59 +243,71 @@ export default function RestaurantNameFinder() {
           </div>
         )}
 
-        {/* Result: Restaurant Name Found */}
-        {result && result.found && result.restaurantName && !isProcessing && (
+        {/* Result: Restaurant Names Found */}
+        {result && result.found && result.options && result.options.length > 0 && !isProcessing && (
           <div className="space-y-3">
             <div className="bg-green-50 rounded-lg border border-green-200 p-4">
               <div className="flex items-start gap-3 mb-3">
                 <Store className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-green-900 mb-1">
-                    Restaurant Found!
+                    {result.options.length === 1 ? 'Restaurant Found!' : 'Possible Restaurant Names'}
                   </h3>
                   <p className="text-xs text-green-700">
-                    AI detected a restaurant name in the image
+                    {result.options.length === 1
+                      ? 'AI detected a restaurant name in the image'
+                      : `AI found ${result.options.length} possible interpretations`
+                    }
                   </p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-md p-3 border border-green-300">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <span className="text-xl font-bold text-gray-900">
-                    {result.restaurantName}
-                  </span>
-                  {getConfidenceBadge(result.confidence)}
-                </div>
-                {result.language && (
-                  <p className="text-xs text-gray-500 mb-3">
-                    Language: {result.language}
-                  </p>
-                )}
-                <Button
-                  onClick={() => copyText(result.restaurantName!)}
-                  variant="default"
-                  size="sm"
-                  className="w-full"
-                  data-testid="copy-restaurant-name-button"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-4 h-4 mr-1" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 mr-1" />
-                      Copy Restaurant Name
-                    </>
-                  )}
-                </Button>
+              <div className="space-y-2">
+                {result.options.map((option, index) => (
+                  <div key={index} className="bg-white rounded-md p-3 border border-green-300">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <span className="text-lg font-bold text-gray-900 flex-1">
+                        {option.name}
+                      </span>
+                      {getConfidenceBadge(option.confidence)}
+                    </div>
+                    {option.reason && (
+                      <p className="text-xs text-gray-600 mb-2 italic">
+                        {option.reason}
+                      </p>
+                    )}
+                    {result.language && index === 0 && (
+                      <p className="text-xs text-gray-500 mb-2">
+                        Language: {result.language}
+                      </p>
+                    )}
+                    <Button
+                      onClick={() => copyText(option.name)}
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                      data-testid={`copy-restaurant-name-${index}`}
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-4 h-4 mr-1" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 mr-1" />
+                          Copy "{option.name}"
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-3">
               <p className="text-xs text-blue-800">
-                💡 Tip: You can now use this name to search for the restaurant in the main app
+                💡 Tip: Copy any name to search for the restaurant in the main app
               </p>
             </div>
           </div>
@@ -385,9 +371,9 @@ export default function RestaurantNameFinder() {
               <h3 className="text-sm font-semibold text-blue-900 mb-2">How to use:</h3>
               <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
                 <li>Take a photo of a restaurant sign, storefront, or menu</li>
-                <li>AI will identify the restaurant name automatically</li>
-                <li>Select a specific region for better accuracy</li>
-                <li>Copy the name to search for it in the app</li>
+                <li>AI will identify possible restaurant names automatically</li>
+                <li>Multiple interpretations provided with confidence levels</li>
+                <li>Copy any name to search for it in the app</li>
                 <li>Works with multiple languages (Korean, Japanese, Chinese, etc.)</li>
               </ul>
             </div>
