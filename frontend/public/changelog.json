@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.2.8",
+    "date": "2025-11-02",
+    "title": "Smoother Visit Creation",
+    "summary": "Fixed issues that prevented new visits from appearing immediately on the home page.",
+    "features": [],
+    "improvements": [
+      "New visits now appear instantly with all food items loaded",
+      "Smoother navigation after creating a visit - no more empty visits"
+    ],
+    "fixes": [
+      "Fixed new visits not appearing on home page without refresh",
+      "Fixed food items not loading immediately after creating a visit",
+      "Fixed restaurant search error when finding places from Google"
+    ]
+  },
+  {
     "version": "0.2.7",
     "date": "2025-11-01",
     "title": "Community Menu Items & Quality Reports",

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChevronDown, ChevronUp, Calendar, Users } from "lucide-react";
 import { visitDraftService } from "@/services/visitDraftService";
+import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -36,6 +37,9 @@ export default function RateItemsPage({
   // Check if user has rated before - expand legend for first-timers
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
   const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
+
+  // Ref for auto-scrolling notes input into view on mobile
+  const notesInputRef = useScrollIntoView<HTMLInputElement>();
 
   useEffect(() => {
     visitDraftService.saveMetadata(visitDate, visitVisibility);
@@ -70,9 +74,15 @@ export default function RateItemsPage({
 
       return visit;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["visits"] });
-      queryClient.invalidateQueries({ queryKey: ["userVisits"] });
+    onSuccess: async () => {
+      // Wait for all queries to refetch before navigating away
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["visits"] }),
+        queryClient.invalidateQueries({ queryKey: ["userVisits"] }),
+        queryClient.invalidateQueries({ queryKey: ["allVisits"] }),
+        queryClient.invalidateQueries({ queryKey: ["allFoodItems"] }),
+      ]);
+
       visitDraftService.clearDraft();
 
       // Mark that user has rated before - legend will be collapsed next time
@@ -246,6 +256,7 @@ export default function RateItemsPage({
                 <div className="space-y-2">
                   <Label>Notes (optional)</Label>
                   <Input
+                    ref={notesInputRef}
                     placeholder="Add notes..."
                     value={item.notes}
                     onChange={(e) =>

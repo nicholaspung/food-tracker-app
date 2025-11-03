@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe } from "lucide-react";
+import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,16 +29,22 @@ interface AddItemsToVisitProps {
   restaurantId: string;
   restaurantName: string;
   parsedItems?: MenuItem[]; // Recently parsed items from scan
+  initialSelectedItems?: MenuItem[]; // Pre-selected items for editing
   onComplete: (selectedItems: MenuItem[]) => void;
   onCancel: () => void;
+  hideHeader?: boolean; // Hide the header section
+  hideScanMenu?: boolean; // Hide scan menu photo option
 }
 
 export default function AddItemsToVisit({
   restaurantId,
   restaurantName,
   parsedItems = [],
+  initialSelectedItems = [],
   onComplete,
   onCancel,
+  hideHeader = false,
+  hideScanMenu = false,
 }: AddItemsToVisitProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MenuItem[]>([]);
@@ -55,6 +62,10 @@ export default function AddItemsToVisit({
   const [reviewRequested, setReviewRequested] = useState(false);
   const [hasPendingReview, setHasPendingReview] = useState(false);
 
+  // Refs for auto-scrolling inputs into view on mobile
+  const manualItemInputRef = useScrollIntoView<HTMLInputElement>();
+  const descriptionInputRef = useScrollIntoView<HTMLInputElement>();
+
   // Load initial results only on mount
   useEffect(() => {
     if (parsedItems.length > 0) {
@@ -68,20 +79,34 @@ export default function AddItemsToVisit({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
 
-  // Restore previously selected items from localStorage
+  // Restore previously selected items from localStorage OR initialize with pre-selected items
   useEffect(() => {
-    const draft = visitDraftService.getDraft();
-    if (draft.items.length > 0) {
-      // Convert draft items back to Map structure
-      const restoredMap = new Map<string, SelectedItemWithDescription>();
-      draft.items.forEach((draftItem) => {
-        restoredMap.set(draftItem.menuItem.id, {
-          menuItem: draftItem.menuItem,
-          description: draftItem.description,
+    // Priority: initialSelectedItems > draft
+    if (initialSelectedItems.length > 0) {
+      // Initialize with pre-selected items (for editing)
+      const initialMap = new Map<string, SelectedItemWithDescription>();
+      initialSelectedItems.forEach((item) => {
+        initialMap.set(item.id, {
+          menuItem: item,
+          description: item.description || '',
           showDescriptionInput: false,
         });
       });
-      setSelectedItems(restoredMap);
+      setSelectedItems(initialMap);
+    } else {
+      const draft = visitDraftService.getDraft();
+      if (draft.items.length > 0) {
+        // Convert draft items back to Map structure
+        const restoredMap = new Map<string, SelectedItemWithDescription>();
+        draft.items.forEach((draftItem) => {
+          restoredMap.set(draftItem.menuItem.id, {
+            menuItem: draftItem.menuItem,
+            description: draftItem.description,
+            showDescriptionInput: false,
+          });
+        });
+        setSelectedItems(restoredMap);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
@@ -329,46 +354,48 @@ export default function AddItemsToVisit({
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Add Items to Your Visit
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              {showScanMenu
-                ? `Scan a menu photo to auto-extract items for ${restaurantName}`
-                : `Search and select items you had at ${restaurantName}`}
-            </p>
-          </div>
-
-          {/* Report incorrect items button */}
-          {!showScanMenu && (
-            <div className="flex-shrink-0">
-              {hasPendingReview ? (
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <Flag className="w-4 h-4" />
-                  <span className="hidden sm:inline">Review requested</span>
-                </div>
-              ) : reviewRequested ? (
-                <div className="flex items-center gap-1.5 text-xs text-green-600">
-                  <CheckCircle className="w-4 h-4" />
-                  <span className="hidden sm:inline">Request submitted</span>
-                </div>
-              ) : (
-                <button
-                  onClick={handleRequestReview}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors px-2 py-1 rounded hover:bg-gray-100"
-                  title="Report incorrect menu items"
-                >
-                  <Flag className="w-4 h-4" />
-                  <span className="hidden sm:inline">Report items</span>
-                </button>
-              )}
+      {!hideHeader && (
+        <div className="bg-white border-b border-gray-200 px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl font-bold text-gray-900">
+                Add Items to Your Visit
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                {showScanMenu
+                  ? `Scan a menu photo to auto-extract items for ${restaurantName}`
+                  : `Search and select items you had at ${restaurantName}`}
+              </p>
             </div>
-          )}
+
+            {/* Report incorrect items button */}
+            {!showScanMenu && (
+              <div className="flex-shrink-0">
+                {hasPendingReview ? (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Flag className="w-4 h-4" />
+                    <span className="hidden sm:inline">Review requested</span>
+                  </div>
+                ) : reviewRequested ? (
+                  <div className="flex items-center gap-1.5 text-xs text-green-600">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="hidden sm:inline">Request submitted</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleRequestReview}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors px-2 py-1 rounded hover:bg-gray-100"
+                    title="Report incorrect menu items"
+                  >
+                    <Flag className="w-4 h-4" />
+                    <span className="hidden sm:inline">Report items</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
@@ -386,14 +413,16 @@ export default function AddItemsToVisit({
             <Card className="border-2 border-blue-200 bg-blue-50/30">
               <CardContent className="space-y-3">
                 {/* Scan Menu Button */}
-                <Button
-                  variant="outline"
-                  className="w-full bg-white"
-                  onClick={() => setShowScanMenu(true)}
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  Scan Menu Photo
-                </Button>
+                {!hideScanMenu && (
+                  <Button
+                    variant="outline"
+                    className="w-full bg-white"
+                    onClick={() => setShowScanMenu(true)}
+                  >
+                    <Camera className="w-4 h-4 mr-2" />
+                    Scan Menu Photo
+                  </Button>
+                )}
 
                 {/* Manual add section */}
                 {!showManualAdd ? (
@@ -411,6 +440,7 @@ export default function AddItemsToVisit({
                       <div className="space-y-2">
                         <Label htmlFor="manualItemName">Item Name</Label>
                         <Input
+                          ref={manualItemInputRef}
                           id="manualItemName"
                           value={manualItemName}
                           onChange={(e) => setManualItemName(e.target.value)}
@@ -584,6 +614,7 @@ export default function AddItemsToVisit({
                                     selectedData.showDescriptionInput && (
                                       <div className="flex gap-2 bg-white p-2 rounded-md border border-gray-300">
                                         <Input
+                                          ref={descriptionInputRef}
                                           placeholder="Add description..."
                                           value={selectedData.description}
                                           onChange={(e) =>

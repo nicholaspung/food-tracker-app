@@ -242,9 +242,9 @@ export async function cacheGooglePlace(
     logger.log('[GooglePlaces] Caching place:', place.name, 'ID:', place.place_id);
 
     // Check if current user already has this restaurant
-    // Note: Collection rules only allow users to see their own restaurants
+    // Note: Restaurants are now shared, but we filter by createdBy
     // Use PocketBase filter syntax with proper escaping
-    const filter = pb.filter('user = {:userId} && placeId = {:placeId}', {
+    const filter = pb.filter('createdBy = {:userId} && placeId = {:placeId}', {
       userId: user.id,
       placeId: place.place_id,
     });

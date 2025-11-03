@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useScrollIntoView } from '@/hooks/useScrollIntoView';
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -29,6 +30,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
   const [isInitialized, setIsInitialized] = useState(false);
 
   const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>(draft?.menuItems || []);
+
+  // Ref for auto-scrolling notes input into view on mobile
+  const notesInputRef = useScrollIntoView<HTMLInputElement>();
 
   // Redirect if no draft
   useEffect(() => {
@@ -188,6 +192,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                   <div>
                     <Label>Notes (optional)</Label>
                     <Input
+                      ref={notesInputRef}
                       placeholder="Add notes..."
                       value={item.notes}
                       onChange={(e) => handleUpdateItem(index, 'notes', e.target.value)}
