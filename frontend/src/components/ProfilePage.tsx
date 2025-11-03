@@ -213,7 +213,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     fetchInviteCodes();
   }, [user?.id]);
 
-  const copyToClipboard = async (code: string) => {
+  const copyToClipboard = async (codeId: string, code: string) => {
     try {
       // Create signup URL with pre-populated invite code
       const signupUrl = `${window.location.origin}/signup?code=${code}`;
@@ -231,6 +231,19 @@ Looking forward to seeing you there!`;
       await navigator.clipboard.writeText(message);
       setCopiedCode(code);
       setTimeout(() => setCopiedCode(null), 2000);
+
+      // Lock the code for 7 days
+      try {
+        await pb.send('/api/invite-codes/lock', {
+          method: 'POST',
+          body: { codeId },
+        });
+        // Refresh the invite codes list to remove the locked code
+        fetchInviteCodes();
+      } catch (lockErr) {
+        logger.error("Failed to lock invite code:", lockErr);
+        // Don't show error to user - the copy was successful
+      }
     } catch (err) {
       logger.error("Failed to copy invitation:", err);
     }
@@ -528,7 +541,7 @@ Looking forward to seeing you there!`;
                       </p>
                     </div>
                     <Button
-                      onClick={() => copyToClipboard(inviteCode.code)}
+                      onClick={() => copyToClipboard(inviteCode.id, inviteCode.code)}
                       variant="ghost"
                       size="sm"
                       className="ml-2 text-xs"
