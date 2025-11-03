@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { pb, Restaurant, Visit, FoodItem } from '@/lib/pocketbase';
+import { pb, Restaurant, FoodItem, MenuItem as DBMenuItem } from '@/lib/pocketbase';
 import { getTodayLocalDateString, utcToLocalDateString, formatLocalDateForDisplay } from '@/lib/dateUtils';
-import { editVisitDraftService, EditVisitDraftItem } from '@/services/editVisitDraftService';
+import { editVisitDraftService } from '@/services/editVisitDraftService';
+import AddItemsToVisit from '@/components/AddItemsToVisit';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, X, Trash2, Calendar, Users } from 'lucide-react';
+import { Calendar, Users } from 'lucide-react';
 
 interface EditItemsPageProps {
   visitId: string;
@@ -16,140 +16,216 @@ interface EditItemsPageProps {
 }
 
 export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPageProps) {
-  const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>([]);
-  const [visitDate, setVisitDate] = useState(getTodayLocalDateString());
+  const [initialMenuItems, setInitialMenuItems] = useState<DBMenuItem[]>([]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const [visitDate, setVisitDate] = useState('');
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>('friends');
   const [showDateEdit, setShowDateEdit] = useState(false);
-  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
-  const [error, setError] = useState('');
 
   // Fetch visit data
-  const { data: visit, isLoading: visitLoading } = useQuery<Visit>({
+  const { data: visit, isLoading: visitLoading } = useQuery({
     queryKey: ['visit', visitId],
     queryFn: async () => {
-      return await pb.collection('visits').getOne<Visit>(visitId);
+      return await pb.collection('visits').getOne(visitId);
     },
   });
 
-  // Fetch restaurants
-  const { data: restaurants = [], isLoading: restaurantsLoading } = useQuery<Restaurant[]>({
-    queryKey: ['restaurants'],
+  // Fetch restaurant
+  const { data: restaurant, isLoading: restaurantLoading } = useQuery({
+    queryKey: ['restaurant', visit?.restaurant],
     queryFn: async () => {
-      const user = pb.authStore.record;
-      if (!user) return [];
-      return await pb.collection('restaurants').getFullList<Restaurant>({
-        filter: `createdBy = "${user.id}"`,
-        sort: 'name',
-      });
+      if (!visit?.restaurant) return null;
+      return await pb.collection('restaurants').getOne<Restaurant>(visit.restaurant);
     },
+    enabled: !!visit?.restaurant,
   });
 
   // Fetch existing food items
   const { data: existingFoodItems = [], isLoading: foodItemsLoading } = useQuery<FoodItem[]>({
     queryKey: ['foodItems', visitId],
     queryFn: async () => {
-      return await pb.collection('food_items').getFullList<FoodItem>({
+      const items = await pb.collection('food_items').getFullList<FoodItem>({
         filter: `visit = "${visitId}"`,
         sort: 'created',
       });
+      return items;
     },
   });
 
-  // Initialize form when data loads
+  // Fetch all menu items for the restaurant
+  const { data: restaurantMenuItems = [], isLoading: menuItemsLoading } = useQuery<DBMenuItem[]>({
+    queryKey: ['menuItems', restaurant?.id],
+    queryFn: async () => {
+      if (!restaurant?.id) return [];
+      return await pb.collection('menu_items').getFullList<DBMenuItem>({
+        filter: `restaurant = "${restaurant.id}"`,
+        sort: '-created',
+      });
+    },
+    enabled: !!restaurant?.id,
+  });
+
+  // Initialize when all data is loaded
   useEffect(() => {
-    if (visit && !restaurantsLoading) {
-      // Check if we have a draft for this visit
+    if (visit && restaurant && !foodItemsLoading && !menuItemsLoading) {
+      setSelectedRestaurant(restaurant);
+
+      // Check if we have a draft
       const draft = editVisitDraftService.getDraft(visitId);
 
       if (draft) {
-        // Restore from draft
-        setSelectedRestaurant(draft.restaurant);
-        setMenuItems(draft.menuItems);
+        // Use draft data - match with real menu items
+        const menuItemsMap = new Map(restaurantMenuItems.map(mi => [mi.name.toLowerCase(), mi]));
+        const draftMenuItems: DBMenuItem[] = draft.menuItems
+          .filter(item => !item._deleted)
+          .map(item => {
+            // Try to find matching menu item by name
+            const matchingMenuItem = menuItemsMap.get(item.name.toLowerCase());
+            if (matchingMenuItem) {
+              // Use the real menu item
+              return matchingMenuItem;
+            } else {
+              // Create temporary menu item for items that don't exist in menu_items table
+              return {
+                id: `temp-${item.name}-${Date.now()}`,
+                name: item.name,
+                description: item.description || '',
+                restaurant: restaurant.id,
+                collectionId: 'menu_items',
+                collectionName: 'menu_items',
+                created: new Date().toISOString(),
+                updated: new Date().toISOString(),
+              };
+            }
+          });
+        setInitialMenuItems(draftMenuItems);
         setVisitDate(draft.visitDate);
         setVisitVisibility(draft.visitVisibility);
       } else {
-        // Initialize from visit data
-        const restaurant = restaurants.find(r => r.id === visit.restaurant);
+        // Match existing food items with real menu items by name
+        const menuItemsMap = new Map(restaurantMenuItems.map(mi => [mi.name.toLowerCase(), mi]));
+        const matchedMenuItems: DBMenuItem[] = existingFoodItems.map(foodItem => {
+          const matchingMenuItem = menuItemsMap.get(foodItem.name.toLowerCase());
+          if (matchingMenuItem) {
+            // Use the real menu item
+            return matchingMenuItem;
+          } else {
+            // Create temporary menu item for items that don't exist in menu_items table
+            return {
+              id: `temp-${foodItem.name}-${Date.now()}`,
+              name: foodItem.name,
+              description: foodItem.description || '',
+              restaurant: restaurant.id,
+              collectionId: 'menu_items',
+              collectionName: 'menu_items',
+              created: foodItem.created,
+              updated: foodItem.updated,
+            };
+          }
+        });
+        setInitialMenuItems(matchedMenuItems);
 
-        // If restaurant not in user's list, fetch it directly
-        if (!restaurant && visit.restaurant) {
-          pb.collection('restaurants').getOne<Restaurant>(visit.restaurant)
-            .then(fetchedRestaurant => {
-              setSelectedRestaurant(fetchedRestaurant);
-            })
-            .catch(err => {
-              console.error('Failed to fetch restaurant:', err);
-              setError('Failed to load restaurant data');
-            });
-        } else {
-          setSelectedRestaurant(restaurant || null);
-        }
-
+        // Initialize date and visibility
         const localDate = utcToLocalDateString(visit.visitDate);
         setVisitDate(localDate);
         setVisitVisibility(visit.visibility || 'friends');
-      }
-    }
-  }, [visit, restaurants, restaurantsLoading, visitId]);
 
+        // Initialize draft with current visit data
+        editVisitDraftService.saveDraft({
+          visitId,
+          restaurant,
+          menuItems: existingFoodItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            description: item.description || '',
+            rating: item.rating,
+            notes: item.notes || '',
+          })),
+          visitDate: localDate,
+          visitVisibility: visit.visibility || 'friends',
+          step: 1,
+        });
+      }
+
+      setIsReady(true);
+    }
+  }, [visit, restaurant, existingFoodItems, restaurantMenuItems, foodItemsLoading, menuItemsLoading, visitId]);
+
+  // Save date and visibility changes to draft
   useEffect(() => {
-    // Only initialize menu items if there's no draft and data has loaded
-    if (!foodItemsLoading) {
-      const draft = editVisitDraftService.getDraft(visitId);
-      if (!draft) {
-        setMenuItems(existingFoodItems.map(item => ({
+    const draft = editVisitDraftService.getDraft(visitId);
+    if (draft && selectedRestaurant) {
+      editVisitDraftService.saveDraft({
+        ...draft,
+        visitDate,
+        visitVisibility,
+      });
+    }
+  }, [visitDate, visitVisibility, visitId, selectedRestaurant]);
+
+  const handleComplete = (selectedItems: DBMenuItem[]) => {
+    if (!selectedRestaurant || !visit) return;
+
+    // Get existing food items map for matching IDs
+    const existingItemsMap = new Map(existingFoodItems.map(item => [item.name, item]));
+
+    // Convert selected items to EditVisitDraftItem format
+    const draftItems: Array<{
+      id?: string;
+      name: string;
+      description: string;
+      rating: number;
+      notes: string;
+      _deleted?: boolean;
+    }> = selectedItems.map(item => {
+      const existingItem = existingItemsMap.get(item.name);
+      // Check for userDescription (custom description from AddItemsToVisit) first
+      const itemWithUserDesc = item as DBMenuItem & { userDescription?: string };
+      return {
+        id: existingItem?.id, // Use existing ID if found
+        name: item.name,
+        description: itemWithUserDesc.userDescription || item.description || '',
+        rating: existingItem?.rating || 3,
+        notes: existingItem?.notes || '',
+      };
+    });
+
+    // Mark items that were deleted (in original but not in selected)
+    const selectedNames = new Set(selectedItems.map(i => i.name));
+    existingFoodItems.forEach(item => {
+      if (!selectedNames.has(item.name)) {
+        draftItems.push({
           id: item.id,
           name: item.name,
           description: item.description || '',
           rating: item.rating,
           notes: item.notes || '',
-        })));
+          _deleted: true,
+        });
       }
-    }
-  }, [existingFoodItems, foodItemsLoading, visitId]);
+    });
 
-  // Save draft whenever state changes
-  useEffect(() => {
-    if (selectedRestaurant && menuItems.length > 0) {
-      editVisitDraftService.saveDraft({
-        visitId,
-        restaurant: selectedRestaurant,
-        menuItems,
-        visitDate,
-        visitVisibility,
-        step: 1,
-      });
-    }
-  }, [visitId, selectedRestaurant, menuItems, visitDate, visitVisibility]);
+    // Save to draft
+    editVisitDraftService.saveDraft({
+      visitId,
+      restaurant: selectedRestaurant,
+      menuItems: draftItems,
+      visitDate,
+      visitVisibility,
+      step: 1,
+    });
 
-  const handleAddMenuItem = () => {
-    setMenuItems([...menuItems, { name: '', description: '', rating: 3, notes: '' }]);
+    onNext();
   };
 
-  const handleRemoveMenuItem = (index: number) => {
-    const newItems = [...menuItems];
-    const item = newItems[index];
-    if (item.id) {
-      // Mark existing item as deleted
-      newItems[index] = { ...item, _deleted: true };
-    } else {
-      // Remove new item completely
-      newItems.splice(index, 1);
-    }
-    setMenuItems(newItems);
+  const handleCancel = () => {
+    editVisitDraftService.clearDraft();
+    onCancel();
   };
-
-  const handleUpdateMenuItem = (index: number, field: string, value: any) => {
-    const newItems = [...menuItems];
-    newItems[index] = { ...newItems[index], [field]: value };
-    setMenuItems(newItems);
-  };
-
-  const activeMenuItems = menuItems.filter(item => !item._deleted);
-  const canProceed = activeMenuItems.length > 0 && activeMenuItems.every(item => item.name.trim() !== '');
 
   // Show loading state
-  const isLoading = visitLoading || restaurantsLoading || foodItemsLoading;
+  const isLoading = visitLoading || restaurantLoading || foodItemsLoading || menuItemsLoading || !isReady;
 
   if (isLoading) {
     return (
@@ -167,7 +243,7 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center">
           <p className="text-red-600 font-semibold">Visit not found</p>
-          <Button onClick={onCancel} className="mt-4">
+          <Button onClick={handleCancel} className="mt-4">
             Go Back
           </Button>
         </div>
@@ -246,80 +322,17 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {/* Quick Actions Container */}
-          <Card className="border-2 border-blue-200 bg-blue-50/30">
-            <CardContent className="pt-4 space-y-3">
-              <Button
-                onClick={handleAddMenuItem}
-                variant="outline"
-                className="w-full bg-white"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Menu Item
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Menu Items List Container */}
-          {activeMenuItems.length > 0 && (
-            <Card>
-              <CardContent className="pt-4 space-y-3">
-                <div className="text-sm text-gray-600 mb-3">
-                  Your Items ({activeMenuItems.length})
-                </div>
-
-                {activeMenuItems.map((item) => {
-                  const index = menuItems.findIndex(m => m === item);
-                  return (
-                    <div key={index} className="p-3 rounded-lg border border-gray-200 bg-white space-y-3">
-                      <div className="flex items-start justify-between">
-                        <Label className="text-sm font-semibold">Item {index + 1}</Label>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveMenuItem(index)}
-                        >
-                          {item.id ? <Trash2 className="w-4 h-4 text-red-600" /> : <X className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                      <Input
-                        placeholder="Item name *"
-                        value={item.name}
-                        onChange={(e) => handleUpdateMenuItem(index, 'name', e.target.value)}
-                      />
-                      <Input
-                        placeholder="Description (optional)"
-                        value={item.description}
-                        onChange={(e) => handleUpdateMenuItem(index, 'description', e.target.value)}
-                      />
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom Action Buttons - Fixed Footer */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={onCancel} className="flex-1">
-            Cancel
-          </Button>
-          <Button onClick={onNext} disabled={!canProceed} className="flex-1">
-            Next: Update Ratings
-          </Button>
-        </div>
+      {/* AddItemsToVisit Component */}
+      <div className="flex-1 overflow-hidden">
+        <AddItemsToVisit
+          restaurantId={selectedRestaurant.id}
+          restaurantName={selectedRestaurant.name}
+          initialSelectedItems={initialMenuItems}
+          onComplete={handleComplete}
+          onCancel={handleCancel}
+          hideHeader={true}
+          hideScanMenu={true}
+        />
       </div>
     </div>
   );
