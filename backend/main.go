@@ -491,8 +491,25 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 				Content: imageData,
 			}
 
-			// Perform text detection
-			annotations, err := visionClient.DetectTexts(ctx, img, nil, 0)
+			// Create image context with language hints for better multi-language detection
+			// Include common languages: Korean, Japanese, Chinese, English, Spanish, etc.
+			imageContext := &visionpb.ImageContext{
+				LanguageHints: []string{
+					"ko", // Korean
+					"ja", // Japanese
+					"zh", // Chinese (simplified)
+					"zh-TW", // Chinese (traditional)
+					"en", // English
+					"es", // Spanish
+					"fr", // French
+					"de", // German
+					"vi", // Vietnamese
+					"th", // Thai
+				},
+			}
+
+			// Perform text detection with language hints
+			annotations, err := visionClient.DetectTexts(ctx, img, imageContext, 0)
 			if err != nil {
 				log.Printf("Vision API text detection error: %v", err)
 				return apis.NewApiError(500, "failed to detect text", err)
