@@ -162,10 +162,10 @@ func main() {
 			}
 			log.Printf("GET /api/invite-codes - User ID: %s", authRecord.Id)
 
-			// Find unused codes created by this user
+			// Find unused codes created by this user that are not locked (or lock has expired)
 			records, err := app.FindRecordsByFilter(
 				"invite_codes",
-				"createdBy = {:userId} && used = false",
+				"createdBy = {:userId} && used = false && (locked_until = '' || locked_until <= @now)",
 				"", // no sorting needed
 				0,  // no limit
 				0,  // no offset
@@ -190,6 +190,66 @@ func main() {
 
 			return e.JSON(200, map[string]any{
 				"codes": codes,
+			})
+		})
+
+		// Custom API endpoint: Lock an invite code for 7 days
+		se.Router.POST("/api/invite-codes/lock", func(e *core.RequestEvent) error {
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Parse request body
+			data := struct {
+				CodeId string `json:"codeId"`
+			}{}
+			if err := e.BindBody(&data); err != nil {
+				return apis.NewBadRequestError("invalid request body", err)
+			}
+
+			if data.CodeId == "" {
+				return apis.NewBadRequestError("codeId is required", nil)
+			}
+
+			// Find the invite code
+			record, err := app.FindRecordById("invite_codes", data.CodeId)
+			if err != nil {
+				return apis.NewNotFoundError("invite code not found", err)
+			}
+
+			// Verify the user owns this code
+			if record.GetString("createdBy") != authRecord.Id {
+				return apis.NewForbiddenError("you don't own this invite code", nil)
+			}
+
+			// Verify the code is not already used
+			if record.GetBool("used") {
+				return apis.NewBadRequestError("this invite code has already been used", nil)
+			}
+
+			// Verify the code is not already locked
+			lockedUntilStr := record.GetString("locked_until")
+			if lockedUntilStr != "" {
+				lockedUntil, err := record.GetDateTime("locked_until")
+				if err == nil && lockedUntil.Time().After(record.Collection().App().Clock().Now()) {
+					return apis.NewBadRequestError("this invite code is already locked", nil)
+				}
+			}
+
+			// Set locked_until to 7 days from now
+			sevenDaysFromNow := record.Collection().App().Clock().Now().AddDate(0, 0, 7)
+			record.Set("locked_until", sevenDaysFromNow)
+
+			// Save the record
+			if err := app.Save(record); err != nil {
+				return apis.NewApiError(500, "failed to lock invite code", err)
+			}
+
+			return e.JSON(200, map[string]any{
+				"success":     true,
+				"lockedUntil": sevenDaysFromNow,
+				"message":     "Invite code locked for 7 days",
 			})
 		})
 
