@@ -65,23 +65,44 @@ export default function CameraOCR() {
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
 
     if (!context) return;
 
-    // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    try {
+      // Set canvas dimensions to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
-    // Draw current video frame to canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Draw current video frame to canvas
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Get image data URL
-    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-    setCapturedImage(imageDataUrl);
+      // Use toBlob instead of toDataURL for better security/performance
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.95);
+      });
 
-    // Run OCR on the captured image
-    await runOCR(imageDataUrl);
+      if (!blob) {
+        setError('Failed to capture image');
+        return;
+      }
+
+      // Convert blob to data URL for display and OCR
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const imageDataUrl = reader.result as string;
+        setCapturedImage(imageDataUrl);
+        // Run OCR on the captured image
+        runOCR(imageDataUrl);
+      };
+      reader.onerror = () => {
+        setError('Failed to process captured image');
+      };
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      console.error('Capture error:', err);
+      setError('Failed to capture frame. Please try again.');
+    }
   };
 
   const runOCR = async (imageDataUrl: string) => {
@@ -130,9 +151,11 @@ export default function CameraOCR() {
       const errorMsg = err?.message || err?.toString() || 'Unknown error';
 
       if (errorMsg.includes('insecure')) {
-        setError(`Security Error: This feature requires HTTPS. Please access the app via HTTPS or use localhost.`);
+        setError(`Security Error: Canvas operation blocked. This may be a browser restriction. Try a different browser or device.`);
       } else if (errorMsg.includes('CORS') || errorMsg.includes('cross-origin')) {
-        setError(`Network Error: Unable to load OCR resources. Please check your connection.`);
+        setError(`Network Error: Unable to load OCR resources. Please check your connection and try again.`);
+      } else if (errorMsg.includes('taint') || errorMsg.includes('cross-origin')) {
+        setError(`Browser Security: Your browser blocked this operation. Try using Chrome or Safari.`);
       } else {
         setError(`OCR Error: ${errorMsg}`);
       }
@@ -288,10 +311,10 @@ export default function CameraOCR() {
             </div>
 
             <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
-              <h3 className="text-sm font-semibold text-amber-900 mb-2">⚠️ HTTPS Required</h3>
+              <h3 className="text-sm font-semibold text-amber-900 mb-2">📱 Beta Feature</h3>
               <p className="text-sm text-amber-800">
-                This feature requires a secure connection (HTTPS) to work properly on mobile devices.
-                If you see security errors, make sure you're accessing the app via HTTPS.
+                This feature is experimental and may not work on all devices or browsers.
+                For best results, use Chrome or Safari on mobile.
               </p>
             </div>
           </>
