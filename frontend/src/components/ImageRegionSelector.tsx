@@ -174,62 +174,70 @@ export default function ImageRegionSelector({
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Instructions */}
-        <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">
-            <Crop className="w-4 h-4" />
-            Select Text Region
-          </h3>
-          <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-            <li>Drag your finger (or mouse) to draw a rectangle around the text</li>
-            <li>Focus on the specific text you want to extract (e.g., restaurant name)</li>
-            <li>The selected area will be highlighted in blue</li>
-            <li>Tap "Extract Text" when ready, or "Process Full Image" to skip</li>
-          </ul>
+    <div className="flex flex-col h-full bg-gray-900">
+      {/* Header */}
+      <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Crop className="w-5 h-5 text-blue-400" />
+          <h3 className="text-white font-semibold">Step 2: Select Region</h3>
         </div>
-
-        {/* Canvas Container */}
-        <div
-          ref={containerRef}
-          className="bg-white rounded-lg border border-gray-200 p-2"
+        <button
+          onClick={onCancel}
+          className="text-gray-400 hover:text-white"
         >
-          <div className="relative overflow-auto">
-            <canvas
-              ref={canvasRef}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              className="max-w-full touch-none cursor-crosshair"
-              style={{ display: 'block' }}
-            />
-          </div>
-        </div>
-
-        {/* Selection Info */}
-        {region && (
-          <div className="bg-green-50 rounded-lg border border-green-200 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-green-800">
-                ✓ Region selected ({Math.round(Math.abs(region.endX - region.startX))} × {Math.round(Math.abs(region.endY - region.startY))} px)
-              </p>
-              <Button
-                onClick={handleClearSelection}
-                variant="ghost"
-                size="sm"
-                className="text-green-700 hover:text-green-900"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
+      {/* Instructions */}
+      <div className="bg-blue-900 px-4 py-2">
+        <p className="text-xs text-blue-100 text-center">
+          Draw a box around the restaurant name for better accuracy
+        </p>
+      </div>
+
+      {/* Full Screen Canvas Container */}
+      <div
+        ref={containerRef}
+        className="flex-1 flex items-center justify-center bg-black overflow-hidden"
+      >
+        <div className="relative w-full h-full flex items-center justify-center">
+          <canvas
+            ref={canvasRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            className="touch-none cursor-crosshair"
+            style={{
+              display: 'block',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain'
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Selection Info Banner */}
+      {region && (
+        <div className="bg-green-900 px-4 py-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-green-100">
+              ✓ Region: {Math.round(Math.abs(region.endX - region.startX))} × {Math.round(Math.abs(region.endY - region.startY))} px
+            </p>
+            <button
+              onClick={handleClearSelection}
+              className="text-green-300 hover:text-white text-sm font-medium"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Action Buttons */}
-      <div className="p-4 bg-white border-t border-gray-200 space-y-2">
+      <div className="p-4 bg-gray-800 space-y-2">
         <Button
           onClick={handleConfirm}
           disabled={!region}
@@ -238,24 +246,24 @@ export default function ImageRegionSelector({
           data-testid="extract-text-button"
         >
           <Crop className="w-5 h-5 mr-2" />
-          Extract Text from Selection
+          Continue with Selection
         </Button>
         <div className="flex gap-2">
           <Button
             onClick={onSkip}
             variant="outline"
-            className="flex-1"
+            className="flex-1 bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
             data-testid="process-full-image-button"
           >
-            Process Full Image
+            Use Full Image
           </Button>
           <Button
             onClick={onCancel}
             variant="outline"
-            className="flex-1"
+            className="flex-1 bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
             data-testid="cancel-selection-button"
           >
-            Cancel
+            Back
           </Button>
         </div>
       </div>

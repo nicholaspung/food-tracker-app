@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Copy, RotateCcw, Loader2, Check, Store, AlertTriangle } from 'lucide-react';
+import { Camera, Copy, RotateCcw, Loader2, Check, Store, AlertTriangle, X } from 'lucide-react';
 import { pb } from '@/lib/pocketbase';
 import ImageRegionSelector from '@/components/ImageRegionSelector';
 
@@ -14,11 +14,13 @@ interface RestaurantNameResponse {
   reason?: string;
 }
 
+type Step = 'capture' | 'preview' | 'select-region' | 'processing' | 'result';
+
 export default function RestaurantNameFinder() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentStep, setCurrentStep] = useState<Step>('capture');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [showRegionSelector, setShowRegionSelector] = useState(false);
   const [result, setResult] = useState<RestaurantNameResponse | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
@@ -51,11 +53,12 @@ export default function RestaurantNameFinder() {
     };
     reader.readAsDataURL(file);
 
-    // Show region selector
-    setShowRegionSelector(true);
+    // Move to preview step
+    setCurrentStep('preview');
   };
 
   const findRestaurantName = async (imageFile: File) => {
+    setCurrentStep('processing');
     setIsProcessing(true);
     setError('');
     setResult(null);
@@ -91,13 +94,16 @@ export default function RestaurantNameFinder() {
           setError(`Error: ${data.reason || 'Unknown error'}`);
         }
         setResult(null);
+        setCurrentStep('result');
       } else {
         setResult(data);
+        setCurrentStep('result');
       }
     } catch (err: any) {
       console.error('Restaurant name finder error:', err);
       setError(`Failed to analyze image: ${err.message || 'Unknown error'}. Please try another image.`);
       setResult(null);
+      setCurrentStep('result');
     } finally {
       setIsProcessing(false);
     }
@@ -111,36 +117,41 @@ export default function RestaurantNameFinder() {
       { type: 'image/jpeg' }
     );
 
-    setShowRegionSelector(false);
-
     // Find restaurant name in the cropped image
     await findRestaurantName(croppedFile);
   };
 
   const handleSkipRegionSelection = async () => {
     // Process the full image without cropping
-    setShowRegionSelector(false);
     if (selectedImage) {
       await findRestaurantName(selectedImage);
     }
   };
 
   const handleCancelRegionSelection = () => {
-    setShowRegionSelector(false);
-    setSelectedImage(null);
-    setImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    setCurrentStep('preview');
+  };
+
+  const handleProceedToRegionSelection = () => {
+    setCurrentStep('select-region');
   };
 
   const handleRetake = () => {
+    setCurrentStep('capture');
     setSelectedImage(null);
     setImagePreview(null);
     setResult(null);
     setError('');
     setCopied(false);
-    setShowRegionSelector(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleCancelPreview = () => {
+    setCurrentStep('capture');
+    setSelectedImage(null);
+    setImagePreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -172,8 +183,61 @@ export default function RestaurantNameFinder() {
     }
   };
 
-  // Show region selector if image is selected and region selector is active
-  if (showRegionSelector && imagePreview) {
+  // Step 2: Preview Image (Full Screen)
+  if (currentStep === 'preview' && imagePreview) {
+    return (
+      <div className="flex flex-col h-full bg-gray-900">
+        {/* Header */}
+        <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
+          <h3 className="text-white font-semibold">Step 1: Review Photo</h3>
+          <button
+            onClick={handleCancelPreview}
+            className="text-gray-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Full Screen Image Preview */}
+        <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
+          <img
+            src={imagePreview}
+            alt="Preview"
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+
+        {/* Instructions */}
+        <div className="bg-blue-900 px-4 py-3">
+          <p className="text-sm text-blue-100 text-center">
+            Review your photo. Next, you'll select the restaurant name region.
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="p-4 bg-gray-800 space-y-2">
+          <Button
+            onClick={handleProceedToRegionSelection}
+            className="w-full"
+            size="lg"
+            data-testid="proceed-to-region-selection"
+          >
+            Next: Select Restaurant Name
+          </Button>
+          <Button
+            onClick={handleCancelPreview}
+            variant="outline"
+            className="w-full"
+          >
+            Retake Photo
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 3: Region Selection (Full Screen)
+  if (currentStep === 'select-region' && imagePreview) {
     return (
       <ImageRegionSelector
         imageSrc={imagePreview}
@@ -184,6 +248,7 @@ export default function RestaurantNameFinder() {
     );
   }
 
+  // Step 4: Processing & Results
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* File input (hidden, triggered by button) */}
@@ -197,16 +262,41 @@ export default function RestaurantNameFinder() {
         data-testid="restaurant-finder-input"
       />
 
+      {/* Progress Indicator */}
+      {currentStep !== 'capture' && (
+        <div className="bg-white border-b border-gray-200 px-4 py-3">
+          <div className="flex items-center justify-center gap-2">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+              currentStep === 'preview' ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'
+            }`}>1</div>
+            <div className="w-12 h-0.5 bg-gray-300"></div>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+              currentStep === 'select-region' ? 'bg-blue-600 text-white' :
+              currentStep === 'processing' || currentStep === 'result' ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'
+            }`}>2</div>
+            <div className="w-12 h-0.5 bg-gray-300"></div>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+              currentStep === 'processing' || currentStep === 'result' ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
+            }`}>3</div>
+          </div>
+          <div className="flex justify-between mt-2 text-xs text-gray-600">
+            <span>Photo</span>
+            <span>Region</span>
+            <span>Result</span>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Image Preview */}
-        {imagePreview && !showRegionSelector && (
+        {/* Image Preview (small, in results) */}
+        {imagePreview && currentStep === 'result' && (
           <div className="bg-white rounded-lg border border-gray-200 p-3">
             <img
               src={imagePreview}
               alt="Captured"
               className="w-full h-auto rounded"
-              style={{ maxHeight: '40vh', objectFit: 'contain' }}
+              style={{ maxHeight: '30vh', objectFit: 'contain' }}
             />
           </div>
         )}
@@ -342,7 +432,7 @@ export default function RestaurantNameFinder() {
         )}
 
         {/* Instructions */}
-        {!selectedImage && (
+        {currentStep === 'capture' && (
           <>
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
               <h3 className="text-sm font-semibold text-blue-900 mb-2">How to use:</h3>
@@ -378,7 +468,7 @@ export default function RestaurantNameFinder() {
 
         {/* Action Buttons */}
         <div className="space-y-2">
-          {!selectedImage ? (
+          {currentStep === 'capture' ? (
             <>
               <Button
                 onClick={() => fileInputRef.current?.click()}
@@ -393,7 +483,7 @@ export default function RestaurantNameFinder() {
                 On mobile: Opens camera or photo library
               </p>
             </>
-          ) : (
+          ) : currentStep === 'result' && (
             <Button
               onClick={handleRetake}
               variant="outline"
