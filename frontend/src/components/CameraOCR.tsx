@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Camera, Copy, RotateCcw, Loader2, Check } from 'lucide-react';
 import { pb } from '@/lib/pocketbase';
+import ImageRegionSelector from '@/components/ImageRegionSelector';
 
 interface TextBlock {
   text: string;
@@ -17,6 +18,7 @@ export default function CameraOCR() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [showRegionSelector, setShowRegionSelector] = useState(false);
   const [textBlocks, setTextBlocks] = useState<TextBlock[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
@@ -49,8 +51,8 @@ export default function CameraOCR() {
     };
     reader.readAsDataURL(file);
 
-    // Run OCR via backend API
-    runOCR(file);
+    // Show region selector instead of running OCR immediately
+    setShowRegionSelector(true);
   };
 
   const runOCR = async (imageFile: File) => {
@@ -97,12 +99,44 @@ export default function CameraOCR() {
     }
   };
 
+  const handleRegionSelect = async (croppedImageBlob: Blob) => {
+    // Convert blob to File
+    const croppedFile = new File(
+      [croppedImageBlob],
+      'cropped.jpg',
+      { type: 'image/jpeg' }
+    );
+
+    setShowRegionSelector(false);
+
+    // Run OCR on the cropped image
+    await runOCR(croppedFile);
+  };
+
+  const handleSkipRegionSelection = async () => {
+    // Process the full image without cropping
+    setShowRegionSelector(false);
+    if (selectedImage) {
+      await runOCR(selectedImage);
+    }
+  };
+
+  const handleCancelRegionSelection = () => {
+    setShowRegionSelector(false);
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleRetake = () => {
     setSelectedImage(null);
     setImagePreview(null);
     setTextBlocks([]);
     setError('');
     setCopiedIndex(null);
+    setShowRegionSelector(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -120,6 +154,18 @@ export default function CameraOCR() {
       setError('Failed to copy text to clipboard');
     }
   };
+
+  // Show region selector if image is selected and region selector is active
+  if (showRegionSelector && imagePreview) {
+    return (
+      <ImageRegionSelector
+        imageSrc={imagePreview}
+        onRegionSelect={handleRegionSelect}
+        onSkip={handleSkipRegionSelection}
+        onCancel={handleCancelRegionSelection}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
