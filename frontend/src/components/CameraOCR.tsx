@@ -32,18 +32,18 @@ export default function CameraOCR() {
     setError('');
     setExtractedText('');
 
-    // Create preview
+    // Create preview URL for display only
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      setImagePreview(dataUrl);
-      // Automatically run OCR when image is loaded
-      runOCR(dataUrl);
+      setImagePreview(e.target?.result as string);
     };
     reader.readAsDataURL(file);
+
+    // Run OCR directly on the File object (not data URL)
+    runOCR(file);
   };
 
-  const runOCR = async (imageDataUrl: string) => {
+  const runOCR = async (imageFile: File) => {
     setIsProcessing(true);
     setError('');
     setExtractedText('');
@@ -68,8 +68,8 @@ export default function CameraOCR() {
 
       setExtractedText('Extracting text...');
 
-      // Recognize text from image
-      const { data } = await worker.recognize(imageDataUrl);
+      // Pass File object directly to Tesseract (avoids data URL security issues)
+      const { data } = await worker.recognize(imageFile);
 
       // Get extracted text and clean it up
       const text = data.text.trim();
