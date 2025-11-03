@@ -2,7 +2,14 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 
@@ -11,7 +18,10 @@ interface SignUpPageProps {
   initialInviteCode?: string;
 }
 
-export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: SignUpPageProps) {
+export default function SignUpPage({
+  onNavigateToLogin,
+  initialInviteCode,
+}: SignUpPageProps) {
   const [email, setEmail] = useState("");
   const [inviteCode, setInviteCode] = useState(initialInviteCode || "");
   const [password, setPassword] = useState("");
@@ -49,12 +59,15 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
       // Look up the invite code to find who invited this user
       let inviterInfo = null;
       try {
-        logger.log('[SignUp] Looking up inviter for invite code:', inviteCode);
-        const response = await pb.send(`/api/invite-codes/inviter/${inviteCode}`, {
-          method: 'GET',
-        });
+        logger.log("[SignUp] Looking up inviter for invite code:", inviteCode);
+        const response = await pb.send(
+          `/api/invite-codes/inviter/${inviteCode}`,
+          {
+            method: "GET",
+          }
+        );
 
-        logger.log('[SignUp] Inviter API response:', response);
+        logger.log("[SignUp] Inviter API response:", response);
 
         if (response.hasInviter && response.inviter) {
           inviterInfo = {
@@ -62,26 +75,27 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
             email: response.inviter.email,
             name: response.inviter.name,
           };
-          logger.log('[SignUp] Inviter info found:', inviterInfo);
+          logger.log("[SignUp] Inviter info found:", inviterInfo);
         } else {
-          logger.log('[SignUp] No inviter for this invite code (initial code)');
+          logger.log("[SignUp] No inviter for this invite code (initial code)");
         }
       } catch (inviteErr) {
-        logger.error('[SignUp] Could not fetch inviter info:', inviteErr);
+        logger.error("[SignUp] Could not fetch inviter info:", inviteErr);
         // Continue with signup even if we can't get inviter info
       }
 
       // Create the user account with invite code
-      await pb.collection('users').create({
+      await pb.collection("users").create({
         email,
         password,
         passwordConfirm,
         inviteCode,
-        defaultVisitVisibility: 'friends', // Default visibility for new users
+        defaultVisitVisibility: "friends", // Default visibility for new users
+        defaultRestaurantVisibility: "friends", // Default restaurant visibility for new users
       });
 
       // Send verification email
-      await pb.collection('users').requestVerification(email);
+      await pb.collection("users").requestVerification(email);
 
       // If we found an inviter, store their info for post-login friend suggestion
       if (inviterInfo) {
@@ -91,10 +105,18 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
           inviterName: inviterInfo.name,
           newUserEmail: email,
         };
-        localStorage.setItem('pendingFriendSuggestion', JSON.stringify(suggestionData));
-        logger.log('[SignUp] Stored friend suggestion in localStorage:', suggestionData);
+        localStorage.setItem(
+          "pendingFriendSuggestion",
+          JSON.stringify(suggestionData)
+        );
+        logger.log(
+          "[SignUp] Stored friend suggestion in localStorage:",
+          suggestionData
+        );
       } else {
-        logger.log('[SignUp] No inviter info to store - skipping friend suggestion');
+        logger.log(
+          "[SignUp] No inviter info to store - skipping friend suggestion"
+        );
       }
 
       // Show success message
@@ -118,7 +140,9 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
         } else if (errorData.inviteCode) {
           setError(`Invite code: ${errorData.inviteCode.message}`);
         } else {
-          setError(err.message || "Failed to create account. Please try again.");
+          setError(
+            err.message || "Failed to create account. Please try again."
+          );
         }
       } else {
         // Use the error message directly from the error object
@@ -142,33 +166,62 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
   }, [success, countdown, onNavigateToLogin]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="signup-page">
+    <div
+      className="min-h-screen flex items-center justify-center bg-background p-4"
+      data-testid="signup-page"
+    >
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center" data-testid="signup-title">Create an account</CardTitle>
-          <CardDescription className="text-center" data-testid="signup-description">
+          <CardTitle
+            className="text-2xl text-center"
+            data-testid="signup-title"
+          >
+            Create an account
+          </CardTitle>
+          <CardDescription
+            className="text-center"
+            data-testid="signup-description"
+          >
             {initialInviteCode
               ? "🎉 You've been invited! Complete the form below to join."
-              : "Enter your invite code, email and password to sign up"
-            }
+              : "Enter your invite code, email and password to sign up"}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSignUp} data-testid="signup-form">
           <CardContent className="space-y-4">
             {initialInviteCode && !success && (
-              <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="invite-welcome">
-                You're using invite code: <span className="font-mono font-semibold">{initialInviteCode}</span>
+              <div
+                className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md"
+                data-testid="invite-welcome"
+              >
+                You're using invite code:{" "}
+                <span className="font-mono font-semibold">
+                  {initialInviteCode}
+                </span>
               </div>
             )}
             {success && (
-              <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="signup-success">
-                <div className="font-semibold mb-1">Account created successfully! 🎉</div>
-                <div>Please check your email inbox (and spam folder) for a verification link.</div>
-                <div className="mt-2 text-xs text-green-600">Redirecting to login in {countdown}...</div>
+              <div
+                className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md"
+                data-testid="signup-success"
+              >
+                <div className="font-semibold mb-1">
+                  Account created successfully! 🎉
+                </div>
+                <div>
+                  Please check your email inbox (and spam folder) for a
+                  verification link.
+                </div>
+                <div className="mt-2 text-xs text-green-600">
+                  Redirecting to login in {countdown}...
+                </div>
               </div>
             )}
             {error && !success && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="signup-error">
+              <div
+                className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md"
+                data-testid="signup-error"
+              >
                 {error}
               </div>
             )}
@@ -229,11 +282,21 @@ export default function SignUpPage({ onNavigateToLogin, initialInviteCode }: Sig
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
             {success ? (
-              <Button type="button" className="w-full" onClick={onNavigateToLogin} data-testid="signup-goto-login-success">
+              <Button
+                type="button"
+                className="w-full"
+                onClick={onNavigateToLogin}
+                data-testid="signup-goto-login-success"
+              >
                 Back to Login
               </Button>
             ) : (
-              <Button type="submit" className="w-full" disabled={loading} data-testid="signup-submit">
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading}
+                data-testid="signup-submit"
+              >
                 {loading ? "Creating account..." : "Sign Up"}
               </Button>
             )}
