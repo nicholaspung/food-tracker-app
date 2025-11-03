@@ -18,6 +18,8 @@ import (
 
 	"cloud.google.com/go/maps/places/apiv1"
 	"cloud.google.com/go/maps/places/apiv1/placespb"
+	vision "cloud.google.com/go/vision/apiv1"
+	"cloud.google.com/go/vision/v2/apiv1/visionpb"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/jdeng/goheif"
 	"github.com/joho/godotenv"
@@ -437,6 +439,89 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			// Return CSV text
 			return e.JSON(200, map[string]any{
 				"csv": responseText,
+			})
+		})
+
+		// Custom API endpoint: OCR text from image using Google Cloud Vision API
+		se.Router.POST("/api/ocr", func(e *core.RequestEvent) error {
+			// Authentication required
+			authRecord := e.Auth
+			if authRecord == nil {
+				return apis.NewUnauthorizedError("authentication required", nil)
+			}
+
+			// Get Google Cloud API key from environment (same key used for Places API)
+			apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+			if apiKey == "" {
+				log.Printf("ERROR: GOOGLE_PLACES_API_KEY environment variable not set")
+				return apis.NewApiError(500, "Google Cloud API key not configured", nil)
+			}
+
+			// Parse multipart form
+			if err := e.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
+				return apis.NewBadRequestError("failed to parse multipart form", err)
+			}
+
+			// Get the uploaded file
+			file, header, err := e.Request.FormFile("image")
+			if err != nil {
+				return apis.NewBadRequestError("image file is required", err)
+			}
+			defer file.Close()
+
+			log.Printf("Running OCR on image: %s, size: %d bytes", header.Filename, header.Size)
+
+			// Read file into memory
+			imageData, err := io.ReadAll(file)
+			if err != nil {
+				return apis.NewApiError(500, "failed to read image file", err)
+			}
+
+			// Initialize Vision API client
+			ctx := context.Background()
+			visionClient, err := vision.NewImageAnnotatorClient(ctx, option.WithAPIKey(apiKey))
+			if err != nil {
+				log.Printf("Failed to create Vision API client: %v", err)
+				return apis.NewApiError(500, "failed to initialize Google Vision API", err)
+			}
+			defer visionClient.Close()
+
+			// Create image object
+			img := &visionpb.Image{
+				Content: imageData,
+			}
+
+			// Perform text detection
+			annotations, err := visionClient.DetectTexts(ctx, img, nil)
+			if err != nil {
+				log.Printf("Vision API text detection error: %v", err)
+				return apis.NewApiError(500, "failed to detect text", err)
+			}
+
+			if len(annotations) == 0 {
+				log.Printf("No text detected in image")
+				return e.JSON(200, map[string]any{
+					"textBlocks": []map[string]any{},
+				})
+			}
+
+			// First annotation contains the full text, rest are individual text blocks
+			textBlocks := make([]map[string]any, 0)
+
+			// Skip first annotation (full text) and process individual text blocks
+			for i := 1; i < len(annotations); i++ {
+				textBlock := annotations[i]
+				textBlocks = append(textBlocks, map[string]any{
+					"text":        textBlock.Description,
+					"confidence":  textBlock.Score,
+				})
+			}
+
+			log.Printf("Detected %d text blocks", len(textBlocks))
+
+			return e.JSON(200, map[string]any{
+				"textBlocks": textBlocks,
+				"fullText":   annotations[0].Description,
 			})
 		})
 
