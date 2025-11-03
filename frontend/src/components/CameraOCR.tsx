@@ -1,16 +1,26 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Copy, RotateCcw, Loader2 } from 'lucide-react';
-import { createWorker } from 'tesseract.js';
+import { Camera, Copy, RotateCcw, Loader2, Check } from 'lucide-react';
+import { pb } from '@/lib/pocketbase';
+
+interface TextBlock {
+  text: string;
+  confidence: number;
+}
+
+interface OCRResponse {
+  textBlocks: TextBlock[];
+  fullText: string;
+}
 
 export default function CameraOCR() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [extractedText, setExtractedText] = useState<string>('');
+  const [textBlocks, setTextBlocks] = useState<TextBlock[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -30,80 +40,58 @@ export default function CameraOCR() {
 
     setSelectedImage(file);
     setError('');
-    setExtractedText('');
+    setTextBlocks([]);
 
-    // Create preview URL for display only
+    // Create preview URL for display
     const reader = new FileReader();
     reader.onload = (e) => {
       setImagePreview(e.target?.result as string);
     };
     reader.readAsDataURL(file);
 
-    // Run OCR directly on the File object (not data URL)
+    // Run OCR via backend API
     runOCR(file);
   };
 
   const runOCR = async (imageFile: File) => {
     setIsProcessing(true);
     setError('');
-    setExtractedText('');
-
-    let worker = null;
+    setTextBlocks([]);
 
     try {
-      // Create Tesseract worker with default CDN (better CORS handling)
-      setExtractedText('Initializing OCR...');
-      worker = await createWorker('eng', 1, {
-        logger: (m) => {
-          console.log('[Tesseract]', m);
-          if (m.status === 'recognizing text') {
-            setExtractedText(`Processing: ${Math.round(m.progress * 100)}%`);
-          } else if (m.status === 'loading tesseract core') {
-            setExtractedText('Loading OCR engine...');
-          } else if (m.status === 'loading language traineddata') {
-            setExtractedText('Loading language data...');
-          }
+      // Create FormData and upload to backend
+      const formData = new FormData();
+      formData.append('image', imageFile);
+
+      // Use PocketBase SDK to send authenticated request
+      const baseUrl = pb.baseUrl;
+      const token = pb.authStore.token;
+
+      const response = await fetch(`${baseUrl}/api/ocr`, {
+        method: 'POST',
+        headers: {
+          'Authorization': token ? `${token}` : '',
         },
+        body: formData,
       });
 
-      setExtractedText('Extracting text...');
-
-      // Pass File object directly to Tesseract (avoids data URL security issues)
-      const { data } = await worker.recognize(imageFile);
-
-      // Get extracted text and clean it up
-      const text = data.text.trim();
-
-      if (text) {
-        setExtractedText(text);
-      } else {
-        setExtractedText('No text detected. Try another image with clearer text.');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.message || 'OCR failed');
       }
 
-      // Terminate worker to free up resources
-      await worker.terminate();
+      const data: OCRResponse = await response.json();
+
+      if (data.textBlocks && data.textBlocks.length > 0) {
+        setTextBlocks(data.textBlocks);
+      } else {
+        setTextBlocks([]);
+        setError('No text detected in the image. Try another image with clearer text.');
+      }
     } catch (err: any) {
       console.error('OCR error:', err);
-
-      // Show detailed error message
-      const errorMsg = err?.message || err?.toString() || 'Unknown error';
-
-      if (errorMsg.includes('CORS') || errorMsg.includes('cross-origin')) {
-        setError(`Network Error: Unable to load OCR resources. Please check your connection and try again.`);
-      } else {
-        setError(`OCR Error: ${errorMsg}. Please try another image.`);
-      }
-
-      setExtractedText(''); // Clear any progress message
-
-      // Clean up worker if it was created
-      if (worker) {
-        try {
-          await worker.terminate();
-        } catch (e) {
-          console.error('Error terminating worker:', e);
-        }
-      }
+      setError(`Failed to extract text: ${err.message || 'Unknown error'}. Please try another image.`);
+      setTextBlocks([]);
     } finally {
       setIsProcessing(false);
     }
@@ -112,21 +100,21 @@ export default function CameraOCR() {
   const handleRetake = () => {
     setSelectedImage(null);
     setImagePreview(null);
-    setExtractedText('');
+    setTextBlocks([]);
     setError('');
-    setCopySuccess(false);
+    setCopiedIndex(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  const copyText = async () => {
-    if (!extractedText) return;
+  const copyText = async (text: string, index: number) => {
+    if (!text) return;
 
     try {
-      await navigator.clipboard.writeText(extractedText);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
     } catch (err) {
       console.error('Failed to copy text:', err);
       setError('Failed to copy text to clipboard');
@@ -172,30 +160,50 @@ export default function CameraOCR() {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-center gap-3">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <p className="text-sm text-gray-600">{extractedText || 'Processing...'}</p>
+              <p className="text-sm text-gray-600">Extracting text with Google Cloud Vision...</p>
             </div>
           </div>
         )}
 
-        {/* Extracted Text */}
-        {extractedText && !isProcessing && !error && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Extracted Text</h3>
-              <Button
-                onClick={copyText}
-                variant="outline"
-                size="sm"
-                data-testid="copy-text-button"
-              >
-                <Copy className="w-4 h-4 mr-1" />
-                {copySuccess ? 'Copied!' : 'Copy'}
-              </Button>
-            </div>
-            <div className="p-3 bg-gray-50 rounded border border-gray-200">
-              <p className="text-sm text-gray-800 whitespace-pre-wrap" data-testid="extracted-text">
-                {extractedText}
-              </p>
+        {/* Extracted Text Blocks */}
+        {textBlocks.length > 0 && !isProcessing && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">
+              Detected Text ({textBlocks.length} blocks)
+            </h3>
+            <div className="space-y-2">
+              {textBlocks.map((block, index) => (
+                <div
+                  key={index}
+                  className="bg-white rounded-lg border border-gray-200 p-3 flex items-center justify-between gap-3"
+                  data-testid={`text-block-${index}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-800 break-words">
+                      {block.text}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => copyText(block.text, index)}
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0"
+                    data-testid={`copy-button-${index}`}
+                  >
+                    {copiedIndex === index ? (
+                      <>
+                        <Check className="w-4 h-4 mr-1 text-green-600" />
+                        <span className="text-green-600">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 mr-1" />
+                        Copy
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -210,14 +218,18 @@ export default function CameraOCR() {
                 <li>Point at text with good lighting</li>
                 <li>Keep text centered and in focus</li>
                 <li>Avoid glare and shadows</li>
+                <li>Each piece of detected text will have its own copy button</li>
               </ul>
             </div>
 
             <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
               <h3 className="text-sm font-semibold text-amber-900 mb-2">📱 Beta Feature</h3>
-              <p className="text-sm text-amber-800">
-                This feature uses your device's camera or photo library.
-                On mobile, you'll be able to take a photo directly or choose from your gallery.
+              <p className="text-sm text-amber-800 mb-2">
+                This feature uses Google Cloud Vision API for high-accuracy text detection.
+                On mobile, you can take a photo directly or choose from your gallery.
+              </p>
+              <p className="text-xs text-amber-700">
+                Note: Images are processed by Google Cloud for OCR and not stored permanently.
               </p>
             </div>
           </>
