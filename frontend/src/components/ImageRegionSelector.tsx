@@ -9,6 +9,8 @@ interface Region {
   endY: number;
 }
 
+type DragHandle = 'tl' | 'tr' | 'bl' | 'br' | 'box' | null;
+
 interface ImageRegionSelectorProps {
   imageSrc: string;
   onRegionSelect: (croppedImageBlob: Blob) => void;
@@ -24,12 +26,13 @@ export default function ImageRegionSelector({
 }: ImageRegionSelectorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [dragHandle, setDragHandle] = useState<DragHandle>(null);
+  const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [region, setRegion] = useState<Region | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
 
-  // Load image
+  // Load image and create initial bounding box
   useEffect(() => {
     const img = new Image();
     img.onload = () => {
@@ -39,6 +42,19 @@ export default function ImageRegionSelector({
         const containerWidth = containerRef.current.offsetWidth;
         const scale = Math.min(containerWidth / img.width, 1);
         setCanvasScale(scale);
+
+        // Create initial bounding box (centered, 60% of image size)
+        const boxWidth = img.width * 0.6;
+        const boxHeight = img.height * 0.4;
+        const startX = (img.width - boxWidth) / 2;
+        const startY = (img.height - boxHeight) / 2;
+
+        setRegion({
+          startX,
+          startY,
+          endX: startX + boxWidth,
+          endY: startY + boxHeight,
+        });
       }
     };
     img.src = imageSrc;
@@ -85,17 +101,26 @@ export default function ImageRegionSelector({
       ctx.lineWidth = 3;
       ctx.strokeRect(x, y, width, height);
 
-      // Draw corner handles
-      const handleSize = 10;
+      // Draw corner handles (larger for touch)
+      const handleSize = 24;
       ctx.fillStyle = '#3B82F6';
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2;
+
+      // Helper to draw handle
+      const drawHandle = (hx: number, hy: number) => {
+        ctx.fillRect(hx - handleSize/2, hy - handleSize/2, handleSize, handleSize);
+        ctx.strokeRect(hx - handleSize/2, hy - handleSize/2, handleSize, handleSize);
+      };
+
       // Top-left
-      ctx.fillRect(x - handleSize/2, y - handleSize/2, handleSize, handleSize);
+      drawHandle(x, y);
       // Top-right
-      ctx.fillRect(x + width - handleSize/2, y - handleSize/2, handleSize, handleSize);
+      drawHandle(x + width, y);
       // Bottom-left
-      ctx.fillRect(x - handleSize/2, y + height - handleSize/2, handleSize, handleSize);
+      drawHandle(x, y + height);
       // Bottom-right
-      ctx.fillRect(x + width - handleSize/2, y + height - handleSize/2, handleSize, handleSize);
+      drawHandle(x + width, y + height);
     }
   }, [image, region, canvasScale]);
 
@@ -110,25 +135,115 @@ export default function ImageRegionSelector({
     return { x, y };
   };
 
+  const getHandleAtPosition = (x: number, y: number): DragHandle => {
+    if (!region) return null;
+
+    const handleSize = 24 / canvasScale; // Convert back to image coordinates
+    const threshold = handleSize;
+
+    const minX = Math.min(region.startX, region.endX);
+    const minY = Math.min(region.startY, region.endY);
+    const maxX = Math.max(region.startX, region.endX);
+    const maxY = Math.max(region.startY, region.endY);
+
+    // Check corners
+    if (Math.abs(x - minX) < threshold && Math.abs(y - minY) < threshold) return 'tl';
+    if (Math.abs(x - maxX) < threshold && Math.abs(y - minY) < threshold) return 'tr';
+    if (Math.abs(x - minX) < threshold && Math.abs(y - maxY) < threshold) return 'bl';
+    if (Math.abs(x - maxX) < threshold && Math.abs(y - maxY) < threshold) return 'br';
+
+    // Check if inside box (for moving whole box)
+    if (x > minX && x < maxX && y > minY && y < maxY) return 'box';
+
+    return null;
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
 
-    setIsDrawing(true);
-    setRegion({ startX: x, startY: y, endX: x, endY: y });
+    const handle = getHandleAtPosition(x, y);
+    if (handle) {
+      setDragHandle(handle);
+      setDragStartPos({ x, y });
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !region) return;
+    if (!dragHandle || !region || !dragStartPos) return;
 
     e.preventDefault();
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
+    const dx = x - dragStartPos.x;
+    const dy = y - dragStartPos.y;
 
-    setRegion({ ...region, endX: x, endY: y });
+    let newRegion = { ...region };
+
+    if (dragHandle === 'box') {
+      // Move entire box
+      newRegion.startX += dx;
+      newRegion.startY += dy;
+      newRegion.endX += dx;
+      newRegion.endY += dy;
+
+      // Constrain to image bounds
+      if (image) {
+        const width = Math.abs(newRegion.endX - newRegion.startX);
+        const height = Math.abs(newRegion.endY - newRegion.startY);
+        const minX = Math.min(newRegion.startX, newRegion.endX);
+        const minY = Math.min(newRegion.startY, newRegion.endY);
+
+        if (minX < 0) {
+          newRegion.startX -= minX;
+          newRegion.endX -= minX;
+        }
+        if (minY < 0) {
+          newRegion.startY -= minY;
+          newRegion.endY -= minY;
+        }
+        if (minX + width > image.width) {
+          const overflow = (minX + width) - image.width;
+          newRegion.startX -= overflow;
+          newRegion.endX -= overflow;
+        }
+        if (minY + height > image.height) {
+          const overflow = (minY + height) - image.height;
+          newRegion.startY -= overflow;
+          newRegion.endY -= overflow;
+        }
+      }
+    } else {
+      // Move corner
+      if (dragHandle === 'tl') {
+        newRegion.startX = x;
+        newRegion.startY = y;
+      } else if (dragHandle === 'tr') {
+        newRegion.endX = x;
+        newRegion.startY = y;
+      } else if (dragHandle === 'bl') {
+        newRegion.startX = x;
+        newRegion.endY = y;
+      } else if (dragHandle === 'br') {
+        newRegion.endX = x;
+        newRegion.endY = y;
+      }
+
+      // Constrain to image bounds
+      if (image) {
+        newRegion.startX = Math.max(0, Math.min(image.width, newRegion.startX));
+        newRegion.startY = Math.max(0, Math.min(image.height, newRegion.startY));
+        newRegion.endX = Math.max(0, Math.min(image.width, newRegion.endX));
+        newRegion.endY = Math.max(0, Math.min(image.height, newRegion.endY));
+      }
+    }
+
+    setRegion(newRegion);
+    setDragStartPos({ x, y });
   };
 
   const handlePointerUp = () => {
-    setIsDrawing(false);
+    setDragHandle(null);
+    setDragStartPos(null);
   };
 
   const handleConfirm = async () => {
@@ -192,7 +307,7 @@ export default function ImageRegionSelector({
       {/* Instructions */}
       <div className="bg-blue-900 px-4 py-2">
         <p className="text-xs text-blue-100 text-center">
-          Draw a box around the restaurant name for better accuracy
+          Drag the corners or box to adjust the selection area
         </p>
       </div>
 
@@ -208,7 +323,7 @@ export default function ImageRegionSelector({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className="touch-none cursor-crosshair"
+            className="touch-none cursor-move"
             style={{
               display: 'block',
               maxWidth: '100%',
