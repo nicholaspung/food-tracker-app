@@ -96,16 +96,23 @@ export default function AddItemsToVisit({
     } else {
       const draft = visitDraftService.getDraft();
       if (draft.items.length > 0) {
-        // Convert draft items back to Map structure
-        const restoredMap = new Map<string, SelectedItemWithDescription>();
-        draft.items.forEach((draftItem) => {
-          restoredMap.set(draftItem.menuItem.id, {
-            menuItem: draftItem.menuItem,
-            description: draftItem.description,
-            showDescriptionInput: false,
+        // Filter items to only include those from the current restaurant
+        const itemsForCurrentRestaurant = draft.items.filter(
+          (draftItem) => draftItem.menuItem.restaurant === restaurantId
+        );
+
+        if (itemsForCurrentRestaurant.length > 0) {
+          // Convert draft items back to Map structure
+          const restoredMap = new Map<string, SelectedItemWithDescription>();
+          itemsForCurrentRestaurant.forEach((draftItem) => {
+            restoredMap.set(draftItem.menuItem.id, {
+              menuItem: draftItem.menuItem,
+              description: draftItem.description,
+              showDescriptionInput: false,
+            });
           });
-        });
-        setSelectedItems(restoredMap);
+          setSelectedItems(restoredMap);
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
