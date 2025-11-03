@@ -390,11 +390,11 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 				return apis.NewUnauthorizedError("authentication required", nil)
 			}
 
-			// Get Google Cloud Vision API key from environment
-			visionAPIKey := os.Getenv("GOOGLE_VISION_API_KEY")
-			if visionAPIKey == "" {
-				log.Printf("ERROR: GOOGLE_VISION_API_KEY environment variable not set")
-				return apis.NewApiError(500, "Google Vision API key not configured", nil)
+			// Get Google Cloud API key from environment (same key used for Places API)
+			apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+			if apiKey == "" {
+				log.Printf("ERROR: GOOGLE_PLACES_API_KEY environment variable not set")
+				return apis.NewApiError(500, "Google Cloud API key not configured", nil)
 			}
 
 			// Parse multipart form
@@ -419,7 +419,7 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 
 			// Initialize Vision API client
 			ctx := context.Background()
-			visionClient, err := vision.NewImageAnnotatorClient(ctx, option.WithAPIKey(visionAPIKey))
+			visionClient, err := vision.NewImageAnnotatorClient(ctx, option.WithAPIKey(apiKey))
 			if err != nil {
 				log.Printf("Failed to create Vision API client: %v", err)
 				return apis.NewApiError(500, "failed to initialize Google Vision API", err)
