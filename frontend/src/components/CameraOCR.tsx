@@ -89,19 +89,25 @@ export default function CameraOCR() {
     setError('');
     setExtractedText('');
 
+    let worker = null;
+
     try {
-      // Create Tesseract worker with explicit CDN paths
-      const worker = await createWorker('eng', 1, {
-        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
-        langPath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/lang-data',
-        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0',
+      // Create Tesseract worker with default CDN (better CORS handling)
+      setExtractedText('Initializing OCR...');
+      worker = await createWorker('eng', 1, {
         logger: (m) => {
           console.log('[Tesseract]', m);
           if (m.status === 'recognizing text') {
             setExtractedText(`Processing: ${Math.round(m.progress * 100)}%`);
+          } else if (m.status === 'loading tesseract core') {
+            setExtractedText('Loading OCR engine...');
+          } else if (m.status === 'loading language traineddata') {
+            setExtractedText('Loading language data...');
           }
         },
       });
+
+      setExtractedText('Extracting text...');
 
       // Recognize text from image
       const { data } = await worker.recognize(imageDataUrl);
@@ -119,10 +125,28 @@ export default function CameraOCR() {
       await worker.terminate();
     } catch (err: any) {
       console.error('OCR error:', err);
-      // Show the actual error message to help debug
+
+      // Show detailed error message
       const errorMsg = err?.message || err?.toString() || 'Unknown error';
-      setError(`OCR Error: ${errorMsg}`);
+
+      if (errorMsg.includes('insecure')) {
+        setError(`Security Error: This feature requires HTTPS. Please access the app via HTTPS or use localhost.`);
+      } else if (errorMsg.includes('CORS') || errorMsg.includes('cross-origin')) {
+        setError(`Network Error: Unable to load OCR resources. Please check your connection.`);
+      } else {
+        setError(`OCR Error: ${errorMsg}`);
+      }
+
       setExtractedText(''); // Clear any progress message
+
+      // Clean up worker if it was created
+      if (worker) {
+        try {
+          await worker.terminate();
+        } catch (e) {
+          console.error('Error terminating worker:', e);
+        }
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -252,15 +276,25 @@ export default function CameraOCR() {
 
         {/* Instructions */}
         {!capturedImage && !error && isCameraReady && (
-          <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-            <h3 className="text-sm font-semibold text-blue-900 mb-2">Tips for best results:</h3>
-            <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-              <li>Point camera at text with good lighting</li>
-              <li>Keep text centered and in focus</li>
-              <li>Avoid glare and shadows</li>
-              <li>Hold steady when capturing</li>
-            </ul>
-          </div>
+          <>
+            <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
+              <h3 className="text-sm font-semibold text-blue-900 mb-2">Tips for best results:</h3>
+              <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                <li>Point camera at text with good lighting</li>
+                <li>Keep text centered and in focus</li>
+                <li>Avoid glare and shadows</li>
+                <li>Hold steady when capturing</li>
+              </ul>
+            </div>
+
+            <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
+              <h3 className="text-sm font-semibold text-amber-900 mb-2">⚠️ HTTPS Required</h3>
+              <p className="text-sm text-amber-800">
+                This feature requires a secure connection (HTTPS) to work properly on mobile devices.
+                If you see security errors, make sure you're accessing the app via HTTPS.
+              </p>
+            </div>
+          </>
         )}
       </div>
     </div>
