@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import CameraOCR from '@/components/CameraOCR';
-import { Camera, X } from 'lucide-react';
+import RestaurantNameFinder from '@/components/RestaurantNameFinder';
+import { Camera, Store, X } from 'lucide-react';
 
 interface BetaPageProps {
   onNavigateBack?: () => void;
@@ -13,11 +14,20 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
 
   const betaFeatures = [
     {
+      id: 'restaurant-finder',
+      title: 'AI Restaurant Name Finder',
+      description: 'Use AI to automatically find restaurant names in photos. Supports Korean, Japanese, Chinese, and more.',
+      status: 'beta',
+      component: RestaurantNameFinder,
+      icon: Store,
+    },
+    {
       id: 'camera-ocr',
       title: 'Camera OCR',
       description: 'Use your camera to scan and extract text from restaurant signs and menus',
       status: 'beta',
       component: CameraOCR,
+      icon: Camera,
     },
   ];
 
@@ -78,7 +88,7 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <Camera className="w-5 h-5 text-purple-600" />
+                  {feature.icon && <feature.icon className="w-5 h-5 text-purple-600" />}
                   <h2 className="text-lg font-semibold text-gray-900">
                     {feature.title}
                   </h2>
