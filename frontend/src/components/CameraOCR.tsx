@@ -5,8 +5,8 @@ import { createWorker } from 'tesseract.js';
 
 export default function CameraOCR() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [imageCapture, setImageCapture] = useState<ImageCapture | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [extractedText, setExtractedText] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -30,6 +30,14 @@ export default function CameraOCR() {
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
           setStream(mediaStream);
+
+          // Create ImageCapture instance for better capture capabilities
+          const videoTrack = mediaStream.getVideoTracks()[0];
+          if (videoTrack && 'ImageCapture' in window) {
+            const capture = new ImageCapture(videoTrack);
+            setImageCapture(capture);
+          }
+
           // Wait for video to be ready
           videoRef.current.onloadedmetadata = () => {
             setIsCameraReady(true);
@@ -61,30 +69,21 @@ export default function CameraOCR() {
   }, [stream]);
 
   const captureFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-
-    if (!context) return;
-
     try {
-      // Set canvas dimensions to match video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      let blob: Blob;
 
-      // Draw current video frame to canvas
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Use toBlob instead of toDataURL for better security/performance
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, 'image/jpeg', 0.95);
-      });
-
-      if (!blob) {
-        setError('Failed to capture image');
-        return;
+      // Try ImageCapture API first (best for mobile)
+      if (imageCapture) {
+        try {
+          blob = await imageCapture.takePhoto();
+        } catch (err) {
+          console.warn('ImageCapture failed, falling back to canvas:', err);
+          // Fallback to canvas if ImageCapture fails
+          blob = await captureViaCanvas();
+        }
+      } else {
+        // Fallback to canvas if ImageCapture not available
+        blob = await captureViaCanvas();
       }
 
       // Convert blob to data URL for display and OCR
@@ -103,6 +102,41 @@ export default function CameraOCR() {
       console.error('Capture error:', err);
       setError('Failed to capture frame. Please try again.');
     }
+  };
+
+  // Fallback canvas capture method
+  const captureViaCanvas = async (): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      if (!videoRef.current) {
+        reject(new Error('Video not ready'));
+        return;
+      }
+
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to create blob'));
+          }
+        },
+        'image/jpeg',
+        0.95
+      );
+    });
   };
 
   const runOCR = async (imageDataUrl: string) => {
@@ -150,12 +184,12 @@ export default function CameraOCR() {
       // Show detailed error message
       const errorMsg = err?.message || err?.toString() || 'Unknown error';
 
-      if (errorMsg.includes('insecure')) {
-        setError(`Security Error: Canvas operation blocked. This may be a browser restriction. Try a different browser or device.`);
+      if (errorMsg.includes('insecure') || errorMsg.includes('taint')) {
+        setError(`Security Error: Your browser blocked this operation. Please try using Chrome or Safari, or access the app via HTTPS.`);
       } else if (errorMsg.includes('CORS') || errorMsg.includes('cross-origin')) {
         setError(`Network Error: Unable to load OCR resources. Please check your connection and try again.`);
-      } else if (errorMsg.includes('taint') || errorMsg.includes('cross-origin')) {
-        setError(`Browser Security: Your browser blocked this operation. Try using Chrome or Safari.`);
+      } else if (errorMsg.includes('not supported') || errorMsg.includes('takePhoto')) {
+        setError(`Camera Error: Your device or browser doesn't support image capture. Please try a different browser.`);
       } else {
         setError(`OCR Error: ${errorMsg}`);
       }
@@ -209,7 +243,6 @@ export default function CameraOCR() {
               className="w-full h-auto"
               style={{ maxHeight: '50vh' }}
             />
-            <canvas ref={canvasRef} className="hidden" />
 
             {!isCameraReady && !error && (
               <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
