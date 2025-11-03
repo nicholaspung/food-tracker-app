@@ -27,6 +27,7 @@ interface ProfilePageProps {
   onLogout?: () => void;
   onNavigateToWhatsNew?: () => void;
   onNavigateToSettings?: () => void;
+  onNavigateToBeta?: () => void;
 }
 
 interface ChangelogEntry {
@@ -39,7 +40,7 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings }: ProfilePageProps) {
+export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings, onNavigateToBeta }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -57,6 +58,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
   // Check if user is the initial user from the user record
   const isInitialUser = user?.isInitialUser === true;
+  const isAdmin = user?.isAdmin === true;
 
   // Check if user needs to set a name
   useEffect(() => {
@@ -559,6 +561,17 @@ Looking forward to seeing you there!`;
               >
                 Settings
               </Button>
+
+              {isAdmin && (
+                <Button
+                  onClick={onNavigateToBeta}
+                  variant="outline"
+                  className="w-full border-purple-500 text-purple-700 hover:bg-purple-50"
+                  data-testid="beta-button"
+                >
+                  Beta Features
+                </Button>
+              )}
 
               <Button
                 onClick={handleLogout}
