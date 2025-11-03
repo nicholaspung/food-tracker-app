@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Copy, RotateCcw, Loader2, Check, X } from 'lucide-react';
+import { Camera, Copy, RotateCcw, Loader2, Check } from 'lucide-react';
 import { pb } from '@/lib/pocketbase';
-import ImageRegionSelector from '@/components/ImageRegionSelector';
+import ExpandableImageWithBox from '@/components/ExpandableImageWithBox';
 
 interface TextBlock {
   text: string;
@@ -166,67 +166,14 @@ export default function CameraOCR() {
     }
   };
 
-  // Step 2: Preview Image (Full Screen)
-  if (currentStep === 'preview' && imagePreview) {
+  // Step 2 & 3: Combined Preview + Region Selection with Expandable Image
+  if ((currentStep === 'preview' || currentStep === 'select-region') && imagePreview) {
     return (
-      <div className="flex flex-col h-full bg-gray-900">
-        {/* Header */}
-        <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
-          <h3 className="text-white font-semibold">Step 1: Review Photo</h3>
-          <button
-            onClick={handleCancelPreview}
-            className="text-gray-400 hover:text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Full Screen Image Preview */}
-        <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
-          <img
-            src={imagePreview}
-            alt="Preview"
-            className="max-w-full max-h-full object-contain"
-          />
-        </div>
-
-        {/* Instructions */}
-        <div className="bg-blue-900 px-4 py-3">
-          <p className="text-sm text-blue-100 text-center">
-            Review your photo. Next, you'll select the text region to extract.
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="p-4 bg-gray-800 space-y-2">
-          <Button
-            onClick={handleProceedToRegionSelection}
-            className="w-full"
-            size="lg"
-            data-testid="proceed-to-region-selection"
-          >
-            Next: Select Text Region
-          </Button>
-          <Button
-            onClick={handleCancelPreview}
-            variant="outline"
-            className="w-full"
-          >
-            Retake Photo
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Step 3: Region Selection (Full Screen)
-  if (currentStep === 'select-region' && imagePreview) {
-    return (
-      <ImageRegionSelector
+      <ExpandableImageWithBox
         imageSrc={imagePreview}
-        onRegionSelect={handleRegionSelect}
+        onConfirm={handleRegionSelect}
         onSkip={handleSkipRegionSelection}
-        onCancel={handleCancelRegionSelection}
+        onBack={handleCancelPreview}
       />
     );
   }
