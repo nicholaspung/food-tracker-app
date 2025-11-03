@@ -1,142 +1,46 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Camera, Copy, RotateCcw, Loader2 } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 
 export default function CameraOCR() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [imageCapture, setImageCapture] = useState<ImageCapture | null>(null);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [extractedText, setExtractedText] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
-  const [isCameraReady, setIsCameraReady] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
-  // Initialize camera
-  useEffect(() => {
-    const initCamera = async () => {
-      try {
-        setError('');
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment', // Use back camera on mobile
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        });
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-          setStream(mediaStream);
-
-          // Create ImageCapture instance for better capture capabilities
-          const videoTrack = mediaStream.getVideoTracks()[0];
-          if (videoTrack && 'ImageCapture' in window) {
-            const capture = new ImageCapture(videoTrack);
-            setImageCapture(capture);
-          }
-
-          // Wait for video to be ready
-          videoRef.current.onloadedmetadata = () => {
-            setIsCameraReady(true);
-          };
-        }
-      } catch (err) {
-        console.error('Error accessing camera:', err);
-        setError('Failed to access camera. Please check permissions.');
-      }
-    };
-
-    initCamera();
-
-    // Cleanup: stop camera when component unmounts
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
-
-  // Cleanup stream when stream changes
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [stream]);
-
-  const captureFrame = async () => {
-    try {
-      let blob: Blob;
-
-      // Try ImageCapture API first (best for mobile)
-      if (imageCapture) {
-        try {
-          blob = await imageCapture.takePhoto();
-        } catch (err) {
-          console.warn('ImageCapture failed, falling back to canvas:', err);
-          // Fallback to canvas if ImageCapture fails
-          blob = await captureViaCanvas();
-        }
-      } else {
-        // Fallback to canvas if ImageCapture not available
-        blob = await captureViaCanvas();
-      }
-
-      // Convert blob to data URL for display and OCR
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const imageDataUrl = reader.result as string;
-        setCapturedImage(imageDataUrl);
-        // Run OCR on the captured image
-        runOCR(imageDataUrl);
-      };
-      reader.onerror = () => {
-        setError('Failed to process captured image');
-      };
-      reader.readAsDataURL(blob);
-    } catch (err) {
-      console.error('Capture error:', err);
-      setError('Failed to capture frame. Please try again.');
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Image is too large. Please select an image under 10MB');
+      return;
     }
-  };
 
-  // Fallback canvas capture method
-  const captureViaCanvas = async (): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      if (!videoRef.current) {
-        reject(new Error('Video not ready'));
-        return;
-      }
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file (JPEG, PNG, etc.)');
+      return;
+    }
 
-      const video = videoRef.current;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    setSelectedImage(file);
+    setError('');
+    setExtractedText('');
 
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (!context) {
-        reject(new Error('Failed to get canvas context'));
-        return;
-      }
-
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error('Failed to create blob'));
-          }
-        },
-        'image/jpeg',
-        0.95
-      );
-    });
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setImagePreview(dataUrl);
+      // Automatically run OCR when image is loaded
+      runOCR(dataUrl);
+    };
+    reader.readAsDataURL(file);
   };
 
   const runOCR = async (imageDataUrl: string) => {
@@ -173,7 +77,7 @@ export default function CameraOCR() {
       if (text) {
         setExtractedText(text);
       } else {
-        setExtractedText('No text detected. Try capturing again with better lighting or a clearer view.');
+        setExtractedText('No text detected. Try another image with clearer text.');
       }
 
       // Terminate worker to free up resources
@@ -184,14 +88,10 @@ export default function CameraOCR() {
       // Show detailed error message
       const errorMsg = err?.message || err?.toString() || 'Unknown error';
 
-      if (errorMsg.includes('insecure') || errorMsg.includes('taint')) {
-        setError(`Security Error: Your browser blocked this operation. Please try using Chrome or Safari, or access the app via HTTPS.`);
-      } else if (errorMsg.includes('CORS') || errorMsg.includes('cross-origin')) {
+      if (errorMsg.includes('CORS') || errorMsg.includes('cross-origin')) {
         setError(`Network Error: Unable to load OCR resources. Please check your connection and try again.`);
-      } else if (errorMsg.includes('not supported') || errorMsg.includes('takePhoto')) {
-        setError(`Camera Error: Your device or browser doesn't support image capture. Please try a different browser.`);
       } else {
-        setError(`OCR Error: ${errorMsg}`);
+        setError(`OCR Error: ${errorMsg}. Please try another image.`);
       }
 
       setExtractedText(''); // Clear any progress message
@@ -209,11 +109,15 @@ export default function CameraOCR() {
     }
   };
 
-  const resetCamera = () => {
-    setCapturedImage(null);
+  const handleRetake = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
     setExtractedText('');
     setError('');
     setCopySuccess(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const copyText = async () => {
@@ -231,40 +135,31 @@ export default function CameraOCR() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* Camera View or Captured Image */}
-      <div className="relative bg-black">
-        {!capturedImage ? (
-          <>
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-auto"
-              style={{ maxHeight: '50vh' }}
-            />
+      {/* File input (hidden, triggered by button) */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        className="hidden"
+        data-testid="camera-ocr-input"
+      />
 
-            {!isCameraReady && !error && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
-                <div className="text-white text-center">
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                  <p>Initializing camera...</p>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <img
-            src={capturedImage}
-            alt="Captured frame"
-            className="w-full h-auto"
-            style={{ maxHeight: '50vh' }}
-          />
-        )}
-      </div>
-
-      {/* Controls and Results */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Image Preview */}
+        {imagePreview && (
+          <div className="bg-white rounded-lg border border-gray-200 p-3">
+            <img
+              src={imagePreview}
+              alt="Captured"
+              className="w-full h-auto rounded"
+              style={{ maxHeight: '40vh', objectFit: 'contain' }}
+            />
+          </div>
+        )}
+
         {/* Error Message */}
         {error && (
           <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md">
@@ -272,43 +167,18 @@ export default function CameraOCR() {
           </div>
         )}
 
-        {/* Action Buttons */}
-        {!capturedImage ? (
-          <Button
-            onClick={captureFrame}
-            disabled={!isCameraReady || isProcessing}
-            className="w-full"
-            size="lg"
-            data-testid="capture-button"
-          >
-            <Camera className="w-5 h-5 mr-2" />
-            Capture & Extract Text
-          </Button>
-        ) : (
-          <Button
-            onClick={resetCamera}
-            variant="outline"
-            className="w-full"
-            size="lg"
-            data-testid="reset-button"
-          >
-            <RotateCcw className="w-5 h-5 mr-2" />
-            Take Another Photo
-          </Button>
-        )}
-
         {/* Processing State */}
         {isProcessing && (
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-center gap-3">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <p className="text-sm text-gray-600">Extracting text...</p>
+              <p className="text-sm text-gray-600">{extractedText || 'Processing...'}</p>
             </div>
           </div>
         )}
 
         {/* Extracted Text */}
-        {extractedText && !isProcessing && (
+        {extractedText && !isProcessing && !error && (
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900">Extracted Text</h3>
@@ -331,27 +201,59 @@ export default function CameraOCR() {
         )}
 
         {/* Instructions */}
-        {!capturedImage && !error && isCameraReady && (
+        {!selectedImage && (
           <>
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-              <h3 className="text-sm font-semibold text-blue-900 mb-2">Tips for best results:</h3>
+              <h3 className="text-sm font-semibold text-blue-900 mb-2">How to use:</h3>
               <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                <li>Point camera at text with good lighting</li>
+                <li>Tap the button below to take a photo or upload an image</li>
+                <li>Point at text with good lighting</li>
                 <li>Keep text centered and in focus</li>
                 <li>Avoid glare and shadows</li>
-                <li>Hold steady when capturing</li>
               </ul>
             </div>
 
             <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
               <h3 className="text-sm font-semibold text-amber-900 mb-2">📱 Beta Feature</h3>
               <p className="text-sm text-amber-800">
-                This feature is experimental and may not work on all devices or browsers.
-                For best results, use Chrome or Safari on mobile.
+                This feature uses your device's camera or photo library.
+                On mobile, you'll be able to take a photo directly or choose from your gallery.
               </p>
             </div>
           </>
         )}
+
+        {/* Action Buttons */}
+        <div className="space-y-2">
+          {!selectedImage ? (
+            <>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full"
+                size="lg"
+                data-testid="take-photo-button"
+              >
+                <Camera className="w-5 h-5 mr-2" />
+                Take Photo / Upload Image
+              </Button>
+              <p className="text-xs text-gray-500 text-center">
+                On mobile: Opens camera or photo library
+              </p>
+            </>
+          ) : (
+            <Button
+              onClick={handleRetake}
+              variant="outline"
+              className="w-full"
+              size="lg"
+              data-testid="retake-button"
+              disabled={isProcessing}
+            >
+              <RotateCcw className="w-5 h-5 mr-2" />
+              Take Another Photo
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
