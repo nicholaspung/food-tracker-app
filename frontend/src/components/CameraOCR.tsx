@@ -90,8 +90,18 @@ export default function CameraOCR() {
     setExtractedText('');
 
     try {
-      // Create Tesseract worker
-      const worker = await createWorker('eng');
+      // Create Tesseract worker with explicit CDN paths
+      const worker = await createWorker('eng', 1, {
+        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+        langPath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/lang-data',
+        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0',
+        logger: (m) => {
+          console.log('[Tesseract]', m);
+          if (m.status === 'recognizing text') {
+            setExtractedText(`Processing: ${Math.round(m.progress * 100)}%`);
+          }
+        },
+      });
 
       // Recognize text from image
       const { data } = await worker.recognize(imageDataUrl);
@@ -107,9 +117,12 @@ export default function CameraOCR() {
 
       // Terminate worker to free up resources
       await worker.terminate();
-    } catch (err) {
+    } catch (err: any) {
       console.error('OCR error:', err);
-      setError('Failed to extract text. Please try again.');
+      // Show the actual error message to help debug
+      const errorMsg = err?.message || err?.toString() || 'Unknown error';
+      setError(`OCR Error: ${errorMsg}`);
+      setExtractedText(''); // Clear any progress message
     } finally {
       setIsProcessing(false);
     }
