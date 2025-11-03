@@ -28,6 +28,7 @@ const ROUTES_WITH_TABS = [
   "/friends",
   "/feedback",
   "/settings",
+  "/beta",
 ];
 
 function RootComponent() {
