@@ -233,14 +233,14 @@ func main() {
 			// Verify the code is not already locked
 			lockedUntilStr := record.GetString("locked_until")
 			if lockedUntilStr != "" {
-				lockedUntil, err := record.GetDateTime("locked_until")
-				if err == nil && lockedUntil.Time().After(record.Collection().App().Clock().Now()) {
+				lockedUntil := record.GetDateTime("locked_until")
+				if !lockedUntil.IsZero() && lockedUntil.Time().After(time.Now()) {
 					return apis.NewBadRequestError("this invite code is already locked", nil)
 				}
 			}
 
 			// Set locked_until to 7 days from now
-			sevenDaysFromNow := record.Collection().App().Clock().Now().AddDate(0, 0, 7)
+			sevenDaysFromNow := time.Now().AddDate(0, 0, 7)
 			record.Set("locked_until", sevenDaysFromNow)
 
 			// Save the record
@@ -492,7 +492,7 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			}
 
 			// Perform text detection
-			annotations, err := visionClient.DetectTexts(ctx, img, nil)
+			annotations, err := visionClient.DetectTexts(ctx, img, nil, 0)
 			if err != nil {
 				log.Printf("Vision API text detection error: %v", err)
 				return apis.NewApiError(500, "failed to detect text", err)
