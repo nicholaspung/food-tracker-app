@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.2.9",
+    "date": "2025-11-02",
+    "title": "Multiple Restaurant Visits Fixed",
+    "summary": "Fixed a bug where selecting items from one restaurant would incorrectly appear when adding a visit to a different restaurant.",
+    "features": [],
+    "improvements": [],
+    "fixes": [
+      "Fixed menu items from previous restaurant appearing when creating a second visit with a different restaurant",
+      "Menu item selection now properly clears when switching between restaurants during visit creation"
+    ]
+  },
+  {
     "version": "0.2.8",
     "date": "2025-11-02",
     "title": "Smoother Visit Creation",

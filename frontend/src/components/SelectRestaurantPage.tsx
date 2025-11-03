@@ -522,6 +522,13 @@ export default function SelectRestaurantPage({
       nearbyPlaces,
     });
 
+    // Check if we're switching to a different restaurant
+    const currentDraft = visitDraftService.getDraft();
+    if (currentDraft.restaurant && currentDraft.restaurant.id !== restaurant.id) {
+      // Clear items when switching restaurants to prevent item mismatch
+      visitDraftService.saveItems([]);
+    }
+
     visitDraftService.saveRestaurant(restaurant);
     onRestaurantSelected();
   };
