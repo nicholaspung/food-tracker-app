@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.3.3",
+    "date": "2025-11-04",
+    "title": "Better Visit Photo Sharing",
+    "summary": "Visit sharing photos now look more professional with consistent dimensions, cleaner badges, and a helpful tip to frame your dishes perfectly!",
+    "features": [
+      "Photo framing tip: See a helpful reminder to frame your dish in the center when taking photos for better sharing results"
+    ],
+    "improvements": [
+      "Consistent share dimensions: All visit sharing photos now use professional 1080 x 2280 dimensions",
+      "Better 3-photo layout: Three photos now display in a clean vertical grid instead of being too tall",
+      "Cleaner badges: Dish name and rating badges are now more compact (35% smaller) for a professional look",
+      "No wasted space: 4-photo and 6-photo layouts now use the full canvas height",
+      "Perfect photo clipping: Photos stay within their boundaries and never overlap with separators",
+      "Smaller restaurant overlay: Center restaurant info badge is more subtle and won't clash with dish badges"
+    ],
+    "fixes": [
+      "Fixed visit sharing photos being too long when sharing 3 dishes",
+      "Fixed dish photos overlapping with white separator borders",
+      "Fixed restaurant overlay covering dish name badges in grid layouts",
+      "Fixed white space at bottom of 4-photo and 6-photo share images"
+    ]
+  },
+  {
     "version": "0.3.2",
     "date": "2025-11-04",
     "title": "Dish Photos & Social Sharing",
