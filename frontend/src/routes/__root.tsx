@@ -23,6 +23,7 @@ const ROUTES_WITH_TABS = [
   "/home",
   "/profile",
   "/whats-new",
+  "/photos",
   "/add-visit",
   "/edit-visit",
   "/friends",

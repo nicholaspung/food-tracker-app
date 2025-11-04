@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.3.2",
+    "date": "2025-11-04",
+    "title": "Dish Photos & Social Sharing",
+    "summary": "Capture photos of your dishes and share them to social media with beautiful themed overlays! Plus, restaurant name finder now lets you choose from photo library.",
+    "features": [
+      "Dish photos: Take photos of your dishes when recording a visit (1 photo per item, expandable to 3 with premium)",
+      "Photo gallery: View all your dish photos in one place from Profile → My Photos",
+      "Social sharing: Share photos to Instagram and other social media with automatic badge overlays",
+      "Themed overlays: Choose between Modern (sleek dark) or Rustic (vintage wood) badge styles",
+      "Smart photo display: Thumbnails appear on home page next to food items that have photos",
+      "One-tap sharing: Share directly from home page or photo gallery with theme selection"
+    ],
+    "improvements": [
+      "Restaurant name finder: Can now select from photo library instead of only taking new photos",
+      "Optimized photo storage: Photos compressed to balanced quality (1600px, 80%) for faster loading",
+      "Instagram-ready: Share images automatically optimized to 1080px for social media",
+      "Badge overlays include: Restaurant name, dish name, your rating (colored badge), and visit date",
+      "Native share integration: Uses device's native share menu on mobile for easy posting"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.3.1",
     "date": "2025-11-03",
     "title": "New Brand Identity & Onboarding Experience",
