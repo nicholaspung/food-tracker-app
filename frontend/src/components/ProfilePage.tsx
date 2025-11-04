@@ -151,21 +151,13 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   // Admin: Elevate user to subscriber
   const elevateToSubscriberMutation = useMutation({
     mutationFn: async (email: string) => {
-      // First, find the user by email
-      const users = await pb.collection('users').getList(1, 1, {
-        filter: `email = "${email}"`,
+      // Use backend API endpoint for subscriber elevation
+      const response = await pb.send('/api/users/elevate-subscriber', {
+        method: 'POST',
+        body: { email },
       });
 
-      if (users.items.length === 0) {
-        throw new Error('User not found with that email address');
-      }
-
-      const targetUser = users.items[0];
-
-      // Update the user to be a subscriber
-      return await pb.collection('users').update(targetUser.id, {
-        isSubscriber: true,
-      });
+      return response;
     },
     onSuccess: () => {
       setSubscriberSuccess('User successfully elevated to subscriber!');
@@ -175,7 +167,9 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       setTimeout(() => setSubscriberSuccess(''), 5000);
     },
     onError: (err: any) => {
-      setSubscriberError(err.message || 'Failed to elevate user to subscriber');
+      // Extract error message from backend response
+      const errorMessage = err.data?.message || err.message || 'Failed to elevate user to subscriber';
+      setSubscriberError(errorMessage);
       setSubscriberSuccess('');
     },
   });
@@ -566,6 +560,29 @@ Looking forward to seeing you there!`;
                   <p className="text-sm text-gray-900" data-testid="user-created">
                     {user?.created ? new Date(user.created).toLocaleDateString() : 'Unknown'}
                   </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Account Status</p>
+                  <div className="flex gap-2 mt-1">
+                    {isAdmin && (
+                      <Badge className="bg-orange-600 text-white" data-testid="admin-badge">
+                        Admin
+                      </Badge>
+                    )}
+                    {user?.isSubscriber && (
+                      <Badge className="bg-purple-600 text-white" data-testid="subscriber-badge">
+                        Subscriber
+                      </Badge>
+                    )}
+                    {!isAdmin && !user?.isSubscriber && (
+                      <span className="text-sm text-gray-600">Free Account</span>
+                    )}
+                  </div>
+                  {(isAdmin || user?.isSubscriber) && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      ✨ Unlimited photo parsing
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
