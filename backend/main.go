@@ -23,6 +23,7 @@ import (
 	"github.com/google/generative-ai-go/genai"
 	"github.com/jdeng/goheif"
 	"github.com/joho/godotenv"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
