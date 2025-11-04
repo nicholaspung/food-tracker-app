@@ -364,7 +364,7 @@ export default function RateItemsPage({
                         Take Photo
                       </Button>
                       <p className="text-xs text-gray-500 text-center">
-                        Capture your dish for social sharing
+                        Tip: Frame your dish in the center for better sharing photos
                       </p>
                     </>
                   ) : (

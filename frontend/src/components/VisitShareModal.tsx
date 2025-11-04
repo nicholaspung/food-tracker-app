@@ -47,7 +47,7 @@ export default function VisitShareModal({
         // Load all photo files
         const photoFiles = await Promise.all(
           photosWithFoodItems.map(async ({ photo, foodItem }) => {
-            const photoUrl = pb.getFileUrl(photo, photo.photo);
+            const photoUrl = pb.files.getURL(photo, photo.photo);
             const response = await fetch(photoUrl);
             const blob = await response.blob();
             const file = new File([blob], "dish-photo.jpg", {
@@ -116,7 +116,7 @@ export default function VisitShareModal({
       // Load all photo files
       const photoFiles = await Promise.all(
         photosWithFoodItems.map(async ({ photo, foodItem }) => {
-          const photoUrl = pb.getFileUrl(photo, photo.photo);
+          const photoUrl = pb.files.getURL(photo, photo.photo);
           const response = await fetch(photoUrl);
           const blob = await response.blob();
           const file = new File([blob], "dish-photo.jpg", {

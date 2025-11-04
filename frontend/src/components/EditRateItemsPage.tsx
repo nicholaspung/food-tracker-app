@@ -129,7 +129,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
   const getExistingPhotoUrl = (foodItemId: string) => {
     const existingPhoto = existingPhotos.find((p: any) => p.food_item === foodItemId);
     if (existingPhoto && !deletedPhotoIds.has(existingPhoto.id)) {
-      return pb.getFileUrl(existingPhoto, existingPhoto.photo);
+      return pb.files.getURL(existingPhoto, existingPhoto.photo);
     }
     return null;
   };
@@ -367,7 +367,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                                 Take Photo
                               </Button>
                               <p className="text-xs text-gray-500 text-center">
-                                Capture your dish for social sharing
+                                Tip: Frame your dish in the center for better sharing photos
                               </p>
                             </>
                           ) : hasNewPhoto ? (

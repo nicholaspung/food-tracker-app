@@ -237,7 +237,7 @@ export default function HomePage({
   ) => {
     try {
       // Get full resolution photo URL
-      const photoUrl = pb.getFileUrl(photo, photo.photo);
+      const photoUrl = pb.files.getURL(photo, photo.photo);
 
       // Fetch the photo as a blob
       const response = await fetch(photoUrl);
@@ -741,7 +741,7 @@ export default function HomePage({
                                         (p: any) => p.food_item === item.id
                                       );
                                       const photoUrl = photo
-                                        ? pb.getFileUrl(photo, photo.photo, {
+                                        ? pb.files.getURL(photo, photo.photo, {
                                             thumb: "100x100",
                                           })
                                         : null;

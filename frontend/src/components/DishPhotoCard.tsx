@@ -56,7 +56,7 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
   const visit = foodItem?.expand?.visit;
   const restaurant = visit?.expand?.restaurant;
 
-  const photoUrl = pb.getFileUrl(photoRecord, photoRecord.photo);
+  const photoUrl = pb.files.getURL(photoRecord, photoRecord.photo);
 
   const handleShareClick = async () => {
     if (!foodItem || !visit || !restaurant) {
