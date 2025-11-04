@@ -23,6 +23,7 @@ export interface User {
   email: string;
   verified: boolean;
   isAdmin?: boolean;
+  isSubscriber?: boolean;
   defaultVisitVisibility?: 'friends' | 'private';
   defaultRestaurantVisibility?: 'private' | 'friends' | 'public';
   created: string;
