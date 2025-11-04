@@ -25,6 +25,7 @@ import {
   Users,
   Lock,
   Globe,
+  Camera,
 } from "lucide-react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import {
@@ -34,6 +35,7 @@ import {
   formatDistance,
   geocodeLocation,
 } from "@/services/googlePlaces";
+import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 
 interface SelectRestaurantPageProps {
   onRestaurantSelected: () => void;
@@ -51,10 +53,14 @@ export default function SelectRestaurantPage({
   const [newRestaurantName, setNewRestaurantName] = useState("");
   const [newRestaurantLocation, setNewRestaurantLocation] = useState("");
   const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
-  const [newRestaurantVisibility, setNewRestaurantVisibility] = useState<'private' | 'friends' | 'public'>('friends');
+  const [newRestaurantVisibility, setNewRestaurantVisibility] = useState<
+    "private" | "friends" | "public"
+  >("friends");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showRestaurantNameFinder, setShowRestaurantNameFinder] =
+    useState(false);
 
   // Google Places integration
   const [nearbyPlaces, setNearbyPlaces] = useState<Restaurant[]>([]);
@@ -200,7 +206,7 @@ export default function SelectRestaurantPage({
       name: string;
       location: string;
       cuisineType?: string;
-      visibility: 'private' | 'friends' | 'public';
+      visibility: "private" | "friends" | "public";
     }) => {
       const user = pb.authStore.record;
       if (!user) throw new Error("User not authenticated");
@@ -524,7 +530,10 @@ export default function SelectRestaurantPage({
 
     // Check if we're switching to a different restaurant
     const currentDraft = visitDraftService.getDraft();
-    if (currentDraft.restaurant && currentDraft.restaurant.id !== restaurant.id) {
+    if (
+      currentDraft.restaurant &&
+      currentDraft.restaurant.id !== restaurant.id
+    ) {
       // Clear items when switching restaurants to prevent item mismatch
       visitDraftService.saveItems([]);
     }
@@ -534,13 +543,13 @@ export default function SelectRestaurantPage({
   };
 
   // Get visibility icon for restaurant
-  const getVisibilityIcon = (visibility?: 'private' | 'friends' | 'public') => {
+  const getVisibilityIcon = (visibility?: "private" | "friends" | "public") => {
     switch (visibility) {
-      case 'private':
+      case "private":
         return <Lock className="w-3 h-3 text-gray-600" />;
-      case 'friends':
+      case "friends":
         return <Users className="w-3 h-3 text-blue-600" />;
-      case 'public':
+      case "public":
         return <Globe className="w-3 h-3 text-green-600" />;
       default:
         return <Globe className="w-3 h-3 text-green-600" />; // Default to public for existing data
@@ -647,12 +656,22 @@ export default function SelectRestaurantPage({
                 <CardContent className="space-y-3">
                   {/* Restaurant name/type search */}
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="restaurant-search"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Place name or type
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label
+                        htmlFor="restaurant-search"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Place name or type
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setShowRestaurantNameFinder(true)}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        Use camera
+                      </button>
+                    </div>
                     <Input
                       id="restaurant-search"
                       type="text"
@@ -731,7 +750,7 @@ export default function SelectRestaurantPage({
             <>
               {/* Search inputs */}
               <Card className="border-2 border-blue-200 bg-blue-50/30">
-                <CardHeader className="pb-3">
+                <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Search className="w-5 h-5 text-blue-600" />
                     Search Again
@@ -742,12 +761,22 @@ export default function SelectRestaurantPage({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="restaurant-search-nearby"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Place name or type
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label
+                        htmlFor="restaurant-search-nearby"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Place name or type
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setShowRestaurantNameFinder(true)}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        Use camera
+                      </button>
+                    </div>
                     <Input
                       id="restaurant-search-nearby"
                       type="text"
@@ -1153,29 +1182,33 @@ export default function SelectRestaurantPage({
                         <div className="space-y-2">
                           <button
                             type="button"
-                            onClick={() => setNewRestaurantVisibility('private')}
+                            onClick={() =>
+                              setNewRestaurantVisibility("private")
+                            }
                             className={`w-full p-3 rounded-lg border-2 transition-all ${
-                              newRestaurantVisibility === 'private'
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-gray-200 hover:border-gray-300'
+                              newRestaurantVisibility === "private"
+                                ? "border-blue-500 bg-blue-50"
+                                : "border-gray-200 hover:border-gray-300"
                             }`}
                           >
                             <div className="flex items-start gap-3">
                               <div
                                 className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                                  newRestaurantVisibility === 'private'
-                                    ? 'border-blue-500 bg-blue-500'
-                                    : 'border-gray-300'
+                                  newRestaurantVisibility === "private"
+                                    ? "border-blue-500 bg-blue-500"
+                                    : "border-gray-300"
                                 }`}
                               >
-                                {newRestaurantVisibility === 'private' && (
+                                {newRestaurantVisibility === "private" && (
                                   <div className="w-2.5 h-2.5 bg-white rounded-full" />
                                 )}
                               </div>
                               <div className="flex-1 text-left">
                                 <div className="flex items-center gap-2 mb-1">
                                   <Lock className="w-4 h-4 text-gray-600" />
-                                  <span className="font-semibold text-sm">Private</span>
+                                  <span className="font-semibold text-sm">
+                                    Private
+                                  </span>
                                 </div>
                                 <p className="text-xs text-gray-600">
                                   Only visible to you
@@ -1186,29 +1219,33 @@ export default function SelectRestaurantPage({
 
                           <button
                             type="button"
-                            onClick={() => setNewRestaurantVisibility('friends')}
+                            onClick={() =>
+                              setNewRestaurantVisibility("friends")
+                            }
                             className={`w-full p-3 rounded-lg border-2 transition-all ${
-                              newRestaurantVisibility === 'friends'
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-gray-200 hover:border-gray-300'
+                              newRestaurantVisibility === "friends"
+                                ? "border-blue-500 bg-blue-50"
+                                : "border-gray-200 hover:border-gray-300"
                             }`}
                           >
                             <div className="flex items-start gap-3">
                               <div
                                 className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                                  newRestaurantVisibility === 'friends'
-                                    ? 'border-blue-500 bg-blue-500'
-                                    : 'border-gray-300'
+                                  newRestaurantVisibility === "friends"
+                                    ? "border-blue-500 bg-blue-500"
+                                    : "border-gray-300"
                                 }`}
                               >
-                                {newRestaurantVisibility === 'friends' && (
+                                {newRestaurantVisibility === "friends" && (
                                   <div className="w-2.5 h-2.5 bg-white rounded-full" />
                                 )}
                               </div>
                               <div className="flex-1 text-left">
                                 <div className="flex items-center gap-2 mb-1">
                                   <Users className="w-4 h-4 text-blue-600" />
-                                  <span className="font-semibold text-sm">Friends</span>
+                                  <span className="font-semibold text-sm">
+                                    Friends
+                                  </span>
                                 </div>
                                 <p className="text-xs text-gray-600">
                                   Visible to your friends
@@ -1220,30 +1257,39 @@ export default function SelectRestaurantPage({
                           {user?.isAdmin && (
                             <button
                               type="button"
-                              onClick={() => setNewRestaurantVisibility('public')}
+                              onClick={() =>
+                                setNewRestaurantVisibility("public")
+                              }
                               className={`w-full p-3 rounded-lg border-2 transition-all ${
-                                newRestaurantVisibility === 'public'
-                                  ? 'border-blue-500 bg-blue-50'
-                                  : 'border-gray-200 hover:border-gray-300'
+                                newRestaurantVisibility === "public"
+                                  ? "border-blue-500 bg-blue-50"
+                                  : "border-gray-200 hover:border-gray-300"
                               }`}
                             >
                               <div className="flex items-start gap-3">
                                 <div
                                   className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                                    newRestaurantVisibility === 'public'
-                                      ? 'border-blue-500 bg-blue-500'
-                                      : 'border-gray-300'
+                                    newRestaurantVisibility === "public"
+                                      ? "border-blue-500 bg-blue-500"
+                                      : "border-gray-300"
                                   }`}
                                 >
-                                  {newRestaurantVisibility === 'public' && (
+                                  {newRestaurantVisibility === "public" && (
                                     <div className="w-2.5 h-2.5 bg-white rounded-full" />
                                   )}
                                 </div>
                                 <div className="flex-1 text-left">
                                   <div className="flex items-center gap-2 mb-1">
                                     <Globe className="w-4 h-4 text-green-600" />
-                                    <span className="font-semibold text-sm">Public</span>
-                                    <Badge variant="secondary" className="text-xs">Admin Only</Badge>
+                                    <span className="font-semibold text-sm">
+                                      Public
+                                    </span>
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      Admin Only
+                                    </Badge>
                                   </div>
                                   <p className="text-xs text-gray-600">
                                     Visible to everyone in the community
@@ -1449,6 +1495,19 @@ export default function SelectRestaurantPage({
           Cancel
         </Button>
       </div>
+
+      {/* Full-screen Restaurant Name Finder Modal */}
+      {showRestaurantNameFinder && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <RestaurantNameFinder
+            onSelectName={(name) => {
+              setRestaurantSearchQuery(name);
+              setShowRestaurantNameFinder(false);
+            }}
+            onClose={() => setShowRestaurantNameFinder(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
