@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useRef } from 'react';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
 import { localDateStringToUTC } from '@/lib/dateUtils';
 import { editVisitDraftService, EditVisitDraftItem } from '@/services/editVisitDraftService';
@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Camera, X } from 'lucide-react';
 import { useScrollIntoView } from '@/hooks/useScrollIntoView';
+import { compressDishPhoto } from '@/services/photoService';
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -31,8 +33,24 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
   const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>(draft?.menuItems || []);
 
+  // Photo state - track photo for each item (using food_item id as key)
+  const [itemPhotos, setItemPhotos] = useState<Map<string, File>>(new Map());
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<string, string>>(new Map());
+  const [deletedPhotoIds, setDeletedPhotoIds] = useState<Set<string>>(new Set());
+  const fileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
   // Ref for auto-scrolling notes input into view on mobile
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
+
+  // Fetch existing photos for this visit
+  const { data: existingPhotos = [] } = useQuery({
+    queryKey: ['visitPhotos', visitId],
+    queryFn: async () => {
+      return await pb.collection('visit_photos').getFullList({
+        filter: `visit = "${visitId}"`,
+      });
+    },
+  });
 
   // Redirect if no draft
   useEffect(() => {
@@ -54,6 +72,68 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
     }
   }, [menuItems, draft]);
 
+  // Cleanup preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
+
+  const handlePhotoCapture = (foodItemId: string, file: File) => {
+    // Store the photo file
+    const newPhotos = new Map(itemPhotos);
+    newPhotos.set(foodItemId, file);
+    setItemPhotos(newPhotos);
+
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    const newPreviewUrls = new Map(photoPreviewUrls);
+
+    // Revoke old URL if exists
+    const oldUrl = newPreviewUrls.get(foodItemId);
+    if (oldUrl) {
+      URL.revokeObjectURL(oldUrl);
+    }
+
+    newPreviewUrls.set(foodItemId, previewUrl);
+    setPhotoPreviewUrls(newPreviewUrls);
+  };
+
+  const handleRemovePhoto = (foodItemId: string) => {
+    // Remove photo file
+    const newPhotos = new Map(itemPhotos);
+    newPhotos.delete(foodItemId);
+    setItemPhotos(newPhotos);
+
+    // Revoke and remove preview URL
+    const previewUrl = photoPreviewUrls.get(foodItemId);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    const newPreviewUrls = new Map(photoPreviewUrls);
+    newPreviewUrls.delete(foodItemId);
+    setPhotoPreviewUrls(newPreviewUrls);
+  };
+
+  // Mark an existing photo for deletion
+  const handleDeleteExistingPhoto = (foodItemId: string) => {
+    const existingPhoto = existingPhotos.find((p: any) => p.food_item === foodItemId);
+    if (existingPhoto) {
+      const newDeletedIds = new Set(deletedPhotoIds);
+      newDeletedIds.add(existingPhoto.id);
+      setDeletedPhotoIds(newDeletedIds);
+    }
+  };
+
+  // Get existing photo URL for a food item (only if not marked for deletion)
+  const getExistingPhotoUrl = (foodItemId: string) => {
+    const existingPhoto = existingPhotos.find((p: any) => p.food_item === foodItemId);
+    if (existingPhoto && !deletedPhotoIds.has(existingPhoto.id)) {
+      return pb.getFileUrl(existingPhoto, existingPhoto.photo);
+    }
+    return null;
+  };
+
   const updateVisitMutation = useMutation({
     mutationFn: async () => {
       const user = pb.authStore.record;
@@ -68,11 +148,17 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
         visibility: draft.visitVisibility,
       });
 
+      // Delete marked photos first
+      for (const photoId of deletedPhotoIds) {
+        await pb.collection('visit_photos').delete(photoId);
+      }
+
       // Handle food items
       for (const item of menuItems) {
         if (item._deleted && item.id) {
-          // Delete existing item
+          // Delete existing item and its photos
           await pb.collection('food_items').delete(item.id);
+          // Photos will be cascade deleted by backend
         } else if (item.id) {
           // Update existing item
           await pb.collection('food_items').update(item.id, {
@@ -81,9 +167,33 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
             rating: item.rating,
             notes: item.notes,
           });
+
+          // Handle photo for existing item
+          const newPhoto = itemPhotos.get(item.id);
+          if (newPhoto) {
+            // Compress the photo before upload
+            const compressedPhoto = await compressDishPhoto(newPhoto);
+
+            // Check if there's an existing photo to replace
+            const existingPhoto = existingPhotos.find((p: any) => p.food_item === item.id);
+            if (existingPhoto) {
+              // Update existing photo
+              const formData = new FormData();
+              formData.append('photo', compressedPhoto);
+              await pb.collection('visit_photos').update(existingPhoto.id, formData);
+            } else {
+              // Create new photo
+              const formData = new FormData();
+              formData.append('photo', compressedPhoto);
+              formData.append('visit', visitId);
+              formData.append('food_item', item.id);
+              formData.append('user', user.id);
+              await pb.collection('visit_photos').create(formData);
+            }
+          }
         } else if (!item._deleted) {
           // Create new item
-          await pb.collection('food_items').create({
+          const foodItem = await pb.collection('food_items').create({
             name: item.name,
             description: item.description,
             visit: visitId,
@@ -91,6 +201,22 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
             notes: item.notes,
             user: user.id,
           });
+
+          // Handle photo for new item (use temporary key)
+          const tempKey = `new_${menuItems.indexOf(item)}`;
+          const newPhoto = itemPhotos.get(tempKey);
+          if (newPhoto) {
+            // Compress the photo before upload
+            const compressedPhoto = await compressDishPhoto(newPhoto);
+
+            // Create photo
+            const formData = new FormData();
+            formData.append('photo', compressedPhoto);
+            formData.append('visit', visitId);
+            formData.append('food_item', foodItem.id);
+            formData.append('user', user.id);
+            await pb.collection('visit_photos').create(formData);
+          }
         }
       }
     },
@@ -99,6 +225,8 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
       queryClient.invalidateQueries({ queryKey: ['visit', visitId] });
       queryClient.invalidateQueries({ queryKey: ['foodItems', visitId] });
       queryClient.invalidateQueries({ queryKey: ['allFoodItems'] });
+      queryClient.invalidateQueries({ queryKey: ['visitPhotos', visitId] });
+      queryClient.invalidateQueries({ queryKey: ['allVisitPhotos'] });
       // Clear draft after successful save
       editVisitDraftService.clearDraft();
       onComplete();
@@ -197,6 +325,117 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                       value={item.notes}
                       onChange={(e) => handleUpdateItem(index, 'notes', e.target.value)}
                     />
+                  </div>
+
+                  {/* Photo capture section */}
+                  <div className="space-y-2">
+                    <Label>Photo (optional)</Label>
+
+                    {(() => {
+                      // Get photo key (existing id or temp key for new items)
+                      const photoKey = item.id || `new_${index}`;
+                      const hasNewPhoto = photoPreviewUrls.has(photoKey);
+                      const existingPhotoUrl = item.id ? getExistingPhotoUrl(item.id) : null;
+                      const hasExistingPhoto = !!existingPhotoUrl;
+
+                      return (
+                        <>
+                          {!hasNewPhoto && !hasExistingPhoto ? (
+                            <>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                ref={(el) => {
+                                  if (el) fileInputRefs.current.set(photoKey, el);
+                                }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    handlePhotoCapture(photoKey, file);
+                                  }
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full"
+                                onClick={() => fileInputRefs.current.get(photoKey)?.click()}
+                              >
+                                <Camera className="w-4 h-4 mr-2" />
+                                Take Photo
+                              </Button>
+                              <p className="text-xs text-gray-500 text-center">
+                                Capture your dish for social sharing
+                              </p>
+                            </>
+                          ) : hasNewPhoto ? (
+                            <div className="relative">
+                              <img
+                                src={photoPreviewUrls.get(photoKey)}
+                                alt="Dish preview"
+                                className="w-full h-48 object-cover rounded-lg"
+                              />
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                className="absolute top-2 right-2"
+                                onClick={() => handleRemovePhoto(photoKey)}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                              <div className="absolute top-2 left-2 bg-green-600 text-white text-xs px-2 py-1 rounded">
+                                New photo
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <img
+                                src={existingPhotoUrl!}
+                                alt="Existing dish photo"
+                                className="w-full h-48 object-cover rounded-lg"
+                              />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                ref={(el) => {
+                                  if (el) fileInputRefs.current.set(photoKey, el);
+                                }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    handlePhotoCapture(photoKey, file);
+                                  }
+                                }}
+                              />
+                              <div className="absolute top-2 right-2 flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => fileInputRefs.current.get(photoKey)?.click()}
+                                >
+                                  <Camera className="w-4 h-4 mr-1" />
+                                  Replace
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteExistingPhoto(photoKey)}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </CardContent>
               </Card>

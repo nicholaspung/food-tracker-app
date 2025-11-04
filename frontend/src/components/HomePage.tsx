@@ -37,7 +37,8 @@ import {
 } from "lucide-react";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { Input } from "@/components/ui/input";
-import { generateSocialShareImage } from "@/services/photoService";
+import ShareCustomizationModal from "@/components/ShareCustomizationModal";
+import VisitShareModal from "@/components/VisitShareModal";
 
 const RATING_LABELS = [
   "Don't eat ever",
@@ -134,10 +135,20 @@ export default function HomePage({
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(
     null
   );
-  const [sharingPhotoId, setSharingPhotoId] = useState<string | null>(null);
-  const [selectedTheme, setSelectedTheme] = useState<'modern' | 'rustic'>('modern');
   const [searchQuery, setSearchQuery] = useState("");
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [sharePhotoFile, setSharePhotoFile] = useState<File | null>(null);
+  const [sharePhotoUrl, setSharePhotoUrl] = useState<string>("");
+  const [shareOverlayData, setShareOverlayData] = useState<{
+    restaurantName: string;
+    dishName: string;
+    rating: number;
+    visitDate: string;
+  } | null>(null);
+  const [visitToShare, setVisitToShare] = useState<VisitWithDetails | null>(
+    null
+  );
   const queryClient = useQueryClient();
 
   // Helper to check if a visit is from a friend
@@ -217,15 +228,13 @@ export default function HomePage({
     },
   });
 
-  // Handle photo sharing
-  const handleSharePhoto = async (
+  // Handle opening share modal
+  const handleSharePhotoClick = async (
     photo: any,
     foodItem: FoodItem,
     restaurant: Restaurant,
     visitDate: string
   ) => {
-    setSharingPhotoId(photo.id);
-
     try {
       // Get full resolution photo URL
       const photoUrl = pb.getFileUrl(photo, photo.photo);
@@ -235,14 +244,26 @@ export default function HomePage({
       const blob = await response.blob();
       const file = new File([blob], "dish-photo.jpg", { type: "image/jpeg" });
 
-      // Generate social share image with badge overlay
-      const shareBlob = await generateSocialShareImage(file, {
+      setSharePhotoFile(file);
+      setSharePhotoUrl(photoUrl);
+      setShareOverlayData({
         restaurantName: restaurant.name,
         dishName: foodItem.name,
         rating: foodItem.rating,
         visitDate: visitDate,
-      }, selectedTheme);
+      });
+      setIsShareModalOpen(true);
+    } catch (error) {
+      console.error("Error loading photo:", error);
+      alert("Failed to load photo. Please try again.");
+    }
+  };
 
+  // Handle final share action from modal
+  const handleShare = async (shareBlob: Blob) => {
+    if (!shareOverlayData) return;
+
+    try {
       // Try Web Share API first (native sharing on mobile)
       if (navigator.share && navigator.canShare) {
         const shareFile = new File([shareBlob], "food-tracker-share.jpg", {
@@ -254,10 +275,9 @@ export default function HomePage({
         if (canShareFile) {
           await navigator.share({
             files: [shareFile],
-            title: `${foodItem.name} at ${restaurant.name}`,
-            text: `Check out this dish I tried! Rated ${foodItem.rating}/5`,
+            title: `${shareOverlayData.dishName} at ${shareOverlayData.restaurantName}`,
+            text: `Check out this dish I tried! Rated ${shareOverlayData.rating}/5`,
           });
-          setSharingPhotoId(null);
           return;
         }
       }
@@ -266,7 +286,7 @@ export default function HomePage({
       const url = URL.createObjectURL(shareBlob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${foodItem.name.replace(/[^a-z0-9]/gi, "_")}_${restaurant.name.replace(/[^a-z0-9]/gi, "_")}.jpg`;
+      a.download = `${shareOverlayData.dishName.replace(/[^a-z0-9]/gi, "_")}_${shareOverlayData.restaurantName.replace(/[^a-z0-9]/gi, "_")}.jpg`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -276,9 +296,22 @@ export default function HomePage({
     } catch (error) {
       console.error("Error sharing photo:", error);
       alert("Failed to share photo. Please try again.");
-    } finally {
-      setSharingPhotoId(null);
     }
+  };
+
+  // Handle share visit button click
+  const handleShareVisitClick = (visit: VisitWithDetails) => {
+    // Check if visit has any photos
+    const photosForVisit = visitPhotos.filter((photo: any) =>
+      visit.foodItems?.some((item) => item.id === photo.food_item)
+    );
+
+    if (photosForVisit.length === 0) {
+      alert("This visit has no photos to share.");
+      return;
+    }
+
+    setVisitToShare(visit);
   };
 
   // Combine data
@@ -658,6 +691,25 @@ export default function HomePage({
                                   </div>
                                   {!isFriend && (
                                     <div className="flex items-center gap-1">
+                                      {/* Share Visit button - only show if visit has photos */}
+                                      {visitPhotos.some((photo: any) =>
+                                        visit.foodItems?.some(
+                                          (item) => item.id === photo.food_item
+                                        )
+                                      ) && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() =>
+                                            handleShareVisitClick(visit)
+                                          }
+                                          data-testid={`share-visit-${visit.id}`}
+                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                          title="Share all photos from this visit"
+                                        >
+                                          <Share2 className="w-4 h-4" />
+                                        </Button>
+                                      )}
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -736,64 +788,24 @@ export default function HomePage({
                                                   "Unknown"}
                                               </span>
                                             </div>
-                                            {/* Share button with theme selector - only show if there's a photo */}
+                                            {/* Share button - only show if there's a photo */}
                                             {photo && (
-                                              <div className="flex flex-col items-end gap-1">
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleSharePhoto(
-                                                      photo,
-                                                      item,
-                                                      visit.restaurant!,
-                                                      visit.visitDate
-                                                    );
-                                                  }}
-                                                  disabled={sharingPhotoId === photo.id}
-                                                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
-                                                  title="Share photo"
-                                                >
-                                                  {sharingPhotoId === photo.id ? (
-                                                    <>
-                                                      <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-600 border-t-transparent" />
-                                                      <span>Sharing...</span>
-                                                    </>
-                                                  ) : (
-                                                    <>
-                                                      <Share2 className="w-3 h-3" />
-                                                      <span>Share</span>
-                                                    </>
-                                                  )}
-                                                </button>
-                                                <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                                  <button
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setSelectedTheme('modern');
-                                                    }}
-                                                    className={`px-1.5 py-0.5 rounded ${
-                                                      selectedTheme === 'modern'
-                                                        ? 'bg-gray-800 text-white'
-                                                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                                    }`}
-                                                  >
-                                                    Modern
-                                                  </button>
-                                                  <button
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setSelectedTheme('rustic');
-                                                    }}
-                                                    className={`px-1.5 py-0.5 rounded ${
-                                                      selectedTheme === 'rustic'
-                                                        ? 'bg-amber-700 text-white'
-                                                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                                    }`}
-                                                  >
-                                                    Rustic
-                                                  </button>
-                                                </div>
-                                              </div>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleSharePhotoClick(
+                                                    photo,
+                                                    item,
+                                                    visit.restaurant!,
+                                                    visit.visitDate
+                                                  );
+                                                }}
+                                                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                                                title="Share photo"
+                                              >
+                                                <Share2 className="w-3 h-3" />
+                                                <span>Share</span>
+                                              </button>
                                             )}
                                           </div>
                                         </div>
@@ -911,6 +923,48 @@ export default function HomePage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Share Customization Modal */}
+      {shareOverlayData && (
+        <ShareCustomizationModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          photoUrl={sharePhotoUrl}
+          photoFile={sharePhotoFile}
+          overlayData={shareOverlayData}
+          onShare={handleShare}
+        />
+      )}
+
+      {/* Visit Share Modal */}
+      {visitToShare && visitToShare.restaurant && (
+        <VisitShareModal
+          isOpen={!!visitToShare}
+          onClose={() => setVisitToShare(null)}
+          restaurantName={visitToShare.restaurant.name}
+          visitDate={visitToShare.visitDate}
+          photosWithFoodItems={visitPhotos
+            .filter((photo: any) =>
+              visitToShare.foodItems?.some(
+                (item) => item.id === photo.food_item
+              )
+            )
+            .map((photo: any) => {
+              const foodItem = visitToShare.foodItems?.find(
+                (item) => item.id === photo.food_item
+              );
+              return {
+                photo,
+                foodItem: {
+                  id: foodItem!.id,
+                  name: foodItem!.name,
+                  rating: foodItem!.rating,
+                },
+              };
+            })}
+          pb={pb}
+        />
+      )}
     </div>
   );
 }
