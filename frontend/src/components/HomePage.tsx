@@ -33,9 +33,11 @@ import {
   Plus,
   Search,
   X,
+  Share2,
 } from "lucide-react";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { Input } from "@/components/ui/input";
+import { generateSocialShareImage } from "@/services/photoService";
 
 const RATING_LABELS = [
   "Don't eat ever",
@@ -132,6 +134,8 @@ export default function HomePage({
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(
     null
   );
+  const [sharingPhotoId, setSharingPhotoId] = useState<string | null>(null);
+  const [selectedTheme, setSelectedTheme] = useState<'modern' | 'rustic'>('modern');
   const [searchQuery, setSearchQuery] = useState("");
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
   const queryClient = useQueryClient();
@@ -179,6 +183,16 @@ export default function HomePage({
     },
   });
 
+  // Fetch all visit photos
+  const { data: visitPhotos = [] } = useQuery({
+    queryKey: ["allVisitPhotos"],
+    queryFn: async () => {
+      return await pb.collection("visit_photos").getFullList({
+        sort: "-created",
+      });
+    },
+  });
+
   // Delete visit mutation
   const deleteVisitMutation = useMutation({
     mutationFn: async (visitId: string) => {
@@ -198,9 +212,74 @@ export default function HomePage({
       // Invalidate and refetch queries
       queryClient.invalidateQueries({ queryKey: ["allVisits"] });
       queryClient.invalidateQueries({ queryKey: ["allFoodItems"] });
+      queryClient.invalidateQueries({ queryKey: ["allVisitPhotos"] });
       setVisitToDelete(null);
     },
   });
+
+  // Handle photo sharing
+  const handleSharePhoto = async (
+    photo: any,
+    foodItem: FoodItem,
+    restaurant: Restaurant,
+    visitDate: string
+  ) => {
+    setSharingPhotoId(photo.id);
+
+    try {
+      // Get full resolution photo URL
+      const photoUrl = pb.getFileUrl(photo, photo.photo);
+
+      // Fetch the photo as a blob
+      const response = await fetch(photoUrl);
+      const blob = await response.blob();
+      const file = new File([blob], "dish-photo.jpg", { type: "image/jpeg" });
+
+      // Generate social share image with badge overlay
+      const shareBlob = await generateSocialShareImage(file, {
+        restaurantName: restaurant.name,
+        dishName: foodItem.name,
+        rating: foodItem.rating,
+        visitDate: visitDate,
+      }, selectedTheme);
+
+      // Try Web Share API first (native sharing on mobile)
+      if (navigator.share && navigator.canShare) {
+        const shareFile = new File([shareBlob], "food-tracker-share.jpg", {
+          type: "image/jpeg",
+        });
+
+        const canShareFile = navigator.canShare({ files: [shareFile] });
+
+        if (canShareFile) {
+          await navigator.share({
+            files: [shareFile],
+            title: `${foodItem.name} at ${restaurant.name}`,
+            text: `Check out this dish I tried! Rated ${foodItem.rating}/5`,
+          });
+          setSharingPhotoId(null);
+          return;
+        }
+      }
+
+      // Fallback: Download the image
+      const url = URL.createObjectURL(shareBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${foodItem.name.replace(/[^a-z0-9]/gi, "_")}_${restaurant.name.replace(/[^a-z0-9]/gi, "_")}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert("Photo downloaded! Share it on your favorite social media.");
+    } catch (error) {
+      console.error("Error sharing photo:", error);
+      alert("Failed to share photo. Please try again.");
+    } finally {
+      setSharingPhotoId(null);
+    }
+  };
 
   // Combine data
   const visitsWithDetails: VisitWithDetails[] = useMemo(
@@ -604,40 +683,122 @@ export default function HomePage({
                                 {visit.foodItems &&
                                 visit.foodItems.length > 0 ? (
                                   <div className="space-y-2">
-                                    {visit.foodItems.map((item) => (
-                                      <div
-                                        key={item.id}
-                                        className="flex items-start justify-between gap-3 p-3 bg-gray-50 rounded-lg"
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <p className="font-medium text-gray-900">
-                                            {item.name}
-                                          </p>
-                                          {item.description && (
-                                            <p className="text-sm text-gray-500 mt-0.5">
-                                              {item.description}
-                                            </p>
+                                    {visit.foodItems.map((item) => {
+                                      // Find photo for this food item
+                                      const photo = visitPhotos.find(
+                                        (p: any) => p.food_item === item.id
+                                      );
+                                      const photoUrl = photo
+                                        ? pb.getFileUrl(photo, photo.photo, {
+                                            thumb: "100x100",
+                                          })
+                                        : null;
+
+                                      return (
+                                        <div
+                                          key={item.id}
+                                          className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
+                                        >
+                                          {/* Photo thumbnail */}
+                                          {photoUrl && photo && (
+                                            <img
+                                              src={photoUrl}
+                                              alt={item.name}
+                                              className="w-16 h-16 object-cover rounded-md flex-shrink-0"
+                                            />
                                           )}
-                                          {item.notes && (
-                                            <p className="text-xs text-gray-600 mt-1 italic">
-                                              "{item.notes}"
+
+                                          <div className="flex-1 min-w-0">
+                                            <p className="font-medium text-gray-900">
+                                              {item.name}
                                             </p>
-                                          )}
+                                            {item.description && (
+                                              <p className="text-sm text-gray-500 mt-0.5">
+                                                {item.description}
+                                              </p>
+                                            )}
+                                            {item.notes && (
+                                              <p className="text-xs text-gray-600 mt-1 italic">
+                                                "{item.notes}"
+                                              </p>
+                                            )}
+                                          </div>
+                                          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                            <div className="flex items-center gap-2">
+                                              <div
+                                                className={`w-3 h-3 rounded-full ${
+                                                  RATING_COLORS[item.rating - 1] ||
+                                                  "bg-gray-300"
+                                                }`}
+                                              />
+                                              <span className="text-xs text-gray-600 whitespace-nowrap">
+                                                {RATING_LABELS[item.rating - 1] ||
+                                                  "Unknown"}
+                                              </span>
+                                            </div>
+                                            {/* Share button with theme selector - only show if there's a photo */}
+                                            {photo && (
+                                              <div className="flex flex-col items-end gap-1">
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSharePhoto(
+                                                      photo,
+                                                      item,
+                                                      visit.restaurant!,
+                                                      visit.visitDate
+                                                    );
+                                                  }}
+                                                  disabled={sharingPhotoId === photo.id}
+                                                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                                                  title="Share photo"
+                                                >
+                                                  {sharingPhotoId === photo.id ? (
+                                                    <>
+                                                      <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-600 border-t-transparent" />
+                                                      <span>Sharing...</span>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <Share2 className="w-3 h-3" />
+                                                      <span>Share</span>
+                                                    </>
+                                                  )}
+                                                </button>
+                                                <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setSelectedTheme('modern');
+                                                    }}
+                                                    className={`px-1.5 py-0.5 rounded ${
+                                                      selectedTheme === 'modern'
+                                                        ? 'bg-gray-800 text-white'
+                                                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                                                    }`}
+                                                  >
+                                                    Modern
+                                                  </button>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setSelectedTheme('rustic');
+                                                    }}
+                                                    className={`px-1.5 py-0.5 rounded ${
+                                                      selectedTheme === 'rustic'
+                                                        ? 'bg-amber-700 text-white'
+                                                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                                                    }`}
+                                                  >
+                                                    Rustic
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                          <div
-                                            className={`w-3 h-3 rounded-full ${
-                                              RATING_COLORS[item.rating - 1] ||
-                                              "bg-gray-300"
-                                            }`}
-                                          />
-                                          <span className="text-xs text-gray-600 whitespace-nowrap">
-                                            {RATING_LABELS[item.rating - 1] ||
-                                              "Unknown"}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 ) : (
                                   <p className="text-sm text-gray-400 italic">

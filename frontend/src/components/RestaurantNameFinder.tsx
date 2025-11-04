@@ -385,7 +385,6 @@ export default function RestaurantNameFinder(
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFileSelect}
         className="hidden"
         data-testid="restaurant-finder-input"

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
 import { getTodayLocalDateString, localDateStringToUTC, formatLocalDateForDisplay } from "@/lib/dateUtils";
@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronUp, Calendar, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, Calendar, Users, Camera, X } from "lucide-react";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
+import { compressDishPhoto } from "@/services/photoService";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -33,6 +34,11 @@ export default function RateItemsPage({
   const [visitDate, setVisitDate] = useState(draft.visitDate);
   const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
   const [showDateEdit, setShowDateEdit] = useState(false);
+
+  // Photo state - track photo for each item (max 1 for now)
+  const [itemPhotos, setItemPhotos] = useState<Map<number, File>>(new Map());
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<number, string>>(new Map());
+  const fileInputRefs = useRef<Map<number, HTMLInputElement>>(new Map());
 
   // Check if user has rated before - expand legend for first-timers
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
@@ -61,8 +67,11 @@ export default function RateItemsPage({
         notes: "",
       });
 
-      for (const item of items) {
-        await pb.collection("food_items").create({
+      // Create food items and upload photos
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        const foodItem = await pb.collection("food_items").create({
           name: item.menuItem.name,
           description: item.description,
           visit: visit.id,
@@ -70,6 +79,22 @@ export default function RateItemsPage({
           notes: item.notes,
           user: user.id,
         });
+
+        // Upload photo if exists
+        const photo = itemPhotos.get(i);
+        if (photo) {
+          // Compress the photo before upload
+          const compressedPhoto = await compressDishPhoto(photo);
+
+          // Create visit_photo record with the compressed photo
+          const formData = new FormData();
+          formData.append('photo', compressedPhoto);
+          formData.append('visit', visit.id);
+          formData.append('food_item', foodItem.id);
+          formData.append('user', user.id);
+
+          await pb.collection("visit_photos").create(formData);
+        }
       }
 
       return visit;
@@ -102,6 +127,49 @@ export default function RateItemsPage({
     setItems(newItems);
     visitDraftService.updateItem(index, { [field]: value });
   };
+
+  const handlePhotoCapture = (index: number, file: File) => {
+    // Store the photo file
+    const newPhotos = new Map(itemPhotos);
+    newPhotos.set(index, file);
+    setItemPhotos(newPhotos);
+
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    const newPreviewUrls = new Map(photoPreviewUrls);
+
+    // Revoke old URL if exists
+    const oldUrl = newPreviewUrls.get(index);
+    if (oldUrl) {
+      URL.revokeObjectURL(oldUrl);
+    }
+
+    newPreviewUrls.set(index, previewUrl);
+    setPhotoPreviewUrls(newPreviewUrls);
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    // Remove photo file
+    const newPhotos = new Map(itemPhotos);
+    newPhotos.delete(index);
+    setItemPhotos(newPhotos);
+
+    // Revoke and remove preview URL
+    const previewUrl = photoPreviewUrls.get(index);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    const newPreviewUrls = new Map(photoPreviewUrls);
+    newPreviewUrls.delete(index);
+    setPhotoPreviewUrls(newPreviewUrls);
+  };
+
+  // Cleanup preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -263,6 +331,60 @@ export default function RateItemsPage({
                       handleUpdateItem(index, "notes", e.target.value)
                     }
                   />
+                </div>
+
+                {/* Photo capture section */}
+                <div className="space-y-2">
+                  <Label>Photo (optional)</Label>
+
+                  {!photoPreviewUrls.has(index) ? (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        ref={(el) => {
+                          if (el) fileInputRefs.current.set(index, el);
+                        }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handlePhotoCapture(index, file);
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => fileInputRefs.current.get(index)?.click()}
+                      >
+                        <Camera className="w-4 h-4 mr-2" />
+                        Take Photo
+                      </Button>
+                      <p className="text-xs text-gray-500 text-center">
+                        Capture your dish for social sharing
+                      </p>
+                    </>
+                  ) : (
+                    <div className="relative">
+                      <img
+                        src={photoPreviewUrls.get(index)}
+                        alt="Dish preview"
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2"
+                        onClick={() => handleRemovePhoto(index)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
