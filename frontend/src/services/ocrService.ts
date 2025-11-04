@@ -1,4 +1,4 @@
-import { pb, MenuImage, MenuItem } from '@/lib/pocketbase';
+import { pb, MenuImage, MenuItem, User } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
 import {
   hasExceededDailyLimit,
@@ -14,6 +14,17 @@ export interface ExtractedMenuItem {
   name: string;
   description?: string;
   price?: string;
+}
+
+/**
+ * Check if the current user has unlimited photo parsing (subscriber or admin)
+ */
+function hasUnlimitedParsing(): boolean {
+  const user = pb.authStore.record as User | null;
+  if (!user) return false;
+
+  // Admins and subscribers get unlimited parsing
+  return user.isAdmin === true || user.isSubscriber === true;
 }
 
 
@@ -85,8 +96,9 @@ export async function performOCR(
   imageFile: File,
   onProgress?: (progress: number) => void
 ): Promise<OCRResult> {
-  // Check rate limit before proceeding
-  if (hasExceededDailyLimit()) {
+  // Check rate limit before proceeding (skip for subscribers and admins)
+  const hasUnlimited = hasUnlimitedParsing();
+  if (!hasUnlimited && hasExceededDailyLimit()) {
     const remaining = getRemainingAttempts();
     throw new Error(
       `You have reached the daily limit for failed menu uploads. You have ${remaining} attempts remaining today. Please try again tomorrow.`
@@ -123,18 +135,25 @@ export async function performOCR(
     const errorText = await response.text();
     logger.error('Gemini parsing failed:', errorText);
 
-    // If status is 400 (not a menu), increment failed attempts counter
+    // If status is 400 (not a menu), increment failed attempts counter (skip for subscribers/admins)
     if (response.status === 400) {
-      incrementFailedAttempts();
-      const remaining = getRemainingAttempts();
+      if (!hasUnlimited) {
+        incrementFailedAttempts();
+        const remaining = getRemainingAttempts();
 
-      if (remaining > 0) {
-        throw new Error(
-          `This image does not appear to be a menu. Please upload a clear picture of a menu. You have ${remaining} attempts remaining today.`
-        );
+        if (remaining > 0) {
+          throw new Error(
+            `This image does not appear to be a menu. Please upload a clear picture of a menu. You have ${remaining} attempts remaining today.`
+          );
+        } else {
+          throw new Error(
+            `This image does not appear to be a menu. You have reached the daily limit for failed uploads. Please try again tomorrow.`
+          );
+        }
       } else {
+        // Subscribers/admins get a simpler error message without attempt tracking
         throw new Error(
-          `This image does not appear to be a menu. You have reached the daily limit for failed uploads. Please try again tomorrow.`
+          `This image does not appear to be a menu. Please upload a clear picture of a menu.`
         );
       }
     }

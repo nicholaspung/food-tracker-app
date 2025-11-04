@@ -7,7 +7,7 @@ import { useMenuOCR } from '@/hooks/useMenuOCR';
 import { getLastMenuUploadDate } from '@/services/ocrService';
 import { getRemainingAttempts, getFailedAttemptsToday } from '@/services/ocrRateLimitService';
 import { logger } from "@/lib/logger";
-import { MenuItem } from '@/lib/pocketbase';
+import { MenuItem, User } from '@/lib/pocketbase';
 import { pb } from '@/lib/pocketbase';
 
 interface MenuScanStepProps {
@@ -184,8 +184,16 @@ export default function MenuScanStep({
           </Alert>
         )}
 
-        {/* Rate limit info */}
+        {/* Rate limit info (hidden for subscribers and admins) */}
         {(() => {
+          const user = pb.authStore.record as User | null;
+          const hasUnlimited = user?.isAdmin === true || user?.isSubscriber === true;
+
+          // Don't show rate limit info for subscribers/admins
+          if (hasUnlimited) {
+            return null;
+          }
+
           const failedAttempts = getFailedAttemptsToday();
           const remaining = getRemainingAttempts();
 
