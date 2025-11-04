@@ -61,6 +61,11 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   const [showMandatoryNameDialog, setShowMandatoryNameDialog] = useState(false);
   const [mandatoryName, setMandatoryName] = useState('');
 
+  // Admin: Subscriber management
+  const [subscriberEmail, setSubscriberEmail] = useState('');
+  const [subscriberError, setSubscriberError] = useState('');
+  const [subscriberSuccess, setSubscriberSuccess] = useState('');
+
   // Check if user is the initial user from the user record
   const isInitialUser = user?.isInitialUser === true;
   const isAdmin = user?.isAdmin === true;
@@ -141,6 +146,58 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     }
 
     updateMandatoryNameMutation.mutate(mandatoryName.trim());
+  };
+
+  // Admin: Elevate user to subscriber
+  const elevateToSubscriberMutation = useMutation({
+    mutationFn: async (email: string) => {
+      // First, find the user by email
+      const users = await pb.collection('users').getList(1, 1, {
+        filter: `email = "${email}"`,
+      });
+
+      if (users.items.length === 0) {
+        throw new Error('User not found with that email address');
+      }
+
+      const targetUser = users.items[0];
+
+      // Update the user to be a subscriber
+      return await pb.collection('users').update(targetUser.id, {
+        isSubscriber: true,
+      });
+    },
+    onSuccess: () => {
+      setSubscriberSuccess('User successfully elevated to subscriber!');
+      setSubscriberError('');
+      setSubscriberEmail('');
+      // Clear success message after 5 seconds
+      setTimeout(() => setSubscriberSuccess(''), 5000);
+    },
+    onError: (err: any) => {
+      setSubscriberError(err.message || 'Failed to elevate user to subscriber');
+      setSubscriberSuccess('');
+    },
+  });
+
+  const handleElevateToSubscriber = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubscriberError('');
+    setSubscriberSuccess('');
+
+    if (!subscriberEmail.trim()) {
+      setSubscriberError('Please enter an email address');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(subscriberEmail.trim())) {
+      setSubscriberError('Please enter a valid email address');
+      return;
+    }
+
+    elevateToSubscriberMutation.mutate(subscriberEmail.trim());
   };
 
   // Load dismissed profile version from localStorage on mount
@@ -647,6 +704,52 @@ Looking forward to seeing you there!`;
                   >
                     Beta Features
                   </Button>
+
+                  {/* Admin: Subscriber Management */}
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-amber-900">Subscriber Management</h3>
+                      <p className="text-xs text-amber-700 mt-1">Elevate users to subscriber status for unlimited photo parsing</p>
+                    </div>
+
+                    {subscriberSuccess && (
+                      <div className="p-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="subscriber-success">
+                        {subscriberSuccess}
+                      </div>
+                    )}
+
+                    {subscriberError && (
+                      <div className="p-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md" data-testid="subscriber-error">
+                        {subscriberError}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleElevateToSubscriber} className="space-y-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="subscriber-email" className="text-xs text-amber-900">
+                          User Email
+                        </Label>
+                        <Input
+                          id="subscriber-email"
+                          type="email"
+                          placeholder="user@example.com"
+                          value={subscriberEmail}
+                          onChange={(e) => setSubscriberEmail(e.target.value)}
+                          disabled={elevateToSubscriberMutation.isPending}
+                          className="text-sm"
+                          data-testid="subscriber-email-input"
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        disabled={elevateToSubscriberMutation.isPending}
+                        className="w-full bg-amber-600 hover:bg-amber-700"
+                        data-testid="elevate-subscriber-button"
+                      >
+                        {elevateToSubscriberMutation.isPending ? 'Elevating...' : 'Elevate to Subscriber'}
+                      </Button>
+                    </form>
+                  </div>
                 </>
               )}
 
