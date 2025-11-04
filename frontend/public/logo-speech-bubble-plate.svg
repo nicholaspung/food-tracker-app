@@ -1,0 +1,48 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Speech bubble tail -->
+  <path d="M85 155 L75 170 L95 160 Z" fill="url(#gradient1)"/>
+
+  <!-- Main plate/speech bubble circle -->
+  <circle cx="100" cy="100" r="70" fill="url(#gradient1)" stroke="url(#gradient2)" stroke-width="4"/>
+
+  <!-- Inner plate circle (to create plate rim effect) -->
+  <circle cx="100" cy="100" r="55" fill="white" opacity="0.95"/>
+
+  <!-- Fork -->
+  <g transform="translate(72, 83)">
+    <!-- Fork handle -->
+    <rect x="8" y="18" width="5" height="22" rx="2.5" fill="url(#gradient2)"/>
+
+    <!-- Fork neck/shoulder (where tines meet handle) -->
+    <path d="M 5 18 L 5 15 Q 5 13 7 13 L 14 13 Q 16 13 16 15 L 16 18 L 5 18 Z" fill="url(#gradient2)"/>
+
+    <!-- Fork tines (4 tines, longer and more prominent) -->
+    <rect x="5" y="0" width="2.2" height="14" rx="1.1" fill="url(#gradient2)"/>
+    <rect x="8.6" y="0" width="2.2" height="16" rx="1.1" fill="url(#gradient2)"/>
+    <rect x="12.2" y="0" width="2.2" height="16" rx="1.1" fill="url(#gradient2)"/>
+    <rect x="15.8" y="0" width="2.2" height="14" rx="1.1" fill="url(#gradient2)"/>
+  </g>
+
+  <!-- Spoon -->
+  <g transform="translate(105, 85)">
+    <!-- Spoon handle -->
+    <rect x="8" y="0" width="4" height="35" rx="2" fill="url(#gradient2)"/>
+    <!-- Spoon bowl -->
+    <ellipse cx="10" cy="3" rx="6" ry="8" fill="url(#gradient2)"/>
+  </g>
+
+  <!-- Star accent (recommendation symbol) -->
+  <path d="M140 75 L142 81 L148 81 L143 85 L145 91 L140 87 L135 91 L137 85 L132 81 L138 81 Z" fill="#FFD700" opacity="0.9"/>
+
+  <!-- Gradients -->
+  <defs>
+    <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B6B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF8E53;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF8E53;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFA726;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>

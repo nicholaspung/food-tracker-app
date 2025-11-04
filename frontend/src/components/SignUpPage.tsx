@@ -122,6 +122,9 @@ export default function SignUpPage({
       // Show success message
       setSuccess(true);
 
+      // Mark that user has completed onboarding flow
+      localStorage.setItem("hasSeenOnboarding", "true");
+
       // Clear form
       setEmail("");
       setPassword("");
@@ -172,6 +175,16 @@ export default function SignUpPage({
     >
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
+          <div className="flex justify-center items-center gap-3 mb-4">
+            <img
+              src="/logo-speech-bubble-plate.svg"
+              alt="Yummy Recs Logo"
+              className="w-14 h-14"
+            />
+            <div className="text-xl font-bold text-foreground">
+              Track Your Foods
+            </div>
+          </div>
           <CardTitle
             className="text-2xl text-center"
             data-testid="signup-title"
@@ -187,7 +200,11 @@ export default function SignUpPage({
               : "Enter your invite code, email and password to sign up"}
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSignUp} data-testid="signup-form">
+        <form
+          onSubmit={handleSignUp}
+          data-testid="signup-form"
+          className="space-y-4"
+        >
           <CardContent className="space-y-4">
             {initialInviteCode && !success && (
               <div

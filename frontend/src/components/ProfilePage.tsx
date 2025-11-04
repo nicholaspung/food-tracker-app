@@ -353,6 +353,16 @@ Looking forward to seeing you there!`;
       <div className="flex flex-col h-full bg-gray-50" data-testid="profile-page">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-4 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <img
+                src="/logo-speech-bubble-plate.svg"
+                alt="Track Your Foods Logo"
+                className="w-10 h-10"
+              />
+              <span className="text-lg font-semibold text-gray-700">Track Your Foods</span>
+            </div>
+          </div>
           <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
           <p className="text-sm text-gray-500 mt-1">Your account information</p>
         </div>

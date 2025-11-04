@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yummy Recs - Logo Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: rgba(255,255,255,0.9);
+            font-size: 1.2rem;
+            margin-bottom: 3rem;
+        }
+
+        .logo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .logo-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .logo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+
+        .logo-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #333;
+            text-align: center;
+        }
+
+        .logo-display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+            margin-bottom: 1rem;
+        }
+
+        .logo-display img {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .logo-sizes {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .size-option {
+            background: #f5f5f5;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .size-option:hover {
+            border-color: #FF6B6B;
+            transform: scale(1.05);
+        }
+
+        .size-option img {
+            display: block;
+        }
+
+        .size-label {
+            text-align: center;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .backgrounds {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 10px;
+        }
+
+        .bg-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #666;
+        }
+
+        .bg-options {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .bg-swatch {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .bg-swatch:hover {
+            border-color: #333;
+            transform: scale(1.1);
+        }
+
+        .info-section {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .info-section h2 {
+            color: #333;
+            margin-bottom: 1rem;
+        }
+
+        .info-section p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .color-palette {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .color-item {
+            text-align: center;
+        }
+
+        .color-box {
+            width: 80px;
+            height: 80px;
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .color-name {
+            font-size: 0.85rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Yummy Recs Logo Concepts</h1>
+        <p class="subtitle">Choose your favorite design for your food recommendation app</p>
+
+        <div class="logo-grid">
+            <!-- Speech Bubble Plate Logo -->
+            <div class="logo-card">
+                <h3 class="logo-title">Speech Bubble Plate</h3>
+                <div class="logo-display" id="display1" style="background: white;">
+                    <img src="logo-speech-bubble-plate.svg" alt="Speech Bubble Plate Logo" style="width: 200px;">
+                </div>
+                <div class="logo-sizes">
+                    <div class="size-option">
+                        <img src="logo-speech-bubble-plate.svg" alt="64px" style="width: 64px; height: 64px;">
+                        <div class="size-label">64px</div>
+                    </div>
+                    <div class="size-option">
+                        <img src="logo-speech-bubble-plate.svg" alt="128px" style="width: 128px; height: 128px;">
+                        <div class="size-label">128px</div>
+                    </div>
+                </div>
+                <div class="backgrounds">
+                    <div class="bg-title">Test on backgrounds:</div>
+                    <div class="bg-options">
+                        <div class="bg-swatch" style="background: white;" onclick="changeBg('display1', 'white')"></div>
+                        <div class="bg-swatch" style="background: #f5f5f5;" onclick="changeBg('display1', '#f5f5f5')"></div>
+                        <div class="bg-swatch" style="background: #333;" onclick="changeBg('display1', '#333')"></div>
+                        <div class="bg-swatch" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="changeBg('display1', 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)')"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tasty Star Logo -->
+            <div class="logo-card">
+                <h3 class="logo-title">Tasty Star ⭐</h3>
+                <div class="logo-display" id="display2" style="background: white;">
+                    <img src="logo-tasty-star.svg" alt="Tasty Star Logo" style="width: 200px;">
+                </div>
+                <div class="logo-sizes">
+                    <div class="size-option">
+                        <img src="logo-tasty-star.svg" alt="64px" style="width: 64px; height: 64px;">
+                        <div class="size-label">64px</div>
+                    </div>
+                    <div class="size-option">
+                        <img src="logo-tasty-star.svg" alt="128px" style="width: 128px; height: 128px;">
+                        <div class="size-label">128px</div>
+                    </div>
+                </div>
+                <div class="backgrounds">
+                    <div class="bg-title">Test on backgrounds:</div>
+                    <div class="bg-options">
+                        <div class="bg-swatch" style="background: white;" onclick="changeBg('display2', 'white')"></div>
+                        <div class="bg-swatch" style="background: #f5f5f5;" onclick="changeBg('display2', '#f5f5f5')"></div>
+                        <div class="bg-swatch" style="background: #333;" onclick="changeBg('display2', '#333')"></div>
+                        <div class="bg-swatch" style="background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);" onclick="changeBg('display2', 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)')"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h2>Design Rationale</h2>
+
+            <h3 style="margin-top: 1.5rem;">Speech Bubble Plate</h3>
+            <p>
+                Combines a plate (food) with a speech bubble (recommendations/social). The fork and spoon represent dining,
+                while the circular speech bubble shape emphasizes the conversational, friend-to-friend recommendation aspect.
+                The warm coral-to-orange gradient evokes appetite and warmth.
+            </p>
+
+            <h3 style="margin-top: 1.5rem;">Tasty Star ⭐</h3>
+            <p>
+                A playful star with a "bite" taken out of it. Represents both rating/recommendations (stars) and food (the bite).
+                Simple, memorable, and works beautifully as an app icon. The golden-orange gradient feels warm and inviting,
+                like comfort food. The sparkles add a touch of delight and discovery.
+            </p>
+
+            <h3 style="margin-top: 1.5rem;">Color Palettes</h3>
+            <div class="color-palette">
+                <div class="color-item">
+                    <div class="color-box" style="background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);"></div>
+                    <div class="color-name">Coral Sunset</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-box" style="background: linear-gradient(135deg, #FFB300 0%, #FF6F00 100%);"></div>
+                    <div class="color-name">Golden Orange</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-box" style="background: #FFD700;"></div>
+                    <div class="color-name">Accent Gold</div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">Usage</h3>
+            <p>
+                Both logos are provided as scalable SVG files. You can use them in your app as-is, or generate PNG versions
+                for various icon sizes (64px, 128px, 192px, 512px) for PWA and mobile app icons.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function changeBg(displayId, color) {
+            document.getElementById(displayId).style.background = color;
+        }
+    </script>
+</body>
+</html>

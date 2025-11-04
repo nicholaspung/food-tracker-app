@@ -8,6 +8,12 @@ export const Route = createFileRoute('/')({
     if (pb.authStore.isValid) {
       throw redirect({ to: '/home' });
     }
+
+    // If user hasn't seen onboarding yet, redirect to onboarding
+    const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
+    if (!hasSeenOnboarding) {
+      throw redirect({ to: '/onboarding' });
+    }
   },
   component: Index,
 });
@@ -22,6 +28,9 @@ function Index() {
       }}
       onNavigateToForgotPassword={() => {
         navigate({ to: '/forgot-password' });
+      }}
+      onNavigateToOnboarding={() => {
+        navigate({ to: '/onboarding' });
       }}
       onLoginSuccess={() => {
         navigate({ to: '/home' });

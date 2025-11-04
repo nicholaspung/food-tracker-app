@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.3.1",
+    "date": "2025-11-03",
+    "title": "New Brand Identity & Onboarding Experience",
+    "summary": "Welcome to the refreshed Track Your Foods! New users now get a beautiful introduction to the app, and everyone benefits from faster login with saved email addresses.",
+    "features": [
+      "Interactive onboarding: New users see 4 beautiful intro screens explaining key features before signing up",
+      "Brand new logo: Professional speech bubble + plate design represents our food recommendation network",
+      "Remember me: Login page now remembers your email address for faster future logins",
+      "View intro anytime: Returning users can view the onboarding screens again from the login page"
+    ],
+    "improvements": [
+      "App-wide branding: Logo and app name now appear on login, signup, onboarding, and profile pages",
+      "Faster login: Only need to type your password if you've logged in before",
+      "Clear saved email: Easy one-click button to clear your saved email if needed",
+      "Updated app name: Browser tab and metadata now show 'Yummy Recs - Your Food Recommendation Network'",
+      "New favicon: Logo now appears in browser tabs instead of generic icon",
+      "Consistent design: Logo and text styling match across all pages"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.3.0",
     "date": "2025-11-03",
     "title": "AI Restaurant Name Finder & Invite Code Improvements",

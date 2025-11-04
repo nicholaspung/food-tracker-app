@@ -1,0 +1,46 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background square with rounded corners for app icon -->
+  <rect width="512" height="512" rx="115" fill="url(#bgGradient)"/>
+
+  <!-- Simplified plate circle -->
+  <circle cx="256" cy="256" r="160" fill="white" opacity="0.95"/>
+
+  <!-- Fork (improved) -->
+  <g transform="translate(175, 210)">
+    <!-- Fork handle -->
+    <rect x="20" y="45" width="12" height="60" rx="6" fill="url(#iconGradient)"/>
+
+    <!-- Fork neck/shoulder (where tines meet handle) -->
+    <path d="M 12 45 L 12 38 Q 12 33 17 33 L 35 33 Q 40 33 40 38 L 40 45 L 12 45 Z" fill="url(#iconGradient)"/>
+
+    <!-- Fork tines (4 tines, longer and more prominent) -->
+    <rect x="12" y="0" width="5.5" height="36" rx="2.75" fill="url(#iconGradient)"/>
+    <rect x="21.5" y="0" width="5.5" height="40" rx="2.75" fill="url(#iconGradient)"/>
+    <rect x="31" y="0" width="5.5" height="40" rx="2.75" fill="url(#iconGradient)"/>
+    <rect x="40.5" y="0" width="5.5" height="36" rx="2.75" fill="url(#iconGradient)"/>
+  </g>
+
+  <!-- Spoon (simplified) -->
+  <g transform="translate(275, 215)">
+    <!-- Spoon handle -->
+    <rect x="18" y="0" width="10" height="90" rx="5" fill="url(#iconGradient)"/>
+    <!-- Spoon bowl -->
+    <ellipse cx="23" cy="8" rx="16" ry="22" fill="url(#iconGradient)"/>
+  </g>
+
+  <!-- Star accent -->
+  <circle cx="360" cy="190" r="25" fill="#FFD700"/>
+  <path d="M360 170 L365 185 L380 185 L368 194 L373 209 L360 200 L347 209 L352 194 L340 185 L355 185 Z" fill="white"/>
+
+  <!-- Gradients -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B6B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF8E53;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF5252;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF7043;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>

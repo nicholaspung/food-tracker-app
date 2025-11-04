@@ -1,0 +1,57 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main star shape -->
+  <path d="M 100 20
+           L 115 75
+           L 175 75
+           L 125 110
+           L 145 165
+           L 100 130
+           L 55 165
+           L 75 110
+           L 25 75
+           L 85 75
+           Z"
+        fill="url(#starGradient)"
+        stroke="#F57C00"
+        stroke-width="3"
+        stroke-linejoin="round"/>
+
+  <!-- Bite mark circle (creates the "bitten" effect) -->
+  <circle cx="135" cy="65" r="22" fill="white"/>
+
+  <!-- Subtle inner shine/highlight -->
+  <path d="M 100 35
+           L 108 60
+           L 130 60
+           L 112 75
+           L 118 95"
+        fill="none"
+        stroke="white"
+        stroke-width="3"
+        stroke-linecap="round"
+        opacity="0.4"/>
+
+  <!-- Small sparkle accent (top right) -->
+  <g transform="translate(155, 45)">
+    <path d="M 0 -5 L 0 5 M -5 0 L 5 0" stroke="#FFD54F" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- Small sparkle accent (bottom left) -->
+  <g transform="translate(45, 155)">
+    <path d="M 0 -4 L 0 4 M -4 0 L 4 0" stroke="#FFD54F" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- Medium sparkle accent (right side) -->
+  <g transform="translate(170, 105)">
+    <path d="M 0 -6 L 0 6 M -6 0 L 6 0" stroke="#FFD54F" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- Gradients -->
+  <defs>
+    <linearGradient id="starGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFB300;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#FF8F00;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF6F00;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>
