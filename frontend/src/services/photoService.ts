@@ -32,7 +32,7 @@ export async function compressDishPhoto(file: File): Promise<File> {
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         let width = img.width;
         let height = img.height;
 
@@ -46,9 +46,9 @@ export async function compressDishPhoto(file: File): Promise<File> {
         canvas.width = width;
         canvas.height = height;
 
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
+          reject(new Error("Failed to get canvas context"));
           return;
         }
 
@@ -58,28 +58,36 @@ export async function compressDishPhoto(file: File): Promise<File> {
         canvas.toBlob(
           (blob) => {
             if (!blob) {
-              reject(new Error('Failed to compress image'));
+              reject(new Error("Failed to compress image"));
               return;
             }
 
             const compressedFile = new File([blob], file.name, {
-              type: 'image/jpeg',
+              type: "image/jpeg",
               lastModified: Date.now(),
             });
 
             resolve(compressedFile);
           },
-          'image/jpeg',
-          0.80 // Quality setting (0-1) - balanced for social sharing
+          "image/jpeg",
+          0.8 // Quality setting (0-1) - balanced for social sharing
         );
       };
-      img.onerror = () => reject(new Error('Failed to load image'));
+      img.onerror = () => reject(new Error("Failed to load image"));
     };
-    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onerror = () => reject(new Error("Failed to read file"));
   });
 }
 
-export type BadgeTheme = 'modern' | 'rustic';
+export type BadgeTheme = "modern" | "rustic" | "minimal";
+export type BadgePosition = "bottom" | "bottom-left" | "bottom-right";
+
+export interface BadgeOptions {
+  theme?: BadgeTheme;
+  position?: BadgePosition;
+  showDate?: boolean;
+  showRating?: boolean;
+}
 
 /**
  * Generate social share image with badge overlay
@@ -93,8 +101,18 @@ export async function generateSocialShareImage(
     rating: number;
     visitDate: string;
   },
-  theme: BadgeTheme = 'modern'
+  options: BadgeOptions | BadgeTheme = "modern"
 ): Promise<Blob> {
+  // Handle backward compatibility with old API
+  const opts: BadgeOptions =
+    typeof options === "string"
+      ? { theme: options, position: "bottom", showDate: true, showRating: true }
+      : {
+          theme: options.theme ?? "modern",
+          position: options.position ?? "bottom",
+          showDate: options.showDate ?? true,
+          showRating: options.showRating ?? true,
+        };
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(photoFile);
@@ -102,7 +120,7 @@ export async function generateSocialShareImage(
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
 
         // Target Instagram optimal size: 1080px
         const targetSize = 1080;
@@ -127,9 +145,9 @@ export async function generateSocialShareImage(
         canvas.width = width;
         canvas.height = height;
 
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
+          reject(new Error("Failed to get canvas context"));
           return;
         }
 
@@ -137,28 +155,30 @@ export async function generateSocialShareImage(
         ctx.drawImage(img, 0, 0, width, height);
 
         // Draw badge overlay with selected theme
-        if (theme === 'rustic') {
-          drawRusticBadgeOverlay(ctx, width, height, overlayData);
+        if (opts.theme === "rustic") {
+          drawRusticBadgeOverlay(ctx, width, height, overlayData, opts);
+        } else if (opts.theme === "minimal") {
+          drawMinimalBadgeOverlay(ctx, width, height, overlayData, opts);
         } else {
-          drawModernBadgeOverlay(ctx, width, height, overlayData);
+          drawModernBadgeOverlay(ctx, width, height, overlayData, opts);
         }
 
         // Convert to blob for sharing
         canvas.toBlob(
           (blob) => {
             if (!blob) {
-              reject(new Error('Failed to generate share image'));
+              reject(new Error("Failed to generate share image"));
               return;
             }
             resolve(blob);
           },
-          'image/jpeg',
+          "image/jpeg",
           0.92 // High quality for final share image
         );
       };
-      img.onerror = () => reject(new Error('Failed to load image'));
+      img.onerror = () => reject(new Error("Failed to load image"));
     };
-    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onerror = () => reject(new Error("Failed to read file"));
   });
 }
 
@@ -174,15 +194,34 @@ function drawModernBadgeOverlay(
     dishName: string;
     rating: number;
     visitDate: string;
-  }
+  },
+  options: BadgeOptions
 ) {
   // Badge configuration
   const padding = 20;
-  const badgeWidth = canvasWidth - (padding * 2);
-  const badgeHeight = 100;
-  const badgeX = padding;
-  const badgeY = canvasHeight - badgeHeight - padding;
   const borderRadius = 12;
+
+  // Calculate badge dimensions based on what's being shown
+  let badgeHeight = 60; // Base height for restaurant + dish name
+  if (options.showRating) badgeHeight += 30;
+  if (options.showDate) badgeHeight += 20;
+
+  // Calculate position based on options
+  let badgeWidth: number;
+  let badgeX: number;
+  const badgeY = canvasHeight - badgeHeight - padding;
+
+  if (options.position === "bottom-left") {
+    badgeWidth = Math.min(canvasWidth * 0.75, canvasWidth - padding * 2);
+    badgeX = padding;
+  } else if (options.position === "bottom-right") {
+    badgeWidth = Math.min(canvasWidth * 0.75, canvasWidth - padding * 2);
+    badgeX = canvasWidth - badgeWidth - padding;
+  } else {
+    // bottom (centered)
+    badgeWidth = canvasWidth - padding * 2;
+    badgeX = padding;
+  }
 
   // Draw semi-transparent background with rounded corners
   ctx.save();
@@ -191,21 +230,36 @@ function drawModernBadgeOverlay(
   ctx.beginPath();
   ctx.moveTo(badgeX + borderRadius, badgeY);
   ctx.lineTo(badgeX + badgeWidth - borderRadius, badgeY);
-  ctx.quadraticCurveTo(badgeX + badgeWidth, badgeY, badgeX + badgeWidth, badgeY + borderRadius);
+  ctx.quadraticCurveTo(
+    badgeX + badgeWidth,
+    badgeY,
+    badgeX + badgeWidth,
+    badgeY + borderRadius
+  );
   ctx.lineTo(badgeX + badgeWidth, badgeY + badgeHeight - borderRadius);
-  ctx.quadraticCurveTo(badgeX + badgeWidth, badgeY + badgeHeight, badgeX + badgeWidth - borderRadius, badgeY + badgeHeight);
+  ctx.quadraticCurveTo(
+    badgeX + badgeWidth,
+    badgeY + badgeHeight,
+    badgeX + badgeWidth - borderRadius,
+    badgeY + badgeHeight
+  );
   ctx.lineTo(badgeX + borderRadius, badgeY + badgeHeight);
-  ctx.quadraticCurveTo(badgeX, badgeY + badgeHeight, badgeX, badgeY + badgeHeight - borderRadius);
+  ctx.quadraticCurveTo(
+    badgeX,
+    badgeY + badgeHeight,
+    badgeX,
+    badgeY + badgeHeight - borderRadius
+  );
   ctx.lineTo(badgeX, badgeY + borderRadius);
   ctx.quadraticCurveTo(badgeX, badgeY, badgeX + borderRadius, badgeY);
   ctx.closePath();
 
   // Fill with semi-transparent dark background
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
   ctx.fill();
 
   // Add subtle border
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
   ctx.lineWidth = 1;
   ctx.stroke();
 
@@ -214,62 +268,80 @@ function drawModernBadgeOverlay(
   let textY = badgeY + 28;
 
   // Restaurant name (top, smaller)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+  ctx.font =
+    'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
 
   // Dish name (middle, larger)
   textY += 26;
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = "#ffffff";
+  ctx.font =
+    'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
   // Truncate dish name if too long
   let dishName = data.dishName;
-  const maxDishWidth = badgeWidth - 180; // Leave space for rating badge
+  const maxDishWidth = options.showRating ? badgeWidth - 180 : badgeWidth - 40; // Leave space for rating badge if shown
   let dishWidth = ctx.measureText(dishName).width;
   while (dishWidth > maxDishWidth && dishName.length > 3) {
-    dishName = dishName.slice(0, -4) + '...';
+    dishName = dishName.slice(0, -4) + "...";
     dishWidth = ctx.measureText(dishName).width;
   }
   ctx.fillText(dishName, textX, textY);
 
-  // Colored rating badge (right side of dish name)
-  const ratingLabel = RATING_LABELS[data.rating - 1] || 'Unknown';
-  const ratingColor = RATING_COLORS[data.rating - 1] || '#6b7280';
+  // Colored rating badge (right side of dish name) - only if showRating is true
+  if (options.showRating) {
+    const ratingLabel = RATING_LABELS[data.rating - 1] || "Unknown";
+    const ratingColor = RATING_COLORS[data.rating - 1] || "#6b7280";
 
-  // Measure rating text to create properly sized badge
-  ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  const ratingTextWidth = ctx.measureText(ratingLabel).width;
-  const badgePadding = 12;
-  const ratingBadgeWidth = ratingTextWidth + (badgePadding * 2);
-  const ratingBadgeHeight = 26;
-  const ratingBadgeX = badgeX + badgeWidth - ratingBadgeWidth - 16;
-  const ratingBadgeY = textY - 18;
+    // Measure rating text to create properly sized badge
+    ctx.font =
+      'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    const ratingTextWidth = ctx.measureText(ratingLabel).width;
+    const badgePadding = 12;
+    const ratingBadgeWidth = ratingTextWidth + badgePadding * 2;
+    const ratingBadgeHeight = 26;
+    const ratingBadgeX = badgeX + badgeWidth - ratingBadgeWidth - 16;
+    const ratingBadgeY = textY - 18;
 
-  // Draw colored rating badge background
-  ctx.fillStyle = ratingColor;
-  ctx.beginPath();
-  ctx.roundRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight, 6);
-  ctx.fill();
+    // Draw colored rating badge background
+    ctx.fillStyle = ratingColor;
+    ctx.beginPath();
+    ctx.roundRect(
+      ratingBadgeX,
+      ratingBadgeY,
+      ratingBadgeWidth,
+      ratingBadgeHeight,
+      6
+    );
+    ctx.fill();
 
-  // Draw rating text
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'center';
-  ctx.fillText(ratingLabel, ratingBadgeX + (ratingBadgeWidth / 2), ratingBadgeY + 18);
-  ctx.textAlign = 'left'; // Reset text align
+    // Draw rating text
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      ratingLabel,
+      ratingBadgeX + ratingBadgeWidth / 2,
+      ratingBadgeY + 18
+    );
+    ctx.textAlign = "left"; // Reset text align
+  }
 
-  // Date (bottom, smallest)
-  textY += 22;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-  ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  // Date (bottom, smallest) - only if showDate is true
+  if (options.showDate) {
+    textY += 22;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+    ctx.font =
+      '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-  // Format date nicely
-  const formattedDate = new Date(data.visitDate).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-  ctx.fillText(formattedDate, textX, textY);
+    // Format date nicely
+    const formattedDate = new Date(data.visitDate).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    ctx.fillText(formattedDate, textX, textY);
+  }
 
   ctx.restore();
 }
@@ -287,22 +359,46 @@ function drawRusticBadgeOverlay(
     dishName: string;
     rating: number;
     visitDate: string;
-  }
+  },
+  options: BadgeOptions
 ) {
   // Badge configuration
   const padding = 20;
-  const badgeWidth = canvasWidth - (padding * 2);
-  const badgeHeight = 120;
-  const badgeX = padding;
+
+  // Calculate badge dimensions based on what's being shown
+  let badgeHeight = 70; // Base height for restaurant + dish name
+  if (options.showRating) badgeHeight += 30;
+  if (options.showDate) badgeHeight += 25;
+
+  // Calculate position based on options
+  let badgeWidth: number;
+  let badgeX: number;
   const badgeY = canvasHeight - badgeHeight - padding;
+
+  if (options.position === "bottom-left") {
+    badgeWidth = Math.min(canvasWidth * 0.75, canvasWidth - padding * 2);
+    badgeX = padding;
+  } else if (options.position === "bottom-right") {
+    badgeWidth = Math.min(canvasWidth * 0.75, canvasWidth - padding * 2);
+    badgeX = canvasWidth - badgeWidth - padding;
+  } else {
+    // bottom (centered)
+    badgeWidth = canvasWidth - padding * 2;
+    badgeX = padding;
+  }
 
   ctx.save();
 
   // Draw rustic textured background with subtle gradient
-  const gradient = ctx.createLinearGradient(badgeX, badgeY, badgeX, badgeY + badgeHeight);
-  gradient.addColorStop(0, 'rgba(101, 67, 33, 0.92)'); // Darker brown
-  gradient.addColorStop(0.5, 'rgba(139, 90, 43, 0.92)'); // Medium brown
-  gradient.addColorStop(1, 'rgba(101, 67, 33, 0.92)'); // Darker brown again
+  const gradient = ctx.createLinearGradient(
+    badgeX,
+    badgeY,
+    badgeX,
+    badgeY + badgeHeight
+  );
+  gradient.addColorStop(0, "rgba(101, 67, 33, 0.92)"); // Darker brown
+  gradient.addColorStop(0.5, "rgba(139, 90, 43, 0.92)"); // Medium brown
+  gradient.addColorStop(1, "rgba(101, 67, 33, 0.92)"); // Darker brown again
 
   // Draw background with slight rounded corners
   ctx.fillStyle = gradient;
@@ -313,13 +409,14 @@ function drawRusticBadgeOverlay(
   for (let i = 0; i < 100; i++) {
     const x = badgeX + Math.random() * badgeWidth;
     const y = badgeY + Math.random() * badgeHeight;
-    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
+    ctx.fillStyle =
+      Math.random() > 0.5 ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)";
     ctx.fillRect(x, y, 2, 2);
   }
   ctx.globalAlpha = 1;
 
   // Add decorative border - top and bottom lines
-  ctx.strokeStyle = 'rgba(222, 184, 135, 0.6)'; // Burlywood
+  ctx.strokeStyle = "rgba(222, 184, 135, 0.6)"; // Burlywood
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(badgeX + 10, badgeY + 8);
@@ -336,72 +433,835 @@ function drawRusticBadgeOverlay(
   let textY = badgeY + 32;
 
   // Restaurant name (top, vintage style)
-  ctx.fillStyle = '#F5DEB3'; // Wheat color
-  ctx.font = 'italic bold 13px Georgia, serif';
+  ctx.fillStyle = "#F5DEB3"; // Wheat color
+  ctx.font = "italic bold 13px Georgia, serif";
   ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
 
   // Dish name (middle, larger serif font)
   textY += 28;
-  ctx.fillStyle = '#FFF8DC'; // Cornsilk
+  ctx.fillStyle = "#FFF8DC"; // Cornsilk
   ctx.font = 'bold 22px Georgia, "Times New Roman", serif';
 
   // Truncate dish name if too long
   let dishName = data.dishName;
-  const maxDishWidth = badgeWidth - 200;
+  const maxDishWidth = options.showRating ? badgeWidth - 200 : badgeWidth - 40;
   let dishWidth = ctx.measureText(dishName).width;
   while (dishWidth > maxDishWidth && dishName.length > 3) {
-    dishName = dishName.slice(0, -4) + '...';
+    dishName = dishName.slice(0, -4) + "...";
     dishWidth = ctx.measureText(dishName).width;
   }
   ctx.fillText(dishName, textX, textY);
 
-  // Rustic rating badge (wooden plaque style)
-  const ratingLabel = RATING_LABELS[data.rating - 1] || 'Unknown';
-  const ratingColor = RATING_COLORS[data.rating - 1] || '#8B4513'; // SaddleBrown
+  // Rustic rating badge (wooden plaque style) - only if showRating is true
+  if (options.showRating) {
+    const ratingLabel = RATING_LABELS[data.rating - 1] || "Unknown";
+    const ratingColor = RATING_COLORS[data.rating - 1] || "#8B4513"; // SaddleBrown
 
-  ctx.font = 'bold 12px Georgia, serif';
-  const ratingTextWidth = ctx.measureText(ratingLabel).width;
-  const badgePadding = 14;
-  const ratingBadgeWidth = ratingTextWidth + (badgePadding * 2);
-  const ratingBadgeHeight = 28;
-  const ratingBadgeX = badgeX + badgeWidth - ratingBadgeWidth - 20;
-  const ratingBadgeY = textY - 20;
+    ctx.font = "bold 12px Georgia, serif";
+    const ratingTextWidth = ctx.measureText(ratingLabel).width;
+    const badgePadding = 14;
+    const ratingBadgeWidth = ratingTextWidth + badgePadding * 2;
+    const ratingBadgeHeight = 28;
+    const ratingBadgeX = badgeX + badgeWidth - ratingBadgeWidth - 20;
+    const ratingBadgeY = textY - 20;
 
-  // Draw wood plaque background
-  const plaqueGradient = ctx.createLinearGradient(
-    ratingBadgeX, ratingBadgeY,
-    ratingBadgeX, ratingBadgeY + ratingBadgeHeight
-  );
-  plaqueGradient.addColorStop(0, ratingColor);
-  plaqueGradient.addColorStop(0.5, ratingColor + 'DD'); // Slightly darker
-  plaqueGradient.addColorStop(1, ratingColor);
+    // Draw wood plaque background
+    const plaqueGradient = ctx.createLinearGradient(
+      ratingBadgeX,
+      ratingBadgeY,
+      ratingBadgeX,
+      ratingBadgeY + ratingBadgeHeight
+    );
+    plaqueGradient.addColorStop(0, ratingColor);
+    plaqueGradient.addColorStop(0.5, ratingColor + "DD"); // Slightly darker
+    plaqueGradient.addColorStop(1, ratingColor);
 
-  ctx.fillStyle = plaqueGradient;
-  ctx.fillRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight);
+    ctx.fillStyle = plaqueGradient;
+    ctx.fillRect(
+      ratingBadgeX,
+      ratingBadgeY,
+      ratingBadgeWidth,
+      ratingBadgeHeight
+    );
 
-  // Border for plaque
-  ctx.strokeStyle = 'rgba(101, 67, 33, 0.6)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight);
+    // Border for plaque
+    ctx.strokeStyle = "rgba(101, 67, 33, 0.6)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(
+      ratingBadgeX,
+      ratingBadgeY,
+      ratingBadgeWidth,
+      ratingBadgeHeight
+    );
 
-  // Rating text
-  ctx.fillStyle = '#FFF8DC';
-  ctx.textAlign = 'center';
-  ctx.font = 'bold 12px Georgia, serif';
-  ctx.fillText(ratingLabel, ratingBadgeX + (ratingBadgeWidth / 2), ratingBadgeY + 18);
-  ctx.textAlign = 'left';
+    // Rating text
+    ctx.fillStyle = "#FFF8DC";
+    ctx.textAlign = "center";
+    ctx.font = "bold 12px Georgia, serif";
+    ctx.fillText(
+      ratingLabel,
+      ratingBadgeX + ratingBadgeWidth / 2,
+      ratingBadgeY + 18
+    );
+    ctx.textAlign = "left";
+  }
 
-  // Date (bottom, vintage style)
-  textY += 32;
-  ctx.fillStyle = 'rgba(245, 222, 179, 0.9)'; // Wheat
-  ctx.font = 'italic 11px Georgia, serif';
+  // Date (bottom, vintage style) - only if showDate is true
+  if (options.showDate) {
+    textY += 32;
+    ctx.fillStyle = "rgba(245, 222, 179, 0.9)"; // Wheat
+    ctx.font = "italic 11px Georgia, serif";
 
-  const formattedDate = new Date(data.visitDate).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric'
-  });
-  ctx.fillText(formattedDate, textX, textY);
+    const formattedDate = new Date(data.visitDate).toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+    ctx.fillText(formattedDate, textX, textY);
+  }
 
   ctx.restore();
+}
+
+/**
+ * Draw a minimal badge overlay on the canvas
+ * Clean, simple design with compact, semi-transparent container
+ */
+function drawMinimalBadgeOverlay(
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  data: {
+    restaurantName: string;
+    dishName: string;
+    rating: number;
+    visitDate: string;
+  },
+  options: BadgeOptions
+) {
+  ctx.save();
+
+  const padding = 20;
+  const innerPadding = 12;
+  const lineSpacing = 22;
+
+  // Measure all text to calculate compact badge size
+  const restaurantFont =
+    '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const dishFont =
+    '600 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const dateFont =
+    '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+  ctx.font = restaurantFont;
+  const restaurantWidth = ctx.measureText(
+    data.restaurantName.toUpperCase()
+  ).width;
+
+  ctx.font = dishFont;
+  let dishName = data.dishName;
+  const maxDishWidth = 400; // Maximum dish name width
+  let dishWidth = ctx.measureText(dishName).width;
+  while (dishWidth > maxDishWidth && dishName.length > 3) {
+    dishName = dishName.slice(0, -4) + "...";
+    dishWidth = ctx.measureText(dishName).width;
+  }
+
+  let dateWidth = 0;
+  if (options.showDate) {
+    ctx.font = dateFont;
+    const formattedDate = new Date(data.visitDate).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    dateWidth = ctx.measureText(formattedDate).width;
+  }
+
+  // Calculate badge dimensions (compact to fit content)
+  const contentWidth = Math.max(restaurantWidth, dishWidth, dateWidth);
+  let badgeWidth = contentWidth + innerPadding * 2;
+  let badgeHeight = innerPadding + 18; // Restaurant name
+  badgeHeight += lineSpacing; // Dish name
+  if (options.showRating) badgeHeight += lineSpacing + 4;
+  if (options.showDate) badgeHeight += lineSpacing - 2;
+  badgeHeight += innerPadding / 2;
+
+  // Calculate position based on options
+  let badgeX: number;
+  const badgeY = canvasHeight - badgeHeight - padding;
+
+  if (options.position === "bottom-left") {
+    badgeX = padding;
+  } else if (options.position === "bottom-right") {
+    badgeX = canvasWidth - badgeWidth - padding;
+  } else {
+    // bottom (centered)
+    badgeX = (canvasWidth - badgeWidth) / 2;
+  }
+
+  // Draw semi-transparent background with rounded corners
+  ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+  ctx.beginPath();
+  ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 8);
+  ctx.fill();
+
+  // Draw text content
+  const textX = badgeX + innerPadding;
+  let textY = badgeY + innerPadding + 13;
+
+  // Restaurant name (top, smaller, uppercase)
+  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.font = restaurantFont;
+  ctx.textAlign = "left";
+  ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
+
+  // Dish name (middle, larger, bold)
+  textY += lineSpacing;
+  ctx.fillStyle = "#000000";
+  ctx.font = dishFont;
+  ctx.fillText(dishName, textX, textY);
+
+  // Rating label below dish name - only if showRating is true
+  if (options.showRating) {
+    textY += lineSpacing + 4;
+    const ratingLabel = RATING_LABELS[data.rating - 1] || "Unknown";
+    const ratingColor = RATING_COLORS[data.rating - 1] || "#6b7280";
+
+    ctx.fillStyle = ratingColor;
+    ctx.font =
+      '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(ratingLabel, textX, textY);
+  }
+
+  // Date (bottom, small) - only if showDate is true
+  if (options.showDate) {
+    textY += lineSpacing - 2;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.font = dateFont;
+
+    const formattedDate = new Date(data.visitDate).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    ctx.fillText(formattedDate, textX, textY);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Draw restaurant info overlay centered on the image (used for 4 and 6+ photo layouts)
+ */
+function drawRestaurantCenterOverlay(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  restaurantName: string,
+  visitDate: string,
+  options: BadgeOptions
+) {
+  ctx.save();
+
+  const innerPadding = 16;
+  const lineSpacing = 24;
+
+  // Measure text
+  const restaurantFont =
+    '600 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const dateFont =
+    '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+  ctx.font = restaurantFont;
+  const restaurantWidth = ctx.measureText(restaurantName).width;
+
+  let dateWidth = 0;
+  let formattedDate = "";
+  if (options.showDate) {
+    formattedDate = new Date(visitDate).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    ctx.font = dateFont;
+    dateWidth = ctx.measureText(formattedDate).width;
+  }
+
+  // Calculate badge dimensions
+  const contentWidth = Math.max(restaurantWidth, dateWidth);
+  const badgeWidth = contentWidth + innerPadding * 2;
+  let badgeHeight = innerPadding + 22; // Restaurant name
+  if (options.showDate) badgeHeight += lineSpacing;
+  badgeHeight += innerPadding;
+
+  const badgeX = centerX - badgeWidth / 2;
+  const badgeY = centerY - badgeHeight / 2;
+
+  if (options.theme === "minimal") {
+    // Minimal style: semi-transparent white rounded container
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 10);
+    ctx.fill();
+
+    // Restaurant name
+    ctx.fillStyle = "#000000";
+    ctx.font = restaurantFont;
+    ctx.textAlign = "center";
+    ctx.fillText(restaurantName, centerX, badgeY + innerPadding + 18);
+
+    // Date if enabled
+    if (options.showDate) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+      ctx.font = dateFont;
+      ctx.fillText(
+        formattedDate,
+        centerX,
+        badgeY + innerPadding + 18 + lineSpacing
+      );
+    }
+  } else if (options.theme === "rustic") {
+    // Rustic style: brown gradient
+    const gradient = ctx.createLinearGradient(
+      badgeX,
+      badgeY,
+      badgeX,
+      badgeY + badgeHeight
+    );
+    gradient.addColorStop(0, "rgba(101, 67, 33, 0.92)");
+    gradient.addColorStop(0.5, "rgba(139, 90, 43, 0.92)");
+    gradient.addColorStop(1, "rgba(101, 67, 33, 0.92)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
+
+    // Border
+    ctx.strokeStyle = "rgba(222, 184, 135, 0.6)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(badgeX, badgeY, badgeWidth, badgeHeight);
+
+    // Restaurant name
+    ctx.fillStyle = "#FFF8DC";
+    ctx.font = '600 24px Georgia, "Times New Roman", serif';
+    ctx.textAlign = "center";
+    ctx.fillText(restaurantName, centerX, badgeY + innerPadding + 18);
+
+    // Date if enabled
+    if (options.showDate) {
+      ctx.fillStyle = "rgba(245, 222, 179, 0.9)";
+      ctx.font = "italic 14px Georgia, serif";
+      ctx.fillText(
+        formattedDate,
+        centerX,
+        badgeY + innerPadding + 18 + lineSpacing
+      );
+    }
+  } else {
+    // Modern style: dark semi-transparent with border
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 10);
+    ctx.fill();
+
+    // Subtle border
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Restaurant name
+    ctx.fillStyle = "#ffffff";
+    ctx.font = restaurantFont;
+    ctx.textAlign = "center";
+    ctx.fillText(restaurantName, centerX, badgeY + innerPadding + 18);
+
+    // Date if enabled
+    if (options.showDate) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+      ctx.font = dateFont;
+      ctx.fillText(
+        formattedDate,
+        centerX,
+        badgeY + innerPadding + 18 + lineSpacing
+      );
+    }
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Generate a composite visit image with multiple dish photos arranged in a grid
+ * Layouts vary by photo count:
+ * - 2-3 photos: vertical stack (1 column)
+ * - 4 photos: 2x2 grid with center overlay
+ * - 5 photos: 2x3 with bottom photo spanning full width
+ * - 6+ photos: 2x3 with center-bottom overlay
+ */
+export async function generateVisitCompositeImage(
+  photos: Array<{
+    file: File;
+    dishName: string;
+    rating: number;
+  }>,
+  restaurantData: {
+    restaurantName: string;
+    visitDate: string;
+  },
+  options: BadgeOptions = {
+    theme: "modern",
+    position: "bottom",
+    showDate: true,
+    showRating: true,
+  }
+): Promise<Blob> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Load all images first
+      const loadedImages: Array<{
+        img: HTMLImageElement;
+        dishName: string;
+        rating: number;
+      }> = [];
+
+      for (const photo of photos) {
+        const img = await new Promise<HTMLImageElement>((res, rej) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(photo.file);
+          reader.onload = (event) => {
+            const image = new Image();
+            image.src = event.target?.result as string;
+            image.onload = () => res(image);
+            image.onerror = () => rej(new Error("Failed to load image"));
+          };
+          reader.onerror = () => rej(new Error("Failed to read file"));
+        });
+        loadedImages.push({
+          img,
+          dishName: photo.dishName,
+          rating: photo.rating,
+        });
+      }
+
+      const photoCount = loadedImages.length;
+      const basePhotoSize = 540; // Standard photo size
+      const fullWidth = 1080; // Full canvas width
+      const overlayHeight = options.showDate ? 120 : 80;
+
+      let canvasWidth: number;
+      let canvasHeight: number;
+      let photoLayout: Array<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        index: number;
+      }> = [];
+      let overlayPosition: {
+        x: number;
+        y: number;
+        centerOverlay: boolean;
+      } | null = null;
+
+      // Determine layout based on photo count
+      if (photoCount <= 3) {
+        // 2-3 photos: vertical stack (1 column)
+        canvasWidth = fullWidth;
+        canvasHeight = fullWidth * photoCount + overlayHeight;
+
+        for (let i = 0; i < photoCount; i++) {
+          photoLayout.push({
+            x: 0,
+            y: fullWidth * i,
+            width: fullWidth,
+            height: fullWidth,
+            index: i,
+          });
+        }
+
+        overlayPosition = {
+          x: 0,
+          y: fullWidth * photoCount,
+          centerOverlay: false,
+        };
+      } else if (photoCount === 4) {
+        // 4 photos: 2x2 grid with center overlay
+        canvasWidth = fullWidth;
+        canvasHeight = fullWidth;
+
+        for (let i = 0; i < 4; i++) {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          photoLayout.push({
+            x: col * basePhotoSize,
+            y: row * basePhotoSize,
+            width: basePhotoSize,
+            height: basePhotoSize,
+            index: i,
+          });
+        }
+
+        // Overlay in the center (where 4 photos meet)
+        overlayPosition = {
+          x: fullWidth / 2,
+          y: fullWidth / 2,
+          centerOverlay: true,
+        };
+      } else if (photoCount === 5) {
+        // 5 photos: 2x3 with bottom photo spanning full width
+        canvasWidth = fullWidth;
+        canvasHeight = basePhotoSize * 3 + overlayHeight;
+
+        // Top 4 photos in 2x2
+        for (let i = 0; i < 4; i++) {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          photoLayout.push({
+            x: col * basePhotoSize,
+            y: row * basePhotoSize,
+            width: basePhotoSize,
+            height: basePhotoSize,
+            index: i,
+          });
+        }
+
+        // Bottom photo spanning full width
+        photoLayout.push({
+          x: 0,
+          y: basePhotoSize * 2,
+          width: fullWidth,
+          height: basePhotoSize,
+          index: 4,
+        });
+
+        overlayPosition = { x: 0, y: basePhotoSize * 3, centerOverlay: false };
+      } else {
+        // 6+ photos: 2x3 grid with center-bottom overlay
+        const rows = Math.ceil(photoCount / 2);
+        canvasWidth = fullWidth;
+        canvasHeight = basePhotoSize * rows;
+
+        for (let i = 0; i < photoCount; i++) {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          photoLayout.push({
+            x: col * basePhotoSize,
+            y: row * basePhotoSize,
+            width: basePhotoSize,
+            height: basePhotoSize,
+            index: i,
+          });
+        }
+
+        // Overlay at bottom center intersection (between last two photos)
+        overlayPosition = {
+          x: fullWidth / 2,
+          y: canvasHeight - basePhotoSize,
+          centerOverlay: true,
+        };
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Failed to get canvas context"));
+        return;
+      }
+
+      // Fill background
+      ctx.fillStyle = "#f3f4f6"; // gray-100
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+      // Draw each photo in layout with dish name and rating
+      for (const layout of photoLayout) {
+        const { img, dishName, rating } = loadedImages[layout.index];
+        const { x, y, width, height } = layout;
+
+        // Calculate scaling to cover the photo area
+        const scale = Math.max(width / img.width, height / img.height);
+        const scaledWidth = img.width * scale;
+        const scaledHeight = img.height * scale;
+        const offsetX = (width - scaledWidth) / 2;
+        const offsetY = (height - scaledHeight) / 2;
+
+        // Draw the photo
+        ctx.drawImage(img, x + offsetX, y + offsetY, scaledWidth, scaledHeight);
+
+        // Add subtle border between photos
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(x, y, width, height);
+
+        // Draw dish name and rating overlay at bottom of each photo
+        const labelHeight = options.showRating ? 85 : 55;
+        const labelY = y + height - labelHeight;
+
+        if (options.theme === "minimal") {
+          // Minimal style: compact semi-transparent container
+          const innerPadding = 10;
+          const lineSpacing = 20;
+
+          // Measure text for compact size
+          ctx.font =
+            '600 64px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          let displayName = dishName;
+          const maxDishWidth = width - 40;
+          let dishWidth = ctx.measureText(displayName).width;
+          while (dishWidth > maxDishWidth && displayName.length > 3) {
+            displayName = displayName.slice(0, -4) + "...";
+            dishWidth = ctx.measureText(displayName).width;
+          }
+
+          let ratingWidth = 0;
+          let ratingLabel = "";
+          if (options.showRating) {
+            ratingLabel = RATING_LABELS[rating - 1] || "Unknown";
+            ctx.font =
+              '600 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ratingWidth = ctx.measureText(ratingLabel).width;
+          }
+
+          const contentWidth = Math.max(dishWidth, ratingWidth);
+          const badgeWidth = contentWidth + innerPadding * 2;
+          let badgeHeight = innerPadding + 18; // Dish name
+          if (options.showRating) badgeHeight += lineSpacing;
+          badgeHeight += innerPadding / 2;
+
+          const badgeX = x + (width - badgeWidth) / 2;
+          const badgeY = y + height - badgeHeight - 12;
+
+          // Draw compact rounded container
+          ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+          ctx.beginPath();
+          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 6);
+          ctx.fill();
+
+          // Draw dish name
+          ctx.fillStyle = "#000000";
+          ctx.font =
+            '600 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx.textAlign = "center";
+          ctx.fillText(
+            displayName,
+            badgeX + badgeWidth / 2,
+            badgeY + innerPadding + 13
+          );
+
+          // Draw rating if enabled
+          if (options.showRating) {
+            const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
+            ctx.fillStyle = ratingColor;
+            ctx.font =
+              '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.fillText(
+              ratingLabel,
+              badgeX + badgeWidth / 2,
+              badgeY + innerPadding + 13 + lineSpacing
+            );
+          }
+
+          ctx.textAlign = "left";
+        } else {
+          // Modern/Rustic style: gradient background
+          const gradient = ctx.createLinearGradient(x, labelY, x, y + height);
+          gradient.addColorStop(0, "rgba(0, 0, 0, 0.3)");
+          gradient.addColorStop(1, "rgba(0, 0, 0, 0.85)");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x, labelY, width, labelHeight);
+
+          // Draw dish name (white text)
+          ctx.fillStyle = "#ffffff";
+          ctx.font =
+            'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx.textAlign = "left";
+
+          // Truncate long dish names
+          let displayName = dishName;
+          const maxWidth = width - 24;
+          let textWidth = ctx.measureText(displayName).width;
+          while (textWidth > maxWidth && displayName.length > 3) {
+            displayName = displayName.slice(0, -4) + "...";
+            textWidth = ctx.measureText(displayName).width;
+          }
+
+          const textStartY = options.showRating ? labelY + 28 : labelY + 35;
+          ctx.fillText(displayName, x + 12, textStartY);
+
+          // Draw rating label if enabled
+          if (options.showRating) {
+            const ratingLabel = RATING_LABELS[rating - 1] || "Unknown";
+            const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
+
+            ctx.fillStyle = ratingColor;
+            ctx.font =
+              'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.fillText(ratingLabel, x + 12, textStartY + 28);
+          }
+        }
+      }
+
+      // Draw restaurant overlay
+      if (overlayPosition) {
+        if (overlayPosition.centerOverlay) {
+          // Center overlay (for 4 and 6+ photos) - compact badge on top of photos
+          drawRestaurantCenterOverlay(
+            ctx,
+            overlayPosition.x,
+            overlayPosition.y,
+            restaurantData.restaurantName,
+            restaurantData.visitDate,
+            options
+          );
+        } else {
+          // Bottom overlay (for 2-3 and 5 photos) - full-width section
+          const overlayY = overlayPosition.y;
+
+          if (options.theme === "minimal") {
+            // Minimal style: clean white background
+            ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
+            ctx.fillRect(0, overlayY, canvasWidth, overlayHeight);
+
+            // Restaurant name (dark text)
+            ctx.fillStyle = "#000000";
+            ctx.font =
+              '600 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.textAlign = "center";
+            ctx.fillText(
+              restaurantData.restaurantName,
+              canvasWidth / 2,
+              overlayY + 48
+            );
+
+            // Date if enabled
+            if (options.showDate) {
+              ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+              ctx.font =
+                '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+              const formattedDate = new Date(
+                restaurantData.visitDate
+              ).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              });
+              ctx.fillText(formattedDate, canvasWidth / 2, overlayY + 78);
+            }
+          } else if (options.theme === "rustic") {
+            // Rustic style overlay
+            const gradient = ctx.createLinearGradient(
+              0,
+              overlayY,
+              0,
+              overlayY + overlayHeight
+            );
+            gradient.addColorStop(0, "rgba(101, 67, 33, 0.95)");
+            gradient.addColorStop(0.5, "rgba(139, 90, 43, 0.95)");
+            gradient.addColorStop(1, "rgba(101, 67, 33, 0.95)");
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, overlayY, canvasWidth, overlayHeight);
+
+            // Add texture
+            ctx.globalAlpha = 0.1;
+            for (let i = 0; i < 200; i++) {
+              const x = Math.random() * canvasWidth;
+              const y = overlayY + Math.random() * overlayHeight;
+              ctx.fillStyle =
+                Math.random() > 0.5
+                  ? "rgba(255,255,255,0.5)"
+                  : "rgba(0,0,0,0.5)";
+              ctx.fillRect(x, y, 2, 2);
+            }
+            ctx.globalAlpha = 1;
+
+            // Draw decorative line at top
+            ctx.strokeStyle = "rgba(222, 184, 135, 0.6)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(20, overlayY + 10);
+            ctx.lineTo(canvasWidth - 20, overlayY + 10);
+            ctx.stroke();
+
+            // Restaurant name
+            ctx.fillStyle = "#FFF8DC";
+            ctx.font = 'bold 32px Georgia, "Times New Roman", serif';
+            ctx.textAlign = "center";
+            ctx.fillText(
+              restaurantData.restaurantName,
+              canvasWidth / 2,
+              overlayY + 50
+            );
+
+            // Date if enabled
+            if (options.showDate) {
+              ctx.fillStyle = "rgba(245, 222, 179, 0.9)";
+              ctx.font = "italic 18px Georgia, serif";
+              const formattedDate = new Date(
+                restaurantData.visitDate
+              ).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              });
+              ctx.fillText(formattedDate, canvasWidth / 2, overlayY + 85);
+            }
+          } else {
+            // Modern style overlay
+            ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
+            ctx.fillRect(0, overlayY, canvasWidth, overlayHeight);
+
+            // Subtle border at top
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, overlayY);
+            ctx.lineTo(canvasWidth, overlayY);
+            ctx.stroke();
+
+            // Restaurant name
+            ctx.fillStyle = "#ffffff";
+            ctx.font =
+              'bold 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.textAlign = "center";
+            ctx.fillText(
+              restaurantData.restaurantName,
+              canvasWidth / 2,
+              overlayY + 50
+            );
+
+            // Date if enabled
+            if (options.showDate) {
+              ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+              ctx.font =
+                '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+              const formattedDate = new Date(
+                restaurantData.visitDate
+              ).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              });
+              ctx.fillText(formattedDate, canvasWidth / 2, overlayY + 85);
+            }
+          }
+        }
+      }
+
+      // Convert to blob
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Failed to generate composite image"));
+            return;
+          }
+          resolve(blob);
+        },
+        "image/jpeg",
+        0.92
+      );
+    } catch (error) {
+      reject(error);
+    }
+  });
 }

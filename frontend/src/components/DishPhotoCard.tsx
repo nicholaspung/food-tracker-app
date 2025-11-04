@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Share2, Download } from "lucide-react";
-import { generateSocialShareImage } from "@/services/photoService";
 import { pb } from "@/lib/pocketbase";
+import ShareCustomizationModal from "@/components/ShareCustomizationModal";
 
 const RATING_LABELS = [
   "Don't eat ever",
@@ -48,8 +48,8 @@ interface DishPhotoCardProps {
 }
 
 export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedTheme, setSelectedTheme] = useState<'modern' | 'rustic'>('modern');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   // Extract data from the expanded relations
   const foodItem = photoRecord.expand?.food_item;
@@ -58,13 +58,11 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
 
   const photoUrl = pb.getFileUrl(photoRecord, photoRecord.photo);
 
-  const handleShare = async () => {
+  const handleShareClick = async () => {
     if (!foodItem || !visit || !restaurant) {
       alert("Missing data for sharing");
       return;
     }
-
-    setIsGenerating(true);
 
     try {
       // Fetch the photo as a blob
@@ -72,14 +70,18 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
       const blob = await response.blob();
       const file = new File([blob], 'dish-photo.jpg', { type: 'image/jpeg' });
 
-      // Generate social share image with badge overlay
-      const shareBlob = await generateSocialShareImage(file, {
-        restaurantName: restaurant.name,
-        dishName: foodItem.name,
-        rating: foodItem.rating,
-        visitDate: visit.visitDate,
-      }, selectedTheme);
+      setPhotoFile(file);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Error loading photo:', error);
+      alert('Failed to load photo. Please try again.');
+    }
+  };
 
+  const handleShare = async (shareBlob: Blob) => {
+    if (!foodItem || !restaurant) return;
+
+    try {
       // Try Web Share API first (native sharing on mobile)
       if (navigator.share && navigator.canShare) {
         const shareFile = new File([shareBlob], 'food-tracker-share.jpg', {
@@ -112,8 +114,6 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
     } catch (error) {
       console.error('Error sharing photo:', error);
       alert('Failed to share photo. Please try again.');
-    } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -173,51 +173,38 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
           </div>
         )}
 
-        {/* Theme selector */}
-        <div className="px-4 pt-3 border-t">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Badge Style:</span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setSelectedTheme('modern')}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                  selectedTheme === 'modern'
-                    ? 'bg-gray-800 text-white'
-                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
-              >
-                Modern
-              </button>
-              <button
-                onClick={() => setSelectedTheme('rustic')}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                  selectedTheme === 'rustic'
-                    ? 'bg-amber-700 text-white'
-                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
-              >
-                Rustic
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Action buttons */}
         <div className="p-4 flex gap-2">
           <Button
             variant="default"
             className="flex-1"
-            onClick={handleShare}
-            disabled={isGenerating}
+            onClick={handleShareClick}
           >
             <Share2 className="w-4 h-4 mr-2" />
-            {isGenerating ? 'Generating...' : 'Share to Social'}
+            Share to Social
           </Button>
           <Button variant="outline" onClick={handleDownload}>
             <Download className="w-4 h-4" />
           </Button>
         </div>
       </CardContent>
+
+      {/* Share Customization Modal */}
+      {foodItem && visit && restaurant && (
+        <ShareCustomizationModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          photoUrl={photoUrl}
+          photoFile={photoFile}
+          overlayData={{
+            restaurantName: restaurant.name,
+            dishName: foodItem.name,
+            rating: foodItem.rating,
+            visitDate: visit.visitDate,
+          }}
+          onShare={handleShare}
+        />
+      )}
     </Card>
   );
 }
