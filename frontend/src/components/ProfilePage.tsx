@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { getPendingReviewCount } from '@/services/menuReviewService';
 
 interface InviteCode {
   id: string;
@@ -30,6 +31,7 @@ interface ProfilePageProps {
   onNavigateToWhatsNew?: () => void;
   onNavigateToSettings?: () => void;
   onNavigateToBeta?: () => void;
+  onNavigateToAdminReviews?: () => void;
 }
 
 interface ChangelogEntry {
@@ -42,7 +44,7 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings, onNavigateToBeta }: ProfilePageProps) {
+export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -161,6 +163,14 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
   const latestVersion = changelog?.[0]?.version;
   const hasNewReleaseInProfile = latestVersion && latestVersion !== dismissedProfileVersion;
+
+  // Fetch pending review count (admin only)
+  const { data: pendingReviewCount } = useQuery({
+    queryKey: ['pendingReviewCount'],
+    queryFn: getPendingReviewCount,
+    enabled: isAdmin, // Only fetch if user is admin
+    staleTime: 1000 * 60, // Cache for 1 minute
+  });
 
   // Fetch user's unused invite codes
   const fetchInviteCodes = async () => {
@@ -602,14 +612,32 @@ Looking forward to seeing you there!`;
               </Button>
 
               {isAdmin && (
-                <Button
-                  onClick={onNavigateToBeta}
-                  variant="outline"
-                  className="w-full border-purple-500 text-purple-700 hover:bg-purple-50"
-                  data-testid="beta-button"
-                >
-                  Beta Features
-                </Button>
+                <>
+                  <Button
+                    onClick={onNavigateToAdminReviews}
+                    variant="outline"
+                    className="w-full border-orange-500 text-orange-700 hover:bg-orange-50"
+                    data-testid="admin-reviews-button"
+                  >
+                    <div className="flex items-center justify-center gap-2 w-full">
+                      <span>Menu Reviews</span>
+                      {pendingReviewCount !== undefined && pendingReviewCount > 0 && (
+                        <Badge className="bg-orange-600 text-white">
+                          {pendingReviewCount}
+                        </Badge>
+                      )}
+                    </div>
+                  </Button>
+
+                  <Button
+                    onClick={onNavigateToBeta}
+                    variant="outline"
+                    className="w-full border-purple-500 text-purple-700 hover:bg-purple-50"
+                    data-testid="beta-button"
+                  >
+                    Beta Features
+                  </Button>
+                </>
               )}
 
               <Button
