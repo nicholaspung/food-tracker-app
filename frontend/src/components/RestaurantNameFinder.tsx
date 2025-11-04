@@ -13,7 +13,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { pb } from "@/lib/pocketbase";
+import { pb, User } from "@/lib/pocketbase";
 
 interface RestaurantOption {
   name: string;
@@ -52,6 +52,15 @@ const DAILY_LIMIT = 5;
 const getTodayString = () => {
   const today = new Date();
   return today.toISOString().split('T')[0];
+};
+
+// Helper function to check if user has unlimited parsing (subscriber or admin)
+const hasUnlimitedParsing = () => {
+  const user = pb.authStore.record as User | null;
+  if (!user) return false;
+
+  // Admins and subscribers get unlimited parsing
+  return user.isAdmin === true || user.isSubscriber === true;
 };
 
 interface RestaurantNameFinderProps {
@@ -154,9 +163,10 @@ export default function RestaurantNameFinder(
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Check daily limit
+    // Check daily limit (skip for subscribers and admins)
+    const hasUnlimited = hasUnlimitedParsing();
     const today = getTodayString();
-    if (dailyUsage.date === today && dailyUsage.count >= DAILY_LIMIT) {
+    if (!hasUnlimited && dailyUsage.date === today && dailyUsage.count >= DAILY_LIMIT) {
       setError(`Daily limit reached. You can process up to ${DAILY_LIMIT} photos per day. Try again tomorrow!`);
       // Clear file input
       if (fileInputRef.current) {
@@ -228,16 +238,21 @@ export default function RestaurantNameFinder(
       const data: RestaurantNameResponse = await response.json();
       console.log('[RestaurantNameFinder] API response:', data);
 
-      // Increment daily usage count after successful API call
-      const today = getTodayString();
-      console.log('[RestaurantNameFinder] Incrementing daily usage, today:', today);
-      setDailyUsage(prev => {
-        const newUsage = prev.date === today
-          ? { ...prev, count: prev.count + 1 }
-          : { date: today, count: 1 };
-        console.log('[RestaurantNameFinder] New usage:', newUsage);
-        return newUsage;
-      });
+      // Increment daily usage count after successful API call (skip for subscribers/admins)
+      const hasUnlimited = hasUnlimitedParsing();
+      if (!hasUnlimited) {
+        const today = getTodayString();
+        console.log('[RestaurantNameFinder] Incrementing daily usage, today:', today);
+        setDailyUsage(prev => {
+          const newUsage = prev.date === today
+            ? { ...prev, count: prev.count + 1 }
+            : { date: today, count: 1 };
+          console.log('[RestaurantNameFinder] New usage:', newUsage);
+          return newUsage;
+        });
+      } else {
+        console.log('[RestaurantNameFinder] Skipping usage increment - user has unlimited parsing');
+      }
 
       if (data.error) {
         if (data.error === "NOT_RESTAURANT") {
@@ -673,40 +688,42 @@ export default function RestaurantNameFinder(
               </ul>
             </div>
 
-            {/* Daily Usage Counter */}
-            <div className={`rounded-lg border p-3 ${
-              dailyUsage.count >= DAILY_LIMIT
-                ? 'bg-red-50 border-red-200'
-                : dailyUsage.count >= DAILY_LIMIT - 1
-                  ? 'bg-yellow-50 border-yellow-200'
-                  : 'bg-gray-50 border-gray-200'
-            }`}>
-              <div className="flex items-center justify-between">
-                <p className={`text-sm font-medium ${
-                  dailyUsage.count >= DAILY_LIMIT
-                    ? 'text-red-800'
-                    : dailyUsage.count >= DAILY_LIMIT - 1
-                      ? 'text-yellow-800'
-                      : 'text-gray-700'
-                }`}>
-                  Daily photos: {dailyUsage.count} / {DAILY_LIMIT}
-                </p>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  dailyUsage.count >= DAILY_LIMIT
-                    ? 'bg-red-100 text-red-800'
-                    : dailyUsage.count >= DAILY_LIMIT - 1
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {DAILY_LIMIT - dailyUsage.count} remaining
-                </span>
+            {/* Daily Usage Counter (hidden for subscribers and admins) */}
+            {!hasUnlimitedParsing() && (
+              <div className={`rounded-lg border p-3 ${
+                dailyUsage.count >= DAILY_LIMIT
+                  ? 'bg-red-50 border-red-200'
+                  : dailyUsage.count >= DAILY_LIMIT - 1
+                    ? 'bg-yellow-50 border-yellow-200'
+                    : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-sm font-medium ${
+                    dailyUsage.count >= DAILY_LIMIT
+                      ? 'text-red-800'
+                      : dailyUsage.count >= DAILY_LIMIT - 1
+                        ? 'text-yellow-800'
+                        : 'text-gray-700'
+                  }`}>
+                    Daily photos: {dailyUsage.count} / {DAILY_LIMIT}
+                  </p>
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    dailyUsage.count >= DAILY_LIMIT
+                      ? 'bg-red-100 text-red-800'
+                      : dailyUsage.count >= DAILY_LIMIT - 1
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {DAILY_LIMIT - dailyUsage.count} remaining
+                  </span>
+                </div>
+                {dailyUsage.count >= DAILY_LIMIT && (
+                  <p className="text-xs text-red-700 mt-2">
+                    You've reached today's limit. Reset tomorrow.
+                  </p>
+                )}
               </div>
-              {dailyUsage.count >= DAILY_LIMIT && (
-                <p className="text-xs text-red-700 mt-2">
-                  You've reached today's limit. Reset tomorrow.
-                </p>
-              )}
-            </div>
+            )}
           </>
         )}
 
@@ -719,12 +736,12 @@ export default function RestaurantNameFinder(
                 className="w-full"
                 size="lg"
                 data-testid="take-photo-button"
-                disabled={dailyUsage.count >= DAILY_LIMIT}
+                disabled={!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT}
               >
                 <Camera className="w-5 h-5 mr-2" />
-                {dailyUsage.count >= DAILY_LIMIT ? 'Daily Limit Reached' : 'Take Photo / Upload Image'}
+                {!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT ? 'Daily Limit Reached' : 'Take Photo / Upload Image'}
               </Button>
-              {dailyUsage.count < DAILY_LIMIT && (
+              {(hasUnlimitedParsing() || dailyUsage.count < DAILY_LIMIT) && (
                 <p className="text-xs text-gray-500 text-center">
                   On mobile: Opens camera or photo library
                 </p>
@@ -738,10 +755,10 @@ export default function RestaurantNameFinder(
                 className="w-full"
                 size="lg"
                 data-testid="retake-button"
-                disabled={isProcessing || dailyUsage.count >= DAILY_LIMIT}
+                disabled={isProcessing || (!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT)}
               >
                 <RotateCcw className="w-5 h-5 mr-2" />
-                {dailyUsage.count >= DAILY_LIMIT ? 'Daily Limit Reached' : 'Take Another Photo'}
+                {!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT ? 'Daily Limit Reached' : 'Take Another Photo'}
               </Button>
             )
           )}
