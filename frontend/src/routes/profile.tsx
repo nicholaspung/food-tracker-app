@@ -35,6 +35,9 @@ function Profile() {
       onNavigateToBeta={() => {
         navigate({ to: '/beta' });
       }}
+      onNavigateToAdminReviews={() => {
+        navigate({ to: '/admin/menu-reviews' });
+      }}
     />
   );
 }
