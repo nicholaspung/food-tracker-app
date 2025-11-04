@@ -164,11 +164,11 @@ func main() {
 			}
 			log.Printf("GET /api/invite-codes - User ID: %s", authRecord.Id)
 
-			// Find unused codes created by this user that are not locked (or lock has expired)
+			// Find all unused codes created by this user (including locked ones)
 			records, err := app.FindRecordsByFilter(
 				"invite_codes",
-				"createdBy = {:userId} && used = false && (locked_until = '' || locked_until <= @now)",
-				"", // no sorting needed
+				"createdBy = {:userId} && used = false",
+				"", // no sorting
 				0,  // no limit
 				0,  // no offset
 				map[string]any{"userId": authRecord.Id},
@@ -181,13 +181,36 @@ func main() {
 
 			log.Printf("GET /api/invite-codes - Found %d records", len(records))
 
-			// Map records to simple response format
+			// Map records to simple response format with lock status
 			codes := make([]map[string]any, len(records))
 			for i, record := range records {
-				codes[i] = map[string]any{
-					"id":   record.Id,
-					"code": record.GetString("code"),
+				locked := false
+				lockedUntil := ""
+				lockedUntilStr := record.GetString("locked_until")
+				log.Printf("Code %s - locked_until field: '%s'", record.GetString("code"), lockedUntilStr)
+
+				if lockedUntilStr != "" {
+					lockedUntilTime := record.GetDateTime("locked_until")
+					log.Printf("Code %s - parsed time: %v, isZero: %v", record.GetString("code"), lockedUntilTime, lockedUntilTime.IsZero())
+
+					if !lockedUntilTime.IsZero() && lockedUntilTime.Time().After(time.Now()) {
+						locked = true
+						lockedUntil = lockedUntilStr
+						log.Printf("Code %s - LOCKED (until %v)", record.GetString("code"), lockedUntilTime.Time())
+					} else {
+						log.Printf("Code %s - NOT locked (expired or zero time)", record.GetString("code"))
+					}
+				} else {
+					log.Printf("Code %s - NOT locked (no locked_until)", record.GetString("code"))
 				}
+
+				codes[i] = map[string]any{
+					"id":          record.Id,
+					"code":        record.GetString("code"),
+					"locked":      locked,
+					"lockedUntil": lockedUntil,
+				}
+				log.Printf("Code %s - Final data: locked=%v, lockedUntil=%s", record.GetString("code"), locked, lockedUntil)
 			}
 
 			return e.JSON(200, map[string]any{
@@ -230,14 +253,8 @@ func main() {
 				return apis.NewBadRequestError("this invite code has already been used", nil)
 			}
 
-			// Verify the code is not already locked
-			lockedUntilStr := record.GetString("locked_until")
-			if lockedUntilStr != "" {
-				lockedUntil := record.GetDateTime("locked_until")
-				if !lockedUntil.IsZero() && lockedUntil.Time().After(time.Now()) {
-					return apis.NewBadRequestError("this invite code is already locked", nil)
-				}
-			}
+			// Allow re-locking - extend the lock period if already locked
+			// This allows users to copy the code again if needed
 
 			// Set locked_until to 7 days from now
 			sevenDaysFromNow := time.Now().AddDate(0, 0, 7)
@@ -377,8 +394,8 @@ func main() {
 			}
 			defer client.Close()
 
-			// Use Gemini Flash model
-			model := client.GenerativeModel("gemini-flash-latest")
+			// Use Gemini 2.5 Flash Lite model (smallest, most cost-effective)
+			model := client.GenerativeModel("gemini-2.5-flash-lite")
 
 			// Configure model
 			model.SetTemperature(0)

@@ -19,6 +19,8 @@ import {
 interface InviteCode {
   id: string;
   code: string;
+  locked?: boolean;
+  lockedUntil?: string;
 }
 
 interface ProfilePageProps {
@@ -172,6 +174,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       });
 
       logger.log("Fetched invite codes:", data);
+      logger.log("Codes with lock status:", data.codes);
       setInviteCodes(data.codes || []);
     } catch (err) {
       logger.error("Error fetching invite codes:", err);
@@ -232,13 +235,13 @@ Looking forward to seeing you there!`;
       setCopiedCode(code);
       setTimeout(() => setCopiedCode(null), 2000);
 
-      // Lock the code for 7 days
+      // Lock the code for 7 days (or extend if already locked)
       try {
         await pb.send('/api/invite-codes/lock', {
           method: 'POST',
           body: { codeId },
         });
-        // Refresh the invite codes list to remove the locked code
+        // Refresh the invite codes list to update the lock status
         fetchInviteCodes();
       } catch (lockErr) {
         logger.error("Failed to lock invite code:", lockErr);
@@ -526,18 +529,30 @@ Looking forward to seeing you there!`;
               </div>
             ) : (
               <div className="space-y-2">
-                {inviteCodes.map((inviteCode) => (
+                {inviteCodes.map((inviteCode) => {
+                  logger.log(`Rendering code ${inviteCode.code}: locked=${inviteCode.locked}, lockedUntil=${inviteCode.lockedUntil}`);
+                  return (
                   <div
                     key={inviteCode.id}
-                    className="flex items-center justify-between p-3 rounded-md border bg-white border-gray-200"
+                    className={`flex items-center justify-between p-3 rounded-md border ${
+                      inviteCode.locked
+                        ? 'bg-yellow-50 border-yellow-200'
+                        : 'bg-white border-gray-200'
+                    }`}
                     data-testid={`invite-code-${inviteCode.code}`}
                   >
                     <div className="flex-1">
                       <p className="font-mono text-sm font-medium text-gray-900">
                         {inviteCode.code}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Available
+                      <p className={`text-xs mt-1 ${
+                        inviteCode.locked
+                          ? 'text-yellow-700'
+                          : 'text-gray-500'
+                      }`}>
+                        {inviteCode.locked
+                          ? 'Already copied - can copy again'
+                          : 'Available'}
                       </p>
                     </div>
                     <Button
@@ -550,7 +565,8 @@ Looking forward to seeing you there!`;
                       {copiedCode === inviteCode.code ? '✓ Copied!' : 'Copy Invite'}
                     </Button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

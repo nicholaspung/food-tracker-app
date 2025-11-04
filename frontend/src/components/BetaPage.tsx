@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import CameraOCR from '@/components/CameraOCR';
-import RestaurantNameFinder from '@/components/RestaurantNameFinder';
-import { Camera, Store, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface BetaPageProps {
   onNavigateBack?: () => void;
@@ -12,24 +10,14 @@ interface BetaPageProps {
 export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPageProps) {
   const [activeBetaFeature, setActiveBetaFeature] = useState<string | null>(null);
 
-  const betaFeatures = [
-    {
-      id: 'restaurant-finder',
-      title: 'AI Restaurant Name Finder',
-      description: 'Use AI to automatically find restaurant names in photos. Supports Korean, Japanese, Chinese, and more.',
-      status: 'beta',
-      component: RestaurantNameFinder,
-      icon: Store,
-    },
-    {
-      id: 'camera-ocr',
-      title: 'Camera OCR',
-      description: 'Use your camera to scan and extract text from restaurant signs and menus',
-      status: 'beta',
-      component: CameraOCR,
-      icon: Camera,
-    },
-  ];
+  const betaFeatures: Array<{
+    id: string;
+    title: string;
+    description: string;
+    status: string;
+    component: React.ComponentType<any>;
+    icon?: React.ComponentType<any>;
+  }> = [];
 
   if (activeBetaFeature) {
     const feature = betaFeatures.find(f => f.id === activeBetaFeature);
@@ -79,41 +67,57 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {betaFeatures.map((feature) => (
-          <div
-            key={feature.id}
-            className="bg-white rounded-lg border border-gray-200 p-4 space-y-4"
-            data-testid={`beta-feature-${feature.id}`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  {feature.icon && <feature.icon className="w-5 h-5 text-purple-600" />}
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    {feature.title}
-                  </h2>
-                  <Badge
-                    variant="outline"
-                    className="text-xs border-purple-500 text-purple-700"
-                  >
-                    {feature.status}
-                  </Badge>
-                </div>
-                <p className="text-sm text-gray-600 mb-3">
-                  {feature.description}
-                </p>
-              </div>
+        {betaFeatures.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
+            <div className="bg-gray-100 rounded-full p-6 mb-4">
+              <Badge className="bg-purple-600 text-white text-lg px-4 py-2">
+                No Beta Features
+              </Badge>
             </div>
-
-            <Button
-              onClick={() => setActiveBetaFeature(feature.id)}
-              className="w-full"
-              data-testid={`try-${feature.id}-button`}
-            >
-              Try {feature.title}
-            </Button>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              No features available
+            </h2>
+            <p className="text-sm text-gray-600 max-w-md">
+              There are currently no beta features available for testing. Check back later for new experimental features!
+            </p>
           </div>
-        ))}
+        ) : (
+          betaFeatures.map((feature) => (
+            <div
+              key={feature.id}
+              className="bg-white rounded-lg border border-gray-200 p-4 space-y-4"
+              data-testid={`beta-feature-${feature.id}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    {feature.icon && <feature.icon className="w-5 h-5 text-purple-600" />}
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      {feature.title}
+                    </h2>
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-purple-500 text-purple-700"
+                    >
+                      {feature.status}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    {feature.description}
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => setActiveBetaFeature(feature.id)}
+                className="w-full"
+                data-testid={`try-${feature.id}-button`}
+              >
+                Try {feature.title}
+              </Button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
