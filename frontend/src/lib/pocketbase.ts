@@ -148,3 +148,59 @@ export interface FeedbackMessage {
   is_admin_message?: boolean;
   created: string;
 }
+
+// Bill splitting types
+export interface Bill {
+  id: string;
+  creator_user: string;
+  bill_name: string;
+  total_amount: number;
+  tax: number;
+  tip: number;
+  fees: number;
+  split_mode: 'even' | 'itemized' | 'custom';
+  extras_split_mode: 'proportional' | 'equal';
+  status: 'active' | 'settled' | 'cancelled';
+  created: string;
+  updated: string;
+}
+
+export interface BillParticipant {
+  id: string;
+  bill: string;
+  user?: string | null;
+  participant_name?: string;
+  amount_owed: number;
+  paid_status: 'pending' | 'paid';
+  paid_date?: string | null;
+  payment_method?: string | null;
+  created: string;
+  updated: string;
+}
+
+export interface BillItem {
+  id: string;
+  bill: string;
+  item_name: string;
+  price: number;
+  assigned_to: string[]; // Array of bill_participant IDs
+  created: string;
+}
+
+export interface BillInvite {
+  id: string;
+  bill: string;
+  code: string;
+  created_by: string;
+  expires_at: string;
+  used_by?: string | null;
+  created: string;
+}
+
+export interface BillReminder {
+  id: string;
+  bill: string;
+  participant: string;
+  sent_by: string;
+  sent_at: string;
+}
