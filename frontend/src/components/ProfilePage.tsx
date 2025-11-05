@@ -3,6 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
 import { pb } from "@/lib/pocketbase";
 import { logger } from "@/lib/logger";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -476,11 +483,13 @@ Looking forward to seeing you there!`;
           </div>
         )}
 
-        {/* User Information Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Account Details</h2>
-
-          <div className="space-y-3">
+        {/* Account Information Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Account Details</CardTitle>
+            <CardDescription>Your personal information</CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="p-4 bg-gray-50 rounded-md" data-testid="user-info">
               <div className="space-y-3">
                 <div>
@@ -586,12 +595,17 @@ Looking forward to seeing you there!`;
                 </div>
               </div>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Invite Codes Section */}
-          <div className="space-y-3 pt-4 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-900">Your Invite Codes</h3>
+        {/* Invite Codes Section */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between w-full">
+              <div>
+                <CardTitle>Your Invite Codes</CardTitle>
+                <CardDescription>Share these codes with friends</CardDescription>
+              </div>
               {isInitialUser && (
                 <Button
                   onClick={generateMoreCodes}
@@ -605,6 +619,8 @@ Looking forward to seeing you there!`;
                 </Button>
               )}
             </div>
+          </CardHeader>
+          <CardContent>
             {loadingCodes ? (
               <p className="text-sm text-gray-500">Loading codes...</p>
             ) : inviteCodes.length === 0 ? (
@@ -664,165 +680,214 @@ Looking forward to seeing you there!`;
                 })}
               </div>
             )}
-          </div>
+          </CardContent>
+        </Card>
 
-          {!showConfirm ? (
-            <div className="pt-4 border-t border-gray-200 space-y-3">
+        {/* App Features Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>App Features</CardTitle>
+            <CardDescription>Explore what's available</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              onClick={handleViewWhatsNew}
+              variant="outline"
+              className="w-full"
+              data-testid="whats-new-button"
+            >
+              What's New
+            </Button>
+
+            <Button
+              onClick={onNavigateToPhotos}
+              variant="outline"
+              className="w-full"
+              data-testid="photos-button"
+            >
+              My Photos
+            </Button>
+
+            <Button
+              onClick={onNavigateToSettings}
+              variant="outline"
+              className="w-full"
+              data-testid="settings-button"
+            >
+              Settings
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Admin Features Section */}
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle>Admin Features</CardTitle>
+                <Badge className="bg-orange-600 text-white">Admin</Badge>
+              </div>
+              <CardDescription>Administrative tools and controls</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
               <Button
-                onClick={handleViewWhatsNew}
+                onClick={onNavigateToAdminReviews}
                 variant="outline"
-                className="w-full"
-                data-testid="whats-new-button"
+                className="w-full border-orange-500 text-orange-700 hover:bg-orange-50"
+                data-testid="admin-reviews-button"
               >
-                What's New
+                <div className="flex items-center justify-center gap-2 w-full">
+                  <span>Menu Reviews</span>
+                  {pendingReviewCount !== undefined && pendingReviewCount > 0 && (
+                    <Badge className="bg-orange-600 text-white">
+                      {pendingReviewCount}
+                    </Badge>
+                  )}
+                </div>
               </Button>
 
               <Button
-                onClick={onNavigateToPhotos}
+                onClick={onNavigateToBeta}
                 variant="outline"
-                className="w-full"
-                data-testid="photos-button"
+                className="w-full border-purple-500 text-purple-700 hover:bg-purple-50"
+                data-testid="beta-button"
               >
-                My Photos
+                Beta Features
               </Button>
 
-              <Button
-                onClick={onNavigateToSettings}
-                variant="outline"
-                className="w-full"
-                data-testid="settings-button"
-              >
-                Settings
-              </Button>
+              {/* Admin: Subscriber Management */}
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3 mt-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-amber-900">Subscriber Management</h3>
+                  <p className="text-xs text-amber-700 mt-1">Elevate users to subscriber status for unlimited photo parsing</p>
+                </div>
 
-              {isAdmin && (
-                <>
-                  <Button
-                    onClick={onNavigateToAdminReviews}
-                    variant="outline"
-                    className="w-full border-orange-500 text-orange-700 hover:bg-orange-50"
-                    data-testid="admin-reviews-button"
-                  >
-                    <div className="flex items-center justify-center gap-2 w-full">
-                      <span>Menu Reviews</span>
-                      {pendingReviewCount !== undefined && pendingReviewCount > 0 && (
-                        <Badge className="bg-orange-600 text-white">
-                          {pendingReviewCount}
-                        </Badge>
-                      )}
-                    </div>
-                  </Button>
-
-                  <Button
-                    onClick={onNavigateToBeta}
-                    variant="outline"
-                    className="w-full border-purple-500 text-purple-700 hover:bg-purple-50"
-                    data-testid="beta-button"
-                  >
-                    Beta Features
-                  </Button>
-
-                  {/* Admin: Subscriber Management */}
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-amber-900">Subscriber Management</h3>
-                      <p className="text-xs text-amber-700 mt-1">Elevate users to subscriber status for unlimited photo parsing</p>
-                    </div>
-
-                    {subscriberSuccess && (
-                      <div className="p-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="subscriber-success">
-                        {subscriberSuccess}
-                      </div>
-                    )}
-
-                    {subscriberError && (
-                      <div className="p-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md" data-testid="subscriber-error">
-                        {subscriberError}
-                      </div>
-                    )}
-
-                    <form onSubmit={handleElevateToSubscriber} className="space-y-2">
-                      <div className="space-y-1">
-                        <Label htmlFor="subscriber-email" className="text-xs text-amber-900">
-                          User Email
-                        </Label>
-                        <Input
-                          id="subscriber-email"
-                          type="email"
-                          placeholder="user@example.com"
-                          value={subscriberEmail}
-                          onChange={(e) => setSubscriberEmail(e.target.value)}
-                          disabled={elevateToSubscriberMutation.isPending}
-                          className="text-sm"
-                          data-testid="subscriber-email-input"
-                        />
-                      </div>
-                      <Button
-                        type="submit"
-                        disabled={elevateToSubscriberMutation.isPending}
-                        className="w-full bg-amber-600 hover:bg-amber-700"
-                        data-testid="elevate-subscriber-button"
-                      >
-                        {elevateToSubscriberMutation.isPending ? 'Elevating...' : 'Elevate to Subscriber'}
-                      </Button>
-                    </form>
+                {subscriberSuccess && (
+                  <div className="p-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="subscriber-success">
+                    {subscriberSuccess}
                   </div>
-                </>
-              )}
+                )}
 
-              <Button
-                onClick={handleLogout}
-                variant="outline"
-                className="w-full"
-                data-testid="logout-button"
-              >
-                Log Out
-              </Button>
+                {subscriberError && (
+                  <div className="p-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md" data-testid="subscriber-error">
+                    {subscriberError}
+                  </div>
+                )}
 
-              <Button
-                onClick={() => setShowConfirm(true)}
-                variant="destructive"
-                className="w-full"
-                data-testid="delete-account-button"
-                disabled={loading}
-              >
-                Delete Account
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4 pt-4 border-t border-gray-200">
-              <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-                <p className="text-sm font-medium text-red-900">
-                  Are you sure you want to delete your account?
-                </p>
-                <p className="text-xs text-red-700 mt-1">
-                  This action cannot be undone. All your data will be permanently deleted.
-                </p>
+                <form onSubmit={handleElevateToSubscriber} className="space-y-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="subscriber-email" className="text-xs text-amber-900">
+                      User Email
+                    </Label>
+                    <Input
+                      id="subscriber-email"
+                      type="email"
+                      placeholder="user@example.com"
+                      value={subscriberEmail}
+                      onChange={(e) => setSubscriberEmail(e.target.value)}
+                      disabled={elevateToSubscriberMutation.isPending}
+                      className="text-sm"
+                      data-testid="subscriber-email-input"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={elevateToSubscriberMutation.isPending}
+                    className="w-full bg-amber-600 hover:bg-amber-700"
+                    data-testid="elevate-subscriber-button"
+                  >
+                    {elevateToSubscriberMutation.isPending ? 'Elevating...' : 'Elevate to Subscriber'}
+                  </Button>
+                </form>
               </div>
+            </CardContent>
+          </Card>
+        )}
 
-              <div className="flex gap-2">
+        {/* Account Actions Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Account Actions</CardTitle>
+            <CardDescription>Manage your session</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={handleLogout}
+              variant="outline"
+              className="w-full"
+              data-testid="logout-button"
+            >
+              Log Out
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Danger Zone Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-600">Danger Zone</CardTitle>
+            <CardDescription>Irreversible and destructive actions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!showConfirm ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm font-medium text-red-900">Delete Account</p>
+                  <p className="text-xs text-red-700 mt-1">
+                    Permanently remove your account and all associated data. This cannot be undone.
+                  </p>
+                </div>
                 <Button
-                  onClick={() => setShowConfirm(false)}
-                  variant="outline"
-                  className="flex-1"
-                  data-testid="cancel-delete-button"
-                  disabled={loading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleDeleteAccount}
+                  onClick={() => setShowConfirm(true)}
                   variant="destructive"
-                  className="flex-1"
-                  data-testid="confirm-delete-button"
+                  className="w-full"
+                  data-testid="delete-account-button"
                   disabled={loading}
                 >
-                  {loading ? "Deleting..." : "Yes, Delete"}
+                  Delete Account
                 </Button>
               </div>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-4 bg-red-50 border-2 border-red-300 rounded-md">
+                  <p className="text-sm font-semibold text-red-900">
+                    Are you absolutely sure?
+                  </p>
+                  <p className="text-xs text-red-700 mt-2">
+                    This action cannot be undone. This will permanently delete your account and remove all your data from our servers, including:
+                  </p>
+                  <ul className="text-xs text-red-700 mt-2 ml-4 list-disc space-y-1">
+                    <li>All your restaurant visits and ratings</li>
+                    <li>Your uploaded menu photos</li>
+                    <li>Your friends and connections</li>
+                    <li>All other personal data</li>
+                  </ul>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setShowConfirm(false)}
+                    variant="outline"
+                    className="flex-1"
+                    data-testid="cancel-delete-button"
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleDeleteAccount}
+                    variant="destructive"
+                    className="flex-1"
+                    data-testid="confirm-delete-button"
+                    disabled={loading}
+                  >
+                    {loading ? "Deleting..." : "Yes, Delete Forever"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
       </div>
     </>
