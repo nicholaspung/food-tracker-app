@@ -144,6 +144,25 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
     );
   }
 
+  // Safety check for participants array
+  if (!bill.participants || !Array.isArray(bill.participants)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <div className="bg-red-50 rounded-full p-6 mb-4">
+          <DollarSign className="w-12 h-12 text-red-600" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Error loading bill data</h2>
+        <p className="text-sm text-gray-600 text-center max-w-md mb-4">
+          Bill participants data is invalid or missing
+        </p>
+        <Button onClick={onBack} variant="outline">
+          <ArrowLeft className="w-4 h-4 mr-1" />
+          Back to Bills
+        </Button>
+      </div>
+    );
+  }
+
   const summary = getBillSummary(bill.participants, currentUserId);
   const isCreator = bill.creator_user === currentUserId;
   const canEdit = isCreator && bill.status === 'active';
