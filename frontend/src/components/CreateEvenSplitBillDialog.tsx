@@ -50,13 +50,15 @@ export default function CreateEvenSplitBillDialog({
 
   // Get list of friend users
   const friends =
-    friendships?.map(friendship => {
-      const friendUser =
-        friendship.user === currentUserId
-          ? (friendship.expand?.friend as User)
-          : (friendship.expand?.user as User);
-      return friendUser;
-    }) || [];
+    friendships
+      ?.map(friendship => {
+        const friendUser =
+          friendship.user === currentUserId
+            ? (friendship.expand?.friend as User)
+            : (friendship.expand?.user as User);
+        return friendUser;
+      })
+      .filter((friend): friend is User => friend !== undefined && friend !== null) || [];
 
   const createBillMutation = useMutation({
     mutationFn: async () => {
@@ -209,8 +211,13 @@ export default function CreateEvenSplitBillDialog({
                         />
                         <div>
                           <div className="font-medium text-gray-900">
-                            {friend.email}
+                            {friend.name || friend.email?.split('@')[0] || 'Unknown'}
                           </div>
+                          {friend.name && (
+                            <div className="text-sm text-gray-500">
+                              {friend.email}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </button>

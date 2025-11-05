@@ -114,6 +114,7 @@ export async function getBill(billId: string): Promise<BillWithDetails> {
     .getFullList<BillParticipant>({
       filter: `bill="${billId}"`,
       sort: 'created',
+      expand: 'user',
     });
 
   let items: BillItem[] | undefined;
@@ -200,6 +201,7 @@ export async function listBills(
       .getFullList<BillParticipant>({
         filter: `bill="${bill.id}"`,
         sort: 'created',
+        expand: 'user',
       });
 
     let items: BillItem[] | undefined;

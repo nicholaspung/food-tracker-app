@@ -21,6 +21,7 @@ export interface SignUpData extends AuthData {
 export interface User {
   id: string;
   email: string;
+  name?: string;
   verified: boolean;
   isAdmin?: boolean;
   isSubscriber?: boolean;
@@ -176,6 +177,9 @@ export interface BillParticipant {
   payment_method?: string | null;
   created: string;
   updated: string;
+  expand?: {
+    user?: User;
+  };
 }
 
 export interface BillItem {
