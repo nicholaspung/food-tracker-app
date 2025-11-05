@@ -31,11 +31,33 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
   const [showSettleDialog, setShowSettleDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: bill, isLoading } = useQuery({
+  const { data: bill, isLoading, error: queryError } = useQuery({
     queryKey: ['bill', billId],
     queryFn: () => getBill(billId),
     enabled: !!billId,
   });
+
+  // Helper function to safely get participant name
+  const getParticipantName = (participant: any, isCurrentUser: boolean) => {
+    if (isCurrentUser) return 'You';
+
+    // Try to get name from expanded user data
+    if (participant.expand?.user?.name) {
+      return participant.expand.user.name;
+    }
+
+    // Try participant_name for non-app users
+    if (participant.participant_name) {
+      return participant.participant_name;
+    }
+
+    // Try email username from expanded user
+    if (participant.expand?.user?.email) {
+      return participant.expand.user.email.split('@')[0];
+    }
+
+    return 'Unknown';
+  };
 
   const togglePaymentMutation = useMutation({
     mutationFn: async (participantId: string) => {
@@ -85,6 +107,24 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
       <div className="flex flex-col items-center justify-center h-full p-8">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
         <p className="text-gray-600">Loading bill...</p>
+      </div>
+    );
+  }
+
+  if (queryError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <div className="bg-red-50 rounded-full p-6 mb-4">
+          <DollarSign className="w-12 h-12 text-red-600" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Error loading bill</h2>
+        <p className="text-sm text-gray-600 text-center max-w-md mb-4">
+          {queryError instanceof Error ? queryError.message : 'An unknown error occurred'}
+        </p>
+        <Button onClick={onBack} variant="outline">
+          <ArrowLeft className="w-4 h-4 mr-1" />
+          Back to Bills
+        </Button>
       </div>
     );
   }
@@ -246,12 +286,7 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
                   >
                     <div className="flex-1">
                       <div className="font-medium text-gray-900">
-                        {isCurrentUser
-                          ? 'You'
-                          : participant.expand?.user?.name ||
-                            participant.participant_name ||
-                            participant.expand?.user?.email?.split('@')[0] ||
-                            'Unknown'}
+                        {getParticipantName(participant, isCurrentUser)}
                         {bill.creator_user === participant.user && (
                           <Badge variant="outline" className="ml-2 text-xs">
                             Paid
