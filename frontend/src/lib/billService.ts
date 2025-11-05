@@ -72,6 +72,8 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
       amount_owed: participantData.amount_owed,
       paid_status: participantData.user_id === currentUser.id ? 'paid' : 'pending',
       paid_date: participantData.user_id === currentUser.id ? new Date().toISOString() : null,
+    }, {
+      expand: 'user',
     });
     participants.push(participant);
   }
