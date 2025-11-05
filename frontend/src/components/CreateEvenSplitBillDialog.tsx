@@ -127,7 +127,8 @@ export default function CreateEvenSplitBillDialog({
       onSuccess?.(pendingBillId);
       setPendingBillId(null);
     }
-  }, [open, pendingBillId, onSuccess]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pendingBillId]);
 
   const resetForm = () => {
     setBillName('');
