@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -34,6 +34,7 @@ export default function CreateEvenSplitBillDialog({
   const [totalAmount, setTotalAmount] = useState('');
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [pendingBillId, setPendingBillId] = useState<string | null>(null);
 
   // Fetch friends list
   const { data: friendships } = useQuery({
@@ -111,21 +112,29 @@ export default function CreateEvenSplitBillDialog({
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bills'] });
+      setPendingBillId(data.id);
       resetForm();
       onClose();
-      // Call onSuccess after closing to avoid state updates on unmounted component
-      setTimeout(() => onSuccess?.(data.id), 0);
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to create bill');
     },
   });
 
+  // Navigate to bill detail after dialog is fully closed
+  useEffect(() => {
+    if (!open && pendingBillId) {
+      onSuccess?.(pendingBillId);
+      setPendingBillId(null);
+    }
+  }, [open, pendingBillId, onSuccess]);
+
   const resetForm = () => {
     setBillName('');
     setTotalAmount('');
     setSelectedFriendIds([]);
     setError(null);
+    setPendingBillId(null);
   };
 
   const handleClose = () => {
