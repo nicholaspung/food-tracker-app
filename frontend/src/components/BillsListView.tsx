@@ -36,6 +36,11 @@ export default function BillsListView() {
   });
 
   const renderBillCard = (bill: BillWithDetails) => {
+    // Safety check for participants
+    if (!bill.participants || !Array.isArray(bill.participants)) {
+      return null;
+    }
+
     const summary = getBillSummary(bill.participants, currentUserId);
     const isCreator = bill.creator_user === currentUserId;
 
