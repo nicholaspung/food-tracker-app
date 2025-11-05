@@ -14,12 +14,13 @@ func init() {
 		collection := core.NewBaseCollection("bill_items")
 
 		// Set collection rules
-		// - Users can list/view items for bills they're associated with
+		// - Users can list/view items for bills they created
 		// - Only bill creators can add items
 		// - Only bill creators can update items
 		// - Only bill creators can delete items
+		// Note: Participant access will be added in a later migration
 		collection.ListRule = types.Pointer("@request.auth.id != ''")
-		collection.ViewRule = types.Pointer("bill.creator_user = @request.auth.id || bill.bill_participants_via_bill.user ?= @request.auth.id")
+		collection.ViewRule = types.Pointer("bill.creator_user = @request.auth.id")
 		collection.CreateRule = types.Pointer("@request.auth.id != '' && bill.creator_user = @request.auth.id")
 		collection.UpdateRule = types.Pointer("bill.creator_user = @request.auth.id")
 		collection.DeleteRule = types.Pointer("bill.creator_user = @request.auth.id")
