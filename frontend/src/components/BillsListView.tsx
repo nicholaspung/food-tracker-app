@@ -8,14 +8,16 @@ import { listBills } from '@/lib/billService';
 import { formatCurrency, getBillSummary } from '@/lib/billCalculations';
 import { pb } from '@/lib/pocketbase';
 import CreateEvenSplitBillDialog from '@/components/CreateEvenSplitBillDialog';
+import CreateCustomSplitBillDialog from '@/components/CreateCustomSplitBillDialog';
 import BillDetailView from '@/components/BillDetailView';
 import type { BillWithDetails } from '@/lib/billService';
 
 type FilterType = 'all' | 'you_owe' | 'you_are_owed' | 'settled';
+type CreateDialogType = 'even' | 'custom' | null;
 
 export default function BillsListView() {
   const [filter, setFilter] = useState<FilterType>('all');
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState<CreateDialogType>(null);
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const currentUserId = pb.authStore.record?.id || '';
 
@@ -154,8 +156,14 @@ export default function BillsListView() {
   return (
     <>
       <CreateEvenSplitBillDialog
-        open={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
+        open={showCreateDialog === 'even'}
+        onClose={() => setShowCreateDialog(null)}
+        onSuccess={billId => setSelectedBillId(billId)}
+      />
+
+      <CreateCustomSplitBillDialog
+        open={showCreateDialog === 'custom'}
+        onClose={() => setShowCreateDialog(null)}
         onSuccess={billId => setSelectedBillId(billId)}
       />
 
@@ -164,10 +172,15 @@ export default function BillsListView() {
         <div className="bg-white border-b border-gray-200 px-4 py-4">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-2xl font-bold text-gray-900">Bills</h1>
-            <Button onClick={() => setShowCreateDialog(true)} size="sm">
-              <Plus className="w-4 h-4 mr-1" />
-              New Bill
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowCreateDialog('even')} size="sm" variant="outline">
+                Even Split
+              </Button>
+              <Button onClick={() => setShowCreateDialog('custom')} size="sm">
+                <Plus className="w-4 h-4 mr-1" />
+                Custom
+              </Button>
+            </div>
           </div>
 
         {/* Filters */}
@@ -204,10 +217,15 @@ export default function BillsListView() {
             <p className="text-sm text-gray-600 max-w-md mb-4">
               Split bills with friends and track payments easily
             </p>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Create Your First Bill
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowCreateDialog('even')} variant="outline">
+                Even Split
+              </Button>
+              <Button onClick={() => setShowCreateDialog('custom')}>
+                <Plus className="w-4 h-4 mr-1" />
+                Custom Split
+              </Button>
+            </div>
           </div>
         ) : (
           filteredBills.map(bill => renderBillCard(bill))
