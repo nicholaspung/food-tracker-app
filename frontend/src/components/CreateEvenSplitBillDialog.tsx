@@ -112,8 +112,9 @@ export default function CreateEvenSplitBillDialog({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bills'] });
       resetForm();
-      onSuccess?.(data.id);
       onClose();
+      // Call onSuccess after closing to avoid state updates on unmounted component
+      setTimeout(() => onSuccess?.(data.id), 0);
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to create bill');
