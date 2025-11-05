@@ -8,18 +8,26 @@ import { listBills } from '@/lib/billService';
 import { formatCurrency, getBillSummary } from '@/lib/billCalculations';
 import { pb } from '@/lib/pocketbase';
 import CreateEvenSplitBillDialog from '@/components/CreateEvenSplitBillDialog';
+import BillDetailView from '@/components/BillDetailView';
 import type { BillWithDetails } from '@/lib/billService';
 
 type FilterType = 'all' | 'you_owe' | 'you_are_owed' | 'settled';
 
-interface BillsListViewProps {
-  onViewBill?: (billId: string) => void;
-}
-
-export default function BillsListView({ onViewBill }: BillsListViewProps) {
+export default function BillsListView() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const currentUserId = pb.authStore.record?.id || '';
+
+  // Show detail view if a bill is selected
+  if (selectedBillId) {
+    return (
+      <BillDetailView
+        billId={selectedBillId}
+        onBack={() => setSelectedBillId(null)}
+      />
+    );
+  }
 
   const { data: bills, isLoading, error } = useQuery({
     queryKey: ['bills', filter],
@@ -71,7 +79,7 @@ export default function BillsListView({ onViewBill }: BillsListViewProps) {
       <Card
         key={bill.id}
         className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-        onClick={() => onViewBill?.(bill.id)}
+        onClick={() => setSelectedBillId(bill.id)}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -143,7 +151,7 @@ export default function BillsListView({ onViewBill }: BillsListViewProps) {
       <CreateEvenSplitBillDialog
         open={showCreateDialog}
         onClose={() => setShowCreateDialog(false)}
-        onSuccess={billId => onViewBill?.(billId)}
+        onSuccess={billId => setSelectedBillId(billId)}
       />
 
       <div className="flex flex-col h-full bg-gray-50">
