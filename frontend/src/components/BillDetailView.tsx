@@ -246,7 +246,12 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
                   >
                     <div className="flex-1">
                       <div className="font-medium text-gray-900">
-                        {isCurrentUser ? 'You' : participant.participant_name || 'Unknown'}
+                        {isCurrentUser
+                          ? 'You'
+                          : participant.expand?.user?.name ||
+                            participant.participant_name ||
+                            participant.expand?.user?.email?.split('@')[0] ||
+                            'Unknown'}
                         {bill.creator_user === participant.user && (
                           <Badge variant="outline" className="ml-2 text-xs">
                             Paid
