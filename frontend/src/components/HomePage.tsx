@@ -22,6 +22,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Calendar,
   MapPin,
   Utensils,
@@ -137,6 +144,7 @@ export default function HomePage({
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "user" | "friends">("all");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [sharePhotoFile, setSharePhotoFile] = useState<File | null>(null);
   const [sharePhotoUrl, setSharePhotoUrl] = useState<string>("");
@@ -149,6 +157,10 @@ export default function HomePage({
   const [visitToShare, setVisitToShare] = useState<VisitWithDetails | null>(
     null
   );
+  const [fullscreenPhoto, setFullscreenPhoto] = useState<{
+    url: string;
+    dishName: string;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   // Helper to check if a visit is from a friend
@@ -371,8 +383,15 @@ export default function HomePage({
       });
     }
 
+    // Apply filter type
+    if (filterType === "user") {
+      filtered = filtered.filter((visit) => !isFriendVisit(visit));
+    } else if (filterType === "friends") {
+      filtered = filtered.filter((visit) => isFriendVisit(visit));
+    }
+
     return filtered;
-  }, [visitsWithDetails, cutoffDate, searchQuery]);
+  }, [visitsWithDetails, cutoffDate, searchQuery, filterType]);
 
   // Check if there are more visits to load (only when not searching)
   const hasMoreVisits =
@@ -462,61 +481,6 @@ export default function HomePage({
     );
   }
 
-  if (visits.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-4">
-        <Utensils className="w-16 h-16 text-gray-300 mb-4" />
-        <p className="text-gray-500 text-center mb-2">No visits to show</p>
-        <p className="text-sm text-gray-400 text-center mb-4">
-          Start tracking your food experiences
-        </p>
-        {onAddVisit && (
-          <Button onClick={onAddVisit} className="mb-4" size="lg">
-            <Plus className="w-5 h-5 mr-2" />
-            Add Your First Visit
-          </Button>
-        )}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2 max-w-sm">
-          <div className="flex items-start gap-2">
-            <Users className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm">
-              <p className="font-medium text-blue-900 mb-1">
-                See friends' visits
-              </p>
-              <p className="text-blue-700">
-                Connect with friends to see their restaurant visits and
-                recommendations
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (filteredVisits.length === 0 && hasMoreVisits) {
-    return (
-      <div className="flex flex-col h-full bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {userVisitsCount} visit{userVisitsCount !== 1 ? "s" : ""}
-            {friendVisitsCount > 0 &&
-              ` • ${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? "s" : ""}'`}
-          </p>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center p-4">
-          <p className="text-gray-500 text-center mb-4">
-            No visits in the last month
-          </p>
-          <Button onClick={loadMoreMonths} variant="outline">
-            Load Older Visits
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* What's New Dialog */}
@@ -537,49 +501,141 @@ export default function HomePage({
           </p>
         </div>
 
-        {/* Search Input */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            type="text"
-            placeholder="Search restaurants, food, notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 pr-9"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              aria-label="Clear search"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+        {/* Search and Filter Row */}
+        <div className="flex gap-2">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search restaurants, food, notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                aria-label="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Filter Select */}
+          <Select value={filterType} onValueChange={(value: "all" | "user" | "friends") => setFilterType(value)}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Visits</SelectItem>
+              <SelectItem value="user">My Visits</SelectItem>
+              <SelectItem value="friends">Friends</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* No search results */}
-        {searchQuery.trim() && filteredVisits.length === 0 && (
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <Search className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-              <p className="text-gray-600 mb-2">No visits found</p>
-              <p className="text-sm text-gray-500">
-                Try searching for a different restaurant, food item, or location
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSearchQuery("")}
-                className="mt-4"
-              >
-                Clear Search
+        {/* No visits at all */}
+        {visits.length === 0 && (
+          <div className="flex flex-col items-center justify-center pt-8">
+            <Utensils className="w-16 h-16 text-gray-300 mb-4" />
+            <p className="text-gray-500 text-center mb-2">No visits to show</p>
+            <p className="text-sm text-gray-400 text-center mb-4">
+              Start tracking your food experiences
+            </p>
+            {onAddVisit && (
+              <Button onClick={onAddVisit} className="mb-4" size="lg">
+                <Plus className="w-5 h-5 mr-2" />
+                Add Your First Visit
               </Button>
-            </CardContent>
-          </Card>
+            )}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-2 max-w-sm">
+              <div className="flex items-start gap-2">
+                <Users className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-blue-900 mb-1">
+                    See friends' visits
+                  </p>
+                  <p className="text-blue-700">
+                    Connect with friends to see their restaurant visits and
+                    recommendations
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* No results after filtering/searching */}
+        {visits.length > 0 && filteredVisits.length === 0 && (
+          <>
+            {/* No search results */}
+            {searchQuery.trim() && (
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <Search className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                  <p className="text-gray-600 mb-2">No visits found</p>
+                  <p className="text-sm text-gray-500">
+                    Try searching for a different restaurant, food item, or location
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSearchQuery("")}
+                    className="mt-4"
+                  >
+                    Clear Search
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* No results due to time filter, but more visits exist */}
+            {!searchQuery.trim() && hasMoreVisits && (
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                  <p className="text-gray-600 mb-2">No visits in the last month</p>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Load older visits to see your history
+                  </p>
+                  <Button onClick={loadMoreMonths} variant="outline">
+                    Load Older Visits
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* No results due to filter selection */}
+            {!searchQuery.trim() && !hasMoreVisits && (
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <Users className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                  <p className="text-gray-600 mb-2">
+                    {filterType === "user"
+                      ? "No visits from you"
+                      : "No visits from friends"}
+                  </p>
+                  <p className="text-sm text-gray-500 mb-4">
+                    {filterType === "user"
+                      ? "Try changing the filter to see friends' visits"
+                      : "Try changing the filter to see all visits"}
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => setFilterType("all")}
+                  >
+                    Show All Visits
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
 
         {groupedVisits.map(({ monthKey, monthLabel, days }) => (
@@ -691,12 +747,16 @@ export default function HomePage({
                                   </div>
                                   {!isFriend && (
                                     <div className="flex items-center gap-1">
-                                      {/* Share Visit button - only show if visit has photos */}
-                                      {visitPhotos.some((photo: any) =>
-                                        visit.foodItems?.some(
-                                          (item) => item.id === photo.food_item
-                                        )
-                                      ) && (
+                                      {/* Share Visit button - only show if visit has 2 or more photos */}
+                                      {(() => {
+                                        const photosForVisit = visitPhotos.filter(
+                                          (photo: any) =>
+                                            visit.foodItems?.some(
+                                              (item) => item.id === photo.food_item
+                                            )
+                                        );
+                                        return photosForVisit.length >= 2;
+                                      })() && (
                                         <Button
                                           variant="ghost"
                                           size="sm"
@@ -745,6 +805,9 @@ export default function HomePage({
                                             thumb: "100x100",
                                           })
                                         : null;
+                                      const fullPhotoUrl = photo
+                                        ? pb.files.getURL(photo, photo.photo)
+                                        : null;
 
                                       return (
                                         <div
@@ -752,11 +815,17 @@ export default function HomePage({
                                           className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
                                         >
                                           {/* Photo thumbnail */}
-                                          {photoUrl && photo && (
+                                          {photoUrl && photo && fullPhotoUrl && (
                                             <img
                                               src={photoUrl}
                                               alt={item.name}
-                                              className="w-16 h-16 object-cover rounded-md flex-shrink-0"
+                                              className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                                              onClick={() =>
+                                                setFullscreenPhoto({
+                                                  url: fullPhotoUrl,
+                                                  dishName: item.name,
+                                                })
+                                              }
                                             />
                                           )}
 
@@ -964,6 +1033,31 @@ export default function HomePage({
             })}
           pb={pb}
         />
+      )}
+
+      {/* Fullscreen Photo Viewer */}
+      {fullscreenPhoto && (
+        <div
+          className="fixed inset-0 bg-black z-50 flex items-center justify-center"
+          onClick={() => setFullscreenPhoto(null)}
+        >
+          <button
+            onClick={() => setFullscreenPhoto(null)}
+            className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors z-10"
+            aria-label="Close fullscreen view"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <div className="absolute top-4 left-4 text-white bg-black/50 px-3 py-2 rounded-lg">
+            <p className="font-medium">{fullscreenPhoto.dishName}</p>
+          </div>
+          <img
+            src={fullscreenPhoto.url}
+            alt={fullscreenPhoto.dishName}
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

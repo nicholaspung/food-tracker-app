@@ -404,9 +404,9 @@ function drawRusticBadgeOverlay(
   ctx.fillStyle = gradient;
   ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
 
-  // Add texture effect with noise
+  // Add texture effect with noise (reduced for performance)
   ctx.globalAlpha = 0.1;
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 30; i++) {
     const x = badgeX + Math.random() * badgeWidth;
     const y = badgeY + Math.random() * badgeHeight;
     ctx.fillStyle =
@@ -816,31 +816,27 @@ export async function generateVisitCompositeImage(
 ): Promise<Blob> {
   return new Promise(async (resolve, reject) => {
     try {
-      // Load all images first
-      const loadedImages: Array<{
-        img: HTMLImageElement;
-        dishName: string;
-        rating: number;
-      }> = [];
-
-      for (const photo of photos) {
-        const img = await new Promise<HTMLImageElement>((res, rej) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(photo.file);
-          reader.onload = (event) => {
-            const image = new Image();
-            image.src = event.target?.result as string;
-            image.onload = () => res(image);
-            image.onerror = () => rej(new Error("Failed to load image"));
+      // Load all images in parallel for better performance
+      const loadedImages = await Promise.all(
+        photos.map(async (photo) => {
+          const img = await new Promise<HTMLImageElement>((res, rej) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(photo.file);
+            reader.onload = (event) => {
+              const image = new Image();
+              image.src = event.target?.result as string;
+              image.onload = () => res(image);
+              image.onerror = () => rej(new Error("Failed to load image"));
+            };
+            reader.onerror = () => rej(new Error("Failed to read file"));
+          });
+          return {
+            img,
+            dishName: photo.dishName,
+            rating: photo.rating,
           };
-          reader.onerror = () => rej(new Error("Failed to read file"));
-        });
-        loadedImages.push({
-          img,
-          dishName: photo.dishName,
-          rating: photo.rating,
-        });
-      }
+        })
+      );
 
       // Limit to max 6 photos (2 columns x 3 rows)
       const photoCount = Math.min(loadedImages.length, 6);
@@ -1152,9 +1148,9 @@ export async function generateVisitCompositeImage(
           ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 8);
           ctx.fill();
 
-          // Add texture
+          // Add texture (reduced for performance)
           ctx.globalAlpha = 0.1;
-          for (let i = 0; i < 50; i++) {
+          for (let i = 0; i < 15; i++) {
             const tx = badgeX + Math.random() * badgeWidth;
             const ty = badgeY + Math.random() * badgeHeight;
             ctx.fillStyle =
@@ -1325,9 +1321,9 @@ export async function generateVisitCompositeImage(
             ctx.fillStyle = gradient;
             ctx.fillRect(0, overlayY, canvasWidth, overlayHeight);
 
-            // Add texture
+            // Add texture (reduced for performance)
             ctx.globalAlpha = 0.1;
-            for (let i = 0; i < 200; i++) {
+            for (let i = 0; i < 50; i++) {
               const x = Math.random() * canvasWidth;
               const y = overlayY + Math.random() * overlayHeight;
               ctx.fillStyle =
