@@ -11,7 +11,7 @@ export interface BillItem {
 
 export interface BillParticipant {
   id: string;
-  user_id?: string | null;
+  user?: string | null;
   participant_name?: string;
   amount_owed: number;
   paid_status: 'pending' | 'paid';
@@ -191,7 +191,7 @@ export function getBillSummary(participants: BillParticipant[], currentUserId: s
   const totalPending = totalOwed - totalPaid;
 
   const currentUserParticipant = participants.find(
-    p => p.user_id === currentUserId
+    p => p.user === currentUserId
   );
 
   const youOwe = currentUserParticipant?.paid_status === 'pending'
@@ -199,7 +199,7 @@ export function getBillSummary(participants: BillParticipant[], currentUserId: s
     : 0;
 
   const youAreOwed = participants
-    .filter(p => p.user_id !== currentUserId && p.paid_status === 'pending')
+    .filter(p => p.user !== currentUserId && p.paid_status === 'pending')
     .reduce((sum, p) => sum + p.amount_owed, 0);
 
   const paidCount = participants.filter(p => p.paid_status === 'paid').length;
