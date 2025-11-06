@@ -41,9 +41,6 @@ function Profile() {
       onNavigateToAdminReviews={() => {
         navigate({ to: '/admin/menu-reviews' });
       }}
-      onNavigateToLists={() => {
-        navigate({ to: '/lists' });
-      }}
     />
   );
 }

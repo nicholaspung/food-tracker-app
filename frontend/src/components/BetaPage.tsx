@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X, DollarSign } from 'lucide-react';
+import { X, DollarSign, List } from 'lucide-react';
 import BillsListView from '@/components/BillsListView';
+import ListsPage from '@/components/ListsPage';
 
 interface BetaPageProps {
   onNavigateBack?: () => void;
@@ -19,6 +20,14 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
     component: React.ComponentType<any>;
     icon?: React.ComponentType<any>;
   }> = [
+    {
+      id: 'restaurant-lists',
+      title: 'Restaurant Lists',
+      description: 'Create and organize lists of your favorite restaurants',
+      status: 'Phase 1 Testing',
+      component: ListsPage,
+      icon: List,
+    },
     {
       id: 'bill-splitter',
       title: 'Bill Splitter',
