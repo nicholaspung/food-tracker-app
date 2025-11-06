@@ -208,3 +208,33 @@ export interface BillReminder {
   sent_by: string;
   sent_at: string;
 }
+
+// Restaurant lists types
+export interface RestaurantList {
+  id: string;
+  name: string;
+  description?: string;
+  visibility: 'private' | 'friends' | 'public';
+  user: string;
+  coverImage?: string;
+  isCollaborative?: boolean;
+  created: string;
+  updated: string;
+  expand?: {
+    user?: User;
+  };
+}
+
+export interface ListItem {
+  id: string;
+  list: string;
+  restaurant: string;
+  addedBy: string;
+  position: number;
+  note?: string;
+  created: string;
+  expand?: {
+    restaurant?: Restaurant;
+    addedBy?: User;
+  };
+}

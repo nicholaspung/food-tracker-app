@@ -10,10 +10,10 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { pb } from "@/lib/pocketbase";
+import { pb, RestaurantList } from "@/lib/pocketbase";
 import { logger } from "@/lib/logger";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, List, Plus } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -40,6 +40,7 @@ interface ProfilePageProps {
   onNavigateToSettings?: () => void;
   onNavigateToBeta?: () => void;
   onNavigateToAdminReviews?: () => void;
+  onNavigateToLists?: () => void;
 }
 
 interface ChangelogEntry {
@@ -52,7 +53,7 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToPhotos, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
+export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToPhotos, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews, onNavigateToLists }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -229,6 +230,17 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     queryFn: getPendingReviewCount,
     enabled: isAdmin, // Only fetch if user is admin
     staleTime: 1000 * 60, // Cache for 1 minute
+  });
+
+  // Fetch user's lists count
+  const { data: userLists = [] } = useQuery<RestaurantList[]>({
+    queryKey: ['restaurant_lists', user?.id],
+    queryFn: async () => {
+      return await pb.collection('restaurant_lists').getFullList({
+        filter: `user = "${user?.id}"`,
+      });
+    },
+    enabled: !!user?.id,
   });
 
   // Fetch user's unused invite codes
@@ -680,6 +692,44 @@ Looking forward to seeing you there!`;
                 })}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* My Lists Section */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>My Lists</CardTitle>
+                <CardDescription>Organize your favorite restaurants</CardDescription>
+              </div>
+              {userLists.length > 0 && (
+                <Badge variant="secondary">{userLists.length}</Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {onNavigateToLists && (
+              <Button
+                onClick={onNavigateToLists}
+                variant="outline"
+                className="w-full"
+                data-testid="my-lists-button"
+              >
+                <div className="flex items-center justify-center gap-2 w-full">
+                  <List className="w-4 h-4" />
+                  <span>View My Lists</span>
+                  {userLists.length > 0 && (
+                    <Badge variant="secondary" className="ml-auto">
+                      {userLists.length}
+                    </Badge>
+                  )}
+                </div>
+              </Button>
+            )}
+            <p className="text-xs text-gray-600 text-center">
+              Create lists to organize restaurants like "Best Pizza", "Date Night Spots", etc.
+            </p>
           </CardContent>
         </Card>
 
