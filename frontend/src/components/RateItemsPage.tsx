@@ -342,7 +342,6 @@ export default function RateItemsPage({
                       <input
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         className="hidden"
                         ref={(el) => {
                           if (el) fileInputRefs.current.set(index, el);
@@ -361,10 +360,10 @@ export default function RateItemsPage({
                         onClick={() => fileInputRefs.current.get(index)?.click()}
                       >
                         <Camera className="w-4 h-4 mr-2" />
-                        Take Photo
+                        Add Photo
                       </Button>
                       <p className="text-xs text-gray-500 text-center">
-                        Tip: Frame your dish in the center for better sharing photos
+                        Take a photo or choose from your library
                       </p>
                     </>
                   ) : (
