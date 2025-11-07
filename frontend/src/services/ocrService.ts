@@ -270,22 +270,28 @@ function sanitizeForQuery(text: string): string {
 
 /**
  * Validate if a menu item name is reasonable
- * Rejects garbage OCR results
+ * Rejects garbage OCR results while supporting multilingual text (Korean, Chinese, Japanese, etc.)
  */
 function isValidMenuItemName(name: string): boolean {
   // Must have minimum length
-  if (name.length < 3) return false;
+  if (name.length < 2) return false;
 
-  // Must have at least 50% alphabetic characters
-  const alphaCount = (name.match(/[a-zA-Z]/g) || []).length;
-  if (alphaCount < name.length * 0.5) return false;
+  // Count letter-like characters (supports Unicode: Korean, Chinese, Japanese, Arabic, etc.)
+  // \p{L} matches any Unicode letter character
+  const letterCount = (name.match(/[\p{L}]/gu) || []).length;
 
-  // Must not be mostly special characters
-  const specialCount = (name.match(/[^a-zA-Z0-9\s]/g) || []).length;
-  if (specialCount > name.length * 0.4) return false;
+  // Count numbers
+  const numberCount = (name.match(/[\p{N}]/gu) || []).length;
 
-  // Must have at least 2 alphabetic characters
-  if (alphaCount < 2) return false;
+  // Count letters + numbers
+  const alphanumericCount = letterCount + numberCount;
+
+  // Must have at least 2 letter or number characters
+  if (alphanumericCount < 2) return false;
+
+  // Must not be ALL special characters (allow dishes like "김치찌개" or "BBQ Ribs" or "麻婆豆腐")
+  // At least 40% of the string should be letters or numbers
+  if (alphanumericCount < name.length * 0.4) return false;
 
   return true;
 }
