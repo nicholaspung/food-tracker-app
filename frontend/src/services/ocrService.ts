@@ -8,6 +8,15 @@ import {
 
 export interface OCRResult {
   csv: string;
+  debug?: {
+    rawResponse: string;
+    candidatesCount: number;
+    model: string;
+    prompt: string;
+    finishReason?: any;
+    safetyRatings?: any;
+    parts?: any[];
+  };
 }
 
 export interface ExtractedMenuItem {
@@ -173,8 +182,10 @@ export async function performOCR(
     onProgress(1.0);
   }
 
+  // Return both CSV and debug data (if available for admins)
   return {
     csv: result.csv,
+    debug: result.debug, // Only populated for admin users
   };
 }
 
