@@ -28,6 +28,8 @@ export default function ShareCustomizationModal({
   const [position, setPosition] = useState<BadgePosition>('bottom');
   const [showDate, setShowDate] = useState(false);
   const [showRating, setShowRating] = useState(true);
+  const [showDishNames, setShowDishNames] = useState(true);
+  const [showRestaurantName, setShowRestaurantName] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -42,6 +44,8 @@ export default function ShareCustomizationModal({
           position,
           showDate,
           showRating,
+          showDishNames,
+          showRestaurantName,
         });
 
         // Revoke previous preview URL to avoid memory leaks
@@ -64,7 +68,7 @@ export default function ShareCustomizationModal({
         URL.revokeObjectURL(previewUrl);
       }
     };
-  }, [isOpen, photoFile, theme, position, showDate, showRating, overlayData]);
+  }, [isOpen, photoFile, theme, position, showDate, showRating, showDishNames, showRestaurantName, overlayData]);
 
   const handleShare = async () => {
     if (!photoFile) return;
@@ -76,6 +80,8 @@ export default function ShareCustomizationModal({
         position,
         showDate,
         showRating,
+        showDishNames,
+        showRestaurantName,
       });
 
       await onShare(shareBlob);
@@ -107,9 +113,9 @@ export default function ShareCustomizationModal({
       </div>
 
       {/* Content - Split Layout */}
-      <div className="h-full flex flex-col pt-16 pb-24">
+      <div className="h-full flex flex-col pt-20">
         {/* Preview Section (scrollable) */}
-        <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-lg mx-auto">
             {previewUrl ? (
               <img
@@ -125,8 +131,8 @@ export default function ShareCustomizationModal({
           </div>
         </div>
 
-        {/* Options Section (fixed at bottom) */}
-        <div className="bg-gray-900 border-t border-gray-700 px-4 py-4 space-y-4">
+        {/* Options Section (fixed at bottom, scrollable if needed) */}
+        <div className="bg-gray-900 border-t border-gray-700 px-4 py-3 space-y-3 overflow-y-auto max-h-[50vh]">
           {/* Style Selection */}
           <div>
             <label className="text-white text-sm font-medium mb-2 block">
@@ -201,6 +207,35 @@ export default function ShareCustomizationModal({
                 }`}
               >
                 Bottom Right
+              </button>
+            </div>
+          </div>
+
+          {/* Overlay Visibility Toggle */}
+          <div>
+            <label className="text-white text-sm font-medium mb-2 block">
+              Show Overlays
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDishNames(!showDishNames)}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  showDishNames
+                    ? 'bg-gray-700 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-750'
+                }`}
+              >
+                Dish Name
+              </button>
+              <button
+                onClick={() => setShowRestaurantName(!showRestaurantName)}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  showRestaurantName
+                    ? 'bg-gray-700 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-750'
+                }`}
+              >
+                Restaurant
               </button>
             </div>
           </div>
