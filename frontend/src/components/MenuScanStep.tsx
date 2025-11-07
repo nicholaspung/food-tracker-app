@@ -135,9 +135,9 @@ export default function MenuScanStep({
     if (!selectedImage) return;
 
     try {
-      const items = await processMenuImage(selectedImage, restaurantId);
+      const result = await processMenuImage(selectedImage, restaurantId);
       // Notify parent of scanned items with debug data
-      onItemsExtracted(items, debugData);
+      onItemsExtracted(result.items, result.debugData);
     } catch (err) {
       logger.error('OCR failed:', err);
     }
