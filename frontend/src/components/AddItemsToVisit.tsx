@@ -338,8 +338,14 @@ export default function AddItemsToVisit({
         restaurantId,
         "User reported incorrect menu items"
       );
+      // Show green confirmation first
       setReviewRequested(true);
-      setHasPendingReview(true);
+
+      // After 3 seconds, switch to the persistent "pending review" state
+      setTimeout(() => {
+        setReviewRequested(false);
+        setHasPendingReview(true);
+      }, 3000);
     } catch (error) {
       logger.error("Failed to request menu review:", error);
       alert("Failed to request review. Please try again.");
@@ -386,23 +392,24 @@ export default function AddItemsToVisit({
             {!showScanMenu && (
               <div className="flex-shrink-0">
                 {hasPendingReview ? (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-600 bg-gray-100 px-2 py-1.5 rounded-md">
                     <Flag className="w-4 h-4" />
-                    <span className="hidden sm:inline">Review requested</span>
+                    <span>Review requested</span>
                   </div>
                 ) : reviewRequested ? (
-                  <div className="flex items-center gap-1.5 text-xs text-green-600">
+                  <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-1.5 rounded-md animate-in fade-in duration-200">
                     <CheckCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Request submitted</span>
+                    <span>Request submitted</span>
                   </div>
                 ) : (
                   <button
                     onClick={handleRequestReview}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors px-2 py-1 rounded hover:bg-gray-100"
+                    disabled={reviewRequested}
+                    className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900 transition-colors px-2 py-1.5 rounded-md hover:bg-gray-100 active:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Report incorrect menu items"
                   >
                     <Flag className="w-4 h-4" />
-                    <span className="hidden sm:inline">Report items</span>
+                    <span>Report items</span>
                   </button>
                 )}
               </div>
