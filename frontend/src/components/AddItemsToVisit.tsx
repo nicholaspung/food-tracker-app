@@ -668,25 +668,26 @@ export default function AddItemsToVisit({
                                       onClick={() => handleToggleItem(item)}
                                       className="flex-1 text-left min-w-0"
                                     >
-                                      <div className="font-medium flex items-center gap-2 flex-wrap">
+                                      <div className="font-medium">
                                         <span>{item.name}</span>
-                                        <div className="flex items-center gap-1.5">
-                                          {isNew && (
-                                            <Badge
-                                              variant="secondary"
-                                              className="text-xs"
-                                            >
-                                              New
-                                            </Badge>
-                                          )}
-                                          {getVisibilityBadge(item.visibility)}
-                                        </div>
                                       </div>
                                       {item.description && (
                                         <div className="text-sm text-gray-500 mt-1">
                                           {item.description}
                                         </div>
                                       )}
+                                      {/* Badges row - below the name */}
+                                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                        {isNew && (
+                                          <Badge
+                                            variant="secondary"
+                                            className="text-xs"
+                                          >
+                                            New
+                                          </Badge>
+                                        )}
+                                        {getVisibilityBadge(item.visibility)}
+                                      </div>
                                     </button>
 
                                     <div className="flex items-center gap-2 flex-shrink-0">
