@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
 import { getTodayLocalDateString, localDateStringToUTC, formatLocalDateForDisplay } from "@/lib/dateUtils";
@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronUp, Calendar, Users, Camera, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Calendar, Users } from "lucide-react";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 import { compressDishPhoto } from "@/services/photoService";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
+import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -31,7 +32,6 @@ export default function RateItemsPage({
   // Photo state - track photo for each item (max 1 for now)
   const [itemPhotos, setItemPhotos] = useState<Map<number, File>>(new Map());
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<number, string>>(new Map());
-  const fileInputRefs = useRef<Map<number, HTMLInputElement>>(new Map());
 
   // Check if user has rated before - expand legend for first-timers
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
@@ -327,57 +327,14 @@ export default function RateItemsPage({
                 </div>
 
                 {/* Photo capture section */}
-                <div className="space-y-2">
-                  <Label>Photo (optional)</Label>
-
-                  {!photoPreviewUrls.has(index) ? (
-                    <>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        ref={(el) => {
-                          if (el) fileInputRefs.current.set(index, el);
-                        }}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            handlePhotoCapture(index, file);
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => fileInputRefs.current.get(index)?.click()}
-                      >
-                        <Camera className="w-4 h-4 mr-2" />
-                        Add Photo
-                      </Button>
-                      <p className="text-xs text-gray-500 text-center">
-                        Take a photo or choose from your library
-                      </p>
-                    </>
-                  ) : (
-                    <div className="relative">
-                      <img
-                        src={photoPreviewUrls.get(index)}
-                        alt="Dish preview"
-                        className="w-full h-48 object-cover rounded-lg"
-                      />
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        className="absolute top-2 right-2"
-                        onClick={() => handleRemovePhoto(index)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                <MenuItemPhotoInput
+                  photoKey={index}
+                  newPhotoPreviewUrl={photoPreviewUrls.get(index)}
+                  onPhotoCapture={handlePhotoCapture}
+                  onRemoveNewPhoto={handleRemovePhoto}
+                  showLabel={true}
+                  showNewPhotoBadge={false}
+                />
               </CardContent>
             </Card>
           ))}

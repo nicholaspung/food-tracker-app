@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
 import { localDateStringToUTC } from '@/lib/dateUtils';
@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Camera, X } from 'lucide-react';
 import { useScrollIntoView } from '@/hooks/useScrollIntoView';
 import { compressDishPhoto } from '@/services/photoService';
 import { RATING_OPTIONS } from '@/lib/ratingConstants';
+import MenuItemPhotoInput from '@/components/MenuItemPhotoInput';
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -30,7 +30,6 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
   const [itemPhotos, setItemPhotos] = useState<Map<string, File>>(new Map());
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<string, string>>(new Map());
   const [deletedPhotoIds, setDeletedPhotoIds] = useState<Set<string>>(new Set());
-  const fileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   // Ref for auto-scrolling notes input into view on mobile
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
@@ -321,115 +320,24 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                   </div>
 
                   {/* Photo capture section */}
-                  <div className="space-y-2">
-                    <Label>Photo (optional)</Label>
+                  {(() => {
+                    // Get photo key (existing id or temp key for new items)
+                    const photoKey = item.id || `new_${index}`;
+                    const existingPhotoUrl = item.id ? getExistingPhotoUrl(item.id) : null;
 
-                    {(() => {
-                      // Get photo key (existing id or temp key for new items)
-                      const photoKey = item.id || `new_${index}`;
-                      const hasNewPhoto = photoPreviewUrls.has(photoKey);
-                      const existingPhotoUrl = item.id ? getExistingPhotoUrl(item.id) : null;
-                      const hasExistingPhoto = !!existingPhotoUrl;
-
-                      return (
-                        <>
-                          {!hasNewPhoto && !hasExistingPhoto ? (
-                            <>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                className="hidden"
-                                ref={(el) => {
-                                  if (el) fileInputRefs.current.set(photoKey, el);
-                                }}
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    handlePhotoCapture(photoKey, file);
-                                  }
-                                }}
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-full"
-                                onClick={() => fileInputRefs.current.get(photoKey)?.click()}
-                              >
-                                <Camera className="w-4 h-4 mr-2" />
-                                Take Photo
-                              </Button>
-                              <p className="text-xs text-gray-500 text-center">
-                                Tip: Frame your dish in the center for better sharing photos
-                              </p>
-                            </>
-                          ) : hasNewPhoto ? (
-                            <div className="relative">
-                              <img
-                                src={photoPreviewUrls.get(photoKey)}
-                                alt="Dish preview"
-                                className="w-full h-48 object-cover rounded-lg"
-                              />
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="sm"
-                                className="absolute top-2 right-2"
-                                onClick={() => handleRemovePhoto(photoKey)}
-                              >
-                                <X className="w-4 h-4" />
-                              </Button>
-                              <div className="absolute top-2 left-2 bg-green-600 text-white text-xs px-2 py-1 rounded">
-                                New photo
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="relative">
-                              <img
-                                src={existingPhotoUrl!}
-                                alt="Existing dish photo"
-                                className="w-full h-48 object-cover rounded-lg"
-                              />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                className="hidden"
-                                ref={(el) => {
-                                  if (el) fileInputRefs.current.set(photoKey, el);
-                                }}
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    handlePhotoCapture(photoKey, file);
-                                  }
-                                }}
-                              />
-                              <div className="absolute top-2 right-2 flex gap-2">
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => fileInputRefs.current.get(photoKey)?.click()}
-                                >
-                                  <Camera className="w-4 h-4 mr-1" />
-                                  Replace
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleDeleteExistingPhoto(photoKey)}
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
+                    return (
+                      <MenuItemPhotoInput
+                        photoKey={photoKey}
+                        newPhotoPreviewUrl={photoPreviewUrls.get(photoKey)}
+                        existingPhotoUrl={existingPhotoUrl || undefined}
+                        onPhotoCapture={handlePhotoCapture}
+                        onRemoveNewPhoto={handleRemovePhoto}
+                        onDeleteExistingPhoto={handleDeleteExistingPhoto}
+                        showLabel={true}
+                        showNewPhotoBadge={true}
+                      />
+                    );
+                  })()}
                 </CardContent>
               </Card>
             );
