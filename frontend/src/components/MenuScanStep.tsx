@@ -13,7 +13,7 @@ import { pb } from '@/lib/pocketbase';
 interface MenuScanStepProps {
   restaurantId: string;
   restaurantName: string;
-  onItemsExtracted: (items: MenuItem[]) => void;
+  onItemsExtracted: (items: MenuItem[], debugData?: any) => void;
   onSkip: () => void;
 }
 
@@ -136,8 +136,8 @@ export default function MenuScanStep({
 
     try {
       const items = await processMenuImage(selectedImage, restaurantId);
-      // Notify parent of scanned items
-      onItemsExtracted(items);
+      // Notify parent of scanned items with debug data
+      onItemsExtracted(items, debugData);
     } catch (err) {
       logger.error('OCR failed:', err);
     }
@@ -467,7 +467,7 @@ export default function MenuScanStep({
                 type="button"
                 variant="default"
                 className="flex-1"
-                onClick={() => onItemsExtracted(menuItems)}
+                onClick={() => onItemsExtracted(menuItems, debugData)}
                 data-testid="use-items-button"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
