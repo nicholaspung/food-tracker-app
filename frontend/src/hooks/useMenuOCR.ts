@@ -18,6 +18,7 @@ export interface UseMenuOCRState {
   menuItems: MenuItem[];
   error: string | null;
   sourceImageId?: string;
+  debugData?: any; // For admin debug view
 }
 
 export function useMenuOCR() {
@@ -28,6 +29,7 @@ export function useMenuOCR() {
     menuItems: [],
     error: null,
     sourceImageId: undefined,
+    debugData: undefined,
   });
 
   const processMenuImage = async (imageFile: File, restaurantId: string) => {
@@ -40,6 +42,7 @@ export function useMenuOCR() {
         menuItems: [],
         error: null,
         sourceImageId: undefined,
+        debugData: undefined,
       });
 
       const compressedImage = await compressImage(imageFile);
@@ -64,6 +67,7 @@ export function useMenuOCR() {
       setState((prev) => ({
         ...prev,
         progress: 60,
+        debugData: ocrResult.debug, // Capture debug data for admins
       }));
 
       const extracted = parseMenuItems(ocrResult.csv);
@@ -104,6 +108,7 @@ export function useMenuOCR() {
         menuItems: createdItems,
         error: null,
         sourceImageId: menuImage.id,
+        debugData: ocrResult.debug, // Keep debug data for admins
       });
 
       return createdItems;
@@ -129,6 +134,7 @@ export function useMenuOCR() {
       menuItems: [],
       error: null,
       sourceImageId: undefined,
+      debugData: undefined,
     });
   };
 
