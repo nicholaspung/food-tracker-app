@@ -17,9 +17,9 @@ interface RateItemsPageProps {
 }
 
 const RATING_OPTIONS = [
-  { value: 1, label: "Don't eat ever", color: "bg-red-500" },
-  { value: 2, label: "Try once", color: "bg-orange-500" },
-  { value: 3, label: "Eat once in a while", color: "bg-yellow-500" },
+  { value: 1, label: "Don't eat", color: "bg-red-500" },
+  { value: 2, label: "Not good not bad", color: "bg-orange-500" },
+  { value: 3, label: "Worth trying", color: "bg-yellow-500" },
   { value: 4, label: "Eat occasionally", color: "bg-lime-500" },
   { value: 5, label: "Eat often", color: "bg-green-500" },
 ];
@@ -342,7 +342,6 @@ export default function RateItemsPage({
                       <input
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         className="hidden"
                         ref={(el) => {
                           if (el) fileInputRefs.current.set(index, el);
@@ -361,10 +360,10 @@ export default function RateItemsPage({
                         onClick={() => fileInputRefs.current.get(index)?.click()}
                       >
                         <Camera className="w-4 h-4 mr-2" />
-                        Take Photo
+                        Add Photo
                       </Button>
                       <p className="text-xs text-gray-500 text-center">
-                        Tip: Frame your dish in the center for better sharing photos
+                        Take a photo or choose from your library
                       </p>
                     </>
                   ) : (
