@@ -46,22 +46,7 @@ import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { Input } from "@/components/ui/input";
 import ShareCustomizationModal from "@/components/ShareCustomizationModal";
 import VisitShareModal from "@/components/VisitShareModal";
-
-const RATING_LABELS = [
-  "Don't eat ever",
-  "Try once",
-  "Eat once in a while",
-  "Eat occasionally",
-  "Eat often",
-];
-
-const RATING_COLORS = [
-  "bg-red-500",
-  "bg-orange-500",
-  "bg-yellow-500",
-  "bg-lime-500",
-  "bg-green-500",
-];
+import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
 interface VisitWithDetails extends Omit<Visit, "restaurant"> {
   restaurant?: Restaurant;

@@ -10,19 +10,12 @@ import { ChevronDown, ChevronUp, Calendar, Users, Camera, X } from "lucide-react
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 import { compressDishPhoto } from "@/services/photoService";
+import { RATING_OPTIONS } from "@/lib/ratingConstants";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
   onBack: () => void;
 }
-
-const RATING_OPTIONS = [
-  { value: 1, label: "Don't eat", color: "bg-red-500" },
-  { value: 2, label: "Not good not bad", color: "bg-orange-500" },
-  { value: 3, label: "Worth trying", color: "bg-yellow-500" },
-  { value: 4, label: "Eat occasionally", color: "bg-lime-500" },
-  { value: 5, label: "Eat often", color: "bg-green-500" },
-];
 
 export default function RateItemsPage({
   onSubmit,
