@@ -5,22 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Share2, Download } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import ShareCustomizationModal from "@/components/ShareCustomizationModal";
-
-const RATING_LABELS = [
-  "Don't eat ever",
-  "Try once",
-  "Eat once in a while",
-  "Eat occasionally",
-  "Eat often",
-];
-
-const RATING_COLORS = [
-  "bg-red-500",
-  "bg-orange-500",
-  "bg-yellow-500",
-  "bg-lime-500",
-  "bg-green-500",
-];
+import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
 interface DishPhotoCardProps {
   photoRecord: {
