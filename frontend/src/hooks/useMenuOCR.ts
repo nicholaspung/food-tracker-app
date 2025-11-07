@@ -111,7 +111,7 @@ export function useMenuOCR() {
         debugData: ocrResult.debug, // Keep debug data for admins
       });
 
-      return createdItems;
+      return { items: createdItems, debugData: ocrResult.debug };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to process menu image';
