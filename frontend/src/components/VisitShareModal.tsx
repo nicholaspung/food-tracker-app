@@ -35,6 +35,8 @@ export default function VisitShareModal({
   const [theme, setTheme] = useState<BadgeTheme>("modern");
   const [showDate, setShowDate] = useState(true);
   const [showRating, setShowRating] = useState(true);
+  const [showDishNames, setShowDishNames] = useState(true);
+  const [showRestaurantName, setShowRestaurantName] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -74,6 +76,8 @@ export default function VisitShareModal({
             position: 'bottom', // Not used in composite but required for interface
             showDate,
             showRating,
+            showDishNames,
+            showRestaurantName,
           }
         );
 
@@ -103,6 +107,8 @@ export default function VisitShareModal({
     theme,
     showDate,
     showRating,
+    showDishNames,
+    showRestaurantName,
     restaurantName,
     visitDate,
     pb,
@@ -143,6 +149,8 @@ export default function VisitShareModal({
           position: 'bottom',
           showDate,
           showRating,
+          showDishNames,
+          showRestaurantName,
         }
       );
 
@@ -211,9 +219,9 @@ export default function VisitShareModal({
       </div>
 
       {/* Content - Split Layout */}
-      <div className="h-full flex flex-col pt-24 pb-24">
+      <div className="h-full flex flex-col pt-20">
         {/* Preview Section (scrollable) */}
-        <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="max-w-lg mx-auto space-y-4">
             {/* Show single composite preview */}
             {previewUrl ? (
@@ -232,8 +240,8 @@ export default function VisitShareModal({
           </div>
         </div>
 
-        {/* Options Section (fixed at bottom) */}
-        <div className="bg-gray-900 border-t border-gray-700 px-4 py-4 space-y-4">
+        {/* Options Section (fixed at bottom, scrollable if needed) */}
+        <div className="bg-gray-900 border-t border-gray-700 px-4 py-3 space-y-3 overflow-y-auto max-h-[50vh]">
           {/* Style Selection */}
           <div>
             <label className="text-white text-sm font-medium mb-2 block">
@@ -269,6 +277,35 @@ export default function VisitShareModal({
                 }`}
               >
                 Minimal
+              </button>
+            </div>
+          </div>
+
+          {/* Overlay Visibility Toggle */}
+          <div>
+            <label className="text-white text-sm font-medium mb-2 block">
+              Show Overlays
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDishNames(!showDishNames)}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  showDishNames
+                    ? "bg-gray-700 text-white"
+                    : "bg-gray-800 text-gray-400 hover:bg-gray-750"
+                }`}
+              >
+                Dish Names
+              </button>
+              <button
+                onClick={() => setShowRestaurantName(!showRestaurantName)}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  showRestaurantName
+                    ? "bg-gray-700 text-white"
+                    : "bg-gray-800 text-gray-400 hover:bg-gray-750"
+                }`}
+              >
+                Restaurant
               </button>
             </div>
           </div>

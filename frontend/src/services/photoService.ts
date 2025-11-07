@@ -73,6 +73,8 @@ export interface BadgeOptions {
   position?: BadgePosition;
   showDate?: boolean;
   showRating?: boolean;
+  showDishNames?: boolean;
+  showRestaurantName?: boolean;
 }
 
 /**
@@ -798,6 +800,8 @@ export async function generateVisitCompositeImage(
     position: "bottom",
     showDate: true,
     showRating: true,
+    showDishNames: true,
+    showRestaurantName: true,
   }
 ): Promise<Blob> {
   return new Promise(async (resolve, reject) => {
@@ -836,13 +840,18 @@ export async function generateVisitCompositeImage(
       }
 
       const fullWidth = 1080; // Full canvas width
-      const overlayHeight = options.showDate ? 120 : 80;
+
+      // Calculate overlay height based on options
+      // If restaurant name is hidden, no overlay height for bottom layouts
+      const overlayHeight = options.showRestaurantName !== false
+        ? (options.showDate ? 120 : 80)
+        : 0;
 
       // ALL composite images are fixed at 1080 x 2280 (always)
       const canvasWidth = fullWidth;
       const canvasHeight = 2280; // Fixed height
 
-      const photoAreaHeight = canvasHeight - overlayHeight; // 2160 with date, 2200 without
+      const photoAreaHeight = canvasHeight - overlayHeight; // Full height if no overlay
 
       let photoLayout: Array<{
         x: number;
@@ -1018,8 +1027,9 @@ export async function generateVisitCompositeImage(
         ctx.lineWidth = 4;
         ctx.strokeRect(x, y, width, height);
 
-        // Draw dish name and rating overlay at bottom of each photo
-        if (options.theme === "minimal") {
+        // Draw dish name and rating overlay at bottom of each photo (only if showDishNames is true)
+        if (options.showDishNames !== false) {
+          if (options.theme === "minimal") {
           // Minimal style: compact semi-transparent container
           const innerPadding = 12;
           const lineSpacing = 40;
@@ -1244,11 +1254,12 @@ export async function generateVisitCompositeImage(
           }
 
           ctx.textAlign = "left";
+          }
         }
       }
 
-      // Draw restaurant overlay
-      if (overlayPosition) {
+      // Draw restaurant overlay (only if showRestaurantName is true)
+      if (overlayPosition && options.showRestaurantName !== false) {
         if (overlayPosition.centerOverlay) {
           // Center overlay (for 4 and 6+ photos) - compact badge on top of photos
           drawRestaurantCenterOverlay(
