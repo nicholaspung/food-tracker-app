@@ -29,7 +29,7 @@ export default function PhotosPage() {
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+      <div className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -39,7 +39,7 @@ export default function PhotosPage() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Dish Photos</h1>
+            <h1 className="text-xl font-bold text-gray-900">Dish Photos</h1>
             <p className="text-sm text-gray-500">
               {photos?.length || 0} photo{photos?.length !== 1 ? 's' : ''}
             </p>
