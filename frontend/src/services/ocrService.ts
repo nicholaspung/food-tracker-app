@@ -198,14 +198,23 @@ export function parseMenuItems(csvText: string): ExtractedMenuItem[] {
     return [];
   }
 
-  const lines = csvText.split('\n').map(line => line.trim()).filter(Boolean);
+  // Remove markdown code fences if present (```csv and ```)
+  let cleanedText = csvText.trim();
+  cleanedText = cleanedText.replace(/^```csv\s*/i, ''); // Remove opening fence
+  cleanedText = cleanedText.replace(/```\s*$/, ''); // Remove closing fence
+  cleanedText = cleanedText.trim();
+
+  const lines = cleanedText.split('\n').map(line => line.trim()).filter(Boolean);
   const menuItems: ExtractedMenuItem[] = [];
 
-  // Skip header row if present
+  // Skip header row if present (case-insensitive check for "menu_item")
   const startIndex = lines[0] && lines[0].toLowerCase().includes('menu_item') ? 1 : 0;
 
   for (let i = startIndex; i < lines.length; i++) {
     const line = lines[i];
+
+    // Skip any remaining markdown artifacts
+    if (line.startsWith('```')) continue;
 
     // Parse CSV line (simple comma split - Gemini should handle escaping)
     const parts = line.split(',').map(part => part.trim());
@@ -214,8 +223,12 @@ export function parseMenuItems(csvText: string): ExtractedMenuItem[] {
       const name = parts[0];
       const price = parts[1];
 
-      // Skip invalid entries
-      if (!name || name.length < 2) {
+      // Skip header row variations and known bad values
+      if (!name ||
+          name.toLowerCase() === 'menu_item' ||
+          name.toLowerCase() === 'item' ||
+          name.toLowerCase().includes('```') ||
+          name.length < 2) {
         continue;
       }
 
@@ -223,7 +236,16 @@ export function parseMenuItems(csvText: string): ExtractedMenuItem[] {
         name,
         price,
       });
-    } else if (parts.length === 1 && parts[0].length >= 3) {
+    } else if (parts.length === 1 && parts[0].length >= 2) {
+      const name = parts[0];
+
+      // Skip header row variations and known bad values
+      if (name.toLowerCase() === 'menu_item' ||
+          name.toLowerCase() === 'item' ||
+          name.toLowerCase().includes('```')) {
+        continue;
+      }
+
       // Item without price
       menuItems.push({
         name: parts[0],
