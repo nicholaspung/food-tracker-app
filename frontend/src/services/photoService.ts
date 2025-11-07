@@ -94,12 +94,14 @@ export async function generateSocialShareImage(
   // Handle backward compatibility with old API
   const opts: BadgeOptions =
     typeof options === "string"
-      ? { theme: options, position: "bottom", showDate: true, showRating: true }
+      ? { theme: options, position: "bottom", showDate: true, showRating: true, showDishNames: true, showRestaurantName: true }
       : {
           theme: options.theme ?? "modern",
           position: options.position ?? "bottom",
           showDate: options.showDate ?? true,
           showRating: options.showRating ?? true,
+          showDishNames: options.showDishNames ?? true,
+          showRestaurantName: options.showRestaurantName ?? true,
         };
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -185,14 +187,21 @@ function drawModernBadgeOverlay(
   },
   options: BadgeOptions
 ) {
+  // Check if there's anything to show
+  const showRestaurant = options.showRestaurantName !== false;
+  const showDish = options.showDishNames !== false;
+
+  // Skip drawing if both dish and restaurant name are hidden
+  if (!showRestaurant && !showDish) {
+    return;
+  }
+
   // Badge configuration
   const padding = 20;
   const borderRadius = 12;
 
   // Calculate badge dimensions based on what's being shown
   let badgeHeight = 20; // Base padding
-  const showRestaurant = options.showRestaurantName !== false;
-  const showDish = options.showDishNames !== false;
 
   if (showRestaurant) badgeHeight += 20; // Restaurant name height
   if (showDish) badgeHeight += 26; // Dish name height
@@ -361,13 +370,20 @@ function drawRusticBadgeOverlay(
   },
   options: BadgeOptions
 ) {
+  // Check if there's anything to show
+  const showRestaurant = options.showRestaurantName !== false;
+  const showDish = options.showDishNames !== false;
+
+  // Skip drawing if both dish and restaurant name are hidden
+  if (!showRestaurant && !showDish) {
+    return;
+  }
+
   // Badge configuration
   const padding = 20;
 
   // Calculate badge dimensions based on what's being shown
   let badgeHeight = 30; // Base padding
-  const showRestaurant = options.showRestaurantName !== false;
-  const showDish = options.showDishNames !== false;
 
   if (showRestaurant) badgeHeight += 20; // Restaurant name height
   if (showDish) badgeHeight += 28; // Dish name height
@@ -549,13 +565,20 @@ function drawMinimalBadgeOverlay(
   },
   options: BadgeOptions
 ) {
+  // Check if there's anything to show
+  const showRestaurant = options.showRestaurantName !== false;
+  const showDish = options.showDishNames !== false;
+
+  // Skip drawing if both dish and restaurant name are hidden
+  if (!showRestaurant && !showDish) {
+    return;
+  }
+
   ctx.save();
 
   const padding = 20;
   const innerPadding = 12;
   const lineSpacing = 22;
-  const showRestaurant = options.showRestaurantName !== false;
-  const showDish = options.showDishNames !== false;
 
   // Measure all text to calculate compact badge size
   const restaurantFont =
