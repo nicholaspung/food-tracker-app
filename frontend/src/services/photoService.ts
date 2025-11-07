@@ -190,7 +190,13 @@ function drawModernBadgeOverlay(
   const borderRadius = 12;
 
   // Calculate badge dimensions based on what's being shown
-  let badgeHeight = 60; // Base height for restaurant + dish name
+  let badgeHeight = 20; // Base padding
+  const showRestaurant = options.showRestaurantName !== false;
+  const showDish = options.showDishNames !== false;
+
+  if (showRestaurant) badgeHeight += 20; // Restaurant name height
+  if (showDish) badgeHeight += 26; // Dish name height
+  if (showRestaurant || showDish) badgeHeight += 14; // Spacing
   if (options.showRating) badgeHeight += 30;
   if (options.showDate) badgeHeight += 20;
 
@@ -253,29 +259,34 @@ function drawModernBadgeOverlay(
 
   // Draw text content
   const textX = badgeX + 16;
-  let textY = badgeY + 28;
+  let textY = badgeY + 20;
 
-  // Restaurant name (top, smaller)
-  ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-  ctx.font =
-    'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
-
-  // Dish name (middle, larger)
-  textY += 26;
-  ctx.fillStyle = "#ffffff";
-  ctx.font =
-    'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-
-  // Truncate dish name if too long
-  let dishName = data.dishName;
-  const maxDishWidth = options.showRating ? badgeWidth - 180 : badgeWidth - 40; // Leave space for rating badge if shown
-  let dishWidth = ctx.measureText(dishName).width;
-  while (dishWidth > maxDishWidth && dishName.length > 3) {
-    dishName = dishName.slice(0, -4) + "...";
-    dishWidth = ctx.measureText(dishName).width;
+  // Restaurant name (top, smaller) - only if enabled
+  if (showRestaurant) {
+    textY += 14;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.font =
+      'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
   }
-  ctx.fillText(dishName, textX, textY);
+
+  // Dish name (middle, larger) - only if enabled
+  if (showDish) {
+    textY += showRestaurant ? 26 : 20;
+    ctx.fillStyle = "#ffffff";
+    ctx.font =
+      'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+    // Truncate dish name if too long
+    let dishName = data.dishName;
+    const maxDishWidth = options.showRating ? badgeWidth - 180 : badgeWidth - 40; // Leave space for rating badge if shown
+    let dishWidth = ctx.measureText(dishName).width;
+    while (dishWidth > maxDishWidth && dishName.length > 3) {
+      dishName = dishName.slice(0, -4) + "...";
+      dishWidth = ctx.measureText(dishName).width;
+    }
+    ctx.fillText(dishName, textX, textY);
+  }
 
   // Colored rating badge (right side of dish name) - only if showRating is true
   if (options.showRating) {
@@ -354,7 +365,13 @@ function drawRusticBadgeOverlay(
   const padding = 20;
 
   // Calculate badge dimensions based on what's being shown
-  let badgeHeight = 70; // Base height for restaurant + dish name
+  let badgeHeight = 30; // Base padding
+  const showRestaurant = options.showRestaurantName !== false;
+  const showDish = options.showDishNames !== false;
+
+  if (showRestaurant) badgeHeight += 20; // Restaurant name height
+  if (showDish) badgeHeight += 28; // Dish name height
+  if (showRestaurant || showDish) badgeHeight += 12; // Spacing
   if (options.showRating) badgeHeight += 30;
   if (options.showDate) badgeHeight += 25;
 
@@ -418,27 +435,32 @@ function drawRusticBadgeOverlay(
 
   // Draw text content
   const textX = badgeX + 20;
-  let textY = badgeY + 32;
+  let textY = badgeY + 22;
 
-  // Restaurant name (top, vintage style)
-  ctx.fillStyle = "#F5DEB3"; // Wheat color
-  ctx.font = "italic bold 13px Georgia, serif";
-  ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
-
-  // Dish name (middle, larger serif font)
-  textY += 28;
-  ctx.fillStyle = "#FFF8DC"; // Cornsilk
-  ctx.font = 'bold 22px Georgia, "Times New Roman", serif';
-
-  // Truncate dish name if too long
-  let dishName = data.dishName;
-  const maxDishWidth = options.showRating ? badgeWidth - 200 : badgeWidth - 40;
-  let dishWidth = ctx.measureText(dishName).width;
-  while (dishWidth > maxDishWidth && dishName.length > 3) {
-    dishName = dishName.slice(0, -4) + "...";
-    dishWidth = ctx.measureText(dishName).width;
+  // Restaurant name (top, vintage style) - only if enabled
+  if (showRestaurant) {
+    textY += 16;
+    ctx.fillStyle = "#F5DEB3"; // Wheat color
+    ctx.font = "italic bold 13px Georgia, serif";
+    ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
   }
-  ctx.fillText(dishName, textX, textY);
+
+  // Dish name (middle, larger serif font) - only if enabled
+  if (showDish) {
+    textY += showRestaurant ? 28 : 22;
+    ctx.fillStyle = "#FFF8DC"; // Cornsilk
+    ctx.font = 'bold 22px Georgia, "Times New Roman", serif';
+
+    // Truncate dish name if too long
+    let dishName = data.dishName;
+    const maxDishWidth = options.showRating ? badgeWidth - 200 : badgeWidth - 40;
+    let dishWidth = ctx.measureText(dishName).width;
+    while (dishWidth > maxDishWidth && dishName.length > 3) {
+      dishName = dishName.slice(0, -4) + "...";
+      dishWidth = ctx.measureText(dishName).width;
+    }
+    ctx.fillText(dishName, textX, textY);
+  }
 
   // Rustic rating badge (wooden plaque style) - only if showRating is true
   if (options.showRating) {
@@ -532,6 +554,8 @@ function drawMinimalBadgeOverlay(
   const padding = 20;
   const innerPadding = 12;
   const lineSpacing = 22;
+  const showRestaurant = options.showRestaurantName !== false;
+  const showDish = options.showDishNames !== false;
 
   // Measure all text to calculate compact badge size
   const restaurantFont =
@@ -541,18 +565,24 @@ function drawMinimalBadgeOverlay(
   const dateFont =
     '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-  ctx.font = restaurantFont;
-  const restaurantWidth = ctx.measureText(
-    data.restaurantName.toUpperCase()
-  ).width;
+  let restaurantWidth = 0;
+  if (showRestaurant) {
+    ctx.font = restaurantFont;
+    restaurantWidth = ctx.measureText(
+      data.restaurantName.toUpperCase()
+    ).width;
+  }
 
-  ctx.font = dishFont;
   let dishName = data.dishName;
-  const maxDishWidth = 400; // Maximum dish name width
-  let dishWidth = ctx.measureText(dishName).width;
-  while (dishWidth > maxDishWidth && dishName.length > 3) {
-    dishName = dishName.slice(0, -4) + "...";
+  let dishWidth = 0;
+  if (showDish) {
+    ctx.font = dishFont;
+    const maxDishWidth = 400; // Maximum dish name width
     dishWidth = ctx.measureText(dishName).width;
+    while (dishWidth > maxDishWidth && dishName.length > 3) {
+      dishName = dishName.slice(0, -4) + "...";
+      dishWidth = ctx.measureText(dishName).width;
+    }
   }
 
   let dateWidth = 0;
@@ -569,8 +599,9 @@ function drawMinimalBadgeOverlay(
   // Calculate badge dimensions (compact to fit content)
   const contentWidth = Math.max(restaurantWidth, dishWidth, dateWidth);
   let badgeWidth = contentWidth + innerPadding * 2;
-  let badgeHeight = innerPadding + 18; // Restaurant name
-  badgeHeight += lineSpacing; // Dish name
+  let badgeHeight = innerPadding;
+  if (showRestaurant) badgeHeight += 18; // Restaurant name
+  if (showDish) badgeHeight += lineSpacing; // Dish name
   if (options.showRating) badgeHeight += lineSpacing + 4;
   if (options.showDate) badgeHeight += lineSpacing - 2;
   badgeHeight += innerPadding / 2;
@@ -596,19 +627,24 @@ function drawMinimalBadgeOverlay(
 
   // Draw text content
   const textX = badgeX + innerPadding;
-  let textY = badgeY + innerPadding + 13;
+  let textY = badgeY + innerPadding;
 
-  // Restaurant name (top, smaller, uppercase)
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.font = restaurantFont;
-  ctx.textAlign = "left";
-  ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
+  // Restaurant name (top, smaller, uppercase) - only if enabled
+  if (showRestaurant) {
+    textY += 13;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.font = restaurantFont;
+    ctx.textAlign = "left";
+    ctx.fillText(data.restaurantName.toUpperCase(), textX, textY);
+  }
 
-  // Dish name (middle, larger, bold)
-  textY += lineSpacing;
-  ctx.fillStyle = "#000000";
-  ctx.font = dishFont;
-  ctx.fillText(dishName, textX, textY);
+  // Dish name (middle, larger, bold) - only if enabled
+  if (showDish) {
+    textY += showRestaurant ? lineSpacing : 18;
+    ctx.fillStyle = "#000000";
+    ctx.font = dishFont;
+    ctx.fillText(dishName, textX, textY);
+  }
 
   // Rating label below dish name - only if showRating is true
   if (options.showRating) {
