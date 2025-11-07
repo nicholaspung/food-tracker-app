@@ -2,12 +2,9 @@
   {
     "version": "0.4.0",
     "date": "2025-11-07",
-    "title": "Bill Splitting & Photo Sharing Upgrades",
-    "summary": "Split restaurant bills with friends, customize what shows in your shared photos, and enjoy a refreshed profile page with cleaner organization!",
+    "title": "Enhanced Photo Sharing & Feed Controls",
+    "summary": "Customize what shows in your shared photos, filter your home feed, zoom photos, and enjoy a refreshed profile page with cleaner organization!",
     "features": [
-      "Bill splitting: Split bills with friends using custom amounts or equal splits",
-      "Payment tracking: Mark who paid and track remaining balances for each bill",
-      "Bill history: View all your split bills from the profile page",
       "Customizable photo overlays: Choose to show/hide dish names and restaurant names when sharing photos",
       "Home feed filtering: Filter your home feed to show only your visits or only friends' visits",
       "Full-screen photo zoom: Tap any photo on the home page to view it in full screen"
@@ -22,8 +19,7 @@
     ],
     "fixes": [
       "Fixed My Photos header style to match Settings and What's New pages",
-      "Fixed toggleable overlays not working correctly for individual photo sharing",
-      "Fixed CSV parsing issues in bill splitting calculations"
+      "Fixed toggleable overlays not working correctly for individual photo sharing"
     ]
   },
   {
