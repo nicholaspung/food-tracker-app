@@ -412,6 +412,9 @@ func main() {
 				return apis.NewUnauthorizedError("authentication required", nil)
 			}
 
+			// Check if user is admin for debug mode
+			isAdmin := authRecord.GetBool("isAdmin")
+
 			// Get Gemini API key from environment
 			geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 			if geminiAPIKey == "" {
@@ -498,19 +501,64 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 
 			log.Printf("Gemini response: %s", responseText)
 
+			// Prepare debug data for admin users
+			var debugData map[string]any
+			if isAdmin {
+				// Serialize full response for debugging
+				debugData = map[string]any{
+					"rawResponse": responseText,
+					"candidatesCount": len(resp.Candidates),
+					"model": "gemini-2.5-flash-lite",
+					"prompt": prompt,
+				}
+
+				if len(resp.Candidates) > 0 {
+					candidate := resp.Candidates[0]
+					debugData["finishReason"] = candidate.FinishReason
+					debugData["safetyRatings"] = candidate.SafetyRatings
+
+					// Capture parts information
+					parts := make([]map[string]any, len(candidate.Content.Parts))
+					for i, part := range candidate.Content.Parts {
+						parts[i] = map[string]any{
+							"type": fmt.Sprintf("%T", part),
+						}
+						if textPart, ok := part.(genai.Text); ok {
+							parts[i]["text"] = string(textPart)
+						}
+					}
+					debugData["parts"] = parts
+				}
+			}
+
 			// Check if response indicates it's not a menu image
 			// Try to parse as JSON error first
 			trimmedResponse := strings.TrimSpace(responseText)
 			if strings.Contains(trimmedResponse, "statusCode") && strings.Contains(trimmedResponse, "error") {
 				// This looks like an error response
 				log.Printf("Image is not a menu - Gemini returned error response")
+
+				// Include debug data in error response for admins
+				if isAdmin {
+					return e.JSON(400, map[string]any{
+						"error": "Image is not a menu",
+						"debug": debugData,
+					})
+				}
+
 				return apis.NewApiError(400, "Image is not a menu", nil)
 			}
 
-			// Return CSV text
-			return e.JSON(200, map[string]any{
+			// Return CSV text (with debug data for admins)
+			response := map[string]any{
 				"csv": responseText,
-			})
+			}
+
+			if isAdmin {
+				response["debug"] = debugData
+			}
+
+			return e.JSON(200, response)
 		})
 
 		// Custom API endpoint: Find restaurant name using Gemini Flash
