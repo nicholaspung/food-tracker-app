@@ -3,21 +3,7 @@
  * Optimized for social sharing with balanced quality/size
  */
 
-const RATING_LABELS = [
-  "Don't eat ever",
-  "Try once",
-  "Eat once in a while",
-  "Eat occasionally",
-  "Eat often",
-];
-
-const RATING_COLORS = [
-  "#ef4444", // red-500
-  "#f97316", // orange-500
-  "#eab308", // yellow-500
-  "#84cc16", // lime-500
-  "#22c55e", // green-500
-];
+import { RATING_LABELS, RATING_COLORS_HEX as RATING_COLORS } from "@/lib/ratingConstants";
 
 /**
  * Compress dish photo for storage and social sharing

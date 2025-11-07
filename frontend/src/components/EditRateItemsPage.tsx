@@ -10,20 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Camera, X } from 'lucide-react';
 import { useScrollIntoView } from '@/hooks/useScrollIntoView';
 import { compressDishPhoto } from '@/services/photoService';
+import { RATING_OPTIONS } from '@/lib/ratingConstants';
 
 interface EditRateItemsPageProps {
   visitId: string;
   onBack: () => void;
   onComplete: () => void;
 }
-
-const RATING_OPTIONS = [
-  { value: 1, label: "Don't eat ever", color: 'bg-red-500' },
-  { value: 2, label: 'Try once', color: 'bg-orange-500' },
-  { value: 3, label: 'Eat once in a while', color: 'bg-yellow-500' },
-  { value: 4, label: 'Eat occasionally', color: 'bg-lime-500' },
-  { value: 5, label: 'Eat often', color: 'bg-green-500' },
-];
 
 export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditRateItemsPageProps) {
   const queryClient = useQueryClient();
