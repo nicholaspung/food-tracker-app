@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useScrollIntoView } from '@/hooks/useScrollIntoView';
-import { compressDishPhoto } from '@/services/photoService';
+import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/usePhotoUpload';
 import { RATING_OPTIONS } from '@/lib/ratingConstants';
 import MenuItemPhotoInput from '@/components/MenuItemPhotoInput';
 
@@ -33,6 +33,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
   // Ref for auto-scrolling notes input into view on mobile
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
+
+  // Photo upload hook for parallel uploads with progress
+  const { state: uploadState, uploadPhotos } = usePhotoUpload();
 
   // Fetch existing photos for this visit
   const { data: existingPhotos = [] } = useQuery({
@@ -145,6 +148,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
         await pb.collection('visit_photos').delete(photoId);
       }
 
+      // Track photo uploads for parallel processing
+      const photoUploads: PhotoUploadItem[] = [];
+
       // Handle food items
       for (const item of menuItems) {
         if (item._deleted && item.id) {
@@ -160,28 +166,17 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
             notes: item.notes,
           });
 
-          // Handle photo for existing item
+          // Check for photo to upload
           const newPhoto = itemPhotos.get(item.id);
           if (newPhoto) {
-            // Compress the photo before upload
-            const compressedPhoto = await compressDishPhoto(newPhoto);
-
-            // Check if there's an existing photo to replace
             const existingPhoto = existingPhotos.find((p: any) => p.food_item === item.id);
-            if (existingPhoto) {
-              // Update existing photo
-              const formData = new FormData();
-              formData.append('photo', compressedPhoto);
-              await pb.collection('visit_photos').update(existingPhoto.id, formData);
-            } else {
-              // Create new photo
-              const formData = new FormData();
-              formData.append('photo', compressedPhoto);
-              formData.append('visit', visitId);
-              formData.append('food_item', item.id);
-              formData.append('user', user.id);
-              await pb.collection('visit_photos').create(formData);
-            }
+            photoUploads.push({
+              photo: newPhoto,
+              foodItemId: item.id,
+              visitId,
+              userId: user.id,
+              existingPhotoId: existingPhoto?.id,
+            });
           }
         } else if (!item._deleted) {
           // Create new item
@@ -194,22 +189,23 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
             user: user.id,
           });
 
-          // Handle photo for new item (use temporary key)
+          // Check for photo to upload (use temporary key)
           const tempKey = `new_${menuItems.indexOf(item)}`;
           const newPhoto = itemPhotos.get(tempKey);
           if (newPhoto) {
-            // Compress the photo before upload
-            const compressedPhoto = await compressDishPhoto(newPhoto);
-
-            // Create photo
-            const formData = new FormData();
-            formData.append('photo', compressedPhoto);
-            formData.append('visit', visitId);
-            formData.append('food_item', foodItem.id);
-            formData.append('user', user.id);
-            await pb.collection('visit_photos').create(formData);
+            photoUploads.push({
+              photo: newPhoto,
+              foodItemId: foodItem.id,
+              visitId,
+              userId: user.id,
+            });
           }
         }
+      }
+
+      // Upload all photos in parallel with progress tracking
+      if (photoUploads.length > 0) {
+        await uploadPhotos(photoUploads);
       }
     },
     onSuccess: () => {
@@ -347,6 +343,26 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
       {/* Bottom Action Buttons - Fixed Footer */}
       <div className="bg-white border-t border-gray-200 p-4">
+        {/* Progress indicator for photo uploads */}
+        {uploadState.status !== 'idle' && uploadState.status !== 'complete' && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium text-gray-700">
+                {uploadState.currentOperation}
+              </span>
+              <span className="text-sm font-medium text-gray-700">
+                {uploadState.progress}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${uploadState.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <Button
             variant="outline"
