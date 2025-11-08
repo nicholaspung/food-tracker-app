@@ -4,6 +4,7 @@ import { pb, RestaurantList, ListItem, Restaurant } from "@/lib/pocketbase";
 import { useNavigate } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   Lock,
@@ -12,7 +13,6 @@ import {
   Trash2,
   MapPin,
   Plus,
-  Star,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import AddRestaurantToListModal from "./AddRestaurantToListModal";
+import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
 interface ListDetailPageProps {
   listId: string;
@@ -259,19 +260,22 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
                             <p className="text-xs font-medium text-gray-700 mb-2">
                               Recommended Items:
                             </p>
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                               {recommendedItems.map((foodItem: any) => (
                                 <div
                                   key={foodItem.id}
-                                  className="flex items-center gap-2 text-sm"
+                                  className="flex items-center gap-2 text-sm flex-wrap"
                                 >
-                                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
                                   <span className="text-gray-900 font-medium">
                                     {foodItem.name}
                                   </span>
-                                  <span className="text-gray-500">
-                                    ({foodItem.rating}/5)
-                                  </span>
+                                  <Badge
+                                    className={`${
+                                      RATING_COLORS[foodItem.rating - 1] || "bg-gray-500"
+                                    } text-white text-xs`}
+                                  >
+                                    {RATING_LABELS[foodItem.rating - 1] || "Unknown"}
+                                  </Badge>
                                 </div>
                               ))}
                             </div>
