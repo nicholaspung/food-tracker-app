@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, ArrowLeft, Plus } from "lucide-react";
+import { Search, ArrowLeft, Plus, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
@@ -196,6 +196,31 @@ export default function AddRestaurantToListModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Error Alert - Show at top */}
+        {error && (
+          <div className="bg-red-50 border border-red-300 rounded-md p-4 mx-6">
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-red-800 mb-1">
+                  Error Adding Restaurant
+                </h3>
+                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-xs text-red-600 mt-2">
+                  Make sure the backend server is running (go run main.go serve)
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setError(null)}
+                className="p-1 h-auto text-red-800 hover:text-red-900"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto space-y-4">
           {!selectedRestaurant ? (
             // Step 1: Search and select restaurant
@@ -328,31 +353,28 @@ export default function AddRestaurantToListModal({
         </div>
 
         {selectedRestaurant && (
-          <>
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-3 mt-2">
-                <p className="text-sm text-red-800">{error}</p>
-              </div>
-            )}
-            <div className="flex gap-2 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={() => setSelectedRestaurant(null)}
-                className="flex-1"
-              >
-                Back
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={addRestaurantMutation.isPending}
-                className="flex-1 flex items-center gap-2"
-                data-testid="add-restaurant-submit"
-              >
-                <Plus className="w-4 h-4" />
-                {addRestaurantMutation.isPending ? "Adding..." : "Add to List"}
-              </Button>
-            </div>
-          </>
+          <div className="flex gap-2 pt-4 border-t px-6">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedRestaurant(null);
+                setError(null);
+              }}
+              className="flex-1"
+              disabled={addRestaurantMutation.isPending}
+            >
+              Back
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={addRestaurantMutation.isPending}
+              className="flex-1 flex items-center gap-2"
+              data-testid="add-restaurant-submit"
+            >
+              <Plus className="w-4 h-4" />
+              {addRestaurantMutation.isPending ? "Adding..." : "Add to List"}
+            </Button>
+          </div>
         )}
       </DialogContent>
     </Dialog>
