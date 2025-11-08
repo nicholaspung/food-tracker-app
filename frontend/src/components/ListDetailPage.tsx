@@ -11,8 +11,8 @@ import {
   Globe,
   Trash2,
   MapPin,
-  Edit,
   Plus,
+  Star,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -24,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import AddRestaurantToListModal from "./AddRestaurantToListModal";
 
 interface ListDetailPageProps {
   listId: string;
@@ -36,6 +37,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<ListItem | null>(null);
   const [listToDelete, setListToDelete] = useState(false);
+  const [addRestaurantModalOpen, setAddRestaurantModalOpen] = useState(false);
   const user = pb.authStore.record;
 
   // Fetch list details
@@ -46,7 +48,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
     },
   });
 
-  // Fetch list items with expanded restaurant data
+  // Fetch list items with expanded restaurant and recommended items data
   const { data: listItems = [], isLoading: itemsLoading } = useQuery<
     ListItem[]
   >({
@@ -55,7 +57,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
       return await pb.collection("list_items").getFullList({
         filter: `list = "${listId}"`,
         sort: "position",
-        expand: "restaurant",
+        expand: "restaurant,recommendedItems",
       });
     },
     enabled: !!list,
@@ -169,6 +171,15 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
         {isOwner && (
           <div className="flex gap-2">
             <Button
+              size="sm"
+              onClick={() => setAddRestaurantModalOpen(true)}
+              className="flex items-center gap-2"
+              data-testid="add-restaurant-button"
+            >
+              <Plus className="w-4 h-4" />
+              Add Restaurant
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               onClick={handleDeleteList}
@@ -193,46 +204,87 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
               No restaurants yet
             </h3>
             <p className="text-sm text-gray-600 mb-6 max-w-sm">
-              Add restaurants to this list from their detail pages
+              Add restaurants you've visited to this list with recommended items and notes
             </p>
+            {isOwner && (
+              <Button
+                onClick={() => setAddRestaurantModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Your First Restaurant
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
             {listItems.map((item, index) => {
               const restaurant = item.expand?.restaurant as Restaurant;
+              const recommendedItems = item.expand?.recommendedItems || [];
               if (!restaurant) return null;
 
               return (
                 <Card
                   key={item.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  className="hover:shadow-md transition-shadow"
                   data-testid={`list-item-${item.id}`}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
-                      <div
-                        className="flex-1"
-                        onClick={() =>
-                          navigate({ to: `/restaurants/${restaurant.id}` })
-                        }
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium text-gray-500">
-                            {index + 1}.
-                          </span>
-                          <CardTitle className="text-lg">
-                            {restaurant.name}
-                          </CardTitle>
+                      <div className="flex-1">
+                        <div
+                          className="cursor-pointer"
+                          onClick={() =>
+                            navigate({ to: `/restaurants/${restaurant.id}` })
+                          }
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-medium text-gray-500">
+                              {index + 1}.
+                            </span>
+                            <CardTitle className="text-lg">
+                              {restaurant.name}
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {restaurant.location}
+                            {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                          </CardDescription>
                         </div>
-                        <CardDescription className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {restaurant.location}
-                          {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
-                        </CardDescription>
+
+                        {/* Recommended Items */}
+                        {recommendedItems.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-xs font-medium text-gray-700 mb-2">
+                              Recommended Items:
+                            </p>
+                            <div className="space-y-1">
+                              {recommendedItems.map((foodItem: any) => (
+                                <div
+                                  key={foodItem.id}
+                                  className="flex items-center gap-2 text-sm"
+                                >
+                                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+                                  <span className="text-gray-900 font-medium">
+                                    {foodItem.name}
+                                  </span>
+                                  <span className="text-gray-500">
+                                    ({foodItem.rating}/5)
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Note */}
                         {item.note && (
-                          <p className="text-sm text-gray-600 mt-2 italic">
-                            "{item.note}"
-                          </p>
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-sm text-gray-700 italic">
+                              "{item.note}"
+                            </p>
+                          </div>
                         )}
                       </div>
                       {isOwner && (
@@ -257,6 +309,16 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
           </div>
         )}
       </div>
+
+      {/* Add Restaurant Modal */}
+      <AddRestaurantToListModal
+        open={addRestaurantModalOpen}
+        onOpenChange={setAddRestaurantModalOpen}
+        listId={listId}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["list_items", listId] });
+        }}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
