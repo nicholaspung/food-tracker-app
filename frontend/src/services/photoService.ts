@@ -1255,6 +1255,7 @@ export async function generateVisitCompositeImage(
         if (options.showDishNames !== false) {
           drawDishBadge(ctx, x, y, width, height, dishName, rating, options.theme, options.showRating !== false);
         }
+      }
 
       // Draw restaurant overlay (only if showRestaurantName is true)
       if (overlayPosition && options.showRestaurantName !== false) {
