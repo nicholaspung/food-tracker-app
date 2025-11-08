@@ -814,8 +814,8 @@ export default function HomePage({
                                             />
                                           )}
 
-                                          <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-gray-900">
+                                          <div className="flex-1 min-w-0 pr-2">
+                                            <p className="font-medium text-gray-900 break-words">
                                               {item.name}
                                             </p>
                                             {item.description && (
