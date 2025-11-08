@@ -13,8 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Search, Star, ArrowLeft, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Search, ArrowLeft, Plus, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
 interface AddRestaurantToListModalProps {
   open: boolean;
@@ -35,6 +37,7 @@ export default function AddRestaurantToListModal({
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [selectedFoodItems, setSelectedFoodItems] = useState<string[]>([]);
   const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch restaurants the user has visited (where they have food items)
   const { data: visitedRestaurants = [], isLoading: loadingRestaurants } = useQuery<
@@ -98,6 +101,14 @@ export default function AddRestaurantToListModal({
     mutationFn: async () => {
       if (!selectedRestaurant) throw new Error("No restaurant selected");
 
+      console.log("Adding restaurant to list:", {
+        listId,
+        restaurant: selectedRestaurant.id,
+        addedBy: user?.id,
+        selectedFoodItems,
+        note: note.trim(),
+      });
+
       // Get the current max position for this list
       const existingItems = await pb.collection("list_items").getFullList({
         filter: `list = "${listId}"`,
@@ -107,7 +118,7 @@ export default function AddRestaurantToListModal({
       const nextPosition = existingItems.length > 0 ? existingItems[0].position + 1 : 0;
 
       // Create the list item
-      await pb.collection("list_items").create({
+      const result = await pb.collection("list_items").create({
         list: listId,
         restaurant: selectedRestaurant.id,
         addedBy: user?.id,
@@ -115,11 +126,19 @@ export default function AddRestaurantToListModal({
         note: note.trim() || undefined,
         recommendedItems: selectedFoodItems.length > 0 ? selectedFoodItems : undefined,
       });
+
+      console.log("Successfully created list item:", result);
+      return result;
     },
     onSuccess: () => {
+      console.log("Mutation success, invalidating queries");
       queryClient.invalidateQueries({ queryKey: ["list_items", listId] });
       onSuccess?.();
       handleClose();
+    },
+    onError: (err: any) => {
+      console.error("Error adding restaurant to list:", err);
+      setError(err?.message || "Failed to add restaurant. Please try again.");
     },
   });
 
@@ -128,6 +147,7 @@ export default function AddRestaurantToListModal({
     setSelectedRestaurant(null);
     setSelectedFoodItems([]);
     setNote("");
+    setError(null);
     onOpenChange(false);
   };
 
@@ -175,6 +195,31 @@ export default function AddRestaurantToListModal({
               : "Search for a restaurant you've visited"}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Error Alert - Show at top */}
+        {error && (
+          <div className="bg-red-50 border border-red-300 rounded-md p-4 mx-6">
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-red-800 mb-1">
+                  Error Adding Restaurant
+                </h3>
+                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-xs text-red-600 mt-2">
+                  Make sure the backend server is running (go run main.go serve)
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setError(null)}
+                className="p-1 h-auto text-red-800 hover:text-red-900"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto space-y-4">
           {!selectedRestaurant ? (
@@ -263,12 +308,13 @@ export default function AddRestaurantToListModal({
                             <div className="flex-1">
                               <CardTitle className="text-sm flex items-center gap-2">
                                 {item.name}
-                                <div className="flex items-center gap-1">
-                                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                                  <span className="text-xs font-normal text-gray-600">
-                                    {item.rating}/5
-                                  </span>
-                                </div>
+                                <Badge
+                                  className={`${
+                                    RATING_COLORS[item.rating - 1] || "bg-gray-500"
+                                  } text-white text-xs`}
+                                >
+                                  {RATING_LABELS[item.rating - 1] || "Unknown"}
+                                </Badge>
                               </CardTitle>
                               {item.notes && (
                                 <CardDescription className="text-xs mt-1">
@@ -307,11 +353,15 @@ export default function AddRestaurantToListModal({
         </div>
 
         {selectedRestaurant && (
-          <div className="flex gap-2 pt-4 border-t">
+          <div className="flex gap-2 pt-4 border-t px-6">
             <Button
               variant="outline"
-              onClick={() => setSelectedRestaurant(null)}
+              onClick={() => {
+                setSelectedRestaurant(null);
+                setError(null);
+              }}
               className="flex-1"
+              disabled={addRestaurantMutation.isPending}
             >
               Back
             </Button>
