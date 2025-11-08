@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { X, DollarSign, List } from 'lucide-react';
 import BillsListView from '@/components/BillsListView';
 import ListsPage from '@/components/ListsPage';
+import ListDetailPage from '@/components/ListDetailPage';
 
 interface BetaPageProps {
   onNavigateBack?: () => void;
@@ -11,6 +12,7 @@ interface BetaPageProps {
 
 export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPageProps) {
   const [activeBetaFeature, setActiveBetaFeature] = useState<string | null>(null);
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
 
   const betaFeatures: Array<{
     id: string;
@@ -38,6 +40,18 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
     },
   ];
 
+  // Handle list detail view
+  if (selectedListId && activeBetaFeature === 'restaurant-lists') {
+    return (
+      <div className="flex flex-col h-full bg-gray-50">
+        <ListDetailPage
+          listId={selectedListId}
+          onNavigateBack={() => setSelectedListId(null)}
+        />
+      </div>
+    );
+  }
+
   if (activeBetaFeature) {
     const feature = betaFeatures.find(f => f.id === activeBetaFeature);
     if (feature) {
@@ -53,7 +67,10 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setActiveBetaFeature(null)}
+              onClick={() => {
+                setActiveBetaFeature(null);
+                setSelectedListId(null);
+              }}
               className="ml-2"
             >
               <X className="w-5 h-5" />
@@ -62,7 +79,11 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
 
           {/* Feature Content */}
           <div className="flex-1 overflow-y-auto">
-            <FeatureComponent />
+            {feature.id === 'restaurant-lists' ? (
+              <FeatureComponent onSelectList={(listId: string) => setSelectedListId(listId)} />
+            ) : (
+              <FeatureComponent />
+            )}
           </div>
         </div>
       );
