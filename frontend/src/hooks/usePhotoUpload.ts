@@ -63,13 +63,16 @@ export const usePhotoUpload = () => {
         currentOperation: `Compressed ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}`,
       }));
 
-      // Step 2: Upload all photos in parallel
+      // Step 2: Upload all photos in parallel with progress tracking
       setState(prev => ({
         ...prev,
         status: 'uploading',
         progress: 50,
         currentOperation: `Uploading ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}...`,
       }));
+
+      // Track completed uploads for progress
+      let completedUploads = 0;
 
       const uploadPromises = compressedItems.map(async (item, index) => {
         try {
@@ -94,6 +97,15 @@ export const usePhotoUpload = () => {
           const result = item.existingPhotoId
             ? await pb.collection('visit_photos').update(item.existingPhotoId, formData)
             : await pb.collection('visit_photos').create(formData);
+
+          // Update progress after each upload completes (50% to 100%)
+          completedUploads++;
+          const uploadProgress = 50 + (completedUploads / totalPhotos) * 50;
+          setState(prev => ({
+            ...prev,
+            progress: Math.round(uploadProgress),
+            currentOperation: `Uploaded ${completedUploads} of ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}`,
+          }));
 
           console.log(`[usePhotoUpload] Uploaded photo ${index + 1}/${totalPhotos}`, result.id);
           return result;
