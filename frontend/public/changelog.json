@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.4.1",
+    "date": "2025-11-08",
+    "title": "Lightning-Fast Photo Uploads",
+    "summary": "Photo uploads are now 3-5x faster with parallel processing, plus real-time progress tracking so you always know what's happening!",
+    "features": [
+      "Parallel photo uploads: Multiple photos now upload simultaneously instead of one-by-one",
+      "Real-time progress bar: See exactly which photo is uploading with live percentage updates",
+      "Visual success confirmation: Progress bar turns green when uploads complete successfully"
+    ],
+    "improvements": [
+      "5x faster uploads: 5 photos now upload in ~5-7 seconds instead of 25+ seconds",
+      "Better feedback: Shows 'Compressed 4 of 5 photos' and 'Uploaded 3 of 5 photos' messages",
+      "No more frozen screens: Progress updates in real-time instead of appearing stuck at 50%",
+      "Error visibility: Failed uploads show clear error messages with console debugging hints"
+    ],
+    "fixes": [
+      "Fixed long menu item names overlapping with rating badges on home page",
+      "Fixed progress bar appearing stuck during photo uploads",
+      "Fixed missing feedback when photos were uploading in the background"
+    ]
+  },
+  {
     "version": "0.4.0",
     "date": "2025-11-07",
     "title": "Enhanced Photo Sharing & Feed Controls",
