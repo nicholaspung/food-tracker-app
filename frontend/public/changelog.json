@@ -19,7 +19,8 @@
     ],
     "fixes": [
       "Fixed My Photos header style to match Settings and What's New pages",
-      "Fixed toggleable overlays not working correctly for individual photo sharing"
+      "Fixed toggleable overlays not working correctly for individual photo sharing",
+      "Fixed photo upload when editing visits to allow selecting from photo library (previously camera-only)"
     ]
   },
   {
