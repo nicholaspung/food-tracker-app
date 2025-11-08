@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { pb, RestaurantList, ListItem } from "@/lib/pocketbase";
-import { useNavigate } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Lock, Users, Globe, Image } from "lucide-react";
 import CreateListDialog from "./CreateListDialog";
 
-export default function ListsPage() {
-  const navigate = useNavigate();
+interface ListsPageProps {
+  onSelectList?: (listId: string) => void;
+}
+
+export default function ListsPage({ onSelectList }: ListsPageProps) {
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const user = pb.authStore.record;
@@ -111,7 +113,7 @@ export default function ListsPage() {
               <Card
                 key={list.id}
                 className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => navigate({ to: `/lists/${list.id}` })}
+                onClick={() => onSelectList?.(list.id)}
                 data-testid={`list-card-${list.id}`}
               >
                 {list.coverImage && (
