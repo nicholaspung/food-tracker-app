@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { pb, RestaurantList, ListItem } from "@/lib/pocketbase";
+import { pb, RestaurantList } from "@/lib/pocketbase";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Lock, Users, Globe, Image } from "lucide-react";
