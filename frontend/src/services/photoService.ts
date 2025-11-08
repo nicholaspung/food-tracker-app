@@ -699,6 +699,171 @@ function drawMinimalBadgeOverlay(
 }
 
 /**
+ * Shared utility to draw dish name + rating badge on a photo
+ * Used by both individual photo shares and grouped visit photo shares
+ */
+function drawDishBadge(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  dishName: string,
+  rating: number,
+  theme: BadgeTheme,
+  showRating: boolean
+) {
+  const innerPadding = 12;
+  const lineSpacing = 40;
+
+  // Font sizes for grouped photos (larger for visibility)
+  const dishFont = theme === 'rustic'
+    ? 'bold 42px Georgia, "Times New Roman", serif'
+    : 'bold 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const ratingFont = theme === 'rustic'
+    ? 'bold 24px Georgia, serif'
+    : 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+  // Measure and truncate dish name if needed
+  ctx.font = dishFont;
+  let displayName = dishName;
+  const maxDishWidth = width - 60;
+  let dishWidth = ctx.measureText(displayName).width;
+  while (dishWidth > maxDishWidth && displayName.length > 3) {
+    displayName = displayName.slice(0, -4) + "...";
+    dishWidth = ctx.measureText(displayName).width;
+  }
+
+  // Measure rating if shown
+  let ratingWidth = 0;
+  let ratingLabel = "";
+  if (showRating) {
+    ratingLabel = RATING_LABELS[rating - 1] || "Unknown";
+    ctx.font = ratingFont;
+    ratingWidth = ctx.measureText(ratingLabel).width;
+  }
+
+  // Calculate badge dimensions
+  const contentWidth = Math.max(dishWidth, ratingWidth);
+  const badgeWidth = contentWidth + innerPadding * 2;
+  let badgeHeight = innerPadding + 42; // Dish name height
+  if (showRating) badgeHeight += lineSpacing;
+  badgeHeight += innerPadding;
+
+  const badgeX = x + (width - badgeWidth) / 2;
+  const badgeY = y + height - badgeHeight - 12;
+
+  // Draw badge based on theme
+  if (theme === "minimal") {
+    // Minimal: white semi-transparent
+    ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
+    ctx.fill();
+
+    // Dish name
+    ctx.fillStyle = "#000000";
+    ctx.font = dishFont;
+    ctx.textAlign = "center";
+    ctx.fillText(displayName, badgeX + badgeWidth / 2, badgeY + innerPadding + 34);
+
+    // Rating as colored text (no badge)
+    if (showRating) {
+      const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
+      ctx.fillStyle = ratingColor;
+      ctx.font = ratingFont;
+      ctx.fillText(ratingLabel, badgeX + badgeWidth / 2, badgeY + innerPadding + 34 + lineSpacing);
+    }
+  } else if (theme === "rustic") {
+    // Rustic: brown gradient with texture
+    const gradient = ctx.createLinearGradient(badgeX, badgeY, badgeX, badgeY + badgeHeight);
+    gradient.addColorStop(0, "rgba(101, 67, 33, 0.92)");
+    gradient.addColorStop(0.5, "rgba(139, 90, 43, 0.92)");
+    gradient.addColorStop(1, "rgba(101, 67, 33, 0.92)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
+    ctx.fill();
+
+    // Add texture
+    ctx.globalAlpha = 0.1;
+    for (let i = 0; i < 15; i++) {
+      const tx = badgeX + Math.random() * badgeWidth;
+      const ty = badgeY + Math.random() * badgeHeight;
+      ctx.fillStyle = Math.random() > 0.5 ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)";
+      ctx.fillRect(tx, ty, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+
+    // Dish name
+    ctx.fillStyle = "#FFF8DC";
+    ctx.font = dishFont;
+    ctx.textAlign = "center";
+    ctx.fillText(displayName, badgeX + badgeWidth / 2, badgeY + innerPadding + 34);
+
+    // Rating badge
+    if (showRating) {
+      const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
+      const ratingTextWidth = ctx.measureText(ratingLabel).width;
+      const ratingBadgePadding = 16;
+      const ratingBadgeWidth = ratingTextWidth + ratingBadgePadding * 2;
+      const ratingBadgeHeight = 38;
+      const ratingBadgeX = badgeX + (badgeWidth - ratingBadgeWidth) / 2;
+      const ratingBadgeY = badgeY + innerPadding + 34 + lineSpacing - 28;
+
+      ctx.fillStyle = ratingColor;
+      ctx.beginPath();
+      ctx.roundRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight, 8);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(ratingLabel, ratingBadgeX + ratingBadgeWidth / 2, ratingBadgeY + 26);
+    }
+  } else {
+    // Modern: dark gradient with border
+    const gradient = ctx.createLinearGradient(badgeX, badgeY, badgeX, badgeY + badgeHeight);
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0.75)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0.9)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
+    ctx.fill();
+
+    // Subtle border
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Dish name
+    ctx.fillStyle = "#ffffff";
+    ctx.font = dishFont;
+    ctx.textAlign = "center";
+    ctx.fillText(displayName, badgeX + badgeWidth / 2, badgeY + innerPadding + 34);
+
+    // Rating badge
+    if (showRating) {
+      const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
+      const ratingTextWidth = ctx.measureText(ratingLabel).width;
+      const ratingBadgePadding = 16;
+      const ratingBadgeWidth = ratingTextWidth + ratingBadgePadding * 2;
+      const ratingBadgeHeight = 38;
+      const ratingBadgeX = badgeX + (badgeWidth - ratingBadgeWidth) / 2;
+      const ratingBadgeY = badgeY + innerPadding + 34 + lineSpacing - 28;
+
+      ctx.fillStyle = ratingColor;
+      ctx.beginPath();
+      ctx.roundRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight, 8);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(ratingLabel, ratingBadgeX + ratingBadgeWidth / 2, ratingBadgeY + 26);
+    }
+  }
+
+  ctx.textAlign = "left"; // Reset
+}
+
+/**
  * Draw restaurant info overlay centered on the image (used for 4 and 6+ photo layouts)
  */
 function drawRestaurantCenterOverlay(
@@ -1088,272 +1253,8 @@ export async function generateVisitCompositeImage(
 
         // Draw dish name and rating overlay at bottom of each photo (only if showDishNames is true)
         if (options.showDishNames !== false) {
-          if (options.theme === "minimal") {
-          // Minimal style: compact semi-transparent container
-          const innerPadding = 12;
-          const lineSpacing = 40;
-
-          // Measure text for compact size using actual font sizes
-          const dishFont =
-            '600 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-          const ratingFont =
-            '600 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-
-          ctx.font = dishFont;
-          let displayName = dishName;
-          const maxDishWidth = width - 60;
-          let dishWidth = ctx.measureText(displayName).width;
-          while (dishWidth > maxDishWidth && displayName.length > 3) {
-            displayName = displayName.slice(0, -4) + "...";
-            dishWidth = ctx.measureText(displayName).width;
-          }
-
-          let ratingWidth = 0;
-          let ratingLabel = "";
-          if (options.showRating) {
-            ratingLabel = RATING_LABELS[rating - 1] || "Unknown";
-            ctx.font = ratingFont;
-            ratingWidth = ctx.measureText(ratingLabel).width;
-          }
-
-          const contentWidth = Math.max(dishWidth, ratingWidth);
-          const badgeWidth = contentWidth + innerPadding * 2;
-          let badgeHeight = innerPadding + 42; // Dish name height
-          if (options.showRating) badgeHeight += lineSpacing;
-          badgeHeight += innerPadding;
-
-          const badgeX = x + (width - badgeWidth) / 2;
-          const badgeY = y + height - badgeHeight - 12;
-
-          // Draw compact rounded container
-          ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
-          ctx.beginPath();
-          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
-          ctx.fill();
-
-          // Draw dish name
-          ctx.fillStyle = "#000000";
-          ctx.font = dishFont;
-          ctx.textAlign = "center";
-          ctx.fillText(
-            displayName,
-            badgeX + badgeWidth / 2,
-            badgeY + innerPadding + 34
-          );
-
-          // Draw rating if enabled
-          if (options.showRating) {
-            const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
-            ctx.fillStyle = ratingColor;
-            ctx.font = ratingFont;
-            ctx.fillText(
-              ratingLabel,
-              badgeX + badgeWidth / 2,
-              badgeY + innerPadding + 34 + lineSpacing
-            );
-          }
-
-          ctx.textAlign = "left";
-        } else if (options.theme === "rustic") {
-          // Rustic style: compact banner badge with brown gradient
-          const innerPadding = 12;
-          const lineSpacing = 40;
-
-          const dishFont = 'bold 42px Georgia, "Times New Roman", serif';
-          const ratingFont = 'bold 32px Georgia, serif';
-
-          ctx.font = dishFont;
-          let displayName = dishName;
-          const maxDishWidth = width - 60;
-          let dishWidth = ctx.measureText(displayName).width;
-          while (dishWidth > maxDishWidth && displayName.length > 3) {
-            displayName = displayName.slice(0, -4) + "...";
-            dishWidth = ctx.measureText(displayName).width;
-          }
-
-          let ratingWidth = 0;
-          let ratingLabel = "";
-          if (options.showRating) {
-            ratingLabel = RATING_LABELS[rating - 1] || "Unknown";
-            ctx.font = ratingFont;
-            ratingWidth = ctx.measureText(ratingLabel).width;
-          }
-
-          const contentWidth = Math.max(dishWidth, ratingWidth);
-          const badgeWidth = contentWidth + innerPadding * 2;
-          let badgeHeight = innerPadding + 42;
-          if (options.showRating) badgeHeight += lineSpacing;
-          badgeHeight += innerPadding;
-
-          const badgeX = x + (width - badgeWidth) / 2;
-          const badgeY = y + height - badgeHeight - 12;
-
-          // Draw rustic gradient badge
-          const gradient = ctx.createLinearGradient(
-            badgeX,
-            badgeY,
-            badgeX,
-            badgeY + badgeHeight
-          );
-          gradient.addColorStop(0, "rgba(101, 67, 33, 0.92)");
-          gradient.addColorStop(0.5, "rgba(139, 90, 43, 0.92)");
-          gradient.addColorStop(1, "rgba(101, 67, 33, 0.92)");
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
-          ctx.fill();
-
-          // Add texture (reduced for performance)
-          ctx.globalAlpha = 0.1;
-          for (let i = 0; i < 15; i++) {
-            const tx = badgeX + Math.random() * badgeWidth;
-            const ty = badgeY + Math.random() * badgeHeight;
-            ctx.fillStyle =
-              Math.random() > 0.5 ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)";
-            ctx.fillRect(tx, ty, 2, 2);
-          }
-          ctx.globalAlpha = 1;
-
-          // Draw dish name
-          ctx.fillStyle = "#FFF8DC";
-          ctx.font = dishFont;
-          ctx.textAlign = "center";
-          ctx.fillText(
-            displayName,
-            badgeX + badgeWidth / 2,
-            badgeY + innerPadding + 34
-          );
-
-          // Draw rating badge if enabled
-          if (options.showRating) {
-            const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
-
-            // Measure rating text for badge sizing
-            ctx.font = 'bold 24px Georgia, serif';
-            const ratingTextWidth = ctx.measureText(ratingLabel).width;
-            const ratingBadgePadding = 16;
-            const ratingBadgeWidth = ratingTextWidth + ratingBadgePadding * 2;
-            const ratingBadgeHeight = 38;
-            const ratingBadgeX = badgeX + (badgeWidth - ratingBadgeWidth) / 2;
-            const ratingBadgeY = badgeY + innerPadding + 34 + lineSpacing - 28;
-
-            // Draw colored rating badge
-            ctx.fillStyle = ratingColor;
-            ctx.beginPath();
-            ctx.roundRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight, 8);
-            ctx.fill();
-
-            // Draw rating text
-            ctx.fillStyle = "#ffffff";
-            ctx.textAlign = "center";
-            ctx.fillText(
-              ratingLabel,
-              ratingBadgeX + ratingBadgeWidth / 2,
-              ratingBadgeY + 26
-            );
-            ctx.textAlign = "left";
-          }
-
-          ctx.textAlign = "left";
-        } else {
-          // Modern style: compact banner badge with dark gradient
-          const innerPadding = 12;
-          const lineSpacing = 40;
-
-          const dishFont =
-            'bold 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-          const ratingFont =
-            'bold 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-
-          ctx.font = dishFont;
-          let displayName = dishName;
-          const maxDishWidth = width - 60;
-          let dishWidth = ctx.measureText(displayName).width;
-          while (dishWidth > maxDishWidth && displayName.length > 3) {
-            displayName = displayName.slice(0, -4) + "...";
-            dishWidth = ctx.measureText(displayName).width;
-          }
-
-          let ratingWidth = 0;
-          let ratingLabel = "";
-          if (options.showRating) {
-            ratingLabel = RATING_LABELS[rating - 1] || "Unknown";
-            ctx.font = ratingFont;
-            ratingWidth = ctx.measureText(ratingLabel).width;
-          }
-
-          const contentWidth = Math.max(dishWidth, ratingWidth);
-          const badgeWidth = contentWidth + innerPadding * 2;
-          let badgeHeight = innerPadding + 42;
-          if (options.showRating) badgeHeight += lineSpacing;
-          badgeHeight += innerPadding;
-
-          const badgeX = x + (width - badgeWidth) / 2;
-          const badgeY = y + height - badgeHeight - 12;
-
-          // Draw modern gradient badge
-          const gradient = ctx.createLinearGradient(
-            badgeX,
-            badgeY,
-            badgeX,
-            badgeY + badgeHeight
-          );
-          gradient.addColorStop(0, "rgba(0, 0, 0, 0.75)");
-          gradient.addColorStop(1, "rgba(0, 0, 0, 0.9)");
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
-          ctx.fill();
-
-          // Add subtle border
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-          ctx.lineWidth = 1;
-          ctx.stroke();
-
-          // Draw dish name
-          ctx.fillStyle = "#ffffff";
-          ctx.font = dishFont;
-          ctx.textAlign = "center";
-          ctx.fillText(
-            displayName,
-            badgeX + badgeWidth / 2,
-            badgeY + innerPadding + 34
-          );
-
-          // Draw rating badge if enabled
-          if (options.showRating) {
-            const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
-
-            // Measure rating text for badge sizing
-            ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            const ratingTextWidth = ctx.measureText(ratingLabel).width;
-            const ratingBadgePadding = 16;
-            const ratingBadgeWidth = ratingTextWidth + ratingBadgePadding * 2;
-            const ratingBadgeHeight = 38;
-            const ratingBadgeX = badgeX + (badgeWidth - ratingBadgeWidth) / 2;
-            const ratingBadgeY = badgeY + innerPadding + 34 + lineSpacing - 28;
-
-            // Draw colored rating badge
-            ctx.fillStyle = ratingColor;
-            ctx.beginPath();
-            ctx.roundRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight, 8);
-            ctx.fill();
-
-            // Draw rating text
-            ctx.fillStyle = "#ffffff";
-            ctx.textAlign = "center";
-            ctx.fillText(
-              ratingLabel,
-              ratingBadgeX + ratingBadgeWidth / 2,
-              ratingBadgeY + 26
-            );
-            ctx.textAlign = "left";
-          }
-
-          ctx.textAlign = "left";
-          }
+          drawDishBadge(ctx, x, y, width, height, dishName, rating, options.theme, options.showRating !== false);
         }
-      }
 
       // Draw restaurant overlay (only if showRestaurantName is true)
       if (overlayPosition && options.showRestaurantName !== false) {
