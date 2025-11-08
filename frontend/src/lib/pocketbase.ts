@@ -83,6 +83,13 @@ export interface FoodItem {
   user: string;
   created: string;
   updated: string;
+  expand?: {
+    visit?: Visit & {
+      expand?: {
+        restaurant?: Restaurant;
+      };
+    };
+  };
 }
 
 export interface MenuImage {
@@ -232,9 +239,11 @@ export interface ListItem {
   addedBy: string;
   position: number;
   note?: string;
+  recommendedItems?: string[]; // Array of food_item IDs
   created: string;
   expand?: {
     restaurant?: Restaurant;
     addedBy?: User;
+    recommendedItems?: FoodItem[];
   };
 }
