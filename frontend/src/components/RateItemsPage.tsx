@@ -41,7 +41,7 @@ export default function RateItemsPage({
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
 
   // Photo upload hook for parallel uploads with progress
-  const { state: uploadState, uploadPhotos } = usePhotoUpload();
+  const { state: uploadState, uploadPhotos, reset: resetUploadState } = usePhotoUpload();
 
   useEffect(() => {
     visitDraftService.saveMetadata(visitDate, visitVisibility);
@@ -115,7 +115,14 @@ export default function RateItemsPage({
       // Mark that user has rated before - legend will be collapsed next time
       localStorage.setItem("hasRatedBefore", "true");
 
+      // Reset upload state
+      resetUploadState();
+
       onSubmit();
+    },
+    onError: () => {
+      // Reset upload state on error so user can retry
+      resetUploadState();
     },
   });
 
@@ -352,8 +359,20 @@ export default function RateItemsPage({
 
       {/* Bottom Action Buttons */}
       <div className="bg-white border-t border-gray-200 p-4">
+        {/* Error display */}
+        {uploadState.error && (
+          <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600">
+              <strong>Upload failed:</strong> {uploadState.error}
+            </p>
+            <p className="text-xs text-red-500 mt-1">
+              Check the browser console for details.
+            </p>
+          </div>
+        )}
+
         {/* Progress indicator for photo uploads */}
-        {uploadState.status !== 'idle' && uploadState.status !== 'complete' && (
+        {uploadState.status !== 'idle' && uploadState.status !== 'complete' && uploadState.status !== 'error' && (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-medium text-gray-700">
