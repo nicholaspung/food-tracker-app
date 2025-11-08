@@ -1128,7 +1128,7 @@ export async function generateVisitCompositeImage(
           // Draw compact rounded container
           ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
           ctx.beginPath();
-          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 8);
+          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
           ctx.fill();
 
           // Draw dish name
@@ -1200,7 +1200,7 @@ export async function generateVisitCompositeImage(
           gradient.addColorStop(1, "rgba(101, 67, 33, 0.92)");
           ctx.fillStyle = gradient;
           ctx.beginPath();
-          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 8);
+          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
           ctx.fill();
 
           // Add texture (reduced for performance)
@@ -1224,15 +1224,34 @@ export async function generateVisitCompositeImage(
             badgeY + innerPadding + 34
           );
 
-          // Draw rating if enabled
+          // Draw rating badge if enabled
           if (options.showRating) {
-            ctx.fillStyle = "#F5DEB3";
-            ctx.font = ratingFont;
+            const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
+
+            // Measure rating text for badge sizing
+            ctx.font = 'bold 24px Georgia, serif';
+            const ratingTextWidth = ctx.measureText(ratingLabel).width;
+            const ratingBadgePadding = 16;
+            const ratingBadgeWidth = ratingTextWidth + ratingBadgePadding * 2;
+            const ratingBadgeHeight = 38;
+            const ratingBadgeX = badgeX + (badgeWidth - ratingBadgeWidth) / 2;
+            const ratingBadgeY = badgeY + innerPadding + 34 + lineSpacing - 28;
+
+            // Draw colored rating badge
+            ctx.fillStyle = ratingColor;
+            ctx.beginPath();
+            ctx.roundRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight, 8);
+            ctx.fill();
+
+            // Draw rating text
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
             ctx.fillText(
               ratingLabel,
-              badgeX + badgeWidth / 2,
-              badgeY + innerPadding + 34 + lineSpacing
+              ratingBadgeX + ratingBadgeWidth / 2,
+              ratingBadgeY + 26
             );
+            ctx.textAlign = "left";
           }
 
           ctx.textAlign = "left";
@@ -1283,12 +1302,12 @@ export async function generateVisitCompositeImage(
           gradient.addColorStop(1, "rgba(0, 0, 0, 0.9)");
           ctx.fillStyle = gradient;
           ctx.beginPath();
-          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 8);
+          ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 12);
           ctx.fill();
 
           // Add subtle border
           ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 1;
           ctx.stroke();
 
           // Draw dish name
@@ -1301,15 +1320,34 @@ export async function generateVisitCompositeImage(
             badgeY + innerPadding + 34
           );
 
-          // Draw rating if enabled
+          // Draw rating badge if enabled
           if (options.showRating) {
-            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-            ctx.font = ratingFont;
+            const ratingColor = RATING_COLORS[rating - 1] || "#6b7280";
+
+            // Measure rating text for badge sizing
+            ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            const ratingTextWidth = ctx.measureText(ratingLabel).width;
+            const ratingBadgePadding = 16;
+            const ratingBadgeWidth = ratingTextWidth + ratingBadgePadding * 2;
+            const ratingBadgeHeight = 38;
+            const ratingBadgeX = badgeX + (badgeWidth - ratingBadgeWidth) / 2;
+            const ratingBadgeY = badgeY + innerPadding + 34 + lineSpacing - 28;
+
+            // Draw colored rating badge
+            ctx.fillStyle = ratingColor;
+            ctx.beginPath();
+            ctx.roundRect(ratingBadgeX, ratingBadgeY, ratingBadgeWidth, ratingBadgeHeight, 8);
+            ctx.fill();
+
+            // Draw rating text
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
             ctx.fillText(
               ratingLabel,
-              badgeX + badgeWidth / 2,
-              badgeY + innerPadding + 34 + lineSpacing
+              ratingBadgeX + ratingBadgeWidth / 2,
+              ratingBadgeY + 26
             );
+            ctx.textAlign = "left";
           }
 
           ctx.textAlign = "left";
