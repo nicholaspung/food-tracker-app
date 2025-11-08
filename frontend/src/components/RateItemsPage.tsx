@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { ChevronDown, ChevronUp, Calendar, Users } from "lucide-react";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
-import { compressDishPhoto } from "@/services/photoService";
+import { usePhotoUpload, type PhotoUploadItem } from "@/hooks/usePhotoUpload";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 
@@ -40,6 +40,9 @@ export default function RateItemsPage({
   // Ref for auto-scrolling notes input into view on mobile
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
 
+  // Photo upload hook for parallel uploads with progress
+  const { state: uploadState, uploadPhotos } = usePhotoUpload();
+
   useEffect(() => {
     visitDraftService.saveMetadata(visitDate, visitVisibility);
   }, [visitDate, visitVisibility]);
@@ -60,7 +63,8 @@ export default function RateItemsPage({
         notes: "",
       });
 
-      // Create food items and upload photos
+      // Create all food items first (sequentially to maintain order)
+      const foodItemIds: string[] = [];
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
 
@@ -73,21 +77,26 @@ export default function RateItemsPage({
           user: user.id,
         });
 
-        // Upload photo if exists
+        foodItemIds.push(foodItem.id);
+      }
+
+      // Collect all photos to upload in parallel
+      const photoUploads: PhotoUploadItem[] = [];
+      for (let i = 0; i < items.length; i++) {
         const photo = itemPhotos.get(i);
         if (photo) {
-          // Compress the photo before upload
-          const compressedPhoto = await compressDishPhoto(photo);
-
-          // Create visit_photo record with the compressed photo
-          const formData = new FormData();
-          formData.append('photo', compressedPhoto);
-          formData.append('visit', visit.id);
-          formData.append('food_item', foodItem.id);
-          formData.append('user', user.id);
-
-          await pb.collection("visit_photos").create(formData);
+          photoUploads.push({
+            photo,
+            foodItemId: foodItemIds[i],
+            visitId: visit.id,
+            userId: user.id,
+          });
         }
+      }
+
+      // Upload all photos in parallel with progress tracking
+      if (photoUploads.length > 0) {
+        await uploadPhotos(photoUploads);
       }
 
       return visit;
@@ -343,6 +352,26 @@ export default function RateItemsPage({
 
       {/* Bottom Action Buttons */}
       <div className="bg-white border-t border-gray-200 p-4">
+        {/* Progress indicator for photo uploads */}
+        {uploadState.status !== 'idle' && uploadState.status !== 'complete' && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium text-gray-700">
+                {uploadState.currentOperation}
+              </span>
+              <span className="text-sm font-medium text-gray-700">
+                {uploadState.progress}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${uploadState.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <Button variant="outline" onClick={onBack} className="flex-1">
             Back
