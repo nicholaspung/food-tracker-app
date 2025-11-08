@@ -32,6 +32,7 @@ export const usePhotoUpload = () => {
 
     try {
       const totalPhotos = items.length;
+      console.log(`[usePhotoUpload] Starting upload for ${totalPhotos} photos`);
 
       // Step 1: Compress all photos in parallel
       setState({
@@ -41,23 +42,26 @@ export const usePhotoUpload = () => {
         error: null,
       });
 
-      let compressedCount = 0;
-      const compressionPromises = items.map(async (item) => {
-        const compressed = await compressDishPhoto(item.photo);
-        compressedCount++;
-
-        // Update progress during compression (10% to 50%)
-        const compressionProgress = 10 + (compressedCount / totalPhotos) * 40;
-        setState(prev => ({
-          ...prev,
-          progress: Math.round(compressionProgress),
-          currentOperation: `Compressed ${compressedCount} of ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}`,
-        }));
-
-        return { ...item, compressedPhoto: compressed };
+      const compressionPromises = items.map(async (item, index) => {
+        try {
+          console.log(`[usePhotoUpload] Compressing photo ${index + 1}/${totalPhotos}`);
+          const compressed = await compressDishPhoto(item.photo);
+          console.log(`[usePhotoUpload] Compressed photo ${index + 1}/${totalPhotos}`);
+          return { ...item, compressed };
+        } catch (err: any) {
+          console.error(`[usePhotoUpload] Failed to compress photo ${index + 1}:`, err);
+          throw err;
+        }
       });
 
       const compressedItems = await Promise.all(compressionPromises);
+
+      // Update progress after all compression completes
+      setState(prev => ({
+        ...prev,
+        progress: 50,
+        currentOperation: `Compressed ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}`,
+      }));
 
       // Step 2: Upload all photos in parallel
       setState(prev => ({
@@ -67,37 +71,39 @@ export const usePhotoUpload = () => {
         currentOperation: `Uploading ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}...`,
       }));
 
-      let uploadedCount = 0;
-      const uploadPromises = compressedItems.map(async (item) => {
-        const formData = new FormData();
-        formData.append('photo', item.compressedPhoto);
+      const uploadPromises = compressedItems.map(async (item, index) => {
+        try {
+          console.log(`[usePhotoUpload] Uploading photo ${index + 1}/${totalPhotos}`, {
+            foodItemId: item.foodItemId,
+            visitId: item.visitId,
+            existingPhotoId: item.existingPhotoId,
+            compressedSize: item.compressed.size,
+          });
 
-        // Only add these fields if creating new photo
-        if (!item.existingPhotoId) {
-          formData.append('visit', item.visitId);
-          formData.append('food_item', item.foodItemId);
-          formData.append('user', item.userId);
+          const formData = new FormData();
+          formData.append('photo', item.compressed);
+
+          // Only add these fields if creating new photo
+          if (!item.existingPhotoId) {
+            formData.append('visit', item.visitId);
+            formData.append('food_item', item.foodItemId);
+            formData.append('user', item.userId);
+          }
+
+          // Update or create photo
+          const result = item.existingPhotoId
+            ? await pb.collection('visit_photos').update(item.existingPhotoId, formData)
+            : await pb.collection('visit_photos').create(formData);
+
+          console.log(`[usePhotoUpload] Uploaded photo ${index + 1}/${totalPhotos}`, result.id);
+          return result;
+        } catch (err: any) {
+          console.error(`[usePhotoUpload] Failed to upload photo ${index + 1}:`, err);
+          throw err;
         }
-
-        // Update or create photo
-        const result = item.existingPhotoId
-          ? await pb.collection('visit_photos').update(item.existingPhotoId, formData)
-          : await pb.collection('visit_photos').create(formData);
-
-        uploadedCount++;
-
-        // Update progress during upload (50% to 100%)
-        const uploadProgress = 50 + (uploadedCount / totalPhotos) * 50;
-        setState(prev => ({
-          ...prev,
-          progress: Math.round(uploadProgress),
-          currentOperation: `Uploaded ${uploadedCount} of ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}`,
-        }));
-
-        return result;
       });
 
-      await Promise.all(uploadPromises);
+      const results = await Promise.all(uploadPromises);
 
       // Complete
       setState({
@@ -106,7 +112,10 @@ export const usePhotoUpload = () => {
         currentOperation: `Successfully uploaded ${totalPhotos} ${totalPhotos === 1 ? 'photo' : 'photos'}`,
         error: null,
       });
+
+      console.log(`[usePhotoUpload] Upload complete for ${totalPhotos} photos`, results);
     } catch (error: any) {
+      console.error('[usePhotoUpload] Upload failed:', error);
       setState(prev => ({
         ...prev,
         status: 'error',
