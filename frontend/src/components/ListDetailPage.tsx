@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb, RestaurantList, ListItem, Restaurant } from "@/lib/pocketbase";
-import { useParams, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,8 +25,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export default function ListDetailPage() {
-  const { listId } = useParams({ from: "/lists/$listId" });
+interface ListDetailPageProps {
+  listId: string;
+  onNavigateBack?: () => void;
+}
+
+export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPageProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -76,7 +80,7 @@ export default function ListDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["restaurant_lists"] });
-      navigate({ to: "/lists" });
+      onNavigateBack?.();
     },
   });
 
@@ -124,7 +128,7 @@ export default function ListDetailPage() {
       <div className="flex flex-col items-center justify-center h-full bg-gray-50">
         <p className="text-gray-500">List not found</p>
         <Button
-          onClick={() => navigate({ to: "/lists" })}
+          onClick={onNavigateBack}
           className="mt-4"
           variant="outline"
         >
@@ -142,7 +146,7 @@ export default function ListDetailPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate({ to: "/lists" })}
+            onClick={onNavigateBack}
             className="p-2"
           >
             <ArrowLeft className="w-5 h-5" />
