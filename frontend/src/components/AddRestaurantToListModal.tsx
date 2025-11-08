@@ -101,14 +101,6 @@ export default function AddRestaurantToListModal({
     mutationFn: async () => {
       if (!selectedRestaurant) throw new Error("No restaurant selected");
 
-      console.log("Adding restaurant to list:", {
-        listId,
-        restaurant: selectedRestaurant.id,
-        addedBy: user?.id,
-        selectedFoodItems,
-        note: note.trim(),
-      });
-
       // Get the current max position for this list
       const existingItems = await pb.collection("list_items").getFullList({
         filter: `list = "${listId}"`,
@@ -118,7 +110,7 @@ export default function AddRestaurantToListModal({
       const nextPosition = existingItems.length > 0 ? existingItems[0].position + 1 : 0;
 
       // Create the list item
-      const result = await pb.collection("list_items").create({
+      return await pb.collection("list_items").create({
         list: listId,
         restaurant: selectedRestaurant.id,
         addedBy: user?.id,
@@ -126,18 +118,13 @@ export default function AddRestaurantToListModal({
         note: note.trim() || undefined,
         recommendedItems: selectedFoodItems.length > 0 ? selectedFoodItems : undefined,
       });
-
-      console.log("Successfully created list item:", result);
-      return result;
     },
     onSuccess: () => {
-      console.log("Mutation success, invalidating queries");
       queryClient.invalidateQueries({ queryKey: ["list_items", listId] });
       onSuccess?.();
       handleClose();
     },
     onError: (err: any) => {
-      console.error("Error adding restaurant to list:", err);
       setError(err?.message || "Failed to add restaurant. Please try again.");
     },
   });
