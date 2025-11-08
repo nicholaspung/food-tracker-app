@@ -372,19 +372,19 @@ export default function RateItemsPage({
         )}
 
         {/* Progress indicator for photo uploads */}
-        {uploadState.status !== 'idle' && uploadState.status !== 'complete' && uploadState.status !== 'error' && (
+        {uploadState.status !== 'idle' && uploadState.status !== 'error' && (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-medium text-gray-700">
+              <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
                 {uploadState.currentOperation}
               </span>
-              <span className="text-sm font-medium text-gray-700">
+              <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
                 {uploadState.progress}%
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === 'complete' ? 'bg-green-600' : 'bg-blue-600'}`}
                 style={{ width: `${uploadState.progress}%` }}
               />
             </div>
