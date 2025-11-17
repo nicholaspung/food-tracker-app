@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { pb, Restaurant, Visit, Friendship } from "@/lib/pocketbase";
+import { useOfflineCreate } from "@/hooks/useOfflineMutation";
 import { visitDraftService } from "@/services/visitDraftService";
 import { Button } from "@/components/ui/button";
 import {
@@ -200,14 +201,14 @@ export default function SelectRestaurantPage({
     return { userVisitCount, friendCount };
   };
 
-  // Add restaurant mutation
-  const addRestaurantMutation = useMutation({
-    mutationFn: async (data: {
-      name: string;
-      location: string;
-      cuisineType?: string;
-      visibility: "private" | "friends" | "public";
-    }) => {
+  // Add restaurant mutation (with offline support)
+  const addRestaurantMutation = useOfflineCreate<Restaurant, {
+    name: string;
+    location: string;
+    cuisineType?: string;
+    visibility: "private" | "friends" | "public";
+  }>("restaurants", {
+    mutationFn: async (data) => {
       const user = pb.authStore.record;
       if (!user) throw new Error("User not authenticated");
 
@@ -221,9 +222,8 @@ export default function SelectRestaurantPage({
         createdBy: user.id,
       });
     },
+    invalidateQueries: ["restaurants"],
     onSuccess: (newRestaurant) => {
-      queryClient.invalidateQueries({ queryKey: ["restaurants"] });
-
       // Save current search state
       visitDraftService.saveSearchState({
         restaurantSearchQuery,
