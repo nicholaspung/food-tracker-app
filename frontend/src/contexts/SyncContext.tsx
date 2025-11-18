@@ -58,23 +58,33 @@ export function SyncProvider({ children }: SyncProviderProps) {
     const { type, collection, data, recordId } = operation;
 
     try {
-      switch (type) {
-        case 'create':
-          await pb.collection(collection).create(data);
-          break;
+      // Handle complex visit creation
+      if (collection === 'visits_with_items' && type === 'create') {
+        await executeComplexVisitCreation(data);
+      }
+      // Handle complex visit deletion
+      else if (collection === 'visits_with_items_delete' && type === 'delete') {
+        await executeComplexVisitDeletion(data);
+      } else {
+        // Standard operations
+        switch (type) {
+          case 'create':
+            await pb.collection(collection).create(data);
+            break;
 
-        case 'update':
-          if (!recordId) throw new Error('Record ID required for update');
-          await pb.collection(collection).update(recordId, data);
-          break;
+          case 'update':
+            if (!recordId) throw new Error('Record ID required for update');
+            await pb.collection(collection).update(recordId, data);
+            break;
 
-        case 'delete':
-          if (!recordId) throw new Error('Record ID required for delete');
-          await pb.collection(collection).delete(recordId);
-          break;
+          case 'delete':
+            if (!recordId) throw new Error('Record ID required for delete');
+            await pb.collection(collection).delete(recordId);
+            break;
 
-        default:
-          throw new Error(`Unknown operation type: ${type}`);
+          default:
+            throw new Error(`Unknown operation type: ${type}`);
+        }
       }
 
       // Success - remove from queue
@@ -95,6 +105,80 @@ export function SyncProvider({ children }: SyncProviderProps) {
 
       throw error;
     }
+  };
+
+  /**
+   * Execute complex visit creation (visit + food items + photos)
+   */
+  const executeComplexVisitCreation = async (data: any): Promise<void> => {
+    const { visit: visitData, foodItems, photos } = data;
+
+    // 1. Create visit
+    const visit = await pb.collection('visits').create(visitData);
+    console.log('Created visit:', visit.id);
+
+    // 2. Create food items sequentially
+    const createdFoodItems: any[] = [];
+    for (const item of foodItems) {
+      const foodItem = await pb.collection('food_items').create({
+        ...item,
+        visit: visit.id,
+      });
+      createdFoodItems.push(foodItem);
+      console.log('Created food item:', foodItem.id);
+    }
+
+    // 3. Upload photos if any
+    if (photos && photos.length > 0) {
+      const { compressDishPhoto } = await import('@/services/photoService');
+
+      for (const photoItem of photos) {
+        const { index, file } = photoItem;
+
+        if (index < createdFoodItems.length) {
+          const foodItem = createdFoodItems[index];
+
+          try {
+            // Compress photo
+            const compressed = await compressDishPhoto(file);
+
+            // Upload to PocketBase
+            const formData = new FormData();
+            formData.append('photo', compressed);
+            formData.append('visit', visit.id);
+            formData.append('food_item', foodItem.id);
+            formData.append('user', visitData.user);
+
+            await pb.collection('visit_photos').create(formData);
+            console.log('Uploaded photo for food item:', foodItem.id);
+          } catch (error) {
+            console.error('Failed to upload photo, continuing...', error);
+            // Don't fail the entire operation if photo upload fails
+          }
+        }
+      }
+    }
+
+    console.log('Complex visit creation complete');
+  };
+
+  /**
+   * Execute complex visit deletion (delete food items + visit)
+   */
+  const executeComplexVisitDeletion = async (data: any): Promise<void> => {
+    const { visitId, foodItemIds } = data;
+
+    // 1. Delete all food items
+    if (foodItemIds && foodItemIds.length > 0) {
+      await Promise.all(
+        foodItemIds.map((id: string) => pb.collection('food_items').delete(id))
+      );
+      console.log('Deleted', foodItemIds.length, 'food items');
+    }
+
+    // 2. Delete visit
+    await pb.collection('visits').delete(visitId);
+    console.log('Deleted visit:', visitId);
   };
 
   /**
