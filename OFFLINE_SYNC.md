@@ -169,7 +169,81 @@ const customMutation = useOfflineMutation({
 
 ### Complex Multi-Step Mutations
 
-For operations involving multiple steps (e.g., create visit + food items + photos):
+#### Visit Creation (NEW - Full Offline Support!)
+
+For creating visits with food items and photos, use the specialized `useOfflineVisitCreation` hook:
+
+```tsx
+import { useOfflineVisitCreation } from '@/hooks/useOfflineVisitCreation';
+
+const saveVisitMutation = useOfflineVisitCreation();
+
+// Prepare data
+const visitData = {
+  restaurant: restaurantId,
+  visitDate: '2025-01-15',
+  visibility: 'friends',
+  notes: 'Great food!',
+  foodItems: [
+    { name: 'Pizza', description: 'Margherita', rating: 5, notes: 'Amazing!' },
+    { name: 'Pasta', description: 'Carbonara', rating: 4, notes: 'Delicious' },
+  ],
+  itemPhotos: new Map([
+    [0, photoFile1], // Photo for first item
+    [1, photoFile2], // Photo for second item
+  ]),
+};
+
+// Create visit (works online AND offline!)
+await saveVisitMutation.mutateAsync(visitData);
+```
+
+**What happens offline:**
+- Visit and food items are queued in IndexedDB
+- Photos are stored as File objects (IndexedDB supports this!)
+- When connection returns, everything syncs automatically
+- Photos are compressed and uploaded
+- Queries are invalidated to show fresh data
+
+**Example implementation:** See `frontend/src/components/RateItemsPage.tsx`
+
+#### Visit Deletion (NEW - Full Offline Support!)
+
+Deleting visits with associated food items also works offline:
+
+```tsx
+import { syncQueue } from '@/lib/syncQueue';
+import { useSync } from '@/contexts/SyncContext';
+
+const { isOnline } = useSync();
+
+const handleDeleteVisit = async (visitId: string) => {
+  if (isOnline) {
+    // Online: Delete immediately
+    await pb.collection('visits').delete(visitId);
+  } else {
+    // Offline: Queue deletion
+    await syncQueue.enqueue({
+      type: 'delete',
+      collection: 'visits_with_items_delete',
+      data: {
+        visitId,
+        foodItemIds: foodItems.filter(item => item.visit === visitId).map(item => item.id),
+      },
+      recordId: visitId,
+    });
+  }
+
+  // Invalidate queries
+  await queryClient.invalidateQueries({ queryKey: ['visits'] });
+};
+```
+
+**Example implementation:** See `frontend/src/components/HomePage.tsx`
+
+#### Other Complex Operations
+
+For operations involving multiple steps that aren't covered by specialized hooks:
 
 **Option 1: Queue Each Operation Separately** (Recommended for independent operations)
 ```tsx
@@ -209,11 +283,6 @@ const complexMutation = useMutation({
 
 // Note: This will fail if offline and won't queue operations
 ```
-
-**Future Enhancement**: Transaction support for multi-step operations
-- Track dependencies between operations
-- Rollback on partial failures
-- Atomic sync of related operations
 
 ## Accessing Sync State
 
@@ -323,20 +392,26 @@ onError: (error) => {
 ## Limitations
 
 ### Current Limitations:
-1. **No Transaction Support**: Multi-step operations aren't atomic
-2. **No Conflict UI**: Failed operations just show error count
-3. **Simple Retry Logic**: Fixed 3 retry attempts
-4. **No Offline-First Queries**: Read operations require connection
-5. **File Uploads**: Not queued (will fail when offline)
+1. **No Conflict UI**: Failed operations just show error count (can manually retry)
+2. **Simple Retry Logic**: Fixed 3 retry attempts
+3. **No Offline-First Queries**: Read operations require connection
+4. **Limited Complex Operations**: Only visit creation/deletion supported with special hooks
+
+### ✅ Recently Added:
+- [x] File upload queuing (photos stored in IndexedDB!)
+- [x] Complex visit creation (visit + food items + photos)
+- [x] Complex visit deletion (cascading deletes)
+- [x] Transaction-like support for visits
 
 ### Planned Enhancements:
-- [ ] Dependency tracking for multi-step operations
-- [ ] Conflict resolution UI
+- [ ] Visit editing offline support
+- [ ] Generic dependency tracking system
+- [ ] Conflict resolution UI with user choice
 - [ ] Intelligent retry with exponential backoff
 - [ ] Offline-first query caching
-- [ ] File upload queuing
 - [ ] Optimistic update templates
 - [ ] Sync progress notifications
+- [ ] Partial sync failure handling
 
 ## Debugging
 
