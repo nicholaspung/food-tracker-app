@@ -6,7 +6,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { BottomTabNavigation } from "@/components/BottomTabNavigation";
-import { TanStackRouterDevtools } from "@tanstack/router-devtools";
+import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 
