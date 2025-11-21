@@ -45,27 +45,34 @@ export function useOfflineRestaurantCreation() {
 
         const tempRestaurantId = `temp_restaurant_${Date.now()}`;
 
-        await syncQueue.enqueue({
-          type: 'create',
-          collection: 'restaurants_with_menu_items',
-          data: {
-            restaurant: {
-              name: data.name,
-              location: data.address, // PocketBase uses 'location' field
-              cuisineType: data.cuisineType,
-              googlePlacesId: data.googlePlacesId,
-              latitude: data.latitude,
-              longitude: data.longitude,
-              user: user.id,
-              visibility: data.visibility,
+        try {
+          await syncQueue.enqueue({
+            type: 'create',
+            collection: 'restaurants_with_menu_items',
+            data: {
+              restaurant: {
+                name: data.name,
+                location: data.address, // PocketBase uses 'location' field
+                cuisineType: data.cuisineType,
+                googlePlacesId: data.googlePlacesId,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                user: user.id,
+                visibility: data.visibility,
+              },
+              menuItems: (data.menuItems || []).map(itemName => ({
+                name: itemName,
+                user: user.id,
+              })),
             },
-            menuItems: (data.menuItems || []).map(itemName => ({
-              name: itemName,
-              user: user.id,
-            })),
-          },
-          localId: tempRestaurantId,
-        });
+            localId: tempRestaurantId,
+          });
+
+          logger.log('[OfflineRestaurant] Successfully queued restaurant creation');
+        } catch (error) {
+          logger.error('[OfflineRestaurant] Failed to queue operation:', error);
+          throw error;
+        }
 
         // Return optimistic data
         const optimisticRestaurant = {
@@ -104,12 +111,15 @@ export function useOfflineRestaurantCreation() {
       }
     },
     onSuccess: (result) => {
-      // Invalidate relevant queries to show the new restaurant
-      queryClient.invalidateQueries({ queryKey: ['restaurants'] });
-
+      // Add optimistic restaurant to cache immediately
       if (result.isQueued) {
-        logger.log('[OfflineRestaurant] Restaurant queued successfully, will sync when online');
+        queryClient.setQueryData(['restaurants'], (old: any[] = []) => {
+          return [result.restaurant, ...old];
+        });
+        logger.log('[OfflineRestaurant] Restaurant queued successfully, added to cache');
       } else {
+        // Invalidate queries for online creation
+        queryClient.invalidateQueries({ queryKey: ['restaurants'] });
         logger.log('[OfflineRestaurant] Restaurant created successfully:', result.restaurant.id);
       }
     },
