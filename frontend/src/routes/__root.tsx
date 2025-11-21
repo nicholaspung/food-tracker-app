@@ -25,6 +25,7 @@ const ROUTES_WITH_TABS = [
   "/whats-new",
   "/photos",
   "/add-visit",
+  "/quick-track",
   "/edit-visit",
   "/friends",
   "/feedback",
