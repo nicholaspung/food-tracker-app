@@ -7,6 +7,8 @@ import { logger } from '@/lib/logger';
 interface RestaurantCreationData {
   name: string;
   address?: string;
+  cuisineType?: string;
+  visibility: 'private' | 'friends' | 'public';
   googlePlacesId?: string;
   latitude?: number;
   longitude?: number;
@@ -49,12 +51,13 @@ export function useOfflineRestaurantCreation() {
           data: {
             restaurant: {
               name: data.name,
-              address: data.address,
+              location: data.address, // PocketBase uses 'location' field
+              cuisineType: data.cuisineType,
               googlePlacesId: data.googlePlacesId,
               latitude: data.latitude,
               longitude: data.longitude,
               user: user.id,
-              visibility: 'private', // Default to private for new restaurants
+              visibility: data.visibility,
             },
             menuItems: (data.menuItems || []).map(itemName => ({
               name: itemName,
@@ -69,11 +72,13 @@ export function useOfflineRestaurantCreation() {
           id: tempRestaurantId,
           name: data.name,
           address: data.address,
+          cuisineType: data.cuisineType,
+          location: data.address, // For compatibility with Restaurant type
           googlePlacesId: data.googlePlacesId,
           latitude: data.latitude,
           longitude: data.longitude,
           user: user.id,
-          visibility: 'private',
+          visibility: data.visibility,
           created: new Date().toISOString(),
           updated: new Date().toISOString(),
           isPending: true, // Flag to indicate this is pending sync
@@ -126,12 +131,13 @@ async function executeRestaurantCreation(
   // 1. Create the restaurant
   const restaurant = await pb.collection('restaurants').create({
     name: data.name,
-    address: data.address,
+    location: data.address,
+    cuisineType: data.cuisineType,
     googlePlacesId: data.googlePlacesId,
     latitude: data.latitude,
     longitude: data.longitude,
     user: userId,
-    visibility: 'private',
+    visibility: data.visibility,
   });
 
   logger.log('[OfflineRestaurant] Restaurant created:', restaurant.id);
