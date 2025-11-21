@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe, ChevronDown, ChevronUp, AlertCircle, WifiOff } from "lucide-react";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger";
 import MenuScanStep from "@/components/MenuScanStep";
 import { visitDraftService } from "@/services/visitDraftService";
 import { requestMenuReview, hasPendingReviewRequest } from "@/services/menuReviewService";
+import { useSync } from "@/contexts/SyncContext";
 
 interface SelectedItemWithDescription {
   menuItem: MenuItem;
@@ -63,6 +64,9 @@ export default function AddItemsToVisit({
   const [hasPendingReview, setHasPendingReview] = useState(false);
   const [debugData, setDebugData] = useState<any>(null);
   const [showDebugData, setShowDebugData] = useState(false);
+
+  // Online/offline status
+  const { isOnline } = useSync();
 
   // Refs for auto-scrolling inputs into view on mobile
   const manualItemInputRef = useScrollIntoView<HTMLInputElement>();
@@ -532,14 +536,31 @@ export default function AddItemsToVisit({
               <CardContent className="space-y-3">
                 {/* Scan Menu Button */}
                 {!hideScanMenu && (
-                  <Button
-                    variant="outline"
-                    className="w-full bg-white"
-                    onClick={() => setShowScanMenu(true)}
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Scan Menu Photo
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full bg-white"
+                      onClick={() => setShowScanMenu(true)}
+                      disabled={!isOnline}
+                    >
+                      {isOnline ? (
+                        <>
+                          <Camera className="w-4 h-4 mr-2" />
+                          Scan Menu Photo
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="w-4 h-4 mr-2" />
+                          Scan Menu (Offline)
+                        </>
+                      )}
+                    </Button>
+                    {!isOnline && (
+                      <p className="text-xs text-orange-600 text-center">
+                        AI menu scanning requires internet connection
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {/* Manual add section */}
