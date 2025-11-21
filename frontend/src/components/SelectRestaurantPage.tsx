@@ -27,6 +27,7 @@ import {
   Lock,
   Globe,
   Camera,
+  WifiOff,
 } from "lucide-react";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import {
@@ -37,6 +38,7 @@ import {
   geocodeLocation,
 } from "@/services/googlePlaces";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
+import { useSync } from "@/contexts/SyncContext";
 
 interface SelectRestaurantPageProps {
   onRestaurantSelected: () => void;
@@ -106,6 +108,7 @@ export default function SelectRestaurantPage({
   } = useGeolocation(false);
 
   const queryClient = useQueryClient();
+  const { isOnline } = useSync();
   const user = pb.authStore.record;
 
   // Initialize restaurant visibility from user's default preference
@@ -350,6 +353,12 @@ export default function SelectRestaurantPage({
 
   // Handler to search nearby places
   const handleSearchNearby = async () => {
+    // Check if online first
+    if (!isOnline) {
+      setPlacesError("Cannot search nearby restaurants while offline. Google Places requires internet connection.");
+      return;
+    }
+
     setShowNearbyPlaces(true);
     setPlacesError("");
     setError("");
@@ -402,7 +411,8 @@ export default function SelectRestaurantPage({
       position &&
       showNearbyPlaces &&
       nearbyPlaces.length === 0 &&
-      !placesLoading
+      !placesLoading &&
+      isOnline // Only fetch if online
     ) {
       const fetchNearbyPlaces = async () => {
         setReferenceCoords({
@@ -456,6 +466,12 @@ export default function SelectRestaurantPage({
 
   // Handle manual location and text search
   const handleManualSearch = async () => {
+    // Check if online first
+    if (!isOnline) {
+      setPlacesError("Cannot search restaurants while offline. Google Places requires internet connection.");
+      return;
+    }
+
     if (!manualLocation.trim() && !restaurantSearchQuery.trim()) {
       setPlacesError("Please enter a location or food place name to search");
       return;
@@ -716,10 +732,26 @@ export default function SelectRestaurantPage({
                     onClick={handleManualSearch}
                     variant="default"
                     className="w-full"
+                    disabled={!isOnline}
                   >
-                    <Search className="w-4 h-4 mr-2" />
-                    Search Food Places
+                    {isOnline ? (
+                      <>
+                        <Search className="w-4 h-4 mr-2" />
+                        Search Food Places
+                      </>
+                    ) : (
+                      <>
+                        <WifiOff className="w-4 h-4 mr-2" />
+                        Search (Offline)
+                      </>
+                    )}
                   </Button>
+
+                  {!isOnline && (
+                    <p className="text-xs text-orange-600 text-center">
+                      Google Places search requires internet connection
+                    </p>
+                  )}
 
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
@@ -736,9 +768,19 @@ export default function SelectRestaurantPage({
                     onClick={handleSearchNearby}
                     variant="outline"
                     className="w-full bg-white"
+                    disabled={!isOnline}
                   >
-                    <MapPin className="w-4 h-4 mr-2" />
-                    Use My Current Location
+                    {isOnline ? (
+                      <>
+                        <MapPin className="w-4 h-4 mr-2" />
+                        Use My Current Location
+                      </>
+                    ) : (
+                      <>
+                        <WifiOff className="w-4 h-4 mr-2" />
+                        Location Search (Offline)
+                      </>
+                    )}
                   </Button>
                 </CardContent>
               </Card>
@@ -821,17 +863,37 @@ export default function SelectRestaurantPage({
                       onClick={() => handleManualSearch()}
                       variant="default"
                       className="flex-1"
+                      disabled={!isOnline}
                     >
-                      <Search className="w-4 h-4 mr-2" />
-                      New Search
+                      {isOnline ? (
+                        <>
+                          <Search className="w-4 h-4 mr-2" />
+                          New Search
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="w-4 h-4 mr-2" />
+                          Offline
+                        </>
+                      )}
                     </Button>
                     <Button
                       onClick={() => handleSearchNearby()}
                       variant="outline"
                       className="flex-1 bg-white"
+                      disabled={!isOnline}
                     >
-                      <MapPin className="w-4 h-4 mr-2" />
-                      Use GPS
+                      {isOnline ? (
+                        <>
+                          <MapPin className="w-4 h-4 mr-2" />
+                          Use GPS
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="w-4 h-4 mr-2" />
+                          Offline
+                        </>
+                      )}
                     </Button>
                   </div>
                 </CardContent>
