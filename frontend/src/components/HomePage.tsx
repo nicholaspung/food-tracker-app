@@ -262,6 +262,11 @@ export default function HomePage({
     restaurant: Restaurant,
     visitDate: string
   ) => {
+    if (!isOnline) {
+      alert("Photo sharing requires internet connection. Please connect and try again.");
+      return;
+    }
+
     try {
       // Get full resolution photo URL
       const photoUrl = pb.files.getURL(photo, photo.photo);
