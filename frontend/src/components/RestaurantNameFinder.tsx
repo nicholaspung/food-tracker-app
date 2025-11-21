@@ -12,8 +12,10 @@ import {
   History,
   ChevronDown,
   ChevronUp,
+  WifiOff,
 } from "lucide-react";
 import { pb, User } from "@/lib/pocketbase";
+import { useSync } from "@/contexts/SyncContext";
 
 interface RestaurantOption {
   name: string;
@@ -75,6 +77,7 @@ export default function RestaurantNameFinder(
   }: RestaurantNameFinderProps = {} as RestaurantNameFinderProps
 ) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isOnline } = useSync();
   const [currentStep, setCurrentStep] = useState<Step>("capture");
   const [currentView, setCurrentView] = useState<View>("capture");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -206,6 +209,13 @@ export default function RestaurantNameFinder(
   };
 
   const findRestaurantName = async (imageFile: File, imageDataUrl: string) => {
+    // Check if online first
+    if (!isOnline) {
+      setError("Restaurant name finder requires internet connection. Please connect and try again.");
+      setCurrentStep("preview");
+      return;
+    }
+
     setCurrentStep("processing");
     setIsProcessing(true);
     setError("");
@@ -736,16 +746,34 @@ export default function RestaurantNameFinder(
                 className="w-full"
                 size="lg"
                 data-testid="take-photo-button"
-                disabled={!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT}
+                disabled={!isOnline || (!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT)}
               >
-                <Camera className="w-5 h-5 mr-2" />
-                {!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT ? 'Daily Limit Reached' : 'Take Photo / Upload Image'}
+                {!isOnline ? (
+                  <>
+                    <WifiOff className="w-5 h-5 mr-2" />
+                    AI Feature (Offline)
+                  </>
+                ) : !hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT ? (
+                  <>
+                    <Camera className="w-5 h-5 mr-2" />
+                    Daily Limit Reached
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-5 h-5 mr-2" />
+                    Take Photo / Upload Image
+                  </>
+                )}
               </Button>
-              {(hasUnlimitedParsing() || dailyUsage.count < DAILY_LIMIT) && (
+              {!isOnline ? (
+                <p className="text-xs text-orange-600 text-center">
+                  AI restaurant name finder requires internet connection
+                </p>
+              ) : (hasUnlimitedParsing() || dailyUsage.count < DAILY_LIMIT) ? (
                 <p className="text-xs text-gray-500 text-center">
                   On mobile: Opens camera or photo library
                 </p>
-              )}
+              ) : null}
             </>
           ) : (
             currentStep === "result" && (
