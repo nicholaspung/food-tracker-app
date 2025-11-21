@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, X, Lock, Users, Globe, MapPin, WifiOff } from "lucide-react";
+import { Plus, X, Lock, Users, Globe, MapPin, WifiOff } from "lucide-react";
 import { useOfflineRestaurantCreation } from "@/hooks/useOfflineRestaurantCreation";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useGeolocation } from "@/hooks/useGeolocation";
@@ -59,8 +59,7 @@ export default function CreateRestaurantPage({
     setMenuItems(menuItems.filter((i) => i !== item));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setError("");
 
     if (!restaurantName.trim()) {
@@ -106,27 +105,15 @@ export default function CreateRestaurantPage({
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBack}
-            className="p-2"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Add Restaurant</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Create a new restaurant for your visit
-            </p>
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Add Restaurant</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Create a new restaurant for your visit
+        </p>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
           {/* Offline Warning */}
           {!isOnline && (
             <Card className="border-orange-500 bg-orange-50">
@@ -375,20 +362,26 @@ export default function CreateRestaurantPage({
             </CardContent>
           </Card>
 
-          {/* Submit Button */}
-          <div className="pb-4">
-            <Button
-              type="submit"
-              className="w-full"
-              size="lg"
-              disabled={createRestaurantMutation.isPending}
-            >
-              {createRestaurantMutation.isPending
-                ? "Creating..."
-                : "Create Restaurant & Continue"}
-            </Button>
-          </div>
-        </form>
+        </div>
+      </div>
+
+      {/* Bottom Action Buttons */}
+      <div className="bg-white border-t border-gray-200 p-4">
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onBack}>
+            Previous
+          </Button>
+          <Button
+            variant="default"
+            className="flex-1"
+            onClick={handleSubmit}
+            disabled={createRestaurantMutation.isPending}
+          >
+            {createRestaurantMutation.isPending
+              ? "Creating..."
+              : "Create & Continue"}
+          </Button>
+        </div>
       </div>
     </div>
   );
