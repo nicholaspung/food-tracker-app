@@ -1,0 +1,395 @@
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Plus, X, Lock, Users, Globe, MapPin, WifiOff } from "lucide-react";
+import { useOfflineRestaurantCreation } from "@/hooks/useOfflineRestaurantCreation";
+import { visitDraftService } from "@/services/visitDraftService";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import { useSync } from "@/contexts/SyncContext";
+import { pb } from "@/lib/pocketbase";
+
+interface CreateRestaurantPageProps {
+  onRestaurantCreated: () => void;
+  onBack: () => void;
+}
+
+export default function CreateRestaurantPage({
+  onRestaurantCreated,
+  onBack,
+}: CreateRestaurantPageProps) {
+  const user = pb.authStore.record;
+  const { isOnline } = useSync();
+  const { position } = useGeolocation(true); // Auto-fetch location
+
+  const [restaurantName, setRestaurantName] = useState("");
+  const [restaurantLocation, setRestaurantLocation] = useState("");
+  const [restaurantCuisine, setRestaurantCuisine] = useState("");
+  const [visibility, setVisibility] = useState<"private" | "friends" | "public">("friends");
+  const [menuItems, setMenuItems] = useState<string[]>([]);
+  const [currentMenuItem, setCurrentMenuItem] = useState("");
+  const [error, setError] = useState("");
+
+  const createRestaurantMutation = useOfflineRestaurantCreation();
+
+  // Initialize visibility from user's default preference
+  useEffect(() => {
+    if (user?.defaultRestaurantVisibility) {
+      setVisibility(user.defaultRestaurantVisibility);
+    }
+  }, [user?.defaultRestaurantVisibility]);
+
+  const handleAddMenuItem = () => {
+    const trimmed = currentMenuItem.trim();
+    if (trimmed && !menuItems.includes(trimmed)) {
+      setMenuItems([...menuItems, trimmed]);
+      setCurrentMenuItem("");
+    }
+  };
+
+  const handleRemoveMenuItem = (item: string) => {
+    setMenuItems(menuItems.filter((i) => i !== item));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!restaurantName.trim()) {
+      setError("Restaurant name is required");
+      return;
+    }
+
+    if (!restaurantLocation.trim()) {
+      setError("Location is required");
+      return;
+    }
+
+    try {
+      const result = await createRestaurantMutation.mutateAsync({
+        name: restaurantName.trim(),
+        address: restaurantLocation.trim(),
+        latitude: position?.latitude,
+        longitude: position?.longitude,
+        menuItems: menuItems.length > 0 ? menuItems : undefined,
+      });
+
+      // Save to draft service
+      visitDraftService.saveRestaurant(result.restaurant);
+
+      // Show success message based on online/offline
+      if (result.isQueued) {
+        // Offline - queued for sync
+        alert(
+          `Restaurant "${restaurantName}" created offline!\n\n` +
+          (menuItems.length > 0 ? `${menuItems.length} menu items will be added when you're back online.\n\n` : "") +
+          "It will sync automatically when you reconnect."
+        );
+      }
+
+      // Proceed to next step
+      onRestaurantCreated();
+    } catch (err: any) {
+      setError(err.message || "Failed to create restaurant");
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-4">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBack}
+            className="p-2"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Add Restaurant</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Create a new restaurant for your visit
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Offline Warning */}
+          {!isOnline && (
+            <Card className="border-orange-500 bg-orange-50">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-orange-800 text-sm">
+                  <WifiOff className="w-4 h-4" />
+                  <span>
+                    You're offline. Restaurant will be created locally and synced when you reconnect.
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <Card className="border-red-500 bg-red-50">
+              <CardContent className="pt-4">
+                <p className="text-sm text-red-600">{error}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Restaurant Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Restaurant Details</CardTitle>
+              <CardDescription>
+                Enter the basic information about the restaurant
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Restaurant Name *</Label>
+                <Input
+                  id="name"
+                  value={restaurantName}
+                  onChange={(e) => setRestaurantName(e.target.value)}
+                  placeholder="e.g., Joe's Pizza"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="location">
+                  Location *
+                  {position && (
+                    <span className="ml-2 text-xs text-green-600">
+                      <MapPin className="w-3 h-3 inline mr-1" />
+                      GPS coordinates will be saved
+                    </span>
+                  )}
+                </Label>
+                <Input
+                  id="location"
+                  value={restaurantLocation}
+                  onChange={(e) => setRestaurantLocation(e.target.value)}
+                  placeholder="e.g., 123 Main St, New York, NY"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cuisine">Cuisine Type (optional)</Label>
+                <Input
+                  id="cuisine"
+                  value={restaurantCuisine}
+                  onChange={(e) => setRestaurantCuisine(e.target.value)}
+                  placeholder="e.g., Italian, Japanese, Mexican"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Initial Menu Items (Optional) */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Initial Menu Items (Optional)</CardTitle>
+              <CardDescription>
+                Add some menu items now to speed up your visit entry
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="menu-item">Add menu items</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="menu-item"
+                    value={currentMenuItem}
+                    onChange={(e) => setCurrentMenuItem(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddMenuItem();
+                      }
+                    }}
+                    placeholder="e.g., Margherita Pizza"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAddMenuItem}
+                    disabled={!currentMenuItem.trim()}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {menuItems.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Menu Items ({menuItems.length})</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {menuItems.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="secondary"
+                        className="flex items-center gap-1 pr-1"
+                      >
+                        <span>{item}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMenuItem(item)}
+                          className="ml-1 rounded-full p-0.5 hover:bg-gray-300"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Visibility */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Visibility</CardTitle>
+              <CardDescription>
+                Choose who can see this restaurant
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setVisibility("private")}
+                className={`w-full p-3 rounded-lg border-2 transition-all ${
+                  visibility === "private"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      visibility === "private"
+                        ? "border-blue-500 bg-blue-500"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {visibility === "private" && (
+                      <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Lock className="w-4 h-4 text-gray-600" />
+                      <span className="font-semibold text-sm">Private</span>
+                    </div>
+                    <p className="text-xs text-gray-600">Only visible to you</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVisibility("friends")}
+                className={`w-full p-3 rounded-lg border-2 transition-all ${
+                  visibility === "friends"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      visibility === "friends"
+                        ? "border-blue-500 bg-blue-500"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {visibility === "friends" && (
+                      <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-sm">Friends</span>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      Visible to your friends
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              {user?.isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setVisibility("public")}
+                  className={`w-full p-3 rounded-lg border-2 transition-all ${
+                    visibility === "public"
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        visibility === "public"
+                          ? "border-blue-500 bg-blue-500"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      {visibility === "public" && (
+                        <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                      )}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Globe className="w-4 h-4 text-green-600" />
+                        <span className="font-semibold text-sm">Public</span>
+                        <Badge variant="secondary" className="text-xs">
+                          Admin Only
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Visible to everyone in the community
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Submit Button */}
+          <div className="pb-4">
+            <Button
+              type="submit"
+              className="w-full"
+              size="lg"
+              disabled={createRestaurantMutation.isPending}
+            >
+              {createRestaurantMutation.isPending
+                ? "Creating..."
+                : "Create Restaurant & Continue"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
