@@ -76,6 +76,8 @@ export default function CreateRestaurantPage({
       const result = await createRestaurantMutation.mutateAsync({
         name: restaurantName.trim(),
         address: restaurantLocation.trim(),
+        cuisineType: restaurantCuisine.trim() || undefined,
+        visibility: visibility,
         latitude: position?.latitude,
         longitude: position?.longitude,
         menuItems: menuItems.length > 0 ? menuItems : undefined,
