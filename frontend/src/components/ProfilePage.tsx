@@ -13,7 +13,8 @@ import {
 import { pb } from "@/lib/pocketbase";
 import { logger } from "@/lib/logger";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, WifiOff } from "lucide-react";
+import { useSync } from "@/contexts/SyncContext";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -55,6 +56,7 @@ const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToPhotos, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
+  const { isOnline } = useSync();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -158,6 +160,10 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   // Admin: Elevate user to subscriber
   const elevateToSubscriberMutation = useMutation({
     mutationFn: async (email: string) => {
+      if (!isOnline) {
+        throw new Error("Subscriber elevation requires internet connection. Please connect and try again.");
+      }
+
       // Use backend API endpoint for subscriber elevation
       const response = await pb.send('/api/users/elevate-subscriber', {
         method: 'POST',
@@ -235,6 +241,12 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   const fetchInviteCodes = async () => {
     if (!user?.id) return;
 
+    if (!isOnline) {
+      logger.log("Cannot fetch invite codes while offline");
+      setLoadingCodes(false);
+      return;
+    }
+
     try {
       setLoadingCodes(true);
       // Use PocketBase SDK's send method for proper authentication
@@ -254,6 +266,11 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
   // Generate more invite codes (initial user only)
   const generateMoreCodes = async () => {
+    if (!isOnline) {
+      setError("Cannot generate invite codes while offline. Please connect and try again.");
+      return;
+    }
+
     setGeneratingCodes(true);
     setError("");
 
@@ -305,16 +322,20 @@ Looking forward to seeing you there!`;
       setTimeout(() => setCopiedCode(null), 2000);
 
       // Lock the code for 7 days (or extend if already locked)
-      try {
-        await pb.send('/api/invite-codes/lock', {
-          method: 'POST',
-          body: { codeId },
-        });
-        // Refresh the invite codes list to update the lock status
-        fetchInviteCodes();
-      } catch (lockErr) {
-        logger.error("Failed to lock invite code:", lockErr);
-        // Don't show error to user - the copy was successful
+      if (isOnline) {
+        try {
+          await pb.send('/api/invite-codes/lock', {
+            method: 'POST',
+            body: { codeId },
+          });
+          // Refresh the invite codes list to update the lock status
+          fetchInviteCodes();
+        } catch (lockErr) {
+          logger.error("Failed to lock invite code:", lockErr);
+          // Don't show error to user - the copy was successful
+        }
+      } else {
+        logger.log("Cannot lock invite code while offline - copy succeeded but lock skipped");
       }
     } catch (err) {
       logger.error("Failed to copy invitation:", err);
@@ -611,30 +632,52 @@ Looking forward to seeing you there!`;
                   onClick={generateMoreCodes}
                   variant="outline"
                   size="sm"
-                  disabled={generatingCodes || loadingCodes}
+                  disabled={!isOnline || generatingCodes || loadingCodes}
                   className="text-xs"
                   data-testid="generate-codes-button"
                 >
-                  {generatingCodes ? 'Generating...' : 'Generate 5 More'}
+                  {!isOnline ? (
+                    <><WifiOff className="w-3 h-3 mr-1" />Offline</>
+                  ) : generatingCodes ? (
+                    'Generating...'
+                  ) : (
+                    'Generate 5 More'
+                  )}
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent>
+            {!isOnline && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
+                <div className="flex items-center gap-2 text-orange-800 text-sm">
+                  <WifiOff className="w-4 h-4" />
+                  <span>You're offline. Invite code operations require internet connection.</span>
+                </div>
+              </div>
+            )}
             {loadingCodes ? (
               <p className="text-sm text-gray-500">Loading codes...</p>
             ) : inviteCodes.length === 0 ? (
               <div className="text-center py-4">
-                <p className="text-sm text-gray-500 mb-3">No invite codes available</p>
+                <p className="text-sm text-gray-500 mb-3">
+                  {!isOnline ? 'Cannot load invite codes while offline' : 'No invite codes available'}
+                </p>
                 {isInitialUser && (
                   <Button
                     onClick={generateMoreCodes}
                     variant="default"
                     size="sm"
-                    disabled={generatingCodes}
+                    disabled={!isOnline || generatingCodes}
                     data-testid="generate-first-codes-button"
                   >
-                    {generatingCodes ? 'Generating...' : 'Generate Codes'}
+                    {!isOnline ? (
+                      <><WifiOff className="w-3 h-3 mr-1" />Generate (Offline)</>
+                    ) : generatingCodes ? (
+                      'Generating...'
+                    ) : (
+                      'Generate Codes'
+                    )}
                   </Button>
                 )}
               </div>
@@ -762,6 +805,15 @@ Looking forward to seeing you there!`;
                   <p className="text-xs text-amber-700 mt-1">Elevate users to subscriber status for unlimited photo parsing</p>
                 </div>
 
+                {!isOnline && (
+                  <div className="p-2 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-md">
+                    <div className="flex items-center gap-2">
+                      <WifiOff className="w-4 h-4" />
+                      <span>You're offline. Admin operations require internet connection.</span>
+                    </div>
+                  </div>
+                )}
+
                 {subscriberSuccess && (
                   <div className="p-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="subscriber-success">
                     {subscriberSuccess}
@@ -785,18 +837,24 @@ Looking forward to seeing you there!`;
                       placeholder="user@example.com"
                       value={subscriberEmail}
                       onChange={(e) => setSubscriberEmail(e.target.value)}
-                      disabled={elevateToSubscriberMutation.isPending}
+                      disabled={!isOnline || elevateToSubscriberMutation.isPending}
                       className="text-sm"
                       data-testid="subscriber-email-input"
                     />
                   </div>
                   <Button
                     type="submit"
-                    disabled={elevateToSubscriberMutation.isPending}
+                    disabled={!isOnline || elevateToSubscriberMutation.isPending}
                     className="w-full bg-amber-600 hover:bg-amber-700"
                     data-testid="elevate-subscriber-button"
                   >
-                    {elevateToSubscriberMutation.isPending ? 'Elevating...' : 'Elevate to Subscriber'}
+                    {!isOnline ? (
+                      <><WifiOff className="w-4 h-4 mr-2" />Elevate (Offline)</>
+                    ) : elevateToSubscriberMutation.isPending ? (
+                      'Elevating...'
+                    ) : (
+                      'Elevate to Subscriber'
+                    )}
                   </Button>
                 </form>
               </div>
