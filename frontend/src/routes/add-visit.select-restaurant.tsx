@@ -21,6 +21,11 @@ function SelectRestaurant() {
     navigate({ to: '/add-visit/add-items' });
   };
 
+  const handleNavigateToCreateRestaurant = () => {
+    // Navigate to create restaurant page
+    navigate({ to: '/add-visit/create-restaurant' });
+  };
+
   const handleCancel = () => {
     // Clear the draft when user cancels
     visitDraftService.clearDraft();
@@ -30,6 +35,7 @@ function SelectRestaurant() {
   return (
     <SelectRestaurantPage
       onRestaurantSelected={handleRestaurantSelected}
+      onNavigateToCreateRestaurant={handleNavigateToCreateRestaurant}
       onCancel={handleCancel}
     />
   );

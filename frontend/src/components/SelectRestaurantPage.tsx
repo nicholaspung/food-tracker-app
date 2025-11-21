@@ -42,11 +42,13 @@ import { useSync } from "@/contexts/SyncContext";
 
 interface SelectRestaurantPageProps {
   onRestaurantSelected: () => void;
+  onNavigateToCreateRestaurant: () => void;
   onCancel: () => void;
 }
 
 export default function SelectRestaurantPage({
   onRestaurantSelected,
+  onNavigateToCreateRestaurant,
   onCancel,
 }: SelectRestaurantPageProps) {
   const savedRestaurantsRef = useRef<HTMLDivElement>(null);
@@ -1385,7 +1387,7 @@ export default function SelectRestaurantPage({
               ) : (
                 <>
                   <Button
-                    onClick={() => setShowAddRestaurant(true)}
+                    onClick={onNavigateToCreateRestaurant}
                     variant="outline"
                     className="w-full"
                   >
