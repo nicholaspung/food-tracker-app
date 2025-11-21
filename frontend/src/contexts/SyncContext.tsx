@@ -65,6 +65,10 @@ export function SyncProvider({ children }: SyncProviderProps) {
       // Handle complex visit deletion
       else if (collection === 'visits_with_items_delete' && type === 'delete') {
         await executeComplexVisitDeletion(data);
+      }
+      // Handle complex restaurant creation
+      else if (collection === 'restaurants_with_menu_items' && type === 'create') {
+        await executeComplexRestaurantCreation(data);
       } else {
         // Standard operations
         switch (type) {
@@ -179,6 +183,35 @@ export function SyncProvider({ children }: SyncProviderProps) {
     // 2. Delete visit
     await pb.collection('visits').delete(visitId);
     console.log('Deleted visit:', visitId);
+  };
+
+  /**
+   * Execute complex restaurant creation (restaurant + menu items)
+   */
+  const executeComplexRestaurantCreation = async (data: any): Promise<void> => {
+    const { restaurant: restaurantData, menuItems } = data;
+
+    // 1. Create restaurant
+    const restaurant = await pb.collection('restaurants').create(restaurantData);
+    console.log('Created restaurant:', restaurant.id);
+
+    // 2. Create menu items sequentially
+    if (menuItems && menuItems.length > 0) {
+      for (const item of menuItems) {
+        try {
+          const menuItem = await pb.collection('menu_items').create({
+            ...item,
+            restaurant: restaurant.id,
+          });
+          console.log('Created menu item:', menuItem.id, menuItem.name);
+        } catch (error) {
+          console.error('Failed to create menu item, continuing...', error);
+          // Don't fail the entire operation if one menu item fails
+        }
+      }
+    }
+
+    console.log('Complex restaurant creation complete');
   };
 
   /**
