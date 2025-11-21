@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Copy, RotateCcw, Loader2, Check } from 'lucide-react';
+import { Camera, Copy, RotateCcw, Loader2, Check, WifiOff } from 'lucide-react';
 import { pb } from '@/lib/pocketbase';
 import ExpandableImageWithBox from '@/components/ExpandableImageWithBox';
+import { useSync } from '@/contexts/SyncContext';
 
 interface TextBlock {
   text: string;
@@ -18,6 +19,7 @@ type Step = 'capture' | 'preview' | 'select-region' | 'processing' | 'result';
 
 export default function CameraOCR() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isOnline } = useSync();
   const [currentStep, setCurrentStep] = useState<Step>('capture');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -58,6 +60,12 @@ export default function CameraOCR() {
   };
 
   const runOCR = async (imageFile: File) => {
+    // Check if online before proceeding
+    if (!isOnline) {
+      setError('OCR requires an internet connection. Please connect and try again.');
+      return;
+    }
+
     setCurrentStep('processing');
     setIsProcessing(true);
     setError('');
@@ -217,6 +225,16 @@ export default function CameraOCR() {
         </div>
       )}
 
+      {/* Offline Warning Banner */}
+      {!isOnline && (
+        <div className="bg-orange-50 border-b border-orange-200 px-4 py-3">
+          <div className="flex items-center gap-2 text-orange-800 text-sm">
+            <WifiOff className="w-4 h-4" />
+            <span>You're offline. OCR requires internet connection.</span>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Image Preview (small, in results) */}
@@ -326,13 +344,25 @@ export default function CameraOCR() {
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full"
                 size="lg"
+                disabled={!isOnline}
                 data-testid="take-photo-button"
               >
-                <Camera className="w-5 h-5 mr-2" />
-                Take Photo / Upload Image
+                {isOnline ? (
+                  <>
+                    <Camera className="w-5 h-5 mr-2" />
+                    Take Photo / Upload Image
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-5 h-5 mr-2" />
+                    OCR Unavailable (Offline)
+                  </>
+                )}
               </Button>
               <p className="text-xs text-gray-500 text-center">
-                On mobile: Opens camera or photo library
+                {isOnline
+                  ? 'On mobile: Opens camera or photo library'
+                  : 'Requires internet connection for OCR processing'}
               </p>
             </>
           ) : currentStep === 'result' && (
