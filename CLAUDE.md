@@ -24,6 +24,13 @@ This is a mobile food tracker application built with:
 - Use mobile-appropriate UI patterns (bottom navigation, mobile gestures, mobile-friendly touch targets)
 - Ignore desktop responsiveness - focus only on mobile UX
 
+**Offline Data Sync**
+- The app supports full offline functionality via IndexedDB-based sync queue
+- All mutations (create/update/delete) are queued when offline and auto-sync when online
+- Use `useOfflineCreate`, `useOfflineUpdate`, `useOfflineDelete` hooks for offline-aware mutations
+- See `OFFLINE_SYNC.md` for complete documentation and usage examples
+- Sync status indicator automatically shows pending/failed operations
+
 ## Development Commands
 
 ### Frontend Development
