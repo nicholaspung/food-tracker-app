@@ -31,7 +31,12 @@ export function useOfflineRestaurantCreation() {
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
 
+  console.log('[useOfflineRestaurantCreation] Hook called, creating mutation');
+
   return useMutation<RestaurantCreationResult, Error, RestaurantCreationData>({
+    onMutate: (variables) => {
+      console.log('[useOfflineRestaurantCreation] onMutate called with:', variables);
+    },
     mutationFn: async (data) => {
       try {
         console.log('[useOfflineRestaurantCreation] mutationFn called with data:', data);
@@ -138,6 +143,7 @@ export function useOfflineRestaurantCreation() {
       }
     },
     onSuccess: (result) => {
+      console.log('[useOfflineRestaurantCreation] onSuccess called with:', result);
       // Add optimistic restaurant to cache immediately
       if (result.isQueued) {
         queryClient.setQueryData(['restaurants'], (old: any[] = []) => {
@@ -151,7 +157,11 @@ export function useOfflineRestaurantCreation() {
       }
     },
     onError: (error) => {
+      console.error('[useOfflineRestaurantCreation] onError called with:', error);
       logger.error('[OfflineRestaurant] Failed to create restaurant:', error);
+    },
+    onSettled: (data, error, variables) => {
+      console.log('[useOfflineRestaurantCreation] onSettled called:', { data, error, variables });
     },
   });
 }
