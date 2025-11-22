@@ -73,6 +73,14 @@ export default function CreateRestaurantPage({
     }
 
     try {
+      console.log('[CreateRestaurant] Starting mutation with data:', {
+        name: restaurantName.trim(),
+        address: restaurantLocation.trim(),
+        cuisineType: restaurantCuisine.trim() || undefined,
+        visibility,
+        menuItems,
+      });
+
       const result = await createRestaurantMutation.mutateAsync({
         name: restaurantName.trim(),
         address: restaurantLocation.trim(),
@@ -82,6 +90,8 @@ export default function CreateRestaurantPage({
         longitude: position?.longitude,
         menuItems: menuItems.length > 0 ? menuItems : undefined,
       });
+
+      console.log('[CreateRestaurant] Mutation completed, result:', result);
 
       // Save to draft service
       visitDraftService.saveRestaurant(result.restaurant);
@@ -96,9 +106,11 @@ export default function CreateRestaurantPage({
         );
       }
 
+      console.log('[CreateRestaurant] Proceeding to next step');
       // Proceed to next step
       onRestaurantCreated();
     } catch (err: any) {
+      console.error('[CreateRestaurant] Error creating restaurant:', err);
       setError(err.message || "Failed to create restaurant");
     }
   };
