@@ -80,6 +80,11 @@ export default function CreateRestaurantPage({
         visibility,
         menuItems,
       });
+      console.log('[CreateRestaurant] Mutation state before mutateAsync:', {
+        isPending: createRestaurantMutation.isPending,
+        isError: createRestaurantMutation.isError,
+        isSuccess: createRestaurantMutation.isSuccess,
+      });
 
       const result = await createRestaurantMutation.mutateAsync({
         name: restaurantName.trim(),
