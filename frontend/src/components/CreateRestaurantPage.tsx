@@ -40,13 +40,6 @@ export default function CreateRestaurantPage({
 
   const createRestaurantMutation = useOfflineRestaurantCreation();
 
-  console.log('[CreateRestaurant] Mutation object:', {
-    mutate: typeof createRestaurantMutation.mutate,
-    mutateAsync: typeof createRestaurantMutation.mutateAsync,
-    isPending: createRestaurantMutation.isPending,
-    isError: createRestaurantMutation.isError,
-  });
-
   // Initialize visibility from user's default preference
   useEffect(() => {
     if (user?.defaultRestaurantVisibility) {
