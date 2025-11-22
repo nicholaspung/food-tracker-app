@@ -66,6 +66,9 @@ export function useOfflineMutation<TData = any, TVariables = any>({
   const { isOnline } = useSync();
 
   return useMutation<TData, Error, TVariables>({
+    // CRITICAL: Allow mutation to run even when browser is offline
+    // We handle online/offline logic inside mutationFn
+    networkMode: 'always',
     mutationFn: async (variables: TVariables) => {
       if (isOnline && mutationFn) {
         // Online: Execute immediately

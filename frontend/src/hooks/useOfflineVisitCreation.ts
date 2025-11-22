@@ -56,6 +56,9 @@ export function useOfflineVisitCreation() {
   const { uploadPhotos } = usePhotoUpload();
 
   return useMutation<VisitCreationResult, Error, VisitCreationData>({
+    // CRITICAL: Allow mutation to run even when browser is offline
+    // We handle online/offline logic inside mutationFn
+    networkMode: 'always',
     mutationFn: async (data) => {
       const user = pb.authStore.record;
       if (!user) throw new Error('User not authenticated');
