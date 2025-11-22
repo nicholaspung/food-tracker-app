@@ -425,23 +425,23 @@ export default function CreateRestaurantPage({
               </div>
               <DialogTitle className="text-xl">Restaurant Created Offline!</DialogTitle>
             </div>
-            <DialogDescription className="space-y-3 text-base">
-              <div>
-                <strong>"{restaurantName}"</strong> has been created locally and will sync automatically when you're back online.
-              </div>
-              {offlineMenuItemCount > 0 && (
-                <div className="flex items-center gap-2 text-amber-700 bg-amber-50 p-3 rounded-lg">
-                  <WifiOff className="w-4 h-4 flex-shrink-0" />
-                  <span>
-                    {offlineMenuItemCount} menu item{offlineMenuItemCount !== 1 ? 's' : ''} will be added when you reconnect.
-                  </span>
-                </div>
-              )}
-              <div className="text-sm text-gray-600">
-                You can continue adding your visit details. Everything will sync in the background once you're online.
-              </div>
-            </DialogDescription>
           </DialogHeader>
+          <div className="space-y-3 text-base text-muted-foreground mt-2">
+            <div>
+              <strong>"{restaurantName}"</strong> has been created locally and will sync automatically when you're back online.
+            </div>
+            {offlineMenuItemCount > 0 && (
+              <div className="flex items-center gap-2 text-amber-700 bg-amber-50 p-3 rounded-lg">
+                <WifiOff className="w-4 h-4 flex-shrink-0" />
+                <span>
+                  {offlineMenuItemCount} menu item{offlineMenuItemCount !== 1 ? 's' : ''} will be added when you reconnect.
+                </span>
+              </div>
+            )}
+            <div className="text-sm text-gray-600">
+              You can continue adding your visit details. Everything will sync in the background once you're online.
+            </div>
+          </div>
           <DialogFooter>
             <Button
               onClick={() => {
