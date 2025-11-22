@@ -9,8 +9,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, X, Lock, Users, Globe, MapPin, WifiOff } from "lucide-react";
+import { Plus, X, Lock, Users, Globe, MapPin, WifiOff, CheckCircle } from "lucide-react";
 import { useOfflineRestaurantCreation } from "@/hooks/useOfflineRestaurantCreation";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useGeolocation } from "@/hooks/useGeolocation";
@@ -37,6 +45,8 @@ export default function CreateRestaurantPage({
   const [menuItems, setMenuItems] = useState<string[]>([]);
   const [currentMenuItem, setCurrentMenuItem] = useState("");
   const [error, setError] = useState("");
+  const [showOfflineDialog, setShowOfflineDialog] = useState(false);
+  const [offlineMenuItemCount, setOfflineMenuItemCount] = useState(0);
 
   const createRestaurantMutation = useOfflineRestaurantCreation();
 
@@ -108,17 +118,14 @@ export default function CreateRestaurantPage({
 
       // Show success message based on online/offline
       if (result.isQueued) {
-        // Offline - queued for sync
-        alert(
-          `Restaurant "${restaurantName}" created offline!\n\n` +
-          (menuItems.length > 0 ? `${menuItems.length} menu items will be added when you're back online.\n\n` : "") +
-          "It will sync automatically when you reconnect."
-        );
+        // Offline - show dialog instead of proceeding immediately
+        setOfflineMenuItemCount(menuItems.length);
+        setShowOfflineDialog(true);
+      } else {
+        // Online - proceed immediately
+        console.log('[CreateRestaurant] Proceeding to next step');
+        onRestaurantCreated();
       }
-
-      console.log('[CreateRestaurant] Proceeding to next step');
-      // Proceed to next step
-      onRestaurantCreated();
     } catch (err: any) {
       console.error('[CreateRestaurant] Error creating restaurant:', err);
       setError(err.message || "Failed to create restaurant");
@@ -407,6 +414,47 @@ export default function CreateRestaurantPage({
           </Button>
         </div>
       </div>
+
+      {/* Offline Success Dialog */}
+      <Dialog open={showOfflineDialog} onOpenChange={setShowOfflineDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+              <DialogTitle className="text-xl">Restaurant Created Offline!</DialogTitle>
+            </div>
+            <DialogDescription className="space-y-3 text-base">
+              <p>
+                <strong>"{restaurantName}"</strong> has been created locally and will sync automatically when you're back online.
+              </p>
+              {offlineMenuItemCount > 0 && (
+                <p className="flex items-center gap-2 text-amber-700 bg-amber-50 p-3 rounded-lg">
+                  <WifiOff className="w-4 h-4 flex-shrink-0" />
+                  <span>
+                    {offlineMenuItemCount} menu item{offlineMenuItemCount !== 1 ? 's' : ''} will be added when you reconnect.
+                  </span>
+                </p>
+              )}
+              <p className="text-sm text-gray-600">
+                You can continue adding your visit details. Everything will sync in the background once you're online.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setShowOfflineDialog(false);
+                onRestaurantCreated();
+              }}
+              className="w-full"
+            >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
