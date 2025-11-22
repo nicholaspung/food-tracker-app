@@ -14,8 +14,7 @@ if ('serviceWorker' in navigator) {
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  // Temporarily disabled StrictMode to debug mutation issue
-  // <React.StrictMode>
+  <React.StrictMode>
     <App />
-  // </React.StrictMode>,
+  </React.StrictMode>,
 );
