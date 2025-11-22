@@ -32,6 +32,9 @@ export function useOfflineRestaurantCreation() {
   const { isOnline } = useSync();
 
   return useMutation<RestaurantCreationResult, Error, RestaurantCreationData>({
+    // CRITICAL: Allow mutation to run even when browser is offline
+    // We handle online/offline logic inside mutationFn
+    networkMode: 'always',
     onMutate: async (variables) => {
       try {
         console.log('[useOfflineRestaurantCreation] onMutate called with:', variables);
