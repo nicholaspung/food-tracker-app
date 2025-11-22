@@ -31,8 +31,6 @@ export function useOfflineRestaurantCreation() {
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
 
-  console.log('[useOfflineRestaurantCreation] Hook called, creating mutation');
-
   return useMutation<RestaurantCreationResult, Error, RestaurantCreationData>({
     onMutate: (variables) => {
       console.log('[useOfflineRestaurantCreation] onMutate called with:', variables);
