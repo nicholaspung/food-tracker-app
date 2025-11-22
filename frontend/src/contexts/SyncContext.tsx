@@ -244,24 +244,34 @@ export function SyncProvider({ children }: SyncProviderProps) {
     setSyncError(null);
 
     try {
-      // Get all pending operations
-      const operations = await syncQueue.getAll();
-
-      if (operations.length === 0) {
-        setLastSyncTime(Date.now());
-        return;
-      }
-
-      console.log(`Syncing ${operations.length} operations...`);
-
-      // Filter out operations that have failed too many times
-      const operationsToSync = operations.filter(op => op.retries < 3 && !op.error);
-
       let successCount = 0;
       let failCount = 0;
 
-      // Execute operations sequentially to respect dependencies
-      for (const operation of operationsToSync) {
+      // Keep syncing until no more operations remain
+      // Refetch operations each iteration because restaurant creation updates other operations in the queue
+      while (true) {
+        // Get all pending operations (fresh each iteration)
+        const operations = await syncQueue.getAll();
+
+        if (operations.length === 0) {
+          break;
+        }
+
+        // Filter out operations that have failed too many times
+        const operationsToSync = operations.filter(op => op.retries < 3 && !op.error);
+
+        if (operationsToSync.length === 0) {
+          break;
+        }
+
+        if (successCount === 0) {
+          console.log(`Syncing ${operationsToSync.length} operations...`);
+        }
+
+        // Execute ONE operation at a time and refetch
+        // This ensures we always have the latest data after updates (e.g., temp ID replacement)
+        const operation = operationsToSync[0];
+
         try {
           await executeOperation(operation);
           successCount++;
