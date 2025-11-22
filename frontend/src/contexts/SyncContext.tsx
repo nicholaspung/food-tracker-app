@@ -117,6 +117,15 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const executeComplexVisitCreation = async (data: any): Promise<void> => {
     const { visit: visitData, foodItems, photos } = data;
 
+    console.log('[SyncContext] Attempting to create visit with data:', visitData);
+    console.log('[SyncContext] Visit fields:', {
+      restaurant: visitData.restaurant,
+      user: visitData.user,
+      visitDate: visitData.visitDate,
+      visibility: visitData.visibility,
+      notes: visitData.notes,
+    });
+
     // 1. Create visit
     const visit = await pb.collection('visits').create(visitData);
     console.log('Created visit:', visit.id);
