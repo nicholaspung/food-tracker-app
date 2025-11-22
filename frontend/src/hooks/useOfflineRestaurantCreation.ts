@@ -33,101 +33,108 @@ export function useOfflineRestaurantCreation() {
 
   return useMutation<RestaurantCreationResult, Error, RestaurantCreationData>({
     mutationFn: async (data) => {
-      console.log('[useOfflineRestaurantCreation] mutationFn called with data:', data);
-      const user = pb.authStore.record;
-      console.log('[useOfflineRestaurantCreation] User:', user?.id);
+      try {
+        console.log('[useOfflineRestaurantCreation] mutationFn called with data:', data);
+        const user = pb.authStore.record;
+        console.log('[useOfflineRestaurantCreation] User:', user?.id);
 
-      if (!user) {
-        console.error('[useOfflineRestaurantCreation] No user authenticated');
-        throw new Error('User not authenticated');
-      }
-
-      console.log('[useOfflineRestaurantCreation] isOnline:', isOnline);
-
-      if (isOnline) {
-        // Online: Execute immediately
-        console.log('[useOfflineRestaurantCreation] Going online path');
-        return await executeRestaurantCreation(data, user.id);
-      } else {
-        // Offline: Queue the complex operation
-        console.log('[useOfflineRestaurantCreation] Going offline path');
-        logger.log('[OfflineRestaurant] Queueing restaurant creation for offline sync:', data.name);
-
-        const tempRestaurantId = `temp_restaurant_${Date.now()}`;
-        console.log('[useOfflineRestaurantCreation] Generated temp ID:', tempRestaurantId);
-
-        try {
-          console.log('[useOfflineRestaurantCreation] About to enqueue operation');
-          await syncQueue.enqueue({
-            type: 'create',
-            collection: 'restaurants_with_menu_items',
-            data: {
-              restaurant: {
-                name: data.name,
-                location: data.address, // PocketBase uses 'location' field
-                cuisineType: data.cuisineType,
-                googlePlacesId: data.googlePlacesId,
-                latitude: data.latitude,
-                longitude: data.longitude,
-                user: user.id,
-                visibility: data.visibility,
-              },
-              menuItems: (data.menuItems || []).map(itemName => ({
-                name: itemName,
-                createdBy: user.id,
-                visibility: data.visibility, // Match restaurant visibility
-              })),
-            },
-            localId: tempRestaurantId,
-          });
-
-          console.log('[useOfflineRestaurantCreation] Successfully enqueued');
-          logger.log('[OfflineRestaurant] Successfully queued restaurant creation');
-        } catch (error) {
-          console.error('[useOfflineRestaurantCreation] Error enqueueing:', error);
-          logger.error('[OfflineRestaurant] Failed to queue operation:', error);
-          throw error;
+        if (!user) {
+          console.error('[useOfflineRestaurantCreation] No user authenticated');
+          throw new Error('User not authenticated');
         }
 
-        // Return optimistic data
-        console.log('[useOfflineRestaurantCreation] Creating optimistic data');
-        const optimisticRestaurant = {
-          id: tempRestaurantId,
-          name: data.name,
-          address: data.address,
-          cuisineType: data.cuisineType,
-          location: data.address, // For compatibility with Restaurant type
-          googlePlacesId: data.googlePlacesId,
-          latitude: data.latitude,
-          longitude: data.longitude,
-          user: user.id,
-          visibility: data.visibility,
-          created: new Date().toISOString(),
-          updated: new Date().toISOString(),
-          isPending: true, // Flag to indicate this is pending sync
-        };
+        console.log('[useOfflineRestaurantCreation] isOnline:', isOnline);
 
-        const optimisticMenuItems = (data.menuItems || []).map((itemName, index) => ({
-          id: `temp_menu_item_${Date.now()}_${index}`,
-          name: itemName,
-          restaurant: tempRestaurantId,
-          user: user.id,
-          created: new Date().toISOString(),
-          updated: new Date().toISOString(),
-          isPending: true,
-        }));
+        if (isOnline) {
+          // Online: Execute immediately
+          console.log('[useOfflineRestaurantCreation] Going online path');
+          const result = await executeRestaurantCreation(data, user.id);
+          console.log('[useOfflineRestaurantCreation] Online creation complete:', result);
+          return result;
+        } else {
+          // Offline: Queue the complex operation
+          console.log('[useOfflineRestaurantCreation] Going offline path');
+          logger.log('[OfflineRestaurant] Queueing restaurant creation for offline sync:', data.name);
 
-        console.log('[useOfflineRestaurantCreation] Optimistic restaurant:', optimisticRestaurant);
-        logger.log('[OfflineRestaurant] Created optimistic restaurant:', optimisticRestaurant);
+          const tempRestaurantId = `temp_restaurant_${Date.now()}`;
+          console.log('[useOfflineRestaurantCreation] Generated temp ID:', tempRestaurantId);
 
-        const result = {
-          restaurant: optimisticRestaurant,
-          menuItems: optimisticMenuItems,
-          isQueued: true,
-        };
+          try {
+            console.log('[useOfflineRestaurantCreation] About to enqueue operation');
+            const queueId = await syncQueue.enqueue({
+              type: 'create',
+              collection: 'restaurants_with_menu_items',
+              data: {
+                restaurant: {
+                  name: data.name,
+                  location: data.address, // PocketBase uses 'location' field
+                  cuisineType: data.cuisineType,
+                  googlePlacesId: data.googlePlacesId,
+                  latitude: data.latitude,
+                  longitude: data.longitude,
+                  user: user.id,
+                  visibility: data.visibility,
+                },
+                menuItems: (data.menuItems || []).map(itemName => ({
+                  name: itemName,
+                  createdBy: user.id,
+                  visibility: data.visibility, // Match restaurant visibility
+                })),
+              },
+              localId: tempRestaurantId,
+            });
 
-        console.log('[useOfflineRestaurantCreation] Returning result:', result);
-        return result;
+            console.log('[useOfflineRestaurantCreation] Successfully enqueued with ID:', queueId);
+            logger.log('[OfflineRestaurant] Successfully queued restaurant creation');
+          } catch (error) {
+            console.error('[useOfflineRestaurantCreation] Error enqueueing:', error);
+            logger.error('[OfflineRestaurant] Failed to queue operation:', error);
+            throw error;
+          }
+
+          // Return optimistic data
+          console.log('[useOfflineRestaurantCreation] Creating optimistic data');
+          const optimisticRestaurant = {
+            id: tempRestaurantId,
+            name: data.name,
+            address: data.address,
+            cuisineType: data.cuisineType,
+            location: data.address, // For compatibility with Restaurant type
+            googlePlacesId: data.googlePlacesId,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            user: user.id,
+            visibility: data.visibility,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            isPending: true, // Flag to indicate this is pending sync
+          };
+
+          const optimisticMenuItems = (data.menuItems || []).map((itemName, index) => ({
+            id: `temp_menu_item_${Date.now()}_${index}`,
+            name: itemName,
+            restaurant: tempRestaurantId,
+            user: user.id,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            isPending: true,
+          }));
+
+          console.log('[useOfflineRestaurantCreation] Optimistic restaurant:', optimisticRestaurant);
+          logger.log('[OfflineRestaurant] Created optimistic restaurant:', optimisticRestaurant);
+
+          const result = {
+            restaurant: optimisticRestaurant,
+            menuItems: optimisticMenuItems,
+            isQueued: true,
+          };
+
+          console.log('[useOfflineRestaurantCreation] Returning result:', result);
+          return result;
+        }
+      } catch (error) {
+        console.error('[useOfflineRestaurantCreation] MUTATION ERROR:', error);
+        throw error;
       }
     },
     onSuccess: (result) => {

@@ -94,9 +94,12 @@ export default function CreateRestaurantPage({
         latitude: position?.latitude,
         longitude: position?.longitude,
         menuItems: menuItems.length > 0 ? menuItems : undefined,
+      }).catch((mutationError) => {
+        console.error('[CreateRestaurant] Mutation error from mutateAsync:', mutationError);
+        throw mutationError;
       });
 
-      console.log('[CreateRestaurant] Mutation completed, result:', result);
+      console.log('[CreateRestaurant] Mutation completed successfully, result:', result);
 
       // Save to draft service
       visitDraftService.saveRestaurant(result.restaurant);
