@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe, ChevronDown, ChevronUp, AlertCircle, WifiOff } from "lucide-react";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -68,6 +69,20 @@ export default function AddItemsToVisit({
   // Online/offline status
   const { isOnline } = useSync();
 
+  // Fetch menu items using TanStack Query (supports offline cached items)
+  const { data: cachedMenuItems } = useQuery({
+    queryKey: ['menu_items', restaurantId],
+    queryFn: async () => {
+      if (!isOnline) return [];
+      return await pb.collection("menu_items").getFullList<MenuItem>({
+        filter: `restaurant = "${restaurantId}"`,
+        sort: "-created",
+      });
+    },
+    staleTime: 0, // Always refetch when online
+    enabled: parsedItems.length === 0, // Only fetch if no parsed items provided
+  });
+
   // Refs for auto-scrolling inputs into view on mobile
   const manualItemInputRef = useScrollIntoView<HTMLInputElement>();
   const descriptionInputRef = useScrollIntoView<HTMLInputElement>();
@@ -78,12 +93,12 @@ export default function AddItemsToVisit({
       setSearchResults(parsedItems);
       // Mark parsed items as new
       setNewlyParsedItems(new Set(parsedItems.map((item) => item.id)));
-    } else {
-      // Load all menu items if no parsed items
-      loadAllMenuItems();
+    } else if (cachedMenuItems) {
+      // Use cached menu items from TanStack Query (includes offline optimistic items)
+      setSearchResults(cachedMenuItems);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
+  }, [cachedMenuItems]); // Run when cached items load
 
   // Restore previously selected items from localStorage OR initialize with pre-selected items
   useEffect(() => {
