@@ -37,6 +37,7 @@ export interface VisitCreationResult {
   visit: any;
   foodItems: any[];
   photoResults?: any[];
+  isQueued?: boolean; // Flag to indicate if offline and queued for sync
 }
 
 /**
@@ -79,22 +80,51 @@ export function useOfflineVisitCreation() {
             visitDate: data.visitDate,
             visibility: data.visibility,
             notes: data.notes,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            isPending: true, // Flag to indicate this is pending sync
           },
           foodItems: data.foodItems.map((item, index) => ({
             id: `temp_food_${Date.now()}_${index}`,
             ...item,
             user: user.id,
+            visit: `temp_visit_${Date.now()}`,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            isPending: true,
           })),
+          isQueued: true,
         };
       }
     },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['visits'] }),
-        queryClient.invalidateQueries({ queryKey: ['userVisits'] }),
-        queryClient.invalidateQueries({ queryKey: ['allVisits'] }),
-        queryClient.invalidateQueries({ queryKey: ['allFoodItems'] }),
-      ]);
+    onSuccess: async (result) => {
+      if (result.isQueued) {
+        // Offline: Add optimistic data to cache
+        queryClient.setQueryData(['visits'], (old: any[] = []) => {
+          return [result.visit, ...old];
+        });
+        queryClient.setQueryData(['userVisits'], (old: any[] = []) => {
+          return [result.visit, ...old];
+        });
+        queryClient.setQueryData(['allVisits'], (old: any[] = []) => {
+          return [result.visit, ...old];
+        });
+
+        // Also cache the food items
+        if (result.foodItems && result.foodItems.length > 0) {
+          queryClient.setQueryData(['allFoodItems'], (old: any[] = []) => {
+            return [...result.foodItems, ...old];
+          });
+        }
+      } else {
+        // Online: Invalidate to refetch fresh data
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['visits'] }),
+          queryClient.invalidateQueries({ queryKey: ['userVisits'] }),
+          queryClient.invalidateQueries({ queryKey: ['allVisits'] }),
+          queryClient.invalidateQueries({ queryKey: ['allFoodItems'] }),
+        ]);
+      }
     },
   });
 }

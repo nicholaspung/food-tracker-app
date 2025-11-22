@@ -426,20 +426,20 @@ export default function CreateRestaurantPage({
               <DialogTitle className="text-xl">Restaurant Created Offline!</DialogTitle>
             </div>
             <DialogDescription className="space-y-3 text-base">
-              <p>
+              <div>
                 <strong>"{restaurantName}"</strong> has been created locally and will sync automatically when you're back online.
-              </p>
+              </div>
               {offlineMenuItemCount > 0 && (
-                <p className="flex items-center gap-2 text-amber-700 bg-amber-50 p-3 rounded-lg">
+                <div className="flex items-center gap-2 text-amber-700 bg-amber-50 p-3 rounded-lg">
                   <WifiOff className="w-4 h-4 flex-shrink-0" />
                   <span>
                     {offlineMenuItemCount} menu item{offlineMenuItemCount !== 1 ? 's' : ''} will be added when you reconnect.
                   </span>
-                </p>
+                </div>
               )}
-              <p className="text-sm text-gray-600">
+              <div className="text-sm text-gray-600">
                 You can continue adding your visit details. Everything will sync in the background once you're online.
-              </p>
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
