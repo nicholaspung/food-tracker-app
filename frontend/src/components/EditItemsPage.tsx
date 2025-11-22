@@ -83,8 +83,11 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
             // Try to find matching menu item by name
             const matchingMenuItem = menuItemsMap.get(item.name.toLowerCase());
             if (matchingMenuItem) {
-              // Use the real menu item
-              return matchingMenuItem;
+              // Use the real menu item but preserve user's custom description from draft
+              return {
+                ...matchingMenuItem,
+                description: item.description || matchingMenuItem.description || '',
+              };
             } else {
               // Create temporary menu item for items that don't exist in menu_items table
               return {
