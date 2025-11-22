@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/router';
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import CreateRestaurantPage from '@/components/CreateRestaurantPage';
 
