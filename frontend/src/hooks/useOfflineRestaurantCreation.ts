@@ -33,19 +33,31 @@ export function useOfflineRestaurantCreation() {
 
   return useMutation<RestaurantCreationResult, Error, RestaurantCreationData>({
     mutationFn: async (data) => {
+      console.log('[useOfflineRestaurantCreation] mutationFn called with data:', data);
       const user = pb.authStore.record;
-      if (!user) throw new Error('User not authenticated');
+      console.log('[useOfflineRestaurantCreation] User:', user?.id);
+
+      if (!user) {
+        console.error('[useOfflineRestaurantCreation] No user authenticated');
+        throw new Error('User not authenticated');
+      }
+
+      console.log('[useOfflineRestaurantCreation] isOnline:', isOnline);
 
       if (isOnline) {
         // Online: Execute immediately
+        console.log('[useOfflineRestaurantCreation] Going online path');
         return await executeRestaurantCreation(data, user.id);
       } else {
         // Offline: Queue the complex operation
+        console.log('[useOfflineRestaurantCreation] Going offline path');
         logger.log('[OfflineRestaurant] Queueing restaurant creation for offline sync:', data.name);
 
         const tempRestaurantId = `temp_restaurant_${Date.now()}`;
+        console.log('[useOfflineRestaurantCreation] Generated temp ID:', tempRestaurantId);
 
         try {
+          console.log('[useOfflineRestaurantCreation] About to enqueue operation');
           await syncQueue.enqueue({
             type: 'create',
             collection: 'restaurants_with_menu_items',
@@ -68,13 +80,16 @@ export function useOfflineRestaurantCreation() {
             localId: tempRestaurantId,
           });
 
+          console.log('[useOfflineRestaurantCreation] Successfully enqueued');
           logger.log('[OfflineRestaurant] Successfully queued restaurant creation');
         } catch (error) {
+          console.error('[useOfflineRestaurantCreation] Error enqueueing:', error);
           logger.error('[OfflineRestaurant] Failed to queue operation:', error);
           throw error;
         }
 
         // Return optimistic data
+        console.log('[useOfflineRestaurantCreation] Creating optimistic data');
         const optimisticRestaurant = {
           id: tempRestaurantId,
           name: data.name,
@@ -101,13 +116,17 @@ export function useOfflineRestaurantCreation() {
           isPending: true,
         }));
 
+        console.log('[useOfflineRestaurantCreation] Optimistic restaurant:', optimisticRestaurant);
         logger.log('[OfflineRestaurant] Created optimistic restaurant:', optimisticRestaurant);
 
-        return {
+        const result = {
           restaurant: optimisticRestaurant,
           menuItems: optimisticMenuItems,
           isQueued: true,
         };
+
+        console.log('[useOfflineRestaurantCreation] Returning result:', result);
+        return result;
       }
     },
     onSuccess: (result) => {
