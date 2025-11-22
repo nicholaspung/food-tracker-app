@@ -8,7 +8,7 @@
  * - Manual sync trigger
  */
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { syncQueue, type QueuedOperation, type SyncQueueStats } from '@/lib/syncQueue';
 import { pb } from '@/lib/pocketbase';
@@ -365,7 +365,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     return () => clearInterval(interval);
   }, [updateStats]);
 
-  const value: SyncContextValue = {
+  const value: SyncContextValue = useMemo(() => ({
     isOnline,
     isSyncing,
     queueStats,
@@ -374,7 +374,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     triggerSync: syncOperations,
     clearQueue,
     retryFailedOperations,
-  };
+  }), [isOnline, isSyncing, queueStats, lastSyncTime, syncError, syncOperations, clearQueue, retryFailedOperations]);
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;
 }
