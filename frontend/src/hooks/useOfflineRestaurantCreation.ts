@@ -74,7 +74,8 @@ export function useOfflineRestaurantCreation() {
               },
               menuItems: (data.menuItems || []).map(itemName => ({
                 name: itemName,
-                user: user.id,
+                createdBy: user.id,
+                visibility: data.visibility, // Match restaurant visibility
               })),
             },
             localId: tempRestaurantId,
@@ -179,7 +180,8 @@ async function executeRestaurantCreation(
         const menuItem = await pb.collection('menu_items').create({
           name: itemName,
           restaurant: restaurant.id,
-          user: userId,
+          createdBy: userId,
+          visibility: data.visibility, // Match restaurant visibility
         });
         createdMenuItems.push(menuItem);
         logger.log('[OfflineRestaurant] Menu item created:', menuItem.id, itemName);
