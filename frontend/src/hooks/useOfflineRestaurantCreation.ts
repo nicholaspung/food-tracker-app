@@ -158,10 +158,17 @@ export function useOfflineRestaurantCreation() {
         queryClient.setQueryData(['restaurants'], (old: any[] = []) => {
           return [result.restaurant, ...old];
         });
+
+        // IMPORTANT: Also cache the menu items so they appear in AddItemsToVisit
+        if (result.menuItems && result.menuItems.length > 0) {
+          queryClient.setQueryData(['menu_items', result.restaurant.id], result.menuItems);
+        }
+
         logger.log('[OfflineRestaurant] Restaurant queued successfully, added to cache');
       } else {
         // Invalidate queries for online creation
         queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+        queryClient.invalidateQueries({ queryKey: ['menu_items', result.restaurant.id] });
         logger.log('[OfflineRestaurant] Restaurant created successfully:', result.restaurant.id);
       }
     },
