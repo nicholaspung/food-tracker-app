@@ -32,11 +32,19 @@ export function useOfflineRestaurantCreation() {
   const { isOnline } = useSync();
 
   return useMutation<RestaurantCreationResult, Error, RestaurantCreationData>({
-    onMutate: (variables) => {
-      console.log('[useOfflineRestaurantCreation] onMutate called with:', variables);
+    onMutate: async (variables) => {
+      try {
+        console.log('[useOfflineRestaurantCreation] onMutate called with:', variables);
+        console.log('[useOfflineRestaurantCreation] onMutate completing...');
+        return undefined;
+      } catch (error) {
+        console.error('[useOfflineRestaurantCreation] ERROR IN onMutate:', error);
+        throw error;
+      }
     },
     mutationFn: async (data) => {
       try {
+        console.log('[useOfflineRestaurantCreation] ========== mutationFn STARTED ==========');
         console.log('[useOfflineRestaurantCreation] mutationFn called with data:', data);
         const user = pb.authStore.record;
         console.log('[useOfflineRestaurantCreation] User:', user?.id);
