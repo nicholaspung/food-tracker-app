@@ -123,6 +123,7 @@ export function useOfflineVisitCreation() {
           queryClient.invalidateQueries({ queryKey: ['userVisits'] }),
           queryClient.invalidateQueries({ queryKey: ['allVisits'] }),
           queryClient.invalidateQueries({ queryKey: ['allFoodItems'] }),
+          queryClient.invalidateQueries({ queryKey: ['allVisitPhotos'] }),
         ]);
       }
     },
