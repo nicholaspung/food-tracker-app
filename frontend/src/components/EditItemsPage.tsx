@@ -108,8 +108,13 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
         const matchedMenuItems: DBMenuItem[] = existingFoodItems.map(foodItem => {
           const matchingMenuItem = menuItemsMap.get(foodItem.name.toLowerCase());
           if (matchingMenuItem) {
-            // Use the real menu item
-            return matchingMenuItem;
+            // Use the real menu item but preserve user's custom description
+            return {
+              ...matchingMenuItem,
+              // Preserve the user's custom description from the food item
+              // Use a custom field so AddItemsToVisit can access it
+              description: foodItem.description || matchingMenuItem.description || '',
+            } as DBMenuItem & { userDescription?: string };
           } else {
             // Create temporary menu item for items that don't exist in menu_items table
             return {
