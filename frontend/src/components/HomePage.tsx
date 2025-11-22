@@ -820,13 +820,17 @@ export default function HomePage({
                                       const photo = visitPhotos.find(
                                         (p: any) => p.food_item === item.id
                                       );
+                                      // For offline photos (isPending), use the blob URL directly
+                                      // For online photos, use PocketBase file URL
                                       const photoUrl = photo
-                                        ? pb.files.getURL(photo, photo.photo, {
-                                            thumb: "100x100",
-                                          })
+                                        ? (photo.isPending
+                                            ? photo.photo // Blob URL for offline photos
+                                            : pb.files.getURL(photo, photo.photo, { thumb: "100x100" }))
                                         : null;
                                       const fullPhotoUrl = photo
-                                        ? pb.files.getURL(photo, photo.photo)
+                                        ? (photo.isPending
+                                            ? photo.photo // Blob URL for offline photos
+                                            : pb.files.getURL(photo, photo.photo))
                                         : null;
 
                                       return (

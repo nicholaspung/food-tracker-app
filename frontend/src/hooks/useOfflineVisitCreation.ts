@@ -71,6 +71,13 @@ export function useOfflineVisitCreation() {
         // OFFLINE: Queue the operation
         await queueVisitCreation(data, user.id);
 
+        // Create preview URLs for photos (for offline display)
+        const photoPreviewUrls = new Map<number, string>();
+        for (const [index, file] of data.itemPhotos.entries()) {
+          const previewUrl = URL.createObjectURL(file);
+          photoPreviewUrls.set(index, previewUrl);
+        }
+
         // Return optimistic data
         return {
           visit: {
@@ -92,6 +99,8 @@ export function useOfflineVisitCreation() {
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
             isPending: true,
+            // Add preview URL if this item has a photo
+            photoPreviewUrl: photoPreviewUrls.get(index),
           })),
           isQueued: true,
         };
@@ -115,6 +124,26 @@ export function useOfflineVisitCreation() {
           queryClient.setQueryData(['allFoodItems'], (old: any[] = []) => {
             return [...result.foodItems, ...old];
           });
+
+          // Create optimistic visit_photos for items with photoPreviewUrl
+          const optimisticPhotos = result.foodItems
+            .filter(item => item.photoPreviewUrl)
+            .map(item => ({
+              id: `temp_photo_${item.id}`,
+              visit: result.visit.id,
+              food_item: item.id,
+              user: item.user,
+              photo: item.photoPreviewUrl, // Use preview URL as photo
+              created: new Date().toISOString(),
+              updated: new Date().toISOString(),
+              isPending: true,
+            }));
+
+          if (optimisticPhotos.length > 0) {
+            queryClient.setQueryData(['allVisitPhotos'], (old: any[] = []) => {
+              return [...optimisticPhotos, ...old];
+            });
+          }
         }
       } else {
         // Online: Invalidate to refetch fresh data
