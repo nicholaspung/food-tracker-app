@@ -47,14 +47,15 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
     },
   });
 
-  // Redirect if no draft
+  // Only check for draft on initial mount
   useEffect(() => {
     if (!draft || !draft.restaurant || draft.menuItems.filter(i => !i._deleted).length === 0) {
       onBack();
     } else {
       setIsInitialized(true);
     }
-  }, [draft, onBack]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount to avoid redirect during save
 
   // Save draft whenever ratings change
   useEffect(() => {
@@ -215,11 +216,15 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
       queryClient.invalidateQueries({ queryKey: ['allFoodItems'] });
       queryClient.invalidateQueries({ queryKey: ['visitPhotos', visitId] });
       queryClient.invalidateQueries({ queryKey: ['allVisitPhotos'] });
-      // Clear draft after successful save
-      editVisitDraftService.clearDraft();
       // Reset upload state
       resetUploadState();
+      // Navigate first, then clear draft
+      // The layout will also clear the draft when detecting navigation away
       onComplete();
+      // Clear draft after a small delay to avoid race condition with redirect logic
+      setTimeout(() => {
+        editVisitDraftService.clearDraft();
+      }, 100);
     },
     onError: (err: any) => {
       setError(err.message || 'Failed to update visit');
