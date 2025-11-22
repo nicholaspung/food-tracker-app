@@ -110,7 +110,8 @@ export default function AddItemsToVisit({
         initialMap.set(item.id, {
           menuItem: item,
           description: item.description || '',
-          showDescriptionInput: false,
+          // Show description input if item already has a description
+          showDescriptionInput: !!item.description,
         });
       });
       setSelectedItems(initialMap);
@@ -129,7 +130,8 @@ export default function AddItemsToVisit({
             restoredMap.set(draftItem.menuItem.id, {
               menuItem: draftItem.menuItem,
               description: draftItem.description,
-              showDescriptionInput: false,
+              // Show description input if item already has a description
+              showDescriptionInput: !!draftItem.description,
             });
           });
           setSelectedItems(restoredMap);
