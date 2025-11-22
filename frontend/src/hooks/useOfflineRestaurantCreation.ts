@@ -86,7 +86,7 @@ export function useOfflineRestaurantCreation() {
                   googlePlacesId: data.googlePlacesId,
                   latitude: data.latitude,
                   longitude: data.longitude,
-                  user: user.id,
+                  createdBy: user.id,
                   visibility: data.visibility,
                 },
                 menuItems: (data.menuItems || []).map(itemName => ({
@@ -117,7 +117,7 @@ export function useOfflineRestaurantCreation() {
             googlePlacesId: data.googlePlacesId,
             latitude: data.latitude,
             longitude: data.longitude,
-            user: user.id,
+            createdBy: user.id,
             visibility: data.visibility,
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
@@ -199,7 +199,7 @@ async function executeRestaurantCreation(
     googlePlacesId: data.googlePlacesId,
     latitude: data.latitude,
     longitude: data.longitude,
-    user: userId,
+    createdBy: userId,
     visibility: data.visibility,
   });
 
