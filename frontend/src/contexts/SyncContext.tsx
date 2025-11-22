@@ -68,7 +68,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       }
       // Handle complex restaurant creation
       else if (collection === 'restaurants_with_menu_items' && type === 'create') {
-        await executeComplexRestaurantCreation(data);
+        await executeComplexRestaurantCreation(data, operation);
       } else {
         // Standard operations
         switch (type) {
@@ -188,14 +188,20 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Execute complex restaurant creation (restaurant + menu items)
    */
-  const executeComplexRestaurantCreation = async (data: any): Promise<void> => {
+  const executeComplexRestaurantCreation = async (data: any, operation: QueuedOperation): Promise<void> => {
     const { restaurant: restaurantData, menuItems } = data;
 
     // 1. Create restaurant
     const restaurant = await pb.collection('restaurants').create(restaurantData);
     console.log('Created restaurant:', restaurant.id);
 
-    // 2. Create menu items sequentially
+    // 2. Update any queued operations that reference the temp restaurant ID
+    if (operation.localId) {
+      console.log(`Updating queued operations: replacing temp ID ${operation.localId} with real ID ${restaurant.id}`);
+      await syncQueue.replaceRestaurantId(operation.localId, restaurant.id);
+    }
+
+    // 3. Create menu items sequentially
     if (menuItems && menuItems.length > 0) {
       for (const item of menuItems) {
         try {

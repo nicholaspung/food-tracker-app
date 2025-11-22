@@ -214,6 +214,40 @@ class SyncQueueManager {
   }
 
   /**
+   * Replace temp restaurant ID with real ID in all queued operations
+   * This is called after a restaurant is successfully synced
+   */
+  async replaceRestaurantId(tempId: string, realId: string): Promise<void> {
+    const operations = await this.getAll();
+
+    for (const op of operations) {
+      let updated = false;
+
+      // Check if this operation references the temp restaurant ID
+      if (op.data && typeof op.data === 'object') {
+        // For complex visit operations
+        if (op.collection === 'visits_with_items' && op.data.visit) {
+          if (op.data.visit.restaurant === tempId) {
+            op.data.visit.restaurant = realId;
+            updated = true;
+          }
+        }
+
+        // For simple restaurant references
+        if (op.data.restaurant === tempId) {
+          op.data.restaurant = realId;
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        console.log(`Updated operation ${op.id}: replaced restaurant ${tempId} -> ${realId}`);
+        await this.update(op);
+      }
+    }
+  }
+
+  /**
    * Close the database connection
    */
   close(): void {
