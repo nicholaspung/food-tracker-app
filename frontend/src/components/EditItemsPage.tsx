@@ -167,6 +167,12 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
   const handleComplete = (selectedItems: DBMenuItem[]) => {
     if (!selectedRestaurant || !visit) return;
 
+    // Get existing draft (if any) to preserve rating/notes changes
+    const existingDraft = editVisitDraftService.getDraft(visitId);
+    const existingDraftItemsMap = existingDraft
+      ? new Map(existingDraft.menuItems.filter(i => !i._deleted).map(item => [item.name, item]))
+      : new Map();
+
     // Get existing food items map for matching IDs
     const existingItemsMap = new Map(existingFoodItems.map(item => [item.name, item]));
 
@@ -179,15 +185,17 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
       notes: string;
       _deleted?: boolean;
     }> = selectedItems.map(item => {
+      const draftItem = existingDraftItemsMap.get(item.name);
       const existingItem = existingItemsMap.get(item.name);
       // Check for userDescription (custom description from AddItemsToVisit) first
       const itemWithUserDesc = item as DBMenuItem & { userDescription?: string };
       return {
-        id: existingItem?.id, // Use existing ID if found
+        id: draftItem?.id || existingItem?.id, // Preserve ID from draft or existing item
         name: item.name,
         description: itemWithUserDesc.userDescription || item.description || '',
-        rating: existingItem?.rating || 3,
-        notes: existingItem?.notes || '',
+        // Priority: draft rating/notes > existing item > defaults
+        rating: draftItem?.rating ?? existingItem?.rating ?? 3,
+        notes: draftItem?.notes ?? existingItem?.notes ?? '',
       };
     });
 
