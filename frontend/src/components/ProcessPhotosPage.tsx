@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X } from "lucide-react";
+import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X, Image } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
@@ -259,7 +259,7 @@ function RestaurantSelector({
             onClick={onUsePreviousRestaurant}
           >
             <Copy className="h-4 w-4 mr-2" />
-            Same as above ({previousRestaurant.name})
+            Same as previous ({previousRestaurant.name})
           </Button>
         )}
 
@@ -337,17 +337,42 @@ function RestaurantSelector({
       <TabsContent value="camera" className="mt-3 space-y-2">
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">
-            Take a photo of the restaurant sign or menu to automatically detect the name
+            Take or upload a photo of the restaurant sign or menu to automatically detect the name
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={onOpenCamera}
-          >
-            <Camera className="h-4 w-4 mr-2" />
-            Open Camera
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={onOpenCamera}
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              Camera
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                // Create hidden file input to trigger photo selection
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (file && onOpenCamera) {
+                    // For now, we'll need to pass the file through camera mode
+                    // This will require updating RestaurantNameFinder to accept file
+                    onOpenCamera();
+                  }
+                };
+                input.click();
+              }}
+            >
+              <Image className="h-4 w-4 mr-2" />
+              Upload
+            </Button>
+          </div>
         </div>
       </TabsContent>
 
@@ -697,9 +722,7 @@ export default function ProcessPhotosPage() {
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <h1 className="text-xl font-semibold">
-              Photo {currentAssigningPhotoIndex + 1} of {photos.length}
-            </h1>
+            <h1 className="text-xl font-semibold">Process Saved Photos</h1>
             <div className="w-9" />
           </div>
 
@@ -717,7 +740,7 @@ export default function ProcessPhotosPage() {
           {/* Info */}
           <div className="p-4 pb-2">
             <p className="text-sm text-muted-foreground">
-              Assign a restaurant to this photo. This will speed up rating later.
+              Step 1 of 2: Assign restaurants ({currentAssigningPhotoIndex + 1} of {photos.length} photos)
             </p>
           </div>
 
@@ -748,10 +771,6 @@ export default function ProcessPhotosPage() {
               onUsePreviousRestaurant={() => handleSameAsAbove(currentAssigningPhotoIndex)}
               showSameAsAbove={currentAssigningPhotoIndex > 0 && !assignedRestaurant}
             />
-
-            <p className="text-xs text-center text-muted-foreground">
-              {photoRestaurants.size} of {photos.length} restaurants assigned
-            </p>
           </div>
         </div>
 
@@ -826,9 +845,7 @@ export default function ProcessPhotosPage() {
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <h1 className="text-xl font-semibold">
-            Photo {currentPhotoIndex + 1} of {photos.length}
-          </h1>
+          <h1 className="text-xl font-semibold">Process Saved Photos</h1>
           <div className="w-9" />
         </div>
 
@@ -838,6 +855,13 @@ export default function ProcessPhotosPage() {
             className="h-full bg-primary transition-all duration-300"
             style={{ width: `${((currentPhotoIndex + 1) / photos.length) * 100}%` }}
           />
+        </div>
+
+        {/* Progress description */}
+        <div className="px-4 py-2 bg-muted/30">
+          <p className="text-sm text-muted-foreground text-center">
+            Step 2 of 2: Rate items ({currentPhotoIndex + 1} of {photos.length} photos)
+          </p>
         </div>
       </div>
 
