@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { pb } from "@/lib/pocketbase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +15,8 @@ import {
 import { ChevronDown, ChevronUp, ArrowLeft, Loader2 } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
-import { usePhotoUpload, type PhotoUploadItem } from "@/hooks/usePhotoUpload";
+import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
+import { useSync } from "@/contexts/SyncContext";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 
 // Category options for Quick Track
@@ -32,7 +31,6 @@ export const ITEM_CATEGORIES = [
 
 export default function QuickTrackPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   // Form state
   const [itemName, setItemName] = useState("");
@@ -51,83 +49,9 @@ export default function QuickTrackPage() {
   // Refs for auto-scrolling
   const notesInputRef = useScrollIntoView<HTMLTextAreaElement>();
 
-  // Photo upload hook
-  const { state: uploadState, uploadPhotos, reset: resetUploadState } = usePhotoUpload();
-
-  // Save mutation
-  const saveItemMutation = useMutation({
-    mutationFn: async () => {
-      const user = pb.authStore.record;
-      if (!user || !rating) throw new Error("Missing required data");
-
-      // Get GPS coordinates if available
-      let latitude: number | undefined;
-      let longitude: number | undefined;
-
-      if (navigator.geolocation && showLocationField) {
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 5000,
-              maximumAge: 300000, // 5 minutes
-            });
-          });
-          latitude = position.coords.latitude;
-          longitude = position.coords.longitude;
-        } catch (error) {
-          console.log("Could not get GPS location:", error);
-          // Continue without GPS coordinates
-        }
-      }
-
-      // Create food item without visit (Quick Track mode)
-      const foodItem = await pb.collection("food_items").create({
-        name: itemName,
-        rating: rating,
-        notes: notes || undefined,
-        itemCategory: category || undefined,
-        location_text: locationText || undefined,
-        latitude: latitude,
-        longitude: longitude,
-        user: user.id,
-        // visit field is intentionally omitted (optional for Quick Track)
-      });
-
-      // Upload photo if provided
-      if (photo) {
-        const photoUpload: PhotoUploadItem = {
-          photo,
-          foodItemId: foodItem.id,
-          userId: user.id,
-          // visitId is intentionally omitted (optional for Quick Track)
-        };
-
-        await uploadPhotos([photoUpload]);
-      }
-
-      return foodItem;
-    },
-    onSuccess: async () => {
-      // Invalidate queries to refetch data
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["allFoodItems"] }),
-        queryClient.invalidateQueries({ queryKey: ["quickTrackItems"] }),
-      ]);
-
-      // Mark that user has rated before
-      localStorage.setItem("hasRatedBefore", "true");
-
-      // Reset upload state
-      resetUploadState();
-
-      // Navigate to home
-      navigate({ to: "/home" });
-    },
-    onError: () => {
-      // Reset upload state on error so user can retry
-      resetUploadState();
-    },
-  });
+  // Offline-aware Quick Track
+  const { isOnline } = useSync();
+  const saveItemMutation = useOfflineQuickTrack();
 
   const handlePhotoCapture = (file: File) => {
     setPhoto(file);
@@ -148,25 +72,65 @@ export default function QuickTrackPage() {
     setPhotoPreviewUrl("");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemName.trim() || rating === null) {
       return;
     }
-    saveItemMutation.mutate();
+
+    // Get GPS coordinates if available
+    let latitude: number | undefined;
+    let longitude: number | undefined;
+
+    if (navigator.geolocation && showLocationField) {
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 5000,
+            maximumAge: 300000, // 5 minutes
+          });
+        });
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+      } catch (error) {
+        console.log("Could not get GPS location:", error);
+        // Continue without GPS coordinates
+      }
+    }
+
+    try {
+      await saveItemMutation.mutateAsync({
+        name: itemName,
+        rating: rating,
+        notes: notes || undefined,
+        itemCategory: category || undefined,
+        location_text: locationText || undefined,
+        latitude,
+        longitude,
+        photo: photo || undefined,
+      });
+
+      // Success
+      localStorage.setItem("hasRatedBefore", "true");
+      navigate({ to: "/home" });
+    } catch (error: any) {
+      console.error("Failed to save quick track item:", error);
+
+      // Show helpful message if offline
+      if (!isOnline && error.message?.includes('queued')) {
+        alert("You're offline. Your item has been saved and will sync when you're back online.");
+        localStorage.setItem("hasRatedBefore", "true");
+        navigate({ to: "/home" });
+      }
+    }
   };
 
   const isSubmitDisabled =
     !itemName.trim() ||
     rating === null ||
-    saveItemMutation.isPending ||
-    uploadState.status === "compressing" ||
-    uploadState.status === "uploading";
+    saveItemMutation.isPending;
 
-  const isLoading =
-    saveItemMutation.isPending ||
-    uploadState.status === "compressing" ||
-    uploadState.status === "uploading";
+  const isLoading = saveItemMutation.isPending;
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -336,37 +300,12 @@ export default function QuickTrackPage() {
         </div>
 
         {/* Error Display */}
-        {(saveItemMutation.isError || uploadState.error) && (
+        {saveItemMutation.isError && !saveItemMutation.error?.message?.includes('queued') && (
           <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg">
             <p className="font-semibold">Error saving item</p>
             <p className="text-sm">
-              {uploadState.error || "Please try again. Check browser console for details."}
+              Please try again. Check browser console for details.
             </p>
-          </div>
-        )}
-
-        {/* Upload Progress */}
-        {uploadState.status === "compressing" && (
-          <div className="bg-muted px-4 py-3 rounded-lg">
-            <p className="text-sm font-medium">Compressing photo...</p>
-            <div className="mt-2 h-2 bg-background rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-300"
-                style={{ width: `${uploadState.progress / 2}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {uploadState.status === "uploading" && (
-          <div className="bg-muted px-4 py-3 rounded-lg">
-            <p className="text-sm font-medium">Uploading photo...</p>
-            <div className="mt-2 h-2 bg-background rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-300"
-                style={{ width: `${50 + uploadState.progress / 2}%` }}
-              />
-            </div>
           </div>
         )}
 
