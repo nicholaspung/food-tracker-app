@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronUp, Calendar, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, Calendar, Users, Images } from "lucide-react";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 import { usePhotoUpload } from "@/hooks/usePhotoUpload";
 import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
+import BulkPhotoGallery, { type BulkPhoto } from "@/components/BulkPhotoGallery";
 import { useSync } from "@/contexts/SyncContext";
 
 interface RateItemsPageProps {
@@ -29,9 +30,15 @@ export default function RateItemsPage({
   const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
   const [showDateEdit, setShowDateEdit] = useState(false);
 
-  // Photo state - track photo for each item (max 1 for now)
+  // Photo mode state
+  const [useBulkMode, setUseBulkMode] = useState(false);
+
+  // Standard photo state - track photo for each item (max 1 for now)
   const [itemPhotos, setItemPhotos] = useState<Map<number, File>>(new Map());
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<number, string>>(new Map());
+
+  // Bulk photo state
+  const [bulkPhotos, setBulkPhotos] = useState<BulkPhoto[]>([]);
 
   // Check if user has rated before - expand legend for first-timers
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
@@ -74,6 +81,23 @@ export default function RateItemsPage({
       notes: item.notes,
     }));
 
+    // Prepare photos based on mode
+    let photosForSave: Map<number, File>;
+    if (useBulkMode) {
+      // Bulk mode: convert bulkPhotos to Map (first photo per item for now)
+      photosForSave = new Map();
+      for (let i = 0; i < items.length; i++) {
+        const assignedPhotos = bulkPhotos.filter(p => p.assignedToIndex === i);
+        if (assignedPhotos.length > 0) {
+          // For now, use first photo. TODO: Support multiple photos per item
+          photosForSave.set(i, assignedPhotos[0].file);
+        }
+      }
+    } else {
+      // Standard mode: use itemPhotos as-is
+      photosForSave = itemPhotos;
+    }
+
     try {
       await saveVisitMutation.mutateAsync({
         restaurant: draft.restaurant.id,
@@ -81,7 +105,7 @@ export default function RateItemsPage({
         visibility: visitVisibility,
         notes: "",
         foodItems: foodItemsData,
-        itemPhotos,
+        itemPhotos: photosForSave,
       });
 
       // Success
@@ -150,10 +174,32 @@ export default function RateItemsPage({
     setPhotoPreviewUrls(newPreviewUrls);
   };
 
+  // Bulk photo handlers
+  const handleBulkPhotosChange = (photos: BulkPhoto[]) => {
+    setBulkPhotos(photos);
+  };
+
+  const handleAssignBulkPhoto = (photoId: string, itemIndex: number) => {
+    setBulkPhotos((prev) =>
+      prev.map((photo) =>
+        photo.id === photoId ? { ...photo, assignedToIndex: itemIndex } : photo
+      )
+    );
+  };
+
+  const handleRemoveBulkPhoto = (photoId: string) => {
+    setBulkPhotos((prev) => prev.filter((photo) => photo.id !== photoId));
+  };
+
+  const togglePhotoMode = () => {
+    setUseBulkMode(!useBulkMode);
+  };
+
   // Cleanup preview URLs on unmount
   useEffect(() => {
     return () => {
       photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      bulkPhotos.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
     };
   }, []);
 
@@ -229,11 +275,51 @@ export default function RateItemsPage({
             </div>
           </label>
         </div>
+
+        {/* Photo Mode Toggle */}
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={togglePhotoMode}
+            className="w-full p-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Images className="w-4 h-4 text-gray-600" />
+                <span className="text-sm font-medium">
+                  {useBulkMode ? "Bulk Photo Mode" : "Individual Photo Mode"}
+                </span>
+              </div>
+              <span className="text-xs text-blue-600">Tap to switch</span>
+            </div>
+            <p className="text-xs text-gray-500 text-left mt-1">
+              {useBulkMode
+                ? "Upload all photos at once, then assign to items"
+                : "Add photos individually for each item"}
+            </p>
+          </button>
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
+          {/* Bulk Photo Gallery (when bulk mode is enabled) */}
+          {useBulkMode && (
+            <Card>
+              <CardContent className="pt-4">
+                <BulkPhotoGallery
+                  photos={bulkPhotos}
+                  items={items}
+                  onPhotosChange={handleBulkPhotosChange}
+                  onAssignPhoto={handleAssignBulkPhoto}
+                  onRemovePhoto={handleRemoveBulkPhoto}
+                  disabled={saveVisitMutation.isPending}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Collapsible Rating Legend */}
           <Card className="border-2 border-blue-200 bg-blue-50/30 py-4">
             <CardContent className="px-4">
@@ -319,15 +405,30 @@ export default function RateItemsPage({
                   />
                 </div>
 
-                {/* Photo capture section */}
-                <MenuItemPhotoInput
-                  photoKey={index}
-                  newPhotoPreviewUrl={photoPreviewUrls.get(index)}
-                  onPhotoCapture={handlePhotoCapture}
-                  onRemoveNewPhoto={handleRemovePhoto}
-                  showLabel={true}
-                  showNewPhotoBadge={false}
-                />
+                {/* Photo capture section (only in individual mode) */}
+                {!useBulkMode && (
+                  <MenuItemPhotoInput
+                    photoKey={index}
+                    newPhotoPreviewUrl={photoPreviewUrls.get(index)}
+                    onPhotoCapture={handlePhotoCapture}
+                    onRemoveNewPhoto={handleRemovePhoto}
+                    showLabel={true}
+                    showNewPhotoBadge={false}
+                  />
+                )}
+
+                {/* Show assigned bulk photos count */}
+                {useBulkMode && (
+                  <div className="text-sm text-gray-600">
+                    {bulkPhotos.filter((p) => p.assignedToIndex === index).length > 0 ? (
+                      <span className="text-green-600 font-medium">
+                        ✓ {bulkPhotos.filter((p) => p.assignedToIndex === index).length} photo(s) assigned
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">No photos assigned</span>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -2,6 +2,7 @@ import { createFileRoute, redirect, Outlet, useNavigate, useLocation } from '@ta
 import { pb } from '@/lib/pocketbase';
 import { visitDraftService } from '@/services/visitDraftService';
 import { useEffect, useRef } from 'react';
+import AddVisitOptionSelector from '@/components/AddVisitOptionSelector';
 
 export const Route = createFileRoute('/add-visit')({
   beforeLoad: () => {
@@ -17,13 +18,7 @@ function AddVisitLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const previousPathRef = useRef<string>(location.pathname);
-
-  useEffect(() => {
-    // If we're at the base /add-visit path, redirect to first step
-    if (window.location.pathname === '/add-visit') {
-      navigate({ to: '/add-visit/select-restaurant' });
-    }
-  }, [navigate]);
+  const isBasePath = location.pathname === '/add-visit';
 
   useEffect(() => {
     // Track when user navigates away from add-visit routes
@@ -39,5 +34,6 @@ function AddVisitLayout() {
     previousPathRef.current = currentPath;
   }, [location.pathname]);
 
-  return <Outlet />;
+  // Show option selector at base path, otherwise show nested routes
+  return isBasePath ? <AddVisitOptionSelector /> : <Outlet />;
 }

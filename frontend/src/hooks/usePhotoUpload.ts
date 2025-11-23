@@ -12,7 +12,7 @@ export interface PhotoUploadProgress {
 export interface PhotoUploadItem {
   photo: File;
   foodItemId: string;
-  visitId: string;
+  visitId?: string; // Optional for Quick Track items
   userId: string;
   existingPhotoId?: string; // For updates
 }
@@ -88,7 +88,10 @@ export const usePhotoUpload = () => {
 
           // Only add these fields if creating new photo
           if (!item.existingPhotoId) {
-            formData.append('visit', item.visitId);
+            // visitId is optional for Quick Track items
+            if (item.visitId) {
+              formData.append('visit', item.visitId);
+            }
             formData.append('food_item', item.foodItemId);
             formData.append('user', item.userId);
           }
