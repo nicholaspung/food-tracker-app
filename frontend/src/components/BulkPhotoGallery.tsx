@@ -34,6 +34,21 @@ export default function BulkPhotoGallery({
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
+    // Check if adding these photos would exceed the number of menu items
+    const totalPhotosAfterUpload = photos.length + files.length;
+    const maxPhotos = items.length;
+
+    if (totalPhotosAfterUpload > maxPhotos) {
+      const remainingSlots = Math.max(0, maxPhotos - photos.length);
+      alert(
+        `You can only upload ${maxPhotos} photo${maxPhotos !== 1 ? 's' : ''} (one per menu item). ` +
+        `You already have ${photos.length} photo${photos.length !== 1 ? 's' : ''} uploaded. ` +
+        `${remainingSlots > 0 ? `You can add ${remainingSlots} more.` : 'Please remove some photos before adding more.'}`
+      );
+      e.target.value = ""; // Reset input
+      return;
+    }
+
     const newPhotos: BulkPhoto[] = files.map((file, index) => ({
       id: `${Date.now()}-${index}`,
       file,
@@ -67,34 +82,51 @@ export default function BulkPhotoGallery({
     }
   };
 
+  const handleUnassignPhoto = (photoId: string) => {
+    // Unassign the photo (set assignedToIndex back to null) instead of removing it
+    onAssignPhoto(photoId, null as any);
+  };
+
   const unassignedPhotos = photos.filter((p) => p.assignedToIndex === null);
   const assignedPhotos = photos.filter((p) => p.assignedToIndex !== null);
+
+  // Get list of item indices that already have photos assigned
+  const itemsWithPhotos = new Set(assignedPhotos.map(p => p.assignedToIndex));
+  // Filter items to show only those without photos when assigning
+  const availableItems = items.filter((_, index) => !itemsWithPhotos.has(index));
 
   return (
     <div className="space-y-4">
       {/* Upload Button */}
-      <div className="flex items-center gap-2">
+      <div className="space-y-2">
         <label
           htmlFor="bulk-photo-upload"
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors",
-            disabled
+            "flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors",
+            disabled || photos.length >= items.length
               ? "opacity-50 cursor-not-allowed"
               : "hover:border-primary hover:bg-accent"
           )}
         >
           <Upload className="h-5 w-5" />
-          <span className="font-medium">Upload Photos</span>
+          <span className="font-medium">
+            Upload Photos ({photos.length}/{items.length})
+          </span>
           <input
             id="bulk-photo-upload"
             type="file"
             accept="image/*"
             multiple
             onChange={handleFileSelect}
-            disabled={disabled}
+            disabled={disabled || photos.length >= items.length}
             className="hidden"
           />
         </label>
+        {photos.length >= items.length && photos.length > 0 && (
+          <p className="text-xs text-muted-foreground text-center">
+            Maximum photos reached. Remove a photo to upload more.
+          </p>
+        )}
       </div>
 
       {/* Instructions */}
@@ -184,9 +216,10 @@ export default function BulkPhotoGallery({
                         />
                         <button
                           type="button"
-                          onClick={() => handleRemovePhoto(photo.id)}
+                          onClick={() => handleUnassignPhoto(photo.id)}
                           disabled={disabled}
                           className="absolute top-0 right-0 p-0.5 bg-destructive text-destructive-foreground rounded-bl"
+                          title="Unassign photo"
                         >
                           <X className="h-2.5 w-2.5" />
                         </button>
@@ -204,19 +237,32 @@ export default function BulkPhotoGallery({
       {selectedPhotoId && (
         <div>
           <h3 className="text-sm font-semibold mb-2">Assign to Item:</h3>
-          <div className="space-y-2">
-            {items.map((item, itemIndex) => (
-              <button
-                key={itemIndex}
-                type="button"
-                onClick={() => handleItemClick(itemIndex)}
-                disabled={disabled}
-                className="w-full p-3 text-left rounded-lg border-2 border-border hover:border-primary hover:bg-accent transition-colors font-medium"
-              >
-                {item.menuItem.name}
-              </button>
-            ))}
-          </div>
+          {availableItems.length > 0 ? (
+            <div className="space-y-2">
+              {items.map((item, itemIndex) => {
+                // Only show items that don't have photos assigned
+                if (itemsWithPhotos.has(itemIndex)) return null;
+
+                return (
+                  <button
+                    key={itemIndex}
+                    type="button"
+                    onClick={() => handleItemClick(itemIndex)}
+                    disabled={disabled}
+                    className="w-full p-3 text-left rounded-lg border-2 border-border hover:border-primary hover:bg-accent transition-colors font-medium"
+                  >
+                    {item.menuItem.name}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="p-3 bg-muted">
+              <p className="text-sm text-muted-foreground">
+                All items have photos assigned. Unassign a photo to reassign it to a different item.
+              </p>
+            </Card>
+          )}
         </div>
       )}
     </div>
