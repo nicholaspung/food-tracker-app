@@ -53,14 +53,28 @@ export function useOfflineQuickTrack() {
     // CRITICAL: Allow mutation to run even when browser is offline
     networkMode: 'always',
     mutationFn: async (data) => {
+      console.log('[useOfflineQuickTrack] Mutation function called with data:', {
+        name: data.name,
+        rating: data.rating,
+        hasPhoto: !!data.photo,
+        isOnline,
+      });
+
       const user = pb.authStore.record;
-      if (!user) throw new Error('User not authenticated');
+      if (!user) {
+        console.error('[useOfflineQuickTrack] User not authenticated!');
+        throw new Error('User not authenticated');
+      }
+
+      console.log('[useOfflineQuickTrack] User authenticated:', user.id);
 
       if (isOnline) {
         // ONLINE: Execute immediately
+        console.log('[useOfflineQuickTrack] Online - executing immediately');
         return await executeQuickTrack(data, user.id, uploadPhotos);
       } else {
         // OFFLINE: Queue the operation
+        console.log('[useOfflineQuickTrack] Offline - queueing for sync');
         await queueQuickTrack(data, user.id);
 
         // Create preview URL for photo (for offline display)
@@ -136,6 +150,17 @@ async function executeQuickTrack(
   userId: string,
   uploadPhotos: (items: PhotoUploadItem[]) => Promise<void>
 ): Promise<QuickTrackResult> {
+  console.log('[executeQuickTrack] Creating food item with data:', {
+    name: data.name,
+    rating: data.rating,
+    notes: data.notes,
+    itemCategory: data.itemCategory,
+    location_text: data.location_text,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    userId,
+  });
+
   // 1. Create food item (no visit)
   const foodItem = await pb.collection('food_items').create({
     name: data.name,
@@ -149,9 +174,12 @@ async function executeQuickTrack(
     // visit field is intentionally omitted (Quick Track mode)
   });
 
+  console.log('[executeQuickTrack] Food item created:', foodItem.id);
+
   // 2. Upload photo if provided
   let photoResult: any | undefined;
   if (data.photo) {
+    console.log('[executeQuickTrack] Uploading photo...');
     const photoUpload: PhotoUploadItem = {
       photo: data.photo,
       foodItemId: foodItem.id,
@@ -161,8 +189,10 @@ async function executeQuickTrack(
 
     await uploadPhotos([photoUpload]);
     photoResult = { foodItemId: foodItem.id };
+    console.log('[executeQuickTrack] Photo uploaded successfully');
   }
 
+  console.log('[executeQuickTrack] Returning result');
   return { foodItem, photoResult };
 }
 
