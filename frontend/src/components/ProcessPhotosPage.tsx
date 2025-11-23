@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X, Image } from "lucide-react";
+import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
@@ -341,40 +341,15 @@ function RestaurantSelector({
           <p className="text-sm text-muted-foreground">
             Take or upload a photo of the restaurant sign or menu to automatically detect the name
           </p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={onOpenCamera}
-            >
-              <Camera className="h-4 w-4 mr-2" />
-              Camera
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                // Create hidden file input to trigger photo selection
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = async (e) => {
-                  const file = (e.target as HTMLInputElement).files?.[0];
-                  if (file && onOpenCamera) {
-                    // For now, we'll need to pass the file through camera mode
-                    // This will require updating RestaurantNameFinder to accept file
-                    onOpenCamera();
-                  }
-                };
-                input.click();
-              }}
-            >
-              <Image className="h-4 w-4 mr-2" />
-              Upload
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={onOpenCamera}
+          >
+            <Camera className="h-4 w-4 mr-2" />
+            Take/Upload Photo
+          </Button>
         </div>
       </TabsContent>
 
@@ -1038,17 +1013,15 @@ export default function ProcessPhotosPage() {
                 </p>
               )}
 
-              {/* Photo upload for selected menu item */}
-              {selectedMenuItem && (
-                <MenuItemPhotoInput
-                  photoKey="current"
-                  newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
-                  onPhotoCapture={handleMenuItemPhotoCapture}
-                  onRemoveNewPhoto={handleRemoveMenuItemPhoto}
-                  showLabel={true}
-                  showNewPhotoBadge={false}
-                />
-              )}
+              {/* Photo upload - scan menu to prepopulate items */}
+              <MenuItemPhotoInput
+                photoKey="current"
+                newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
+                onPhotoCapture={handleMenuItemPhotoCapture}
+                onRemoveNewPhoto={handleRemoveMenuItemPhoto}
+                showLabel={true}
+                showNewPhotoBadge={false}
+              />
             </div>
           ) : (
             /* Create new menu item */
@@ -1063,33 +1036,25 @@ export default function ProcessPhotosPage() {
                 disabled={isProcessing}
                 className="text-base"
               />
-
-              {/* Photo upload for new menu item */}
-              <MenuItemPhotoInput
-                photoKey="current"
-                newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
-                onPhotoCapture={handleMenuItemPhotoCapture}
-                onRemoveNewPhoto={handleRemoveMenuItemPhoto}
-                showLabel={true}
-                showNewPhotoBadge={false}
-              />
             </div>
           )}
         </div>
 
-        {/* Rating */}
+        {/* Rating Guide - Collapsible */}
         <Card className="border-2 border-blue-200 bg-blue-50/30">
-          <CardContent className="pt-4 space-y-4">
+          <CardContent className="p-4">
             <button
               type="button"
               onClick={() => setIsLegendExpanded(!isLegendExpanded)}
               className="w-full flex items-center justify-between"
             >
-              <Label className="text-base font-semibold cursor-pointer">Rating *</Label>
+              <Label className="text-sm font-semibold text-gray-700 cursor-pointer">
+                Rating Guide
+              </Label>
               {isLegendExpanded ? (
-                <ChevronUp className="h-5 w-5 text-gray-600" />
+                <ChevronUp className="h-4 w-4 text-gray-600" />
               ) : (
-                <ChevronDown className="h-5 w-5 text-gray-600" />
+                <ChevronDown className="h-4 w-4 text-gray-600" />
               )}
             </button>
 
@@ -1110,37 +1075,37 @@ export default function ProcessPhotosPage() {
                 ))}
               </div>
             )}
-
-            {/* Rating buttons */}
-            <div>
-              <Label className="text-sm mb-2 block">Rating</Label>
-              <div className="grid grid-cols-5 gap-2">
-                {RATING_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setRating(option.value)}
-                    disabled={isProcessing}
-                    className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
-                      option.color
-                    } ${
-                      rating === option.value
-                        ? "ring-2 ring-offset-2 ring-blue-500"
-                        : "opacity-60 hover:opacity-100"
-                    }`}
-                  >
-                    {option.value}
-                  </button>
-                ))}
-              </div>
-              {rating !== null && (
-                <p className="text-xs text-gray-600 mt-2 text-center">
-                  {RATING_OPTIONS.find((o) => o.value === rating)?.label}
-                </p>
-              )}
-            </div>
           </CardContent>
         </Card>
+
+        {/* Rating Selection */}
+        <div className="space-y-2">
+          <Label className="text-base font-semibold">Rating *</Label>
+          <div className="grid grid-cols-5 gap-2">
+            {RATING_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setRating(option.value)}
+                disabled={isProcessing}
+                className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
+                  option.color
+                } ${
+                  rating === option.value
+                    ? "ring-2 ring-offset-2 ring-blue-500"
+                    : "opacity-60 hover:opacity-100"
+                }`}
+              >
+                {option.value}
+              </button>
+            ))}
+          </div>
+          {rating !== null && (
+            <p className="text-xs text-gray-600 mt-2 text-center">
+              {RATING_OPTIONS.find((o) => o.value === rating)?.label}
+            </p>
+          )}
+        </div>
 
         {/* Notes */}
         <div className="space-y-2">
