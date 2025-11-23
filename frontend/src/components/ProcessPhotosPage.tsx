@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, MapPin, Copy } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
+
+type ScreenState = 'upload' | 'assign-restaurants' | 'process';
 
 interface PhotoToProcess {
   id: string;
@@ -30,8 +32,13 @@ export default function ProcessPhotosPage() {
   const { isOnline } = useSync();
   const quickTrackMutation = useOfflineQuickTrack();
 
+  // Screen state
+  const [screen, setScreen] = useState<ScreenState>('upload');
+
   // Photo management
   const [photos, setPhotos] = useState<PhotoToProcess[]>([]);
+  const [photoRestaurants, setPhotoRestaurants] = useState<Map<string, any>>(new Map());
+  const [currentAssigningPhotoIndex, setCurrentAssigningPhotoIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [processedPhotos, setProcessedPhotos] = useState<ProcessedPhoto[]>([]);
 
@@ -57,12 +64,61 @@ export default function ProcessPhotosPage() {
     }));
 
     setPhotos(newPhotos);
+    setPhotoRestaurants(new Map());
+    setCurrentAssigningPhotoIndex(0);
     setCurrentPhotoIndex(0);
+    setScreen('assign-restaurants');
     e.target.value = ""; // Reset input
   };
 
+  // Pre-fill restaurant when moving to processing screen
+  useEffect(() => {
+    if (screen === 'process' && photos.length > 0) {
+      const currentPhoto = photos[currentPhotoIndex];
+      const assignedRestaurant = photoRestaurants.get(currentPhoto.id);
+      if (assignedRestaurant && !selectedRestaurant) {
+        setSelectedRestaurant(assignedRestaurant);
+      }
+    }
+  }, [screen, currentPhotoIndex, photos, photoRestaurants]);
+
   const handleRestaurantSelected = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
+  };
+
+  // Restaurant assignment handlers
+  const handleAssignRestaurant = (photoId: string, restaurant: any) => {
+    setPhotoRestaurants(new Map(photoRestaurants.set(photoId, restaurant)));
+  };
+
+  const handleSameAsAbove = (photoIndex: number) => {
+    if (photoIndex === 0) return;
+
+    const previousPhoto = photos[photoIndex - 1];
+    const previousRestaurant = photoRestaurants.get(previousPhoto.id);
+
+    if (previousRestaurant) {
+      const currentPhoto = photos[photoIndex];
+      handleAssignRestaurant(currentPhoto.id, previousRestaurant);
+    }
+  };
+
+  const handleContinueToProcessing = () => {
+    setScreen('process');
+    setCurrentPhotoIndex(0);
+    // Pre-fill first photo's restaurant if assigned
+    if (photos.length > 0) {
+      const firstPhoto = photos[0];
+      const assignedRestaurant = photoRestaurants.get(firstPhoto.id);
+      if (assignedRestaurant) {
+        setSelectedRestaurant(assignedRestaurant);
+      }
+    }
+  };
+
+  const handleSkipRestaurantAssignment = () => {
+    setScreen('process');
+    setCurrentPhotoIndex(0);
   };
 
   const handleSubmitCurrent = async () => {
@@ -98,10 +154,13 @@ export default function ProcessPhotosPage() {
 
       // Move to next photo or finish
       if (currentPhotoIndex < photos.length - 1) {
-        // Move to next photo
-        setCurrentPhotoIndex(currentPhotoIndex + 1);
-        // Reset form
-        setSelectedRestaurant(null);
+        const nextPhotoIndex = currentPhotoIndex + 1;
+        setCurrentPhotoIndex(nextPhotoIndex);
+
+        // Reset form and pre-fill restaurant if assigned
+        const nextPhoto = photos[nextPhotoIndex];
+        const nextRestaurant = photoRestaurants.get(nextPhoto.id);
+        setSelectedRestaurant(nextRestaurant || null);
         setMenuItemName("");
         setRating(null);
         setNotes("");
@@ -117,8 +176,13 @@ export default function ProcessPhotosPage() {
       if (!isOnline && error.message?.includes('queued')) {
         // Still move forward since it's queued
         if (currentPhotoIndex < photos.length - 1) {
-          setCurrentPhotoIndex(currentPhotoIndex + 1);
-          setSelectedRestaurant(null);
+          const nextPhotoIndex = currentPhotoIndex + 1;
+          setCurrentPhotoIndex(nextPhotoIndex);
+
+          // Reset form and pre-fill restaurant if assigned
+          const nextPhoto = photos[nextPhotoIndex];
+          const nextRestaurant = photoRestaurants.get(nextPhoto.id);
+          setSelectedRestaurant(nextRestaurant || null);
           setMenuItemName("");
           setRating(null);
           setNotes("");
@@ -132,10 +196,8 @@ export default function ProcessPhotosPage() {
     }
   };
 
-  const currentPhoto = photos[currentPhotoIndex];
-  const isUploadScreen = photos.length === 0;
-
-  if (isUploadScreen) {
+  // Upload Screen
+  if (screen === 'upload') {
     return (
       <div className="min-h-screen bg-background">
         {/* Header */}
@@ -157,7 +219,7 @@ export default function ProcessPhotosPage() {
           <Upload className="h-20 w-20 text-muted-foreground mb-4" />
           <h2 className="text-2xl font-bold mb-2">Upload Photos</h2>
           <p className="text-muted-foreground text-center mb-8 max-w-md">
-            Select multiple photos from your camera roll. You'll rate each one with a restaurant and menu item.
+            Select multiple photos from your camera roll. You'll assign restaurants, then rate each item.
           </p>
 
           <label
@@ -179,6 +241,142 @@ export default function ProcessPhotosPage() {
     );
   }
 
+  // Restaurant Assignment Screen
+  if (screen === 'assign-restaurants') {
+    const allAssigned = photos.every(photo => photoRestaurants.has(photo.id));
+
+    return (
+      <div className="min-h-screen bg-background pb-32">
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-background border-b">
+          <div className="flex items-center justify-between p-4">
+            <button
+              onClick={() => {
+                if (confirm("Go back? You'll need to re-upload photos.")) {
+                  setPhotos([]);
+                  setPhotoRestaurants(new Map());
+                  setScreen('upload');
+                }
+              }}
+              className="p-2 hover:bg-accent rounded-lg transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <h1 className="text-xl font-semibold">Assign Restaurants</h1>
+            <div className="w-9" />
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="p-4 pb-2">
+          <p className="text-sm text-muted-foreground">
+            Assign a restaurant to each photo. This will speed up rating later.
+          </p>
+        </div>
+
+        {/* Photos List */}
+        <div className="p-4 space-y-4">
+          {photos.map((photo, index) => {
+            const assignedRestaurant = photoRestaurants.get(photo.id);
+            const previousRestaurant = index > 0 ? photoRestaurants.get(photos[index - 1].id) : null;
+
+            return (
+              <Card key={photo.id} className={assignedRestaurant ? "border-primary" : ""}>
+                <CardContent className="p-4 space-y-3">
+                  {/* Photo Header */}
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                      <img
+                        src={photo.previewUrl}
+                        alt={`Photo ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium">Photo {index + 1}</div>
+                      {assignedRestaurant && (
+                        <div className="flex items-center gap-1 text-sm text-primary mt-1">
+                          <MapPin className="h-3 w-3" />
+                          <span className="truncate">{assignedRestaurant.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Restaurant Selection */}
+                  {!assignedRestaurant && (
+                    <>
+                      <RestaurantNameFinder
+                        onRestaurantSelected={(restaurant) => handleAssignRestaurant(photo.id, restaurant)}
+                        selectedRestaurant={null}
+                      />
+
+                      {/* Same as Above Button */}
+                      {index > 0 && previousRestaurant && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => handleSameAsAbove(index)}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Same as above ({previousRestaurant.name})
+                        </Button>
+                      )}
+                    </>
+                  )}
+
+                  {/* Edit Button */}
+                  {assignedRestaurant && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        const newMap = new Map(photoRestaurants);
+                        newMap.delete(photo.id);
+                        setPhotoRestaurants(newMap);
+                      }}
+                    >
+                      Change Restaurant
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Bottom Actions */}
+        <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 space-y-2">
+          <Button
+            className="w-full py-6 text-lg font-semibold"
+            onClick={handleContinueToProcessing}
+            disabled={!allAssigned}
+          >
+            Continue to Rating
+            <ChevronRight className="ml-2 h-5 w-5" />
+          </Button>
+
+          <Button
+            variant="ghost"
+            className="w-full"
+            onClick={handleSkipRestaurantAssignment}
+          >
+            Skip - Assign During Rating
+          </Button>
+
+          <p className="text-xs text-center text-muted-foreground">
+            {photoRestaurants.size} of {photos.length} restaurants assigned
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Processing Screen
+  const currentPhoto = photos[currentPhotoIndex];
+
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
@@ -186,8 +384,20 @@ export default function ProcessPhotosPage() {
         <div className="flex items-center justify-between p-4">
           <button
             onClick={() => {
-              if (confirm("Are you sure? Unprocessed photos will be lost.")) {
-                navigate({ to: "/add-visit" });
+              if (currentPhotoIndex === 0) {
+                // Go back to restaurant assignment
+                if (confirm("Go back to restaurant assignment?")) {
+                  setScreen('assign-restaurants');
+                  setSelectedRestaurant(null);
+                  setMenuItemName("");
+                  setRating(null);
+                  setNotes("");
+                }
+              } else {
+                // Ask if they want to go back to previous photo or cancel entirely
+                if (confirm("Are you sure? Unprocessed photos will be lost.")) {
+                  navigate({ to: "/add-visit" });
+                }
               }
             }}
             className="p-2 hover:bg-accent rounded-lg transition-colors"
