@@ -17,12 +17,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, MapPin, Copy, Camera, Search, Check } from "lucide-react";
+import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, MapPin, Copy, Camera, Search, Check, History, WifiOff, Store } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import { pb, Restaurant } from "@/lib/pocketbase";
+import {
+  searchAndCacheRestaurantsByText,
+  formatDistance,
+  calculateDistance,
+} from "@/services/googlePlaces";
 
 type ScreenState = 'upload' | 'assign-restaurants' | 'process';
 
@@ -40,13 +45,24 @@ interface ProcessedPhoto {
   notes: string;
 }
 
-// Simple Restaurant Selector Component
+// Enhanced Restaurant Selector Component with Google Places and History
 interface RestaurantSelectorProps {
   selectedRestaurant: Restaurant | null;
   onRestaurantSelected: (restaurant: Restaurant) => void;
   restaurants: Restaurant[];
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
+  isOnline: boolean;
+}
+
+interface StoredCameraResult {
+  id: string;
+  imagePreview: string;
+  result: {
+    found: boolean;
+    options?: Array<{ name: string; confidence: string }>;
+  };
+  timestamp: number;
 }
 
 function RestaurantSelector({
@@ -55,43 +71,112 @@ function RestaurantSelector({
   restaurants,
   searchQuery,
   onSearchQueryChange,
+  isOnline,
 }: RestaurantSelectorProps) {
-  return (
-    <div className="space-y-3">
-      <Input
-        type="text"
-        placeholder="Search restaurants..."
-        value={searchQuery}
-        onChange={(e) => onSearchQueryChange(e.target.value)}
-        className="w-full"
-      />
+  const [googlePlacesQuery, setGooglePlacesQuery] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [googlePlaces, setGooglePlaces] = useState<Restaurant[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [cameraHistory, setCameraHistory] = useState<StoredCameraResult[]>([]);
 
-      {selectedRestaurant ? (
-        <Card className="border-primary">
-          <CardContent className="p-3">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-primary" />
-                  <div className="font-medium">{selectedRestaurant.name}</div>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {selectedRestaurant.location}
-                  {selectedRestaurant.cuisineType && ` • ${selectedRestaurant.cuisineType}`}
-                </div>
+  // Load camera history
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('restaurantNameFinderHistory');
+      if (saved) {
+        setCameraHistory(JSON.parse(saved));
+      }
+    } catch (err) {
+      console.error('Failed to load camera history:', err);
+    }
+  }, []);
+
+  const handleGooglePlacesSearch = async () => {
+    if (!isOnline) {
+      setSearchError("Cannot search while offline. Google Places requires internet connection.");
+      return;
+    }
+
+    if (!googlePlacesQuery.trim()) {
+      setSearchError("Please enter a restaurant name or type to search");
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError("");
+
+    try {
+      const results = await searchAndCacheRestaurantsByText({
+        query: googlePlacesQuery.trim(),
+        location: locationQuery.trim() || undefined,
+        radius: 5000,
+      });
+
+      setGooglePlaces(results);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Failed to search restaurants");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  if (selectedRestaurant) {
+    return (
+      <Card className="border-primary">
+        <CardContent className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-primary" />
+                <div className="font-medium">{selectedRestaurant.name}</div>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onRestaurantSelected(null as any)}
-              >
-                Change
-              </Button>
+              <div className="text-sm text-muted-foreground mt-1">
+                {selectedRestaurant.location}
+                {selectedRestaurant.cuisineType && ` • ${selectedRestaurant.cuisineType}`}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onRestaurantSelected(null as any)}
+            >
+              Change
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Tabs defaultValue="saved" className="w-full">
+      <TabsList className="grid w-full grid-cols-3">
+        <TabsTrigger value="saved">
+          <Store className="h-4 w-4 mr-1" />
+          Saved
+        </TabsTrigger>
+        <TabsTrigger value="google">
+          <Search className="h-4 w-4 mr-1" />
+          Google
+        </TabsTrigger>
+        <TabsTrigger value="history">
+          <History className="h-4 w-4 mr-1" />
+          History
+        </TabsTrigger>
+      </TabsList>
+
+      {/* Saved Restaurants Tab */}
+      <TabsContent value="saved" className="mt-3 space-y-3">
+        <Input
+          type="text"
+          placeholder="Search saved restaurants..."
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          className="w-full"
+        />
+
         <div className="max-h-60 overflow-y-auto space-y-2">
           {restaurants.length === 0 ? (
             <div className="text-center py-4 text-sm text-muted-foreground">
@@ -115,8 +200,149 @@ function RestaurantSelector({
             ))
           )}
         </div>
-      )}
-    </div>
+      </TabsContent>
+
+      {/* Google Places Tab */}
+      <TabsContent value="google" className="mt-3 space-y-3">
+        <div className="space-y-2">
+          <Input
+            type="text"
+            placeholder="Restaurant name or type (e.g., Starbucks, pizza)"
+            value={googlePlacesQuery}
+            onChange={(e) => setGooglePlacesQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleGooglePlacesSearch();
+              }
+            }}
+          />
+          <Input
+            type="text"
+            placeholder="Location (optional, e.g., 90210, Los Angeles)"
+            value={locationQuery}
+            onChange={(e) => setLocationQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleGooglePlacesSearch();
+              }
+            }}
+          />
+          <Button
+            onClick={handleGooglePlacesSearch}
+            className="w-full"
+            disabled={!isOnline || isSearching}
+          >
+            {isSearching ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Searching...
+              </>
+            ) : !isOnline ? (
+              <>
+                <WifiOff className="h-4 w-4 mr-2" />
+                Search (Offline)
+              </>
+            ) : (
+              <>
+                <Search className="h-4 w-4 mr-2" />
+                Search Google Places
+              </>
+            )}
+          </Button>
+        </div>
+
+        {searchError && (
+          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
+            {searchError}
+          </div>
+        )}
+
+        <div className="max-h-60 overflow-y-auto space-y-2">
+          {googlePlaces.length === 0 && !isSearching ? (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              Search for restaurants on Google Places
+            </div>
+          ) : (
+            googlePlaces.map((restaurant) => (
+              <Card
+                key={restaurant.id}
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => onRestaurantSelected(restaurant)}
+              >
+                <CardContent className="p-3">
+                  <div className="font-medium">{restaurant.name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {restaurant.location}
+                    {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </TabsContent>
+
+      {/* Camera History Tab */}
+      <TabsContent value="history" className="mt-3 space-y-2">
+        <div className="max-h-60 overflow-y-auto space-y-2">
+          {cameraHistory.length === 0 ? (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              No camera scan history yet
+            </div>
+          ) : (
+            cameraHistory.slice().reverse().map((item) => (
+              <Card key={item.id} className="overflow-hidden">
+                <CardContent className="p-3">
+                  <div className="flex gap-3">
+                    <img
+                      src={item.imagePreview}
+                      alt="Scanned"
+                      className="w-16 h-16 object-cover rounded flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      {item.result.found && item.result.options && item.result.options.length > 0 ? (
+                        <div className="space-y-1">
+                          {item.result.options.slice(0, 2).map((option, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                // Search for this restaurant name in saved restaurants
+                                const found = restaurants.find(r =>
+                                  r.name.toLowerCase() === option.name.toLowerCase()
+                                );
+                                if (found) {
+                                  onRestaurantSelected(found);
+                                } else {
+                                  // Set it as search query so user can find/create it
+                                  onSearchQueryChange(option.name);
+                                }
+                              }}
+                              className="text-left text-sm font-medium hover:text-primary transition-colors"
+                            >
+                              {option.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          No restaurant detected
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {new Date(item.timestamp).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -443,6 +669,7 @@ export default function ProcessPhotosPage() {
                             restaurants={filteredRestaurants}
                             searchQuery={restaurantSearchQuery}
                             onSearchQueryChange={setRestaurantSearchQuery}
+                            isOnline={isOnline}
                           />
                         </TabsContent>
 
@@ -608,6 +835,7 @@ export default function ProcessPhotosPage() {
                 restaurants={filteredRestaurants}
                 searchQuery={restaurantSearchQuery}
                 onSearchQueryChange={setRestaurantSearchQuery}
+                isOnline={isOnline}
               />
             </TabsContent>
 
