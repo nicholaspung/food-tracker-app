@@ -555,34 +555,52 @@ export default function ProcessPhotosPage() {
   };
 
   const handleSubmitCurrent = async () => {
+    console.log('[ProcessPhotos] handleSubmitCurrent called');
+    console.log('[ProcessPhotos] Form state:', {
+      hasRestaurant: !!selectedRestaurant,
+      restaurantName: selectedRestaurant?.name,
+      menuItemName,
+      menuItemNameTrimmed: menuItemName.trim(),
+      rating,
+      hasPhoto: !!photos[currentPhotoIndex],
+      isAuthenticated: !!pb.authStore.record,
+      userId: pb.authStore.record?.id,
+    });
+
     if (!selectedRestaurant || !menuItemName.trim() || rating === null) {
+      console.log('[ProcessPhotos] Validation failed:', {
+        missingRestaurant: !selectedRestaurant,
+        missingMenuItem: !menuItemName.trim(),
+        missingRating: rating === null,
+      });
       setShowRequiredFieldsDialog(true);
       return;
     }
 
+    console.log('[ProcessPhotos] Validation passed, starting save...');
     setIsProcessing(true);
     const currentPhoto = photos[currentPhotoIndex];
 
-    console.log('[ProcessPhotos] Saving photo:', {
-      menuItemName,
-      rating,
-      restaurant: selectedRestaurant.name,
-      hasLatLng: !!(selectedRestaurant.latitude && selectedRestaurant.longitude),
-      photoSize: currentPhoto.file.size,
+    const saveData = {
+      name: menuItemName,
+      rating: rating,
+      notes: notes || undefined,
+      itemCategory: "restaurant",
+      location_text: selectedRestaurant.name,
+      latitude: selectedRestaurant.latitude,
+      longitude: selectedRestaurant.longitude,
+      photo: currentPhoto.file,
+    };
+
+    console.log('[ProcessPhotos] About to call mutation with data:', {
+      ...saveData,
+      photo: `File(${currentPhoto.file.name}, ${currentPhoto.file.size} bytes)`,
     });
 
     try {
       // Save this photo's data using Quick Track
-      const result = await quickTrackMutation.mutateAsync({
-        name: menuItemName,
-        rating: rating,
-        notes: notes || undefined,
-        itemCategory: "restaurant",
-        location_text: selectedRestaurant.name,
-        latitude: selectedRestaurant.latitude,
-        longitude: selectedRestaurant.longitude,
-        photo: currentPhoto.file,
-      });
+      console.log('[ProcessPhotos] Calling quickTrackMutation.mutateAsync...');
+      const result = await quickTrackMutation.mutateAsync(saveData);
 
       console.log('[ProcessPhotos] Save successful:', result);
 
@@ -861,16 +879,6 @@ export default function ProcessPhotosPage() {
                   </CardContent>
                 </Card>
               )}
-
-              {/* Photo upload - scan menu to prepopulate items */}
-              <MenuItemPhotoInput
-                photoKey="current"
-                newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
-                onPhotoCapture={handleMenuItemPhotoCapture}
-                onRemoveNewPhoto={handleRemoveMenuItemPhoto}
-                showLabel={true}
-                showNewPhotoBadge={false}
-              />
             </div>
           ) : (
             /* Create new menu item */
