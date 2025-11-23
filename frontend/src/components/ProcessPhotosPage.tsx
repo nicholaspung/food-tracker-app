@@ -436,7 +436,7 @@ export default function ProcessPhotosPage() {
   const [menuItemName, setMenuItemName] = useState("");
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState("");
   const [isCreatingNewItem, setIsCreatingNewItem] = useState(false);
-  const [rating, setRating] = useState<number | null>(null);
+  const [rating, setRating] = useState<number | null>(3); // Default to "worth trying"
   const [notes, setNotes] = useState("");
   const [menuItemPhoto, setMenuItemPhoto] = useState<File | null>(null);
   const [menuItemPhotoPreview, setMenuItemPhotoPreview] = useState<string | null>(null);
@@ -625,7 +625,7 @@ export default function ProcessPhotosPage() {
         setMenuItemName("");
         setMenuItemSearchQuery("");
         setIsCreatingNewItem(false);
-        setRating(null);
+        setRating(3);
         setNotes("");
         handleRemoveMenuItemPhoto();
       } else {
@@ -651,7 +651,7 @@ export default function ProcessPhotosPage() {
           setMenuItemName("");
           setMenuItemSearchQuery("");
           setIsCreatingNewItem(false);
-          setRating(null);
+          setRating(3);
           setNotes("");
           handleRemoveMenuItemPhoto();
         } else {
@@ -667,23 +667,24 @@ export default function ProcessPhotosPage() {
   // Upload Screen
   if (screen === 'upload') {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="flex flex-col h-full bg-gray-50">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-background border-b">
-          <div className="flex items-center justify-between p-4">
-            <button
+        <div className="bg-white border-b border-gray-200 px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-gray-900">Process Saved Photos</h1>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => navigate({ to: "/add-visit" })}
-              className="p-2 hover:bg-accent rounded-lg transition-colors"
             >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <h1 className="text-xl font-semibold">Process Photos</h1>
-            <div className="w-9" />
+              Cancel
+            </Button>
           </div>
+          <p className="text-sm text-gray-500 mt-1">Upload and rate multiple food photos</p>
         </div>
 
         {/* Upload Screen */}
-        <div className="p-4 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="flex-1 p-4 flex flex-col items-center justify-center">
           <Upload className="h-20 w-20 text-muted-foreground mb-4" />
           <h2 className="text-2xl font-bold mb-2">Upload Photos</h2>
           <p className="text-muted-foreground text-center mb-8 max-w-md">
@@ -733,11 +734,14 @@ export default function ProcessPhotosPage() {
     };
 
     return (
-      <div className="flex flex-col h-full bg-background">
+      <div className="flex flex-col h-full bg-gray-50">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-background border-b">
-          <div className="flex items-center justify-between p-4">
-            <button
+        <div className="bg-white border-b border-gray-200 px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-gray-900">Process Saved Photos</h1>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 if (currentAssigningPhotoIndex === 0) {
                   setBackDialogType('upload');
@@ -746,18 +750,18 @@ export default function ProcessPhotosPage() {
                   handlePreviousPhoto();
                 }
               }}
-              className="p-2 hover:bg-accent rounded-lg transition-colors"
             >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <h1 className="text-xl font-semibold">Process Saved Photos</h1>
-            <div className="w-9" />
+              {currentAssigningPhotoIndex === 0 ? 'Cancel' : 'Back'}
+            </Button>
           </div>
+          <p className="text-sm text-gray-500 mt-1">
+            Step 1 of 2: Assign restaurants ({currentAssigningPhotoIndex + 1} of {photos.length} photos)
+          </p>
 
           {/* Progress bar */}
-          <div className="h-1 bg-muted">
+          <div className="h-1 bg-gray-200 rounded-full mt-3">
             <div
-              className="h-full bg-primary transition-all duration-300"
+              className="h-full bg-blue-600 rounded-full transition-all duration-300"
               style={{ width: `${((currentAssigningPhotoIndex + 1) / photos.length) * 100}%` }}
             />
           </div>
@@ -765,13 +769,6 @@ export default function ProcessPhotosPage() {
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
-          {/* Info */}
-          <div className="p-4 pb-2">
-            <p className="text-sm text-muted-foreground">
-              Step 1 of 2: Assign restaurants ({currentAssigningPhotoIndex + 1} of {photos.length} photos)
-            </p>
-          </div>
-
           {/* Photo Preview */}
           <div className="p-4">
             <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
@@ -852,66 +849,38 @@ export default function ProcessPhotosPage() {
   const currentPhoto = photos[currentPhotoIndex];
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-background border-b">
-        <div className="flex items-center justify-between p-4">
-          <button
-            onClick={() => {
-              if (currentPhotoIndex === 0) {
-                // Go back to restaurant assignment
-                setBackDialogType('assignment');
-                setShowBackDialog(true);
-              } else {
-                // Ask if they want to cancel entirely
-                setBackDialogType('cancel');
-                setShowBackDialog(true);
-              }
-            }}
-            className="p-2 hover:bg-accent rounded-lg transition-colors"
-            disabled={isProcessing}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="text-xl font-semibold">Process Saved Photos</h1>
-          <div className="w-9" />
-        </div>
+      <div className="bg-white border-b border-gray-200 px-4 py-4">
+        <h1 className="text-2xl font-bold text-gray-900">Process Saved Photos</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Step 2 of 2: Rate items ({currentPhotoIndex + 1} of {photos.length} photos)
+        </p>
 
         {/* Progress bar */}
-        <div className="h-1 bg-muted">
+        <div className="h-1 bg-gray-200 rounded-full mt-3">
           <div
-            className="h-full bg-primary transition-all duration-300"
+            className="h-full bg-blue-600 rounded-full transition-all duration-300"
             style={{ width: `${((currentPhotoIndex + 1) / photos.length) * 100}%` }}
           />
         </div>
-
-        {/* Progress description */}
-        <div className="px-4 py-2 bg-muted/30">
-          <p className="text-sm text-muted-foreground text-center">
-            Step 2 of 2: Rate items ({currentPhotoIndex + 1} of {photos.length} photos)
-          </p>
-        </div>
       </div>
 
-      {/* Photo Preview */}
-      <div className="p-4">
-        <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-          <img
-            src={currentPhoto.previewUrl}
-            alt="Food photo"
-            className="w-full h-full object-contain"
-          />
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {/* Photo Preview */}
+        <div className="mb-4">
+          <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
+            <img
+              src={currentPhoto.previewUrl}
+              alt="Food photo"
+              className="w-full h-full object-contain"
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Form */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSubmitCurrent();
-        }}
-        className="p-4 space-y-6"
-      >
+        {/* Form */}
+        <div className="space-y-6">
         {/* Restaurant Selection */}
         <div className="space-y-2">
           <Label className="text-base font-semibold">Restaurant *</Label>
@@ -1124,33 +1093,67 @@ export default function ProcessPhotosPage() {
           />
         </div>
 
-        {/* Error Display */}
-        {quickTrackMutation.isError && !quickTrackMutation.error?.message?.includes('queued') && (
-          <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg">
-            <p className="font-semibold">Error saving photo</p>
-            <p className="text-sm">
-              Please try again. Check browser console for details.
-            </p>
-          </div>
-        )}
-
-        {/* Submit Button */}
-        <Button
-          type="submit"
-          className="w-full py-6 text-lg font-semibold"
-          disabled={!selectedRestaurant || !menuItemName.trim() || rating === null || isProcessing}
-        >
-          {isProcessing && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-          {isProcessing
-            ? "Saving..."
-            : currentPhotoIndex < photos.length - 1
-              ? "Save & Next Photo"
-              : "Save & Finish"}
-          {currentPhotoIndex < photos.length - 1 && !isProcessing && (
-            <ChevronRight className="ml-2 h-5 w-5" />
+          {/* Error Display */}
+          {quickTrackMutation.isError && !quickTrackMutation.error?.message?.includes('queued') && (
+            <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg">
+              <p className="font-semibold">Error saving photo</p>
+              <p className="text-sm">
+                Please try again. Check browser console for details.
+              </p>
+            </div>
           )}
-        </Button>
-      </form>
+        </div>
+      </div>
+
+      {/* Bottom Action Buttons */}
+      <div className="bg-white border-t border-gray-200 p-4">
+        <div className="flex gap-3">
+          {currentPhotoIndex > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (currentPhotoIndex > 0) {
+                  setCurrentPhotoIndex(currentPhotoIndex - 1);
+                  // Reset form for previous photo
+                  const prevPhoto = photos[currentPhotoIndex - 1];
+                  const prevRestaurant = photoRestaurants.get(prevPhoto.id);
+                  setSelectedRestaurant(prevRestaurant || null);
+                  setSelectedMenuItem(null);
+                  setMenuItemName("");
+                  setMenuItemSearchQuery("");
+                  setIsCreatingNewItem(false);
+                  setRating(3);
+                  setNotes("");
+                  handleRemoveMenuItemPhoto();
+                }
+              }}
+              disabled={isProcessing}
+              className="flex-1"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Previous
+            </Button>
+          )}
+          <Button
+            onClick={(e) => {
+              e.preventDefault();
+              handleSubmitCurrent();
+            }}
+            className={`${currentPhotoIndex > 0 ? 'flex-1' : 'w-full'}`}
+            disabled={!selectedRestaurant || !menuItemName.trim() || rating === null || isProcessing}
+          >
+            {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isProcessing
+              ? "Saving..."
+              : currentPhotoIndex < photos.length - 1
+                ? "Save & Next"
+                : "Save & Finish"}
+            {currentPhotoIndex < photos.length - 1 && !isProcessing && (
+              <ChevronRight className="ml-2 h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
 
       {/* Dialogs */}
       <AlertDialog open={showBackDialog} onOpenChange={setShowBackDialog}>
