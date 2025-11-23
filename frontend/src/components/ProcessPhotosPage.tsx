@@ -22,12 +22,14 @@ import { RATING_OPTIONS, RATING_LABELS, RATING_COLORS } from "@/lib/ratingConsta
 import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
 import { useOfflineRestaurantCreation } from "@/hooks/useOfflineRestaurantCreation";
 import { useSync } from "@/contexts/SyncContext";
+import { useMenuOCR } from "@/hooks/useMenuOCR";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { pb, Restaurant, MenuItem } from "@/lib/pocketbase";
 import { createMenuItems } from "@/services/ocrService";
 import { processPhotosDraftService, dataUrlToFile } from "@/services/processPhotosDraftService";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   searchAndCacheRestaurantsByText,
 } from "@/services/googlePlaces";
@@ -546,6 +548,9 @@ export default function ProcessPhotosPage() {
   const visitCreationMutation = useOfflineVisitCreation();
   const restaurantCreationMutation = useOfflineRestaurantCreation();
 
+  // Menu OCR hook for scanning menu photos
+  const { status: ocrStatus, progress: ocrProgress, menuItems: scannedMenuItems, error: ocrError, processMenuImage, reset: resetOCR } = useMenuOCR();
+
   // Screen state
   const [screen, setScreen] = useState<ScreenState>('upload');
 
@@ -728,13 +733,26 @@ export default function ProcessPhotosPage() {
     setNotes("");
   };
 
-  const handleMenuItemPhotoCapture = (key: string | number, file: File) => {
+  const handleMenuItemPhotoCapture = async (key: string | number, file: File) => {
     setMenuItemPhoto(file);
     const previewUrl = URL.createObjectURL(file);
     if (menuItemPhotoPreview) {
       URL.revokeObjectURL(menuItemPhotoPreview);
     }
     setMenuItemPhotoPreview(previewUrl);
+
+    // Trigger OCR scanning if restaurant is selected and online
+    if (selectedRestaurant && isOnline) {
+      try {
+        console.log('[ProcessPhotos] Scanning menu photo for items...');
+        await processMenuImage(file, selectedRestaurant.id);
+        console.log('[ProcessPhotos] Menu scan complete, found', scannedMenuItems.length, 'items');
+        // Invalidate menu items query to include newly scanned items
+        await queryClient.invalidateQueries({ queryKey: ['menu_items', selectedRestaurant.id] });
+      } catch (error) {
+        console.error('[ProcessPhotos] Menu scan failed:', error);
+      }
+    }
   };
 
   const handleRemoveMenuItemPhoto = () => {
@@ -743,6 +761,8 @@ export default function ProcessPhotosPage() {
       URL.revokeObjectURL(menuItemPhotoPreview);
     }
     setMenuItemPhotoPreview(null);
+    // Reset OCR state
+    resetOCR();
   };
 
   const handleSubmitCurrent = async () => {
@@ -1391,16 +1411,56 @@ export default function ProcessPhotosPage() {
 
           {/* Photo upload - scan menu to prepopulate items (only in search mode) */}
           {!isCreatingNewItem && (
-            <MenuItemPhotoInput
-              photoKey="current"
-              newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
-              onPhotoCapture={handleMenuItemPhotoCapture}
-              onRemoveNewPhoto={handleRemoveMenuItemPhoto}
-              showLabel={true}
-              showNewPhotoBadge={false}
-              labelText="Scan Menu Photo (optional)"
-              helpText="Photo of menu will be scanned to find matching items"
-            />
+            <>
+              <MenuItemPhotoInput
+                photoKey="current"
+                newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
+                onPhotoCapture={handleMenuItemPhotoCapture}
+                onRemoveNewPhoto={handleRemoveMenuItemPhoto}
+                showLabel={true}
+                showNewPhotoBadge={false}
+                labelText="Scan Menu Photo (optional)"
+                helpText="Photo of menu will be scanned to find matching items"
+              />
+
+              {/* OCR scanning status */}
+              {ocrStatus !== 'idle' && ocrStatus !== 'complete' && (
+                <Alert>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <AlertDescription>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>
+                        {ocrStatus === 'preprocessing' && 'Enhancing image for OCR...'}
+                        {ocrStatus === 'compressing' && 'Optimizing image...'}
+                        {ocrStatus === 'uploading' && 'Uploading menu photo...'}
+                        {ocrStatus === 'processing' && 'Reading menu text...'}
+                      </span>
+                      <span className="text-muted-foreground">{ocrProgress}%</span>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* OCR success */}
+              {ocrStatus === 'complete' && scannedMenuItems.length > 0 && (
+                <Alert className="border-green-500 bg-green-50">
+                  <Check className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800 text-sm">
+                    Found {scannedMenuItems.length} menu item{scannedMenuItems.length !== 1 ? 's' : ''}! They appear in the search results below.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* OCR error */}
+              {ocrError && (
+                <Alert className="border-red-500 bg-red-50">
+                  <X className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800 text-sm">
+                    {ocrError}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </>
           )}
               </CardContent>
             </Card>
