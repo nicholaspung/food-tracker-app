@@ -279,12 +279,21 @@ update_source_code() {
     local current_branch=$(git rev-parse --abbrev-ref HEAD)
     log "Current branch: $current_branch"
 
-    # Get current commit before pull
+    # Get current commit before update
     local old_commit=$(git rev-parse HEAD)
 
-    # Pull latest changes
-    if ! git pull origin "$current_branch"; then
-        error "Git pull failed. Check for merge conflicts or network issues."
+    # Check for local changes
+    if ! git diff-index --quiet HEAD --; then
+        warn "Local changes detected on server. Discarding them..."
+        # Discard all local changes (deployment server should not have local mods)
+        git reset --hard HEAD
+        git clean -fd
+        log "Local changes discarded"
+    fi
+
+    # Reset to remote branch (ensures clean state)
+    if ! git reset --hard "origin/$current_branch"; then
+        error "Git reset failed. Check network or branch existence."
         exit 1
     fi
 
