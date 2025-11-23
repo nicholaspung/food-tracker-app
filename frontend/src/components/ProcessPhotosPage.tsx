@@ -54,6 +54,9 @@ interface RestaurantSelectorProps {
   onLocationQueryChange: (query: string) => void;
   isOnline: boolean;
   onOpenCamera?: () => void;
+  previousRestaurant?: Restaurant | null;
+  onUsePreviousRestaurant?: () => void;
+  showSameAsAbove?: boolean;
 }
 
 interface StoredCameraResult {
@@ -76,6 +79,9 @@ function RestaurantSelector({
   onLocationQueryChange,
   isOnline,
   onOpenCamera,
+  previousRestaurant,
+  onUsePreviousRestaurant,
+  showSameAsAbove = false,
 }: RestaurantSelectorProps) {
   const [googlePlaces, setGooglePlaces] = useState<Restaurant[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -243,6 +249,19 @@ function RestaurantSelector({
             )}
           </Button>
         </div>
+
+        {/* Same as Above Button */}
+        {showSameAsAbove && previousRestaurant && onUsePreviousRestaurant && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={onUsePreviousRestaurant}
+          >
+            <Copy className="h-4 w-4 mr-2" />
+            Same as above ({previousRestaurant.name})
+          </Button>
+        )}
 
         {searchError && (
           <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
@@ -661,7 +680,7 @@ export default function ProcessPhotosPage() {
     };
 
     return (
-      <div className="min-h-screen bg-background pb-20">
+      <div className="flex flex-col h-full bg-background">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background border-b">
           <div className="flex items-center justify-between p-4">
@@ -693,93 +712,90 @@ export default function ProcessPhotosPage() {
           </div>
         </div>
 
-        {/* Info */}
-        <div className="p-4 pb-2">
-          <p className="text-sm text-muted-foreground">
-            Assign a restaurant to this photo. This will speed up rating later.
-          </p>
-        </div>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Info */}
+          <div className="p-4 pb-2">
+            <p className="text-sm text-muted-foreground">
+              Assign a restaurant to this photo. This will speed up rating later.
+            </p>
+          </div>
 
-        {/* Photo Preview */}
-        <div className="p-4">
-          <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-            <img
-              src={currentAssigningPhoto.previewUrl}
-              alt="Food photo"
-              className="w-full h-full object-contain"
+          {/* Photo Preview */}
+          <div className="p-4">
+            <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
+              <img
+                src={currentAssigningPhoto.previewUrl}
+                alt="Food photo"
+                className="w-full h-full object-contain"
+              />
+            </div>
+          </div>
+
+          {/* Restaurant Selection */}
+          <div className="p-4 space-y-4">
+            <RestaurantSelector
+              selectedRestaurant={assignedRestaurant || null}
+              onRestaurantSelected={(restaurant) => handleAssignRestaurant(currentAssigningPhoto.id, restaurant)}
+              restaurants={filteredRestaurants}
+              searchQuery={restaurantSearchQuery}
+              onSearchQueryChange={setRestaurantSearchQuery}
+              locationQuery={locationSearchQuery}
+              onLocationQueryChange={setLocationSearchQuery}
+              isOnline={isOnline}
+              onOpenCamera={() => setShowCameraMode(true)}
+              previousRestaurant={previousRestaurant}
+              onUsePreviousRestaurant={() => handleSameAsAbove(currentAssigningPhotoIndex)}
+              showSameAsAbove={currentAssigningPhotoIndex > 0 && !assignedRestaurant}
             />
+
+            <p className="text-xs text-center text-muted-foreground">
+              {photoRestaurants.size} of {photos.length} restaurants assigned
+            </p>
           </div>
         </div>
 
-        {/* Restaurant Selection */}
-        <div className="p-4 space-y-4">
-          <RestaurantSelector
-            selectedRestaurant={assignedRestaurant || null}
-            onRestaurantSelected={(restaurant) => handleAssignRestaurant(currentAssigningPhoto.id, restaurant)}
-            restaurants={filteredRestaurants}
-            searchQuery={restaurantSearchQuery}
-            onSearchQueryChange={setRestaurantSearchQuery}
-            locationQuery={locationSearchQuery}
-            onLocationQueryChange={setLocationSearchQuery}
-            isOnline={isOnline}
-            onOpenCamera={() => setShowCameraMode(true)}
-          />
-
-          {/* Same as Above Button */}
-          {currentAssigningPhotoIndex > 0 && previousRestaurant && !assignedRestaurant && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => handleSameAsAbove(currentAssigningPhotoIndex)}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Same as above ({previousRestaurant.name})
-            </Button>
-          )}
-
-          {/* Navigation Buttons */}
-          <div className="flex gap-2">
-            {currentAssigningPhotoIndex > 0 && (
-              <Button
-                variant="outline"
-                onClick={handlePreviousPhoto}
-                className="flex-1"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Previous
-              </Button>
-            )}
-
-            <Button
-              onClick={handleNextPhoto}
-              className={`${currentAssigningPhotoIndex > 0 ? 'flex-1' : 'w-full'}`}
-            >
-              {currentAssigningPhotoIndex < photos.length - 1 ? (
-                <>
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </>
-              ) : (
-                <>
-                  Continue to Rating
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </>
+        {/* Bottom Action Buttons */}
+        <div className="bg-background border-t p-4">
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              {currentAssigningPhotoIndex > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={handlePreviousPhoto}
+                  className="flex-1"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Previous
+                </Button>
               )}
+
+              <Button
+                onClick={handleNextPhoto}
+                className={`${currentAssigningPhotoIndex > 0 ? 'flex-1' : 'w-full'}`}
+              >
+                {currentAssigningPhotoIndex < photos.length - 1 ? (
+                  <>
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-2" />
+                  </>
+                ) : (
+                  <>
+                    Continue to Rating
+                    <ChevronRight className="h-4 w-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <Button
+              variant="ghost"
+              className="w-full text-xs"
+              onClick={handleSkipRestaurantAssignment}
+            >
+              Skip All - Assign During Rating
             </Button>
           </div>
-
-          <Button
-            variant="ghost"
-            className="w-full text-xs"
-            onClick={handleSkipRestaurantAssignment}
-          >
-            Skip All - Assign During Rating
-          </Button>
-
-          <p className="text-xs text-center text-muted-foreground">
-            {photoRestaurants.size} of {photos.length} restaurants assigned
-          </p>
         </div>
       </div>
     );
