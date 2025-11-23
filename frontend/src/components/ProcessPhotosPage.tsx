@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, MapPin, Copy, Camera, Search, Check, History, WifiOff, Store } from "lucide-react";
+import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
@@ -25,8 +25,6 @@ import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import { pb, Restaurant } from "@/lib/pocketbase";
 import {
   searchAndCacheRestaurantsByText,
-  formatDistance,
-  calculateDistance,
 } from "@/services/googlePlaces";
 
 type ScreenState = 'upload' | 'assign-restaurants' | 'process';
@@ -52,6 +50,8 @@ interface RestaurantSelectorProps {
   restaurants: Restaurant[];
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
+  locationQuery: string;
+  onLocationQueryChange: (query: string) => void;
   isOnline: boolean;
   onOpenCamera?: () => void;
 }
@@ -72,10 +72,11 @@ function RestaurantSelector({
   restaurants,
   searchQuery,
   onSearchQueryChange,
+  locationQuery,
+  onLocationQueryChange,
   isOnline,
   onOpenCamera,
 }: RestaurantSelectorProps) {
-  const [locationQuery, setLocationQuery] = useState("");
   const [googlePlaces, setGooglePlaces] = useState<Restaurant[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -173,27 +174,44 @@ function RestaurantSelector({
       {/* Search Tab - Shows both cached and Google Places results */}
       <TabsContent value="search" className="mt-3 space-y-3">
         <div className="space-y-2">
-          <Input
-            type="text"
-            placeholder="Restaurant name or type..."
-            value={searchQuery}
-            onChange={(e) => {
-              onSearchQueryChange(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleGooglePlacesSearch();
-              }
-            }}
-            className="w-full"
-          />
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder="Restaurant name or type..."
+              value={searchQuery}
+              onChange={(e) => {
+                onSearchQueryChange(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleGooglePlacesSearch();
+                }
+              }}
+              className="w-full pr-8"
+            />
+            {(searchQuery || locationQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSearchQueryChange("");
+                  onLocationQueryChange("");
+                  setShowGoogleResults(false);
+                  setGooglePlaces([]);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-accent rounded-full transition-colors"
+                title="Clear search"
+              >
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
+            )}
+          </div>
 
           <Input
             type="text"
             placeholder="Location (optional, e.g., 90210, Los Angeles)"
             value={locationQuery}
-            onChange={(e) => setLocationQuery(e.target.value)}
+            onChange={(e) => onLocationQueryChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -410,6 +428,7 @@ export default function ProcessPhotosPage() {
 
   // Restaurant search state
   const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
+  const [locationSearchQuery, setLocationSearchQuery] = useState("");
 
   // Fetch restaurants
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
@@ -700,6 +719,8 @@ export default function ProcessPhotosPage() {
             restaurants={filteredRestaurants}
             searchQuery={restaurantSearchQuery}
             onSearchQueryChange={setRestaurantSearchQuery}
+            locationQuery={locationSearchQuery}
+            onLocationQueryChange={setLocationSearchQuery}
             isOnline={isOnline}
             onOpenCamera={() => setShowCameraMode(true)}
           />
@@ -832,6 +853,8 @@ export default function ProcessPhotosPage() {
             restaurants={filteredRestaurants}
             searchQuery={restaurantSearchQuery}
             onSearchQueryChange={setRestaurantSearchQuery}
+            locationQuery={locationSearchQuery}
+            onLocationQueryChange={setLocationSearchQuery}
             isOnline={isOnline}
             onOpenCamera={() => setShowCameraMode(true)}
           />
