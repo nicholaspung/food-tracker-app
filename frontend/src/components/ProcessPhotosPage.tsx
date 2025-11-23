@@ -24,7 +24,6 @@ import { useSync } from "@/contexts/SyncContext";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { pb, Restaurant, MenuItem } from "@/lib/pocketbase";
-import { useQuery } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
 import {
   searchAndCacheRestaurantsByText,
