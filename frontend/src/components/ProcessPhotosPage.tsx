@@ -1,15 +1,28 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, MapPin, Copy } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, MapPin, Copy, Camera, Search, Check } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
+import { pb, Restaurant } from "@/lib/pocketbase";
 
 type ScreenState = 'upload' | 'assign-restaurants' | 'process';
 
@@ -25,6 +38,86 @@ interface ProcessedPhoto {
   menuItemName: string;
   rating: number;
   notes: string;
+}
+
+// Simple Restaurant Selector Component
+interface RestaurantSelectorProps {
+  selectedRestaurant: Restaurant | null;
+  onRestaurantSelected: (restaurant: Restaurant) => void;
+  restaurants: Restaurant[];
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+}
+
+function RestaurantSelector({
+  selectedRestaurant,
+  onRestaurantSelected,
+  restaurants,
+  searchQuery,
+  onSearchQueryChange,
+}: RestaurantSelectorProps) {
+  return (
+    <div className="space-y-3">
+      <Input
+        type="text"
+        placeholder="Search restaurants..."
+        value={searchQuery}
+        onChange={(e) => onSearchQueryChange(e.target.value)}
+        className="w-full"
+      />
+
+      {selectedRestaurant ? (
+        <Card className="border-primary">
+          <CardContent className="p-3">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-primary" />
+                  <div className="font-medium">{selectedRestaurant.name}</div>
+                </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {selectedRestaurant.location}
+                  {selectedRestaurant.cuisineType && ` • ${selectedRestaurant.cuisineType}`}
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onRestaurantSelected(null as any)}
+              >
+                Change
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="max-h-60 overflow-y-auto space-y-2">
+          {restaurants.length === 0 ? (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              {searchQuery ? "No restaurants found" : "No restaurants saved yet"}
+            </div>
+          ) : (
+            restaurants.slice(0, 10).map((restaurant) => (
+              <Card
+                key={restaurant.id}
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => onRestaurantSelected(restaurant)}
+              >
+                <CardContent className="p-3">
+                  <div className="font-medium">{restaurant.name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {restaurant.location}
+                    {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ProcessPhotosPage() {
@@ -52,6 +145,34 @@ export default function ProcessPhotosPage() {
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
   const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Dialog state
+  const [showBackDialog, setShowBackDialog] = useState(false);
+  const [backDialogType, setBackDialogType] = useState<'upload' | 'assignment' | 'cancel'>('cancel');
+  const [showRequiredFieldsDialog, setShowRequiredFieldsDialog] = useState(false);
+  const [showCameraMode, setShowCameraMode] = useState(false);
+
+  // Restaurant search state
+  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
+
+  // Fetch restaurants
+  const { data: restaurants = [] } = useQuery<Restaurant[]>({
+    queryKey: ["restaurants"],
+    queryFn: async () => {
+      return await pb.collection("restaurants").getFullList({
+        sort: "-created",
+      });
+    },
+  });
+
+  const filteredRestaurants = restaurants.filter(
+    (r) =>
+      r.name.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
+      r.location.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
+      (r.cuisineType?.toLowerCase() || "").includes(
+        restaurantSearchQuery.toLowerCase()
+      )
+  );
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -123,7 +244,7 @@ export default function ProcessPhotosPage() {
 
   const handleSubmitCurrent = async () => {
     if (!selectedRestaurant || !menuItemName.trim() || rating === null) {
-      alert("Please fill in all required fields");
+      setShowRequiredFieldsDialog(true);
       return;
     }
 
@@ -252,11 +373,8 @@ export default function ProcessPhotosPage() {
           <div className="flex items-center justify-between p-4">
             <button
               onClick={() => {
-                if (confirm("Go back? You'll need to re-upload photos.")) {
-                  setPhotos([]);
-                  setPhotoRestaurants(new Map());
-                  setScreen('upload');
-                }
+                setBackDialogType('upload');
+                setShowBackDialog(true);
               }}
               className="p-2 hover:bg-accent rounded-lg transition-colors"
             >
@@ -306,10 +424,45 @@ export default function ProcessPhotosPage() {
                   {/* Restaurant Selection */}
                   {!assignedRestaurant && (
                     <>
-                      <RestaurantNameFinder
-                        onRestaurantSelected={(restaurant) => handleAssignRestaurant(photo.id, restaurant)}
-                        selectedRestaurant={null}
-                      />
+                      <Tabs defaultValue="search" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="search">
+                            <Search className="h-4 w-4 mr-2" />
+                            Search
+                          </TabsTrigger>
+                          <TabsTrigger value="camera">
+                            <Camera className="h-4 w-4 mr-2" />
+                            Camera
+                          </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="search" className="mt-3">
+                          <RestaurantSelector
+                            selectedRestaurant={assignedRestaurant || null}
+                            onRestaurantSelected={(restaurant) => handleAssignRestaurant(photo.id, restaurant)}
+                            restaurants={filteredRestaurants}
+                            searchQuery={restaurantSearchQuery}
+                            onSearchQueryChange={setRestaurantSearchQuery}
+                          />
+                        </TabsContent>
+
+                        <TabsContent value="camera" className="mt-3">
+                          <div className="space-y-2">
+                            <p className="text-sm text-muted-foreground">
+                              Take a photo of the restaurant sign or menu to automatically detect the name
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => setShowCameraMode(true)}
+                            >
+                              <Camera className="h-4 w-4 mr-2" />
+                              Open Camera
+                            </Button>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
 
                       {/* Same as Above Button */}
                       {index > 0 && previousRestaurant && (
@@ -386,18 +539,12 @@ export default function ProcessPhotosPage() {
             onClick={() => {
               if (currentPhotoIndex === 0) {
                 // Go back to restaurant assignment
-                if (confirm("Go back to restaurant assignment?")) {
-                  setScreen('assign-restaurants');
-                  setSelectedRestaurant(null);
-                  setMenuItemName("");
-                  setRating(null);
-                  setNotes("");
-                }
+                setBackDialogType('assignment');
+                setShowBackDialog(true);
               } else {
-                // Ask if they want to go back to previous photo or cancel entirely
-                if (confirm("Are you sure? Unprocessed photos will be lost.")) {
-                  navigate({ to: "/add-visit" });
-                }
+                // Ask if they want to cancel entirely
+                setBackDialogType('cancel');
+                setShowBackDialog(true);
               }
             }}
             className="p-2 hover:bg-accent rounded-lg transition-colors"
@@ -442,10 +589,45 @@ export default function ProcessPhotosPage() {
         {/* Restaurant Selection */}
         <div className="space-y-2">
           <Label className="text-base font-semibold">Restaurant *</Label>
-          <RestaurantNameFinder
-            onRestaurantSelected={handleRestaurantSelected}
-            selectedRestaurant={selectedRestaurant}
-          />
+          <Tabs defaultValue="search" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="search">
+                <Search className="h-4 w-4 mr-2" />
+                Search
+              </TabsTrigger>
+              <TabsTrigger value="camera">
+                <Camera className="h-4 w-4 mr-2" />
+                Camera
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="search" className="mt-3">
+              <RestaurantSelector
+                selectedRestaurant={selectedRestaurant}
+                onRestaurantSelected={handleRestaurantSelected}
+                restaurants={filteredRestaurants}
+                searchQuery={restaurantSearchQuery}
+                onSearchQueryChange={setRestaurantSearchQuery}
+              />
+            </TabsContent>
+
+            <TabsContent value="camera" className="mt-3">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Take a photo of the restaurant sign or menu to automatically detect the name
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setShowCameraMode(true)}
+                >
+                  <Camera className="h-4 w-4 mr-2" />
+                  Open Camera
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
 
         {/* Menu Item Name */}
@@ -564,6 +746,77 @@ export default function ProcessPhotosPage() {
           )}
         </Button>
       </form>
+
+      {/* Dialogs */}
+      <AlertDialog open={showBackDialog} onOpenChange={setShowBackDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {backDialogType === 'upload' ? 'Go back?' : backDialogType === 'assignment' ? 'Go back to restaurant assignment?' : 'Cancel processing?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {backDialogType === 'upload'
+                ? "You'll need to re-upload photos if you go back."
+                : backDialogType === 'assignment'
+                ? "Your current progress on this photo will be lost."
+                : "Unprocessed photos will be lost. Are you sure you want to cancel?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (backDialogType === 'upload') {
+                  setPhotos([]);
+                  setPhotoRestaurants(new Map());
+                  setScreen('upload');
+                } else if (backDialogType === 'assignment') {
+                  setScreen('assign-restaurants');
+                  setSelectedRestaurant(null);
+                  setMenuItemName("");
+                  setRating(null);
+                  setNotes("");
+                } else {
+                  navigate({ to: "/add-visit" });
+                }
+                setShowBackDialog(false);
+              }}
+            >
+              {backDialogType === 'upload' ? 'Go Back' : backDialogType === 'assignment' ? 'Go Back' : 'Cancel Processing'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showRequiredFieldsDialog} onOpenChange={setShowRequiredFieldsDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Missing Required Fields</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please fill in all required fields: restaurant, menu item name, and rating.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowRequiredFieldsDialog(false)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Camera Mode Modal */}
+      {showCameraMode && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <RestaurantNameFinder
+            onSelectName={(name) => {
+              // TODO: Auto-search for this restaurant name and select if found
+              // For now, just close the camera mode
+              setShowCameraMode(false);
+            }}
+            onClose={() => setShowCameraMode(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
