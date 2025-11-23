@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -542,6 +542,7 @@ function RestaurantSelector({
 export default function ProcessPhotosPage() {
   const navigate = useNavigate();
   const { isOnline } = useSync();
+  const queryClient = useQueryClient();
   const visitCreationMutation = useOfflineVisitCreation();
   const restaurantCreationMutation = useOfflineRestaurantCreation();
 
@@ -753,54 +754,77 @@ export default function ProcessPhotosPage() {
       return;
     }
 
-    const currentPhoto = photos[currentPhotoIndex];
+    setIsProcessing(true);
 
-    // Mark as processed (save data for later)
-    const newProcessedPhoto: ProcessedPhoto = {
-      photoId: currentPhoto.id,
-      photo: currentPhoto.file,
-      restaurant: selectedRestaurant,
-      menuItemName,
-      menuItemDescription: selectedMenuItem?.description || "",
-      rating: rating!,
-      notes: notes || "",
-      isNewMenuItem: isCreatingNewItem,
-    };
+    try {
+      const currentPhoto = photos[currentPhotoIndex];
 
-    const updatedProcessedPhotos = [...processedPhotos, newProcessedPhoto];
-    setProcessedPhotos(updatedProcessedPhotos);
+      // If creating a new menu item, create it immediately so it's available for next photo
+      if (isCreatingNewItem && isOnline) {
+        console.log('[ProcessPhotos] Creating new menu item immediately:', menuItemName);
+        await createMenuItems(
+          selectedRestaurant.id,
+          [{ name: menuItemName, description: selectedMenuItem?.description || "" }],
+          undefined,
+          { skipValidation: true, isFromOCR: false }
+        );
 
-    // Save to draft
-    await processPhotosDraftService.saveProcessedPhoto(
-      currentPhoto.id,
-      currentPhoto.file,
-      selectedRestaurant,
-      menuItemName,
-      selectedMenuItem?.description || "",
-      rating!,
-      notes || "",
-      isCreatingNewItem
-    );
+        // Invalidate menu items query so it appears for next photo
+        await queryClient.invalidateQueries({ queryKey: ['menu_items', selectedRestaurant.id] });
+      }
 
-    console.log('[ProcessPhotos] Photo marked as processed:', newProcessedPhoto);
+      // Mark as processed (save data for later)
+      const newProcessedPhoto: ProcessedPhoto = {
+        photoId: currentPhoto.id,
+        photo: currentPhoto.file,
+        restaurant: selectedRestaurant,
+        menuItemName,
+        menuItemDescription: selectedMenuItem?.description || "",
+        rating: rating!,
+        notes: notes || "",
+        isNewMenuItem: false, // Already created above, so mark as false
+      };
 
-    // Move to next photo or finish
-    if (currentPhotoIndex < photos.length - 1) {
-      const nextPhotoIndex = currentPhotoIndex + 1;
-      setCurrentPhotoIndex(nextPhotoIndex);
+      const updatedProcessedPhotos = [...processedPhotos, newProcessedPhoto];
+      setProcessedPhotos(updatedProcessedPhotos);
 
-      // Reset form for next photo
-      setSelectedRestaurant(null);
-      setSelectedMenuItem(null);
-      setMenuItemName("");
-      setMenuItemSearchQuery("");
-      setIsCreatingNewItem(false);
-      setRating(3);
-      setNotes("");
-      handleRemoveMenuItemPhoto();
-    } else {
-      // All photos processed - create visits
-      handleFinishProcessing(updatedProcessedPhotos);
+      // Save to draft
+      await processPhotosDraftService.saveProcessedPhoto(
+        currentPhoto.id,
+        currentPhoto.file,
+        selectedRestaurant,
+        menuItemName,
+        selectedMenuItem?.description || "",
+        rating!,
+        notes || "",
+        false // Already created, not a new item anymore
+      );
+
+      console.log('[ProcessPhotos] Photo marked as processed:', newProcessedPhoto);
+
+      // Move to next photo or finish
+      if (currentPhotoIndex < photos.length - 1) {
+        const nextPhotoIndex = currentPhotoIndex + 1;
+        setCurrentPhotoIndex(nextPhotoIndex);
+
+        // Reset form for next photo
+        setSelectedRestaurant(null);
+        setSelectedMenuItem(null);
+        setMenuItemName("");
+        setMenuItemSearchQuery("");
+        setIsCreatingNewItem(false);
+        setRating(3);
+        setNotes("");
+        handleRemoveMenuItemPhoto();
+      } else {
+        // All photos processed - create visits
+        handleFinishProcessing(updatedProcessedPhotos);
+      }
+    } catch (error: any) {
+      console.error('[ProcessPhotos] Failed to create menu item:', error);
+      alert(`Failed to create menu item: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -826,20 +850,8 @@ export default function ProcessPhotosPage() {
         const restaurant = restaurantPhotos[0].restaurant;
         console.log('[ProcessPhotos] Creating visit for restaurant:', restaurant.name);
 
-        // Create new menu items if needed
-        const menuItemsToCreate = restaurantPhotos.filter(p => p.isNewMenuItem);
-        if (menuItemsToCreate.length > 0) {
-          if (!isOnline) {
-            throw new Error('Cannot create new menu items while offline. Please connect to the internet and try again.');
-          }
-          console.log('[ProcessPhotos] Creating', menuItemsToCreate.length, 'new menu items');
-          await createMenuItems(
-            restaurantId,
-            menuItemsToCreate.map(p => ({ name: p.menuItemName, description: p.menuItemDescription })),
-            undefined,
-            { skipValidation: true, isFromOCR: false }
-          );
-        }
+        // Menu items are already created immediately when user processes each photo
+        // (in handleSubmitCurrent), so no need to create them here again
 
         // Prepare visit data
         const foodItems = restaurantPhotos.map(p => ({
@@ -881,9 +893,32 @@ export default function ProcessPhotosPage() {
   };
 
   const handleCancel = () => {
-    // Clear draft when canceling
-    processPhotosDraftService.clearDraft();
-    navigate({ to: "/add-visit" });
+    if (screen === 'process' && currentPhotoIndex === 0) {
+      // Go back to upload screen to review photos
+      setScreen('upload');
+    } else {
+      // Clear draft and exit completely
+      processPhotosDraftService.clearDraft();
+      navigate({ to: "/add-visit" });
+    }
+  };
+
+  const handleRemovePhoto = (photoId: string) => {
+    const updatedPhotos = photos.filter(p => p.id !== photoId);
+    setPhotos(updatedPhotos);
+
+    // If no photos left, go back to add-visit
+    if (updatedPhotos.length === 0) {
+      processPhotosDraftService.clearDraft();
+      navigate({ to: "/add-visit" });
+    }
+  };
+
+  const handleStartProcessing = () => {
+    if (photos.length > 0) {
+      setCurrentPhotoIndex(0);
+      setScreen('process');
+    }
   };
 
   // Upload Screen
@@ -906,28 +941,116 @@ export default function ProcessPhotosPage() {
         </div>
 
         {/* Upload Screen */}
-        <div className="flex-1 p-4 flex flex-col items-center justify-center">
-          <Upload className="h-20 w-20 text-muted-foreground mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Upload Photos</h2>
-          <p className="text-muted-foreground text-center mb-8 max-w-md">
-            Select multiple photos from your camera roll. You'll select a restaurant and rate each photo.
-          </p>
+        {photos.length === 0 ? (
+          // No photos selected yet - show upload UI
+          <div className="flex-1 p-4 flex flex-col items-center justify-center">
+            <Upload className="h-20 w-20 text-muted-foreground mb-4" />
+            <h2 className="text-2xl font-bold mb-2">Upload Photos</h2>
+            <p className="text-muted-foreground text-center mb-8 max-w-md">
+              Select multiple photos from your camera roll. You'll select a restaurant and rate each photo.
+            </p>
 
-          <label
-            htmlFor="photo-upload"
-            className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium cursor-pointer hover:bg-primary/90 transition-colors"
-          >
-            Choose Photos
-            <input
-              id="photo-upload"
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handlePhotoSelect}
-              className="hidden"
-            />
-          </label>
-        </div>
+            <label
+              htmlFor="photo-upload"
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium cursor-pointer hover:bg-primary/90 transition-colors"
+            >
+              Choose Photos
+              <input
+                id="photo-upload"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePhotoSelect}
+                className="hidden"
+              />
+            </label>
+          </div>
+        ) : (
+          // Photos selected - show review UI
+          <>
+            <div className="flex-1 overflow-y-auto p-4">
+              <p className="text-sm text-muted-foreground mb-4">
+                {photos.length} photo{photos.length !== 1 ? 's' : ''} selected. Review and remove any you don't want to process.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                {photos.map((photo, index) => (
+                  <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-muted group">
+                    <img
+                      src={photo.previewUrl}
+                      alt={`Photo ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-8 w-8 p-0 opacity-90"
+                        onClick={() => handleRemovePhoto(photo.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                      Photo {index + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add more photos button */}
+              <div className="mt-4">
+                <label
+                  htmlFor="photo-upload-more"
+                  className="w-full flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors"
+                >
+                  <Upload className="h-5 w-5 text-muted-foreground mr-2" />
+                  <span className="text-sm font-medium text-muted-foreground">Add More Photos</span>
+                  <input
+                    id="photo-upload-more"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+
+                      const newPhotos: PhotoToProcess[] = files.map((file, index) => ({
+                        id: `${Date.now()}-${index}`,
+                        file,
+                        previewUrl: URL.createObjectURL(file),
+                      }));
+
+                      setPhotos([...photos, ...newPhotos]);
+                      e.target.value = "";
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Footer with Cancel/Next buttons */}
+            <div className="bg-white border-t border-gray-200 p-4">
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleCancel}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleStartProcessing}
+                  className="flex-1"
+                >
+                  Next
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -1121,6 +1244,18 @@ export default function ProcessPhotosPage() {
                 className="text-base"
               />
             </div>
+          )}
+
+          {/* Photo upload - scan menu to prepopulate items (only in search mode) */}
+          {!isCreatingNewItem && (
+            <MenuItemPhotoInput
+              photoKey="current"
+              newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
+              onPhotoCapture={handleMenuItemPhotoCapture}
+              onRemoveNewPhoto={handleRemoveMenuItemPhoto}
+              showLabel={true}
+              showNewPhotoBadge={false}
+            />
           )}
               </CardContent>
             </Card>
