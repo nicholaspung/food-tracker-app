@@ -25,6 +25,7 @@ import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { pb, Restaurant, MenuItem } from "@/lib/pocketbase";
 import { createMenuItems } from "@/services/ocrService";
+import { processPhotosDraftService, dataUrlToFile } from "@/services/processPhotosDraftService";
 import { Switch } from "@/components/ui/switch";
 import {
   searchAndCacheRestaurantsByText,
@@ -500,7 +501,7 @@ export default function ProcessPhotosPage() {
     !usedMenuItemNames.includes(item.name.toLowerCase())
   );
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -513,12 +514,77 @@ export default function ProcessPhotosPage() {
     setPhotos(newPhotos);
     setCurrentPhotoIndex(0);
     setScreen('process');
+
+    // Save to draft
+    await processPhotosDraftService.savePhotos(files);
+
     e.target.value = ""; // Reset input
   };
+
+  // Load draft on mount
+  useEffect(() => {
+    const draft = processPhotosDraftService.getDraft();
+    if (draft.photos.length > 0) {
+      console.log('[ProcessPhotos] Restoring draft with', draft.photos.length, 'photos');
+
+      // Convert data URLs back to File objects
+      const restoredPhotos: PhotoToProcess[] = draft.photos.map((p) => {
+        const file = dataUrlToFile(p.dataUrl, `photo-${p.id}.jpg`);
+        return {
+          id: p.id,
+          file,
+          previewUrl: URL.createObjectURL(file),
+        };
+      });
+
+      setPhotos(restoredPhotos);
+      setCurrentPhotoIndex(draft.currentPhotoIndex);
+      setScreen('process');
+
+      // Restore processed photos (convert data URLs to Files)
+      const restoredProcessed: ProcessedPhoto[] = draft.processedPhotos.map((p) => ({
+        ...p,
+        photo: dataUrlToFile(p.photoDataUrl, `photo-${p.photoId}.jpg`),
+      }));
+      setProcessedPhotos(restoredProcessed);
+
+      // Restore current form state if available
+      if (draft.currentFormState) {
+        setSelectedRestaurant(draft.currentFormState.selectedRestaurant);
+        setMenuItemName(draft.currentFormState.menuItemName);
+        setRating(draft.currentFormState.rating);
+        setNotes(draft.currentFormState.notes);
+        setIsCreatingNewItem(draft.currentFormState.isCreatingNewItem);
+      }
+    }
+  }, []);
+
+  // Disable "Create new" mode when going offline
+  useEffect(() => {
+    if (!isOnline && isCreatingNewItem) {
+      setIsCreatingNewItem(false);
+    }
+  }, [isOnline, isCreatingNewItem]);
+
+  // Save form state to draft when it changes
+  useEffect(() => {
+    if (screen === 'process' && photos.length > 0) {
+      processPhotosDraftService.saveFormState(
+        selectedRestaurant,
+        menuItemName,
+        rating,
+        notes,
+        isCreatingNewItem
+      );
+    }
+  }, [screen, photos.length, selectedRestaurant, menuItemName, rating, notes, isCreatingNewItem]);
 
   // Reset form when photo index changes
   useEffect(() => {
     if (screen === 'process' && photos.length > 0) {
+      // Save current index to draft
+      processPhotosDraftService.saveCurrentIndex(currentPhotoIndex);
+
       // Reset form for new photo
       setSelectedRestaurant(null);
       setSelectedMenuItem(null);
@@ -558,7 +624,7 @@ export default function ProcessPhotosPage() {
     setMenuItemPhotoPreview(null);
   };
 
-  const handleSubmitCurrent = () => {
+  const handleSubmitCurrent = async () => {
     console.log('[ProcessPhotos] handleSubmitCurrent called');
 
     if (!selectedRestaurant || !menuItemName.trim() || rating === null) {
@@ -583,6 +649,18 @@ export default function ProcessPhotosPage() {
 
     const updatedProcessedPhotos = [...processedPhotos, newProcessedPhoto];
     setProcessedPhotos(updatedProcessedPhotos);
+
+    // Save to draft
+    await processPhotosDraftService.saveProcessedPhoto(
+      currentPhoto.id,
+      currentPhoto.file,
+      selectedRestaurant,
+      menuItemName,
+      selectedMenuItem?.description || "",
+      rating!,
+      notes || "",
+      isCreatingNewItem
+    );
 
     console.log('[ProcessPhotos] Photo marked as processed:', newProcessedPhoto);
 
@@ -630,7 +708,10 @@ export default function ProcessPhotosPage() {
 
         // Create new menu items if needed
         const menuItemsToCreate = restaurantPhotos.filter(p => p.isNewMenuItem);
-        if (menuItemsToCreate.length > 0 && isOnline) {
+        if (menuItemsToCreate.length > 0) {
+          if (!isOnline) {
+            throw new Error('Cannot create new menu items while offline. Please connect to the internet and try again.');
+          }
           console.log('[ProcessPhotos] Creating', menuItemsToCreate.length, 'new menu items');
           await createMenuItems(
             restaurantId,
@@ -666,6 +747,9 @@ export default function ProcessPhotosPage() {
         console.log('[ProcessPhotos] Visit created successfully');
       }
 
+      // Clear draft on success
+      processPhotosDraftService.clearDraft();
+
       localStorage.setItem("hasRatedBefore", "true");
       navigate({ to: "/home" });
     } catch (error: any) {
@@ -674,6 +758,12 @@ export default function ProcessPhotosPage() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleCancel = () => {
+    // Clear draft when canceling
+    processPhotosDraftService.clearDraft();
+    navigate({ to: "/add-visit" });
   };
 
   // Upload Screen
@@ -687,7 +777,7 @@ export default function ProcessPhotosPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate({ to: "/add-visit" })}
+              onClick={handleCancel}
             >
               Cancel
             </Button>
@@ -788,17 +878,25 @@ export default function ProcessPhotosPage() {
               <div className="flex items-center justify-between">
                 <Label className="text-base font-semibold">Menu Item *</Label>
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="create-new-toggle" className="text-sm text-muted-foreground cursor-pointer">
-                    Create new
+                  <Label htmlFor="create-new-toggle" className={`text-sm cursor-pointer ${!isOnline ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
+                    Create new {!isOnline && "(Offline)"}
                   </Label>
                   <Switch
                     id="create-new-toggle"
                     checked={isCreatingNewItem}
                     onCheckedChange={setIsCreatingNewItem}
-                    disabled={isProcessing}
+                    disabled={isProcessing || !isOnline}
                   />
                 </div>
               </div>
+              {!isOnline && isCreatingNewItem && (
+                <div className="p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-800">
+                  <div className="flex items-center gap-2">
+                    <WifiOff className="w-3 h-3" />
+                    <span>You're offline. Cannot create new menu items. Switch to search mode or go online.</span>
+                  </div>
+                </div>
+              )}
 
           {!isCreatingNewItem ? (
             /* Search existing menu items */
@@ -1008,8 +1106,8 @@ export default function ProcessPhotosPage() {
             variant="outline"
             onClick={() => {
               if (currentPhotoIndex === 0) {
-                // Cancel - go back to add-visit
-                navigate({ to: "/add-visit" });
+                // Cancel - clear draft and go back
+                handleCancel();
               } else {
                 // Previous photo
                 setCurrentPhotoIndex(currentPhotoIndex - 1);
