@@ -563,9 +563,17 @@ export default function ProcessPhotosPage() {
     setIsProcessing(true);
     const currentPhoto = photos[currentPhotoIndex];
 
+    console.log('[ProcessPhotos] Saving photo:', {
+      menuItemName,
+      rating,
+      restaurant: selectedRestaurant.name,
+      hasLatLng: !!(selectedRestaurant.latitude && selectedRestaurant.longitude),
+      photoSize: currentPhoto.file.size,
+    });
+
     try {
       // Save this photo's data using Quick Track
-      await quickTrackMutation.mutateAsync({
+      const result = await quickTrackMutation.mutateAsync({
         name: menuItemName,
         rating: rating,
         notes: notes || undefined,
@@ -575,6 +583,8 @@ export default function ProcessPhotosPage() {
         longitude: selectedRestaurant.longitude,
         photo: currentPhoto.file,
       });
+
+      console.log('[ProcessPhotos] Save successful:', result);
 
       // Mark as processed
       setProcessedPhotos([...processedPhotos, {
@@ -605,10 +615,17 @@ export default function ProcessPhotosPage() {
         navigate({ to: "/home" });
       }
     } catch (error: any) {
-      console.error("Failed to save photo:", error);
+      console.error("[ProcessPhotos] Failed to save photo:", error);
+      console.error("[ProcessPhotos] Error details:", {
+        message: error.message,
+        stack: error.stack,
+        isOnline,
+      });
 
-      // Show helpful message if offline
+      // Show error to user if not expected offline behavior
       if (!isOnline && error.message?.includes('queued')) {
+        // Expected offline behavior - queued for sync
+        console.log('[ProcessPhotos] Item queued for offline sync');
         // Still move forward since it's queued
         if (currentPhotoIndex < photos.length - 1) {
           const nextPhotoIndex = currentPhotoIndex + 1;
@@ -627,6 +644,9 @@ export default function ProcessPhotosPage() {
           localStorage.setItem("hasRatedBefore", "true");
           navigate({ to: "/home" });
         }
+      } else {
+        // Real error - show to user
+        alert(`Failed to save photo: ${error.message || 'Unknown error'}. Check browser console for details.`);
       }
     } finally {
       setIsProcessing(false);
@@ -728,6 +748,12 @@ export default function ProcessPhotosPage() {
             onLocationQueryChange={setLocationSearchQuery}
             isOnline={isOnline}
             onOpenCamera={() => setShowCameraMode(true)}
+            previousRestaurant={processedPhotos.length > 0 ? processedPhotos[processedPhotos.length - 1].restaurant : null}
+            onUsePreviousRestaurant={() => {
+              const prevRestaurant = processedPhotos[processedPhotos.length - 1].restaurant;
+              handleRestaurantSelected(prevRestaurant);
+            }}
+            showSameAsAbove={currentPhotoIndex > 0 && processedPhotos.length > 0}
           />
         </div>
 
@@ -768,23 +794,29 @@ export default function ProcessPhotosPage() {
                   />
 
                   {filteredMenuItems.length > 0 && (
-                    <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+                    <div className="max-h-48 overflow-y-auto space-y-2">
                       {filteredMenuItems.slice(0, 20).map((item) => (
-                        <button
+                        <Card
                           key={item.id}
-                          type="button"
+                          className="cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
                           onClick={() => {
                             setSelectedMenuItem(item);
                             setMenuItemName(item.name);
                             setMenuItemSearchQuery("");
                           }}
-                          className="w-full text-left px-3 py-2 hover:bg-accent rounded-md transition-colors"
                         >
-                          <div className="font-medium">{item.name}</div>
-                          {item.description && (
-                            <div className="text-sm text-muted-foreground">{item.description}</div>
-                          )}
-                        </button>
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium">{item.name}</div>
+                                {item.description && (
+                                  <div className="text-sm text-muted-foreground mt-1">{item.description}</div>
+                                )}
+                              </div>
+                              <Check className="w-5 h-5 text-gray-300 flex-shrink-0" />
+                            </div>
+                          </CardContent>
+                        </Card>
                       ))}
                     </div>
                   )}
@@ -802,27 +834,32 @@ export default function ProcessPhotosPage() {
                   )}
                 </>
               ) : (
-                <div className="p-3 bg-muted rounded-md">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{selectedMenuItem.name}</div>
-                      {selectedMenuItem.description && (
-                        <div className="text-sm text-muted-foreground">{selectedMenuItem.description}</div>
-                      )}
+                <Card className="border-green-500 bg-green-50">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium">{selectedMenuItem.name}</div>
+                        {selectedMenuItem.description && (
+                          <div className="text-sm text-muted-foreground mt-1">{selectedMenuItem.description}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Check className="w-5 h-5 text-green-600" />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedMenuItem(null);
+                            setMenuItemName("");
+                          }}
+                        >
+                          Change
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedMenuItem(null);
-                        setMenuItemName("");
-                      }}
-                    >
-                      Change
-                    </Button>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Photo upload - scan menu to prepopulate items */}
