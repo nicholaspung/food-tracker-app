@@ -19,11 +19,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
-import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
+import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
 import { useSync } from "@/contexts/SyncContext";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { pb, Restaurant, MenuItem } from "@/lib/pocketbase";
+import { createMenuItems } from "@/services/ocrService";
 import { Switch } from "@/components/ui/switch";
 import {
   searchAndCacheRestaurantsByText,
@@ -39,10 +40,13 @@ interface PhotoToProcess {
 
 interface ProcessedPhoto {
   photoId: string;
+  photo: File;
   restaurant: any;
   menuItemName: string;
+  menuItemDescription: string;
   rating: number;
   notes: string;
+  isNewMenuItem: boolean;
 }
 
 // Enhanced Restaurant Selector Component with Google Places and History
@@ -418,7 +422,7 @@ function RestaurantSelector({
 export default function ProcessPhotosPage() {
   const navigate = useNavigate();
   const { isOnline } = useSync();
-  const quickTrackMutation = useOfflineQuickTrack();
+  const visitCreationMutation = useOfflineVisitCreation();
 
   // Screen state
   const [screen, setScreen] = useState<ScreenState>('upload');
@@ -554,118 +558,119 @@ export default function ProcessPhotosPage() {
     setMenuItemPhotoPreview(null);
   };
 
-  const handleSubmitCurrent = async () => {
+  const handleSubmitCurrent = () => {
     console.log('[ProcessPhotos] handleSubmitCurrent called');
-    console.log('[ProcessPhotos] Form state:', {
-      hasRestaurant: !!selectedRestaurant,
-      restaurantName: selectedRestaurant?.name,
-      menuItemName,
-      menuItemNameTrimmed: menuItemName.trim(),
-      rating,
-      hasPhoto: !!photos[currentPhotoIndex],
-      isAuthenticated: !!pb.authStore.record,
-      userId: pb.authStore.record?.id,
-    });
 
     if (!selectedRestaurant || !menuItemName.trim() || rating === null) {
-      console.log('[ProcessPhotos] Validation failed:', {
-        missingRestaurant: !selectedRestaurant,
-        missingMenuItem: !menuItemName.trim(),
-        missingRating: rating === null,
-      });
+      console.log('[ProcessPhotos] Validation failed');
       setShowRequiredFieldsDialog(true);
       return;
     }
 
-    console.log('[ProcessPhotos] Validation passed, starting save...');
-    setIsProcessing(true);
     const currentPhoto = photos[currentPhotoIndex];
 
-    const saveData = {
-      name: menuItemName,
-      rating: rating,
-      notes: notes || undefined,
-      itemCategory: "restaurant",
-      location_text: selectedRestaurant.name,
-      latitude: selectedRestaurant.latitude,
-      longitude: selectedRestaurant.longitude,
+    // Mark as processed (save data for later)
+    const newProcessedPhoto: ProcessedPhoto = {
+      photoId: currentPhoto.id,
       photo: currentPhoto.file,
+      restaurant: selectedRestaurant,
+      menuItemName,
+      menuItemDescription: selectedMenuItem?.description || "",
+      rating: rating!,
+      notes: notes || "",
+      isNewMenuItem: isCreatingNewItem,
     };
 
-    console.log('[ProcessPhotos] About to call mutation with data:', {
-      ...saveData,
-      photo: `File(${currentPhoto.file.name}, ${currentPhoto.file.size} bytes)`,
-    });
+    const updatedProcessedPhotos = [...processedPhotos, newProcessedPhoto];
+    setProcessedPhotos(updatedProcessedPhotos);
+
+    console.log('[ProcessPhotos] Photo marked as processed:', newProcessedPhoto);
+
+    // Move to next photo or finish
+    if (currentPhotoIndex < photos.length - 1) {
+      const nextPhotoIndex = currentPhotoIndex + 1;
+      setCurrentPhotoIndex(nextPhotoIndex);
+
+      // Reset form for next photo
+      setSelectedRestaurant(null);
+      setSelectedMenuItem(null);
+      setMenuItemName("");
+      setMenuItemSearchQuery("");
+      setIsCreatingNewItem(false);
+      setRating(3);
+      setNotes("");
+      handleRemoveMenuItemPhoto();
+    } else {
+      // All photos processed - create visits
+      handleFinishProcessing(updatedProcessedPhotos);
+    }
+  };
+
+  const handleFinishProcessing = async (allProcessedPhotos: ProcessedPhoto[]) => {
+    console.log('[ProcessPhotos] Finishing processing with', allProcessedPhotos.length, 'photos');
+    setIsProcessing(true);
 
     try {
-      // Save this photo's data using Quick Track
-      console.log('[ProcessPhotos] Calling quickTrackMutation.mutateAsync...');
-      const result = await quickTrackMutation.mutateAsync(saveData);
-
-      console.log('[ProcessPhotos] Save successful:', result);
-
-      // Mark as processed
-      setProcessedPhotos([...processedPhotos, {
-        photoId: currentPhoto.id,
-        restaurant: selectedRestaurant,
-        menuItemName,
-        rating,
-        notes,
-      }]);
-
-      // Move to next photo or finish
-      if (currentPhotoIndex < photos.length - 1) {
-        const nextPhotoIndex = currentPhotoIndex + 1;
-        setCurrentPhotoIndex(nextPhotoIndex);
-
-        // Reset form for next photo
-        setSelectedRestaurant(null);
-        setSelectedMenuItem(null);
-        setMenuItemName("");
-        setMenuItemSearchQuery("");
-        setIsCreatingNewItem(false);
-        setRating(3);
-        setNotes("");
-        handleRemoveMenuItemPhoto();
-      } else {
-        // All photos processed
-        localStorage.setItem("hasRatedBefore", "true");
-        navigate({ to: "/home" });
-      }
-    } catch (error: any) {
-      console.error("[ProcessPhotos] Failed to save photo:", error);
-      console.error("[ProcessPhotos] Error details:", {
-        message: error.message,
-        stack: error.stack,
-        isOnline,
-      });
-
-      // Show error to user if not expected offline behavior
-      if (!isOnline && error.message?.includes('queued')) {
-        // Expected offline behavior - queued for sync
-        console.log('[ProcessPhotos] Item queued for offline sync');
-        // Still move forward since it's queued
-        if (currentPhotoIndex < photos.length - 1) {
-          const nextPhotoIndex = currentPhotoIndex + 1;
-          setCurrentPhotoIndex(nextPhotoIndex);
-
-          // Reset form for next photo
-          setSelectedRestaurant(null);
-          setSelectedMenuItem(null);
-          setMenuItemName("");
-          setMenuItemSearchQuery("");
-          setIsCreatingNewItem(false);
-          setRating(3);
-          setNotes("");
-          handleRemoveMenuItemPhoto();
-        } else {
-          localStorage.setItem("hasRatedBefore", "true");
-          navigate({ to: "/home" });
+      // Group photos by restaurant
+      const photosByRestaurant = new Map<string, ProcessedPhoto[]>();
+      for (const photo of allProcessedPhotos) {
+        const restaurantId = photo.restaurant.id;
+        if (!photosByRestaurant.has(restaurantId)) {
+          photosByRestaurant.set(restaurantId, []);
         }
-      } else {
-        // Real error - show to user
-        alert(`Failed to save photo: ${error.message || 'Unknown error'}. Check browser console for details.`);
+        photosByRestaurant.get(restaurantId)!.push(photo);
       }
+
+      console.log('[ProcessPhotos] Grouped into', photosByRestaurant.size, 'restaurants');
+
+      // Create a visit for each restaurant
+      for (const [restaurantId, restaurantPhotos] of photosByRestaurant) {
+        const restaurant = restaurantPhotos[0].restaurant;
+        console.log('[ProcessPhotos] Creating visit for restaurant:', restaurant.name);
+
+        // Create new menu items if needed
+        const menuItemsToCreate = restaurantPhotos.filter(p => p.isNewMenuItem);
+        if (menuItemsToCreate.length > 0 && isOnline) {
+          console.log('[ProcessPhotos] Creating', menuItemsToCreate.length, 'new menu items');
+          await createMenuItems(
+            restaurantId,
+            menuItemsToCreate.map(p => ({ name: p.menuItemName, description: p.menuItemDescription })),
+            undefined,
+            { skipValidation: true, isFromOCR: false }
+          );
+        }
+
+        // Prepare visit data
+        const foodItems = restaurantPhotos.map(p => ({
+          name: p.menuItemName,
+          description: p.menuItemDescription,
+          rating: p.rating,
+          notes: p.notes,
+        }));
+
+        const itemPhotos = new Map<number, File>();
+        restaurantPhotos.forEach((p, index) => {
+          itemPhotos.set(index, p.photo);
+        });
+
+        // Create visit with all food items
+        await visitCreationMutation.mutateAsync({
+          restaurant: restaurantId,
+          visitDate: new Date().toISOString(),
+          visibility: "private",
+          notes: "",
+          foodItems,
+          itemPhotos,
+        });
+
+        console.log('[ProcessPhotos] Visit created successfully');
+      }
+
+      localStorage.setItem("hasRatedBefore", "true");
+      navigate({ to: "/home" });
+    } catch (error: any) {
+      console.error("[ProcessPhotos] Failed to create visits:", error);
+      alert(`Failed to save: ${error.message || 'Unknown error'}. Check browser console for details.`);
     } finally {
       setIsProcessing(false);
     }
@@ -982,11 +987,11 @@ export default function ProcessPhotosPage() {
         </div>
 
             {/* Error Display */}
-            {quickTrackMutation.isError && !quickTrackMutation.error?.message?.includes('queued') && (
+            {visitCreationMutation.isError && (
               <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg">
-                <p className="font-semibold">Error saving photo</p>
+                <p className="font-semibold">Error saving visits</p>
                 <p className="text-sm">
-                  Please try again. Check browser console for details.
+                  {visitCreationMutation.error?.message || 'Please try again. Check browser console for details.'}
                 </p>
               </div>
             )}
