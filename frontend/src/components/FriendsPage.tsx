@@ -33,8 +33,10 @@ import {
   QrCode,
   ChevronRight,
   Scan,
+  WifiOff,
 } from "lucide-react";
 import QRScanner from "@/components/QRScanner";
+import { useSync } from "@/contexts/SyncContext";
 
 // Generate a unique friend code from user ID (base62 encoding for shorter code)
 function generateFriendCode(userId: string): string {
@@ -59,6 +61,7 @@ export default function FriendsPage() {
   const [friendToRemove, setFriendToRemove] =
     useState<FriendWithDetails | null>(null);
   const queryClient = useQueryClient();
+  const { isOnline } = useSync();
 
   const currentUser = pb.authStore.record;
   const myFriendCode = currentUser ? generateFriendCode(currentUser.id) : "";
@@ -104,6 +107,10 @@ export default function FriendsPage() {
   const sendFriendRequestMutation = useMutation({
     mutationFn: async (code: string) => {
       if (!currentUser) throw new Error("Not authenticated");
+
+      if (!isOnline) {
+        throw new Error("Friend code lookup requires internet connection. Please connect and try again.");
+      }
 
       // Find user by friend code using backend API
       const response = await pb.send(
@@ -509,11 +516,20 @@ export default function FriendsPage() {
 
             {/* Add Friend Tab */}
             <TabsContent value="add-friend" className="mt-0 space-y-4">
+              {!isOnline && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-orange-800 text-sm">
+                    <WifiOff className="w-4 h-4" />
+                    <span>You're offline. Friend code lookup requires internet connection.</span>
+                  </div>
+                </div>
+              )}
+
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
-                    <UserPlus className="w-5 h-5" />
-                    Add Friend
+                    {isOnline ? <UserPlus className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
+                    Add Friend {!isOnline && "(Offline)"}
                   </CardTitle>
                   <CardDescription>
                     Scan QR code or enter a friend code
@@ -536,8 +552,15 @@ export default function FriendsPage() {
                         }
                         maxLength={8}
                         className="uppercase text-center text-lg tracking-wider"
+                        disabled={!isOnline}
                       />
                     </div>
+
+                    {!isOnline && (
+                      <p className="text-xs text-orange-600 text-center">
+                        Friend code lookup requires internet connection
+                      </p>
+                    )}
 
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center">
@@ -553,19 +576,27 @@ export default function FriendsPage() {
                       variant="outline"
                       className="w-full"
                       onClick={() => setShowScanner(true)}
+                      disabled={!isOnline}
                     >
-                      <Scan className="w-4 h-4 mr-2" />
-                      Scan QR Code
+                      {isOnline ? (
+                        <><Scan className="w-4 h-4 mr-2" />Scan QR Code</>
+                      ) : (
+                        <><WifiOff className="w-4 h-4 mr-2" />Scan QR Code (Offline)</>
+                      )}
                     </Button>
 
                     <Button
                       type="submit"
                       className="w-full"
-                      disabled={sendFriendRequestMutation.isPending}
+                      disabled={!isOnline || sendFriendRequestMutation.isPending}
                     >
-                      {sendFriendRequestMutation.isPending
-                        ? "Sending..."
-                        : "Send Friend Request"}
+                      {!isOnline ? (
+                        <><WifiOff className="w-4 h-4 mr-2" />Send Request (Offline)</>
+                      ) : sendFriendRequestMutation.isPending ? (
+                        "Sending..."
+                      ) : (
+                        "Send Friend Request"
+                      )}
                     </Button>
                   </form>
                 </CardContent>

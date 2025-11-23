@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
+import { useSync } from "@/contexts/SyncContext";
+import { WifiOff } from "lucide-react";
 
 interface SignUpPageProps {
   onNavigateToLogin: () => void;
@@ -30,10 +32,17 @@ export default function SignUpPage({
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(5);
+  const { isOnline } = useSync();
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // Check if online
+    if (!isOnline) {
+      setError("Sign up requires internet connection. Please connect and try again.");
+      return;
+    }
 
     // Validate invite code
     if (!inviteCode.trim()) {
@@ -206,6 +215,17 @@ export default function SignUpPage({
           className="space-y-4"
         >
           <CardContent className="space-y-4">
+            {!isOnline && !success && (
+              <div
+                className="p-3 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-md"
+                data-testid="signup-offline"
+              >
+                <div className="flex items-center gap-2">
+                  <WifiOff className="w-4 h-4" />
+                  <span>You're offline. Sign up requires internet connection.</span>
+                </div>
+              </div>
+            )}
             {initialInviteCode && !success && (
               <div
                 className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md"
@@ -311,10 +331,16 @@ export default function SignUpPage({
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading}
+                disabled={!isOnline || loading}
                 data-testid="signup-submit"
               >
-                {loading ? "Creating account..." : "Sign Up"}
+                {!isOnline ? (
+                  <><WifiOff className="w-4 h-4 mr-2" />Sign Up (Offline)</>
+                ) : loading ? (
+                  "Creating account..."
+                ) : (
+                  "Sign Up"
+                )}
               </Button>
             )}
             {!success && (

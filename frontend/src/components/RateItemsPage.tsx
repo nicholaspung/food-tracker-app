@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
 import { getTodayLocalDateString, localDateStringToUTC, formatLocalDateForDisplay } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
@@ -9,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { ChevronDown, ChevronUp, Calendar, Users, Images } from "lucide-react";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
-import { usePhotoUpload, type PhotoUploadItem } from "@/hooks/usePhotoUpload";
+import { usePhotoUpload } from "@/hooks/usePhotoUpload";
+import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import BulkPhotoGallery, { type BulkPhoto } from "@/components/BulkPhotoGallery";
+import { useSync } from "@/contexts/SyncContext";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -23,7 +24,6 @@ export default function RateItemsPage({
   onSubmit,
   onBack,
 }: RateItemsPageProps) {
-  const queryClient = useQueryClient();
   const draft = visitDraftService.getDraft();
   const [items, setItems] = useState(draft.items);
   const [visitDate, setVisitDate] = useState(draft.visitDate);
@@ -48,109 +48,84 @@ export default function RateItemsPage({
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
 
   // Photo upload hook for parallel uploads with progress
-  const { state: uploadState, uploadPhotos, reset: resetUploadState } = usePhotoUpload();
+  const { state: uploadState, reset: resetUploadState } = usePhotoUpload();
+
+  // Offline-aware visit creation
+  const { isOnline } = useSync();
+  const saveVisitMutation = useOfflineVisitCreation();
 
   useEffect(() => {
     visitDraftService.saveMetadata(visitDate, visitVisibility);
   }, [visitDate, visitVisibility]);
 
-  const saveVisitMutation = useMutation({
-    mutationFn: async () => {
-      const user = pb.authStore.record;
-      if (!user || !draft.restaurant) throw new Error("Missing data");
+  const handleSaveVisit = async () => {
+    if (!draft.restaurant) {
+      console.error("No restaurant selected");
+      return;
+    }
 
-      // Convert local date to UTC before saving
-      const visitDateUTC = localDateStringToUTC(visitDate);
+    const user = pb.authStore.record;
+    if (!user) {
+      console.error("User not authenticated");
+      return;
+    }
 
-      const visit = await pb.collection("visits").create({
+    // Convert local date to UTC before saving
+    const visitDateUTC = localDateStringToUTC(visitDate);
+
+    // Prepare food items data
+    const foodItemsData = items.map(item => ({
+      name: item.menuItem.name,
+      description: item.description,
+      rating: item.rating,
+      notes: item.notes,
+    }));
+
+    // Prepare photos based on mode
+    let photosForSave: Map<number, File>;
+    if (useBulkMode) {
+      // Bulk mode: convert bulkPhotos to Map (first photo per item for now)
+      photosForSave = new Map();
+      for (let i = 0; i < items.length; i++) {
+        const assignedPhotos = bulkPhotos.filter(p => p.assignedToIndex === i);
+        if (assignedPhotos.length > 0) {
+          // For now, use first photo. TODO: Support multiple photos per item
+          photosForSave.set(i, assignedPhotos[0].file);
+        }
+      }
+    } else {
+      // Standard mode: use itemPhotos as-is
+      photosForSave = itemPhotos;
+    }
+
+    try {
+      await saveVisitMutation.mutateAsync({
         restaurant: draft.restaurant.id,
-        user: user.id,
         visitDate: visitDateUTC,
         visibility: visitVisibility,
         notes: "",
+        foodItems: foodItemsData,
+        itemPhotos: photosForSave,
       });
 
-      // Create all food items first (sequentially to maintain order)
-      const foodItemIds: string[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-
-        const foodItem = await pb.collection("food_items").create({
-          name: item.menuItem.name,
-          description: item.description,
-          visit: visit.id,
-          rating: item.rating,
-          notes: item.notes,
-          user: user.id,
-        });
-
-        foodItemIds.push(foodItem.id);
-      }
-
-      // Collect all photos to upload in parallel
-      const photoUploads: PhotoUploadItem[] = [];
-
-      if (useBulkMode) {
-        // Bulk mode: use assigned photos from bulk gallery
-        for (let i = 0; i < items.length; i++) {
-          const assignedPhotos = bulkPhotos.filter(
-            (p) => p.assignedToIndex === i
-          );
-          for (const bulkPhoto of assignedPhotos) {
-            photoUploads.push({
-              photo: bulkPhoto.file,
-              foodItemId: foodItemIds[i],
-              visitId: visit.id,
-              userId: user.id,
-            });
-          }
-        }
-      } else {
-        // Standard mode: use individual item photos
-        for (let i = 0; i < items.length; i++) {
-          const photo = itemPhotos.get(i);
-          if (photo) {
-            photoUploads.push({
-              photo,
-              foodItemId: foodItemIds[i],
-              visitId: visit.id,
-              userId: user.id,
-            });
-          }
-        }
-      }
-
-      // Upload all photos in parallel with progress tracking
-      if (photoUploads.length > 0) {
-        await uploadPhotos(photoUploads);
-      }
-
-      return visit;
-    },
-    onSuccess: async () => {
-      // Wait for all queries to refetch before navigating away
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["visits"] }),
-        queryClient.invalidateQueries({ queryKey: ["userVisits"] }),
-        queryClient.invalidateQueries({ queryKey: ["allVisits"] }),
-        queryClient.invalidateQueries({ queryKey: ["allFoodItems"] }),
-      ]);
-
+      // Success
       visitDraftService.clearDraft();
-
-      // Mark that user has rated before - legend will be collapsed next time
       localStorage.setItem("hasRatedBefore", "true");
-
-      // Reset upload state
       resetUploadState();
-
       onSubmit();
-    },
-    onError: () => {
-      // Reset upload state on error so user can retry
+    } catch (error: any) {
+      console.error("Failed to save visit:", error);
       resetUploadState();
-    },
-  });
+
+      // Show helpful message if offline
+      if (!isOnline && error.message?.includes('queued')) {
+        alert("You're offline. Your visit has been saved and will sync when you're back online.");
+        visitDraftService.clearDraft();
+        localStorage.setItem("hasRatedBefore", "true");
+        onSubmit();
+      }
+    }
+  };
 
   const handleUpdateItem = (
     index: number,
@@ -499,8 +474,8 @@ export default function RateItemsPage({
             Back
           </Button>
           <Button
-            onClick={() => saveVisitMutation.mutate()}
-            disabled={saveVisitMutation.isPending}
+            onClick={handleSaveVisit}
+            disabled={saveVisitMutation.isPending || uploadState.status === 'uploading' || uploadState.status === 'compressing'}
             className="flex-1"
           >
             {saveVisitMutation.isPending ? "Saving..." : "Save Visit"}

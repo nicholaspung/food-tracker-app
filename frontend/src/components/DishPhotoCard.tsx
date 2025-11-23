@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Share2, Download } from "lucide-react";
+import { Share2, Download, WifiOff } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import ShareCustomizationModal from "@/components/ShareCustomizationModal";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
+import { useSync } from "@/contexts/SyncContext";
 
 interface DishPhotoCardProps {
   photoRecord: {
@@ -35,6 +36,7 @@ interface DishPhotoCardProps {
 export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const { isOnline } = useSync();
 
   // Extract data from the expanded relations
   const foodItem = photoRecord.expand?.food_item;
@@ -44,6 +46,11 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
   const photoUrl = pb.files.getURL(photoRecord, photoRecord.photo);
 
   const handleShareClick = async () => {
+    if (!isOnline) {
+      alert("Photo sharing requires internet connection. Please connect and try again.");
+      return;
+    }
+
     if (!foodItem || !visit || !restaurant) {
       alert("Missing data for sharing");
       return;
@@ -103,6 +110,11 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
   };
 
   const handleDownload = async () => {
+    if (!isOnline) {
+      alert("Photo download requires internet connection. Please connect and try again.");
+      return;
+    }
+
     try {
       const response = await fetch(photoUrl);
       const blob = await response.blob();
@@ -164,14 +176,29 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
             variant="default"
             className="flex-1"
             onClick={handleShareClick}
+            disabled={!isOnline}
           >
-            <Share2 className="w-4 h-4 mr-2" />
-            Share to Social
+            {isOnline ? (
+              <><Share2 className="w-4 h-4 mr-2" />Share to Social</>
+            ) : (
+              <><WifiOff className="w-4 h-4 mr-2" />Share (Offline)</>
+            )}
           </Button>
-          <Button variant="outline" onClick={handleDownload}>
-            <Download className="w-4 h-4" />
+          <Button variant="outline" onClick={handleDownload} disabled={!isOnline}>
+            {isOnline ? (
+              <Download className="w-4 h-4" />
+            ) : (
+              <WifiOff className="w-4 h-4" />
+            )}
           </Button>
         </div>
+        {!isOnline && (
+          <div className="px-4 pb-4 pt-0">
+            <p className="text-xs text-orange-600 text-center">
+              Photo sharing and download require internet connection
+            </p>
+          </div>
+        )}
       </CardContent>
 
       {/* Share Customization Modal */}

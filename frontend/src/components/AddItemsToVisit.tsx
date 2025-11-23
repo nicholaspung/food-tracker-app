@@ -1,14 +1,9 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe, ChevronDown, ChevronUp, AlertCircle, WifiOff } from "lucide-react";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +13,7 @@ import { logger } from "@/lib/logger";
 import MenuScanStep from "@/components/MenuScanStep";
 import { visitDraftService } from "@/services/visitDraftService";
 import { requestMenuReview, hasPendingReviewRequest } from "@/services/menuReviewService";
+import { useSync } from "@/contexts/SyncContext";
 
 interface SelectedItemWithDescription {
   menuItem: MenuItem;
@@ -64,6 +60,23 @@ export default function AddItemsToVisit({
   const [debugData, setDebugData] = useState<any>(null);
   const [showDebugData, setShowDebugData] = useState(false);
 
+  // Online/offline status
+  const { isOnline } = useSync();
+
+  // Fetch menu items using TanStack Query (supports offline cached items)
+  const { data: cachedMenuItems } = useQuery({
+    queryKey: ['menu_items', restaurantId],
+    queryFn: async () => {
+      if (!isOnline) return [];
+      return await pb.collection("menu_items").getFullList<MenuItem>({
+        filter: `restaurant = "${restaurantId}"`,
+        sort: "-created",
+      });
+    },
+    staleTime: 0, // Always refetch when online
+    enabled: parsedItems.length === 0, // Only fetch if no parsed items provided
+  });
+
   // Refs for auto-scrolling inputs into view on mobile
   const manualItemInputRef = useScrollIntoView<HTMLInputElement>();
   const descriptionInputRef = useScrollIntoView<HTMLInputElement>();
@@ -74,12 +87,12 @@ export default function AddItemsToVisit({
       setSearchResults(parsedItems);
       // Mark parsed items as new
       setNewlyParsedItems(new Set(parsedItems.map((item) => item.id)));
-    } else {
-      // Load all menu items if no parsed items
-      loadAllMenuItems();
+    } else if (cachedMenuItems) {
+      // Use cached menu items from TanStack Query (includes offline optimistic items)
+      setSearchResults(cachedMenuItems);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
+  }, [cachedMenuItems]); // Run when cached items load
 
   // Restore previously selected items from localStorage OR initialize with pre-selected items
   useEffect(() => {
@@ -91,7 +104,8 @@ export default function AddItemsToVisit({
         initialMap.set(item.id, {
           menuItem: item,
           description: item.description || '',
-          showDescriptionInput: false,
+          // Show description input if item already has a description
+          showDescriptionInput: !!item.description,
         });
       });
       setSelectedItems(initialMap);
@@ -110,7 +124,8 @@ export default function AddItemsToVisit({
             restoredMap.set(draftItem.menuItem.id, {
               menuItem: draftItem.menuItem,
               description: draftItem.description,
-              showDescriptionInput: false,
+              // Show description input if item already has a description
+              showDescriptionInput: !!draftItem.description,
             });
           });
           setSelectedItems(restoredMap);
@@ -134,13 +149,30 @@ export default function AddItemsToVisit({
   // Check if there's already a pending review request
   useEffect(() => {
     const checkPendingReview = async () => {
-      const pending = await hasPendingReviewRequest(restaurantId);
-      setHasPendingReview(pending);
+      if (!isOnline) {
+        // Skip when offline - just assume no pending review
+        setHasPendingReview(false);
+        return;
+      }
+
+      try {
+        const pending = await hasPendingReviewRequest(restaurantId);
+        setHasPendingReview(pending);
+      } catch (error) {
+        logger.error("Failed to check pending review:", error);
+        setHasPendingReview(false);
+      }
     };
     checkPendingReview();
-  }, [restaurantId]);
+  }, [restaurantId, isOnline]);
 
   const loadAllMenuItems = async () => {
+    if (!isOnline) {
+      // Skip loading when offline - just show empty results
+      setSearchResults([]);
+      return;
+    }
+
     setIsSearching(true);
     try {
       const items = await pb.collection("menu_items").getFullList<MenuItem>({
@@ -150,6 +182,7 @@ export default function AddItemsToVisit({
       setSearchResults(items);
     } catch (error) {
       logger.error("Failed to load menu items:", error);
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
@@ -168,12 +201,26 @@ export default function AddItemsToVisit({
       return;
     }
 
+    if (!isOnline) {
+      // When offline, only search in parsed items
+      if (parsedItems.length > 0) {
+        const filtered = parsedItems.filter(item =>
+          item.name.toLowerCase().includes(query.toLowerCase())
+        );
+        setSearchResults(filtered);
+      } else {
+        setSearchResults([]);
+      }
+      return;
+    }
+
     setIsSearching(true);
     try {
       const results = await searchMenuItems(restaurantId, query);
       setSearchResults(results);
     } catch (error) {
       logger.error("Search failed:", error);
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
@@ -225,6 +272,11 @@ export default function AddItemsToVisit({
 
   const handleManualAdd = async () => {
     if (!manualItemName.trim()) return;
+
+    if (!isOnline) {
+      alert("Adding menu items requires internet connection. You can still proceed with the visit without adding new menu items.");
+      return;
+    }
 
     setIsAdding(true);
     try {
@@ -532,26 +584,54 @@ export default function AddItemsToVisit({
               <CardContent className="space-y-3">
                 {/* Scan Menu Button */}
                 {!hideScanMenu && (
-                  <Button
-                    variant="outline"
-                    className="w-full bg-white"
-                    onClick={() => setShowScanMenu(true)}
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Scan Menu Photo
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full bg-white"
+                      onClick={() => setShowScanMenu(true)}
+                      disabled={!isOnline}
+                    >
+                      {isOnline ? (
+                        <>
+                          <Camera className="w-4 h-4 mr-2" />
+                          Scan Menu Photo
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="w-4 h-4 mr-2" />
+                          Scan Menu (Offline)
+                        </>
+                      )}
+                    </Button>
+                    {!isOnline && (
+                      <p className="text-xs text-orange-600 text-center">
+                        AI menu scanning requires internet connection
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {/* Manual add section */}
                 {!showManualAdd ? (
-                  <Button
-                    variant="outline"
-                    className="w-full bg-white"
-                    onClick={() => setShowManualAdd(true)}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Can't find it? Add manually
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full bg-white"
+                      onClick={() => setShowManualAdd(true)}
+                      disabled={!isOnline}
+                    >
+                      {isOnline ? (
+                        <><Plus className="w-4 h-4 mr-2" />Can't find it? Add manually</>
+                      ) : (
+                        <><WifiOff className="w-4 h-4 mr-2" />Add Manually (Offline)</>
+                      )}
+                    </Button>
+                    {!isOnline && (
+                      <p className="text-xs text-orange-600 text-center">
+                        Adding menu items requires internet connection
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <Card className="border-2 border-blue-500 bg-white">
                     <CardContent className="space-y-3">
@@ -566,16 +646,30 @@ export default function AddItemsToVisit({
                           onKeyDown={(e) =>
                             e.key === "Enter" && handleManualAdd()
                           }
+                          disabled={!isOnline}
                         />
                       </div>
+                      {!isOnline && (
+                        <div className="p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-800">
+                          <div className="flex items-center gap-2">
+                            <WifiOff className="w-3 h-3" />
+                            <span>You're offline. Cannot add new menu items.</span>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex gap-2">
                         <Button
                           className="flex-1"
                           onClick={handleManualAdd}
-                          disabled={!manualItemName.trim() || isAdding}
+                          disabled={!isOnline || !manualItemName.trim() || isAdding}
                         >
-                          <Plus className="w-4 h-4 mr-2" />
-                          {isAdding ? "Adding..." : "Add Item"}
+                          {!isOnline ? (
+                            <><WifiOff className="w-4 h-4 mr-2" />Add Item (Offline)</>
+                          ) : isAdding ? (
+                            "Adding..."
+                          ) : (
+                            <><Plus className="w-4 h-4 mr-2" />Add Item</>
+                          )}
                         </Button>
                         <Button
                           variant="outline"
