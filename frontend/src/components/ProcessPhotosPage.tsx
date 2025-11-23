@@ -1398,6 +1398,8 @@ export default function ProcessPhotosPage() {
               onRemoveNewPhoto={handleRemoveMenuItemPhoto}
               showLabel={true}
               showNewPhotoBadge={false}
+              labelText="Scan Menu Photo (optional)"
+              helpText="Photo of menu will be scanned to find matching items"
             />
           )}
               </CardContent>
