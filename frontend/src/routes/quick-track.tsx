@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tantml:router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import QuickTrackPage from '@/components/QuickTrackPage';
 
