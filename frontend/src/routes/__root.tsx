@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { BottomTabNavigation } from "@/components/BottomTabNavigation";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import { SyncProvider } from "@/contexts/SyncContext";
+import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 
 // Create a query client instance
 const queryClient = new QueryClient({
@@ -53,19 +55,24 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="h-screen bg-white flex flex-col overflow-hidden">
-        {/* Scrollable content area */}
-        <main
-          ref={mainRef}
-          className={`flex-1 overflow-y-auto ${showTabs ? "pb-[64px]" : ""}`}
-        >
-          <Outlet />
-        </main>
+      <SyncProvider>
+        <div className="h-screen bg-white flex flex-col overflow-hidden">
+          {/* Sync status indicator */}
+          <SyncStatusIndicator />
 
-        {/* Persistent bottom tabs */}
-        {showTabs && <BottomTabNavigation />}
-        <TanStackRouterDevtools />
-      </div>
+          {/* Scrollable content area */}
+          <main
+            ref={mainRef}
+            className={`flex-1 overflow-y-auto ${showTabs ? "pb-[64px]" : ""}`}
+          >
+            <Outlet />
+          </main>
+
+          {/* Persistent bottom tabs */}
+          {showTabs && <BottomTabNavigation />}
+          <TanStackRouterDevtools />
+        </div>
+      </SyncProvider>
     </QueryClientProvider>
   );
 }

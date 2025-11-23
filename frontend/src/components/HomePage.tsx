@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { pb, Visit, Restaurant, FoodItem } from "@/lib/pocketbase";
+import { syncQueue } from "@/lib/syncQueue";
+import { useSync } from "@/contexts/SyncContext";
 import { utcToLocalDateString } from "@/lib/dateUtils";
 import {
   Card,
@@ -201,29 +203,57 @@ export default function HomePage({
     },
   });
 
-  // Delete visit mutation
-  const deleteVisitMutation = useMutation({
-    mutationFn: async (visitId: string) => {
-      // First delete all food items associated with this visit
-      const foodItemsToDelete = foodItems.filter(
-        (item) => item.visit === visitId
-      );
-      await Promise.all(
-        foodItemsToDelete.map((item) =>
-          pb.collection("food_items").delete(item.id)
-        )
-      );
-      // Then delete the visit
-      await pb.collection("visits").delete(visitId);
-    },
-    onSuccess: () => {
-      // Invalidate and refetch queries
-      queryClient.invalidateQueries({ queryKey: ["allVisits"] });
-      queryClient.invalidateQueries({ queryKey: ["allFoodItems"] });
-      queryClient.invalidateQueries({ queryKey: ["allVisitPhotos"] });
+  const { isOnline } = useSync();
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Delete visit with offline support
+  const handleDeleteVisit = async (visitId: string) => {
+    setIsDeleting(true);
+    try {
+      if (isOnline) {
+        // Online: Execute immediately
+        const foodItemsToDelete = foodItems.filter(
+          (item) => item.visit === visitId
+        );
+        await Promise.all(
+          foodItemsToDelete.map((item) =>
+            pb.collection("food_items").delete(item.id)
+          )
+        );
+        await pb.collection("visits").delete(visitId);
+      } else {
+        // Offline: Queue the deletion
+        // Queue as complex operation to delete food items and visit together
+        await syncQueue.enqueue({
+          type: 'delete',
+          collection: 'visits_with_items_delete',
+          data: {
+            visitId,
+            foodItemIds: foodItems
+              .filter((item) => item.visit === visitId)
+              .map((item) => item.id),
+          },
+          recordId: visitId,
+        });
+
+        console.log('Queued visit deletion:', visitId);
+      }
+
+      // Invalidate queries (will refetch or show optimistic update)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["allVisits"] }),
+        queryClient.invalidateQueries({ queryKey: ["allFoodItems"] }),
+        queryClient.invalidateQueries({ queryKey: ["allVisitPhotos"] }),
+      ]);
+
       setVisitToDelete(null);
-    },
-  });
+    } catch (error) {
+      console.error("Failed to delete visit:", error);
+      alert("Failed to delete visit. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Handle opening share modal
   const handleSharePhotoClick = async (
@@ -232,6 +262,11 @@ export default function HomePage({
     restaurant: Restaurant,
     visitDate: string
   ) => {
+    if (!isOnline) {
+      alert("Photo sharing requires internet connection. Please connect and try again.");
+      return;
+    }
+
     try {
       // Get full resolution photo URL
       const photoUrl = pb.files.getURL(photo, photo.photo);
@@ -785,13 +820,17 @@ export default function HomePage({
                                       const photo = visitPhotos.find(
                                         (p: any) => p.food_item === item.id
                                       );
+                                      // For offline photos (isPending), use the blob URL directly
+                                      // For online photos, use PocketBase file URL
                                       const photoUrl = photo
-                                        ? pb.files.getURL(photo, photo.photo, {
-                                            thumb: "100x100",
-                                          })
+                                        ? (photo.isPending
+                                            ? photo.photo // Blob URL for offline photos
+                                            : pb.files.getURL(photo, photo.photo, { thumb: "100x100" }))
                                         : null;
                                       const fullPhotoUrl = photo
-                                        ? pb.files.getURL(photo, photo.photo)
+                                        ? (photo.isPending
+                                            ? photo.photo // Blob URL for offline photos
+                                            : pb.files.getURL(photo, photo.photo))
                                         : null;
 
                                       return (
@@ -962,17 +1001,17 @@ export default function HomePage({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteVisitMutation.isPending}>
+            <AlertDialogCancel disabled={isDeleting}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
-                visitToDelete && deleteVisitMutation.mutate(visitToDelete.id)
+                visitToDelete && handleDeleteVisit(visitToDelete.id)
               }
-              disabled={deleteVisitMutation.isPending}
+              disabled={isDeleting}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              {deleteVisitMutation.isPending ? "Deleting..." : "Delete"}
+              {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

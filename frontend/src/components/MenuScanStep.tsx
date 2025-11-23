@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, Loader2, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Camera, Upload, Loader2, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -9,6 +9,7 @@ import { getRemainingAttempts, getFailedAttemptsToday } from '@/services/ocrRate
 import { logger } from "@/lib/logger";
 import { MenuItem, User } from '@/lib/pocketbase';
 import { pb } from '@/lib/pocketbase';
+import { useSync } from '@/contexts/SyncContext';
 
 interface MenuScanStepProps {
   restaurantId: string;
@@ -30,6 +31,7 @@ export default function MenuScanStep({
   const [isConvertingHeic, setIsConvertingHeic] = useState(false);
   const [showDebugData, setShowDebugData] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isOnline } = useSync();
 
   const { status, progress, menuItems, error, debugData, processMenuImage, reset } = useMenuOCR();
 
@@ -60,6 +62,20 @@ export default function MenuScanStep({
                    file.name.toLowerCase().endsWith('.heic');
 
     if (isHEIF) {
+      if (!isOnline) {
+        alert(
+          'HEIC/HEIF conversion requires internet connection.\n\n' +
+          'You are offline. To use iPhone HEIC photos while offline:\n' +
+          '1. Convert the photo to JPEG first, or\n' +
+          '2. Change iPhone settings (Settings > Camera > Formats > Most Compatible) to capture as JPEG'
+        );
+        // Reset the file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
       try {
         logger.log('Converting HEIC image to JPEG via backend...');
         setIsConvertingHeic(true);
@@ -399,6 +415,16 @@ export default function MenuScanStep({
           );
         })()}
 
+        {/* Offline warning */}
+        {!isOnline && (
+          <Alert className="border-orange-500 bg-orange-50">
+            <WifiOff className="h-4 w-4 text-orange-600" />
+            <AlertDescription className="text-orange-800 text-sm">
+              <strong>You're offline.</strong> Menu scanning and HEIC conversion require internet connection.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Action buttons */}
         <div className="flex flex-col gap-2">
           {!selectedImage && status === 'idle' && (
@@ -410,13 +436,23 @@ export default function MenuScanStep({
                 className="w-full"
                 onClick={() => fileInputRef.current?.click()}
                 data-testid="scan-menu-button"
+                disabled={!isOnline}
               >
-                <Camera className="w-5 h-5 mr-2" />
-                Take Photo / Upload Image
+                {isOnline ? (
+                  <><Camera className="w-5 h-5 mr-2" />Take Photo / Upload Image</>
+                ) : (
+                  <><WifiOff className="w-5 h-5 mr-2" />Scan Menu (Offline)</>
+                )}
               </Button>
-              <p className="text-xs text-gray-500 text-center -mt-2">
-                On mobile: Opens camera or photo library
-              </p>
+              {isOnline ? (
+                <p className="text-xs text-gray-500 text-center -mt-2">
+                  On mobile: Opens camera or photo library
+                </p>
+              ) : (
+                <p className="text-xs text-orange-600 text-center -mt-2">
+                  Menu scanning requires internet connection
+                </p>
+              )}
               <Button
                 type="button"
                 variant="outline"

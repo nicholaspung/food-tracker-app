@@ -19,12 +19,14 @@ function EditRateItems() {
   const { visitId } = useParams({ from: '/edit-visit/$visitId/rate-items' });
   const draft = editVisitDraftService.getDraft(visitId);
 
+  // Only redirect on initial mount if no draft, don't keep checking during updates
   useEffect(() => {
-    // Redirect if no draft or no items
+    // Redirect if no draft or no items on initial load
     if (!draft || !draft.restaurant || draft.menuItems.filter(i => !i._deleted).length === 0) {
       navigate({ to: '/edit-visit/$visitId/edit-items', params: { visitId } });
     }
-  }, [draft, navigate, visitId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   if (!draft || !draft.restaurant || draft.menuItems.filter(i => !i._deleted).length === 0) {
     return null;
