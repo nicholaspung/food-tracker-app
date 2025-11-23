@@ -22,7 +22,10 @@ import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
-import { pb, Restaurant } from "@/lib/pocketbase";
+import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
+import { pb, Restaurant, MenuItem } from "@/lib/pocketbase";
+import { useQuery } from "@tanstack/react-query";
+import { Switch } from "@/components/ui/switch";
 import {
   searchAndCacheRestaurantsByText,
 } from "@/services/googlePlaces";
@@ -455,9 +458,14 @@ export default function ProcessPhotosPage() {
 
   // Form state for current photo
   const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
+  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
   const [menuItemName, setMenuItemName] = useState("");
+  const [menuItemSearchQuery, setMenuItemSearchQuery] = useState("");
+  const [isCreatingNewItem, setIsCreatingNewItem] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
+  const [menuItemPhoto, setMenuItemPhoto] = useState<File | null>(null);
+  const [menuItemPhotoPreview, setMenuItemPhotoPreview] = useState<string | null>(null);
 
   // UI state
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
@@ -493,6 +501,23 @@ export default function ProcessPhotosPage() {
       )
   );
 
+  // Fetch menu items for selected restaurant
+  const { data: menuItems = [] } = useQuery<MenuItem[]>({
+    queryKey: ["menu_items", selectedRestaurant?.id],
+    queryFn: async () => {
+      if (!selectedRestaurant?.id || !isOnline) return [];
+      return await pb.collection("menu_items").getFullList<MenuItem>({
+        filter: `restaurant = "${selectedRestaurant.id}"`,
+        sort: "-created",
+      });
+    },
+    enabled: !!selectedRestaurant?.id,
+  });
+
+  const filteredMenuItems = menuItems.filter((item) =>
+    item.name.toLowerCase().includes(menuItemSearchQuery.toLowerCase())
+  );
+
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -524,6 +549,27 @@ export default function ProcessPhotosPage() {
 
   const handleRestaurantSelected = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
+    // Reset menu item selection when restaurant changes
+    setSelectedMenuItem(null);
+    setMenuItemName("");
+    setMenuItemSearchQuery("");
+  };
+
+  const handleMenuItemPhotoCapture = (key: string | number, file: File) => {
+    setMenuItemPhoto(file);
+    const previewUrl = URL.createObjectURL(file);
+    if (menuItemPhotoPreview) {
+      URL.revokeObjectURL(menuItemPhotoPreview);
+    }
+    setMenuItemPhotoPreview(previewUrl);
+  };
+
+  const handleRemoveMenuItemPhoto = () => {
+    setMenuItemPhoto(null);
+    if (menuItemPhotoPreview) {
+      URL.revokeObjectURL(menuItemPhotoPreview);
+    }
+    setMenuItemPhotoPreview(null);
   };
 
   // Restaurant assignment handlers
@@ -601,9 +647,13 @@ export default function ProcessPhotosPage() {
         const nextPhoto = photos[nextPhotoIndex];
         const nextRestaurant = photoRestaurants.get(nextPhoto.id);
         setSelectedRestaurant(nextRestaurant || null);
+        setSelectedMenuItem(null);
         setMenuItemName("");
+        setMenuItemSearchQuery("");
+        setIsCreatingNewItem(false);
         setRating(null);
         setNotes("");
+        handleRemoveMenuItemPhoto();
       } else {
         // All photos processed
         localStorage.setItem("hasRatedBefore", "true");
@@ -623,9 +673,13 @@ export default function ProcessPhotosPage() {
           const nextPhoto = photos[nextPhotoIndex];
           const nextRestaurant = photoRestaurants.get(nextPhoto.id);
           setSelectedRestaurant(nextRestaurant || null);
+          setSelectedMenuItem(null);
           setMenuItemName("");
+          setMenuItemSearchQuery("");
+          setIsCreatingNewItem(false);
           setRating(null);
           setNotes("");
+          handleRemoveMenuItemPhoto();
         } else {
           localStorage.setItem("hasRatedBefore", "true");
           navigate({ to: "/home" });
@@ -901,73 +955,190 @@ export default function ProcessPhotosPage() {
         </div>
 
         {/* Menu Item Name */}
-        <div className="space-y-2">
-          <Label htmlFor="menuItemName" className="text-base font-semibold">
-            Menu Item *
-          </Label>
-          <Input
-            id="menuItemName"
-            type="text"
-            value={menuItemName}
-            onChange={(e) => setMenuItemName(e.target.value)}
-            placeholder="e.g., Margherita Pizza, Pad Thai"
-            maxLength={200}
-            required
-            disabled={isProcessing}
-            className="text-base"
-          />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-base font-semibold">Menu Item *</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="create-new-toggle" className="text-sm text-muted-foreground cursor-pointer">
+                Create new
+              </Label>
+              <Switch
+                id="create-new-toggle"
+                checked={isCreatingNewItem}
+                onCheckedChange={setIsCreatingNewItem}
+                disabled={isProcessing}
+              />
+            </div>
+          </div>
+
+          {!isCreatingNewItem ? (
+            /* Search existing menu items */
+            <div className="space-y-2">
+              <Input
+                type="text"
+                placeholder="Search menu items..."
+                value={menuItemSearchQuery}
+                onChange={(e) => {
+                  setMenuItemSearchQuery(e.target.value);
+                  setSelectedMenuItem(null);
+                  setMenuItemName("");
+                }}
+                disabled={isProcessing || !selectedRestaurant}
+                className="text-base"
+              />
+
+              {menuItemSearchQuery && filteredMenuItems.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+                  {filteredMenuItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMenuItem(item);
+                        setMenuItemName(item.name);
+                        setMenuItemSearchQuery("");
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-accent rounded-md transition-colors"
+                    >
+                      <div className="font-medium">{item.name}</div>
+                      {item.description && (
+                        <div className="text-sm text-muted-foreground">{item.description}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedMenuItem && (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{selectedMenuItem.name}</div>
+                      {selectedMenuItem.description && (
+                        <div className="text-sm text-muted-foreground">{selectedMenuItem.description}</div>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedMenuItem(null);
+                        setMenuItemName("");
+                      }}
+                    >
+                      Change
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {!selectedMenuItem && !menuItemSearchQuery && (
+                <p className="text-sm text-muted-foreground">
+                  Search for an existing menu item or toggle to create a new one
+                </p>
+              )}
+
+              {/* Photo upload for selected menu item */}
+              {selectedMenuItem && (
+                <MenuItemPhotoInput
+                  photoKey="current"
+                  newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
+                  onPhotoCapture={handleMenuItemPhotoCapture}
+                  onRemoveNewPhoto={handleRemoveMenuItemPhoto}
+                  showLabel={true}
+                  showNewPhotoBadge={false}
+                />
+              )}
+            </div>
+          ) : (
+            /* Create new menu item */
+            <div className="space-y-2">
+              <Input
+                type="text"
+                placeholder="e.g., Margherita Pizza, Pad Thai"
+                value={menuItemName}
+                onChange={(e) => setMenuItemName(e.target.value)}
+                maxLength={200}
+                required
+                disabled={isProcessing}
+                className="text-base"
+              />
+
+              {/* Photo upload for new menu item */}
+              <MenuItemPhotoInput
+                photoKey="current"
+                newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
+                onPhotoCapture={handleMenuItemPhotoCapture}
+                onRemoveNewPhoto={handleRemoveMenuItemPhoto}
+                showLabel={true}
+                showNewPhotoBadge={false}
+              />
+            </div>
+          )}
         </div>
 
         {/* Rating */}
-        <Card>
+        <Card className="border-2 border-blue-200 bg-blue-50/30">
           <CardContent className="pt-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">Rating *</Label>
-              <button
-                type="button"
-                onClick={() => setIsLegendExpanded(!isLegendExpanded)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {isLegendExpanded ? (
-                  <ChevronUp className="h-5 w-5" />
-                ) : (
-                  <ChevronDown className="h-5 w-5" />
-                )}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsLegendExpanded(!isLegendExpanded)}
+              className="w-full flex items-center justify-between"
+            >
+              <Label className="text-base font-semibold cursor-pointer">Rating *</Label>
+              {isLegendExpanded ? (
+                <ChevronUp className="h-5 w-5 text-gray-600" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-600" />
+              )}
+            </button>
 
             {/* Rating legend */}
             {isLegendExpanded && (
-              <div className="space-y-2 text-sm border-l-4 border-primary pl-4 py-2">
+              <div className="space-y-2 mt-3">
                 {RATING_OPTIONS.map((option) => (
-                  <div key={option.value} className="flex items-start gap-2">
-                    <span className="font-medium min-w-[20px]">{option.value}★</span>
-                    <div>
-                      <div className="font-medium">{option.label}</div>
-                      <div className="text-muted-foreground">{option.description}</div>
+                  <div key={option.value} className="flex items-center gap-3">
+                    <div
+                      className={`${option.color} text-white w-8 h-8 rounded-md flex items-center justify-center font-bold text-sm flex-shrink-0`}
+                    >
+                      {option.value}
                     </div>
+                    <span className="text-sm text-gray-700">
+                      {option.label}
+                    </span>
                   </div>
                 ))}
               </div>
             )}
 
             {/* Rating buttons */}
-            <div className="flex gap-2">
-              {RATING_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setRating(option.value)}
-                  disabled={isProcessing}
-                  className={`flex-1 py-3 rounded-lg border-2 font-semibold text-lg transition-all ${
-                    rating === option.value
-                      ? "bg-primary text-primary-foreground border-primary shadow-lg scale-105"
-                      : "bg-background border-border hover:border-primary/50 hover:scale-105"
-                  }`}
-                >
-                  {option.value}★
-                </button>
-              ))}
+            <div>
+              <Label className="text-sm mb-2 block">Rating</Label>
+              <div className="grid grid-cols-5 gap-2">
+                {RATING_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setRating(option.value)}
+                    disabled={isProcessing}
+                    className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
+                      option.color
+                    } ${
+                      rating === option.value
+                        ? "ring-2 ring-offset-2 ring-blue-500"
+                        : "opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    {option.value}
+                  </button>
+                ))}
+              </div>
+              {rating !== null && (
+                <p className="text-xs text-gray-600 mt-2 text-center">
+                  {RATING_OPTIONS.find((o) => o.value === rating)?.label}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
