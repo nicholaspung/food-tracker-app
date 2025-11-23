@@ -20,6 +20,7 @@ import {
 import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X } from "lucide-react";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
+import { useOfflineRestaurantCreation } from "@/hooks/useOfflineRestaurantCreation";
 import { useSync } from "@/contexts/SyncContext";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
@@ -64,6 +65,7 @@ interface RestaurantSelectorProps {
   previousRestaurant?: Restaurant | null;
   onUsePreviousRestaurant?: () => void;
   showSameAsAbove?: boolean;
+  restaurantCreationMutation: any;
 }
 
 interface StoredCameraResult {
@@ -89,12 +91,20 @@ function RestaurantSelector({
   previousRestaurant,
   onUsePreviousRestaurant,
   showSameAsAbove = false,
+  restaurantCreationMutation,
 }: RestaurantSelectorProps) {
   const [googlePlaces, setGooglePlaces] = useState<Restaurant[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [cameraHistory, setCameraHistory] = useState<StoredCameraResult[]>([]);
   const [showGoogleResults, setShowGoogleResults] = useState(false);
+
+  // Add restaurant state
+  const [showAddRestaurant, setShowAddRestaurant] = useState(false);
+  const [newRestaurantName, setNewRestaurantName] = useState("");
+  const [newRestaurantLocation, setNewRestaurantLocation] = useState("");
+  const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
+  const [isCreatingRestaurant, setIsCreatingRestaurant] = useState(false);
 
   // Load camera history
   useEffect(() => {
@@ -135,6 +145,36 @@ function RestaurantSelector({
       setSearchError(err instanceof Error ? err.message : "Failed to search restaurants");
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleCreateRestaurant = async () => {
+    if (!newRestaurantName.trim()) {
+      return;
+    }
+
+    setIsCreatingRestaurant(true);
+    try {
+      const result = await restaurantCreationMutation.mutateAsync({
+        name: newRestaurantName.trim(),
+        address: newRestaurantLocation.trim() || undefined,
+        cuisineType: newRestaurantCuisine.trim() || undefined,
+        visibility: "private",
+      });
+
+      // Select the newly created restaurant
+      onRestaurantSelected(result.restaurant);
+
+      // Reset form
+      setNewRestaurantName("");
+      setNewRestaurantLocation("");
+      setNewRestaurantCuisine("");
+      setShowAddRestaurant(false);
+    } catch (error) {
+      console.error("Failed to create restaurant:", error);
+      alert("Failed to create restaurant. Please try again.");
+    } finally {
+      setIsCreatingRestaurant(false);
     }
   };
 
@@ -255,6 +295,85 @@ function RestaurantSelector({
               </>
             )}
           </Button>
+
+          {/* Add Restaurant Button/Form */}
+          {!showAddRestaurant ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowAddRestaurant(true)}
+            >
+              <Store className="h-4 w-4 mr-2" />
+              Add New Restaurant
+            </Button>
+          ) : (
+            <Card className="border-2 border-blue-500">
+              <CardContent className="pt-4 space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm font-semibold">Add New Restaurant</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowAddRestaurant(false);
+                      setNewRestaurantName("");
+                      setNewRestaurantLocation("");
+                      setNewRestaurantCuisine("");
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-restaurant-name">Restaurant Name *</Label>
+                  <Input
+                    id="new-restaurant-name"
+                    value={newRestaurantName}
+                    onChange={(e) => setNewRestaurantName(e.target.value)}
+                    placeholder="e.g., Joe's Pizza"
+                    disabled={isCreatingRestaurant}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-restaurant-location">Location (Optional)</Label>
+                  <Input
+                    id="new-restaurant-location"
+                    value={newRestaurantLocation}
+                    onChange={(e) => setNewRestaurantLocation(e.target.value)}
+                    placeholder="e.g., 123 Main St, New York, NY"
+                    disabled={isCreatingRestaurant}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-restaurant-cuisine">Cuisine Type (Optional)</Label>
+                  <Input
+                    id="new-restaurant-cuisine"
+                    value={newRestaurantCuisine}
+                    onChange={(e) => setNewRestaurantCuisine(e.target.value)}
+                    placeholder="e.g., Italian, Chinese, Mexican"
+                    disabled={isCreatingRestaurant}
+                  />
+                </div>
+                <Button
+                  onClick={handleCreateRestaurant}
+                  className="w-full"
+                  disabled={!newRestaurantName.trim() || isCreatingRestaurant}
+                >
+                  {isCreatingRestaurant ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Store className="h-4 w-4 mr-2" />
+                      Create Restaurant
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Same as Above Button */}
@@ -424,6 +543,7 @@ export default function ProcessPhotosPage() {
   const navigate = useNavigate();
   const { isOnline } = useSync();
   const visitCreationMutation = useOfflineVisitCreation();
+  const restaurantCreationMutation = useOfflineRestaurantCreation();
 
   // Screen state
   const [screen, setScreen] = useState<ScreenState>('upload');
@@ -847,36 +967,40 @@ export default function ProcessPhotosPage() {
         </div>
 
         {/* Form */}
-        <div className="space-y-6">
-        {/* Restaurant Selection */}
-        <div className="space-y-2">
-          <Label className="text-base font-semibold">Restaurant *</Label>
-          <RestaurantSelector
-            selectedRestaurant={selectedRestaurant}
-            onRestaurantSelected={handleRestaurantSelected}
-            restaurants={filteredRestaurants}
-            searchQuery={restaurantSearchQuery}
-            onSearchQueryChange={setRestaurantSearchQuery}
-            locationQuery={locationSearchQuery}
-            onLocationQueryChange={setLocationSearchQuery}
-            isOnline={isOnline}
-            onOpenCamera={() => setShowCameraMode(true)}
-            previousRestaurant={processedPhotos.length > 0 ? processedPhotos[processedPhotos.length - 1].restaurant : null}
-            onUsePreviousRestaurant={() => {
-              const prevRestaurant = processedPhotos[processedPhotos.length - 1].restaurant;
-              handleRestaurantSelected(prevRestaurant);
-            }}
-            showSameAsAbove={currentPhotoIndex > 0 && processedPhotos.length > 0}
-          />
-        </div>
+        <div className="space-y-4">
+        {/* Restaurant Selection Card */}
+        <Card className="border-2 border-blue-200">
+          <CardContent className="pt-4 space-y-2">
+            <Label className="text-base font-semibold">1. Select Restaurant *</Label>
+            <RestaurantSelector
+              selectedRestaurant={selectedRestaurant}
+              onRestaurantSelected={handleRestaurantSelected}
+              restaurants={filteredRestaurants}
+              searchQuery={restaurantSearchQuery}
+              onSearchQueryChange={setRestaurantSearchQuery}
+              locationQuery={locationSearchQuery}
+              onLocationQueryChange={setLocationSearchQuery}
+              isOnline={isOnline}
+              onOpenCamera={() => setShowCameraMode(true)}
+              previousRestaurant={processedPhotos.length > 0 ? processedPhotos[processedPhotos.length - 1].restaurant : null}
+              onUsePreviousRestaurant={() => {
+                const prevRestaurant = processedPhotos[processedPhotos.length - 1].restaurant;
+                handleRestaurantSelected(prevRestaurant);
+              }}
+              showSameAsAbove={currentPhotoIndex > 0 && processedPhotos.length > 0}
+              restaurantCreationMutation={restaurantCreationMutation}
+            />
+          </CardContent>
+        </Card>
 
-        {/* Show rating UI only when restaurant is selected */}
+        {/* Show menu item and rating UI only when restaurant is selected */}
         {selectedRestaurant && (
           <>
-            {/* Menu Item Name */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">Menu Item *</Label>
+            {/* Menu Item Selection Card */}
+            <Card className="border-2 border-green-200">
+              <CardContent className="pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">2. Select Menu Item *</Label>
                 <div className="flex items-center gap-2">
                   <Label htmlFor="create-new-toggle" className={`text-sm cursor-pointer ${!isOnline ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
                     Create new {!isOnline && "(Offline)"}
@@ -998,10 +1122,16 @@ export default function ProcessPhotosPage() {
               />
             </div>
           )}
-        </div>
+              </CardContent>
+            </Card>
 
-        {/* Rating Guide - Collapsible */}
-        <Card className="border-2 border-blue-200 bg-blue-50/30">
+        {/* Rating Selection Card */}
+        <Card className="border-2 border-purple-200">
+          <CardContent className="pt-4 space-y-3">
+            <Label className="text-base font-semibold">3. Rate Your Food *</Label>
+
+            {/* Rating Guide - Collapsible */}
+            <Card className="border-2 border-blue-200 bg-blue-50/30">
           <CardContent className="p-4">
             <button
               type="button"
@@ -1082,7 +1212,8 @@ export default function ProcessPhotosPage() {
             disabled={isProcessing}
             className="text-base resize-none"
           />
-        </div>
+            </CardContent>
+          </Card>
 
             {/* Error Display */}
             {visitCreationMutation.isError && (
