@@ -1212,8 +1212,9 @@ export default function ProcessPhotosPage() {
             disabled={isProcessing}
             className="text-base resize-none"
           />
-            </CardContent>
-          </Card>
+        </div>
+          </CardContent>
+        </Card>
 
             {/* Error Display */}
             {visitCreationMutation.isError && (
