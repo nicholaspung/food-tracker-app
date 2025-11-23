@@ -85,7 +85,10 @@ export function BottomTabNavigation() {
       <div className="flex justify-around items-center h-16 px-2">
         {tabs.map((tab) => {
           const Icon = tab.icon;
-          const isActive = currentPath === tab.path || currentPath.startsWith(tab.path + '/');
+          // Keep "Add" tab highlighted when on /process-photos route
+          const isActive = currentPath === tab.path ||
+            currentPath.startsWith(tab.path + '/') ||
+            (tab.path === '/add-visit' && currentPath === '/process-photos');
 
           const showBadge =
             (tab.path === '/friends' && pendingRequestsCount > 0) ||
