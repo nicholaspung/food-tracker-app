@@ -53,6 +53,7 @@ interface RestaurantSelectorProps {
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   isOnline: boolean;
+  onOpenCamera?: () => void;
 }
 
 interface StoredCameraResult {
@@ -72,6 +73,7 @@ function RestaurantSelector({
   searchQuery,
   onSearchQueryChange,
   isOnline,
+  onOpenCamera,
 }: RestaurantSelectorProps) {
   const [locationQuery, setLocationQuery] = useState("");
   const [googlePlaces, setGooglePlaces] = useState<Restaurant[]>([]);
@@ -153,10 +155,14 @@ function RestaurantSelector({
 
   return (
     <Tabs defaultValue="search" className="w-full">
-      <TabsList className="grid w-full grid-cols-2">
+      <TabsList className="grid w-full grid-cols-3">
         <TabsTrigger value="search">
           <Search className="h-4 w-4 mr-1" />
           Search
+        </TabsTrigger>
+        <TabsTrigger value="camera">
+          <Camera className="h-4 w-4 mr-1" />
+          Camera
         </TabsTrigger>
         <TabsTrigger value="history">
           <History className="h-4 w-4 mr-1" />
@@ -164,16 +170,15 @@ function RestaurantSelector({
         </TabsTrigger>
       </TabsList>
 
-      {/* Unified Search Tab */}
+      {/* Search Tab - Shows both cached and Google Places results */}
       <TabsContent value="search" className="mt-3 space-y-3">
         <div className="space-y-2">
           <Input
             type="text"
-            placeholder="Search restaurants (saved or Google Places)..."
+            placeholder="Restaurant name or type..."
             value={searchQuery}
             onChange={(e) => {
               onSearchQueryChange(e.target.value);
-              setShowGoogleResults(false); // Reset Google results when typing
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -184,21 +189,41 @@ function RestaurantSelector({
             className="w-full"
           />
 
-          {/* Location input for Google Places */}
-          {searchQuery.trim() && (
-            <Input
-              type="text"
-              placeholder="Location (optional, e.g., 90210, Los Angeles)"
-              value={locationQuery}
-              onChange={(e) => setLocationQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleGooglePlacesSearch();
-                }
-              }}
-            />
-          )}
+          <Input
+            type="text"
+            placeholder="Location (optional, e.g., 90210, Los Angeles)"
+            value={locationQuery}
+            onChange={(e) => setLocationQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleGooglePlacesSearch();
+              }
+            }}
+          />
+
+          <Button
+            onClick={handleGooglePlacesSearch}
+            className="w-full"
+            disabled={!isOnline || isSearching || !searchQuery.trim()}
+          >
+            {isSearching ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Searching Google Places...
+              </>
+            ) : !isOnline ? (
+              <>
+                <WifiOff className="h-4 w-4 mr-2" />
+                Offline
+              </>
+            ) : (
+              <>
+                <Search className="h-4 w-4 mr-2" />
+                Search Google Places
+              </>
+            )}
+          </Button>
         </div>
 
         {searchError && (
@@ -207,115 +232,91 @@ function RestaurantSelector({
           </div>
         )}
 
-        {/* Saved Restaurants Results */}
-        {!showGoogleResults && restaurants.length > 0 && (
-          <>
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Saved Restaurants</Label>
-              {searchQuery.trim() && isOnline && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGooglePlacesSearch}
-                  disabled={isSearching}
+        <div className="max-h-80 overflow-y-auto space-y-3">
+          {/* Google Places Results - Shown above cached results */}
+          {showGoogleResults && googlePlaces.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-primary">Google Places Results</Label>
+              {googlePlaces.map((restaurant) => (
+                <Card
+                  key={restaurant.id}
+                  className="cursor-pointer hover:border-primary transition-colors border-primary/30"
+                  onClick={() => onRestaurantSelected(restaurant)}
                 >
-                  {isSearching ? (
-                    <>
-                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      Searching...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="h-3 w-3 mr-1" />
-                      Search Google
-                    </>
-                  )}
-                </Button>
-              )}
+                  <CardContent className="p-3">
+                    <div className="font-medium">{restaurant.name}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {restaurant.location}
+                      {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
+          )}
 
-            <div className="max-h-60 overflow-y-auto space-y-2">
-              {restaurants.length === 0 ? (
-                <div className="text-center py-4 text-sm text-muted-foreground">
-                  {searchQuery ? "No saved restaurants found" : "No restaurants saved yet"}
-                </div>
-              ) : (
-                restaurants.slice(0, 10).map((restaurant) => (
-                  <Card
-                    key={restaurant.id}
-                    className="cursor-pointer hover:border-primary transition-colors"
-                    onClick={() => onRestaurantSelected(restaurant)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="font-medium">{restaurant.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {restaurant.location}
-                        {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
+          {/* Saved/Cached Restaurants Results */}
+          {restaurants.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                {showGoogleResults && googlePlaces.length > 0 ? "Saved Restaurants" : "Results"}
+              </Label>
+              {restaurants.slice(0, 10).map((restaurant) => (
+                <Card
+                  key={restaurant.id}
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => onRestaurantSelected(restaurant)}
+                >
+                  <CardContent className="p-3">
+                    <div className="font-medium">{restaurant.name}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {restaurant.location}
+                      {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </>
-        )}
+          )}
 
-        {/* Google Places Results */}
-        {showGoogleResults && (
-          <>
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Google Places Results</Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowGoogleResults(false);
-                  setGooglePlaces([]);
-                }}
-              >
-                Back to Saved
-              </Button>
+          {/* Empty states */}
+          {!showGoogleResults && restaurants.length === 0 && (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              <Store className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>{searchQuery ? "No saved restaurants found" : "No saved restaurants yet"}</p>
+              <p className="text-xs mt-1">Use the search button to find restaurants on Google Places</p>
             </div>
+          )}
 
-            <div className="max-h-60 overflow-y-auto space-y-2">
-              {googlePlaces.length === 0 ? (
-                <div className="text-center py-4 text-sm text-muted-foreground">
-                  No results found on Google Places
-                </div>
-              ) : (
-                googlePlaces.map((restaurant) => (
-                  <Card
-                    key={restaurant.id}
-                    className="cursor-pointer hover:border-primary transition-colors"
-                    onClick={() => onRestaurantSelected(restaurant)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="font-medium">{restaurant.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {restaurant.location}
-                        {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
+          {showGoogleResults && googlePlaces.length === 0 && restaurants.length === 0 && (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              No results found
             </div>
-          </>
-        )}
-
-        {/* Empty state - no search query */}
-        {!searchQuery.trim() && restaurants.length === 0 && (
-          <div className="text-center py-8 text-sm text-muted-foreground">
-            <Store className="h-12 w-12 mx-auto mb-2 opacity-50" />
-            <p>No saved restaurants yet</p>
-            <p className="text-xs mt-1">Start typing to search Google Places</p>
-          </div>
-        )}
+          )}
+        </div>
       </TabsContent>
 
-      {/* Camera History Tab */}
+      {/* Camera Tab */}
+      <TabsContent value="camera" className="mt-3 space-y-2">
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Take a photo of the restaurant sign or menu to automatically detect the name
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={onOpenCamera}
+          >
+            <Camera className="h-4 w-4 mr-2" />
+            Open Camera
+          </Button>
+        </div>
+      </TabsContent>
+
+      {/* History Tab */}
       <TabsContent value="history" className="mt-3 space-y-2">
-        <div className="max-h-60 overflow-y-auto space-y-2">
+        <div className="max-h-80 overflow-y-auto space-y-2">
           {cameraHistory.length === 0 ? (
             <div className="text-center py-4 text-sm text-muted-foreground">
               No camera scan history yet
@@ -693,46 +694,15 @@ export default function ProcessPhotosPage() {
 
         {/* Restaurant Selection */}
         <div className="p-4 space-y-4">
-          <Tabs defaultValue="search" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="search">
-                <Search className="h-4 w-4 mr-2" />
-                Search
-              </TabsTrigger>
-              <TabsTrigger value="camera">
-                <Camera className="h-4 w-4 mr-2" />
-                Camera
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="search" className="mt-3">
-              <RestaurantSelector
-                selectedRestaurant={assignedRestaurant || null}
-                onRestaurantSelected={(restaurant) => handleAssignRestaurant(currentAssigningPhoto.id, restaurant)}
-                restaurants={filteredRestaurants}
-                searchQuery={restaurantSearchQuery}
-                onSearchQueryChange={setRestaurantSearchQuery}
-                isOnline={isOnline}
-              />
-            </TabsContent>
-
-            <TabsContent value="camera" className="mt-3">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Take a photo of the restaurant sign or menu to automatically detect the name
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setShowCameraMode(true)}
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  Open Camera
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
+          <RestaurantSelector
+            selectedRestaurant={assignedRestaurant || null}
+            onRestaurantSelected={(restaurant) => handleAssignRestaurant(currentAssigningPhoto.id, restaurant)}
+            restaurants={filteredRestaurants}
+            searchQuery={restaurantSearchQuery}
+            onSearchQueryChange={setRestaurantSearchQuery}
+            isOnline={isOnline}
+            onOpenCamera={() => setShowCameraMode(true)}
+          />
 
           {/* Same as Above Button */}
           {currentAssigningPhotoIndex > 0 && previousRestaurant && !assignedRestaurant && (
@@ -856,46 +826,15 @@ export default function ProcessPhotosPage() {
         {/* Restaurant Selection */}
         <div className="space-y-2">
           <Label className="text-base font-semibold">Restaurant *</Label>
-          <Tabs defaultValue="search" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="search">
-                <Search className="h-4 w-4 mr-2" />
-                Search
-              </TabsTrigger>
-              <TabsTrigger value="camera">
-                <Camera className="h-4 w-4 mr-2" />
-                Camera
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="search" className="mt-3">
-              <RestaurantSelector
-                selectedRestaurant={selectedRestaurant}
-                onRestaurantSelected={handleRestaurantSelected}
-                restaurants={filteredRestaurants}
-                searchQuery={restaurantSearchQuery}
-                onSearchQueryChange={setRestaurantSearchQuery}
-                isOnline={isOnline}
-              />
-            </TabsContent>
-
-            <TabsContent value="camera" className="mt-3">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Take a photo of the restaurant sign or menu to automatically detect the name
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setShowCameraMode(true)}
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  Open Camera
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
+          <RestaurantSelector
+            selectedRestaurant={selectedRestaurant}
+            onRestaurantSelected={handleRestaurantSelected}
+            restaurants={filteredRestaurants}
+            searchQuery={restaurantSearchQuery}
+            onSearchQueryChange={setRestaurantSearchQuery}
+            isOnline={isOnline}
+            onOpenCamera={() => setShowCameraMode(true)}
+          />
         </div>
 
         {/* Menu Item Name */}
