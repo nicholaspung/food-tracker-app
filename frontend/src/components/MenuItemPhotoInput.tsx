@@ -12,6 +12,8 @@ interface MenuItemPhotoInputProps {
   onDeleteExistingPhoto?: (key: string | number) => void;
   showLabel?: boolean;
   showNewPhotoBadge?: boolean;
+  labelText?: string;
+  helpText?: string;
 }
 
 export default function MenuItemPhotoInput({
@@ -23,6 +25,8 @@ export default function MenuItemPhotoInput({
   onDeleteExistingPhoto,
   showLabel = true,
   showNewPhotoBadge = false,
+  labelText = "Photo (optional)",
+  helpText = "Take a photo or choose from your library",
 }: MenuItemPhotoInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,7 +35,7 @@ export default function MenuItemPhotoInput({
 
   return (
     <div className="space-y-2">
-      {showLabel && <Label>Photo (optional)</Label>}
+      {showLabel && <Label>{labelText}</Label>}
 
       {!hasNewPhoto && !hasExistingPhoto ? (
         <>
@@ -57,7 +61,7 @@ export default function MenuItemPhotoInput({
             Add Photo
           </Button>
           <p className="text-xs text-gray-500 text-center">
-            Take a photo or choose from your library
+            {helpText}
           </p>
         </>
       ) : hasNewPhoto ? (

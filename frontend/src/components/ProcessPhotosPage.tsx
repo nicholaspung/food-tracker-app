@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,8 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X } from "lucide-react";
-import { RATING_OPTIONS } from "@/lib/ratingConstants";
+import { ArrowLeft, Upload, Loader2, ChevronRight, ChevronDown, ChevronUp, Copy, Camera, Search, Check, History, WifiOff, Store, X, MapPin } from "lucide-react";
+import { RATING_OPTIONS, RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
 import { useOfflineRestaurantCreation } from "@/hooks/useOfflineRestaurantCreation";
 import { useSync } from "@/contexts/SyncContext";
@@ -32,7 +32,7 @@ import {
   searchAndCacheRestaurantsByText,
 } from "@/services/googlePlaces";
 
-type ScreenState = 'upload' | 'process';
+type ScreenState = 'upload' | 'process' | 'review';
 
 interface PhotoToProcess {
   id: string;
@@ -830,12 +830,18 @@ export default function ProcessPhotosPage() {
 
   const handleFinishProcessing = async (allProcessedPhotos: ProcessedPhoto[]) => {
     console.log('[ProcessPhotos] Finishing processing with', allProcessedPhotos.length, 'photos');
+    // Navigate to review screen instead of immediately creating visits
+    setScreen('review');
+  };
+
+  const handleSubmitVisits = async () => {
+    console.log('[ProcessPhotos] Submitting visits with', processedPhotos.length, 'photos');
     setIsProcessing(true);
 
     try {
       // Group photos by restaurant
       const photosByRestaurant = new Map<string, ProcessedPhoto[]>();
-      for (const photo of allProcessedPhotos) {
+      for (const photo of processedPhotos) {
         const restaurantId = photo.restaurant.id;
         if (!photosByRestaurant.has(restaurantId)) {
           photosByRestaurant.set(restaurantId, []);
@@ -920,6 +926,143 @@ export default function ProcessPhotosPage() {
       setScreen('process');
     }
   };
+
+  const handleEditFromReview = () => {
+    // Go back to the first photo to allow editing
+    setCurrentPhotoIndex(0);
+    setScreen('process');
+  };
+
+  // Review Screen - Show preview of visits to be created
+  if (screen === 'review') {
+    // Group processed photos by restaurant
+    const photosByRestaurant = new Map<string, ProcessedPhoto[]>();
+    for (const photo of processedPhotos) {
+      const restaurantId = photo.restaurant.id;
+      if (!photosByRestaurant.has(restaurantId)) {
+        photosByRestaurant.set(restaurantId, []);
+      }
+      photosByRestaurant.get(restaurantId)!.push(photo);
+    }
+
+    return (
+      <div className="flex flex-col h-full bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-gray-900">Review Your Visits</h1>
+          </div>
+          <p className="text-sm text-gray-500 mt-1">
+            {photosByRestaurant.size} visit{photosByRestaurant.size !== 1 ? 's' : ''} • {processedPhotos.length} item{processedPhotos.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+
+        {/* Content - Visits Preview */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {Array.from(photosByRestaurant.entries()).map(([restaurantId, restaurantPhotos]) => {
+            const restaurant = restaurantPhotos[0].restaurant;
+
+            return (
+              <Card key={restaurantId}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg">{restaurant.name}</CardTitle>
+                      <CardDescription className="flex items-center gap-1 mt-1">
+                        <MapPin className="w-3 h-3" />
+                        {restaurant.location}
+                        {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {restaurantPhotos.length > 0 ? (
+                    <div className="space-y-2">
+                      {restaurantPhotos.map((processedPhoto) => {
+                        const photoUrl = URL.createObjectURL(processedPhoto.photo);
+
+                        return (
+                          <div
+                            key={processedPhoto.photoId}
+                            className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
+                          >
+                            {/* Photo thumbnail */}
+                            <img
+                              src={photoUrl}
+                              alt={processedPhoto.menuItemName}
+                              className="w-16 h-16 object-cover rounded-md flex-shrink-0"
+                            />
+
+                            <div className="flex-1 min-w-0 pr-2">
+                              <p className="font-medium text-gray-900 break-words">
+                                {processedPhoto.menuItemName}
+                              </p>
+                              {processedPhoto.menuItemDescription && (
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                  {processedPhoto.menuItemDescription}
+                                </p>
+                              )}
+                              {processedPhoto.notes && (
+                                <p className="text-xs text-gray-600 mt-1 italic">
+                                  "{processedPhoto.notes}"
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={`w-3 h-3 rounded-full ${
+                                    RATING_COLORS[processedPhoto.rating - 1] ||
+                                    "bg-gray-300"
+                                  }`}
+                                />
+                                <span className="text-xs text-gray-600 whitespace-nowrap">
+                                  {RATING_LABELS[processedPhoto.rating - 1] ||
+                                    "Unknown"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic">
+                      No items recorded
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Footer - Action Buttons */}
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={handleEditFromReview}
+              disabled={isProcessing}
+              className="flex-1"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+            <Button
+              onClick={handleSubmitVisits}
+              disabled={isProcessing}
+              className="flex-1"
+            >
+              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isProcessing ? "Submitting..." : "Submit"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Upload Screen
   if (screen === 'upload') {
@@ -1255,6 +1398,8 @@ export default function ProcessPhotosPage() {
               onRemoveNewPhoto={handleRemoveMenuItemPhoto}
               showLabel={true}
               showNewPhotoBadge={false}
+              labelText="Scan Menu Photo (optional)"
+              helpText="Photo of menu will be scanned to find matching items"
             />
           )}
               </CardContent>
