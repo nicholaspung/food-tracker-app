@@ -29,7 +29,7 @@ import {
   searchAndCacheRestaurantsByText,
 } from "@/services/googlePlaces";
 
-type ScreenState = 'upload' | 'assign-restaurants' | 'process';
+type ScreenState = 'upload' | 'process';
 
 interface PhotoToProcess {
   id: string;
@@ -425,8 +425,6 @@ export default function ProcessPhotosPage() {
 
   // Photo management
   const [photos, setPhotos] = useState<PhotoToProcess[]>([]);
-  const [photoRestaurants, setPhotoRestaurants] = useState<Map<string, any>>(new Map());
-  const [currentAssigningPhotoIndex, setCurrentAssigningPhotoIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [processedPhotos, setProcessedPhotos] = useState<ProcessedPhoto[]>([]);
 
@@ -448,7 +446,7 @@ export default function ProcessPhotosPage() {
 
   // Dialog state
   const [showBackDialog, setShowBackDialog] = useState(false);
-  const [backDialogType, setBackDialogType] = useState<'upload' | 'assignment' | 'cancel'>('cancel');
+  const [backDialogType, setBackDialogType] = useState<'upload' | 'cancel'>('cancel');
   const [showRequiredFieldsDialog, setShowRequiredFieldsDialog] = useState(false);
   const [showCameraMode, setShowCameraMode] = useState(false);
 
@@ -503,30 +501,34 @@ export default function ProcessPhotosPage() {
     }));
 
     setPhotos(newPhotos);
-    setPhotoRestaurants(new Map());
-    setCurrentAssigningPhotoIndex(0);
     setCurrentPhotoIndex(0);
-    setScreen('assign-restaurants');
+    setScreen('process');
     e.target.value = ""; // Reset input
   };
 
-  // Pre-fill restaurant when moving to processing screen
+  // Reset form when photo index changes
   useEffect(() => {
     if (screen === 'process' && photos.length > 0) {
-      const currentPhoto = photos[currentPhotoIndex];
-      const assignedRestaurant = photoRestaurants.get(currentPhoto.id);
-      if (assignedRestaurant && !selectedRestaurant) {
-        setSelectedRestaurant(assignedRestaurant);
-      }
+      // Reset form for new photo
+      setSelectedRestaurant(null);
+      setSelectedMenuItem(null);
+      setMenuItemName("");
+      setMenuItemSearchQuery("");
+      setIsCreatingNewItem(false);
+      setRating(3);
+      setNotes("");
+      handleRemoveMenuItemPhoto();
     }
-  }, [screen, currentPhotoIndex, photos, photoRestaurants]);
+  }, [currentPhotoIndex]);
 
   const handleRestaurantSelected = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
-    // Reset menu item selection when restaurant changes
+    // Reset menu item and rating when restaurant changes
     setSelectedMenuItem(null);
     setMenuItemName("");
     setMenuItemSearchQuery("");
+    setRating(3);
+    setNotes("");
   };
 
   const handleMenuItemPhotoCapture = (key: string | number, file: File) => {
@@ -544,41 +546,6 @@ export default function ProcessPhotosPage() {
       URL.revokeObjectURL(menuItemPhotoPreview);
     }
     setMenuItemPhotoPreview(null);
-  };
-
-  // Restaurant assignment handlers
-  const handleAssignRestaurant = (photoId: string, restaurant: any) => {
-    setPhotoRestaurants(new Map(photoRestaurants.set(photoId, restaurant)));
-  };
-
-  const handleSameAsAbove = (photoIndex: number) => {
-    if (photoIndex === 0) return;
-
-    const previousPhoto = photos[photoIndex - 1];
-    const previousRestaurant = photoRestaurants.get(previousPhoto.id);
-
-    if (previousRestaurant) {
-      const currentPhoto = photos[photoIndex];
-      handleAssignRestaurant(currentPhoto.id, previousRestaurant);
-    }
-  };
-
-  const handleContinueToProcessing = () => {
-    setScreen('process');
-    setCurrentPhotoIndex(0);
-    // Pre-fill first photo's restaurant if assigned
-    if (photos.length > 0) {
-      const firstPhoto = photos[0];
-      const assignedRestaurant = photoRestaurants.get(firstPhoto.id);
-      if (assignedRestaurant) {
-        setSelectedRestaurant(assignedRestaurant);
-      }
-    }
-  };
-
-  const handleSkipRestaurantAssignment = () => {
-    setScreen('process');
-    setCurrentPhotoIndex(0);
   };
 
   const handleSubmitCurrent = async () => {
@@ -617,10 +584,8 @@ export default function ProcessPhotosPage() {
         const nextPhotoIndex = currentPhotoIndex + 1;
         setCurrentPhotoIndex(nextPhotoIndex);
 
-        // Reset form and pre-fill restaurant if assigned
-        const nextPhoto = photos[nextPhotoIndex];
-        const nextRestaurant = photoRestaurants.get(nextPhoto.id);
-        setSelectedRestaurant(nextRestaurant || null);
+        // Reset form for next photo
+        setSelectedRestaurant(null);
         setSelectedMenuItem(null);
         setMenuItemName("");
         setMenuItemSearchQuery("");
@@ -643,10 +608,8 @@ export default function ProcessPhotosPage() {
           const nextPhotoIndex = currentPhotoIndex + 1;
           setCurrentPhotoIndex(nextPhotoIndex);
 
-          // Reset form and pre-fill restaurant if assigned
-          const nextPhoto = photos[nextPhotoIndex];
-          const nextRestaurant = photoRestaurants.get(nextPhoto.id);
-          setSelectedRestaurant(nextRestaurant || null);
+          // Reset form for next photo
+          setSelectedRestaurant(null);
           setSelectedMenuItem(null);
           setMenuItemName("");
           setMenuItemSearchQuery("");
@@ -688,7 +651,7 @@ export default function ProcessPhotosPage() {
           <Upload className="h-20 w-20 text-muted-foreground mb-4" />
           <h2 className="text-2xl font-bold mb-2">Upload Photos</h2>
           <p className="text-muted-foreground text-center mb-8 max-w-md">
-            Select multiple photos from your camera roll. You'll assign restaurants, then rate each item.
+            Select multiple photos from your camera roll. You'll select a restaurant and rate each photo.
           </p>
 
           <label
@@ -710,141 +673,6 @@ export default function ProcessPhotosPage() {
     );
   }
 
-  // Restaurant Assignment Screen - Sequential one-by-one
-  if (screen === 'assign-restaurants') {
-    const currentAssigningPhoto = photos[currentAssigningPhotoIndex];
-    const assignedRestaurant = photoRestaurants.get(currentAssigningPhoto.id);
-    const previousRestaurant = currentAssigningPhotoIndex > 0
-      ? photoRestaurants.get(photos[currentAssigningPhotoIndex - 1].id)
-      : null;
-
-    const handleNextPhoto = () => {
-      if (currentAssigningPhotoIndex < photos.length - 1) {
-        setCurrentAssigningPhotoIndex(currentAssigningPhotoIndex + 1);
-      } else {
-        // All photos have been shown, move to processing
-        handleContinueToProcessing();
-      }
-    };
-
-    const handlePreviousPhoto = () => {
-      if (currentAssigningPhotoIndex > 0) {
-        setCurrentAssigningPhotoIndex(currentAssigningPhotoIndex - 1);
-      }
-    };
-
-    return (
-      <div className="flex flex-col h-full bg-gray-50">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">Process Saved Photos</h1>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (currentAssigningPhotoIndex === 0) {
-                  setBackDialogType('upload');
-                  setShowBackDialog(true);
-                } else {
-                  handlePreviousPhoto();
-                }
-              }}
-            >
-              {currentAssigningPhotoIndex === 0 ? 'Cancel' : 'Back'}
-            </Button>
-          </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Step 1 of 2: Assign restaurants ({currentAssigningPhotoIndex + 1} of {photos.length} photos)
-          </p>
-
-          {/* Progress bar */}
-          <div className="h-1 bg-gray-200 rounded-full mt-3">
-            <div
-              className="h-full bg-blue-600 rounded-full transition-all duration-300"
-              style={{ width: `${((currentAssigningPhotoIndex + 1) / photos.length) * 100}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Photo Preview */}
-          <div className="p-4">
-            <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-              <img
-                src={currentAssigningPhoto.previewUrl}
-                alt="Food photo"
-                className="w-full h-full object-contain"
-              />
-            </div>
-          </div>
-
-          {/* Restaurant Selection */}
-          <div className="p-4 space-y-4">
-            <RestaurantSelector
-              selectedRestaurant={assignedRestaurant || null}
-              onRestaurantSelected={(restaurant) => handleAssignRestaurant(currentAssigningPhoto.id, restaurant)}
-              restaurants={filteredRestaurants}
-              searchQuery={restaurantSearchQuery}
-              onSearchQueryChange={setRestaurantSearchQuery}
-              locationQuery={locationSearchQuery}
-              onLocationQueryChange={setLocationSearchQuery}
-              isOnline={isOnline}
-              onOpenCamera={() => setShowCameraMode(true)}
-              previousRestaurant={previousRestaurant}
-              onUsePreviousRestaurant={() => handleSameAsAbove(currentAssigningPhotoIndex)}
-              showSameAsAbove={currentAssigningPhotoIndex > 0 && !assignedRestaurant}
-            />
-          </div>
-        </div>
-
-        {/* Bottom Action Buttons */}
-        <div className="bg-background border-t p-4">
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              {currentAssigningPhotoIndex > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={handlePreviousPhoto}
-                  className="flex-1"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Previous
-                </Button>
-              )}
-
-              <Button
-                onClick={handleNextPhoto}
-                className={`${currentAssigningPhotoIndex > 0 ? 'flex-1' : 'w-full'}`}
-              >
-                {currentAssigningPhotoIndex < photos.length - 1 ? (
-                  <>
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-2" />
-                  </>
-                ) : (
-                  <>
-                    Continue to Rating
-                    <ChevronRight className="h-4 w-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            </div>
-
-            <Button
-              variant="ghost"
-              className="w-full text-xs"
-              onClick={handleSkipRestaurantAssignment}
-            >
-              Skip All - Assign During Rating
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Processing Screen
   const currentPhoto = photos[currentPhotoIndex];
 
@@ -854,7 +682,7 @@ export default function ProcessPhotosPage() {
       <div className="bg-white border-b border-gray-200 px-4 py-4">
         <h1 className="text-2xl font-bold text-gray-900">Process Saved Photos</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Step 2 of 2: Rate items ({currentPhotoIndex + 1} of {photos.length} photos)
+          Photo {currentPhotoIndex + 1} of {photos.length}
         </p>
 
         {/* Progress bar */}
@@ -897,22 +725,25 @@ export default function ProcessPhotosPage() {
           />
         </div>
 
-        {/* Menu Item Name */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="text-base font-semibold">Menu Item *</Label>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="create-new-toggle" className="text-sm text-muted-foreground cursor-pointer">
-                Create new
-              </Label>
-              <Switch
-                id="create-new-toggle"
-                checked={isCreatingNewItem}
-                onCheckedChange={setIsCreatingNewItem}
-                disabled={isProcessing}
-              />
-            </div>
-          </div>
+        {/* Show rating UI only when restaurant is selected */}
+        {selectedRestaurant && (
+          <>
+            {/* Menu Item Name */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">Menu Item *</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="create-new-toggle" className="text-sm text-muted-foreground cursor-pointer">
+                    Create new
+                  </Label>
+                  <Switch
+                    id="create-new-toggle"
+                    checked={isCreatingNewItem}
+                    onCheckedChange={setIsCreatingNewItem}
+                    disabled={isProcessing}
+                  />
+                </div>
+              </div>
 
           {!isCreatingNewItem ? (
             /* Search existing menu items */
@@ -1093,80 +924,71 @@ export default function ProcessPhotosPage() {
           />
         </div>
 
-          {/* Error Display */}
-          {quickTrackMutation.isError && !quickTrackMutation.error?.message?.includes('queued') && (
-            <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg">
-              <p className="font-semibold">Error saving photo</p>
-              <p className="text-sm">
-                Please try again. Check browser console for details.
-              </p>
-            </div>
-          )}
+            {/* Error Display */}
+            {quickTrackMutation.isError && !quickTrackMutation.error?.message?.includes('queued') && (
+              <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg">
+                <p className="font-semibold">Error saving photo</p>
+                <p className="text-sm">
+                  Please try again. Check browser console for details.
+                </p>
+              </div>
+            )}
+          </>
+        )}
         </div>
       </div>
 
-      {/* Bottom Action Buttons */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex gap-3">
-          {currentPhotoIndex > 0 && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (currentPhotoIndex > 0) {
-                  setCurrentPhotoIndex(currentPhotoIndex - 1);
-                  // Reset form for previous photo
-                  const prevPhoto = photos[currentPhotoIndex - 1];
-                  const prevRestaurant = photoRestaurants.get(prevPhoto.id);
-                  setSelectedRestaurant(prevRestaurant || null);
-                  setSelectedMenuItem(null);
-                  setMenuItemName("");
-                  setMenuItemSearchQuery("");
-                  setIsCreatingNewItem(false);
-                  setRating(3);
-                  setNotes("");
-                  handleRemoveMenuItemPhoto();
-                }
-              }}
-              disabled={isProcessing}
-              className="flex-1"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Previous
-            </Button>
-          )}
-          <Button
-            onClick={(e) => {
-              e.preventDefault();
-              handleSubmitCurrent();
-            }}
-            className={`${currentPhotoIndex > 0 ? 'flex-1' : 'w-full'}`}
-            disabled={!selectedRestaurant || !menuItemName.trim() || rating === null || isProcessing}
-          >
-            {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isProcessing
-              ? "Saving..."
-              : currentPhotoIndex < photos.length - 1
-                ? "Save & Next"
-                : "Save & Finish"}
-            {currentPhotoIndex < photos.length - 1 && !isProcessing && (
-              <ChevronRight className="ml-2 h-4 w-4" />
+      {/* Bottom Action Buttons - only show when restaurant is selected */}
+      {selectedRestaurant && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex gap-3">
+            {currentPhotoIndex > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (currentPhotoIndex > 0) {
+                    setCurrentPhotoIndex(currentPhotoIndex - 1);
+                  }
+                }}
+                disabled={isProcessing}
+                className="flex-1"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Previous
+              </Button>
             )}
-          </Button>
+            <Button
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmitCurrent();
+              }}
+              className={`${currentPhotoIndex > 0 ? 'flex-1' : 'w-full'}`}
+              disabled={!selectedRestaurant || !menuItemName.trim() || rating === null || isProcessing}
+            >
+              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isProcessing
+                ? "Saving..."
+                : currentPhotoIndex < photos.length - 1
+                  ? "Save & Next"
+                  : "Save & Finish"}
+              {currentPhotoIndex < photos.length - 1 && !isProcessing && (
+                <ChevronRight className="ml-2 h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Dialogs */}
       <AlertDialog open={showBackDialog} onOpenChange={setShowBackDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {backDialogType === 'upload' ? 'Go back?' : backDialogType === 'assignment' ? 'Go back to restaurant assignment?' : 'Cancel processing?'}
+              {backDialogType === 'upload' ? 'Go back?' : 'Cancel processing?'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {backDialogType === 'upload'
                 ? "You'll need to re-upload photos if you go back."
-                : backDialogType === 'assignment'
-                ? "Your current progress on this photo will be lost."
                 : "Unprocessed photos will be lost. Are you sure you want to cancel?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1176,21 +998,14 @@ export default function ProcessPhotosPage() {
               onClick={() => {
                 if (backDialogType === 'upload') {
                   setPhotos([]);
-                  setPhotoRestaurants(new Map());
                   setScreen('upload');
-                } else if (backDialogType === 'assignment') {
-                  setScreen('assign-restaurants');
-                  setSelectedRestaurant(null);
-                  setMenuItemName("");
-                  setRating(null);
-                  setNotes("");
                 } else {
                   navigate({ to: "/add-visit" });
                 }
                 setShowBackDialog(false);
               }}
             >
-              {backDialogType === 'upload' ? 'Go Back' : backDialogType === 'assignment' ? 'Go Back' : 'Cancel Processing'}
+              {backDialogType === 'upload' ? 'Go Back' : 'Cancel Processing'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
