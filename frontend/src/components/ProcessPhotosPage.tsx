@@ -486,8 +486,14 @@ export default function ProcessPhotosPage() {
     enabled: !!selectedRestaurant?.id,
   });
 
+  // Filter out menu items already used in processed photos for the same restaurant
+  const usedMenuItemNames = processedPhotos
+    .filter(p => p.restaurant?.id === selectedRestaurant?.id)
+    .map(p => p.menuItemName.toLowerCase());
+
   const filteredMenuItems = menuItems.filter((item) =>
-    item.name.toLowerCase().includes(menuItemSearchQuery.toLowerCase())
+    item.name.toLowerCase().includes(menuItemSearchQuery.toLowerCase()) &&
+    !usedMenuItemNames.includes(item.name.toLowerCase())
   );
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -944,46 +950,49 @@ export default function ProcessPhotosPage() {
         </div>
       </div>
 
-      {/* Bottom Action Buttons - only show when restaurant is selected */}
-      {selectedRestaurant && (
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="flex gap-3">
-            {currentPhotoIndex > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (currentPhotoIndex > 0) {
-                    setCurrentPhotoIndex(currentPhotoIndex - 1);
-                  }
-                }}
-                disabled={isProcessing}
-                className="flex-1"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Previous
-              </Button>
+      {/* Bottom Action Buttons - always visible */}
+      <div className="bg-white border-t border-gray-200 p-4">
+        <div className="flex gap-3">
+          {/* Left button: Cancel on first photo, Previous on others */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (currentPhotoIndex === 0) {
+                // Cancel - go back to add-visit
+                navigate({ to: "/add-visit" });
+              } else {
+                // Previous photo
+                setCurrentPhotoIndex(currentPhotoIndex - 1);
+              }
+            }}
+            disabled={isProcessing}
+            className="flex-1"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            {currentPhotoIndex === 0 ? "Cancel" : "Previous"}
+          </Button>
+
+          {/* Right button: Save & Next (or disabled Next if incomplete) */}
+          <Button
+            onClick={(e) => {
+              e.preventDefault();
+              handleSubmitCurrent();
+            }}
+            className="flex-1"
+            disabled={!selectedRestaurant || !menuItemName.trim() || rating === null || isProcessing}
+          >
+            {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isProcessing
+              ? "Saving..."
+              : currentPhotoIndex < photos.length - 1
+                ? "Save & Next"
+                : "Save & Finish"}
+            {currentPhotoIndex < photos.length - 1 && !isProcessing && (
+              <ChevronRight className="ml-2 h-4 w-4" />
             )}
-            <Button
-              onClick={(e) => {
-                e.preventDefault();
-                handleSubmitCurrent();
-              }}
-              className={`${currentPhotoIndex > 0 ? 'flex-1' : 'w-full'}`}
-              disabled={!selectedRestaurant || !menuItemName.trim() || rating === null || isProcessing}
-            >
-              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isProcessing
-                ? "Saving..."
-                : currentPhotoIndex < photos.length - 1
-                  ? "Save & Next"
-                  : "Save & Finish"}
-              {currentPhotoIndex < photos.length - 1 && !isProcessing && (
-                <ChevronRight className="ml-2 h-4 w-4" />
-              )}
-            </Button>
-          </div>
+          </Button>
         </div>
-      )}
+      </div>
 
       {/* Dialogs */}
       <AlertDialog open={showBackDialog} onOpenChange={setShowBackDialog}>
