@@ -28,6 +28,14 @@ export default function AddVisitOptionSelector() {
       color: "bg-green-500",
       path: "/quick-track",
     },
+    {
+      id: "process-photos",
+      title: "Process Saved Photos",
+      description: "Upload multiple photos and rate each one",
+      icon: Images,
+      color: "bg-purple-500",
+      path: "/process-photos",
+    },
   ];
 
   return (
@@ -98,11 +106,10 @@ export default function AddVisitOptionSelector() {
               <Images className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium text-foreground mb-1">
-                  Bulk Photo Upload
+                  Process Saved Photos
                 </p>
                 <p>
-                  In Restaurant Visit mode, you can upload all photos at once
-                  and assign them to items later.
+                  Upload multiple photos from your camera roll and rate each one with a restaurant and menu item.
                 </p>
               </div>
             </div>
