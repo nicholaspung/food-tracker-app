@@ -748,42 +748,54 @@ export default function ProcessPhotosPage() {
           {!isCreatingNewItem ? (
             /* Search existing menu items */
             <div className="space-y-2">
-              <Input
-                type="text"
-                placeholder="Search menu items..."
-                value={menuItemSearchQuery}
-                onChange={(e) => {
-                  setMenuItemSearchQuery(e.target.value);
-                  setSelectedMenuItem(null);
-                  setMenuItemName("");
-                }}
-                disabled={isProcessing || !selectedRestaurant}
-                className="text-base"
-              />
+              {!selectedMenuItem ? (
+                <>
+                  <Input
+                    type="text"
+                    placeholder="Search menu items..."
+                    value={menuItemSearchQuery}
+                    onChange={(e) => {
+                      setMenuItemSearchQuery(e.target.value);
+                    }}
+                    disabled={isProcessing || !selectedRestaurant}
+                    className="text-base"
+                  />
 
-              {menuItemSearchQuery && filteredMenuItems.length > 0 && (
-                <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
-                  {filteredMenuItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedMenuItem(item);
-                        setMenuItemName(item.name);
-                        setMenuItemSearchQuery("");
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-accent rounded-md transition-colors"
-                    >
-                      <div className="font-medium">{item.name}</div>
-                      {item.description && (
-                        <div className="text-sm text-muted-foreground">{item.description}</div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+                  {filteredMenuItems.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+                      {filteredMenuItems.slice(0, 20).map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedMenuItem(item);
+                            setMenuItemName(item.name);
+                            setMenuItemSearchQuery("");
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-accent rounded-md transition-colors"
+                        >
+                          <div className="font-medium">{item.name}</div>
+                          {item.description && (
+                            <div className="text-sm text-muted-foreground">{item.description}</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-              {selectedMenuItem && (
+                  {menuItems.length === 0 && !menuItemSearchQuery && (
+                    <p className="text-sm text-muted-foreground">
+                      No menu items found. Toggle "Create new" to add one.
+                    </p>
+                  )}
+
+                  {menuItems.length > 0 && filteredMenuItems.length === 0 && menuItemSearchQuery && (
+                    <p className="text-sm text-muted-foreground">
+                      No matches found. Try a different search or toggle "Create new".
+                    </p>
+                  )}
+                </>
+              ) : (
                 <div className="p-3 bg-muted rounded-md">
                   <div className="flex items-center justify-between">
                     <div>
@@ -805,12 +817,6 @@ export default function ProcessPhotosPage() {
                     </Button>
                   </div>
                 </div>
-              )}
-
-              {!selectedMenuItem && !menuItemSearchQuery && (
-                <p className="text-sm text-muted-foreground">
-                  Search for an existing menu item or toggle to create a new one
-                </p>
               )}
 
               {/* Photo upload - scan menu to prepopulate items */}
