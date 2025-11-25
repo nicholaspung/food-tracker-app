@@ -77,12 +77,19 @@ export interface FoodItem {
   id: string;
   name: string;
   description?: string;
-  visit: string;
+  visit?: string; // Optional for quick track items (items without a visit)
   rating: number;
   notes?: string;
   user: string;
   created: string;
   updated: string;
+  // Quick Track fields
+  isQuickTrack?: boolean; // true if this is a standalone quick track item
+  visibility?: 'private' | 'friends'; // visibility for quick track items
+  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
+  location_text?: string;
+  latitude?: number;
+  longitude?: number;
   expand?: {
     visit?: Visit & {
       expand?: {

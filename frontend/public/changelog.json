@@ -1,5 +1,46 @@
 [
   {
+    "version": "0.5.0",
+    "date": "2025-11-25",
+    "title": "Full Offline Support & Quick Track Items",
+    "summary": "Use the app completely offline with automatic sync when you're back online! Plus, track individual items (snacks, groceries) separately from restaurant visits with the new Quick Track feature and streamlined Process Photos workflow.",
+    "features": [
+      "Full offline mode: Create visits, add items, rate food, and upload photos without internet - everything syncs automatically when you're back online",
+      "Sync queue: See all pending operations with status badges and retry failed syncs manually",
+      "Quick Track Items: Track individual snacks, groceries, homemade food, and recipes separately from restaurant visits",
+      "Process Photos workflow: Upload multiple photos at once and process them all in one streamlined flow",
+      "Quick Track in Process Photos: Process photos for both restaurant visits AND quick track items in the same workflow",
+      "Friend sharing: Quick track items can be shared with friends or kept private (your choice)",
+      "Offline restaurant creation: Add custom restaurants even when offline - they'll sync when you're back online",
+      "Clear sync queue: Remove all pending operations with one tap if you change your mind"
+    ],
+    "improvements": [
+      "Offline indicators: All AI features (menu scanning, restaurant finder) clearly show when unavailable offline",
+      "Smart edit preservation: Editing visits now preserves all your custom descriptions and notes",
+      "Better restaurant selection: Tabbed interface with Search/Camera/History for faster restaurant finding",
+      "Unified Process Photos flow: One-by-one photo processing with restaurant selection, menu items, and ratings all on the same screen",
+      "Review before saving: See all your photos and ratings before creating the visit",
+      "Menu scanning in Process Photos: Scan menu photos directly in the bulk upload workflow",
+      "Quick Track styling: Sleek card-based design matching restaurant visit style",
+      "Timeline integration: Quick track items appear in your home feed with subtle styling to distinguish from visits",
+      "Optional location field: Location field always visible for quick track items (no more toggle)",
+      "Optimistic updates: See your changes instantly while they save in the background",
+      "Better error visibility: Failed syncs show clear error messages with retry options"
+    ],
+    "fixes": [
+      "Fixed edit visit navigation loop and editing issues",
+      "Fixed offline restaurant creation hanging",
+      "Fixed visit sync errors with temporary IDs",
+      "Fixed photo display after online visit creation",
+      "Fixed menu items not showing when restaurant is selected in Process Photos",
+      "Fixed duplicate menu items appearing in process flow",
+      "Fixed edit visit not preserving user's custom descriptions",
+      "Fixed offline mutations not working correctly",
+      "Fixed visit display for offline-created content",
+      "Fixed restaurant creation to use proper createdBy field"
+    ]
+  },
+  {
     "version": "0.4.1",
     "date": "2025-11-08",
     "title": "Lightning-Fast Photo Uploads",

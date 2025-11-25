@@ -25,6 +25,7 @@ export interface QuickTrackData {
   latitude?: number;
   longitude?: number;
   photo?: File; // Optional photo
+  visibility?: 'private' | 'friends'; // Visibility for quick track items
 }
 
 export interface QuickTrackResult {
@@ -95,6 +96,8 @@ export function useOfflineQuickTrack() {
             latitude: data.latitude,
             longitude: data.longitude,
             user: user.id,
+            isQuickTrack: true, // Mark as quick track item
+            visibility: data.visibility || 'private', // Default to private if not specified
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
             isPending: true, // Flag to indicate this is pending sync
@@ -171,6 +174,8 @@ async function executeQuickTrack(
     latitude: data.latitude,
     longitude: data.longitude,
     user: userId,
+    isQuickTrack: true, // Mark as quick track item
+    visibility: data.visibility || 'private', // Default to private if not specified
     // visit field is intentionally omitted (Quick Track mode)
   });
 
@@ -214,6 +219,8 @@ async function queueQuickTrack(data: QuickTrackData, userId: string): Promise<vo
         latitude: data.latitude,
         longitude: data.longitude,
         user: userId,
+        isQuickTrack: true, // Mark as quick track item
+        visibility: data.visibility || 'private', // Default to private if not specified
       },
       photo: data.photo, // IndexedDB can store File objects
     },
