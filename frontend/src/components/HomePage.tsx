@@ -62,6 +62,10 @@ interface VisitWithDetails extends Omit<Visit, "restaurant"> {
   };
 }
 
+interface QuickTrackItemWithDetails extends FoodItem {
+  type: 'quick_track';
+}
+
 interface HomePageProps {
   onEditVisit?: (visitId: string) => void;
   onAddVisit?: () => void;
@@ -259,7 +263,7 @@ export default function HomePage({
   const handleSharePhotoClick = async (
     photo: any,
     foodItem: FoodItem,
-    restaurant: Restaurant,
+    restaurant: Restaurant | null,
     visitDate: string
   ) => {
     if (!isOnline) {
@@ -279,7 +283,7 @@ export default function HomePage({
       setSharePhotoFile(file);
       setSharePhotoUrl(photoUrl);
       setShareOverlayData({
-        restaurantName: restaurant.name,
+        restaurantName: restaurant?.name || foodItem.location_text || "Quick Track",
         dishName: foodItem.name,
         rating: foodItem.rating,
         visitDate: visitDate,
@@ -345,6 +349,15 @@ export default function HomePage({
 
     setVisitToShare(visit);
   };
+
+  // Separate quick track items (items explicitly marked as quick track)
+  const quickTrackItems: QuickTrackItemWithDetails[] = useMemo(
+    () =>
+      foodItems
+        .filter((item) => item.isQuickTrack === true)
+        .map((item) => ({ ...item, type: 'quick_track' as const })),
+    [foodItems]
+  );
 
   // Combine data
   const visitsWithDetails: VisitWithDetails[] = useMemo(
@@ -413,14 +426,59 @@ export default function HomePage({
     return filtered;
   }, [visitsWithDetails, cutoffDate, searchQuery, filterType]);
 
+  // Filter quick track items based on monthsToLoad and search query
+  const filteredQuickTrackItems = useMemo(() => {
+    // Filter by time range (use created date for quick track items)
+    let filtered = searchQuery.trim()
+      ? quickTrackItems
+      : quickTrackItems.filter(
+          (item) => new Date(item.created) >= cutoffDate
+        );
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((item) => {
+        // Search in item name
+        const itemName = item.name?.toLowerCase() || "";
+        if (itemName.includes(query)) return true;
+
+        // Search in notes
+        const notes = item.notes?.toLowerCase() || "";
+        if (notes.includes(query)) return true;
+
+        // Search in location text
+        const locationText = item.location_text?.toLowerCase() || "";
+        if (locationText.includes(query)) return true;
+
+        // Search in category
+        const category = item.itemCategory?.toLowerCase() || "";
+        if (category.includes(query)) return true;
+
+        return false;
+      });
+    }
+
+    // Quick track items are always "user" type (only show if filter is "all" or "user")
+    if (filterType === "friends") {
+      return [];
+    }
+
+    return filtered;
+  }, [quickTrackItems, cutoffDate, searchQuery, filterType]);
+
   // Check if there are more visits to load (only when not searching)
   const hasMoreVisits =
     !searchQuery.trim() && visitsWithDetails.length > filteredVisits.length;
 
-  // Group visits by month, then by day (or month for friend visits)
+  // Group visits and quick track items by month, then by day
   const groupedVisits = useMemo(() => {
-    const byMonth: Record<string, Record<string, VisitWithDetails[]>> = {};
+    const byMonth: Record<string, Record<string, {
+      visits: VisitWithDetails[];
+      quickTrackItems: QuickTrackItemWithDetails[];
+    }>> = {};
 
+    // Add visits
     filteredVisits.forEach((visit) => {
       const monthKey = getMonthKey(visit.visitDate);
       const isFriend = isFriendVisit(visit);
@@ -430,9 +488,23 @@ export default function HomePage({
         byMonth[monthKey] = {};
       }
       if (!byMonth[monthKey][dayKey]) {
-        byMonth[monthKey][dayKey] = [];
+        byMonth[monthKey][dayKey] = { visits: [], quickTrackItems: [] };
       }
-      byMonth[monthKey][dayKey].push(visit);
+      byMonth[monthKey][dayKey].visits.push(visit);
+    });
+
+    // Add quick track items (use created date)
+    filteredQuickTrackItems.forEach((item) => {
+      const monthKey = getMonthKey(item.created);
+      const dayKey = getDayKey(item.created, false);
+
+      if (!byMonth[monthKey]) {
+        byMonth[monthKey] = {};
+      }
+      if (!byMonth[monthKey][dayKey]) {
+        byMonth[monthKey][dayKey] = { visits: [], quickTrackItems: [] };
+      }
+      byMonth[monthKey][dayKey].quickTrackItems.push(item);
     });
 
     // Sort months descending
@@ -446,7 +518,7 @@ export default function HomePage({
       days: Object.keys(byMonth[monthKey])
         .sort((a, b) => b.localeCompare(a)) // Sort days descending
         .map((dayKey) => {
-          const visitsInDay = byMonth[monthKey][dayKey];
+          const { visits: visitsInDay, quickTrackItems: quickTrackItemsInDay } = byMonth[monthKey][dayKey];
           // Check if this is a friend visit group (all visits in this group should be same type)
           const isFriend =
             visitsInDay.length > 0 && isFriendVisit(visitsInDay[0]);
@@ -454,11 +526,12 @@ export default function HomePage({
             dayKey,
             dayLabel: formatDayLabel(dayKey, isFriend),
             visits: visitsInDay,
+            quickTrackItems: quickTrackItemsInDay,
             isFriendGroup: isFriend,
           };
         }),
     }));
-  }, [filteredVisits]);
+  }, [filteredVisits, filteredQuickTrackItems]);
 
   const toggleMonth = (monthKey: string) => {
     setExpandedMonths((prev) => {
@@ -512,12 +585,20 @@ export default function HomePage({
           <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
           <p className="text-sm text-gray-500 mt-1">
             {searchQuery.trim()
-              ? `Found ${filteredVisits.length} of ${visits.length} total`
-              : userVisitsCount > 0 && friendVisitsCount > 0
-                ? `${userVisitsCount} visit${userVisitsCount !== 1 ? "s" : ""} • ${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? "s" : ""}`
-                : userVisitsCount > 0
-                  ? `${userVisitsCount} your visit${userVisitsCount !== 1 ? "s" : ""}`
-                  : `${friendVisitsCount} friend${friendVisitsCount !== 1 ? "s" : ""}'`}
+              ? `Found ${filteredVisits.length + filteredQuickTrackItems.length} items (${filteredVisits.length} visits, ${filteredQuickTrackItems.length} quick items)`
+              : (() => {
+                  const parts = [];
+                  if (userVisitsCount > 0) {
+                    parts.push(`${userVisitsCount} visit${userVisitsCount !== 1 ? "s" : ""}`);
+                  }
+                  if (friendVisitsCount > 0) {
+                    parts.push(`${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? "s" : ""}`);
+                  }
+                  if (quickTrackItems.length > 0) {
+                    parts.push(`${quickTrackItems.length} quick item${quickTrackItems.length !== 1 ? "s" : ""}`);
+                  }
+                  return parts.join(" • ");
+                })()}
           </p>
         </div>
 
@@ -560,8 +641,8 @@ export default function HomePage({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* No visits at all */}
-        {visits.length === 0 && (
+        {/* No visits or quick track items at all */}
+        {visits.length === 0 && quickTrackItems.length === 0 && (
           <div className="flex flex-col items-center justify-center pt-8">
             <Utensils className="w-16 h-16 text-gray-300 mb-4" />
             <p className="text-gray-500 text-center mb-2">No visits to show</p>
@@ -592,7 +673,7 @@ export default function HomePage({
         )}
 
         {/* No results after filtering/searching */}
-        {visits.length > 0 && filteredVisits.length === 0 && (
+        {(visits.length > 0 || quickTrackItems.length > 0) && filteredVisits.length === 0 && filteredQuickTrackItems.length === 0 && (
           <>
             {/* No search results */}
             {searchQuery.trim() && (
@@ -678,20 +759,27 @@ export default function HomePage({
               <span className="text-sm text-gray-500">
                 {(() => {
                   const allMonthVisits = days.flatMap((day) => day.visits);
+                  const allMonthQuickTrack = days.flatMap((day) => day.quickTrackItems);
                   const userVisits = allMonthVisits.filter(
                     (v) => v.user === currentUserId
                   ).length;
                   const friendVisits = allMonthVisits.filter(
                     (v) => v.user !== currentUserId
                   ).length;
+                  const quickTrackCount = allMonthQuickTrack.length;
 
-                  if (userVisits > 0 && friendVisits > 0) {
-                    return `${userVisits} visit${userVisits !== 1 ? "s" : ""} • ${friendVisits} friend visit${friendVisits !== 1 ? "s" : ""}`;
-                  } else if (userVisits > 0) {
-                    return `${userVisits} visit${userVisits !== 1 ? "s" : ""}`;
-                  } else {
-                    return `${friendVisits} friend visit${friendVisits !== 1 ? "s" : ""}`;
+                  const parts = [];
+                  if (userVisits > 0) {
+                    parts.push(`${userVisits} visit${userVisits !== 1 ? "s" : ""}`);
                   }
+                  if (friendVisits > 0) {
+                    parts.push(`${friendVisits} friend visit${friendVisits !== 1 ? "s" : ""}`);
+                  }
+                  if (quickTrackCount > 0) {
+                    parts.push(`${quickTrackCount} quick item${quickTrackCount !== 1 ? "s" : ""}`);
+                  }
+
+                  return parts.join(" • ");
                 })()}
               </span>
             </button>
@@ -700,7 +788,7 @@ export default function HomePage({
             {expandedMonths.has(monthKey) && (
               <div className="space-y-4 pl-2">
                 {days.map(
-                  ({ dayKey, dayLabel, visits: dayVisits, isFriendGroup }) => (
+                  ({ dayKey, dayLabel, visits: dayVisits, quickTrackItems: dayQuickTrackItems, isFriendGroup }) => (
                     <div key={dayKey} className="space-y-3">
                       {/* Day Header */}
                       <div className="flex items-center gap-2 px-2">
@@ -722,8 +810,9 @@ export default function HomePage({
                         )}
                       </div>
 
-                      {/* Visits for this day */}
+                      {/* Items for this day (visits + quick track) */}
                       <div className="space-y-3">
+                        {/* Visits for this day */}
                         {dayVisits.map((visit) => {
                           const isFriend = isFriendVisit(visit);
                           // Use name if available, otherwise fall back to email username
@@ -910,6 +999,109 @@ export default function HomePage({
                                     No items recorded
                                   </p>
                                 )}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+
+                        {/* Quick Track Items for this day */}
+                        {dayQuickTrackItems.map((item) => {
+                          // Find photo for this quick track item
+                          const photo = visitPhotos.find(
+                            (p: any) => p.food_item === item.id
+                          );
+                          const photoUrl = photo
+                            ? (photo.isPending
+                                ? photo.photo
+                                : pb.files.getURL(photo, photo.photo, { thumb: "100x100" }))
+                            : null;
+                          const fullPhotoUrl = photo
+                            ? (photo.isPending
+                                ? photo.photo
+                                : pb.files.getURL(photo, photo.photo))
+                            : null;
+
+                          return (
+                            <Card
+                              key={item.id}
+                              className="border-gray-200 bg-gray-50/50"
+                            >
+                              <CardContent className="pt-4 pb-4">
+                                <div className="flex items-start gap-3">
+                                  {/* Photo thumbnail */}
+                                  {photoUrl && photo && fullPhotoUrl && (
+                                    <img
+                                      src={photoUrl}
+                                      alt={item.name}
+                                      className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                                      onClick={() =>
+                                        setFullscreenPhoto({
+                                          url: fullPhotoUrl,
+                                          dishName: item.name,
+                                        })
+                                      }
+                                    />
+                                  )}
+
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-gray-900 break-words">
+                                      {item.name}
+                                    </p>
+                                    {/* Category badge */}
+                                    {item.itemCategory && (
+                                      <Badge variant="outline" className="text-xs mt-1">
+                                        {item.itemCategory.replace(/_/g, ' ')}
+                                      </Badge>
+                                    )}
+                                    {/* Location text */}
+                                    {item.location_text && (
+                                      <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
+                                        <MapPin className="w-3 h-3" />
+                                        {item.location_text}
+                                      </p>
+                                    )}
+                                    {/* Notes */}
+                                    {item.notes && (
+                                      <p className="text-xs text-gray-600 mt-1 italic">
+                                        "{item.notes}"
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                    <div className="flex items-center gap-2">
+                                      <div
+                                        className={`w-3 h-3 rounded-full ${
+                                          RATING_COLORS[item.rating - 1] ||
+                                          "bg-gray-300"
+                                        }`}
+                                      />
+                                      <span className="text-xs text-gray-600 whitespace-nowrap">
+                                        {RATING_LABELS[item.rating - 1] ||
+                                          "Unknown"}
+                                      </span>
+                                    </div>
+                                    {/* Share button - only show if there's a photo */}
+                                    {photo && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSharePhotoClick(
+                                            photo,
+                                            item,
+                                            null, // No restaurant for quick track
+                                            item.created
+                                          );
+                                        }}
+                                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                                        title="Share photo"
+                                      >
+                                        <Share2 className="w-3 h-3" />
+                                        <span>Share</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
                               </CardContent>
                             </Card>
                           );
