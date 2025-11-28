@@ -7,7 +7,9 @@ const DRAFT_KEY = 'current';
 
 export interface ProcessedPhotoDraft {
   photoId: string;
-  photo: File; // Store File directly instead of data URL
+  photoDataUrl: string; // Store as base64 data URL (fully serializable)
+  photoFileName: string;
+  photoFileType: string;
   restaurant: Restaurant;
   menuItemName: string;
   menuItemDescription: string;
@@ -19,10 +21,13 @@ export interface ProcessedPhotoDraft {
 export interface ProcessPhotosDraft {
   photos: Array<{
     id: string;
-    file: File; // Store File directly
+    dataUrl: string; // Store as base64 data URL (fully serializable)
+    fileName: string;
+    fileType: string;
   }>;
   currentPhotoIndex: number;
   processedPhotos: ProcessedPhotoDraft[];
+  visitVisibility: 'friends' | 'private';
   currentFormState?: {
     selectedRestaurant: Restaurant | null;
     menuItemName: string;
@@ -36,6 +41,7 @@ const getEmptyDraft = (): ProcessPhotosDraft => ({
   photos: [],
   currentPhotoIndex: 0,
   processedPhotos: [],
+  visitVisibility: 'friends',
 });
 
 /**
@@ -67,8 +73,20 @@ async function getFromDB<T>(key: string): Promise<T | null> {
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(key);
 
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => {
+      console.error('[IndexedDB] GET error:', request.error);
+      reject(request.error);
+    };
+    request.onsuccess = () => {
+      const result = request.result || null;
+      console.log('[IndexedDB] GET success:', {
+        key,
+        hasResult: !!result,
+        resultType: typeof result,
+        result: result, // Log the actual value being retrieved
+      });
+      resolve(result);
+    };
   });
 }
 
@@ -78,12 +96,34 @@ async function getFromDB<T>(key: string): Promise<T | null> {
 async function saveToDB<T>(key: string, value: T): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
+    console.log('[IndexedDB] Attempting to PUT:', {
+      key,
+      valueType: typeof value,
+      value: value, // Log the actual value being saved
+    });
+
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
+
+    // Add transaction error handler
+    transaction.onerror = () => {
+      console.error('[IndexedDB] Transaction error:', transaction.error);
+    };
+
+    transaction.onabort = () => {
+      console.error('[IndexedDB] Transaction aborted');
+    };
+
     const request = store.put(value, key);
 
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('[IndexedDB] PUT error:', request.error);
+      reject(request.error);
+    };
+    request.onsuccess = () => {
+      console.log('[IndexedDB] PUT success:', { key });
+      resolve();
+    };
   });
 }
 
@@ -108,29 +148,69 @@ export const processPhotosDraftService = {
    */
   async getDraft(): Promise<ProcessPhotosDraft> {
     try {
+      console.log('[DraftService] Getting draft from IndexedDB...');
       const draft = await getFromDB<ProcessPhotosDraft>(DRAFT_KEY);
+      console.log('[DraftService] Draft retrieved:', {
+        hasDraft: !!draft,
+        photosCount: draft?.photos?.length || 0,
+        processedCount: draft?.processedPhotos?.length || 0,
+        hasFormState: !!draft?.currentFormState,
+        formStateDetails: draft?.currentFormState ? {
+          hasRestaurant: !!draft.currentFormState.selectedRestaurant,
+          restaurantName: draft.currentFormState.selectedRestaurant?.name,
+          menuItemName: draft.currentFormState.menuItemName,
+          rating: draft.currentFormState.rating,
+          isCreatingNewItem: draft.currentFormState.isCreatingNewItem,
+        } : null,
+      });
       return draft || getEmptyDraft();
     } catch (error) {
-      console.error('Failed to load process photos draft:', error);
+      console.error('[DraftService] Failed to load process photos draft:', error);
       return getEmptyDraft();
     }
   },
 
   /**
-   * Save photos to draft (stores File objects directly)
+   * Convert File to base64 data URL
+   */
+  fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  },
+
+  /**
+   * Save photos to draft (converts Files to data URLs for reliable storage)
    */
   async savePhotos(files: File[]): Promise<void> {
-    const photos = files.map((file, index) => ({
-      id: `${Date.now()}-${index}`,
-      file,
-    }));
+    try {
+      console.log('[DraftService] Saving photos to draft:', files.length);
 
-    const draft = await this.getDraft();
-    draft.photos = photos;
-    draft.currentPhotoIndex = 0;
-    draft.processedPhotos = [];
-    draft.currentFormState = undefined;
-    await saveToDB(DRAFT_KEY, draft);
+      // Convert Files to data URLs (base64) for fully serializable storage
+      const photos = await Promise.all(
+        files.map(async (file, index) => ({
+          id: `${Date.now()}-${index}`,
+          dataUrl: await this.fileToDataUrl(file),
+          fileName: file.name,
+          fileType: file.type,
+        }))
+      );
+
+      const draft = await this.getDraft();
+      draft.photos = photos;
+      draft.currentPhotoIndex = 0;
+      draft.processedPhotos = [];
+      draft.currentFormState = undefined;
+      draft.visitVisibility = draft.visitVisibility || 'friends'; // Preserve or default to 'friends'
+      await saveToDB(DRAFT_KEY, draft);
+      console.log('[DraftService] Photos saved successfully');
+    } catch (error) {
+      console.error('[DraftService] Failed to save photos:', error);
+      throw error;
+    }
   },
 
   /**
@@ -157,10 +237,29 @@ export const processPhotosDraftService = {
   ): Promise<void> {
     const draft = await this.getDraft();
 
+    // Serialize restaurant to plain object
+    const serializedRestaurant = {
+      id: restaurant.id,
+      name: restaurant.name,
+      location: restaurant.location,
+      cuisineType: restaurant.cuisineType,
+      latitude: restaurant.latitude,
+      longitude: restaurant.longitude,
+      placeId: restaurant.placeId,
+      isGooglePlace: restaurant.isGooglePlace,
+      googlePlaceCachedAt: restaurant.googlePlaceCachedAt,
+      createdBy: restaurant.createdBy,
+      visibility: restaurant.visibility,
+      created: restaurant.created,
+      updated: restaurant.updated,
+    };
+
     const processedPhoto: ProcessedPhotoDraft = {
       photoId,
-      photo: photoFile, // Store File directly
-      restaurant,
+      photoDataUrl: await this.fileToDataUrl(photoFile),
+      photoFileName: photoFile.name,
+      photoFileType: photoFile.type,
+      restaurant: serializedRestaurant as any,
       menuItemName,
       menuItemDescription,
       rating,
@@ -182,22 +281,79 @@ export const processPhotosDraftService = {
     notes: string,
     isCreatingNewItem: boolean
   ): Promise<void> {
-    const draft = await this.getDraft();
-    draft.currentFormState = {
-      selectedRestaurant,
-      menuItemName,
-      rating,
-      notes,
-      isCreatingNewItem,
-    };
-    await saveToDB(DRAFT_KEY, draft);
+    try {
+      console.log('[DraftService] Saving form state:', {
+        hasRestaurant: !!selectedRestaurant,
+        restaurantName: selectedRestaurant?.name,
+        menuItemName,
+        rating,
+        notes: notes.substring(0, 20) + (notes.length > 20 ? '...' : ''),
+        isCreatingNewItem,
+      });
+      const draft = await this.getDraft();
+
+      // Serialize restaurant to plain object to ensure it can be stored in IndexedDB
+      const serializedRestaurant = selectedRestaurant ? {
+        id: selectedRestaurant.id,
+        name: selectedRestaurant.name,
+        location: selectedRestaurant.location,
+        cuisineType: selectedRestaurant.cuisineType,
+        latitude: selectedRestaurant.latitude,
+        longitude: selectedRestaurant.longitude,
+        placeId: selectedRestaurant.placeId,
+        isGooglePlace: selectedRestaurant.isGooglePlace,
+        googlePlaceCachedAt: selectedRestaurant.googlePlaceCachedAt,
+        createdBy: selectedRestaurant.createdBy,
+        visibility: selectedRestaurant.visibility,
+        created: selectedRestaurant.created,
+        updated: selectedRestaurant.updated,
+      } : null;
+
+      draft.currentFormState = {
+        selectedRestaurant: serializedRestaurant as any,
+        menuItemName,
+        rating,
+        notes,
+        isCreatingNewItem,
+      };
+
+      // Log what we're about to save
+      console.log('[DraftService] About to save draft:', {
+        photosCount: draft.photos.length,
+        processedCount: draft.processedPhotos.length,
+        hasFormState: !!draft.currentFormState,
+        formState: draft.currentFormState,
+      });
+
+      await saveToDB(DRAFT_KEY, draft);
+
+      // Verify it was saved by reading it back
+      const verifyDraft = await this.getDraft();
+      console.log('[DraftService] Form state saved and verified:', {
+        hasFormState: !!verifyDraft.currentFormState,
+        hasRestaurant: !!verifyDraft.currentFormState?.selectedRestaurant,
+        restaurantName: verifyDraft.currentFormState?.selectedRestaurant?.name,
+        menuItemName: verifyDraft.currentFormState?.menuItemName,
+        fullFormState: verifyDraft.currentFormState,
+      });
+    } catch (error) {
+      console.error('[DraftService] Failed to save form state:', error);
+      throw error;
+    }
   },
 
   /**
    * Clear the draft (after successful submission or cancellation)
    */
   async clearDraft(): Promise<void> {
-    await deleteFromDB(DRAFT_KEY);
+    try {
+      console.log('[DraftService] Clearing draft');
+      await deleteFromDB(DRAFT_KEY);
+      console.log('[DraftService] Draft cleared successfully');
+    } catch (error) {
+      console.error('[DraftService] Failed to clear draft:', error);
+      throw error;
+    }
   },
 
   /**
@@ -214,5 +370,14 @@ export const processPhotosDraftService = {
   async hasProcessedPhotos(): Promise<boolean> {
     const draft = await this.getDraft();
     return draft.processedPhotos.length > 0;
+  },
+
+  /**
+   * Update visit visibility
+   */
+  async saveVisitVisibility(visitVisibility: 'friends' | 'private'): Promise<void> {
+    const draft = await this.getDraft();
+    draft.visitVisibility = visitVisibility;
+    await saveToDB(DRAFT_KEY, draft);
   },
 };

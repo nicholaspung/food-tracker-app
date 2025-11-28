@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -47,6 +49,7 @@ import {
   X,
   MapPin,
   Users,
+  Pencil,
 } from "lucide-react";
 import {
   RATING_OPTIONS,
@@ -67,6 +70,8 @@ import { processPhotosDraftService } from "@/services/processPhotosDraftServiceD
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchAndCacheRestaurantsByText } from "@/services/googlePlaces";
+import ExifReader from "exifreader";
+import { format } from "date-fns";
 
 type ScreenState = "choice" | "upload" | "process" | "review";
 type ProcessType = "restaurant" | "quickTrack";
@@ -75,6 +80,7 @@ interface PhotoToProcess {
   id: string;
   file: File;
   previewUrl: string;
+  captureDate: Date | null;
 }
 
 interface ProcessedPhoto {
@@ -86,6 +92,7 @@ interface ProcessedPhoto {
   rating: number;
   notes: string;
   isNewMenuItem: boolean;
+  captureDate: Date | null;
 }
 
 interface QuickTrackPhotoData {
@@ -127,6 +134,44 @@ interface StoredCameraResult {
   timestamp: number;
 }
 
+// Utility function to extract capture date from image EXIF data
+async function extractImageCaptureDate(file: File): Promise<Date | null> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const tags = ExifReader.load(arrayBuffer);
+
+    // Try different date tags in order of preference
+    const dateTag = tags['DateTimeOriginal'] || tags['DateTime'] || tags['CreateDate'];
+
+    if (dateTag && dateTag.description) {
+      // EXIF date format is "YYYY:MM:DD HH:MM:SS"
+      const dateStr = dateTag.description;
+      const [datePart, timePart] = dateStr.split(' ');
+      const [year, month, day] = datePart.split(':');
+      const [hour, minute, second] = timePart?.split(':') || ['00', '00', '00'];
+
+      const date = new Date(
+        parseInt(year),
+        parseInt(month) - 1, // Month is 0-indexed
+        parseInt(day),
+        parseInt(hour),
+        parseInt(minute),
+        parseInt(second)
+      );
+
+      // Validate the date
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to extract EXIF date from image:', error);
+  }
+
+  // Fallback to file modification date or current date
+  return file.lastModified ? new Date(file.lastModified) : new Date();
+}
+
 function RestaurantSelector({
   selectedRestaurant,
   onRestaurantSelected,
@@ -147,6 +192,9 @@ function RestaurantSelector({
   const [searchError, setSearchError] = useState("");
   const [cameraHistory, setCameraHistory] = useState<StoredCameraResult[]>([]);
   const [showGoogleResults, setShowGoogleResults] = useState(false);
+  const [highlightedRestaurants, setHighlightedRestaurants] = useState<
+    Set<string>
+  >(new Set());
 
   // Add restaurant state
   const [showAddRestaurant, setShowAddRestaurant] = useState(false);
@@ -166,6 +214,24 @@ function RestaurantSelector({
       console.error("Failed to load camera history:", err);
     }
   }, []);
+
+  // Highlight matching restaurants when search query changes
+  useEffect(() => {
+    const hasSearch = searchQuery.trim() || locationQuery.trim();
+
+    if (hasSearch && restaurants.length > 0) {
+      const matchingIds = new Set(restaurants.map((r) => r.id));
+      setHighlightedRestaurants(matchingIds);
+
+      const timer = setTimeout(() => {
+        setHighlightedRestaurants(new Set());
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    } else {
+      setHighlightedRestaurants(new Set());
+    }
+  }, [searchQuery, locationQuery, restaurants.length]);
 
   const handleGooglePlacesSearch = async () => {
     if (!isOnline) {
@@ -488,21 +554,31 @@ function RestaurantSelector({
                   ? "Saved Restaurants"
                   : "Results"}
               </Label>
-              {restaurants.slice(0, 10).map((restaurant) => (
-                <Card
-                  key={restaurant.id}
-                  className="cursor-pointer hover:border-primary transition-colors py-2"
-                  onClick={() => onRestaurantSelected(restaurant)}
-                >
-                  <CardContent>
-                    <div className="font-medium">{restaurant.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {restaurant.location}
-                      {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {restaurants.slice(0, 10).map((restaurant) => {
+                const isHighlighted = highlightedRestaurants.has(
+                  restaurant.id
+                );
+                return (
+                  <Card
+                    key={restaurant.id}
+                    className={`cursor-pointer hover:border-primary transition-all py-2 ${
+                      isHighlighted
+                        ? "border-2 border-yellow-400 bg-yellow-50 animate-pulse shadow-lg"
+                        : ""
+                    }`}
+                    onClick={() => onRestaurantSelected(restaurant)}
+                  >
+                    <CardContent>
+                      <div className="font-medium">{restaurant.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {restaurant.location}
+                        {restaurant.cuisineType &&
+                          ` • ${restaurant.cuisineType}`}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
 
@@ -639,6 +715,15 @@ export default function ProcessPhotosPage() {
     reset: resetOCR,
   } = useMenuOCR();
 
+  // Detect when mobile keyboard is visible to hide footer
+  const isKeyboardVisible = useKeyboardVisible();
+
+  // Fullscreen photo viewer state
+  const [fullscreenPhoto, setFullscreenPhoto] = useState<{
+    url: string;
+    dishName: string;
+  } | null>(null);
+
   // Screen state
   const [screen, setScreen] = useState<ScreenState>("choice");
   const [processType, setProcessType] = useState<ProcessType | null>(null);
@@ -662,10 +747,15 @@ export default function ProcessPhotosPage() {
   const [isCreatingNewItem, setIsCreatingNewItem] = useState(false);
   const [rating, setRating] = useState<number | null>(3); // Default to "worth trying"
   const [notes, setNotes] = useState("");
+  const [photoDate, setPhotoDate] = useState<Date>(new Date());
   const [menuItemPhoto, setMenuItemPhoto] = useState<File | null>(null);
   const [menuItemPhotoPreview, setMenuItemPhotoPreview] = useState<
     string | null
   >(null);
+
+  // Edit menu item state
+  const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(null);
+  const [editingMenuItemName, setEditingMenuItemName] = useState("");
 
   // Form state for quick track items
   const [qtItemName, setQtItemName] = useState("");
@@ -675,11 +765,18 @@ export default function ProcessPhotosPage() {
   const [qtNotes, setQtNotes] = useState("");
   const [qtVisibility, setQtVisibility] = useState<'friends' | 'private'>('friends');
 
+  // Visit visibility for restaurant visits
+  const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>('friends');
+
   // UI state
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
   const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRestoringData, setIsRestoringData] = useState(false);
+
+  // Refs for auto-scrolling
+  const menuItemCardRef = useRef<HTMLDivElement>(null);
+  const dateCardRef = useRef<HTMLDivElement>(null);
 
   // Dialog state
   const [showBackDialog, setShowBackDialog] = useState(false);
@@ -704,14 +801,20 @@ export default function ProcessPhotosPage() {
     },
   });
 
-  const filteredRestaurants = restaurants.filter(
-    (r) =>
+  const filteredRestaurants = restaurants.filter((r) => {
+    const matchesSearch =
       r.name.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
       r.location.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
       (r.cuisineType?.toLowerCase() || "").includes(
         restaurantSearchQuery.toLowerCase()
-      )
-  );
+      );
+
+    const matchesLocation = locationSearchQuery.trim()
+      ? r.location.toLowerCase().includes(locationSearchQuery.toLowerCase())
+      : true;
+
+    return matchesSearch && matchesLocation;
+  });
 
   // Fetch menu items for selected restaurant
   const { data: menuItems = [] } = useQuery<MenuItem[]>({
@@ -767,17 +870,34 @@ export default function ProcessPhotosPage() {
     }
   }, [menuItemSelectionMode]);
 
+  // Initialize photo date when current photo changes
+  useEffect(() => {
+    const currentPhoto = photos[currentPhotoIndex];
+    if (currentPhoto?.captureDate) {
+      setPhotoDate(currentPhoto.captureDate);
+    } else {
+      setPhotoDate(new Date());
+    }
+  }, [currentPhotoIndex, photos]);
+
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const newPhotos: PhotoToProcess[] = files.map((file, index) => ({
-      id: `${Date.now()}-${index}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
-    }));
+    // Extract capture dates from photos
+    const photosWithDates = await Promise.all(
+      files.map(async (file, index) => {
+        const captureDate = await extractImageCaptureDate(file);
+        return {
+          id: `${Date.now()}-${index}`,
+          file,
+          previewUrl: URL.createObjectURL(file),
+          captureDate,
+        };
+      })
+    );
 
-    setPhotos(newPhotos);
+    setPhotos(photosWithDates);
     setCurrentPhotoIndex(0);
     setScreen("process");
 
@@ -790,42 +910,84 @@ export default function ProcessPhotosPage() {
   // Load draft on mount
   useEffect(() => {
     async function loadDraft() {
-      const draft = await processPhotosDraftService.getDraft();
-      if (draft.photos.length > 0) {
-        console.log(
-          "[ProcessPhotos] Restoring draft with",
-          draft.photos.length,
-          "photos"
-        );
+      try {
+        setIsRestoringData(true);
+        console.log("[ProcessPhotos] Attempting to load draft...");
 
-        // Files are stored directly, just create preview URLs
-        const restoredPhotos: PhotoToProcess[] = draft.photos.map((p) => ({
-          id: p.id,
-          file: p.file,
-          previewUrl: URL.createObjectURL(p.file),
-        }));
+        const draft = await processPhotosDraftService.getDraft();
+        console.log("[ProcessPhotos] Draft loaded:", {
+          photosCount: draft.photos.length,
+          processedCount: draft.processedPhotos.length,
+          hasFormState: !!draft.currentFormState,
+        });
 
-        setPhotos(restoredPhotos);
-        setCurrentPhotoIndex(draft.currentPhotoIndex);
-        setScreen("process");
+        if (draft.photos.length > 0) {
+          console.log(
+            "[ProcessPhotos] Restoring draft with",
+            draft.photos.length,
+            "photos"
+          );
 
-        // Restore processed photos (Files are stored directly)
-        const restoredProcessed: ProcessedPhoto[] = draft.processedPhotos.map(
-          (p) => ({
-            ...p,
-            photo: p.photo,
-          })
-        );
-        setProcessedPhotos(restoredProcessed);
+          // Convert data URLs back to Files and restore photos
+          const restoredPhotos: PhotoToProcess[] = await Promise.all(
+            draft.photos.map(async (p) => {
+              // Convert data URL to Blob then to File
+              const response = await fetch(p.dataUrl);
+              const blob = await response.blob();
+              const file = new File([blob], p.fileName, { type: p.fileType });
 
-        // Restore current form state if available
-        if (draft.currentFormState) {
-          setSelectedRestaurant(draft.currentFormState.selectedRestaurant);
-          setMenuItemName(draft.currentFormState.menuItemName);
-          setRating(draft.currentFormState.rating);
-          setNotes(draft.currentFormState.notes);
-          setIsCreatingNewItem(draft.currentFormState.isCreatingNewItem);
+              return {
+                id: p.id,
+                file,
+                previewUrl: p.dataUrl, // Use data URL directly for preview
+                captureDate: await extractImageCaptureDate(file),
+              };
+            })
+          );
+
+          setPhotos(restoredPhotos);
+          setCurrentPhotoIndex(draft.currentPhotoIndex);
+          setScreen("process");
+
+          // Restore processed photos (convert data URLs back to Files)
+          const restoredProcessed: ProcessedPhoto[] = await Promise.all(
+            draft.processedPhotos.map(async (p) => {
+              const response = await fetch(p.photoDataUrl);
+              const blob = await response.blob();
+              const file = new File([blob], p.photoFileName, { type: p.photoFileType });
+
+              return {
+                ...p,
+                photo: file,
+                captureDate: await extractImageCaptureDate(file),
+              };
+            })
+          );
+          setProcessedPhotos(restoredProcessed);
+
+          // Restore current form state if available
+          if (draft.currentFormState) {
+            console.log("[ProcessPhotos] Restoring form state");
+            setSelectedRestaurant(draft.currentFormState.selectedRestaurant);
+            setMenuItemName(draft.currentFormState.menuItemName);
+            setRating(draft.currentFormState.rating);
+            setNotes(draft.currentFormState.notes);
+            setIsCreatingNewItem(draft.currentFormState.isCreatingNewItem);
+          }
+
+          // Restore visit visibility
+          setVisitVisibility(draft.visitVisibility);
+
+          console.log("[ProcessPhotos] Draft restoration complete");
+        } else {
+          console.log("[ProcessPhotos] No draft to restore");
         }
+      } catch (error) {
+        console.error("[ProcessPhotos] Failed to load draft:", error);
+        // Don't block the UI if draft loading fails
+        // User can still use the page normally
+      } finally {
+        setIsRestoringData(false);
       }
     }
     loadDraft();
@@ -866,6 +1028,13 @@ export default function ProcessPhotosPage() {
     isCreatingNewItem,
     currentPhotoIndex,
   ]);
+
+  // Save visit visibility to draft when it changes
+  useEffect(() => {
+    if (photos.length > 0) {
+      processPhotosDraftService.saveVisitVisibility(visitVisibility);
+    }
+  }, [visitVisibility, photos.length]);
 
   // Reset or restore form when photo index changes
   useEffect(() => {
@@ -949,6 +1118,24 @@ export default function ProcessPhotosPage() {
     // Set default tab based on whether restaurant has menu items
     // This will be corrected after menu items are fetched
     setMenuItemSelectionMode("search");
+
+    // Auto-scroll to menu item selection after restaurant is selected
+    setTimeout(() => {
+      menuItemCardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  };
+
+  // Helper function to scroll to date card after menu item selection
+  const scrollToDateCard = () => {
+    setTimeout(() => {
+      dateCardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
   };
 
   const handleCreateMenuItem = async () => {
@@ -996,12 +1183,51 @@ export default function ProcessPhotosPage() {
       // Switch to search tab to show the selected item
       setMenuItemSelectionMode("search");
 
+      // Auto-scroll to date card after menu item is created
+      scrollToDateCard();
+
       console.log(
         "[ProcessPhotos] Menu item created and selected successfully"
       );
     } catch (error: any) {
       console.error("[ProcessPhotos] Failed to create menu item:", error);
       alert(`Failed to create menu item: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleEditMenuItem = async (itemId: string) => {
+    if (!editingMenuItemName.trim() || !isOnline) return;
+
+    setIsProcessing(true);
+    try {
+      console.log("[ProcessPhotos] Updating menu item:", itemId, "to:", editingMenuItemName);
+
+      // Update the menu item
+      await pb.collection("menu_items").update(itemId, {
+        name: editingMenuItemName.trim(),
+      });
+
+      // Invalidate and refetch menu items
+      await queryClient.invalidateQueries({
+        queryKey: ["menu_items", selectedRestaurant?.id],
+      });
+
+      // If this was the selected item, update its name
+      if (selectedMenuItem?.id === itemId) {
+        setSelectedMenuItem({ ...selectedMenuItem, name: editingMenuItemName.trim() });
+        setMenuItemName(editingMenuItemName.trim());
+      }
+
+      // Clear editing state
+      setEditingMenuItemId(null);
+      setEditingMenuItemName("");
+
+      console.log("[ProcessPhotos] Menu item updated successfully");
+    } catch (error: any) {
+      console.error("[ProcessPhotos] Failed to update menu item:", error);
+      alert(`Failed to update menu item: ${error.message || "Unknown error"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -1096,6 +1322,7 @@ export default function ProcessPhotosPage() {
         rating: rating!,
         notes: notes || "",
         isNewMenuItem: false, // Already created above, so mark as false
+        captureDate: photoDate,
       };
 
       // Check if this photo was already processed (user went back and re-edited)
@@ -1180,28 +1407,37 @@ export default function ProcessPhotosPage() {
     setIsProcessing(true);
 
     try {
-      // Group photos by restaurant
-      const photosByRestaurant = new Map<string, ProcessedPhoto[]>();
+      // Group photos by restaurant AND date
+      const photosByRestaurantAndDate = new Map<string, ProcessedPhoto[]>();
       for (const photo of processedPhotos) {
         const restaurantId = photo.restaurant.id;
-        if (!photosByRestaurant.has(restaurantId)) {
-          photosByRestaurant.set(restaurantId, []);
+        // Normalize date to start of day for grouping
+        const photoDate = photo.captureDate || new Date();
+        const dateKey = format(photoDate, 'yyyy-MM-dd');
+        const groupKey = `${restaurantId}__${dateKey}`;
+
+        if (!photosByRestaurantAndDate.has(groupKey)) {
+          photosByRestaurantAndDate.set(groupKey, []);
         }
-        photosByRestaurant.get(restaurantId)!.push(photo);
+        photosByRestaurantAndDate.get(groupKey)!.push(photo);
       }
 
       console.log(
         "[ProcessPhotos] Grouped into",
-        photosByRestaurant.size,
-        "restaurants"
+        photosByRestaurantAndDate.size,
+        "visits (restaurant + date combinations)"
       );
 
-      // Create a visit for each restaurant
-      for (const [restaurantId, restaurantPhotos] of photosByRestaurant) {
+      // Create a visit for each restaurant-date combination
+      for (const [groupKey, restaurantPhotos] of photosByRestaurantAndDate) {
         const restaurant = restaurantPhotos[0].restaurant;
+        const visitDate = restaurantPhotos[0].captureDate || new Date();
+
         console.log(
           "[ProcessPhotos] Creating visit for restaurant:",
-          restaurant.name
+          restaurant.name,
+          "on date:",
+          format(visitDate, 'yyyy-MM-dd')
         );
 
         // Menu items are already created immediately when user processes each photo
@@ -1220,11 +1456,11 @@ export default function ProcessPhotosPage() {
           itemPhotos.set(index, p.photo);
         });
 
-        // Create visit with all food items
+        // Create visit with all food items using the photo's date
         await visitCreationMutation.mutateAsync({
-          restaurant: restaurantId,
-          visitDate: new Date().toISOString(),
-          visibility: "private",
+          restaurant: restaurant.id,
+          visitDate: visitDate.toISOString(),
+          visibility: visitVisibility,
           notes: "",
           foodItems,
           itemPhotos,
@@ -1267,10 +1503,9 @@ export default function ProcessPhotosPage() {
     const updatedPhotos = photos.filter((p) => p.id !== photoId);
     setPhotos(updatedPhotos);
 
-    // If no photos left, go back to add-visit
+    // Clear draft if no photos left, but stay on page to allow adding more
     if (updatedPhotos.length === 0) {
       await processPhotosDraftService.clearDraft();
-      navigate({ to: "/add-visit" });
     }
   };
 
@@ -1429,39 +1664,46 @@ export default function ProcessPhotosPage() {
           </div>
 
           {/* Footer */}
-          <div className="bg-white border-t border-gray-200 p-4">
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handleEditFromReview}
-                className="flex-1"
-              >
-                Edit
-              </Button>
-              <Button
-                onClick={handleSubmitQuickTrackItems}
-                disabled={isProcessing}
-                className="flex-1"
-              >
-                {isProcessing && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {isProcessing ? "Saving..." : "Save All Items"}
-              </Button>
+          {!isKeyboardVisible && (
+            <div className="bg-white border-t border-gray-200 p-4">
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleEditFromReview}
+                  className="flex-1"
+                >
+                  Edit
+                </Button>
+                <Button
+                  onClick={handleSubmitQuickTrackItems}
+                  disabled={isProcessing}
+                  className="flex-1"
+                >
+                  {isProcessing && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {isProcessing ? "Saving..." : "Save All Items"}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       );
     }
 
-    // Restaurant Visit Review Screen (existing)
-    const photosByRestaurant = new Map<string, ProcessedPhoto[]>();
+    // Restaurant Visit Review Screen - Group by restaurant AND date
+    const photosByRestaurantAndDate = new Map<string, ProcessedPhoto[]>();
     for (const photo of processedPhotos) {
       const restaurantId = photo.restaurant.id;
-      if (!photosByRestaurant.has(restaurantId)) {
-        photosByRestaurant.set(restaurantId, []);
+      // Normalize date to start of day for grouping
+      const photoDate = photo.captureDate || new Date();
+      const dateKey = format(photoDate, 'yyyy-MM-dd');
+      const groupKey = `${restaurantId}__${dateKey}`;
+
+      if (!photosByRestaurantAndDate.has(groupKey)) {
+        photosByRestaurantAndDate.set(groupKey, []);
       }
-      photosByRestaurant.get(restaurantId)!.push(photo);
+      photosByRestaurantAndDate.get(groupKey)!.push(photo);
     }
 
     return (
@@ -1477,8 +1719,8 @@ export default function ProcessPhotosPage() {
             </h1>
           </div>
           <p className="text-sm text-gray-500 mt-1 ml-8">
-            {photosByRestaurant.size} visit
-            {photosByRestaurant.size !== 1 ? "s" : ""} •{" "}
+            {photosByRestaurantAndDate.size} visit
+            {photosByRestaurantAndDate.size !== 1 ? "s" : ""} •{" "}
             {processedPhotos.length} item
             {processedPhotos.length !== 1 ? "s" : ""}
           </p>
@@ -1491,25 +1733,56 @@ export default function ProcessPhotosPage() {
           </p>
         </div>
 
+        {/* Visibility Checkbox */}
+        <div className="bg-white border-b border-gray-200 px-4 py-3">
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={visitVisibility === 'friends'}
+                onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium">Friends can view these visits</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {visitVisibility === 'friends'
+                    ? 'Your friends will be able to see these visits and your ratings'
+                    : 'Only you will be able to see these visits'}
+                </p>
+              </div>
+            </label>
+          </div>
+        </div>
+
         {/* Content - Visits Preview */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {Array.from(photosByRestaurant.entries()).map(
-            ([restaurantId, restaurantPhotos]) => {
+          {Array.from(photosByRestaurantAndDate.entries()).map(
+            ([groupKey, restaurantPhotos]) => {
               const restaurant = restaurantPhotos[0].restaurant;
+              const visitDate = restaurantPhotos[0].captureDate || new Date();
 
               return (
-                <Card key={restaurantId} className="border-l-4 border-l-blue-500">
+                <Card key={groupKey} className="border-l-4 border-l-blue-500">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg">
                           {restaurant.name}
                         </CardTitle>
-                        <CardDescription className="flex items-center gap-1 mt-1">
-                          <MapPin className="w-3 h-3" />
-                          {restaurant.location}
-                          {restaurant.cuisineType &&
-                            ` • ${restaurant.cuisineType}`}
+                        <CardDescription className="space-y-1">
+                          <div className="flex items-center gap-1 text-orange-700 font-semibold">
+                            📅 {format(visitDate, 'EEEE, MMMM d, yyyy')}
+                          </div>
+                          <div className="flex items-center gap-1 mt-1">
+                            <MapPin className="w-3 h-3" />
+                            {restaurant.location}
+                            {restaurant.cuisineType &&
+                              ` • ${restaurant.cuisineType}`}
+                          </div>
                         </CardDescription>
                       </div>
                     </div>
@@ -1581,29 +1854,31 @@ export default function ProcessPhotosPage() {
         </div>
 
         {/* Footer - Action Buttons */}
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={handleEditFromReview}
-              disabled={isProcessing}
-              className="flex-1"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-            <Button
-              onClick={handleSubmitVisits}
-              disabled={isProcessing}
-              className="flex-1"
-            >
-              {isProcessing && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {isProcessing ? "Submitting..." : "Submit"}
-            </Button>
+        {!isKeyboardVisible && (
+          <div className="bg-white border-t border-gray-200 p-4">
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={handleEditFromReview}
+                disabled={isProcessing}
+                className="flex-1"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+              <Button
+                onClick={handleSubmitVisits}
+                disabled={isProcessing}
+                className="flex-1"
+              >
+                {isProcessing && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isProcessing ? "Submitting..." : "Submit"}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -1696,6 +1971,23 @@ export default function ProcessPhotosPage() {
           <p className="text-sm text-gray-500 mt-1">
             Upload and rate multiple food photos
           </p>
+          {processType && (
+            <div className="mt-2">
+              <Badge variant="secondary" className="gap-1.5">
+                {processType === "restaurant" ? (
+                  <>
+                    <Store className="w-3 h-3" />
+                    Restaurant Visit
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-3 h-3" />
+                    Quick Track Items
+                  </>
+                )}
+              </Badge>
+            </div>
+          )}
         </div>
 
         {/* Upload Screen */}
@@ -1776,16 +2068,17 @@ export default function ProcessPhotosPage() {
                     type="file"
                     accept="image/*"
                     multiple
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
 
-                      const newPhotos: PhotoToProcess[] = files.map(
-                        (file, index) => ({
+                      const newPhotos: PhotoToProcess[] = await Promise.all(
+                        files.map(async (file, index) => ({
                           id: `${Date.now()}-${index}`,
                           file,
                           previewUrl: URL.createObjectURL(file),
-                        })
+                          captureDate: await extractImageCaptureDate(file),
+                        }))
                       );
 
                       setPhotos([...photos, ...newPhotos]);
@@ -1798,21 +2091,23 @@ export default function ProcessPhotosPage() {
             </div>
 
             {/* Footer with Cancel/Next buttons */}
-            <div className="bg-white border-t border-gray-200 p-4">
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={handleCancel}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button onClick={handleStartProcessing} className="flex-1">
-                  Next
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
+            {!isKeyboardVisible && (
+              <div className="bg-white border-t border-gray-200 p-4">
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={handleCancel}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleStartProcessing} className="flex-1">
+                    Next
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>
@@ -1850,11 +2145,17 @@ export default function ProcessPhotosPage() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Photo Preview */}
           <div className="mb-4">
-            <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
+            <div className="relative aspect-video rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity">
               <img
                 src={currentPhoto.previewUrl}
                 alt="Food photo"
                 className="w-full h-full object-contain"
+                onClick={() =>
+                  setFullscreenPhoto({
+                    url: currentPhoto.previewUrl,
+                    dishName: qtItemName || "Photo",
+                  })
+                }
               />
             </div>
           </div>
@@ -1951,7 +2252,7 @@ export default function ProcessPhotosPage() {
                       key={option.value}
                       type="button"
                       onClick={() => setQtRating(option.value)}
-                      className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
+                      className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-opacity ${
                         option.color
                       } ${
                         qtRating === option.value
@@ -2038,34 +2339,36 @@ export default function ProcessPhotosPage() {
         </div>
 
         {/* Footer */}
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (currentPhotoIndex > 0) {
-                  setCurrentPhotoIndex(currentPhotoIndex - 1);
-                } else {
-                  setScreen("upload");
-                }
-              }}
-              className="flex-1"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-            <Button
-              onClick={handleSaveQuickTrackPhoto}
-              disabled={!qtItemName.trim() || qtRating === null}
-              className="flex-1"
-            >
-              {currentPhotoIndex < photos.length - 1 ? "Next" : "Review"}
-              {currentPhotoIndex < photos.length - 1 && (
-                <ChevronRight className="ml-2 h-4 w-4" />
-              )}
-            </Button>
+        {!isKeyboardVisible && (
+          <div className="bg-white border-t border-gray-200 p-4">
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (currentPhotoIndex > 0) {
+                    setCurrentPhotoIndex(currentPhotoIndex - 1);
+                  } else {
+                    setScreen("upload");
+                  }
+                }}
+                className="flex-1"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <Button
+                onClick={handleSaveQuickTrackPhoto}
+                disabled={!qtItemName.trim() || qtRating === null}
+                className="flex-1"
+              >
+                {currentPhotoIndex < photos.length - 1 ? "Next" : "Review"}
+                {currentPhotoIndex < photos.length - 1 && (
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -2097,11 +2400,17 @@ export default function ProcessPhotosPage() {
       <div className="flex-1 overflow-y-auto p-4">
         {/* Photo Preview */}
         <div className="mb-4">
-          <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
+          <div className="relative aspect-video rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity">
             <img
               src={currentPhoto.previewUrl}
               alt="Food photo"
               className="w-full h-full object-contain"
+              onClick={() =>
+                setFullscreenPhoto({
+                  url: currentPhoto.previewUrl,
+                  dishName: menuItemName || selectedMenuItem?.name || "Photo",
+                })
+              }
             />
           </div>
         </div>
@@ -2158,7 +2467,7 @@ export default function ProcessPhotosPage() {
           {selectedRestaurant && (
             <>
               {/* Menu Item Selection Card */}
-              <Card className="border-2 border-green-200">
+              <Card ref={menuItemCardRef} className="border-2 border-green-200">
                 <CardContent className="space-y-3">
                   <Label className="text-base font-semibold">
                     2. Select Menu Item *
@@ -2210,33 +2519,109 @@ export default function ProcessPhotosPage() {
 
                           {filteredMenuItems.length > 0 && (
                             <div className="max-h-48 overflow-y-auto space-y-2">
-                              {filteredMenuItems.slice(0, 20).map((item) => (
-                                <Card
-                                  key={item.id}
-                                  className="cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all py-2"
-                                  onClick={() => {
-                                    setSelectedMenuItem(item);
-                                    setMenuItemName(item.name);
-                                    setMenuItemSearchQuery("");
-                                  }}
-                                >
-                                  <CardContent>
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex-1 min-w-0">
-                                        <div className="font-medium">
-                                          {item.name}
+                              {filteredMenuItems.slice(0, 20).map((item) => {
+                                const isUserCreated = item.createdBy === pb.authStore.model?.id;
+                                const isEditing = editingMenuItemId === item.id;
+
+                                return (
+                                  <Card
+                                    key={item.id}
+                                    className={`${!isEditing ? 'cursor-pointer hover:border-blue-500 hover:bg-blue-50' : ''} transition-all py-2`}
+                                    onClick={
+                                      !isEditing
+                                        ? () => {
+                                            setSelectedMenuItem(item);
+                                            setMenuItemName(item.name);
+                                            setMenuItemSearchQuery("");
+                                            scrollToDateCard();
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    <CardContent>
+                                      {isEditing ? (
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            type="text"
+                                            value={editingMenuItemName}
+                                            onChange={(e) =>
+                                              setEditingMenuItemName(e.target.value)
+                                            }
+                                            placeholder="Menu item name"
+                                            className="flex-1"
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleEditMenuItem(item.id);
+                                              } else if (e.key === "Escape") {
+                                                setEditingMenuItemId(null);
+                                                setEditingMenuItemName("");
+                                              }
+                                            }}
+                                          />
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleEditMenuItem(item.id);
+                                            }}
+                                            disabled={
+                                              !editingMenuItemName.trim() || isProcessing
+                                            }
+                                          >
+                                            <Check className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingMenuItemId(null);
+                                              setEditingMenuItemName("");
+                                            }}
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
                                         </div>
-                                        {item.description && (
-                                          <div className="text-sm text-muted-foreground mt-1">
-                                            {item.description}
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-medium">
+                                              {item.name}
+                                            </div>
+                                            {item.description && (
+                                              <div className="text-sm text-muted-foreground mt-1">
+                                                {item.description}
+                                              </div>
+                                            )}
                                           </div>
-                                        )}
-                                      </div>
-                                      <Check className="w-5 h-5 text-gray-300 flex-shrink-0" />
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))}
+                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                            {isUserCreated && (
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEditingMenuItemId(item.id);
+                                                  setEditingMenuItemName(item.name);
+                                                }}
+                                                className="h-8 w-8 p-0"
+                                              >
+                                                <Pencil className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                            <Check className="w-5 h-5 text-gray-300 flex-shrink-0" />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </CardContent>
+                                  </Card>
+                                );
+                              })}
                             </div>
                           )}
 
@@ -2349,34 +2734,110 @@ export default function ProcessPhotosPage() {
                             </Alert>
 
                             <div className="max-h-48 overflow-y-auto space-y-2">
-                              {filteredMenuItems.slice(0, 20).map((item) => (
-                                <Card
-                                  key={item.id}
-                                  className="cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all px-2"
-                                  onClick={() => {
-                                    setSelectedMenuItem(item);
-                                    setMenuItemName(item.name);
-                                    // Switch to search tab after selection
-                                    setMenuItemSelectionMode("search");
-                                  }}
-                                >
-                                  <CardContent>
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex-1 min-w-0">
-                                        <div className="font-medium">
-                                          {item.name}
+                              {filteredMenuItems.slice(0, 20).map((item) => {
+                                const isUserCreated = item.createdBy === pb.authStore.model?.id;
+                                const isEditing = editingMenuItemId === item.id;
+
+                                return (
+                                  <Card
+                                    key={item.id}
+                                    className={`${!isEditing ? 'cursor-pointer hover:border-blue-500 hover:bg-blue-50' : ''} transition-all px-2`}
+                                    onClick={
+                                      !isEditing
+                                        ? () => {
+                                            setSelectedMenuItem(item);
+                                            setMenuItemName(item.name);
+                                            // Switch to search tab after selection
+                                            setMenuItemSelectionMode("search");
+                                            scrollToDateCard();
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    <CardContent>
+                                      {isEditing ? (
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            type="text"
+                                            value={editingMenuItemName}
+                                            onChange={(e) =>
+                                              setEditingMenuItemName(e.target.value)
+                                            }
+                                            placeholder="Menu item name"
+                                            className="flex-1"
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleEditMenuItem(item.id);
+                                              } else if (e.key === "Escape") {
+                                                setEditingMenuItemId(null);
+                                                setEditingMenuItemName("");
+                                              }
+                                            }}
+                                          />
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleEditMenuItem(item.id);
+                                            }}
+                                            disabled={
+                                              !editingMenuItemName.trim() || isProcessing
+                                            }
+                                          >
+                                            <Check className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingMenuItemId(null);
+                                              setEditingMenuItemName("");
+                                            }}
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
                                         </div>
-                                        {item.description && (
-                                          <div className="text-sm text-muted-foreground mt-1">
-                                            {item.description}
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-medium">
+                                              {item.name}
+                                            </div>
+                                            {item.description && (
+                                              <div className="text-sm text-muted-foreground mt-1">
+                                                {item.description}
+                                              </div>
+                                            )}
                                           </div>
-                                        )}
-                                      </div>
-                                      <Check className="w-5 h-5 text-gray-300 flex-shrink-0" />
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))}
+                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                            {isUserCreated && (
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEditingMenuItemId(item.id);
+                                                  setEditingMenuItemName(item.name);
+                                                }}
+                                                className="h-8 w-8 p-0"
+                                              >
+                                                <Pencil className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                            <Check className="w-5 h-5 text-gray-300 flex-shrink-0" />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </CardContent>
+                                  </Card>
+                                );
+                              })}
                             </div>
                           </>
                         )}
@@ -2454,12 +2915,40 @@ export default function ProcessPhotosPage() {
                 </CardContent>
               </Card>
 
+              {/* Date Selection Card - Show when menu item is selected */}
+              {menuItemName.trim() && (
+                <Card ref={dateCardRef} className="border-2 border-orange-200">
+                  <CardContent className="space-y-3">
+                    <Label className="text-base font-semibold">
+                      3. Visit Date
+                    </Label>
+                    <div className="space-y-2">
+                      <Input
+                        type="date"
+                        value={photoDate ? format(photoDate, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => {
+                          const newDate = e.target.value ? new Date(e.target.value) : new Date();
+                          setPhotoDate(newDate);
+                        }}
+                        max={format(new Date(), 'yyyy-MM-dd')}
+                        className="text-base"
+                      />
+                      <p className="text-xs text-gray-600">
+                        {photoDate && currentPhoto.captureDate && photoDate.getTime() !== currentPhoto.captureDate.getTime()
+                          ? `Original: ${format(currentPhoto.captureDate, 'MMM dd, yyyy')}`
+                          : 'Detected from photo EXIF data'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Rating Selection Card - Only show when menu item is selected */}
               {menuItemName.trim() && (
                 <Card className="border-2 border-purple-200">
                   <CardContent className="space-y-3">
                     <Label className="text-base font-semibold">
-                      3. Rate Your Food *
+                      4. Rate Your Food *
                     </Label>
 
                     {/* Rating Guide - Collapsible */}
@@ -2515,7 +3004,7 @@ export default function ProcessPhotosPage() {
                             type="button"
                             onClick={() => setRating(option.value)}
                             disabled={isProcessing}
-                            className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
+                            className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-opacity ${
                               option.color
                             } ${
                               rating === option.value
@@ -2575,54 +3064,56 @@ export default function ProcessPhotosPage() {
         </div>
       </div>
 
-      {/* Bottom Action Buttons - always visible */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex gap-3">
-          {/* Left button: Cancel on first photo, Previous on others */}
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (currentPhotoIndex === 0) {
-                // Cancel - clear draft and go back
-                handleCancel();
-              } else {
-                // Previous photo
-                setCurrentPhotoIndex(currentPhotoIndex - 1);
-              }
-            }}
-            disabled={isProcessing}
-            className="flex-1"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            {currentPhotoIndex === 0 ? "Cancel" : "Previous"}
-          </Button>
+      {/* Bottom Action Buttons */}
+      {!isKeyboardVisible && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex gap-3">
+            {/* Left button: Cancel on first photo, Previous on others */}
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (currentPhotoIndex === 0) {
+                  // Cancel - clear draft and go back
+                  handleCancel();
+                } else {
+                  // Previous photo
+                  setCurrentPhotoIndex(currentPhotoIndex - 1);
+                }
+              }}
+              disabled={isProcessing}
+              className="flex-1"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              {currentPhotoIndex === 0 ? "Cancel" : "Previous"}
+            </Button>
 
-          {/* Right button: Save & Next (or disabled Next if incomplete) */}
-          <Button
-            onClick={(e) => {
-              e.preventDefault();
-              handleSubmitCurrent();
-            }}
-            className="flex-1"
-            disabled={
-              !selectedRestaurant ||
-              !selectedMenuItem ||
-              rating === null ||
-              isProcessing
-            }
-          >
-            {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isProcessing
-              ? "Saving..."
-              : currentPhotoIndex < photos.length - 1
-                ? "Save & Next"
-                : "Save & Finish"}
-            {currentPhotoIndex < photos.length - 1 && !isProcessing && (
-              <ChevronRight className="ml-2 h-4 w-4" />
-            )}
-          </Button>
+            {/* Right button: Save & Next (or disabled Next if incomplete) */}
+            <Button
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmitCurrent();
+              }}
+              className="flex-1"
+              disabled={
+                !selectedRestaurant ||
+                !selectedMenuItem ||
+                rating === null ||
+                isProcessing
+              }
+            >
+              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isProcessing
+                ? "Saving..."
+                : currentPhotoIndex < photos.length - 1
+                  ? "Save & Next"
+                  : "Save & Finish"}
+              {currentPhotoIndex < photos.length - 1 && !isProcessing && (
+                <ChevronRight className="ml-2 h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Dialogs */}
       <AlertDialog open={showBackDialog} onOpenChange={setShowBackDialog}>
@@ -2688,6 +3179,31 @@ export default function ProcessPhotosPage() {
               setShowCameraMode(false);
             }}
             onClose={() => setShowCameraMode(false)}
+          />
+        </div>
+      )}
+
+      {/* Fullscreen Photo Viewer */}
+      {fullscreenPhoto && (
+        <div
+          className="fixed inset-0 bg-black z-50 flex items-center justify-center"
+          onClick={() => setFullscreenPhoto(null)}
+        >
+          <button
+            onClick={() => setFullscreenPhoto(null)}
+            className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors z-10"
+            aria-label="Close fullscreen view"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <div className="absolute top-4 left-4 text-white bg-black/50 px-3 py-2 rounded-lg">
+            <p className="font-medium">{fullscreenPhoto.dishName}</p>
+          </div>
+          <img
+            src={fullscreenPhoto.url}
+            alt={fullscreenPhoto.dishName}
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
           />
         </div>
       )}

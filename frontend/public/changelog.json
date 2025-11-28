@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.5.1",
+    "date": "2025-11-27",
+    "title": "Advanced Filtering & Photo Processing Enhancements",
+    "summary": "Filter your feed by visibility and ratings, enjoy smarter photo processing with automatic date detection, and experience improved mobile keyboard handling throughout the app!",
+    "features": [
+      "Visibility filter: Filter your home feed to show all items, only private items, or only shared items",
+      "Rating filter: Filter visits and quick track items by specific rating (1-5 stars)",
+      "Visibility indicators: See at-a-glance icons showing whether your visits and quick track items are private or shared with friends",
+      "Auto-date from photos: Photos now automatically use their capture date from EXIF data when processed",
+      "Edit menu items: Update menu item names directly in the Process Photos workflow",
+      "Restaurant search highlighting: Matching restaurants briefly highlight in yellow when search results appear"
+    ],
+    "improvements": [
+      "Smart keyboard handling: Action buttons automatically hide when mobile keyboard appears for easier typing",
+      "Better draft restoration: Process Photos now properly saves and restores all photo data when resuming work",
+      "Auto-scrolling: Page automatically scrolls to relevant sections after selecting restaurants or menu items",
+      "Visit visibility control: Set visit visibility (Private/Friends) directly in Process Photos workflow",
+      "Location filtering: Restaurant search now properly filters by both name and location",
+      "Cleaner UI: Removed unnecessary info cards for streamlined interface",
+      "Mobile optimization: Improved keyboard detection across image region selector and photo processing"
+    ],
+    "fixes": [
+      "Fixed friends not being able to see food items from shared visits",
+      "Fixed quick track items not respecting visibility settings for friends",
+      "Fixed mobile keyboard covering important buttons during photo processing",
+      "Fixed photo dates not matching when photos were actually taken",
+      "Fixed draft restoration losing photo data"
+    ]
+  },
+  {
     "version": "0.5.0",
     "date": "2025-11-25",
     "title": "Full Offline Support & Quick Track Items",
