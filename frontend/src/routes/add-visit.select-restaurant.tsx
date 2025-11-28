@@ -29,7 +29,7 @@ function SelectRestaurant() {
   const handleCancel = () => {
     // Clear the draft when user cancels
     visitDraftService.clearDraft();
-    navigate({ to: '/home' });
+    navigate({ to: '/add-visit' });
   };
 
   return (

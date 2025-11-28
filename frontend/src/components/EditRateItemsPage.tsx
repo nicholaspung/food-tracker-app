@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
-import { localDateStringToUTC } from '@/lib/dateUtils';
+import { localDateStringToUTC, getTodayLocalDateString, formatLocalDateForDisplay } from '@/lib/dateUtils';
 import { editVisitDraftService, EditVisitDraftItem } from '@/services/editVisitDraftService';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Calendar, Users } from 'lucide-react';
 import { useScrollIntoView } from '@/hooks/useScrollIntoView';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/usePhotoUpload';
 import { RATING_OPTIONS } from '@/lib/ratingConstants';
 import MenuItemPhotoInput from '@/components/MenuItemPhotoInput';
+import { useKeyboardVisible } from '@/hooks/useKeyboardVisible';
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -25,6 +27,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
   const [isInitialized, setIsInitialized] = useState(false);
 
   const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>(draft?.menuItems || []);
+  const [visitDate, setVisitDate] = useState(draft?.visitDate || '');
+  const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(draft?.visitVisibility || 'friends');
+  const [showDateEdit, setShowDateEdit] = useState(false);
 
   // Photo state - track photo for each item (using food_item id as key)
   const [itemPhotos, setItemPhotos] = useState<Map<string, File>>(new Map());
@@ -36,6 +41,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
   // Photo upload hook for parallel uploads with progress
   const { state: uploadState, uploadPhotos, reset: resetUploadState } = usePhotoUpload();
+  const isKeyboardVisible = useKeyboardVisible();
 
   // Fetch existing photos for this visit
   const { data: existingPhotos = [] } = useQuery({
@@ -57,16 +63,18 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount to avoid redirect during save
 
-  // Save draft whenever ratings change
+  // Save draft whenever ratings or date/visibility change
   useEffect(() => {
     if (draft && draft.restaurant) {
       editVisitDraftService.saveDraft({
         ...draft,
         menuItems,
+        visitDate,
+        visitVisibility,
         step: 2,
       });
     }
-  }, [menuItems, draft]);
+  }, [menuItems, visitDate, visitVisibility, draft]);
 
   // Cleanup preview URLs on unmount
   useEffect(() => {
@@ -136,12 +144,12 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
       if (!user || !draft || !draft.restaurant) throw new Error('Missing data');
 
       // Convert local date to UTC before saving
-      const visitDateUTC = localDateStringToUTC(draft.visitDate);
+      const visitDateUTC = localDateStringToUTC(visitDate);
 
       // Update visit
       await pb.collection('visits').update(visitId, {
         visitDate: visitDateUTC,
-        visibility: draft.visitVisibility,
+        visibility: visitVisibility,
       });
 
       // Delete marked photos first
@@ -278,6 +286,73 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
         )}
 
         <div className="space-y-4">
+          {/* Date and Visibility Card */}
+          <Card>
+            <CardContent className="space-y-3">
+              {/* Date picker */}
+              {visitDate && (
+                <div>
+                  {!showDateEdit ? (
+                    <div
+                      className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => setShowDateEdit(true)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-600" />
+                        <span className="text-sm font-medium text-gray-900">
+                          {formatLocalDateForDisplay(visitDate)}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">Tap to change</span>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+                      <Label className="text-xs text-gray-600">Visit Date</Label>
+                      <Input
+                        type="date"
+                        value={visitDate}
+                        onChange={(e) => setVisitDate(e.target.value)}
+                        max={getTodayLocalDateString()}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowDateEdit(false)}
+                        className="w-full"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Visibility Checkbox */}
+              <div className="p-3 bg-white rounded-lg border border-gray-200">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={visitVisibility === 'friends'}
+                    onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-gray-600" />
+                      <span className="text-sm font-medium">Friends can view this visit</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {visitVisibility === 'friends'
+                        ? 'Your friends will be able to see this visit and your ratings'
+                        : 'Only you will be able to see this visit'}
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+
           {activeMenuItems.map((item) => {
             const index = menuItems.findIndex(m => m === item);
             return (
@@ -351,56 +426,58 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
       </div>
 
       {/* Bottom Action Buttons - Fixed Footer */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        {/* Error display */}
-        {uploadState.error && (
-          <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-600">
-              <strong>Upload failed:</strong> {uploadState.error}
-            </p>
-            <p className="text-xs text-red-500 mt-1">
-              Check the browser console for details.
-            </p>
-          </div>
-        )}
-
-        {/* Progress indicator for photo uploads */}
-        {uploadState.status !== 'idle' && uploadState.status !== 'error' && (
-          <div className="mb-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
-                {uploadState.currentOperation}
-              </span>
-              <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
-                {uploadState.progress}%
-              </span>
+      {!isKeyboardVisible && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          {/* Error display */}
+          {uploadState.error && (
+            <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">
+                <strong>Upload failed:</strong> {uploadState.error}
+              </p>
+              <p className="text-xs text-red-500 mt-1">
+                Check the browser console for details.
+              </p>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === 'complete' ? 'bg-green-600' : 'bg-blue-600'}`}
-                style={{ width: `${uploadState.progress}%` }}
-              />
-            </div>
-          </div>
-        )}
+          )}
 
-        <div className="flex gap-3">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className="flex-1"
-          >
-            Back
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={updateVisitMutation.isPending}
-            className="flex-1"
-          >
-            {updateVisitMutation.isPending ? 'Saving...' : 'Save Changes'}
-          </Button>
+          {/* Progress indicator for photo uploads */}
+          {uploadState.status !== 'idle' && uploadState.status !== 'error' && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                  {uploadState.currentOperation}
+                </span>
+                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                  {uploadState.progress}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === 'complete' ? 'bg-green-600' : 'bg-blue-600'}`}
+                  style={{ width: `${uploadState.progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={onBack}
+              className="flex-1"
+            >
+              Back
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={updateVisitMutation.isPending}
+              className="flex-1"
+            >
+              {updateVisitMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -45,6 +45,7 @@ import {
   Share2,
   Lock,
   UserCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { Input } from "@/components/ui/input";
@@ -65,7 +66,7 @@ interface VisitWithDetails extends Omit<Visit, "restaurant"> {
 }
 
 interface QuickTrackItemWithDetails extends FoodItem {
-  type: 'quick_track';
+  type: "quick_track";
 }
 
 interface HomePageProps {
@@ -137,9 +138,16 @@ export default function HomePage({
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "user" | "friends">("all");
-  const [visibilityFilter, setVisibilityFilter] = useState<"all" | "private" | "friends">("all");
-  const [ratingFilter, setRatingFilter] = useState<"all" | "1" | "2" | "3" | "4" | "5">("all");
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [filterType, setFilterType] = useState<"all" | "user" | "friends">(
+    "all"
+  );
+  const [visibilityFilter, setVisibilityFilter] = useState<
+    "all" | "private" | "friends"
+  >("all");
+  const [ratingFilter, setRatingFilter] = useState<
+    "all" | "1" | "2" | "3" | "4" | "5"
+  >("all");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [sharePhotoFile, setSharePhotoFile] = useState<File | null>(null);
   const [sharePhotoUrl, setSharePhotoUrl] = useState<string>("");
@@ -233,8 +241,8 @@ export default function HomePage({
         // Offline: Queue the deletion
         // Queue as complex operation to delete food items and visit together
         await syncQueue.enqueue({
-          type: 'delete',
-          collection: 'visits_with_items_delete',
+          type: "delete",
+          collection: "visits_with_items_delete",
           data: {
             visitId,
             foodItemIds: foodItems
@@ -244,7 +252,7 @@ export default function HomePage({
           recordId: visitId,
         });
 
-        console.log('Queued visit deletion:', visitId);
+        console.log("Queued visit deletion:", visitId);
       }
 
       // Invalidate queries (will refetch or show optimistic update)
@@ -271,7 +279,9 @@ export default function HomePage({
     visitDate: string
   ) => {
     if (!isOnline) {
-      alert("Photo sharing requires internet connection. Please connect and try again.");
+      alert(
+        "Photo sharing requires internet connection. Please connect and try again."
+      );
       return;
     }
 
@@ -287,7 +297,8 @@ export default function HomePage({
       setSharePhotoFile(file);
       setSharePhotoUrl(photoUrl);
       setShareOverlayData({
-        restaurantName: restaurant?.name || foodItem.location_text || "Quick Track",
+        restaurantName:
+          restaurant?.name || foodItem.location_text || "Quick Track",
         dishName: foodItem.name,
         rating: foodItem.rating,
         visitDate: visitDate,
@@ -359,7 +370,7 @@ export default function HomePage({
     () =>
       foodItems
         .filter((item) => item.isQuickTrack === true)
-        .map((item) => ({ ...item, type: 'quick_track' as const })),
+        .map((item) => ({ ...item, type: "quick_track" as const })),
     [foodItems]
   );
 
@@ -445,16 +456,21 @@ export default function HomePage({
     }
 
     return filtered;
-  }, [visitsWithDetails, cutoffDate, searchQuery, filterType, visibilityFilter, ratingFilter]);
+  }, [
+    visitsWithDetails,
+    cutoffDate,
+    searchQuery,
+    filterType,
+    visibilityFilter,
+    ratingFilter,
+  ]);
 
   // Filter quick track items based on monthsToLoad and search query
   const filteredQuickTrackItems = useMemo(() => {
     // Filter by time range (use created date for quick track items)
     let filtered = searchQuery.trim()
       ? quickTrackItems
-      : quickTrackItems.filter(
-          (item) => new Date(item.created) >= cutoffDate
-        );
+      : quickTrackItems.filter((item) => new Date(item.created) >= cutoffDate);
 
     // Apply search filter
     if (searchQuery.trim()) {
@@ -487,7 +503,9 @@ export default function HomePage({
 
     // Apply visibility filter
     if (visibilityFilter !== "all") {
-      filtered = filtered.filter((item) => item.visibility === visibilityFilter);
+      filtered = filtered.filter(
+        (item) => item.visibility === visibilityFilter
+      );
     }
 
     // Apply rating filter
@@ -497,7 +515,14 @@ export default function HomePage({
     }
 
     return filtered;
-  }, [quickTrackItems, cutoffDate, searchQuery, filterType, visibilityFilter, ratingFilter]);
+  }, [
+    quickTrackItems,
+    cutoffDate,
+    searchQuery,
+    filterType,
+    visibilityFilter,
+    ratingFilter,
+  ]);
 
   // Check if there are more visits to load (only when not searching)
   const hasMoreVisits =
@@ -505,10 +530,16 @@ export default function HomePage({
 
   // Group visits and quick track items by month, then by day
   const groupedVisits = useMemo(() => {
-    const byMonth: Record<string, Record<string, {
-      visits: VisitWithDetails[];
-      quickTrackItems: QuickTrackItemWithDetails[];
-    }>> = {};
+    const byMonth: Record<
+      string,
+      Record<
+        string,
+        {
+          visits: VisitWithDetails[];
+          quickTrackItems: QuickTrackItemWithDetails[];
+        }
+      >
+    > = {};
 
     // Add visits
     filteredVisits.forEach((visit) => {
@@ -550,7 +581,8 @@ export default function HomePage({
       days: Object.keys(byMonth[monthKey])
         .sort((a, b) => b.localeCompare(a)) // Sort days descending
         .map((dayKey) => {
-          const { visits: visitsInDay, quickTrackItems: quickTrackItemsInDay } = byMonth[monthKey][dayKey];
+          const { visits: visitsInDay, quickTrackItems: quickTrackItemsInDay } =
+            byMonth[monthKey][dayKey];
           // Check if this is a friend visit group (all visits in this group should be same type)
           const isFriend =
             visitsInDay.length > 0 && isFriendVisit(visitsInDay[0]);
@@ -621,13 +653,19 @@ export default function HomePage({
               : (() => {
                   const parts = [];
                   if (userVisitsCount > 0) {
-                    parts.push(`${userVisitsCount} visit${userVisitsCount !== 1 ? "s" : ""}`);
+                    parts.push(
+                      `${userVisitsCount} visit${userVisitsCount !== 1 ? "s" : ""}`
+                    );
                   }
                   if (friendVisitsCount > 0) {
-                    parts.push(`${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? "s" : ""}`);
+                    parts.push(
+                      `${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? "s" : ""}`
+                    );
                   }
                   if (quickTrackItems.length > 0) {
-                    parts.push(`${quickTrackItems.length} quick item${quickTrackItems.length !== 1 ? "s" : ""}`);
+                    parts.push(
+                      `${quickTrackItems.length} quick item${quickTrackItems.length !== 1 ? "s" : ""}`
+                    );
                   }
                   return parts.join(" • ");
                 })()}
@@ -636,67 +674,113 @@ export default function HomePage({
 
         {/* Search and Filter Row */}
         <div className="space-y-2">
-          {/* Search Input */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Search restaurants, food, notes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-9"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                aria-label="Clear search"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+          {/* Search Input and Filter Toggle Button */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search restaurants, food, notes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-9"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Filter Toggle Button */}
+            <Button
+              variant={filtersExpanded ? "default" : "outline"}
+              size="default"
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className="flex items-center gap-2 px-4 relative"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span>Filters</span>
+              {(() => {
+                const activeFiltersCount = [
+                  filterType !== "all",
+                  visibilityFilter !== "all",
+                  ratingFilter !== "all",
+                ].filter(Boolean).length;
+                return activeFiltersCount > 0 ? (
+                  <Badge className="ml-1 h-5 min-w-5 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white">
+                    {activeFiltersCount}
+                  </Badge>
+                ) : null;
+              })()}
+            </Button>
           </div>
 
-          {/* Filter Selects Row */}
-          <div className="flex gap-2">
-            {/* Type Filter */}
-            <Select value={filterType} onValueChange={(value: "all" | "user" | "friends") => setFilterType(value)}>
-              <SelectTrigger className="flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Visits</SelectItem>
-                <SelectItem value="user">My Visits</SelectItem>
-                <SelectItem value="friends">Friends</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Filter Selects Row (Collapsible) */}
+          <div
+            className={`overflow-hidden transition-all duration-200 ease-in-out ${
+              filtersExpanded ? "max-h-20 opacity-100" : "max-h-0 opacity-0"
+            }`}
+          >
+            <div className="flex gap-2">
+              {/* Type Filter */}
+              <Select
+                value={filterType}
+                onValueChange={(value: "all" | "user" | "friends") =>
+                  setFilterType(value)
+                }
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Visits</SelectItem>
+                  <SelectItem value="user">My Visits</SelectItem>
+                  <SelectItem value="friends">Friends</SelectItem>
+                </SelectContent>
+              </Select>
 
-            {/* Visibility Filter */}
-            <Select value={visibilityFilter} onValueChange={(value: "all" | "private" | "friends") => setVisibilityFilter(value)}>
-              <SelectTrigger className="flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Visibility</SelectItem>
-                <SelectItem value="private">Private</SelectItem>
-                <SelectItem value="friends">Shared</SelectItem>
-              </SelectContent>
-            </Select>
+              {/* Visibility Filter */}
+              <Select
+                value={visibilityFilter}
+                onValueChange={(value: "all" | "private" | "friends") =>
+                  setVisibilityFilter(value)
+                }
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Visibility</SelectItem>
+                  <SelectItem value="private">Private</SelectItem>
+                  <SelectItem value="friends">Shared</SelectItem>
+                </SelectContent>
+              </Select>
 
-            {/* Rating Filter */}
-            <Select value={ratingFilter} onValueChange={(value: "all" | "1" | "2" | "3" | "4" | "5") => setRatingFilter(value)}>
-              <SelectTrigger className="flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Ratings</SelectItem>
-                <SelectItem value="5">5 - Excellent</SelectItem>
-                <SelectItem value="4">4 - Good</SelectItem>
-                <SelectItem value="3">3 - Average</SelectItem>
-                <SelectItem value="2">2 - Below Avg</SelectItem>
-                <SelectItem value="1">1 - Poor</SelectItem>
-              </SelectContent>
-            </Select>
+              {/* Rating Filter */}
+              <Select
+                value={ratingFilter}
+                onValueChange={(value: "all" | "1" | "2" | "3" | "4" | "5") =>
+                  setRatingFilter(value)
+                }
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Ratings</SelectItem>
+                  <SelectItem value="5">5 - Excellent</SelectItem>
+                  <SelectItem value="4">4 - Good</SelectItem>
+                  <SelectItem value="3">3 - Average</SelectItem>
+                  <SelectItem value="2">2 - Below Avg</SelectItem>
+                  <SelectItem value="1">1 - Poor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
@@ -735,71 +819,76 @@ export default function HomePage({
         )}
 
         {/* No results after filtering/searching */}
-        {(visits.length > 0 || quickTrackItems.length > 0) && filteredVisits.length === 0 && filteredQuickTrackItems.length === 0 && (
-          <>
-            {/* No search results */}
-            {searchQuery.trim() && (
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <Search className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600 mb-2">No visits found</p>
-                  <p className="text-sm text-gray-500">
-                    Try searching for a different restaurant, food item, or location
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSearchQuery("")}
-                    className="mt-4"
-                  >
-                    Clear Search
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+        {(visits.length > 0 || quickTrackItems.length > 0) &&
+          filteredVisits.length === 0 &&
+          filteredQuickTrackItems.length === 0 && (
+            <>
+              {/* No search results */}
+              {searchQuery.trim() && (
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <Search className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-600 mb-2">No visits found</p>
+                    <p className="text-sm text-gray-500">
+                      Try searching for a different restaurant, food item, or
+                      location
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSearchQuery("")}
+                      className="mt-4"
+                    >
+                      Clear Search
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
-            {/* No results due to time filter, but more visits exist */}
-            {!searchQuery.trim() && hasMoreVisits && (
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600 mb-2">No visits in the last month</p>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Load older visits to see your history
-                  </p>
-                  <Button onClick={loadMoreMonths} variant="outline">
-                    Load Older Visits
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+              {/* No results due to time filter, but more visits exist */}
+              {!searchQuery.trim() && hasMoreVisits && (
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-600 mb-2">
+                      No visits in the last month
+                    </p>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Load older visits to see your history
+                    </p>
+                    <Button onClick={loadMoreMonths} variant="outline">
+                      Load Older Visits
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
-            {/* No results due to filter selection */}
-            {!searchQuery.trim() && !hasMoreVisits && (
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <Users className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600 mb-2">
-                    {filterType === "user"
-                      ? "No visits from you"
-                      : "No visits from friends"}
-                  </p>
-                  <p className="text-sm text-gray-500 mb-4">
-                    {filterType === "user"
-                      ? "Try changing the filter to see friends' visits"
-                      : "Try changing the filter to see all visits"}
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => setFilterType("all")}
-                  >
-                    Show All Visits
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        )}
+              {/* No results due to filter selection */}
+              {!searchQuery.trim() && !hasMoreVisits && (
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <Users className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-600 mb-2">
+                      {filterType === "user"
+                        ? "No visits from you"
+                        : "No visits from friends"}
+                    </p>
+                    <p className="text-sm text-gray-500 mb-4">
+                      {filterType === "user"
+                        ? "Try changing the filter to see friends' visits"
+                        : "Try changing the filter to see all visits"}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setFilterType("all")}
+                    >
+                      Show All Visits
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
 
         {groupedVisits.map(({ monthKey, monthLabel, days }) => (
           <div key={monthKey} className="space-y-3">
@@ -818,39 +907,57 @@ export default function HomePage({
                   {monthLabel}
                 </h2>
               </div>
-              <span className="text-sm text-gray-500">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
                 {(() => {
                   const allMonthVisits = days.flatMap((day) => day.visits);
-                  const allMonthQuickTrack = days.flatMap((day) => day.quickTrackItems);
+                  const allMonthQuickTrack = days.flatMap(
+                    (day) => day.quickTrackItems
+                  );
                   const userVisits = allMonthVisits.filter(
                     (v) => v.user === currentUserId
                   ).length;
                   const friendVisits = allMonthVisits.filter(
                     (v) => v.user !== currentUserId
                   ).length;
-                  const quickTrackCount = allMonthQuickTrack.length;
+                  const userQuickTrack = allMonthQuickTrack.filter(
+                    (item) => item.user === currentUserId
+                  ).length;
+                  const friendQuickTrack = allMonthQuickTrack.filter(
+                    (item) => item.user !== currentUserId
+                  ).length;
+                  const total = userVisits + friendVisits + userQuickTrack + friendQuickTrack;
+
+                  // Friend items = friend visits + friend quick track combined
+                  const friendItemsTotal = friendVisits + friendQuickTrack;
 
                   const parts = [];
-                  if (userVisits > 0) {
-                    parts.push(`${userVisits} visit${userVisits !== 1 ? "s" : ""}`);
-                  }
-                  if (friendVisits > 0) {
-                    parts.push(`${friendVisits} friend visit${friendVisits !== 1 ? "s" : ""}`);
-                  }
-                  if (quickTrackCount > 0) {
-                    parts.push(`${quickTrackCount} quick item${quickTrackCount !== 1 ? "s" : ""}`);
-                  }
+                  if (userVisits > 0) parts.push(`${userVisits}v`);
+                  if (userQuickTrack > 0) parts.push(`${userQuickTrack}q`);
+                  if (friendItemsTotal > 0) parts.push(`${friendItemsTotal}f`);
 
-                  return parts.join(" • ");
+                  return (
+                    <>
+                      <span className="font-medium">{total}</span>
+                      {parts.length > 0 && (
+                        <span className="text-xs">({parts.join(" • ")})</span>
+                      )}
+                    </>
+                  );
                 })()}
-              </span>
+              </div>
             </button>
 
             {/* Month Content */}
             {expandedMonths.has(monthKey) && (
               <div className="space-y-4 pl-2">
                 {days.map(
-                  ({ dayKey, dayLabel, visits: dayVisits, quickTrackItems: dayQuickTrackItems, isFriendGroup }) => (
+                  ({
+                    dayKey,
+                    dayLabel,
+                    visits: dayVisits,
+                    quickTrackItems: dayQuickTrackItems,
+                    isFriendGroup,
+                  }) => (
                     <div key={dayKey} className="space-y-3">
                       {/* Day Header */}
                       <div className="flex items-center gap-2 px-2">
@@ -909,8 +1016,15 @@ export default function HomePage({
                                         </Badge>
                                       )}
                                       {!isFriend && (
-                                        <div className="flex items-center gap-1" title={visit.visibility === 'friends' ? 'Shared with friends' : 'Private'}>
-                                          {visit.visibility === 'friends' ? (
+                                        <div
+                                          className="flex items-center gap-1"
+                                          title={
+                                            visit.visibility === "friends"
+                                              ? "Shared with friends"
+                                              : "Private"
+                                          }
+                                        >
+                                          {visit.visibility === "friends" ? (
                                             <UserCheck className="w-4 h-4 text-green-600" />
                                           ) : (
                                             <Lock className="w-4 h-4 text-gray-400" />
@@ -929,12 +1043,13 @@ export default function HomePage({
                                     <div className="flex items-center gap-1">
                                       {/* Share Visit button - only show if visit has 2 or more photos */}
                                       {(() => {
-                                        const photosForVisit = visitPhotos.filter(
-                                          (photo: any) =>
+                                        const photosForVisit =
+                                          visitPhotos.filter((photo: any) =>
                                             visit.foodItems?.some(
-                                              (item) => item.id === photo.food_item
+                                              (item) =>
+                                                item.id === photo.food_item
                                             )
-                                        );
+                                          );
                                         return photosForVisit.length >= 2;
                                       })() && (
                                         <Button
@@ -983,14 +1098,18 @@ export default function HomePage({
                                       // For offline photos (isPending), use the blob URL directly
                                       // For online photos, use PocketBase file URL
                                       const photoUrl = photo
-                                        ? (photo.isPending
-                                            ? photo.photo // Blob URL for offline photos
-                                            : pb.files.getURL(photo, photo.photo, { thumb: "100x100" }))
+                                        ? photo.isPending
+                                          ? photo.photo // Blob URL for offline photos
+                                          : pb.files.getURL(
+                                              photo,
+                                              photo.photo,
+                                              { thumb: "100x100" }
+                                            )
                                         : null;
                                       const fullPhotoUrl = photo
-                                        ? (photo.isPending
-                                            ? photo.photo // Blob URL for offline photos
-                                            : pb.files.getURL(photo, photo.photo))
+                                        ? photo.isPending
+                                          ? photo.photo // Blob URL for offline photos
+                                          : pb.files.getURL(photo, photo.photo)
                                         : null;
 
                                       return (
@@ -999,19 +1118,21 @@ export default function HomePage({
                                           className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
                                         >
                                           {/* Photo thumbnail */}
-                                          {photoUrl && photo && fullPhotoUrl && (
-                                            <img
-                                              src={photoUrl}
-                                              alt={item.name}
-                                              className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                                              onClick={() =>
-                                                setFullscreenPhoto({
-                                                  url: fullPhotoUrl,
-                                                  dishName: item.name,
-                                                })
-                                              }
-                                            />
-                                          )}
+                                          {photoUrl &&
+                                            photo &&
+                                            fullPhotoUrl && (
+                                              <img
+                                                src={photoUrl}
+                                                alt={item.name}
+                                                className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                                                onClick={() =>
+                                                  setFullscreenPhoto({
+                                                    url: fullPhotoUrl,
+                                                    dishName: item.name,
+                                                  })
+                                                }
+                                              />
+                                            )}
 
                                           <div className="flex-1 min-w-0 pr-2">
                                             <p className="font-medium text-gray-900 break-words">
@@ -1032,13 +1153,15 @@ export default function HomePage({
                                             <div className="flex items-center gap-2">
                                               <div
                                                 className={`w-3 h-3 rounded-full ${
-                                                  RATING_COLORS[item.rating - 1] ||
-                                                  "bg-gray-300"
+                                                  RATING_COLORS[
+                                                    item.rating - 1
+                                                  ] || "bg-gray-300"
                                                 }`}
                                               />
                                               <span className="text-xs text-gray-600 whitespace-nowrap">
-                                                {RATING_LABELS[item.rating - 1] ||
-                                                  "Unknown"}
+                                                {RATING_LABELS[
+                                                  item.rating - 1
+                                                ] || "Unknown"}
                                               </span>
                                             </div>
                                             {/* Share button - only show if there's a photo */}
@@ -1082,14 +1205,16 @@ export default function HomePage({
                             (p: any) => p.food_item === item.id
                           );
                           const photoUrl = photo
-                            ? (photo.isPending
-                                ? photo.photo
-                                : pb.files.getURL(photo, photo.photo, { thumb: "100x100" }))
+                            ? photo.isPending
+                              ? photo.photo
+                              : pb.files.getURL(photo, photo.photo, {
+                                  thumb: "100x100",
+                                })
                             : null;
                           const fullPhotoUrl = photo
-                            ? (photo.isPending
-                                ? photo.photo
-                                : pb.files.getURL(photo, photo.photo))
+                            ? photo.isPending
+                              ? photo.photo
+                              : pb.files.getURL(photo, photo.photo)
                             : null;
 
                           return (
@@ -1120,8 +1245,15 @@ export default function HomePage({
                                         {item.name}
                                       </p>
                                       {/* Visibility indicator */}
-                                      <div className="flex items-center gap-1" title={item.visibility === 'friends' ? 'Shared with friends' : 'Private'}>
-                                        {item.visibility === 'friends' ? (
+                                      <div
+                                        className="flex items-center gap-1"
+                                        title={
+                                          item.visibility === "friends"
+                                            ? "Shared with friends"
+                                            : "Private"
+                                        }
+                                      >
+                                        {item.visibility === "friends" ? (
                                           <UserCheck className="w-4 h-4 text-green-600" />
                                         ) : (
                                           <Lock className="w-4 h-4 text-gray-400" />
@@ -1130,8 +1262,11 @@ export default function HomePage({
                                     </div>
                                     {/* Category badge */}
                                     {item.itemCategory && (
-                                      <Badge variant="outline" className="text-xs mt-1">
-                                        {item.itemCategory.replace(/_/g, ' ')}
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs mt-1"
+                                      >
+                                        {item.itemCategory.replace(/_/g, " ")}
                                       </Badge>
                                     )}
                                     {/* Location text */}
@@ -1274,9 +1409,7 @@ export default function HomePage({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
                 visitToDelete && handleDeleteVisit(visitToDelete.id)

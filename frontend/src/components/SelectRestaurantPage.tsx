@@ -39,6 +39,8 @@ import {
 } from "@/services/googlePlaces";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import { useSync } from "@/contexts/SyncContext";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 
 interface SelectRestaurantPageProps {
   onRestaurantSelected: () => void;
@@ -111,7 +113,12 @@ export default function SelectRestaurantPage({
 
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
+  const isKeyboardVisible = useKeyboardVisible();
   const user = pb.authStore.record;
+
+  // Refs for auto-scrolling inputs into view on mobile
+  const restaurantSearchInputRef = useScrollIntoView<HTMLInputElement>();
+  const manualLocationInputRef = useScrollIntoView<HTMLInputElement>();
 
   // Initialize restaurant visibility from user's default preference
   useEffect(() => {
@@ -691,6 +698,7 @@ export default function SelectRestaurantPage({
                       </button>
                     </div>
                     <Input
+                      ref={restaurantSearchInputRef}
                       id="restaurant-search"
                       type="text"
                       placeholder="e.g., Starbucks, cafe, bakery, dessert"
@@ -715,6 +723,7 @@ export default function SelectRestaurantPage({
                       Location (city, zip code, or address)
                     </Label>
                     <Input
+                      ref={manualLocationInputRef}
                       id="manual-location"
                       type="text"
                       placeholder="e.g., 90210, Los Angeles, CA"
@@ -1554,11 +1563,13 @@ export default function SelectRestaurantPage({
       </div>
 
       {/* Bottom buttons */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        <Button variant="outline" className="w-full" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
+      {!isKeyboardVisible && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          <Button variant="outline" className="w-full" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       {/* Full-screen Restaurant Name Finder Modal */}
       {showRestaurantNameFinder && (

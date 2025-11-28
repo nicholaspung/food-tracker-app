@@ -24,6 +24,8 @@ import { visitDraftService } from "@/services/visitDraftService";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useSync } from "@/contexts/SyncContext";
 import { pb } from "@/lib/pocketbase";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 
 interface CreateRestaurantPageProps {
   onRestaurantCreated: () => void;
@@ -37,6 +39,13 @@ export default function CreateRestaurantPage({
   const user = pb.authStore.record;
   const { isOnline } = useSync();
   const { position } = useGeolocation(true); // Auto-fetch location
+  const isKeyboardVisible = useKeyboardVisible();
+
+  // Refs for auto-scrolling inputs into view on mobile
+  const nameInputRef = useScrollIntoView<HTMLInputElement>();
+  const locationInputRef = useScrollIntoView<HTMLInputElement>();
+  const cuisineInputRef = useScrollIntoView<HTMLInputElement>();
+  const menuItemInputRef = useScrollIntoView<HTMLInputElement>();
 
   const [restaurantName, setRestaurantName] = useState("");
   const [restaurantLocation, setRestaurantLocation] = useState("");
@@ -180,6 +189,7 @@ export default function CreateRestaurantPage({
               <div className="space-y-2">
                 <Label htmlFor="name">Restaurant Name *</Label>
                 <Input
+                  ref={nameInputRef}
                   id="name"
                   value={restaurantName}
                   onChange={(e) => setRestaurantName(e.target.value)}
@@ -200,6 +210,7 @@ export default function CreateRestaurantPage({
                   )}
                 </Label>
                 <Input
+                  ref={locationInputRef}
                   id="location"
                   value={restaurantLocation}
                   onChange={(e) => setRestaurantLocation(e.target.value)}
@@ -211,6 +222,7 @@ export default function CreateRestaurantPage({
               <div className="space-y-2">
                 <Label htmlFor="cuisine">Cuisine Type (optional)</Label>
                 <Input
+                  ref={cuisineInputRef}
                   id="cuisine"
                   value={restaurantCuisine}
                   onChange={(e) => setRestaurantCuisine(e.target.value)}
@@ -233,6 +245,7 @@ export default function CreateRestaurantPage({
                 <Label htmlFor="menu-item">Add menu items</Label>
                 <div className="flex gap-2">
                   <Input
+                    ref={menuItemInputRef}
                     id="menu-item"
                     value={currentMenuItem}
                     onChange={(e) => setCurrentMenuItem(e.target.value)}
@@ -397,23 +410,25 @@ export default function CreateRestaurantPage({
       </div>
 
       {/* Bottom Action Buttons */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onBack}>
-            Previous
-          </Button>
-          <Button
-            variant="default"
-            className="flex-1"
-            onClick={handleSubmit}
-            disabled={createRestaurantMutation.isPending}
-          >
-            {createRestaurantMutation.isPending
-              ? "Creating..."
-              : "Create & Continue"}
-          </Button>
+      {!isKeyboardVisible && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={onBack}>
+              Previous
+            </Button>
+            <Button
+              variant="default"
+              className="flex-1"
+              onClick={handleSubmit}
+              disabled={createRestaurantMutation.isPending}
+            >
+              {createRestaurantMutation.isPending
+                ? "Creating..."
+                : "Create & Continue"}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Offline Success Dialog */}
       <Dialog open={showOfflineDialog} onOpenChange={setShowOfflineDialog}>

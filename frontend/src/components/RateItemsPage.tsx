@@ -13,6 +13,7 @@ import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { useSync } from "@/contexts/SyncContext";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -46,6 +47,7 @@ export default function RateItemsPage({
   // Offline-aware visit creation
   const { isOnline } = useSync();
   const saveVisitMutation = useOfflineVisitCreation();
+  const isKeyboardVisible = useKeyboardVisible();
 
   useEffect(() => {
     visitDraftService.saveMetadata(visitDate, visitVisibility);
@@ -163,77 +165,82 @@ export default function RateItemsPage({
       <div className="bg-white border-b border-gray-200 px-4 py-4">
         <h1 className="text-2xl font-bold text-gray-900">Rate Your Items</h1>
         <p className="text-sm text-gray-500 mt-1">{draft.restaurant?.name}</p>
-
-        {/* Date picker */}
-        {visitDate && (
-          <div className="mt-3">
-            {!showDateEdit ? (
-              <div
-                className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                onClick={() => setShowDateEdit(true)}
-              >
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-900">
-                    {formatLocalDateForDisplay(visitDate)}
-                  </span>
-                </div>
-                <span className="text-xs text-gray-500">Tap to change</span>
-              </div>
-            ) : (
-              <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                <Label className="text-xs text-gray-600">Visit Date</Label>
-                <Input
-                  type="date"
-                  value={visitDate}
-                  onChange={(e) => setVisitDate(e.target.value)}
-                  max={getTodayLocalDateString()}
-                  className="text-sm"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowDateEdit(false)}
-                  className="w-full"
-                >
-                  Done
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Visibility Checkbox */}
-        <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={visitVisibility === "friends"}
-              onChange={(e) =>
-                setVisitVisibility(e.target.checked ? "friends" : "private")
-              }
-              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-            />
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-gray-600" />
-                <span className="text-sm font-medium">
-                  Friends can view this visit
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {visitVisibility === "friends"
-                  ? "Your friends will be able to see this visit and your ratings"
-                  : "Only you will be able to see this visit"}
-              </p>
-            </div>
-          </label>
-        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
+          {/* Date and Visibility Card */}
+          <Card>
+            <CardContent className="space-y-3">
+              {/* Date picker */}
+              {visitDate && (
+                <div>
+                  {!showDateEdit ? (
+                    <div
+                      className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => setShowDateEdit(true)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-600" />
+                        <span className="text-sm font-medium text-gray-900">
+                          {formatLocalDateForDisplay(visitDate)}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">Tap to change</span>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+                      <Label className="text-xs text-gray-600">Visit Date</Label>
+                      <Input
+                        type="date"
+                        value={visitDate}
+                        onChange={(e) => setVisitDate(e.target.value)}
+                        max={getTodayLocalDateString()}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowDateEdit(false)}
+                        className="w-full"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Visibility Checkbox */}
+              <div className="p-3 bg-white rounded-lg border border-gray-200">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={visitVisibility === "friends"}
+                    onChange={(e) =>
+                      setVisitVisibility(e.target.checked ? "friends" : "private")
+                    }
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-gray-600" />
+                      <span className="text-sm font-medium">
+                        Friends can view this visit
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {visitVisibility === "friends"
+                        ? "Your friends will be able to see this visit and your ratings"
+                        : "Only you will be able to see this visit"}
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Collapsible Rating Legend */}
           <Card className="border-2 border-blue-200 bg-blue-50/30 py-4">
             <CardContent className="px-4">
@@ -335,52 +342,54 @@ export default function RateItemsPage({
       </div>
 
       {/* Bottom Action Buttons */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        {/* Error display */}
-        {uploadState.error && (
-          <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-600">
-              <strong>Upload failed:</strong> {uploadState.error}
-            </p>
-            <p className="text-xs text-red-500 mt-1">
-              Check the browser console for details.
-            </p>
-          </div>
-        )}
-
-        {/* Progress indicator for photo uploads */}
-        {uploadState.status !== 'idle' && uploadState.status !== 'error' && (
-          <div className="mb-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
-                {uploadState.currentOperation}
-              </span>
-              <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
-                {uploadState.progress}%
-              </span>
+      {!isKeyboardVisible && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          {/* Error display */}
+          {uploadState.error && (
+            <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">
+                <strong>Upload failed:</strong> {uploadState.error}
+              </p>
+              <p className="text-xs text-red-500 mt-1">
+                Check the browser console for details.
+              </p>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === 'complete' ? 'bg-green-600' : 'bg-blue-600'}`}
-                style={{ width: `${uploadState.progress}%` }}
-              />
-            </div>
-          </div>
-        )}
+          )}
 
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} className="flex-1">
-            Back
-          </Button>
-          <Button
-            onClick={handleSaveVisit}
-            disabled={saveVisitMutation.isPending || uploadState.status === 'uploading' || uploadState.status === 'compressing'}
-            className="flex-1"
-          >
-            {saveVisitMutation.isPending ? "Saving..." : "Save Visit"}
-          </Button>
+          {/* Progress indicator for photo uploads */}
+          {uploadState.status !== 'idle' && uploadState.status !== 'error' && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                  {uploadState.currentOperation}
+                </span>
+                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                  {uploadState.progress}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === 'complete' ? 'bg-green-600' : 'bg-blue-600'}`}
+                  style={{ width: `${uploadState.progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={onBack} className="flex-1">
+              Back
+            </Button>
+            <Button
+              onClick={handleSaveVisit}
+              disabled={saveVisitMutation.isPending || uploadState.status === 'uploading' || uploadState.status === 'compressing'}
+              className="flex-1"
+            >
+              {saveVisitMutation.isPending ? "Saving..." : "Save Visit"}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
