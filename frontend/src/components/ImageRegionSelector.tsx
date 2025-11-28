@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Crop, X } from 'lucide-react';
+import { useKeyboardVisible } from '@/hooks/useKeyboardVisible';
 
 interface Region {
   startX: number;
@@ -31,6 +32,9 @@ export default function ImageRegionSelector({
   const [region, setRegion] = useState<Region | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
+
+  // Detect when mobile keyboard is visible to hide footer
+  const isKeyboardVisible = useKeyboardVisible();
 
   // Load image and create initial bounding box
   useEffect(() => {
@@ -352,36 +356,38 @@ export default function ImageRegionSelector({
       )}
 
       {/* Action Buttons */}
-      <div className="p-4 bg-gray-800 space-y-2">
-        <Button
-          onClick={handleConfirm}
-          disabled={!region}
-          className="w-full"
-          size="lg"
-          data-testid="extract-text-button"
-        >
-          <Crop className="w-5 h-5 mr-2" />
-          Continue with Selection
-        </Button>
-        <div className="flex gap-2">
+      {!isKeyboardVisible && (
+        <div className="p-4 bg-gray-800 space-y-2">
           <Button
-            onClick={onSkip}
-            variant="outline"
-            className="flex-1 bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-            data-testid="process-full-image-button"
+            onClick={handleConfirm}
+            disabled={!region}
+            className="w-full"
+            size="lg"
+            data-testid="extract-text-button"
           >
-            Use Full Image
+            <Crop className="w-5 h-5 mr-2" />
+            Continue with Selection
           </Button>
-          <Button
-            onClick={onCancel}
-            variant="outline"
-            className="flex-1 bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-            data-testid="cancel-selection-button"
-          >
-            Back
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={onSkip}
+              variant="outline"
+              className="flex-1 bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
+              data-testid="process-full-image-button"
+            >
+              Use Full Image
+            </Button>
+            <Button
+              onClick={onCancel}
+              variant="outline"
+              className="flex-1 bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
+              data-testid="cancel-selection-button"
+            >
+              Back
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

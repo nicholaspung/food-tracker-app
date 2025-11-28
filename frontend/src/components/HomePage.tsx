@@ -43,6 +43,8 @@ import {
   Search,
   X,
   Share2,
+  Lock,
+  UserCheck,
 } from "lucide-react";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { Input } from "@/components/ui/input";
@@ -136,6 +138,8 @@ export default function HomePage({
   const [searchQuery, setSearchQuery] = useState("");
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "user" | "friends">("all");
+  const [visibilityFilter, setVisibilityFilter] = useState<"all" | "private" | "friends">("all");
+  const [ratingFilter, setRatingFilter] = useState<"all" | "1" | "2" | "3" | "4" | "5">("all");
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [sharePhotoFile, setSharePhotoFile] = useState<File | null>(null);
   const [sharePhotoUrl, setSharePhotoUrl] = useState<string>("");
@@ -423,8 +427,25 @@ export default function HomePage({
       filtered = filtered.filter((visit) => isFriendVisit(visit));
     }
 
+    // Apply visibility filter (only for user's own visits)
+    if (visibilityFilter !== "all") {
+      filtered = filtered.filter((visit) => {
+        // Only apply visibility filter to user's own visits
+        if (isFriendVisit(visit)) return true;
+        return visit.visibility === visibilityFilter;
+      });
+    }
+
+    // Apply rating filter
+    if (ratingFilter !== "all") {
+      const targetRating = parseInt(ratingFilter);
+      filtered = filtered.filter((visit) =>
+        visit.foodItems?.some((item) => item.rating === targetRating)
+      );
+    }
+
     return filtered;
-  }, [visitsWithDetails, cutoffDate, searchQuery, filterType]);
+  }, [visitsWithDetails, cutoffDate, searchQuery, filterType, visibilityFilter, ratingFilter]);
 
   // Filter quick track items based on monthsToLoad and search query
   const filteredQuickTrackItems = useMemo(() => {
@@ -464,8 +485,19 @@ export default function HomePage({
       return [];
     }
 
+    // Apply visibility filter
+    if (visibilityFilter !== "all") {
+      filtered = filtered.filter((item) => item.visibility === visibilityFilter);
+    }
+
+    // Apply rating filter
+    if (ratingFilter !== "all") {
+      const targetRating = parseInt(ratingFilter);
+      filtered = filtered.filter((item) => item.rating === targetRating);
+    }
+
     return filtered;
-  }, [quickTrackItems, cutoffDate, searchQuery, filterType]);
+  }, [quickTrackItems, cutoffDate, searchQuery, filterType, visibilityFilter, ratingFilter]);
 
   // Check if there are more visits to load (only when not searching)
   const hasMoreVisits =
@@ -603,7 +635,7 @@ export default function HomePage({
         </div>
 
         {/* Search and Filter Row */}
-        <div className="flex gap-2">
+        <div className="space-y-2">
           {/* Search Input */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -625,17 +657,47 @@ export default function HomePage({
             )}
           </div>
 
-          {/* Filter Select */}
-          <Select value={filterType} onValueChange={(value: "all" | "user" | "friends") => setFilterType(value)}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Visits</SelectItem>
-              <SelectItem value="user">My Visits</SelectItem>
-              <SelectItem value="friends">Friends</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Filter Selects Row */}
+          <div className="flex gap-2">
+            {/* Type Filter */}
+            <Select value={filterType} onValueChange={(value: "all" | "user" | "friends") => setFilterType(value)}>
+              <SelectTrigger className="flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Visits</SelectItem>
+                <SelectItem value="user">My Visits</SelectItem>
+                <SelectItem value="friends">Friends</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Visibility Filter */}
+            <Select value={visibilityFilter} onValueChange={(value: "all" | "private" | "friends") => setVisibilityFilter(value)}>
+              <SelectTrigger className="flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Visibility</SelectItem>
+                <SelectItem value="private">Private</SelectItem>
+                <SelectItem value="friends">Shared</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Rating Filter */}
+            <Select value={ratingFilter} onValueChange={(value: "all" | "1" | "2" | "3" | "4" | "5") => setRatingFilter(value)}>
+              <SelectTrigger className="flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Ratings</SelectItem>
+                <SelectItem value="5">5 - Excellent</SelectItem>
+                <SelectItem value="4">4 - Good</SelectItem>
+                <SelectItem value="3">3 - Average</SelectItem>
+                <SelectItem value="2">2 - Below Avg</SelectItem>
+                <SelectItem value="1">1 - Poor</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -846,6 +908,15 @@ export default function HomePage({
                                           {friendName}
                                         </Badge>
                                       )}
+                                      {!isFriend && (
+                                        <div className="flex items-center gap-1" title={visit.visibility === 'friends' ? 'Shared with friends' : 'Private'}>
+                                          {visit.visibility === 'friends' ? (
+                                            <UserCheck className="w-4 h-4 text-green-600" />
+                                          ) : (
+                                            <Lock className="w-4 h-4 text-gray-400" />
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                     <CardDescription className="flex items-center gap-1 mt-1">
                                       <MapPin className="w-3 h-3" />
@@ -1044,9 +1115,19 @@ export default function HomePage({
                                   )}
 
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-gray-900 break-words">
-                                      {item.name}
-                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-gray-900 break-words">
+                                        {item.name}
+                                      </p>
+                                      {/* Visibility indicator */}
+                                      <div className="flex items-center gap-1" title={item.visibility === 'friends' ? 'Shared with friends' : 'Private'}>
+                                        {item.visibility === 'friends' ? (
+                                          <UserCheck className="w-4 h-4 text-green-600" />
+                                        ) : (
+                                          <Lock className="w-4 h-4 text-gray-400" />
+                                        )}
+                                      </div>
+                                    </div>
                                     {/* Category badge */}
                                     {item.itemCategory && (
                                       <Badge variant="outline" className="text-xs mt-1">

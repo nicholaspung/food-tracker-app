@@ -1,12 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Utensils,
-  Zap,
-  Images,
-  ChevronRight,
-  ArrowLeft
-} from "lucide-react";
+import { Utensils, Zap, Images, ChevronRight, ArrowLeft } from "lucide-react";
 
 export default function AddVisitOptionSelector() {
   const navigate = useNavigate();
@@ -96,25 +90,6 @@ export default function AddVisitOptionSelector() {
             </button>
           );
         })}
-      </div>
-
-      {/* Info Card */}
-      <div className="px-4 mt-8">
-        <Card className="bg-muted border-none">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <Images className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-muted-foreground">
-                <p className="font-medium text-foreground mb-1">
-                  Process Saved Photos
-                </p>
-                <p>
-                  Upload multiple photos from your camera roll and rate each one with a restaurant and menu item.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
