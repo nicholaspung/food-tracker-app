@@ -14,6 +14,7 @@ import MenuScanStep from "@/components/MenuScanStep";
 import { visitDraftService } from "@/services/visitDraftService";
 import { requestMenuReview, hasPendingReviewRequest } from "@/services/menuReviewService";
 import { useSync } from "@/contexts/SyncContext";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 
 interface SelectedItemWithDescription {
   menuItem: MenuItem;
@@ -62,6 +63,7 @@ export default function AddItemsToVisit({
 
   // Online/offline status
   const { isOnline } = useSync();
+  const isKeyboardVisible = useKeyboardVisible();
 
   // Fetch menu items using TanStack Query (supports offline cached items)
   const { data: cachedMenuItems } = useQuery({
@@ -78,6 +80,7 @@ export default function AddItemsToVisit({
   });
 
   // Refs for auto-scrolling inputs into view on mobile
+  const searchInputRef = useScrollIntoView<HTMLInputElement>();
   const manualItemInputRef = useScrollIntoView<HTMLInputElement>();
   const descriptionInputRef = useScrollIntoView<HTMLInputElement>();
 
@@ -694,6 +697,7 @@ export default function AddItemsToVisit({
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <Input
+                    ref={searchInputRef}
                     placeholder="Search menu items..."
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
@@ -867,33 +871,35 @@ export default function AddItemsToVisit({
       </div>
 
       {/* Bottom Action Buttons */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex gap-3">
-          {showScanMenu ? (
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setShowScanMenu(false)}
-            >
-              Back to Item Selection
-            </Button>
-          ) : (
-            <>
-              <Button variant="outline" className="flex-1" onClick={onCancel}>
-                Cancel
-              </Button>
+      {!isKeyboardVisible && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex gap-3">
+            {showScanMenu ? (
               <Button
-                variant="default"
-                className="flex-1"
-                onClick={handleComplete}
-                disabled={selectedItems.size === 0}
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowScanMenu(false)}
               >
-                Continue to Rating ({selectedItems.size})
+                Back to Item Selection
               </Button>
-            </>
-          )}
+            ) : (
+              <>
+                <Button variant="outline" className="flex-1" onClick={onCancel}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  className="flex-1"
+                  onClick={handleComplete}
+                  disabled={selectedItems.size === 0}
+                >
+                  Continue to Rating ({selectedItems.size})
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

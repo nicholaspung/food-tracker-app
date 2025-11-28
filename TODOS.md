@@ -17,7 +17,6 @@
     - add a "toggleable bottom tray" that shows up with the list of visits records
 
 - track restaurant visit
-    - when the user presses cancel on a track restaurant visit, it should go back to the add new page
     - make the button for "use current location" a button next to the location input
         - or try out when a user presses into the location input to type, have a suggestion for "use my location" pop up
     - put the "add new restaurant" link underneath the search food places
@@ -30,6 +29,4 @@
     - there's no way to change the date of a quick track item
     - date/visibility should be at the top similar to track restaurant visit (and should have similar styling)
     - place the photo (optional) field right after the item name
-- homepage
-    - the month collapsible header details becomes 2 lines and it takes up too much space, need a better way to combine "visit and quick item" along with also showing how many things were tracked in that bar so it always stays 1 line
 - remove the feedback tab and put it into the "profile" tab and replace the feedback tab with additional features, i.e. the lists feature and bill split management feature

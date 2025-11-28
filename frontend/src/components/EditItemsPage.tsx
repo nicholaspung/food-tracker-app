@@ -1,13 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { pb, Restaurant, FoodItem, MenuItem as DBMenuItem } from '@/lib/pocketbase';
-import { getTodayLocalDateString, utcToLocalDateString, formatLocalDateForDisplay } from '@/lib/dateUtils';
+import { utcToLocalDateString } from '@/lib/dateUtils';
 import { editVisitDraftService } from '@/services/editVisitDraftService';
 import AddItemsToVisit from '@/components/AddItemsToVisit';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Calendar, Users } from 'lucide-react';
 
 interface EditItemsPageProps {
   visitId: string;
@@ -21,7 +18,6 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
   const [isReady, setIsReady] = useState(false);
   const [visitDate, setVisitDate] = useState('');
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>('friends');
-  const [showDateEdit, setShowDateEdit] = useState(false);
 
   // Fetch visit data
   const { data: visit, isLoading: visitLoading } = useQuery({
@@ -273,69 +269,6 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
       <div className="bg-white border-b border-gray-200 px-4 py-4">
         <h1 className="text-xl font-bold text-gray-900">Edit Visit</h1>
         <p className="text-sm text-gray-600 mt-1">{selectedRestaurant.name}</p>
-      </div>
-
-      {/* Date and Visibility Section */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
-        {/* Date Selector */}
-        <div className="mb-3">
-          {!showDateEdit ? (
-            <div
-              className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-              onClick={() => setShowDateEdit(true)}
-            >
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gray-600" />
-                <span className="text-sm font-medium text-gray-900">
-                  {formatLocalDateForDisplay(visitDate)}
-                </span>
-              </div>
-              <span className="text-xs text-gray-500">Tap to change</span>
-            </div>
-          ) : (
-            <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-              <Label className="text-xs text-gray-600">Visit Date</Label>
-              <Input
-                type="date"
-                value={visitDate}
-                onChange={(e) => setVisitDate(e.target.value)}
-                max={getTodayLocalDateString()}
-                className="text-sm"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowDateEdit(false)}
-                className="w-full"
-              >
-                Done
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Visibility Checkbox */}
-        <div className="p-3 bg-white rounded-lg border border-gray-200">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={visitVisibility === 'friends'}
-              onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
-              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-            />
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-gray-600" />
-                <span className="text-sm font-medium">Friends can view this visit</span>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {visitVisibility === 'friends'
-                  ? 'Your friends will be able to see this visit and your ratings'
-                  : 'Only you will be able to see this visit'}
-              </p>
-            </div>
-          </label>
-        </div>
       </div>
 
       {/* AddItemsToVisit Component */}

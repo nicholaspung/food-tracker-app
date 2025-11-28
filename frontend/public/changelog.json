@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.5.2",
+    "date": "2025-11-28",
+    "title": "Enhanced Mobile Experience & Navigation",
+    "summary": "Dramatically improved mobile keyboard handling across all pages, smarter navigation flows, and cleaner interfaces for a better overall experience!",
+    "features": [],
+    "improvements": [
+      "Bottom navigation auto-hides: Tab bar automatically hides when keyboard appears for maximum typing space",
+      "Universal keyboard handling: All input fields now hide action buttons when keyboard is visible across Add Items, Rate Items, Edit Items, Quick Track, Create Restaurant, and Select Restaurant pages",
+      "Smart input scrolling: Input fields automatically scroll into view when focused on mobile devices",
+      "Improved cancel navigation: Canceling restaurant selection now returns to the Add New selection page instead of home",
+      "Streamlined month headers: Feed month headers stay compact on one line regardless of content",
+      "Cleaner edit interface: Simplified Edit Items page by removing redundant date/visibility controls"
+    ],
+    "fixes": [
+      "Fixed bottom navigation covering input fields when typing on mobile",
+      "Fixed action buttons obscuring text when keyboard appears",
+      "Fixed cancel button taking users to wrong page in track restaurant flow",
+      "Fixed month headers wrapping to multiple lines and taking excessive space"
+    ]
+  },
+  {
     "version": "0.5.1",
     "date": "2025-11-27",
     "title": "Advanced Filtering & Photo Processing Enhancements",

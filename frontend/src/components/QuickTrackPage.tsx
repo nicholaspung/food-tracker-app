@@ -46,6 +46,7 @@ export default function QuickTrackPage() {
   const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
 
   // Refs for auto-scrolling
+  const itemNameInputRef = useScrollIntoView<HTMLInputElement>();
   const notesInputRef = useScrollIntoView<HTMLTextAreaElement>();
 
   // Offline-aware Quick Track
@@ -159,6 +160,7 @@ export default function QuickTrackPage() {
                 Item Name *
               </Label>
               <Input
+                ref={itemNameInputRef}
                 id="itemName"
                 type="text"
                 value={itemName}

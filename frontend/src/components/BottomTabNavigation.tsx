@@ -2,11 +2,13 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { Home, User, Plus, Users, MessageSquare } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pb, Feedback } from '@/lib/pocketbase';
+import { useKeyboardVisible } from '@/hooks/useKeyboardVisible';
 
 export function BottomTabNavigation() {
   const router = useRouterState();
   const currentPath = router.location.pathname;
   const currentUser = pb.authStore.record;
+  const isKeyboardVisible = useKeyboardVisible();
 
   // Query for pending received friend requests
   const { data: pendingRequestsCount = 0 } = useQuery({
@@ -76,6 +78,11 @@ export function BottomTabNavigation() {
       testId: 'tab-profile',
     },
   ];
+
+  // Hide navigation when keyboard is visible
+  if (isKeyboardVisible) {
+    return null;
+  }
 
   return (
     <nav
