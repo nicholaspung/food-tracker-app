@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,9 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown, ChevronUp, Loader2, Users, Calendar } from "lucide-react";
-import { RATING_OPTIONS } from "@/lib/ratingConstants";
+import { Loader2 } from "lucide-react";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
+import { RatingSelector } from "@/components/ui/RatingSelector";
+import { DatePickerField } from "@/components/ui/DatePickerField";
+import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
+import { RatingLegend } from "@/components/ui/RatingLegend";
 import { useOfflineQuickTrackUpdate } from "@/hooks/useOfflineQuickTrackUpdate";
 import { useSync } from "@/contexts/SyncContext";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
@@ -23,7 +26,6 @@ import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { pb } from "@/lib/pocketbase";
 import {
   getTodayLocalDateString,
-  formatLocalDateForDisplay,
   utcToLocalDateString,
   localDateStringToUTC,
 } from "@/lib/dateUtils";
@@ -66,14 +68,12 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
   const [locationText, setLocationText] = useState("");
   const [notes, setNotes] = useState("");
   const [itemDate, setItemDate] = useState(getTodayLocalDateString());
-  const [showDateEdit, setShowDateEdit] = useState(false);
   const [visibility, setVisibility] = useState<"friends" | "private">(
     "friends"
   );
 
   // UI state
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
-  const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
 
   // Refs for auto-scrolling
   const itemNameInputRef = useScrollIntoView<HTMLInputElement>();
@@ -244,71 +244,19 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
       <div className="flex-1 overflow-y-auto p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Date picker */}
-          {itemDate && (
-            <div>
-              {!showDateEdit ? (
-                <div
-                  className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => setShowDateEdit(true)}
-                >
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {formatLocalDateForDisplay(itemDate)}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-500">Tap to change</span>
-                </div>
-              ) : (
-                <div className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-2">
-                  <Label className="text-xs text-gray-600">Date</Label>
-                  <Input
-                    type="date"
-                    value={itemDate}
-                    onChange={(e) => setItemDate(e.target.value)}
-                    max={getTodayLocalDateString()}
-                    className="text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDateEdit(false)}
-                    className="w-full"
-                  >
-                    Done
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+          <DatePickerField
+            value={itemDate}
+            onChange={setItemDate}
+            label="Date"
+          />
 
           {/* Visibility Section */}
-          <div className="p-3 bg-white rounded-lg border border-gray-200">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={visibility === "friends"}
-                onChange={(e) =>
-                  setVisibility(e.target.checked ? "friends" : "private")
-                }
-                disabled={isLoading}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium">
-                    Friends can view this item
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {visibility === "friends"
-                    ? "Your friends will be able to see this quick track item"
-                    : "Only you will be able to see this item"}
-                </p>
-              </div>
-            </label>
-          </div>
+          <VisibilityToggle
+            value={visibility}
+            onChange={setVisibility}
+            entityType="item"
+            disabled={isLoading}
+          />
 
           {/* Item Name and Photo Section */}
           <Card>
@@ -342,68 +290,20 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
           </Card>
 
           {/* Collapsible Rating Legend */}
-          <Card className="border-2 border-blue-200 bg-blue-50/30 py-4">
-            <CardContent className="px-4">
-              <button
-                type="button"
-                onClick={() => setIsLegendExpanded(!isLegendExpanded)}
-                className="w-full flex items-center justify-between"
-              >
-                <Label className="text-sm font-semibold text-gray-700 cursor-pointer">
-                  Rating Guide
-                </Label>
-                {isLegendExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-gray-600" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-gray-600" />
-                )}
-              </button>
-              {isLegendExpanded && (
-                <div className="space-y-2 mt-3">
-                  {RATING_OPTIONS.map((option) => (
-                    <div key={option.value} className="flex items-center gap-3">
-                      <div
-                        className={`${option.color} text-white w-8 h-8 rounded-md flex items-center justify-center font-bold text-sm flex-shrink-0`}
-                      >
-                        {option.value}
-                      </div>
-                      <span className="text-sm text-gray-700">
-                        {option.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <RatingLegend initiallyExpanded={!hasRatedBefore} />
 
           {/* Rating Section */}
           <Card>
             <CardContent className="space-y-3">
               <div>
                 <Label className="font-semibold">Rating *</Label>
-                <div className="grid grid-cols-5 gap-2 mt-2">
-                  {RATING_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setRating(option.value)}
-                      disabled={isLoading}
-                      className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
-                        option.color
-                      } ${
-                        rating === option.value
-                          ? "ring-2 ring-offset-2 ring-blue-500"
-                          : "opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      {option.value}
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  <RatingSelector
+                    value={rating}
+                    onChange={setRating}
+                    disabled={isLoading}
+                  />
                 </div>
-                <p className="text-xs text-gray-600 mt-2 text-center">
-                  {RATING_OPTIONS.find((o) => o.value === rating)?.label}
-                </p>
               </div>
             </CardContent>
           </Card>
