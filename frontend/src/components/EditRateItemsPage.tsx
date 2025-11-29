@@ -1,11 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
-import {
-  localDateStringToUTC,
-  getTodayLocalDateString,
-  formatLocalDateForDisplay,
-} from "@/lib/dateUtils";
+import { localDateStringToUTC } from "@/lib/dateUtils";
 import {
   editVisitDraftService,
   EditVisitDraftItem,
@@ -14,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar, Users } from "lucide-react";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 import { usePhotoUpload, type PhotoUploadItem } from "@/hooks/usePhotoUpload";
-import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { RatingSelector } from "@/components/ui/RatingSelector";
+import { DatePickerField } from "@/components/ui/DatePickerField";
+import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -44,7 +41,6 @@ export default function EditRateItemsPage({
   const [visitVisibility, setVisitVisibility] = useState<"friends" | "private">(
     draft?.visitVisibility || "friends"
   );
-  const [showDateEdit, setShowDateEdit] = useState(false);
 
   // Photo state - track photo for each item (using food_item id as key)
   const [itemPhotos, setItemPhotos] = useState<Map<string, File>>(new Map());
@@ -110,10 +106,11 @@ export default function EditRateItemsPage({
     };
   }, []);
 
-  const handlePhotoCapture = (foodItemId: string, file: File) => {
+  const handlePhotoCapture = (foodItemId: string | number, file: File) => {
+    const id = String(foodItemId);
     // Store the photo file
     const newPhotos = new Map(itemPhotos);
-    newPhotos.set(foodItemId, file);
+    newPhotos.set(id, file);
     setItemPhotos(newPhotos);
 
     // Create preview URL
@@ -121,35 +118,37 @@ export default function EditRateItemsPage({
     const newPreviewUrls = new Map(photoPreviewUrls);
 
     // Revoke old URL if exists
-    const oldUrl = newPreviewUrls.get(foodItemId);
+    const oldUrl = newPreviewUrls.get(id);
     if (oldUrl) {
       URL.revokeObjectURL(oldUrl);
     }
 
-    newPreviewUrls.set(foodItemId, previewUrl);
+    newPreviewUrls.set(id, previewUrl);
     setPhotoPreviewUrls(newPreviewUrls);
   };
 
-  const handleRemovePhoto = (foodItemId: string) => {
+  const handleRemovePhoto = (foodItemId: string | number) => {
+    const id = String(foodItemId);
     // Remove photo file
     const newPhotos = new Map(itemPhotos);
-    newPhotos.delete(foodItemId);
+    newPhotos.delete(id);
     setItemPhotos(newPhotos);
 
     // Revoke and remove preview URL
-    const previewUrl = photoPreviewUrls.get(foodItemId);
+    const previewUrl = photoPreviewUrls.get(id);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
     const newPreviewUrls = new Map(photoPreviewUrls);
-    newPreviewUrls.delete(foodItemId);
+    newPreviewUrls.delete(id);
     setPhotoPreviewUrls(newPreviewUrls);
   };
 
   // Mark an existing photo for deletion
-  const handleDeleteExistingPhoto = (foodItemId: string) => {
+  const handleDeleteExistingPhoto = (foodItemId: string | number) => {
+    const id = String(foodItemId);
     const existingPhoto = existingPhotos.find(
-      (p: any) => p.food_item === foodItemId
+      (p: any) => p.food_item === id
     );
     if (existingPhoto) {
       const newDeletedIds = new Set(deletedPhotoIds);
@@ -325,70 +324,18 @@ export default function EditRateItemsPage({
         <div className="space-y-4">
           {/* Date and Visibility Card */}
           {/* Date picker */}
-          {visitDate && (
-            <div>
-              {!showDateEdit ? (
-                <div
-                  className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => setShowDateEdit(true)}
-                >
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {formatLocalDateForDisplay(visitDate)}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-500">Tap to change</span>
-                </div>
-              ) : (
-                <div className="p-2.5 bg-white rounded-lg border border-gray-200 space-y-2">
-                  <Label className="text-xs text-gray-600">Visit Date</Label>
-                  <Input
-                    type="date"
-                    value={visitDate}
-                    onChange={(e) => setVisitDate(e.target.value)}
-                    max={getTodayLocalDateString()}
-                    className="text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDateEdit(false)}
-                    className="w-full"
-                  >
-                    Done
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+          <DatePickerField
+            value={visitDate}
+            onChange={setVisitDate}
+            label="Visit Date"
+          />
 
           {/* Visibility Checkbox */}
-          <div className="p-3 bg-white rounded-lg border border-gray-200">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={visitVisibility === "friends"}
-                onChange={(e) =>
-                  setVisitVisibility(e.target.checked ? "friends" : "private")
-                }
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium">
-                    Friends can view this visit
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {visitVisibility === "friends"
-                    ? "Your friends will be able to see this visit and your ratings"
-                    : "Only you will be able to see this visit"}
-                </p>
-              </div>
-            </label>
-          </div>
+          <VisibilityToggle
+            value={visitVisibility}
+            onChange={setVisitVisibility}
+            entityType="visit"
+          />
 
           {activeMenuItems.map((item) => {
             const index = menuItems.findIndex((m) => m === item);
@@ -406,31 +353,14 @@ export default function EditRateItemsPage({
 
                   <div>
                     <Label>Rating</Label>
-                    <div className="grid grid-cols-5 gap-2 mt-2">
-                      {RATING_OPTIONS.map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() =>
-                            handleUpdateItem(index, "rating", option.value)
-                          }
-                          className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
-                            option.color
-                          } ${
-                            item.rating === option.value
-                              ? "ring-2 ring-offset-2 ring-blue-500"
-                              : "opacity-60 hover:opacity-100"
-                          }`}
-                        >
-                          {option.value}
-                        </button>
-                      ))}
+                    <div className="mt-2">
+                      <RatingSelector
+                        value={item.rating}
+                        onChange={(value) =>
+                          handleUpdateItem(index, "rating", value)
+                        }
+                      />
                     </div>
-                    <p className="text-xs text-gray-600 mt-2 text-center">
-                      {
-                        RATING_OPTIONS.find((o) => o.value === item.rating)
-                          ?.label
-                      }
-                    </p>
                   </div>
 
                   <div>

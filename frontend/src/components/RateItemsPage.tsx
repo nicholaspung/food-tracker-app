@@ -1,23 +1,21 @@
 import { useState, useEffect } from "react";
 import { pb } from "@/lib/pocketbase";
-import {
-  getTodayLocalDateString,
-  localDateStringToUTC,
-  formatLocalDateForDisplay,
-} from "@/lib/dateUtils";
+import { localDateStringToUTC } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronUp, Calendar, Users } from "lucide-react";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
+import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
+import { RatingSelector } from "@/components/ui/RatingSelector";
+import { RatingLegend } from "@/components/ui/RatingLegend";
 import { usePhotoUpload } from "@/hooks/usePhotoUpload";
 import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
-import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { DatePickerField } from "@/components/ui/DatePickerField";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -32,7 +30,6 @@ export default function RateItemsPage({
   const [items, setItems] = useState(draft.items);
   const [visitDate, setVisitDate] = useState(draft.visitDate);
   const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
-  const [showDateEdit, setShowDateEdit] = useState(false);
 
   // Photo state - track photo for each item (max 1 for now)
   const [itemPhotos, setItemPhotos] = useState<Map<number, File>>(new Map());
@@ -42,7 +39,6 @@ export default function RateItemsPage({
 
   // Check if user has rated before - expand legend for first-timers
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
-  const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
 
   // Ref for auto-scrolling notes input into view on mobile
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
@@ -180,105 +176,21 @@ export default function RateItemsPage({
         <div className="space-y-4">
           {/* Date and Visibility Card */}
           {/* Date picker */}
-          {visitDate && (
-            <div>
-              {!showDateEdit ? (
-                <div
-                  className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => setShowDateEdit(true)}
-                >
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {formatLocalDateForDisplay(visitDate)}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-500">Tap to change</span>
-                </div>
-              ) : (
-                <div className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-2">
-                  <Label className="text-xs text-gray-600">Visit Date</Label>
-                  <Input
-                    type="date"
-                    value={visitDate}
-                    onChange={(e) => setVisitDate(e.target.value)}
-                    max={getTodayLocalDateString()}
-                    className="text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDateEdit(false)}
-                    className="w-full"
-                  >
-                    Done
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+          <DatePickerField
+            value={visitDate}
+            onChange={setVisitDate}
+            label="Visit Date"
+          />
 
           {/* Visibility Checkbox */}
-          <div className="p-3 bg-white rounded-lg border border-gray-200">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={visitVisibility === "friends"}
-                onChange={(e) =>
-                  setVisitVisibility(e.target.checked ? "friends" : "private")
-                }
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium">
-                    Friends can view this visit
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {visitVisibility === "friends"
-                    ? "Your friends will be able to see this visit and your ratings"
-                    : "Only you will be able to see this visit"}
-                </p>
-              </div>
-            </label>
-          </div>
+          <VisibilityToggle
+            value={visitVisibility}
+            onChange={setVisitVisibility}
+            entityType="visit"
+          />
 
           {/* Collapsible Rating Legend */}
-          <Card className="border-2 border-blue-200 bg-blue-50/30 py-4">
-            <CardContent className="px-4">
-              <button
-                onClick={() => setIsLegendExpanded(!isLegendExpanded)}
-                className="w-full flex items-center justify-between"
-              >
-                <Label className="text-sm font-semibold text-gray-700 cursor-pointer">
-                  Rating Guide
-                </Label>
-                {isLegendExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-gray-600" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-gray-600" />
-                )}
-              </button>
-              {isLegendExpanded && (
-                <div className="space-y-2 mt-3">
-                  {RATING_OPTIONS.map((option) => (
-                    <div key={option.value} className="flex items-center gap-3">
-                      <div
-                        className={`${option.color} text-white w-8 h-8 rounded-md flex items-center justify-center font-bold text-sm flex-shrink-0`}
-                      >
-                        {option.value}
-                      </div>
-                      <span className="text-sm text-gray-700">
-                        {option.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <RatingLegend initiallyExpanded={!hasRatedBefore} />
 
           {items.map((item, index) => (
             <Card key={index}>
@@ -294,28 +206,14 @@ export default function RateItemsPage({
 
                 <div>
                   <Label>Rating</Label>
-                  <div className="grid grid-cols-5 gap-2 mt-2">
-                    {RATING_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        onClick={() =>
-                          handleUpdateItem(index, "rating", option.value)
-                        }
-                        className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
-                          option.color
-                        } ${
-                          item.rating === option.value
-                            ? "ring-2 ring-offset-2 ring-blue-500"
-                            : "opacity-60 hover:opacity-100"
-                        }`}
-                      >
-                        {option.value}
-                      </button>
-                    ))}
+                  <div className="mt-2">
+                    <RatingSelector
+                      value={item.rating}
+                      onChange={(value) =>
+                        handleUpdateItem(index, "rating", value)
+                      }
+                    />
                   </div>
-                  <p className="text-xs text-gray-600 mt-2 text-center">
-                    {RATING_OPTIONS.find((o) => o.value === item.rating)?.label}
-                  </p>
                 </div>
 
                 <div className="space-y-2">

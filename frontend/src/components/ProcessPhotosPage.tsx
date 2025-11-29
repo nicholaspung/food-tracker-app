@@ -48,7 +48,6 @@ import {
   Store,
   X,
   MapPin,
-  Users,
   Pencil,
   Calendar,
 } from "lucide-react";
@@ -57,6 +56,7 @@ import {
   RATING_LABELS,
   RATING_COLORS,
 } from "@/lib/ratingConstants";
+import { RatingSelector } from "@/components/ui/RatingSelector";
 import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
 import { useOfflineRestaurantCreation } from "@/hooks/useOfflineRestaurantCreation";
 import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
@@ -73,10 +73,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchAndCacheRestaurantsByText } from "@/services/googlePlaces";
 import ExifReader from "exifreader";
 import { format } from "date-fns";
-import {
-  formatLocalDateForDisplay,
-  getTodayLocalDateString,
-} from "../lib/dateUtils";
+import { getTodayLocalDateString } from "../lib/dateUtils";
+import { DatePickerField } from "@/components/ui/DatePickerField";
+import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
 
 type ScreenState = "choice" | "upload" | "process" | "review";
 type ProcessType = "restaurant" | "quickTrack";
@@ -780,7 +779,6 @@ export default function ProcessPhotosPage() {
   const [qtLocationText, setQtLocationText] = useState("");
   const [qtNotes, setQtNotes] = useState("");
   const [qtDate, setQtDate] = useState(getTodayLocalDateString());
-  const [showQtDateEdit, setShowQtDateEdit] = useState(false);
   const [qtVisibility, setQtVisibility] = useState<"friends" | "private">(
     "friends"
   );
@@ -1795,31 +1793,11 @@ export default function ProcessPhotosPage() {
           </div>
 
           {/* Visibility Checkbox */}
-          <div className="p-3 bg-white rounded-lg border border-gray-200">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={visitVisibility === "friends"}
-                onChange={(e) =>
-                  setVisitVisibility(e.target.checked ? "friends" : "private")
-                }
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium">
-                    Friends can view these visits
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {visitVisibility === "friends"
-                    ? "Your friends will be able to see these visits and your ratings"
-                    : "Only you will be able to see these visits"}
-                </p>
-              </div>
-            </label>
-          </div>
+          <VisibilityToggle
+            value={visitVisibility}
+            onChange={setVisitVisibility}
+            entityType="visits"
+          />
 
           {Array.from(photosByRestaurantAndDate.entries()).map(
             ([groupKey, restaurantPhotos]) => {
@@ -2220,70 +2198,18 @@ export default function ProcessPhotosPage() {
           {/* Quick Track Form - Matching QuickTrackPage layout */}
 
           {/* Date picker */}
-          {qtDate && (
-            <div>
-              {!showQtDateEdit ? (
-                <div
-                  className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => setShowQtDateEdit(true)}
-                >
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {formatLocalDateForDisplay(qtDate)}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-500">Tap to change</span>
-                </div>
-              ) : (
-                <div className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-2">
-                  <Label className="text-xs text-gray-600">Date</Label>
-                  <Input
-                    type="date"
-                    value={qtDate}
-                    onChange={(e) => setQtDate(e.target.value)}
-                    max={getTodayLocalDateString()}
-                    className="text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowQtDateEdit(false)}
-                    className="w-full"
-                  >
-                    Done
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+          <DatePickerField
+            value={qtDate}
+            onChange={setQtDate}
+            label="Date"
+          />
 
           {/* Visibility Section */}
-          <div className="p-3 bg-white rounded-lg border border-gray-200">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={qtVisibility === "friends"}
-                onChange={(e) =>
-                  setQtVisibility(e.target.checked ? "friends" : "private")
-                }
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium">
-                    Friends can view this item
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {qtVisibility === "friends"
-                    ? "Your friends will be able to see this quick track item"
-                    : "Only you will be able to see this item"}
-                </p>
-              </div>
-            </label>
-          </div>
+          <VisibilityToggle
+            value={qtVisibility}
+            onChange={setQtVisibility}
+            entityType="item"
+          />
 
           {/* Item Name */}
           <Card>
@@ -2346,27 +2272,12 @@ export default function ProcessPhotosPage() {
             <CardContent className="space-y-3">
               <div>
                 <Label className="font-semibold">Rating *</Label>
-                <div className="grid grid-cols-5 gap-2 mt-2">
-                  {RATING_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setQtRating(option.value)}
-                      className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
-                        option.color
-                      } ${
-                        qtRating === option.value
-                          ? "ring-2 ring-offset-2 ring-blue-500"
-                          : "opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      {option.value}
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  <RatingSelector
+                    value={qtRating}
+                    onChange={setQtRating}
+                  />
                 </div>
-                <p className="text-xs text-gray-600 mt-2 text-center">
-                  {RATING_OPTIONS.find((o) => o.value === qtRating)?.label}
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -3026,7 +2937,7 @@ export default function ProcessPhotosPage() {
                         value={photoDate ? format(photoDate, "yyyy-MM-dd") : ""}
                         onChange={(e) => {
                           const newDate = e.target.value
-                            ? new Date(e.target.value)
+                            ? new Date(e.target.value + 'T00:00:00')
                             : new Date();
                           setPhotoDate(newDate);
                         }}
@@ -3100,33 +3011,11 @@ export default function ProcessPhotosPage() {
                       <Label className="text-base font-semibold">
                         Rating *
                       </Label>
-                      <div className="grid grid-cols-5 gap-2">
-                        {RATING_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setRating(option.value)}
-                            disabled={isProcessing}
-                            className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-opacity ${
-                              option.color
-                            } ${
-                              rating === option.value
-                                ? "ring-2 ring-offset-2 ring-blue-500"
-                                : "opacity-60 hover:opacity-100"
-                            }`}
-                          >
-                            {option.value}
-                          </button>
-                        ))}
-                      </div>
-                      {rating !== null && (
-                        <p className="text-xs text-gray-600 mt-2 text-center">
-                          {
-                            RATING_OPTIONS.find((o) => o.value === rating)
-                              ?.label
-                          }
-                        </p>
-                      )}
+                      <RatingSelector
+                        value={rating}
+                        onChange={setRating}
+                        disabled={isProcessing}
+                      />
                     </div>
 
                     {/* Notes */}
