@@ -25,6 +25,7 @@ import {
   getTodayLocalDateString,
   formatLocalDateForDisplay,
   utcToLocalDateString,
+  localDateStringToUTC,
 } from "@/lib/dateUtils";
 import { ITEM_CATEGORIES } from "@/components/QuickTrackPage";
 
@@ -94,8 +95,10 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
       setNotes(item.notes || "");
       setVisibility(item.visibility || "private");
 
-      // Set item date from created timestamp
-      if (item.created) {
+      // Set item date from itemDate field, fallback to created timestamp for old items
+      if (item.itemDate) {
+        setItemDate(utcToLocalDateString(item.itemDate));
+      } else if (item.created) {
         setItemDate(utcToLocalDateString(item.created));
       }
 
@@ -171,7 +174,7 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
         location_text: locationText || undefined,
         latitude,
         longitude,
-        itemDate,
+        itemDate: itemDate ? localDateStringToUTC(itemDate) : undefined,
         photo: removeExistingPhoto ? null : (photo || undefined),
         existingPhotoId: existingPhoto?.id,
         visibility,

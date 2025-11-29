@@ -16,10 +16,4 @@
     - allow for user to toggle their own locations as well as their own friends
     - add a "toggleable bottom tray" that shows up with the list of visits records
 
-- process saved photos - quick track item
-    - if I select different dates for each photo, it doesn't seem to be tracking it when I click review. It just adds it to today's date, ignoring what I selected
-    - in the review page, it doesn't seem to be showing the dates for those specific quick track item photos in the right spot
-- homepage
-    - in the filters, for the ratings, instead of the "5 - excellent", can we make it say the labels instead, i.e. "eat often, eat occasionally, worth trying, etc..." except use the actual labels from the app, whereever it's located
-    - can you add a "clear button" for the filters somehow without changing the space
 - remove the feedback tab and put it into the "profile" tab and replace the feedback tab with additional features, i.e. the lists feature and bill split management feature

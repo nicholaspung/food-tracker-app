@@ -124,6 +124,7 @@ export default function QuickTrackPage() {
         longitude,
         photo: photo || undefined,
         visibility,
+        itemDate: itemDate ? localDateStringToUTC(itemDate) : undefined,
       });
 
       // Success

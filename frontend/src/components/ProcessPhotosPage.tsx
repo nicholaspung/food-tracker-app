@@ -110,6 +110,7 @@ interface QuickTrackPhotoData {
   locationText: string;
   notes: string;
   visibility: "friends" | "private";
+  captureDate: Date | null; // Date when photo was taken/item was consumed
 }
 
 // Enhanced Restaurant Selector Component with Google Places and History
@@ -894,6 +895,18 @@ export default function ProcessPhotosPage() {
     }
   }, [currentPhotoIndex, photos]);
 
+  // Initialize quick track date when current photo changes (for quick track mode)
+  useEffect(() => {
+    if (processType === "quickTrack") {
+      const currentPhoto = photos[currentPhotoIndex];
+      if (currentPhoto?.captureDate) {
+        setQtDate(format(currentPhoto.captureDate, "yyyy-MM-dd"));
+      } else {
+        setQtDate(getTodayLocalDateString());
+      }
+    }
+  }, [currentPhotoIndex, photos, processType]);
+
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -1552,6 +1565,9 @@ export default function ProcessPhotosPage() {
       return;
     }
 
+    // Convert qtDate (YYYY-MM-DD string) to Date object
+    const captureDate = qtDate ? new Date(qtDate + 'T00:00:00') : null;
+
     const quickTrackData: QuickTrackPhotoData = {
       photoId: currentPhoto.id,
       photo: currentPhoto.file,
@@ -1562,6 +1578,7 @@ export default function ProcessPhotosPage() {
       locationText: qtLocationText,
       notes: qtNotes,
       visibility: qtVisibility,
+      captureDate: captureDate,
     };
 
     setQuickTrackPhotos([...quickTrackPhotos, quickTrackData]);
@@ -1597,6 +1614,7 @@ export default function ProcessPhotosPage() {
           location_text: item.locationText || undefined,
           photo: item.photo,
           visibility: item.visibility,
+          itemDate: item.captureDate ? item.captureDate.toISOString() : undefined,
         });
       }
 
@@ -1651,6 +1669,12 @@ export default function ProcessPhotosPage() {
                       <h3 className="font-semibold text-gray-900 truncate">
                         {item.itemName}
                       </h3>
+                      {item.captureDate && (
+                        <div className="flex items-center gap-1 text-xs text-orange-700 font-semibold mt-1">
+                          <Calendar className="w-3 h-3" />
+                          {format(item.captureDate, "EEEE, MMM d, yyyy")}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mt-1">
                         <div
                           className={`w-3 h-3 rounded-full ${
