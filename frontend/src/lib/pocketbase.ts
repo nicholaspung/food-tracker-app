@@ -90,6 +90,7 @@ export interface FoodItem {
   location_text?: string;
   latitude?: number;
   longitude?: number;
+  itemDate?: string; // Date when item was consumed/tracked (ISO string)
   expand?: {
     visit?: Visit & {
       expand?: {

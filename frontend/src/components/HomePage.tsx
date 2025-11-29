@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useDeferredValue, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { pb, Visit, Restaurant, FoodItem } from "@/lib/pocketbase";
@@ -133,6 +133,7 @@ export default function HomePage({
 }: HomePageProps = {}) {
   const navigate = useNavigate();
   const [monthsToLoad, setMonthsToLoad] = useState(1); // Start with 1 month
+  const [renderedMonthsLimit, setRenderedMonthsLimit] = useState(3); // Only render 3 months at a time
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
     new Set([getMonthKey(new Date().toISOString())])
   ); // Current month expanded by default
@@ -142,11 +143,12 @@ export default function HomePage({
   const [quickTrackItemToDelete, setQuickTrackItemToDelete] =
     useState<QuickTrackItemWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
   const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [filterType, setFilterType] = useState<"all" | "user" | "friends">(
-    "all"
-  );
+  const [filterType, setFilterType] = useState<
+    "all" | "user_visits" | "user_quick_track" | "user_both" | "friends"
+  >("all");
   const [visibilityFilter, setVisibilityFilter] = useState<
     "all" | "private" | "friends"
   >("all");
@@ -172,10 +174,10 @@ export default function HomePage({
   const queryClient = useQueryClient();
 
   // Helper to check if a visit is from a friend
-  const isFriendVisit = (visit: VisitWithDetails): boolean => {
+  const isFriendVisit = useCallback((visit: VisitWithDetails): boolean => {
     const currentUserId = pb.authStore.record?.id;
     return visit.user !== currentUserId;
-  };
+  }, [pb.authStore.record?.id]);
 
   // Fetch all visits (own + friends' public/friends visits)
   // Backend rules handle the filtering automatically based on visibility
@@ -229,7 +231,7 @@ export default function HomePage({
   const deleteQuickTrackMutation = useOfflineQuickTrackDelete();
 
   // Delete visit with offline support
-  const handleDeleteVisit = async (visitId: string) => {
+  const handleDeleteVisit = useCallback(async (visitId: string) => {
     setIsDeleting(true);
     try {
       if (isOnline) {
@@ -275,10 +277,10 @@ export default function HomePage({
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [isOnline, foodItems, queryClient]);
 
   // Delete quick track item with offline support
-  const handleDeleteQuickTrackItem = async (
+  const handleDeleteQuickTrackItem = useCallback(async (
     itemId: string,
     photoId?: string
   ) => {
@@ -309,10 +311,10 @@ export default function HomePage({
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [deleteQuickTrackMutation, isOnline]);
 
   // Handle opening share modal
-  const handleSharePhotoClick = async (
+  const handleSharePhotoClick = useCallback(async (
     photo: any,
     foodItem: FoodItem,
     restaurant: Restaurant | null,
@@ -348,10 +350,10 @@ export default function HomePage({
       console.error("Error loading photo:", error);
       alert("Failed to load photo. Please try again.");
     }
-  };
+  }, [isOnline, pb]);
 
   // Handle final share action from modal
-  const handleShare = async (shareBlob: Blob) => {
+  const handleShare = useCallback(async (shareBlob: Blob) => {
     if (!shareOverlayData) return;
 
     try {
@@ -388,10 +390,10 @@ export default function HomePage({
       console.error("Error sharing photo:", error);
       alert("Failed to share photo. Please try again.");
     }
-  };
+  }, [shareOverlayData]);
 
   // Handle share visit button click
-  const handleShareVisitClick = (visit: VisitWithDetails) => {
+  const handleShareVisitClick = useCallback((visit: VisitWithDetails) => {
     // Check if visit has any photos
     const photosForVisit = visitPhotos.filter((photo: any) =>
       visit.foodItems?.some((item) => item.id === photo.food_item)
@@ -403,7 +405,7 @@ export default function HomePage({
     }
 
     setVisitToShare(visit);
-  };
+  }, [visitPhotos]);
 
   // Separate quick track items (items explicitly marked as quick track)
   const quickTrackItems: QuickTrackItemWithDetails[] = useMemo(
@@ -433,15 +435,15 @@ export default function HomePage({
   const filteredVisits = useMemo(() => {
     // If searching, search ALL visits (ignore time filter)
     // Otherwise, filter by time range
-    let filtered = searchQuery.trim()
+    let filtered = deferredSearchQuery.trim()
       ? visitsWithDetails
       : visitsWithDetails.filter(
           (visit) => new Date(visit.visitDate) >= cutoffDate
         );
 
     // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    if (deferredSearchQuery.trim()) {
+      const query = deferredSearchQuery.toLowerCase();
       filtered = filtered.filter((visit) => {
         // Search in restaurant name
         const restaurantName = visit.restaurant?.name?.toLowerCase() || "";
@@ -472,10 +474,15 @@ export default function HomePage({
     }
 
     // Apply filter type
-    if (filterType === "user") {
+    if (filterType === "user_visits") {
+      filtered = filtered.filter((visit) => !isFriendVisit(visit));
+    } else if (filterType === "user_both") {
       filtered = filtered.filter((visit) => !isFriendVisit(visit));
     } else if (filterType === "friends") {
       filtered = filtered.filter((visit) => isFriendVisit(visit));
+    } else if (filterType === "user_quick_track") {
+      // No visits shown when filtering for quick track only
+      filtered = [];
     }
 
     // Apply visibility filter (only for user's own visits)
@@ -499,22 +506,25 @@ export default function HomePage({
   }, [
     visitsWithDetails,
     cutoffDate,
-    searchQuery,
     filterType,
     visibilityFilter,
     ratingFilter,
+    deferredSearchQuery,
   ]);
 
   // Filter quick track items based on monthsToLoad and search query
   const filteredQuickTrackItems = useMemo(() => {
-    // Filter by time range (use created date for quick track items)
-    let filtered = searchQuery.trim()
+    // Filter by time range (use itemDate if available, otherwise created date)
+    let filtered = deferredSearchQuery.trim()
       ? quickTrackItems
-      : quickTrackItems.filter((item) => new Date(item.created) >= cutoffDate);
+      : quickTrackItems.filter((item) => {
+          const dateToUse = item.itemDate || item.created;
+          return new Date(dateToUse) >= cutoffDate;
+        });
 
     // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    if (deferredSearchQuery.trim()) {
+      const query = deferredSearchQuery.toLowerCase();
       filtered = filtered.filter((item) => {
         // Search in item name
         const itemName = item.name?.toLowerCase() || "";
@@ -536,8 +546,12 @@ export default function HomePage({
       });
     }
 
-    // Quick track items are always "user" type (only show if filter is "all" or "user")
+    // Quick track items filtering based on type
     if (filterType === "friends") {
+      // Friends filter: no quick track items from user
+      return [];
+    } else if (filterType === "user_visits") {
+      // User visits only: no quick track items
       return [];
     }
 
@@ -558,15 +572,15 @@ export default function HomePage({
   }, [
     quickTrackItems,
     cutoffDate,
-    searchQuery,
     filterType,
     visibilityFilter,
     ratingFilter,
+    deferredSearchQuery,
   ]);
 
   // Check if there are more visits to load (only when not searching)
   const hasMoreVisits =
-    !searchQuery.trim() && visitsWithDetails.length > filteredVisits.length;
+    !deferredSearchQuery.trim() && visitsWithDetails.length > filteredVisits.length;
 
   // Group visits and quick track items by month, then by day
   const groupedVisits = useMemo(() => {
@@ -596,10 +610,11 @@ export default function HomePage({
       byMonth[monthKey][dayKey].visits.push(visit);
     });
 
-    // Add quick track items (use created date)
+    // Add quick track items (use itemDate if available, otherwise created date)
     filteredQuickTrackItems.forEach((item) => {
-      const monthKey = getMonthKey(item.created);
-      const dayKey = getDayKey(item.created, false);
+      const dateToUse = item.itemDate || item.created;
+      const monthKey = getMonthKey(dateToUse);
+      const dayKey = getDayKey(dateToUse, false);
 
       if (!byMonth[monthKey]) {
         byMonth[monthKey] = {};
@@ -637,7 +652,19 @@ export default function HomePage({
     }));
   }, [filteredVisits, filteredQuickTrackItems]);
 
-  const toggleMonth = (monthKey: string) => {
+  // Limit the number of rendered months for performance (but show all when searching)
+  const renderedGroupedVisits = useMemo(() => {
+    // When searching, show all results
+    if (deferredSearchQuery.trim()) {
+      return groupedVisits;
+    }
+    // Otherwise, limit to improve performance
+    return groupedVisits.slice(0, renderedMonthsLimit);
+  }, [groupedVisits, renderedMonthsLimit, deferredSearchQuery]);
+
+  const hasMoreMonthsToRender = !deferredSearchQuery.trim() && groupedVisits.length > renderedMonthsLimit;
+
+  const toggleMonth = useCallback((monthKey: string) => {
     setExpandedMonths((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(monthKey)) {
@@ -647,25 +674,29 @@ export default function HomePage({
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const loadMoreMonths = () => {
+  const loadMoreMonths = useCallback(() => {
     setMonthsToLoad((prev) => prev + 1);
-  };
+  }, []);
+
+  const loadMoreRenderedMonths = useCallback(() => {
+    setRenderedMonthsLimit((prev) => prev + 3); // Load 3 more months at a time
+  }, []);
 
   // Auto-expand all months when searching
   useEffect(() => {
-    if (searchQuery.trim() && searchQuery !== previousSearchQuery) {
+    if (deferredSearchQuery.trim() && deferredSearchQuery !== previousSearchQuery) {
       // When user starts searching or changes search, expand all months with results
       const allMonthKeys = groupedVisits.map((g) => g.monthKey);
       setExpandedMonths(new Set(allMonthKeys));
-      setPreviousSearchQuery(searchQuery);
-    } else if (!searchQuery.trim() && previousSearchQuery) {
+      setPreviousSearchQuery(deferredSearchQuery);
+    } else if (!deferredSearchQuery.trim() && previousSearchQuery) {
       // When search is cleared, collapse to current month only
       setExpandedMonths(new Set([getMonthKey(new Date().toISOString())]));
       setPreviousSearchQuery("");
     }
-  }, [searchQuery, groupedVisits, previousSearchQuery]);
+  }, [deferredSearchQuery, groupedVisits, previousSearchQuery]);
 
   if (visitsLoading) {
     return (
@@ -688,7 +719,7 @@ export default function HomePage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {searchQuery.trim()
+            {deferredSearchQuery.trim()
               ? `Found ${filteredVisits.length + filteredQuickTrackItems.length} items (${filteredVisits.length} visits, ${filteredQuickTrackItems.length} quick items)`
               : (() => {
                   const parts = [];
@@ -740,7 +771,15 @@ export default function HomePage({
             <Button
               variant={filtersExpanded ? "default" : "outline"}
               size="default"
-              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              onClick={() => {
+                if (filtersExpanded) {
+                  // Reset filters before hiding
+                  setFilterType("all");
+                  setVisibilityFilter("all");
+                  setRatingFilter("all");
+                }
+                setFiltersExpanded(!filtersExpanded);
+              }}
               className="flex items-center gap-2 px-4 relative"
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -766,20 +805,27 @@ export default function HomePage({
               filtersExpanded ? "max-h-20 opacity-100" : "max-h-0 opacity-0"
             }`}
           >
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               {/* Type Filter */}
               <Select
                 value={filterType}
-                onValueChange={(value: "all" | "user" | "friends") =>
-                  setFilterType(value)
-                }
+                onValueChange={(
+                  value:
+                    | "all"
+                    | "user_visits"
+                    | "user_quick_track"
+                    | "user_both"
+                    | "friends"
+                ) => setFilterType(value)}
               >
-                <SelectTrigger className="flex-1">
-                  <SelectValue />
+                <SelectTrigger className="flex-1 min-w-0">
+                  <SelectValue className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Visits</SelectItem>
-                  <SelectItem value="user">My Visits</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="user_visits">My Visits</SelectItem>
+                  <SelectItem value="user_quick_track">My Quick Track</SelectItem>
+                  <SelectItem value="user_both">Both</SelectItem>
                   <SelectItem value="friends">Friends</SelectItem>
                 </SelectContent>
               </Select>
@@ -791,8 +837,8 @@ export default function HomePage({
                   setVisibilityFilter(value)
                 }
               >
-                <SelectTrigger className="flex-1">
-                  <SelectValue />
+                <SelectTrigger className="flex-1 min-w-0">
+                  <SelectValue className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Visibility</SelectItem>
@@ -808,16 +854,16 @@ export default function HomePage({
                   setRatingFilter(value)
                 }
               >
-                <SelectTrigger className="flex-1">
-                  <SelectValue />
+                <SelectTrigger className="flex-1 min-w-0">
+                  <SelectValue className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Ratings</SelectItem>
-                  <SelectItem value="5">5 - Excellent</SelectItem>
-                  <SelectItem value="4">4 - Good</SelectItem>
-                  <SelectItem value="3">3 - Average</SelectItem>
-                  <SelectItem value="2">2 - Below Avg</SelectItem>
-                  <SelectItem value="1">1 - Poor</SelectItem>
+                  <SelectItem value="5">{RATING_LABELS[4]}</SelectItem>
+                  <SelectItem value="4">{RATING_LABELS[3]}</SelectItem>
+                  <SelectItem value="3">{RATING_LABELS[2]}</SelectItem>
+                  <SelectItem value="2">{RATING_LABELS[1]}</SelectItem>
+                  <SelectItem value="1">{RATING_LABELS[0]}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -864,7 +910,7 @@ export default function HomePage({
           filteredQuickTrackItems.length === 0 && (
             <>
               {/* No search results */}
-              {searchQuery.trim() && (
+              {deferredSearchQuery.trim() && (
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <Search className="w-12 h-12 mx-auto text-gray-400 mb-3" />
@@ -886,7 +932,7 @@ export default function HomePage({
               )}
 
               {/* No results due to time filter, but more visits exist */}
-              {!searchQuery.trim() && hasMoreVisits && (
+              {!deferredSearchQuery.trim() && hasMoreVisits && (
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-3" />
@@ -904,25 +950,27 @@ export default function HomePage({
               )}
 
               {/* No results due to filter selection */}
-              {!searchQuery.trim() && !hasMoreVisits && (
+              {!deferredSearchQuery.trim() && !hasMoreVisits && (
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <Users className="w-12 h-12 mx-auto text-gray-400 mb-3" />
                     <p className="text-gray-600 mb-2">
-                      {filterType === "user"
-                        ? "No visits from you"
-                        : "No visits from friends"}
+                      {filterType === "friends"
+                        ? "No visits from friends"
+                        : filterType === "user_visits"
+                          ? "No visits from you"
+                          : filterType === "user_quick_track"
+                            ? "No quick track items from you"
+                            : "No items from you"}
                     </p>
                     <p className="text-sm text-gray-500 mb-4">
-                      {filterType === "user"
-                        ? "Try changing the filter to see friends' visits"
-                        : "Try changing the filter to see all visits"}
+                      Try changing the filter to see all items
                     </p>
                     <Button
                       variant="outline"
                       onClick={() => setFilterType("all")}
                     >
-                      Show All Visits
+                      Show All
                     </Button>
                   </CardContent>
                 </Card>
@@ -930,7 +978,7 @@ export default function HomePage({
             </>
           )}
 
-        {groupedVisits.map(({ monthKey, monthLabel, days }) => (
+        {renderedGroupedVisits.map(({ monthKey, monthLabel, days }) => (
           <div key={monthKey} className="space-y-3">
             {/* Month Header */}
             <button
@@ -1406,8 +1454,21 @@ export default function HomePage({
           </div>
         ))}
 
-        {/* Load More Button */}
-        {hasMoreVisits && (
+        {/* Load More Rendered Months Button */}
+        {hasMoreMonthsToRender && (
+          <div className="pt-2 pb-4">
+            <Button
+              onClick={loadMoreRenderedMonths}
+              variant="outline"
+              className="w-full"
+            >
+              Load More Months ({groupedVisits.length - renderedMonthsLimit} remaining)
+            </Button>
+          </div>
+        )}
+
+        {/* Load More Data Button (older visits not yet loaded) */}
+        {hasMoreVisits && !hasMoreMonthsToRender && (
           <div className="pt-2 pb-4">
             <Button
               onClick={loadMoreMonths}

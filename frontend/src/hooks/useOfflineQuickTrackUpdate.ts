@@ -25,7 +25,7 @@ export interface QuickTrackUpdateData {
   location_text?: string;
   latitude?: number;
   longitude?: number;
-  itemDate?: string; // Local date string
+  itemDate?: string; // ISO date string
   photo?: File | null; // New photo, or null to remove existing
   existingPhotoId?: string; // ID of existing photo to remove
   visibility?: 'private' | 'friends';
@@ -81,6 +81,7 @@ export function useOfflineQuickTrackUpdate() {
             location_text: data.location_text,
             latitude: data.latitude,
             longitude: data.longitude,
+            itemDate: data.itemDate || undefined,
             user: user.id,
             isQuickTrack: true,
             visibility: data.visibility || 'private',
@@ -132,7 +133,7 @@ async function executeUpdate(
     latitude: data.latitude,
     longitude: data.longitude,
     visibility: data.visibility || 'private',
-    created: data.itemDate ? new Date(data.itemDate).toISOString() : undefined,
+    itemDate: data.itemDate || undefined,
   });
 
   console.log('[executeUpdate] Food item updated:', foodItem.id);
@@ -191,7 +192,7 @@ async function queueUpdate(data: QuickTrackUpdateData, userId: string): Promise<
         latitude: data.latitude,
         longitude: data.longitude,
         visibility: data.visibility || 'private',
-        created: data.itemDate ? new Date(data.itemDate).toISOString() : undefined,
+        itemDate: data.itemDate || undefined,
       },
       photo: data.photo instanceof File ? data.photo : undefined,
       removePhoto: data.photo === null,

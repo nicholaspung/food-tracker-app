@@ -26,6 +26,7 @@ export interface QuickTrackData {
   longitude?: number;
   photo?: File; // Optional photo
   visibility?: 'private' | 'friends'; // Visibility for quick track items
+  itemDate?: string; // Date when item was consumed/tracked (ISO string)
 }
 
 export interface QuickTrackResult {
@@ -95,6 +96,7 @@ export function useOfflineQuickTrack() {
             location_text: data.location_text,
             latitude: data.latitude,
             longitude: data.longitude,
+            itemDate: data.itemDate,
             user: user.id,
             isQuickTrack: true, // Mark as quick track item
             visibility: data.visibility || 'private', // Default to private if not specified
@@ -161,6 +163,7 @@ async function executeQuickTrack(
     location_text: data.location_text,
     latitude: data.latitude,
     longitude: data.longitude,
+    itemDate: data.itemDate,
     userId,
   });
 
@@ -173,6 +176,7 @@ async function executeQuickTrack(
     location_text: data.location_text || undefined,
     latitude: data.latitude,
     longitude: data.longitude,
+    itemDate: data.itemDate || undefined,
     user: userId,
     isQuickTrack: true, // Mark as quick track item
     visibility: data.visibility || 'private', // Default to private if not specified
@@ -218,6 +222,7 @@ async function queueQuickTrack(data: QuickTrackData, userId: string): Promise<vo
         location_text: data.location_text,
         latitude: data.latitude,
         longitude: data.longitude,
+        itemDate: data.itemDate,
         user: userId,
         isQuickTrack: true, // Mark as quick track item
         visibility: data.visibility || 'private', // Default to private if not specified
@@ -226,5 +231,5 @@ async function queueQuickTrack(data: QuickTrackData, userId: string): Promise<vo
     },
   });
 
-  console.log('Queued Quick Track item:', data.name, 'with photo:', !!data.photo);
+  console.log('Queued Quick Track item:', data.name, 'with date:', data.itemDate, 'photo:', !!data.photo);
 }

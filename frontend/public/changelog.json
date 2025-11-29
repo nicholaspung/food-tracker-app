@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.5.4",
+    "date": "2025-11-28",
+    "title": "Performance & Filtering Enhancements",
+    "summary": "Faster home page with smarter loading, clearer filter labels, and more precise filtering options to find exactly what you want!",
+    "features": [
+      "Granular type filtering: New filter options - 'My Visits' (restaurant visits only), 'My Quick Track' (quick items only), 'Both' (all your items), or 'Friends' (friends' items)",
+      "Progressive month loading: Home page now loads 3 months at a time with 'Load More Months' button for better performance with lots of data"
+    ],
+    "improvements": [
+      "Clearer rating labels: Rating filter now shows actual labels like 'Eat often', 'Worth trying' instead of generic '5 - Excellent'",
+      "Auto-clear filters: Filters automatically reset to defaults when you close the filter panel",
+      "Faster search: Search performance improved with deferred rendering",
+      "Better date handling: Quick track items now properly use itemDate field instead of creation date for timeline display",
+      "Compact filter selectors: Filter dropdowns optimized to fit better on mobile screens"
+    ],
+    "fixes": [
+      "Fixed quick track item dates not saving correctly when set in Process Photos workflow",
+      "Fixed edit quick track page not showing the correct date that was previously saved",
+      "Fixed quick track items appearing on wrong dates in home feed timeline",
+      "Fixed Process Photos review not displaying selected dates for quick track items"
+    ]
+  },
+  {
     "version": "0.5.3",
     "date": "2025-11-28",
     "title": "Complete Quick Track Item Management",
