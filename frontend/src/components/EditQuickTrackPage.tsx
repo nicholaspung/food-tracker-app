@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useFoodItem } from "@/hooks/api/useFoodItems";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -39,12 +40,7 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
   const navigate = useNavigate();
 
   // Fetch the quick track item
-  const { data: item, isLoading: itemLoading } = useQuery({
-    queryKey: ["quickTrackItem", itemId],
-    queryFn: async () => {
-      return await pb.collection("food_items").getOne(itemId);
-    },
-  });
+  const { data: item, isLoading: itemLoading } = useFoodItem(itemId);
 
   // Fetch existing photo if any
   const { data: visitPhotos = [] } = useQuery({

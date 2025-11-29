@@ -59,22 +59,22 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 2.1 API Query Hooks
 
-- [ ] **useRestaurants Hook** (2 hours)
+- [x] **useRestaurants Hook** (2 hours)
   - Create `frontend/src/hooks/api/useRestaurants.ts`
   - Centralize restaurant queries used in 8+ files
   - Return: `{ data, isLoading, error, refetch }`
 
-- [ ] **useFoodItems Hook** (2 hours)
+- [x] **useFoodItems Hook** (2 hours)
   - Create `frontend/src/hooks/api/useFoodItems.ts`
   - Centralize food item queries
   - Support optional filtering
 
-- [ ] **useVisits Hook** (3 hours)
+- [x] **useVisits Hook** (3 hours)
   - Create `frontend/src/hooks/api/useVisits.ts`
   - Centralize visit queries with expand
   - Support optional user filtering
 
-- [ ] **Update All Components to Use New Hooks** (4 hours)
+- [x] **Update All Components to Use New Hooks** (4 hours)
   - Replace inline useQuery calls across codebase
   - Ensure consistent queryKey usage
   - Test data fetching in each component
