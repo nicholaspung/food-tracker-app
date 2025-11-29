@@ -16,17 +16,10 @@
     - allow for user to toggle their own locations as well as their own friends
     - add a "toggleable bottom tray" that shows up with the list of visits records
 
-- track restaurant visit
-    - make the button for "use current location" a button next to the location input
-        - or try out when a user presses into the location input to type, have a suggestion for "use my location" pop up
-    - put the "add new restaurant" link underneath the search food places
-    - make the restaurant selection have a lot less padding, or think of a new design to show the separation for it
-- quick track item
-    - when the user presses cancel on a quick track item, it should go back to the add new page
-    - selecting different ratings seems to re-render everything?
-    - there's no way to edit a quick track item
-    - there's no way to delete a quick track item
-    - there's no way to change the date of a quick track item
-    - date/visibility should be at the top similar to track restaurant visit (and should have similar styling)
-    - place the photo (optional) field right after the item name
+- process saved photos - quick track item
+    - if I select different dates for each photo, it doesn't seem to be tracking it when I click review. It just adds it to today's date, ignoring what I selected
+    - in the review page, it doesn't seem to be showing the dates for those specific quick track item photos in the right spot
+- homepage
+    - in the filters, for the ratings, instead of the "5 - excellent", can we make it say the labels instead, i.e. "eat often, eat occasionally, worth trying, etc..." except use the actual labels from the app, whereever it's located
+    - can you add a "clear button" for the filters somehow without changing the space
 - remove the feedback tab and put it into the "profile" tab and replace the feedback tab with additional features, i.e. the lists feature and bill split management feature

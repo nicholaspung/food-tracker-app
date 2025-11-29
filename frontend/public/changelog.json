@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.5.3",
+    "date": "2025-11-28",
+    "title": "Complete Quick Track Item Management",
+    "summary": "Edit and delete your quick track items with full offline support, plus customize dates for snacks and meals tracked throughout the day!",
+    "features": [
+      "Edit Quick Track Items: Update item names, ratings, categories, photos, locations, and notes after creation",
+      "Delete Quick Track Items: Remove quick track items from your home feed with confirmation dialog",
+      "Date Editing: Choose custom dates when creating or editing quick track items - perfect for logging yesterday's snack!",
+      "Date Selection in Process Photos: Set different dates for quick track items when processing multiple photos at once"
+    ],
+    "improvements": [
+      "Full offline support: Edit and delete quick track items while offline - changes sync automatically when back online",
+      "Photo management: Add, replace, or remove photos from existing quick track items",
+      "Visual date display: See and edit item dates with calendar icon and formatted date display",
+      "Optimistic updates: See your edits instantly while they save in the background",
+      "Consistent editing experience: Quick track editing follows the same intuitive flow as visit editing"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.5.2",
     "date": "2025-11-28",
     "title": "Enhanced Mobile Experience & Navigation",

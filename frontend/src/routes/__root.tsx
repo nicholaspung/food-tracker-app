@@ -28,6 +28,7 @@ const ROUTES_WITH_TABS = [
   "/photos",
   "/add-visit",
   "/quick-track",
+  "/edit-quick-track",
   "/process-photos",
   "/edit-visit",
   "/friends",

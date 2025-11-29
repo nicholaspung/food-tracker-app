@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { pb, Visit, Restaurant, FoodItem } from "@/lib/pocketbase";
 import { syncQueue } from "@/lib/syncQueue";
 import { useSync } from "@/contexts/SyncContext";
 import { utcToLocalDateString } from "@/lib/dateUtils";
+import { useOfflineQuickTrackDelete } from "@/hooks/useOfflineQuickTrackDelete";
 import {
   Card,
   CardContent,
@@ -129,6 +131,7 @@ export default function HomePage({
   onEditVisit,
   onAddVisit,
 }: HomePageProps = {}) {
+  const navigate = useNavigate();
   const [monthsToLoad, setMonthsToLoad] = useState(1); // Start with 1 month
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
     new Set([getMonthKey(new Date().toISOString())])
@@ -136,6 +139,8 @@ export default function HomePage({
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(
     null
   );
+  const [quickTrackItemToDelete, setQuickTrackItemToDelete] =
+    useState<QuickTrackItemWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
   const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -221,6 +226,7 @@ export default function HomePage({
 
   const { isOnline } = useSync();
   const [isDeleting, setIsDeleting] = useState(false);
+  const deleteQuickTrackMutation = useOfflineQuickTrackDelete();
 
   // Delete visit with offline support
   const handleDeleteVisit = async (visitId: string) => {
@@ -266,6 +272,40 @@ export default function HomePage({
     } catch (error) {
       console.error("Failed to delete visit:", error);
       alert("Failed to delete visit. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Delete quick track item with offline support
+  const handleDeleteQuickTrackItem = async (
+    itemId: string,
+    photoId?: string
+  ) => {
+    setIsDeleting(true);
+    try {
+      await deleteQuickTrackMutation.mutateAsync({
+        id: itemId,
+        photoId,
+      });
+
+      setQuickTrackItemToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete quick track item:", error);
+
+      // Show helpful message if offline
+      if (
+        !isOnline &&
+        error instanceof Error &&
+        error.message?.includes("queued")
+      ) {
+        alert(
+          "You're offline. Your deletion has been queued and will sync when you're back online."
+        );
+        setQuickTrackItemToDelete(null);
+      } else {
+        alert("Failed to delete item. Please try again.");
+      }
     } finally {
       setIsDeleting(false);
     }
@@ -644,7 +684,7 @@ export default function HomePage({
       <WhatsNewDialog />
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 space-y-3">
+      <div className="bg-white border-b border-gray-200 px-4 py-2 space-y-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -925,7 +965,11 @@ export default function HomePage({
                   const friendQuickTrack = allMonthQuickTrack.filter(
                     (item) => item.user !== currentUserId
                   ).length;
-                  const total = userVisits + friendVisits + userQuickTrack + friendQuickTrack;
+                  const total =
+                    userVisits +
+                    friendVisits +
+                    userQuickTrack +
+                    friendQuickTrack;
 
                   // Friend items = friend visits + friend quick track combined
                   const friendItemsTotal = friendVisits + friendQuickTrack;
@@ -1222,7 +1266,58 @@ export default function HomePage({
                               key={item.id}
                               className="border-gray-200 bg-gray-50/50"
                             >
-                              <CardContent className="pt-4 pb-4">
+                              <CardContent>
+                                {/* Header with title and action buttons */}
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <p className="font-medium text-gray-900 break-words">
+                                      {item.name}
+                                    </p>
+                                    {/* Visibility indicator */}
+                                    <div
+                                      className="flex items-center gap-1"
+                                      title={
+                                        item.visibility === "friends"
+                                          ? "Shared with friends"
+                                          : "Private"
+                                      }
+                                    >
+                                      {item.visibility === "friends" ? (
+                                        <UserCheck className="w-4 h-4 text-green-600" />
+                                      ) : (
+                                        <Lock className="w-4 h-4 text-gray-400" />
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Edit and Delete buttons */}
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        navigate({
+                                          to: `/edit-quick-track/${item.id}`,
+                                        })
+                                      }
+                                      data-testid={`edit-quick-track-${item.id}`}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        setQuickTrackItemToDelete(item)
+                                      }
+                                      data-testid={`delete-quick-track-${item.id}`}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
                                 <div className="flex items-start gap-3">
                                   {/* Photo thumbnail */}
                                   {photoUrl && photo && fullPhotoUrl && (
@@ -1240,26 +1335,6 @@ export default function HomePage({
                                   )}
 
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <p className="font-medium text-gray-900 break-words">
-                                        {item.name}
-                                      </p>
-                                      {/* Visibility indicator */}
-                                      <div
-                                        className="flex items-center gap-1"
-                                        title={
-                                          item.visibility === "friends"
-                                            ? "Shared with friends"
-                                            : "Private"
-                                        }
-                                      >
-                                        {item.visibility === "friends" ? (
-                                          <UserCheck className="w-4 h-4 text-green-600" />
-                                        ) : (
-                                          <Lock className="w-4 h-4 text-gray-400" />
-                                        )}
-                                      </div>
-                                    </div>
                                     {/* Category badge */}
                                     {item.itemCategory && (
                                       <Badge
@@ -1414,6 +1489,74 @@ export default function HomePage({
               onClick={() =>
                 visitToDelete && handleDeleteVisit(visitToDelete.id)
               }
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Quick Track Item Confirmation Dialog */}
+      <AlertDialog
+        open={!!quickTrackItemToDelete}
+        onOpenChange={(open) => !open && setQuickTrackItemToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Quick Track Item?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Are you sure you want to delete this item? This action cannot
+                  be undone.
+                </p>
+                {quickTrackItemToDelete && (
+                  <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {quickTrackItemToDelete.name}
+                      </p>
+                      {quickTrackItemToDelete.itemCategory && (
+                        <Badge variant="outline" className="text-xs mt-1">
+                          {quickTrackItemToDelete.itemCategory.replace(
+                            /_/g,
+                            " "
+                          )}
+                        </Badge>
+                      )}
+                      {quickTrackItemToDelete.location_text && (
+                        <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {quickTrackItemToDelete.location_text}
+                        </p>
+                      )}
+                      {quickTrackItemToDelete.notes && (
+                        <p className="text-xs text-gray-600 mt-1 italic">
+                          "{quickTrackItemToDelete.notes}"
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (quickTrackItemToDelete) {
+                  const photo = visitPhotos.find(
+                    (p: any) => p.food_item === quickTrackItemToDelete.id
+                  );
+                  handleDeleteQuickTrackItem(
+                    quickTrackItemToDelete.id,
+                    photo?.id
+                  );
+                }
+              }}
               disabled={isDeleting}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >

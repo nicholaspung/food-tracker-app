@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { pb } from "@/lib/pocketbase";
-import { getTodayLocalDateString, localDateStringToUTC, formatLocalDateForDisplay } from "@/lib/dateUtils";
+import {
+  getTodayLocalDateString,
+  localDateStringToUTC,
+  formatLocalDateForDisplay,
+} from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,7 +36,9 @@ export default function RateItemsPage({
 
   // Photo state - track photo for each item (max 1 for now)
   const [itemPhotos, setItemPhotos] = useState<Map<number, File>>(new Map());
-  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<number, string>>(new Map());
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<number, string>>(
+    new Map()
+  );
 
   // Check if user has rated before - expand legend for first-timers
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
@@ -69,7 +75,7 @@ export default function RateItemsPage({
     const visitDateUTC = localDateStringToUTC(visitDate);
 
     // Prepare food items data
-    const foodItemsData = items.map(item => ({
+    const foodItemsData = items.map((item) => ({
       name: item.menuItem.name,
       description: item.description,
       rating: item.rating,
@@ -96,8 +102,10 @@ export default function RateItemsPage({
       resetUploadState();
 
       // Show helpful message if offline
-      if (!isOnline && error.message?.includes('queued')) {
-        alert("You're offline. Your visit has been saved and will sync when you're back online.");
+      if (!isOnline && error.message?.includes("queued")) {
+        alert(
+          "You're offline. Your visit has been saved and will sync when you're back online."
+        );
         visitDraftService.clearDraft();
         localStorage.setItem("hasRatedBefore", "true");
         onSubmit();
@@ -155,7 +163,7 @@ export default function RateItemsPage({
   // Cleanup preview URLs on unmount
   useEffect(() => {
     return () => {
-      photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
 
@@ -171,75 +179,71 @@ export default function RateItemsPage({
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
           {/* Date and Visibility Card */}
-          <Card>
-            <CardContent className="space-y-3">
-              {/* Date picker */}
-              {visitDate && (
-                <div>
-                  {!showDateEdit ? (
-                    <div
-                      className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => setShowDateEdit(true)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-gray-600" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {formatLocalDateForDisplay(visitDate)}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500">Tap to change</span>
-                    </div>
-                  ) : (
-                    <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                      <Label className="text-xs text-gray-600">Visit Date</Label>
-                      <Input
-                        type="date"
-                        value={visitDate}
-                        onChange={(e) => setVisitDate(e.target.value)}
-                        max={getTodayLocalDateString()}
-                        className="text-sm"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowDateEdit(false)}
-                        className="w-full"
-                      >
-                        Done
-                      </Button>
-                    </div>
-                  )}
+          {/* Date picker */}
+          {visitDate && (
+            <div>
+              {!showDateEdit ? (
+                <div
+                  className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowDateEdit(true)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-900">
+                      {formatLocalDateForDisplay(visitDate)}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500">Tap to change</span>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-2">
+                  <Label className="text-xs text-gray-600">Visit Date</Label>
+                  <Input
+                    type="date"
+                    value={visitDate}
+                    onChange={(e) => setVisitDate(e.target.value)}
+                    max={getTodayLocalDateString()}
+                    className="text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDateEdit(false)}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Visibility Checkbox */}
-              <div className="p-3 bg-white rounded-lg border border-gray-200">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={visitVisibility === "friends"}
-                    onChange={(e) =>
-                      setVisitVisibility(e.target.checked ? "friends" : "private")
-                    }
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium">
-                        Friends can view this visit
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {visitVisibility === "friends"
-                        ? "Your friends will be able to see this visit and your ratings"
-                        : "Only you will be able to see this visit"}
-                    </p>
-                  </div>
-                </label>
+          {/* Visibility Checkbox */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={visitVisibility === "friends"}
+                onChange={(e) =>
+                  setVisitVisibility(e.target.checked ? "friends" : "private")
+                }
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium">
+                    Friends can view this visit
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {visitVisibility === "friends"
+                    ? "Your friends will be able to see this visit and your ratings"
+                    : "Only you will be able to see this visit"}
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            </label>
+          </div>
 
           {/* Collapsible Rating Legend */}
           <Card className="border-2 border-blue-200 bg-blue-50/30 py-4">
@@ -357,19 +361,23 @@ export default function RateItemsPage({
           )}
 
           {/* Progress indicator for photo uploads */}
-          {uploadState.status !== 'idle' && uploadState.status !== 'error' && (
+          {uploadState.status !== "idle" && uploadState.status !== "error" && (
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                <span
+                  className={`text-sm font-medium ${uploadState.status === "complete" ? "text-green-700" : "text-gray-700"}`}
+                >
                   {uploadState.currentOperation}
                 </span>
-                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                <span
+                  className={`text-sm font-medium ${uploadState.status === "complete" ? "text-green-700" : "text-gray-700"}`}
+                >
                   {uploadState.progress}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === 'complete' ? 'bg-green-600' : 'bg-blue-600'}`}
+                  className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === "complete" ? "bg-green-600" : "bg-blue-600"}`}
                   style={{ width: `${uploadState.progress}%` }}
                 />
               </div>
@@ -382,7 +390,11 @@ export default function RateItemsPage({
             </Button>
             <Button
               onClick={handleSaveVisit}
-              disabled={saveVisitMutation.isPending || uploadState.status === 'uploading' || uploadState.status === 'compressing'}
+              disabled={
+                saveVisitMutation.isPending ||
+                uploadState.status === "uploading" ||
+                uploadState.status === "compressing"
+              }
               className="flex-1"
             >
               {saveVisitMutation.isPending ? "Saving..." : "Save Visit"}

@@ -1,18 +1,25 @@
-import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { pb } from '@/lib/pocketbase';
-import { localDateStringToUTC, getTodayLocalDateString, formatLocalDateForDisplay } from '@/lib/dateUtils';
-import { editVisitDraftService, EditVisitDraftItem } from '@/services/editVisitDraftService';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Calendar, Users } from 'lucide-react';
-import { useScrollIntoView } from '@/hooks/useScrollIntoView';
-import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/usePhotoUpload';
-import { RATING_OPTIONS } from '@/lib/ratingConstants';
-import MenuItemPhotoInput from '@/components/MenuItemPhotoInput';
-import { useKeyboardVisible } from '@/hooks/useKeyboardVisible';
+import { useState, useEffect } from "react";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { pb } from "@/lib/pocketbase";
+import {
+  localDateStringToUTC,
+  getTodayLocalDateString,
+  formatLocalDateForDisplay,
+} from "@/lib/dateUtils";
+import {
+  editVisitDraftService,
+  EditVisitDraftItem,
+} from "@/services/editVisitDraftService";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Calendar, Users } from "lucide-react";
+import { useScrollIntoView } from "@/hooks/useScrollIntoView";
+import { usePhotoUpload, type PhotoUploadItem } from "@/hooks/usePhotoUpload";
+import { RATING_OPTIONS } from "@/lib/ratingConstants";
+import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -20,34 +27,50 @@ interface EditRateItemsPageProps {
   onComplete: () => void;
 }
 
-export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditRateItemsPageProps) {
+export default function EditRateItemsPage({
+  visitId,
+  onBack,
+  onComplete,
+}: EditRateItemsPageProps) {
   const queryClient = useQueryClient();
   const draft = editVisitDraftService.getDraft(visitId);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [isInitialized, setIsInitialized] = useState(false);
 
-  const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>(draft?.menuItems || []);
-  const [visitDate, setVisitDate] = useState(draft?.visitDate || '');
-  const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(draft?.visitVisibility || 'friends');
+  const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>(
+    draft?.menuItems || []
+  );
+  const [visitDate, setVisitDate] = useState(draft?.visitDate || "");
+  const [visitVisibility, setVisitVisibility] = useState<"friends" | "private">(
+    draft?.visitVisibility || "friends"
+  );
   const [showDateEdit, setShowDateEdit] = useState(false);
 
   // Photo state - track photo for each item (using food_item id as key)
   const [itemPhotos, setItemPhotos] = useState<Map<string, File>>(new Map());
-  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<string, string>>(new Map());
-  const [deletedPhotoIds, setDeletedPhotoIds] = useState<Set<string>>(new Set());
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<string, string>>(
+    new Map()
+  );
+  const [deletedPhotoIds, setDeletedPhotoIds] = useState<Set<string>>(
+    new Set()
+  );
 
   // Ref for auto-scrolling notes input into view on mobile
   const notesInputRef = useScrollIntoView<HTMLInputElement>();
 
   // Photo upload hook for parallel uploads with progress
-  const { state: uploadState, uploadPhotos, reset: resetUploadState } = usePhotoUpload();
+  const {
+    state: uploadState,
+    uploadPhotos,
+    reset: resetUploadState,
+  } = usePhotoUpload();
   const isKeyboardVisible = useKeyboardVisible();
 
   // Fetch existing photos for this visit
   const { data: existingPhotos = [] } = useQuery({
-    queryKey: ['visitPhotos', visitId],
+    queryKey: ["visitPhotos", visitId],
     queryFn: async () => {
-      return await pb.collection('visit_photos').getFullList({
+      return await pb.collection("visit_photos").getFullList({
         filter: `visit = "${visitId}"`,
       });
     },
@@ -55,7 +78,11 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
   // Only check for draft on initial mount
   useEffect(() => {
-    if (!draft || !draft.restaurant || draft.menuItems.filter(i => !i._deleted).length === 0) {
+    if (
+      !draft ||
+      !draft.restaurant ||
+      draft.menuItems.filter((i) => !i._deleted).length === 0
+    ) {
       onBack();
     } else {
       setIsInitialized(true);
@@ -79,7 +106,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
   // Cleanup preview URLs on unmount
   useEffect(() => {
     return () => {
-      photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
 
@@ -121,7 +148,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
   // Mark an existing photo for deletion
   const handleDeleteExistingPhoto = (foodItemId: string) => {
-    const existingPhoto = existingPhotos.find((p: any) => p.food_item === foodItemId);
+    const existingPhoto = existingPhotos.find(
+      (p: any) => p.food_item === foodItemId
+    );
     if (existingPhoto) {
       const newDeletedIds = new Set(deletedPhotoIds);
       newDeletedIds.add(existingPhoto.id);
@@ -131,7 +160,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
   // Get existing photo URL for a food item (only if not marked for deletion)
   const getExistingPhotoUrl = (foodItemId: string) => {
-    const existingPhoto = existingPhotos.find((p: any) => p.food_item === foodItemId);
+    const existingPhoto = existingPhotos.find(
+      (p: any) => p.food_item === foodItemId
+    );
     if (existingPhoto && !deletedPhotoIds.has(existingPhoto.id)) {
       return pb.files.getURL(existingPhoto, existingPhoto.photo);
     }
@@ -141,20 +172,20 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
   const updateVisitMutation = useMutation({
     mutationFn: async () => {
       const user = pb.authStore.record;
-      if (!user || !draft || !draft.restaurant) throw new Error('Missing data');
+      if (!user || !draft || !draft.restaurant) throw new Error("Missing data");
 
       // Convert local date to UTC before saving
       const visitDateUTC = localDateStringToUTC(visitDate);
 
       // Update visit
-      await pb.collection('visits').update(visitId, {
+      await pb.collection("visits").update(visitId, {
         visitDate: visitDateUTC,
         visibility: visitVisibility,
       });
 
       // Delete marked photos first
       for (const photoId of deletedPhotoIds) {
-        await pb.collection('visit_photos').delete(photoId);
+        await pb.collection("visit_photos").delete(photoId);
       }
 
       // Track photo uploads for parallel processing
@@ -164,11 +195,11 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
       for (const item of menuItems) {
         if (item._deleted && item.id) {
           // Delete existing item and its photos
-          await pb.collection('food_items').delete(item.id);
+          await pb.collection("food_items").delete(item.id);
           // Photos will be cascade deleted by backend
         } else if (item.id) {
           // Update existing item
-          await pb.collection('food_items').update(item.id, {
+          await pb.collection("food_items").update(item.id, {
             name: item.name,
             description: item.description,
             rating: item.rating,
@@ -178,7 +209,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
           // Check for photo to upload
           const newPhoto = itemPhotos.get(item.id);
           if (newPhoto) {
-            const existingPhoto = existingPhotos.find((p: any) => p.food_item === item.id);
+            const existingPhoto = existingPhotos.find(
+              (p: any) => p.food_item === item.id
+            );
             photoUploads.push({
               photo: newPhoto,
               foodItemId: item.id,
@@ -189,7 +222,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
           }
         } else if (!item._deleted) {
           // Create new item
-          const foodItem = await pb.collection('food_items').create({
+          const foodItem = await pb.collection("food_items").create({
             name: item.name,
             description: item.description,
             visit: visitId,
@@ -218,12 +251,12 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['allVisits'] });
-      queryClient.invalidateQueries({ queryKey: ['visit', visitId] });
-      queryClient.invalidateQueries({ queryKey: ['foodItems', visitId] });
-      queryClient.invalidateQueries({ queryKey: ['allFoodItems'] });
-      queryClient.invalidateQueries({ queryKey: ['visitPhotos', visitId] });
-      queryClient.invalidateQueries({ queryKey: ['allVisitPhotos'] });
+      queryClient.invalidateQueries({ queryKey: ["allVisits"] });
+      queryClient.invalidateQueries({ queryKey: ["visit", visitId] });
+      queryClient.invalidateQueries({ queryKey: ["foodItems", visitId] });
+      queryClient.invalidateQueries({ queryKey: ["allFoodItems"] });
+      queryClient.invalidateQueries({ queryKey: ["visitPhotos", visitId] });
+      queryClient.invalidateQueries({ queryKey: ["allVisitPhotos"] });
       // Reset upload state
       resetUploadState();
       // Navigate first, then clear draft
@@ -235,13 +268,17 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
       }, 100);
     },
     onError: (err: any) => {
-      setError(err.message || 'Failed to update visit');
+      setError(err.message || "Failed to update visit");
       // Reset upload state on error so user can retry
       resetUploadState();
     },
   });
 
-  const handleUpdateItem = (index: number, field: 'rating' | 'notes', value: any) => {
+  const handleUpdateItem = (
+    index: number,
+    field: "rating" | "notes",
+    value: any
+  ) => {
     const newItems = [...menuItems];
     newItems[index] = { ...newItems[index], [field]: value };
     setMenuItems(newItems);
@@ -251,7 +288,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
     updateVisitMutation.mutate();
   };
 
-  const activeMenuItems = menuItems.filter(item => !item._deleted);
+  const activeMenuItems = menuItems.filter((item) => !item._deleted);
 
   // Show loading state while checking draft
   if (!isInitialized) {
@@ -287,81 +324,83 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
 
         <div className="space-y-4">
           {/* Date and Visibility Card */}
-          <Card>
-            <CardContent className="space-y-3">
-              {/* Date picker */}
-              {visitDate && (
-                <div>
-                  {!showDateEdit ? (
-                    <div
-                      className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => setShowDateEdit(true)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-gray-600" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {formatLocalDateForDisplay(visitDate)}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500">Tap to change</span>
-                    </div>
-                  ) : (
-                    <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                      <Label className="text-xs text-gray-600">Visit Date</Label>
-                      <Input
-                        type="date"
-                        value={visitDate}
-                        onChange={(e) => setVisitDate(e.target.value)}
-                        max={getTodayLocalDateString()}
-                        className="text-sm"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowDateEdit(false)}
-                        className="w-full"
-                      >
-                        Done
-                      </Button>
-                    </div>
-                  )}
+          {/* Date picker */}
+          {visitDate && (
+            <div>
+              {!showDateEdit ? (
+                <div
+                  className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowDateEdit(true)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-900">
+                      {formatLocalDateForDisplay(visitDate)}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500">Tap to change</span>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-white rounded-lg border border-gray-200 space-y-2">
+                  <Label className="text-xs text-gray-600">Visit Date</Label>
+                  <Input
+                    type="date"
+                    value={visitDate}
+                    onChange={(e) => setVisitDate(e.target.value)}
+                    max={getTodayLocalDateString()}
+                    className="text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDateEdit(false)}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Visibility Checkbox */}
-              <div className="p-3 bg-white rounded-lg border border-gray-200">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={visitVisibility === 'friends'}
-                    onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium">Friends can view this visit</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {visitVisibility === 'friends'
-                        ? 'Your friends will be able to see this visit and your ratings'
-                        : 'Only you will be able to see this visit'}
-                    </p>
-                  </div>
-                </label>
+          {/* Visibility Checkbox */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={visitVisibility === "friends"}
+                onChange={(e) =>
+                  setVisitVisibility(e.target.checked ? "friends" : "private")
+                }
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium">
+                    Friends can view this visit
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {visitVisibility === "friends"
+                    ? "Your friends will be able to see this visit and your ratings"
+                    : "Only you will be able to see this visit"}
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            </label>
+          </div>
 
           {activeMenuItems.map((item) => {
-            const index = menuItems.findIndex(m => m === item);
+            const index = menuItems.findIndex((m) => m === item);
             return (
               <Card key={index}>
                 <CardContent className="pt-6 space-y-3">
                   <div>
                     <Label className="font-semibold">{item.name}</Label>
                     {item.description && (
-                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {item.description}
+                      </p>
                     )}
                   </div>
 
@@ -371,13 +410,15 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                       {RATING_OPTIONS.map((option) => (
                         <button
                           key={option.value}
-                          onClick={() => handleUpdateItem(index, 'rating', option.value)}
+                          onClick={() =>
+                            handleUpdateItem(index, "rating", option.value)
+                          }
                           className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
                             option.color
                           } ${
                             item.rating === option.value
-                              ? 'ring-2 ring-offset-2 ring-blue-500'
-                              : 'opacity-60 hover:opacity-100'
+                              ? "ring-2 ring-offset-2 ring-blue-500"
+                              : "opacity-60 hover:opacity-100"
                           }`}
                         >
                           {option.value}
@@ -385,7 +426,10 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                       ))}
                     </div>
                     <p className="text-xs text-gray-600 mt-2 text-center">
-                      {RATING_OPTIONS.find((o) => o.value === item.rating)?.label}
+                      {
+                        RATING_OPTIONS.find((o) => o.value === item.rating)
+                          ?.label
+                      }
                     </p>
                   </div>
 
@@ -395,7 +439,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                       ref={notesInputRef}
                       placeholder="Add notes..."
                       value={item.notes}
-                      onChange={(e) => handleUpdateItem(index, 'notes', e.target.value)}
+                      onChange={(e) =>
+                        handleUpdateItem(index, "notes", e.target.value)
+                      }
                     />
                   </div>
 
@@ -403,7 +449,9 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
                   {(() => {
                     // Get photo key (existing id or temp key for new items)
                     const photoKey = item.id || `new_${index}`;
-                    const existingPhotoUrl = item.id ? getExistingPhotoUrl(item.id) : null;
+                    const existingPhotoUrl = item.id
+                      ? getExistingPhotoUrl(item.id)
+                      : null;
 
                     return (
                       <MenuItemPhotoInput
@@ -441,19 +489,23 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
           )}
 
           {/* Progress indicator for photo uploads */}
-          {uploadState.status !== 'idle' && uploadState.status !== 'error' && (
+          {uploadState.status !== "idle" && uploadState.status !== "error" && (
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1">
-                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                <span
+                  className={`text-sm font-medium ${uploadState.status === "complete" ? "text-green-700" : "text-gray-700"}`}
+                >
                   {uploadState.currentOperation}
                 </span>
-                <span className={`text-sm font-medium ${uploadState.status === 'complete' ? 'text-green-700' : 'text-gray-700'}`}>
+                <span
+                  className={`text-sm font-medium ${uploadState.status === "complete" ? "text-green-700" : "text-gray-700"}`}
+                >
                   {uploadState.progress}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === 'complete' ? 'bg-green-600' : 'bg-blue-600'}`}
+                  className={`h-2 rounded-full transition-all duration-300 ${uploadState.status === "complete" ? "bg-green-600" : "bg-blue-600"}`}
                   style={{ width: `${uploadState.progress}%` }}
                 />
               </div>
@@ -461,11 +513,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
           )}
 
           <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={onBack}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={onBack} className="flex-1">
               Back
             </Button>
             <Button
@@ -473,7 +521,7 @@ export default function EditRateItemsPage({ visitId, onBack, onComplete }: EditR
               disabled={updateVisitMutation.isPending}
               className="flex-1"
             >
-              {updateVisitMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {updateVisitMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </div>
