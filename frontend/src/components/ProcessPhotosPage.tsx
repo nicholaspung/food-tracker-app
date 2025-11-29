@@ -276,6 +276,12 @@ function RestaurantSelector({
 
   const handleCreateRestaurant = async () => {
     if (!newRestaurantName.trim()) {
+      alert("Restaurant name is required");
+      return;
+    }
+
+    if (!newRestaurantLocation.trim()) {
+      alert("Location is required");
       return;
     }
 
@@ -283,7 +289,7 @@ function RestaurantSelector({
     try {
       const result = await restaurantCreationMutation.mutateAsync({
         name: newRestaurantName.trim(),
-        address: newRestaurantLocation.trim() || undefined,
+        address: newRestaurantLocation.trim(),
         cuisineType: newRestaurantCuisine.trim() || undefined,
         visibility: "private",
       });
@@ -465,7 +471,7 @@ function RestaurantSelector({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="new-restaurant-location">
-                    Location (Optional)
+                    Location *
                   </Label>
                   <Input
                     id="new-restaurant-location"
@@ -473,6 +479,7 @@ function RestaurantSelector({
                     onChange={(e) => setNewRestaurantLocation(e.target.value)}
                     placeholder="e.g., 123 Main St, New York, NY"
                     disabled={isCreatingRestaurant}
+                    required
                   />
                 </div>
                 <div className="space-y-2">
@@ -1778,16 +1785,17 @@ export default function ProcessPhotosPage() {
           </p>
         </div>
 
-        {/* Review Notice */}
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
-          <p className="text-sm text-blue-800">
-            Review your entries below. You can edit or submit when ready.
-          </p>
-        </div>
+        {/* Content - Visits Preview */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Review Notice */}
+          <div className="bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
+            <p className="text-sm text-blue-800">
+              Review your entries below. You can edit or submit when ready.
+            </p>
+          </div>
 
-        {/* Visibility Checkbox */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3">
-          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+          {/* Visibility Checkbox */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -1812,10 +1820,7 @@ export default function ProcessPhotosPage() {
               </div>
             </label>
           </div>
-        </div>
 
-        {/* Content - Visits Preview */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {Array.from(photosByRestaurantAndDate.entries()).map(
             ([groupKey, restaurantPhotos]) => {
               const restaurant = restaurantPhotos[0].restaurant;

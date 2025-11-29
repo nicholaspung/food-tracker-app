@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger';
 
 interface RestaurantCreationData {
   name: string;
-  address?: string;
+  address: string; // Required - backend location field is required
   cuisineType?: string;
   visibility: 'private' | 'friends' | 'public';
   googlePlacesId?: string;
