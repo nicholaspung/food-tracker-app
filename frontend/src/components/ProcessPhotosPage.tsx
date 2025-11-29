@@ -50,6 +50,7 @@ import {
   MapPin,
   Users,
   Pencil,
+  Calendar,
 } from "lucide-react";
 import {
   RATING_OPTIONS,
@@ -72,6 +73,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchAndCacheRestaurantsByText } from "@/services/googlePlaces";
 import ExifReader from "exifreader";
 import { format } from "date-fns";
+import {
+  formatLocalDateForDisplay,
+  getTodayLocalDateString,
+} from "../lib/dateUtils";
 
 type ScreenState = "choice" | "upload" | "process" | "review";
 type ProcessType = "restaurant" | "quickTrack";
@@ -104,7 +109,7 @@ interface QuickTrackPhotoData {
   rating: number;
   locationText: string;
   notes: string;
-  visibility: 'friends' | 'private';
+  visibility: "friends" | "private";
 }
 
 // Enhanced Restaurant Selector Component with Google Places and History
@@ -141,14 +146,15 @@ async function extractImageCaptureDate(file: File): Promise<Date | null> {
     const tags = ExifReader.load(arrayBuffer);
 
     // Try different date tags in order of preference
-    const dateTag = tags['DateTimeOriginal'] || tags['DateTime'] || tags['CreateDate'];
+    const dateTag =
+      tags["DateTimeOriginal"] || tags["DateTime"] || tags["CreateDate"];
 
     if (dateTag && dateTag.description) {
       // EXIF date format is "YYYY:MM:DD HH:MM:SS"
       const dateStr = dateTag.description;
-      const [datePart, timePart] = dateStr.split(' ');
-      const [year, month, day] = datePart.split(':');
-      const [hour, minute, second] = timePart?.split(':') || ['00', '00', '00'];
+      const [datePart, timePart] = dateStr.split(" ");
+      const [year, month, day] = datePart.split(":");
+      const [hour, minute, second] = timePart?.split(":") || ["00", "00", "00"];
 
       const date = new Date(
         parseInt(year),
@@ -165,7 +171,7 @@ async function extractImageCaptureDate(file: File): Promise<Date | null> {
       }
     }
   } catch (error) {
-    console.warn('Failed to extract EXIF date from image:', error);
+    console.warn("Failed to extract EXIF date from image:", error);
   }
 
   // Fallback to file modification date or current date
@@ -555,9 +561,7 @@ function RestaurantSelector({
                   : "Results"}
               </Label>
               {restaurants.slice(0, 10).map((restaurant) => {
-                const isHighlighted = highlightedRestaurants.has(
-                  restaurant.id
-                );
+                const isHighlighted = highlightedRestaurants.has(restaurant.id);
                 return (
                   <Card
                     key={restaurant.id}
@@ -732,7 +736,9 @@ export default function ProcessPhotosPage() {
   const [photos, setPhotos] = useState<PhotoToProcess[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [processedPhotos, setProcessedPhotos] = useState<ProcessedPhoto[]>([]);
-  const [quickTrackPhotos, setQuickTrackPhotos] = useState<QuickTrackPhotoData[]>([]);
+  const [quickTrackPhotos, setQuickTrackPhotos] = useState<
+    QuickTrackPhotoData[]
+  >([]);
 
   // Form state for current photo
   const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
@@ -754,7 +760,9 @@ export default function ProcessPhotosPage() {
   >(null);
 
   // Edit menu item state
-  const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(null);
+  const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(
+    null
+  );
   const [editingMenuItemName, setEditingMenuItemName] = useState("");
 
   // Form state for quick track items
@@ -763,10 +771,16 @@ export default function ProcessPhotosPage() {
   const [qtRating, setQtRating] = useState<number | null>(3);
   const [qtLocationText, setQtLocationText] = useState("");
   const [qtNotes, setQtNotes] = useState("");
-  const [qtVisibility, setQtVisibility] = useState<'friends' | 'private'>('friends');
+  const [qtDate, setQtDate] = useState(getTodayLocalDateString());
+  const [showQtDateEdit, setShowQtDateEdit] = useState(false);
+  const [qtVisibility, setQtVisibility] = useState<"friends" | "private">(
+    "friends"
+  );
 
   // Visit visibility for restaurant visits
-  const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>('friends');
+  const [visitVisibility, setVisitVisibility] = useState<"friends" | "private">(
+    "friends"
+  );
 
   // UI state
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
@@ -954,7 +968,9 @@ export default function ProcessPhotosPage() {
             draft.processedPhotos.map(async (p) => {
               const response = await fetch(p.photoDataUrl);
               const blob = await response.blob();
-              const file = new File([blob], p.photoFileName, { type: p.photoFileType });
+              const file = new File([blob], p.photoFileName, {
+                type: p.photoFileType,
+              });
 
               return {
                 ...p,
@@ -1202,7 +1218,12 @@ export default function ProcessPhotosPage() {
 
     setIsProcessing(true);
     try {
-      console.log("[ProcessPhotos] Updating menu item:", itemId, "to:", editingMenuItemName);
+      console.log(
+        "[ProcessPhotos] Updating menu item:",
+        itemId,
+        "to:",
+        editingMenuItemName
+      );
 
       // Update the menu item
       await pb.collection("menu_items").update(itemId, {
@@ -1216,7 +1237,10 @@ export default function ProcessPhotosPage() {
 
       // If this was the selected item, update its name
       if (selectedMenuItem?.id === itemId) {
-        setSelectedMenuItem({ ...selectedMenuItem, name: editingMenuItemName.trim() });
+        setSelectedMenuItem({
+          ...selectedMenuItem,
+          name: editingMenuItemName.trim(),
+        });
         setMenuItemName(editingMenuItemName.trim());
       }
 
@@ -1413,7 +1437,7 @@ export default function ProcessPhotosPage() {
         const restaurantId = photo.restaurant.id;
         // Normalize date to start of day for grouping
         const photoDate = photo.captureDate || new Date();
-        const dateKey = format(photoDate, 'yyyy-MM-dd');
+        const dateKey = format(photoDate, "yyyy-MM-dd");
         const groupKey = `${restaurantId}__${dateKey}`;
 
         if (!photosByRestaurantAndDate.has(groupKey)) {
@@ -1437,7 +1461,7 @@ export default function ProcessPhotosPage() {
           "[ProcessPhotos] Creating visit for restaurant:",
           restaurant.name,
           "on date:",
-          format(visitDate, 'yyyy-MM-dd')
+          format(visitDate, "yyyy-MM-dd")
         );
 
         // Menu items are already created immediately when user processes each photo
@@ -1639,7 +1663,9 @@ export default function ProcessPhotosPage() {
                       </div>
                       {item.category && (
                         <p className="text-xs text-gray-500 mt-1">
-                          {ITEM_CATEGORIES.find(c => c.value === item.category)?.label || item.category}
+                          {ITEM_CATEGORIES.find(
+                            (c) => c.value === item.category
+                          )?.label || item.category}
                         </p>
                       )}
                       {item.locationText && (
@@ -1654,7 +1680,9 @@ export default function ProcessPhotosPage() {
                         </p>
                       )}
                       <p className="text-xs text-gray-400 mt-1">
-                        {item.visibility === 'friends' ? 'Visible to friends' : 'Private'}
+                        {item.visibility === "friends"
+                          ? "Visible to friends"
+                          : "Private"}
                       </p>
                     </div>
                   </div>
@@ -1697,7 +1725,7 @@ export default function ProcessPhotosPage() {
       const restaurantId = photo.restaurant.id;
       // Normalize date to start of day for grouping
       const photoDate = photo.captureDate || new Date();
-      const dateKey = format(photoDate, 'yyyy-MM-dd');
+      const dateKey = format(photoDate, "yyyy-MM-dd");
       const groupKey = `${restaurantId}__${dateKey}`;
 
       if (!photosByRestaurantAndDate.has(groupKey)) {
@@ -1739,19 +1767,23 @@ export default function ProcessPhotosPage() {
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={visitVisibility === 'friends'}
-                onChange={(e) => setVisitVisibility(e.target.checked ? 'friends' : 'private')}
+                checked={visitVisibility === "friends"}
+                onChange={(e) =>
+                  setVisitVisibility(e.target.checked ? "friends" : "private")
+                }
                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium">Friends can view these visits</span>
+                  <span className="text-sm font-medium">
+                    Friends can view these visits
+                  </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  {visitVisibility === 'friends'
-                    ? 'Your friends will be able to see these visits and your ratings'
-                    : 'Only you will be able to see these visits'}
+                  {visitVisibility === "friends"
+                    ? "Your friends will be able to see these visits and your ratings"
+                    : "Only you will be able to see these visits"}
                 </p>
               </div>
             </label>
@@ -1775,7 +1807,7 @@ export default function ProcessPhotosPage() {
                         </CardTitle>
                         <CardDescription className="space-y-1">
                           <div className="flex items-center gap-1 text-orange-700 font-semibold">
-                            📅 {format(visitDate, 'EEEE, MMMM d, yyyy')}
+                            📅 {format(visitDate, "EEEE, MMMM d, yyyy")}
                           </div>
                           <div className="flex items-center gap-1 mt-1">
                             <MapPin className="w-3 h-3" />
@@ -1896,9 +1928,7 @@ export default function ProcessPhotosPage() {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Process Photos
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900">Process Photos</h1>
             <div className="w-9" /> {/* Spacer for alignment */}
           </div>
           <p className="text-sm text-gray-500 mt-1">
@@ -2123,9 +2153,7 @@ export default function ProcessPhotosPage() {
       <div className="flex flex-col h-full bg-gray-50">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">
-            Quick Track Item
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900">Quick Track Item</h1>
           <p className="text-sm text-gray-500 mt-1">
             Photo {currentPhotoIndex + 1} of {photos.length}
           </p>
@@ -2160,7 +2188,73 @@ export default function ProcessPhotosPage() {
             </div>
           </div>
 
-          {/* Quick Track Form - Similar to QuickTrackPage */}
+          {/* Quick Track Form - Matching QuickTrackPage layout */}
+
+          {/* Date picker */}
+          {qtDate && (
+            <div>
+              {!showQtDateEdit ? (
+                <div
+                  className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowQtDateEdit(true)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-900">
+                      {formatLocalDateForDisplay(qtDate)}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500">Tap to change</span>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-2">
+                  <Label className="text-xs text-gray-600">Date</Label>
+                  <Input
+                    type="date"
+                    value={qtDate}
+                    onChange={(e) => setQtDate(e.target.value)}
+                    max={getTodayLocalDateString()}
+                    className="text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowQtDateEdit(false)}
+                    className="w-full"
+                  >
+                    Done
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Visibility Section */}
+          <div className="p-3 bg-white rounded-lg border border-gray-200">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={qtVisibility === "friends"}
+                onChange={(e) =>
+                  setQtVisibility(e.target.checked ? "friends" : "private")
+                }
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium">
+                    Friends can view this item
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {qtVisibility === "friends"
+                    ? "Your friends will be able to see this quick track item"
+                    : "Only you will be able to see this item"}
+                </p>
+              </div>
+            </label>
+          </div>
 
           {/* Item Name */}
           <Card>
@@ -2178,29 +2272,6 @@ export default function ProcessPhotosPage() {
                   maxLength={200}
                   required
                 />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Category */}
-          <Card>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="qtCategory" className="font-semibold">
-                  Category (Optional)
-                </Label>
-                <Select value={qtCategory} onValueChange={setQtCategory}>
-                  <SelectTrigger id="qtCategory">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ITEM_CATEGORIES.map((cat) => (
-                      <SelectItem key={cat.value} value={cat.value}>
-                        {cat.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </CardContent>
           </Card>
@@ -2252,7 +2323,7 @@ export default function ProcessPhotosPage() {
                       key={option.value}
                       type="button"
                       onClick={() => setQtRating(option.value)}
-                      className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-opacity ${
+                      className={`p-3 rounded-lg text-white text-center text-xs font-medium transition-all ${
                         option.color
                       } ${
                         qtRating === option.value
@@ -2271,9 +2342,27 @@ export default function ProcessPhotosPage() {
             </CardContent>
           </Card>
 
-          {/* Location */}
+          {/* Category, Location, and Notes Section */}
           <Card>
             <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="qtCategory" className="font-semibold">
+                  Category (Optional)
+                </Label>
+                <Select value={qtCategory} onValueChange={setQtCategory}>
+                  <SelectTrigger id="qtCategory">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ITEM_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="qtLocation" className="font-semibold">
                   Location (Optional)
@@ -2287,12 +2376,7 @@ export default function ProcessPhotosPage() {
                   maxLength={200}
                 />
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Notes */}
-          <Card>
-            <CardContent className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="qtNotes" className="font-semibold">
                   Notes (Optional)
@@ -2306,33 +2390,6 @@ export default function ProcessPhotosPage() {
                   rows={3}
                   className="resize-none"
                 />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Visibility */}
-          <Card>
-            <CardContent className="space-y-3">
-              <div className="p-3 bg-white rounded-lg border border-gray-200">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={qtVisibility === 'friends'}
-                    onChange={(e) => setQtVisibility(e.target.checked ? 'friends' : 'private')}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium">Friends can view this item</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {qtVisibility === 'friends'
-                        ? 'Your friends will be able to see this quick track item'
-                        : 'Only you will be able to see this item'}
-                    </p>
-                  </div>
-                </label>
               </div>
             </CardContent>
           </Card>
@@ -2520,13 +2577,14 @@ export default function ProcessPhotosPage() {
                           {filteredMenuItems.length > 0 && (
                             <div className="max-h-48 overflow-y-auto space-y-2">
                               {filteredMenuItems.slice(0, 20).map((item) => {
-                                const isUserCreated = item.createdBy === pb.authStore.model?.id;
+                                const isUserCreated =
+                                  item.createdBy === pb.authStore.model?.id;
                                 const isEditing = editingMenuItemId === item.id;
 
                                 return (
                                   <Card
                                     key={item.id}
-                                    className={`${!isEditing ? 'cursor-pointer hover:border-blue-500 hover:bg-blue-50' : ''} transition-all py-2`}
+                                    className={`${!isEditing ? "cursor-pointer hover:border-blue-500 hover:bg-blue-50" : ""} transition-all py-2`}
                                     onClick={
                                       !isEditing
                                         ? () => {
@@ -2545,7 +2603,9 @@ export default function ProcessPhotosPage() {
                                             type="text"
                                             value={editingMenuItemName}
                                             onChange={(e) =>
-                                              setEditingMenuItemName(e.target.value)
+                                              setEditingMenuItemName(
+                                                e.target.value
+                                              )
                                             }
                                             placeholder="Menu item name"
                                             className="flex-1"
@@ -2568,7 +2628,8 @@ export default function ProcessPhotosPage() {
                                               handleEditMenuItem(item.id);
                                             }}
                                             disabled={
-                                              !editingMenuItemName.trim() || isProcessing
+                                              !editingMenuItemName.trim() ||
+                                              isProcessing
                                             }
                                           >
                                             <Check className="h-4 w-4" />
@@ -2607,7 +2668,9 @@ export default function ProcessPhotosPage() {
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   setEditingMenuItemId(item.id);
-                                                  setEditingMenuItemName(item.name);
+                                                  setEditingMenuItemName(
+                                                    item.name
+                                                  );
                                                 }}
                                                 className="h-8 w-8 p-0"
                                               >
@@ -2735,13 +2798,14 @@ export default function ProcessPhotosPage() {
 
                             <div className="max-h-48 overflow-y-auto space-y-2">
                               {filteredMenuItems.slice(0, 20).map((item) => {
-                                const isUserCreated = item.createdBy === pb.authStore.model?.id;
+                                const isUserCreated =
+                                  item.createdBy === pb.authStore.model?.id;
                                 const isEditing = editingMenuItemId === item.id;
 
                                 return (
                                   <Card
                                     key={item.id}
-                                    className={`${!isEditing ? 'cursor-pointer hover:border-blue-500 hover:bg-blue-50' : ''} transition-all px-2`}
+                                    className={`${!isEditing ? "cursor-pointer hover:border-blue-500 hover:bg-blue-50" : ""} transition-all px-2`}
                                     onClick={
                                       !isEditing
                                         ? () => {
@@ -2761,7 +2825,9 @@ export default function ProcessPhotosPage() {
                                             type="text"
                                             value={editingMenuItemName}
                                             onChange={(e) =>
-                                              setEditingMenuItemName(e.target.value)
+                                              setEditingMenuItemName(
+                                                e.target.value
+                                              )
                                             }
                                             placeholder="Menu item name"
                                             className="flex-1"
@@ -2784,7 +2850,8 @@ export default function ProcessPhotosPage() {
                                               handleEditMenuItem(item.id);
                                             }}
                                             disabled={
-                                              !editingMenuItemName.trim() || isProcessing
+                                              !editingMenuItemName.trim() ||
+                                              isProcessing
                                             }
                                           >
                                             <Check className="h-4 w-4" />
@@ -2823,7 +2890,9 @@ export default function ProcessPhotosPage() {
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   setEditingMenuItemId(item.id);
-                                                  setEditingMenuItemName(item.name);
+                                                  setEditingMenuItemName(
+                                                    item.name
+                                                  );
                                                 }}
                                                 className="h-8 w-8 p-0"
                                               >
@@ -2925,18 +2994,23 @@ export default function ProcessPhotosPage() {
                     <div className="space-y-2">
                       <Input
                         type="date"
-                        value={photoDate ? format(photoDate, 'yyyy-MM-dd') : ''}
+                        value={photoDate ? format(photoDate, "yyyy-MM-dd") : ""}
                         onChange={(e) => {
-                          const newDate = e.target.value ? new Date(e.target.value) : new Date();
+                          const newDate = e.target.value
+                            ? new Date(e.target.value)
+                            : new Date();
                           setPhotoDate(newDate);
                         }}
-                        max={format(new Date(), 'yyyy-MM-dd')}
+                        max={format(new Date(), "yyyy-MM-dd")}
                         className="text-base"
                       />
                       <p className="text-xs text-gray-600">
-                        {photoDate && currentPhoto.captureDate && photoDate.getTime() !== currentPhoto.captureDate.getTime()
-                          ? `Original: ${format(currentPhoto.captureDate, 'MMM dd, yyyy')}`
-                          : 'Detected from photo EXIF data'}
+                        {photoDate &&
+                        currentPhoto.captureDate &&
+                        photoDate.getTime() !==
+                          currentPhoto.captureDate.getTime()
+                          ? `Original: ${format(currentPhoto.captureDate, "MMM dd, yyyy")}`
+                          : "Detected from photo EXIF data"}
                       </p>
                     </div>
                   </CardContent>
@@ -3101,7 +3175,9 @@ export default function ProcessPhotosPage() {
                 isProcessing
               }
             >
-              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isProcessing && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {isProcessing
                 ? "Saving..."
                 : currentPhotoIndex < photos.length - 1

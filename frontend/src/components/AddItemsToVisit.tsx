@@ -1,5 +1,20 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, X, CheckCircle, Camera, FileText, Flag, Lock, Users, Globe, ChevronDown, ChevronUp, AlertCircle, WifiOff } from "lucide-react";
+import {
+  Search,
+  Plus,
+  X,
+  CheckCircle,
+  Camera,
+  FileText,
+  Flag,
+  Lock,
+  Users,
+  Globe,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  WifiOff,
+} from "lucide-react";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -12,7 +27,10 @@ import { searchMenuItems, createMenuItems } from "@/services/ocrService";
 import { logger } from "@/lib/logger";
 import MenuScanStep from "@/components/MenuScanStep";
 import { visitDraftService } from "@/services/visitDraftService";
-import { requestMenuReview, hasPendingReviewRequest } from "@/services/menuReviewService";
+import {
+  requestMenuReview,
+  hasPendingReviewRequest,
+} from "@/services/menuReviewService";
 import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 
@@ -67,7 +85,7 @@ export default function AddItemsToVisit({
 
   // Fetch menu items using TanStack Query (supports offline cached items)
   const { data: cachedMenuItems } = useQuery({
-    queryKey: ['menu_items', restaurantId],
+    queryKey: ["menu_items", restaurantId],
     queryFn: async () => {
       if (!isOnline) return [];
       return await pb.collection("menu_items").getFullList<MenuItem>({
@@ -106,7 +124,7 @@ export default function AddItemsToVisit({
       initialSelectedItems.forEach((item) => {
         initialMap.set(item.id, {
           menuItem: item,
-          description: item.description || '',
+          description: item.description || "",
           // Show description input if item already has a description
           showDescriptionInput: !!item.description,
         });
@@ -207,7 +225,7 @@ export default function AddItemsToVisit({
     if (!isOnline) {
       // When offline, only search in parsed items
       if (parsedItems.length > 0) {
-        const filtered = parsedItems.filter(item =>
+        const filtered = parsedItems.filter((item) =>
           item.name.toLowerCase().includes(query.toLowerCase())
         );
         setSearchResults(filtered);
@@ -277,7 +295,9 @@ export default function AddItemsToVisit({
     if (!manualItemName.trim()) return;
 
     if (!isOnline) {
-      alert("Adding menu items requires internet connection. You can still proceed with the visit without adding new menu items.");
+      alert(
+        "Adding menu items requires internet connection. You can still proceed with the visit without adding new menu items."
+      );
       return;
     }
 
@@ -359,23 +379,25 @@ export default function AddItemsToVisit({
   };
 
   // Get visibility badge for menu item
-  const getVisibilityBadge = (visibility?: 'private' | 'friends' | 'public') => {
+  const getVisibilityBadge = (
+    visibility?: "private" | "friends" | "public"
+  ) => {
     switch (visibility) {
-      case 'private':
+      case "private":
         return (
           <Badge variant="outline" className="text-xs flex items-center gap-1">
             <Lock className="w-3 h-3 text-gray-600" />
             <span>Private</span>
           </Badge>
         );
-      case 'friends':
+      case "friends":
         return (
           <Badge variant="outline" className="text-xs flex items-center gap-1">
             <Users className="w-3 h-3 text-blue-600" />
             <span>Friends</span>
           </Badge>
         );
-      case 'public':
+      case "public":
         return (
           <Badge variant="outline" className="text-xs flex items-center gap-1">
             <Globe className="w-3 h-3 text-green-600" />
@@ -517,7 +539,9 @@ export default function AddItemsToVisit({
                       <div className="space-y-3 text-xs">
                         {/* Raw Response */}
                         <div>
-                          <div className="font-semibold text-purple-900 mb-1">Raw Response:</div>
+                          <div className="font-semibold text-purple-900 mb-1">
+                            Raw Response:
+                          </div>
                           <pre className="bg-white p-2 rounded border border-purple-300 overflow-x-auto text-purple-900 whitespace-pre-wrap break-words">
                             {debugData.rawResponse}
                           </pre>
@@ -525,7 +549,9 @@ export default function AddItemsToVisit({
 
                         {/* Model Info */}
                         <div>
-                          <div className="font-semibold text-purple-900 mb-1">Model:</div>
+                          <div className="font-semibold text-purple-900 mb-1">
+                            Model:
+                          </div>
                           <div className="bg-white p-2 rounded border border-purple-300 text-purple-900">
                             {debugData.model}
                           </div>
@@ -533,7 +559,9 @@ export default function AddItemsToVisit({
 
                         {/* Candidates Count */}
                         <div>
-                          <div className="font-semibold text-purple-900 mb-1">Candidates Count:</div>
+                          <div className="font-semibold text-purple-900 mb-1">
+                            Candidates Count:
+                          </div>
                           <div className="bg-white p-2 rounded border border-purple-300 text-purple-900">
                             {debugData.candidatesCount}
                           </div>
@@ -542,7 +570,9 @@ export default function AddItemsToVisit({
                         {/* Finish Reason */}
                         {debugData.finishReason !== undefined && (
                           <div>
-                            <div className="font-semibold text-purple-900 mb-1">Finish Reason:</div>
+                            <div className="font-semibold text-purple-900 mb-1">
+                              Finish Reason:
+                            </div>
                             <div className="bg-white p-2 rounded border border-purple-300 text-purple-900">
                               {JSON.stringify(debugData.finishReason)}
                             </div>
@@ -552,7 +582,9 @@ export default function AddItemsToVisit({
                         {/* Parts */}
                         {debugData.parts && debugData.parts.length > 0 && (
                           <div>
-                            <div className="font-semibold text-purple-900 mb-1">Parts ({debugData.parts.length}):</div>
+                            <div className="font-semibold text-purple-900 mb-1">
+                              Parts ({debugData.parts.length}):
+                            </div>
                             <pre className="bg-white p-2 rounded border border-purple-300 overflow-x-auto text-purple-900 whitespace-pre-wrap break-words max-h-40">
                               {JSON.stringify(debugData.parts, null, 2)}
                             </pre>
@@ -562,7 +594,9 @@ export default function AddItemsToVisit({
                         {/* Safety Ratings */}
                         {debugData.safetyRatings && (
                           <div>
-                            <div className="font-semibold text-purple-900 mb-1">Safety Ratings:</div>
+                            <div className="font-semibold text-purple-900 mb-1">
+                              Safety Ratings:
+                            </div>
                             <pre className="bg-white p-2 rounded border border-purple-300 overflow-x-auto text-purple-900 whitespace-pre-wrap break-words max-h-40">
                               {JSON.stringify(debugData.safetyRatings, null, 2)}
                             </pre>
@@ -571,7 +605,9 @@ export default function AddItemsToVisit({
 
                         {/* Full JSON */}
                         <div>
-                          <div className="font-semibold text-purple-900 mb-1">Full Debug JSON:</div>
+                          <div className="font-semibold text-purple-900 mb-1">
+                            Full Debug JSON:
+                          </div>
                           <pre className="bg-white p-2 rounded border border-purple-300 overflow-x-auto text-purple-900 whitespace-pre-wrap break-words max-h-60">
                             {JSON.stringify(debugData, null, 2)}
                           </pre>
@@ -624,9 +660,15 @@ export default function AddItemsToVisit({
                       disabled={!isOnline}
                     >
                       {isOnline ? (
-                        <><Plus className="w-4 h-4 mr-2" />Can't find it? Add manually</>
+                        <>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Can't find it? Add manually
+                        </>
                       ) : (
-                        <><WifiOff className="w-4 h-4 mr-2" />Add Manually (Offline)</>
+                        <>
+                          <WifiOff className="w-4 h-4 mr-2" />
+                          Add Manually (Offline)
+                        </>
                       )}
                     </Button>
                     {!isOnline && (
@@ -656,7 +698,9 @@ export default function AddItemsToVisit({
                         <div className="p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-800">
                           <div className="flex items-center gap-2">
                             <WifiOff className="w-3 h-3" />
-                            <span>You're offline. Cannot add new menu items.</span>
+                            <span>
+                              You're offline. Cannot add new menu items.
+                            </span>
                           </div>
                         </div>
                       )}
@@ -664,14 +708,22 @@ export default function AddItemsToVisit({
                         <Button
                           className="flex-1"
                           onClick={handleManualAdd}
-                          disabled={!isOnline || !manualItemName.trim() || isAdding}
+                          disabled={
+                            !isOnline || !manualItemName.trim() || isAdding
+                          }
                         >
                           {!isOnline ? (
-                            <><WifiOff className="w-4 h-4 mr-2" />Add Item (Offline)</>
+                            <>
+                              <WifiOff className="w-4 h-4 mr-2" />
+                              Add Item (Offline)
+                            </>
                           ) : isAdding ? (
                             "Adding..."
                           ) : (
-                            <><Plus className="w-4 h-4 mr-2" />Add Item</>
+                            <>
+                              <Plus className="w-4 h-4 mr-2" />
+                              Add Item
+                            </>
                           )}
                         </Button>
                         <Button

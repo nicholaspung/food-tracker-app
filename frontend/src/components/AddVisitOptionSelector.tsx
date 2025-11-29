@@ -63,7 +63,7 @@ export default function AddVisitOptionSelector() {
               className="w-full text-left"
             >
               <Card className="hover:shadow-lg transition-shadow border-2 hover:border-primary">
-                <CardContent className="p-4">
+                <CardContent>
                   <div className="flex items-start gap-4">
                     {/* Icon */}
                     <div

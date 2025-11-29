@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Plus,
   X,
   Search,
   Calendar,
@@ -214,12 +213,15 @@ export default function SelectRestaurantPage({
   };
 
   // Add restaurant mutation (with offline support)
-  const addRestaurantMutation = useOfflineCreate<Restaurant, {
-    name: string;
-    location: string;
-    cuisineType?: string;
-    visibility: "private" | "friends" | "public";
-  }>("restaurants", {
+  const addRestaurantMutation = useOfflineCreate<
+    Restaurant,
+    {
+      name: string;
+      location: string;
+      cuisineType?: string;
+      visibility: "private" | "friends" | "public";
+    }
+  >("restaurants", {
     mutationFn: async (data) => {
       const user = pb.authStore.record;
       if (!user) throw new Error("User not authenticated");
@@ -364,7 +366,9 @@ export default function SelectRestaurantPage({
   const handleSearchNearby = async () => {
     // Check if online first
     if (!isOnline) {
-      setPlacesError("Cannot search nearby restaurants while offline. Google Places requires internet connection.");
+      setPlacesError(
+        "Cannot search nearby restaurants while offline. Google Places requires internet connection."
+      );
       return;
     }
 
@@ -477,7 +481,9 @@ export default function SelectRestaurantPage({
   const handleManualSearch = async () => {
     // Check if online first
     if (!isOnline) {
-      setPlacesError("Cannot search restaurants while offline. Google Places requires internet connection.");
+      setPlacesError(
+        "Cannot search restaurants while offline. Google Places requires internet connection."
+      );
       return;
     }
 
@@ -671,7 +677,7 @@ export default function SelectRestaurantPage({
           {!showNearbyPlaces && (
             <>
               {/* Search options */}
-              <Card className="border-2 border-blue-200 bg-blue-50/30 gap-0">
+              <Card className="border-2 border-blue-200 bg-blue-50/30 gap-0 py-3">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Search className="w-5 h-5 text-blue-600" />
@@ -722,21 +728,32 @@ export default function SelectRestaurantPage({
                     >
                       Location (city, zip code, or address)
                     </Label>
-                    <Input
-                      ref={manualLocationInputRef}
-                      id="manual-location"
-                      type="text"
-                      placeholder="e.g., 90210, Los Angeles, CA"
-                      value={manualLocation}
-                      onChange={(e) => setManualLocation(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleManualSearch();
-                        }
-                      }}
-                      className="bg-white"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        ref={manualLocationInputRef}
+                        id="manual-location"
+                        type="text"
+                        placeholder="e.g., 90210, Los Angeles, CA"
+                        value={manualLocation}
+                        onChange={(e) => setManualLocation(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleManualSearch();
+                          }
+                        }}
+                        className="bg-white flex-1"
+                      />
+                      <Button
+                        onClick={handleSearchNearby}
+                        variant="outline"
+                        className="bg-white shrink-0"
+                        disabled={!isOnline}
+                        title="Use My Current Location"
+                      >
+                        <MapPin className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   <Button
@@ -764,35 +781,14 @@ export default function SelectRestaurantPage({
                     </p>
                   )}
 
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t border-gray-300" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-blue-50/30 px-2 text-gray-500">
-                        or
-                      </span>
-                    </div>
+                  <div className="text-center">
+                    <button
+                      onClick={onNavigateToCreateRestaurant}
+                      className="text-sm text-blue-600 hover:text-blue-700 underline"
+                    >
+                      Add new restaurant
+                    </button>
                   </div>
-
-                  <Button
-                    onClick={handleSearchNearby}
-                    variant="outline"
-                    className="w-full bg-white"
-                    disabled={!isOnline}
-                  >
-                    {isOnline ? (
-                      <>
-                        <MapPin className="w-4 h-4 mr-2" />
-                        Use My Current Location
-                      </>
-                    ) : (
-                      <>
-                        <WifiOff className="w-4 h-4 mr-2" />
-                        Location Search (Offline)
-                      </>
-                    )}
-                  </Button>
                 </CardContent>
               </Card>
             </>
@@ -853,60 +849,51 @@ export default function SelectRestaurantPage({
                     >
                       Location (city, zip code, or address)
                     </Label>
-                    <Input
-                      id="manual-location-nearby"
-                      type="text"
-                      placeholder="e.g., 90210, Los Angeles, CA"
-                      value={manualLocation}
-                      onChange={(e) => setManualLocation(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleManualSearch();
-                        }
-                      }}
-                      className="bg-white"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="manual-location-nearby"
+                        type="text"
+                        placeholder="e.g., 90210, Los Angeles, CA"
+                        value={manualLocation}
+                        onChange={(e) => setManualLocation(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleManualSearch();
+                          }
+                        }}
+                        className="bg-white flex-1"
+                      />
+                      <Button
+                        onClick={() => handleSearchNearby()}
+                        variant="outline"
+                        className="bg-white shrink-0"
+                        disabled={!isOnline}
+                        title="Use My Current Location"
+                      >
+                        <MapPin className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => handleManualSearch()}
-                      variant="default"
-                      className="flex-1"
-                      disabled={!isOnline}
-                    >
-                      {isOnline ? (
-                        <>
-                          <Search className="w-4 h-4 mr-2" />
-                          New Search
-                        </>
-                      ) : (
-                        <>
-                          <WifiOff className="w-4 h-4 mr-2" />
-                          Offline
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      onClick={() => handleSearchNearby()}
-                      variant="outline"
-                      className="flex-1 bg-white"
-                      disabled={!isOnline}
-                    >
-                      {isOnline ? (
-                        <>
-                          <MapPin className="w-4 h-4 mr-2" />
-                          Use GPS
-                        </>
-                      ) : (
-                        <>
-                          <WifiOff className="w-4 h-4 mr-2" />
-                          Offline
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  <Button
+                    onClick={() => handleManualSearch()}
+                    variant="default"
+                    className="w-full"
+                    disabled={!isOnline}
+                  >
+                    {isOnline ? (
+                      <>
+                        <Search className="w-4 h-4 mr-2" />
+                        New Search
+                      </>
+                    ) : (
+                      <>
+                        <WifiOff className="w-4 h-4 mr-2" />
+                        Offline
+                      </>
+                    )}
+                  </Button>
                 </CardContent>
               </Card>
 
@@ -970,7 +957,7 @@ export default function SelectRestaurantPage({
 
               {placesError && (
                 <Card className="bg-red-50 border-red-200">
-                  <CardContent className="pt-4">
+                  <CardContent>
                     <p className="text-sm text-red-600">{placesError}</p>
                   </CardContent>
                 </Card>
@@ -1003,7 +990,7 @@ export default function SelectRestaurantPage({
                   return (
                     <Card
                       key={restaurant.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      className="cursor-pointer hover:shadow-md transition-shadow py-3"
                       onClick={() => handleSelectRestaurant(restaurant)}
                     >
                       <CardHeader>
@@ -1395,15 +1382,6 @@ export default function SelectRestaurantPage({
                 </Card>
               ) : (
                 <>
-                  <Button
-                    onClick={onNavigateToCreateRestaurant}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add New Restaurant
-                  </Button>
-
                   <div ref={savedRestaurantsRef} className="space-y-3">
                     {paginatedSavedRestaurants.map((restaurant) => {
                       const stats = getRestaurantStats(restaurant.id);
@@ -1413,7 +1391,7 @@ export default function SelectRestaurantPage({
                       return (
                         <Card
                           key={restaurant.id}
-                          className={`cursor-pointer hover:shadow-md transition-all ${
+                          className={`cursor-pointer hover:shadow-md transition-all py-3 ${
                             isHighlighted
                               ? "border-2 border-yellow-400 bg-yellow-50 animate-pulse shadow-lg"
                               : ""
