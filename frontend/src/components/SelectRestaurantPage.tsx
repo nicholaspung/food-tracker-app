@@ -536,6 +536,17 @@ export default function SelectRestaurantPage({
   const handleAddRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!newRestaurantName.trim()) {
+      setError("Restaurant name is required");
+      return;
+    }
+
+    if (!newRestaurantLocation.trim()) {
+      setError("Location is required");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -1214,7 +1225,7 @@ export default function SelectRestaurantPage({
                         )}
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="location">Location</Label>
+                        <Label htmlFor="location">Location *</Label>
                         <Input
                           id="location"
                           value={newRestaurantLocation}
@@ -1222,6 +1233,7 @@ export default function SelectRestaurantPage({
                             setNewRestaurantLocation(e.target.value)
                           }
                           placeholder="Enter location"
+                          required
                         />
                       </div>
                       <div className="space-y-2">

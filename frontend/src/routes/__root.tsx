@@ -9,6 +9,7 @@ import { BottomTabNavigation } from "@/components/BottomTabNavigation";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 
 // Create a query client instance
 const queryClient = new QueryClient({
@@ -42,6 +43,7 @@ function RootComponent() {
   const router = useRouterState();
   const mainRef = useRef<HTMLElement>(null);
   const currentPath = router.location.pathname;
+  const isKeyboardVisible = useKeyboardVisible();
 
   // Check if current path or any parent path should show tabs
   const showTabs = ROUTES_WITH_TABS.some((route) =>
@@ -65,7 +67,7 @@ function RootComponent() {
           {/* Scrollable content area */}
           <main
             ref={mainRef}
-            className={`flex-1 overflow-y-auto ${showTabs ? "pb-[64px]" : ""}`}
+            className={`flex-1 overflow-y-auto ${showTabs && !isKeyboardVisible ? "pb-[64px]" : ""}`}
           >
             <Outlet />
           </main>

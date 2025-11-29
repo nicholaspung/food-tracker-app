@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.5.5",
+    "date": "2025-11-29",
+    "title": "Restaurant Location Validation",
+    "summary": "Restaurant location is now required when creating custom restaurants to ensure complete and useful restaurant data!",
+    "features": [],
+    "improvements": [
+      "Location field now required when creating custom restaurants for better data quality",
+      "Clear validation messages when location is missing",
+      "Review section reorganized in Process Photos for better visual hierarchy"
+    ],
+    "fixes": [
+      "Fixed restaurants being created without location information",
+      "Fixed missing validation on restaurant location field"
+    ]
+  },
+  {
     "version": "0.5.4",
     "date": "2025-11-28",
     "title": "Performance & Filtering Enhancements",
