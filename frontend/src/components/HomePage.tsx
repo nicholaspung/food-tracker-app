@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useDeferredValue, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { pb, Visit, Restaurant, FoodItem } from "@/lib/pocketbase";
+import { pb, Restaurant } from "@/lib/pocketbase";
 import { syncQueue } from "@/lib/syncQueue";
 import { useSync } from "@/contexts/SyncContext";
+import { useVisits } from "@/hooks/api/useVisits";
+import { useFoodItems } from "@/hooks/api/useFoodItems";
 import { utcToLocalDateString } from "@/lib/dateUtils";
 import { useOfflineQuickTrackDelete } from "@/hooks/useOfflineQuickTrackDelete";
 import {
@@ -181,14 +183,9 @@ export default function HomePage({
 
   // Fetch all visits (own + friends' public/friends visits)
   // Backend rules handle the filtering automatically based on visibility
-  const { data: visits = [], isLoading: visitsLoading } = useQuery<Visit[]>({
-    queryKey: ["allVisits"],
-    queryFn: async () => {
-      return await pb.collection("visits").getFullList({
-        sort: "-visitDate",
-        expand: "user", // Expand user to get friend's name/email
-      });
-    },
+  const { data: visits = [], isLoading: visitsLoading } = useVisits({
+    expand: "user",
+    sort: "-visitDate",
   });
 
   // Count user's own visits vs friends' visits
@@ -207,14 +204,7 @@ export default function HomePage({
   });
 
   // Fetch all food items
-  const { data: foodItems = [] } = useQuery<FoodItem[]>({
-    queryKey: ["allFoodItems"],
-    queryFn: async () => {
-      return await pb.collection("food_items").getFullList({
-        sort: "-created",
-      });
-    },
-  });
+  const { data: foodItems = [] } = useFoodItems();
 
   // Fetch all visit photos
   const { data: visitPhotos = [] } = useQuery({

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { pb, Restaurant, FoodItem, MenuItem as DBMenuItem } from '@/lib/pocketbase';
+import { pb, MenuItem as DBMenuItem } from '@/lib/pocketbase';
+import { useRestaurant, Restaurant } from '@/hooks/api/useRestaurants';
+import { useFoodItemsByVisit } from '@/hooks/api/useFoodItems';
 import { utcToLocalDateString } from '@/lib/dateUtils';
 import { editVisitDraftService } from '@/services/editVisitDraftService';
 import AddItemsToVisit from '@/components/AddItemsToVisit';
@@ -28,26 +30,10 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
   });
 
   // Fetch restaurant
-  const { data: restaurant, isLoading: restaurantLoading } = useQuery({
-    queryKey: ['restaurant', visit?.restaurant],
-    queryFn: async () => {
-      if (!visit?.restaurant) return null;
-      return await pb.collection('restaurants').getOne<Restaurant>(visit.restaurant);
-    },
-    enabled: !!visit?.restaurant,
-  });
+  const { data: restaurant, isLoading: restaurantLoading } = useRestaurant(visit?.restaurant);
 
   // Fetch existing food items
-  const { data: existingFoodItems = [], isLoading: foodItemsLoading } = useQuery<FoodItem[]>({
-    queryKey: ['foodItems', visitId],
-    queryFn: async () => {
-      const items = await pb.collection('food_items').getFullList<FoodItem>({
-        filter: `visit = "${visitId}"`,
-        sort: 'created',
-      });
-      return items;
-    },
-  });
+  const { data: existingFoodItems = [], isLoading: foodItemsLoading } = useFoodItemsByVisit(visitId);
 
   // Fetch all menu items for the restaurant
   const { data: restaurantMenuItems = [], isLoading: menuItemsLoading } = useQuery<DBMenuItem[]>({

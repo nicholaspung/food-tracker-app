@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { pb, Restaurant, Visit, Friendship } from "@/lib/pocketbase";
+import { pb, Friendship } from "@/lib/pocketbase";
+import { useRestaurants, Restaurant } from "@/hooks/api/useRestaurants";
+import { useVisitsByUser, useFriendVisits } from "@/hooks/api/useVisits";
 import { useOfflineCreate } from "@/hooks/useOfflineMutation";
 import { visitDraftService } from "@/services/visitDraftService";
 import { Button } from "@/components/ui/button";
@@ -138,26 +140,10 @@ export default function SelectRestaurantPage({
   }, []);
 
   // Fetch restaurants
-  const { data: restaurants = [] } = useQuery<Restaurant[]>({
-    queryKey: ["restaurants"],
-    queryFn: async () => {
-      return await pb.collection("restaurants").getFullList({
-        sort: "-created",
-      });
-    },
-  });
+  const { data: restaurants = [] } = useRestaurants();
 
   // Fetch all visits for the current user
-  const { data: userVisits = [] } = useQuery<Visit[]>({
-    queryKey: ["userVisits", user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      return await pb.collection("visits").getFullList({
-        filter: `user = "${user.id}"`,
-      });
-    },
-    enabled: !!user,
-  });
+  const { data: userVisits = [] } = useVisitsByUser(user?.id);
 
   // Fetch friendships to get list of friends
   const { data: friendships = [] } = useQuery<Friendship[]>({
@@ -171,29 +157,13 @@ export default function SelectRestaurantPage({
     enabled: !!user,
   });
 
+  // Get list of friend IDs from friendships
+  const friendIds = friendships.map((f) =>
+    f.user === user?.id ? f.friend : f.user
+  );
+
   // Fetch visits from friends
-  const { data: friendVisits = [] } = useQuery<Visit[]>({
-    queryKey: ["friendVisits", user?.id, friendships.length],
-    queryFn: async () => {
-      if (!user || friendships.length === 0) return [];
-
-      // Get list of friend IDs
-      const friendIds = friendships.map((f) =>
-        f.user === user.id ? f.friend : f.user
-      );
-
-      if (friendIds.length === 0) return [];
-
-      // Fetch visits from all friends with visibility friends
-      const filterConditions = friendIds
-        .map((id) => `user = "${id}"`)
-        .join(" || ");
-      return await pb.collection("visits").getFullList({
-        filter: `(${filterConditions}) && visibility = "friends"`,
-      });
-    },
-    enabled: !!user && friendships.length > 0,
-  });
+  const { data: friendVisits = [] } = useFriendVisits(user?.id, friendIds);
 
   // Calculate visit counts per restaurant
   const getRestaurantStats = (restaurantId: string) => {
