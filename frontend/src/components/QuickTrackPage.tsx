@@ -26,6 +26,7 @@ import {
   localDateStringToUTC,
 } from "@/lib/dateUtils";
 import { DatePickerField } from "@/components/ui/DatePickerField";
+import { usePhotoManager } from "@/hooks/usePhotoManager";
 
 // Category options for Quick Track
 export const ITEM_CATEGORIES = [
@@ -43,8 +44,15 @@ export default function QuickTrackPage() {
   const [itemName, setItemName] = useState("");
   const [category, setCategory] = useState<string>("");
   const [rating, setRating] = useState<number | null>(3); // Default to "worth trying"
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string>("");
+
+  // Photo management hook
+  const {
+    photo,
+    previewUrl: photoPreviewUrl,
+    handleCapture,
+    handleRemove,
+  } = usePhotoManager();
+
   const [locationText, setLocationText] = useState("");
   const [notes, setNotes] = useState("");
   const [itemDate, setItemDate] = useState(getTodayLocalDateString());
@@ -64,27 +72,19 @@ export default function QuickTrackPage() {
   const saveItemMutation = useOfflineQuickTrack();
   const isKeyboardVisible = useKeyboardVisible();
 
-  const handlePhotoCapture = useCallback((_key: string | number, file: File) => {
-    setPhoto(file);
+  const handlePhotoCapture = useCallback(
+    (_key: string | number, file: File) => {
+      handleCapture(file);
+    },
+    [handleCapture]
+  );
 
-    // Create preview URL
-    setPhotoPreviewUrl((prevUrl) => {
-      if (prevUrl) {
-        URL.revokeObjectURL(prevUrl);
-      }
-      return URL.createObjectURL(file);
-    });
-  }, []);
-
-  const handlePhotoRemove = useCallback((_key: string | number) => {
-    setPhotoPreviewUrl((prevUrl) => {
-      if (prevUrl) {
-        URL.revokeObjectURL(prevUrl);
-      }
-      return "";
-    });
-    setPhoto(null);
-  }, []);
+  const handlePhotoRemove = useCallback(
+    (_key: string | number) => {
+      handleRemove();
+    },
+    [handleRemove]
+  );
 
   const handleSaveItem = async () => {
     if (!itemName.trim() || rating === null) {

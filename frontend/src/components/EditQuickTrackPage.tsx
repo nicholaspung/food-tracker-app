@@ -31,6 +31,7 @@ import {
   localDateStringToUTC,
 } from "@/lib/dateUtils";
 import { ITEM_CATEGORIES } from "@/components/QuickTrackPage";
+import { usePhotoManager } from "@/hooks/usePhotoManager";
 
 interface EditQuickTrackPageProps {
   itemId: string;
@@ -58,8 +59,15 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
   const [itemName, setItemName] = useState("");
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [rating, setRating] = useState<number | null>(3);
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string>("");
+
+  // Photo management hook
+  const {
+    photo,
+    previewUrl: photoPreviewUrl,
+    handleCapture,
+    handleRemove,
+  } = usePhotoManager();
+
   const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false);
   const [locationText, setLocationText] = useState("");
   const [notes, setNotes] = useState("");
@@ -97,42 +105,28 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
       } else if (item.created) {
         setItemDate(utcToLocalDateString(item.created));
       }
+    }
+  }, [item]);
 
-      // Set existing photo preview
+  const handlePhotoCapture = useCallback(
+    (_key: string | number, file: File) => {
+      handleCapture(file);
+      setRemoveExistingPhoto(false);
+    },
+    [handleCapture]
+  );
+
+  const handlePhotoRemove = useCallback(
+    (_key: string | number) => {
+      handleRemove();
+
+      // Mark existing photo for removal
       if (existingPhoto) {
-        const photoUrl = pb.files.getURL(existingPhoto, existingPhoto.photo);
-        setPhotoPreviewUrl(photoUrl);
+        setRemoveExistingPhoto(true);
       }
-    }
-  }, [item, existingPhoto]);
-
-  const handlePhotoCapture = useCallback((_key: string | number, file: File) => {
-    setPhoto(file);
-    setRemoveExistingPhoto(false);
-
-    // Create preview URL
-    setPhotoPreviewUrl((prevUrl) => {
-      if (prevUrl && !existingPhoto) {
-        URL.revokeObjectURL(prevUrl);
-      }
-      return URL.createObjectURL(file);
-    });
-  }, [existingPhoto]);
-
-  const handlePhotoRemove = useCallback((_key: string | number) => {
-    setPhotoPreviewUrl((prevUrl) => {
-      if (prevUrl && !existingPhoto) {
-        URL.revokeObjectURL(prevUrl);
-      }
-      return "";
-    });
-    setPhoto(null);
-
-    // Mark existing photo for removal
-    if (existingPhoto) {
-      setRemoveExistingPhoto(true);
-    }
-  }, [existingPhoto]);
+    },
+    [handleRemove, existingPhoto]
+  );
 
   const handleUpdateItem = async () => {
     if (!itemName.trim() || rating === null) {
@@ -276,7 +270,12 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
 
               <MenuItemPhotoInput
                 photoKey="quick-track-edit"
-                newPhotoPreviewUrl={photoPreviewUrl}
+                newPhotoPreviewUrl={
+                  photoPreviewUrl ||
+                  (!removeExistingPhoto && existingPhoto
+                    ? pb.files.getURL(existingPhoto, existingPhoto.photo)
+                    : "")
+                }
                 onPhotoCapture={handlePhotoCapture}
                 onRemoveNewPhoto={handlePhotoRemove}
                 showLabel={true}
