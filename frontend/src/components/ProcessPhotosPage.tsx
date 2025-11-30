@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { usePhotoManager } from "@/hooks/usePhotoManager";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -761,10 +762,13 @@ export default function ProcessPhotosPage() {
   const [rating, setRating] = useState<number | null>(3); // Default to "worth trying"
   const [notes, setNotes] = useState("");
   const [photoDate, setPhotoDate] = useState<Date>(new Date());
-  const [menuItemPhoto, setMenuItemPhoto] = useState<File | null>(null);
-  const [menuItemPhotoPreview, setMenuItemPhotoPreview] = useState<
-    string | null
-  >(null);
+
+  // Photo management hook for menu item photo
+  const {
+    previewUrl: menuItemPhotoPreview,
+    handleCapture,
+    handleRemove,
+  } = usePhotoManager();
 
   // Edit menu item state
   const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(
@@ -1279,12 +1283,7 @@ export default function ProcessPhotosPage() {
     key: string | number,
     file: File
   ) => {
-    setMenuItemPhoto(file);
-    const previewUrl = URL.createObjectURL(file);
-    if (menuItemPhotoPreview) {
-      URL.revokeObjectURL(menuItemPhotoPreview);
-    }
-    setMenuItemPhotoPreview(previewUrl);
+    handleCapture(file);
 
     // Trigger OCR scanning if restaurant is selected and online
     if (selectedRestaurant && isOnline) {
@@ -1307,11 +1306,7 @@ export default function ProcessPhotosPage() {
   };
 
   const handleRemoveMenuItemPhoto = () => {
-    setMenuItemPhoto(null);
-    if (menuItemPhotoPreview) {
-      URL.revokeObjectURL(menuItemPhotoPreview);
-    }
-    setMenuItemPhotoPreview(null);
+    handleRemove();
     // Reset OCR state
     resetOCR();
   };

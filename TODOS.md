@@ -250,11 +250,6 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
   - Update all imports
   - Test after each group move
 
-- [ ] **Standardize Component File Naming** (2 hours)
-  - Convert ui/button.tsx → ui/Button.tsx
-  - Convert ui/card.tsx → ui/Card.tsx
-  - Ensure all components use PascalCase
-
 ### 5.2 Organize Hooks and Utils
 
 - [ ] **Organize Hooks by Domain** (3 hours)

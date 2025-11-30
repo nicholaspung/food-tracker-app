@@ -17,6 +17,7 @@ import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { RatingSelector } from "@/components/ui/RatingSelector";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
+import { usePhotoManager } from "@/hooks/usePhotoManager";
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -42,11 +43,23 @@ export default function EditRateItemsPage({
     draft?.visitVisibility || "friends"
   );
 
-  // Photo state - track photo for each item (using food_item id as key)
-  const [itemPhotos, setItemPhotos] = useState<Map<string, File>>(new Map());
-  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<string, string>>(
-    new Map()
-  );
+  // Photo management hook - track photo for each item (using food_item id as key)
+  const {
+    photos: itemPhotos,
+    previewUrls: photoPreviewUrls,
+    handleCapture,
+    handleRemove,
+  } = usePhotoManager<string>(true);
+
+  // Wrap handlers to match MenuItemPhotoInput signature
+  const handlePhotoCapture = (foodItemId: string | number, file: File) => {
+    handleCapture(String(foodItemId), file);
+  };
+
+  const handleRemovePhoto = (foodItemId: string | number) => {
+    handleRemove(String(foodItemId));
+  };
+
   const [deletedPhotoIds, setDeletedPhotoIds] = useState<Set<string>>(
     new Set()
   );
@@ -98,51 +111,6 @@ export default function EditRateItemsPage({
       });
     }
   }, [menuItems, visitDate, visitVisibility, draft]);
-
-  // Cleanup preview URLs on unmount
-  useEffect(() => {
-    return () => {
-      photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, []);
-
-  const handlePhotoCapture = (foodItemId: string | number, file: File) => {
-    const id = String(foodItemId);
-    // Store the photo file
-    const newPhotos = new Map(itemPhotos);
-    newPhotos.set(id, file);
-    setItemPhotos(newPhotos);
-
-    // Create preview URL
-    const previewUrl = URL.createObjectURL(file);
-    const newPreviewUrls = new Map(photoPreviewUrls);
-
-    // Revoke old URL if exists
-    const oldUrl = newPreviewUrls.get(id);
-    if (oldUrl) {
-      URL.revokeObjectURL(oldUrl);
-    }
-
-    newPreviewUrls.set(id, previewUrl);
-    setPhotoPreviewUrls(newPreviewUrls);
-  };
-
-  const handleRemovePhoto = (foodItemId: string | number) => {
-    const id = String(foodItemId);
-    // Remove photo file
-    const newPhotos = new Map(itemPhotos);
-    newPhotos.delete(id);
-    setItemPhotos(newPhotos);
-
-    // Revoke and remove preview URL
-    const previewUrl = photoPreviewUrls.get(id);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    const newPreviewUrls = new Map(photoPreviewUrls);
-    newPreviewUrls.delete(id);
-    setPhotoPreviewUrls(newPreviewUrls);
-  };
 
   // Mark an existing photo for deletion
   const handleDeleteExistingPhoto = (foodItemId: string | number) => {

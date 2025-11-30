@@ -16,6 +16,7 @@ import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
 import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { DatePickerField } from "@/components/ui/DatePickerField";
+import { usePhotoManager } from "@/hooks/usePhotoManager";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -31,11 +32,22 @@ export default function RateItemsPage({
   const [visitDate, setVisitDate] = useState(draft.visitDate);
   const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
 
-  // Photo state - track photo for each item (max 1 for now)
-  const [itemPhotos, setItemPhotos] = useState<Map<number, File>>(new Map());
-  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<Map<number, string>>(
-    new Map()
-  );
+  // Photo management hook - track photo for each item (max 1 for now)
+  const {
+    photos: itemPhotos,
+    previewUrls: photoPreviewUrls,
+    handleCapture,
+    handleRemove,
+  } = usePhotoManager<number>(true);
+
+  // Wrap handlers to match MenuItemPhotoInput signature
+  const handlePhotoCapture = (index: string | number, file: File) => {
+    handleCapture(Number(index), file);
+  };
+
+  const handleRemovePhoto = (index: string | number) => {
+    handleRemove(Number(index));
+  };
 
   // Check if user has rated before - expand legend for first-timers
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
@@ -120,48 +132,6 @@ export default function RateItemsPage({
     visitDraftService.updateItem(index, { [field]: value });
   };
 
-  const handlePhotoCapture = (index: number, file: File) => {
-    // Store the photo file
-    const newPhotos = new Map(itemPhotos);
-    newPhotos.set(index, file);
-    setItemPhotos(newPhotos);
-
-    // Create preview URL
-    const previewUrl = URL.createObjectURL(file);
-    const newPreviewUrls = new Map(photoPreviewUrls);
-
-    // Revoke old URL if exists
-    const oldUrl = newPreviewUrls.get(index);
-    if (oldUrl) {
-      URL.revokeObjectURL(oldUrl);
-    }
-
-    newPreviewUrls.set(index, previewUrl);
-    setPhotoPreviewUrls(newPreviewUrls);
-  };
-
-  const handleRemovePhoto = (index: number) => {
-    // Remove photo file
-    const newPhotos = new Map(itemPhotos);
-    newPhotos.delete(index);
-    setItemPhotos(newPhotos);
-
-    // Revoke and remove preview URL
-    const previewUrl = photoPreviewUrls.get(index);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    const newPreviewUrls = new Map(photoPreviewUrls);
-    newPreviewUrls.delete(index);
-    setPhotoPreviewUrls(newPreviewUrls);
-  };
-
-  // Cleanup preview URLs on unmount
-  useEffect(() => {
-    return () => {
-      photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, []);
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
