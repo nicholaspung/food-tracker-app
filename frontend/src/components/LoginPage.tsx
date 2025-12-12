@@ -13,6 +13,8 @@ import {
 import { pb } from "@/lib/pocketbase";
 import { logger } from "@/lib/logger";
 import { X } from "lucide-react";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 
 interface LoginPageProps {
   onNavigateToSignUp: () => void;
@@ -31,11 +33,16 @@ export default function LoginPage({
 }: LoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [showVerifyPrompt, setShowVerifyPrompt] = useState(false);
+
+  const { error, handleError, clearError } = useErrorHandler({
+    source: 'LoginPage',
+    defaultSeverity: 'error',
+  });
 
   // Load saved email on mount
   useEffect(() => {
@@ -47,7 +54,8 @@ export default function LoginPage({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    clearError();
+    setShowVerifyPrompt(false);
     setVerificationSent(false);
     setLoading(true);
 
@@ -61,7 +69,7 @@ export default function LoginPage({
       if (!authData.record.verified) {
         // User is not verified, log them out
         pb.authStore.clear();
-        setError("verify");
+        setShowVerifyPrompt(true);
         setLoading(false);
         return;
       }
@@ -80,7 +88,10 @@ export default function LoginPage({
       onLoginSuccess?.();
     } catch (err: any) {
       logger.error("Login error:", err);
-      setError("Invalid email or password. Please try again.");
+      handleError(err, {
+        customMessage: "Invalid email or password. Please try again.",
+        severity: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -100,7 +111,10 @@ export default function LoginPage({
       setVerificationSent(true);
     } catch (err: any) {
       logger.error("Resend verification error:", err);
-      setError("Failed to resend verification email. Please try again.");
+      handleError(err, {
+        customMessage: "Failed to resend verification email. Please try again.",
+        severity: 'error'
+      });
     } finally {
       setResendingVerification(false);
     }
@@ -139,7 +153,7 @@ export default function LoginPage({
           className="space-y-4"
         >
           <CardContent className="space-y-4">
-            {error === "verify" && (
+            {showVerifyPrompt && (
               <div
                 className="p-3 text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-md"
                 data-testid="login-verify-error"
@@ -170,14 +184,11 @@ export default function LoginPage({
                 )}
               </div>
             )}
-            {error && error !== "verify" && (
-              <div
-                className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md"
-                data-testid="login-error"
-              >
-                {error}
-              </div>
-            )}
+            <ErrorDisplay
+              error={error}
+              onClear={clearError}
+              testId="login-error"
+            />
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">

@@ -17,6 +17,7 @@ import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { usePhotoManager } from "@/hooks/usePhotoManager";
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -27,6 +28,7 @@ export default function RateItemsPage({
   onSubmit,
   onBack,
 }: RateItemsPageProps) {
+  const { showSuccess } = useErrorHandler({ source: 'RateItemsPage', autoClearMs: 5000 });
   const draft = visitDraftService.getDraft();
   const [items, setItems] = useState(draft.items);
   const [visitDate, setVisitDate] = useState(draft.visitDate);
@@ -111,7 +113,7 @@ export default function RateItemsPage({
 
       // Show helpful message if offline
       if (!isOnline && error.message?.includes("queued")) {
-        alert(
+        showSuccess(
           "You're offline. Your visit has been saved and will sync when you're back online."
         );
         visitDraftService.clearDraft();

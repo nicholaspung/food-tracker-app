@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateSocialShareImage, BadgeTheme, BadgePosition } from "@/services/photoService";
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 interface ShareCustomizationModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export default function ShareCustomizationModal({
   overlayData,
   onShare,
 }: ShareCustomizationModalProps) {
+  const { handleError } = useErrorHandler({ source: "ShareCustomizationModal" });
   const [theme, setTheme] = useState<BadgeTheme>('modern');
   const [position, setPosition] = useState<BadgePosition>('bottom');
   const [showDate, setShowDate] = useState(false);
@@ -88,7 +90,7 @@ export default function ShareCustomizationModal({
       onClose();
     } catch (error) {
       console.error('Error sharing:', error);
-      alert('Failed to share photo. Please try again.');
+      handleError(error as Error, { customMessage: 'Failed to share photo. Please try again.' });
     } finally {
       setIsGenerating(false);
     }

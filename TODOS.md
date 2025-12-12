@@ -81,7 +81,7 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 2.2 Photo Management Hook
 
-- [ ] **usePhotoManager Hook** (5 hours)
+- [x] **usePhotoManager Hook** (5 hours)
   - Create `frontend/src/hooks/usePhotoManager.ts`
   - Extract photo capture/remove logic from:
     - `RateItemsPage.tsx:127-161`
@@ -90,7 +90,7 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
   - Return: `{ photos, previewUrls, handleCapture, handleRemove, cleanup }`
   - Include automatic URL.revokeObjectURL cleanup
 
-- [ ] **Update Photo-Handling Components** (2 hours)
+- [x] **Update Photo-Handling Components** (2 hours)
   - Replace duplicated photo logic in RateItemsPage, QuickTrackPage, etc.
   - Test photo upload/preview/remove functionality
 

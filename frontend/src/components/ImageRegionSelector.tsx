@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Crop, X } from 'lucide-react';
 import { useKeyboardVisible } from '@/hooks/useKeyboardVisible';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 interface Region {
   startX: number;
@@ -25,6 +26,7 @@ export default function ImageRegionSelector({
   onCancel,
   onSkip
 }: ImageRegionSelectorProps) {
+  const { showValidation } = useErrorHandler({ source: "ImageRegionSelector" });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragHandle, setDragHandle] = useState<DragHandle>(null);
@@ -261,7 +263,7 @@ export default function ImageRegionSelector({
 
     // Validate minimum size
     if (width < 10 || height < 10) {
-      alert('Selection is too small. Please draw a larger region.');
+      showValidation('Selection is too small. Please draw a larger region.');
       return;
     }
 

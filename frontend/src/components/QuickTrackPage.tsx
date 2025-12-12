@@ -27,6 +27,7 @@ import {
 } from "@/lib/dateUtils";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { usePhotoManager } from "@/hooks/usePhotoManager";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 // Category options for Quick Track
 export const ITEM_CATEGORIES = [
@@ -39,6 +40,10 @@ export const ITEM_CATEGORIES = [
 
 export default function QuickTrackPage() {
   const navigate = useNavigate();
+  const { showSuccess } = useErrorHandler({
+    source: 'QuickTrackPage',
+    autoClearMs: 5000,
+  });
 
   // Form state
   const [itemName, setItemName] = useState("");
@@ -135,7 +140,7 @@ export default function QuickTrackPage() {
 
       // Show helpful message if offline
       if (!isOnline && error.message?.includes("queued")) {
-        alert(
+        showSuccess(
           "You're offline. Your item has been saved and will sync when you're back online."
         );
         localStorage.setItem("hasRatedBefore", "true");

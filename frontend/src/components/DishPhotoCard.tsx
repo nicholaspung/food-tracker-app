@@ -7,6 +7,7 @@ import { pb } from "@/lib/pocketbase";
 import ShareCustomizationModal from "@/components/ShareCustomizationModal";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 import { useSync } from "@/contexts/SyncContext";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 interface DishPhotoCardProps {
   photoRecord: {
@@ -37,6 +38,10 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const { isOnline } = useSync();
+  const { handleError, showValidation, checkOffline, showSuccess } = useErrorHandler({
+    source: 'DishPhotoCard',
+    autoClearMs: 5000,
+  });
 
   // Extract data from the expanded relations
   const foodItem = photoRecord.expand?.food_item;
@@ -46,13 +51,12 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
   const photoUrl = pb.files.getURL(photoRecord, photoRecord.photo);
 
   const handleShareClick = async () => {
-    if (!isOnline) {
-      alert("Photo sharing requires internet connection. Please connect and try again.");
+    if (checkOffline("Photo sharing requires internet connection. Please connect and try again.")) {
       return;
     }
 
     if (!foodItem || !visit || !restaurant) {
-      alert("Missing data for sharing");
+      showValidation("Missing data for sharing");
       return;
     }
 
@@ -66,7 +70,7 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
       setIsModalOpen(true);
     } catch (error) {
       console.error('Error loading photo:', error);
-      alert('Failed to load photo. Please try again.');
+      handleError(error as Error, { customMessage: 'Failed to load photo. Please try again.' });
     }
   };
 
@@ -102,16 +106,16 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      alert('Photo downloaded! Share it on your favorite social media.');
+      showSuccess('Photo downloaded! Share it on your favorite social media.');
     } catch (error) {
       console.error('Error sharing photo:', error);
-      alert('Failed to share photo. Please try again.');
+      handleError(error as Error, { customMessage: 'Failed to share photo. Please try again.' });
     }
   };
 
   const handleDownload = async () => {
     if (!isOnline) {
-      alert("Photo download requires internet connection. Please connect and try again.");
+      showValidation("Photo download requires internet connection. Please connect and try again.");
       return;
     }
 
@@ -128,7 +132,7 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error downloading photo:', error);
-      alert('Failed to download photo');
+      handleError(error as Error, { customMessage: 'Failed to download photo' });
     }
   };
 

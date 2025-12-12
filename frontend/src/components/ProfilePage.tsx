@@ -24,6 +24,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { getPendingReviewCount } from '@/services/menuReviewService';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
 
 interface InviteCode {
   id: string;
@@ -58,7 +60,6 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
   const [loadingCodes, setLoadingCodes] = useState(true);
@@ -72,8 +73,15 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
   // Admin: Subscriber management
   const [subscriberEmail, setSubscriberEmail] = useState('');
-  const [subscriberError, setSubscriberError] = useState('');
   const [subscriberSuccess, setSubscriberSuccess] = useState('');
+
+  const { error, handleError, clearError, showValidation, checkOffline } = useErrorHandler({
+    source: 'ProfilePage',
+  });
+
+  const { error: subscriberError, handleError: handleSubscriberError, clearError: clearSubscriberError } = useErrorHandler({
+    source: 'ProfilePage-Subscriber',
+  });
 
   // Check if user is the initial user from the user record
   const isInitialUser = user?.isInitialUser === true;
@@ -98,19 +106,19 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     },
     onSuccess: () => {
       setIsEditingName(false);
-      setError('');
+      clearError();
       // Refresh queries that might use the user name
       queryClient.invalidateQueries({ queryKey: ['friendships'] });
       queryClient.invalidateQueries({ queryKey: ['allVisits'] });
     },
     onError: (err: any) => {
-      setError(err.message || 'Failed to update name');
+      handleError(err, { customMessage: 'Failed to update name' });
     },
   });
 
   const handleSaveName = () => {
     if (!editedName.trim()) {
-      setError('Name cannot be empty');
+      showValidation('Name cannot be empty');
       return;
     }
     updateNameMutation.mutate(editedName.trim());
@@ -119,7 +127,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   const handleCancelEditName = () => {
     setEditedName(user?.name || '');
     setIsEditingName(false);
-    setError('');
+    clearError();
   };
 
   // Update name mutation (for mandatory dialog)
@@ -135,22 +143,22 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     onSuccess: () => {
       setShowMandatoryNameDialog(false);
       setMandatoryName('');
-      setError('');
+      clearError();
       // Refresh queries that might use the user name
       queryClient.invalidateQueries({ queryKey: ['friendships'] });
       queryClient.invalidateQueries({ queryKey: ['allVisits'] });
     },
     onError: (err: any) => {
-      setError(err.message || 'Failed to update name');
+      handleError(err, { customMessage: 'Failed to update name' });
     },
   });
 
   const handleSaveMandatoryName = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    clearError();
 
     if (!mandatoryName.trim()) {
-      setError('Please enter your name');
+      showValidation('Please enter your name');
       return;
     }
 
@@ -174,7 +182,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     },
     onSuccess: () => {
       setSubscriberSuccess('User successfully elevated to subscriber!');
-      setSubscriberError('');
+      clearSubscriberError();
       setSubscriberEmail('');
       // Clear success message after 5 seconds
       setTimeout(() => setSubscriberSuccess(''), 5000);
@@ -182,25 +190,25 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     onError: (err: any) => {
       // Extract error message from backend response
       const errorMessage = err.data?.message || err.message || 'Failed to elevate user to subscriber';
-      setSubscriberError(errorMessage);
+      handleSubscriberError(errorMessage);
       setSubscriberSuccess('');
     },
   });
 
   const handleElevateToSubscriber = (e: React.FormEvent) => {
     e.preventDefault();
-    setSubscriberError('');
+    clearSubscriberError();
     setSubscriberSuccess('');
 
     if (!subscriberEmail.trim()) {
-      setSubscriberError('Please enter an email address');
+      handleSubscriberError('Please enter an email address');
       return;
     }
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(subscriberEmail.trim())) {
-      setSubscriberError('Please enter a valid email address');
+      handleSubscriberError('Please enter a valid email address');
       return;
     }
 
@@ -266,13 +274,12 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
   // Generate more invite codes (initial user only)
   const generateMoreCodes = async () => {
-    if (!isOnline) {
-      setError("Cannot generate invite codes while offline. Please connect and try again.");
+    if (checkOffline("Cannot generate invite codes while offline. Please connect and try again.")) {
       return;
     }
 
     setGeneratingCodes(true);
-    setError("");
+    clearError();
 
     try {
       // Use PocketBase SDK's send method for proper authentication
@@ -289,9 +296,9 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
       // Check if it's a forbidden error (not initial user)
       if (err.status === 403) {
-        setError('Only the initial user can generate unlimited invite codes');
+        handleError(err, { customMessage: 'Only the initial user can generate unlimited invite codes' });
       } else {
-        setError(err.message || "Failed to generate invite codes");
+        handleError(err, { customMessage: "Failed to generate invite codes" });
       }
     } finally {
       setGeneratingCodes(false);
@@ -344,12 +351,12 @@ Looking forward to seeing you there!`;
 
   const handleDeleteAccount = async () => {
     if (!user?.id) {
-      setError("No user found");
+      handleError("No user found");
       return;
     }
 
     setLoading(true);
-    setError("");
+    clearError();
 
     try {
       // Delete the user account via PocketBase API
@@ -364,7 +371,7 @@ Looking forward to seeing you there!`;
       onDeleteSuccess?.();
     } catch (err: any) {
       logger.error("Delete account error:", err);
-      setError(err.message || "Failed to delete account. Please try again.");
+      handleError(err, { customMessage: "Failed to delete account. Please try again." });
       setLoading(false);
     }
   };
@@ -402,11 +409,7 @@ Looking forward to seeing you there!`;
               <div className="space-y-4">
                 <p>Please set your name before continuing. This will be shown to your friends when you share visits.</p>
 
-                {error && (
-                  <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md">
-                    {error}
-                  </div>
-                )}
+                <ErrorDisplay error={error} onClear={clearError} />
 
                 <form onSubmit={handleSaveMandatoryName} className="space-y-4">
                   <div className="space-y-2">
@@ -498,11 +501,7 @@ Looking forward to seeing you there!`;
         )}
 
         {/* Error Message */}
-        {error && (
-          <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="profile-error">
-            {error}
-          </div>
-        )}
+        <ErrorDisplay error={error} onClear={clearError} testId="profile-error" />
 
         {/* Account Information Section */}
         <Card>
@@ -820,11 +819,7 @@ Looking forward to seeing you there!`;
                   </div>
                 )}
 
-                {subscriberError && (
-                  <div className="p-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md" data-testid="subscriber-error">
-                    {subscriberError}
-                  </div>
-                )}
+                <ErrorDisplay error={subscriberError} onClear={clearSubscriberError} testId="subscriber-error" />
 
                 <form onSubmit={handleElevateToSubscriber} className="space-y-2">
                   <div className="space-y-1">

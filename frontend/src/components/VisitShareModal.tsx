@@ -5,6 +5,7 @@ import {
   generateVisitCompositeImage,
   BadgeTheme,
 } from "@/services/photoService";
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 interface PhotoWithFoodItem {
   photo: any; // visit_photo record
@@ -32,6 +33,7 @@ export default function VisitShareModal({
   photosWithFoodItems,
   pb,
 }: VisitShareModalProps) {
+  const { handleError, showSuccess } = useErrorHandler({ source: 'VisitShareModal', autoClearMs: 5000 });
   const [theme, setTheme] = useState<BadgeTheme>("modern");
   const [showDate, setShowDate] = useState(true);
   const [showRating, setShowRating] = useState(true);
@@ -185,11 +187,11 @@ export default function VisitShareModal({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      alert("Photo downloaded! Share it on your favorite social media.");
+      showSuccess("Photo downloaded! Share it on your favorite social media.");
       onClose();
     } catch (error) {
       console.error("Error sharing photos:", error);
-      alert("Failed to share photos. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to share photos. Please try again." });
     } finally {
       setIsGenerating(false);
     }
