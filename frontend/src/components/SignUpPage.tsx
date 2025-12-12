@@ -14,6 +14,8 @@ import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 import { useSync } from "@/contexts/SyncContext";
 import { WifiOff } from "lucide-react";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 
 interface SignUpPageProps {
   onNavigateToLogin: () => void;
@@ -28,37 +30,47 @@ export default function SignUpPage({
   const [inviteCode, setInviteCode] = useState(initialInviteCode || "");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const { isOnline } = useSync();
 
+  const {
+    error,
+    handleError,
+    clearError,
+    showValidation,
+    checkOffline,
+    showSuccess,
+  } = useErrorHandler({
+    source: 'SignUpPage',
+    defaultSeverity: 'error',
+  });
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    clearError();
 
     // Check if online
-    if (!isOnline) {
-      setError("Sign up requires internet connection. Please connect and try again.");
+    if (checkOffline("Sign up requires internet connection. Please connect and try again.")) {
       return;
     }
 
     // Validate invite code
     if (!inviteCode.trim()) {
-      setError("Invite code is required");
+      showValidation("Invite code is required");
       return;
     }
 
     // Validate passwords match
     if (password !== passwordConfirm) {
-      setError("Passwords do not match");
+      showValidation("Passwords do not match");
       return;
     }
 
     // Validate password length
     if (password.length < 8) {
-      setError("Password must be at least 8 characters long");
+      showValidation("Password must be at least 8 characters long");
       return;
     }
 
@@ -142,24 +154,13 @@ export default function SignUpPage({
     } catch (err: any) {
       logger.error("Sign up error:", err);
 
-      // Handle specific error messages from PocketBase
-      if (err?.response?.data) {
-        const errorData = err.response.data;
-        if (errorData.email) {
-          setError(`Email: ${errorData.email.message}`);
-        } else if (errorData.password) {
-          setError(`Password: ${errorData.password.message}`);
-        } else if (errorData.inviteCode) {
-          setError(`Invite code: ${errorData.inviteCode.message}`);
-        } else {
-          setError(
-            err.message || "Failed to create account. Please try again."
-          );
-        }
-      } else {
-        // Use the error message directly from the error object
-        setError(err.message || "Failed to create account. Please try again.");
-      }
+      // useErrorHandler automatically parses PocketBase errors
+      handleError(err, {
+        customMessage: !err?.response?.data
+          ? "Failed to create account. Please try again."
+          : undefined, // Let handleError parse PocketBase errors
+        severity: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -254,13 +255,12 @@ export default function SignUpPage({
                 </div>
               </div>
             )}
-            {error && !success && (
-              <div
-                className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md"
-                data-testid="signup-error"
-              >
-                {error}
-              </div>
+            {!success && (
+              <ErrorDisplay
+                error={error}
+                onClear={clearError}
+                testId="signup-error"
+              />
             )}
             <div className="space-y-2">
               <Label htmlFor="signup-email">Email</Label>

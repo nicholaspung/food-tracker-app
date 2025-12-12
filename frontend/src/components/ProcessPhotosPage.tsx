@@ -77,6 +77,7 @@ import { format } from "date-fns";
 import { getTodayLocalDateString } from "../lib/dateUtils";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 type ScreenState = "choice" | "upload" | "process" | "review";
 type ProcessType = "restaurant" | "quickTrack";
@@ -276,12 +277,12 @@ function RestaurantSelector({
 
   const handleCreateRestaurant = async () => {
     if (!newRestaurantName.trim()) {
-      alert("Restaurant name is required");
+      showValidation("Restaurant name is required");
       return;
     }
 
     if (!newRestaurantLocation.trim()) {
-      alert("Location is required");
+      showValidation("Location is required");
       return;
     }
 
@@ -304,7 +305,7 @@ function RestaurantSelector({
       setShowAddRestaurant(false);
     } catch (error) {
       console.error("Failed to create restaurant:", error);
-      alert("Failed to create restaurant. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to create restaurant. Please try again." });
     } finally {
       setIsCreatingRestaurant(false);
     }
@@ -713,6 +714,10 @@ export default function ProcessPhotosPage() {
   const navigate = useNavigate();
   const { isOnline } = useSync();
   const queryClient = useQueryClient();
+  const { handleError, showValidation } = useErrorHandler({
+    source: 'ProcessPhotosPage',
+    autoClearMs: 5000,
+  });
   const visitCreationMutation = useOfflineVisitCreation();
   const restaurantCreationMutation = useOfflineRestaurantCreation();
   const quickTrackMutation = useOfflineQuickTrack();
@@ -1229,7 +1234,7 @@ export default function ProcessPhotosPage() {
       );
     } catch (error: any) {
       console.error("[ProcessPhotos] Failed to create menu item:", error);
-      alert(`Failed to create menu item: ${error.message || "Unknown error"}`);
+      handleError(error as Error, { customMessage: `Failed to create menu item: ${error.message || "Unknown error"}` });
     } finally {
       setIsProcessing(false);
     }
@@ -1273,7 +1278,7 @@ export default function ProcessPhotosPage() {
       console.log("[ProcessPhotos] Menu item updated successfully");
     } catch (error: any) {
       console.error("[ProcessPhotos] Failed to update menu item:", error);
-      alert(`Failed to update menu item: ${error.message || "Unknown error"}`);
+      handleError(error as Error, { customMessage: `Failed to update menu item: ${error.message || "Unknown error"}` });
     } finally {
       setIsProcessing(false);
     }
@@ -1417,7 +1422,7 @@ export default function ProcessPhotosPage() {
       }
     } catch (error: any) {
       console.error("[ProcessPhotos] Failed to create menu item:", error);
-      alert(`Failed to create menu item: ${error.message || "Unknown error"}`);
+      handleError(error as Error, { customMessage: `Failed to create menu item: ${error.message || "Unknown error"}` });
     } finally {
       setIsProcessing(false);
     }
@@ -1513,9 +1518,9 @@ export default function ProcessPhotosPage() {
       navigate({ to: "/home" });
     } catch (error: any) {
       console.error("[ProcessPhotos] Failed to create visits:", error);
-      alert(
-        `Failed to save: ${error.message || "Unknown error"}. Check browser console for details.`
-      );
+      handleError(error, {
+        customMessage: `Failed to save: ${error.message || "Unknown error"}. Check browser console for details.`
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -1623,7 +1628,7 @@ export default function ProcessPhotosPage() {
       navigate({ to: "/home" });
     } catch (error) {
       console.error("Failed to save quick track items:", error);
-      alert("Failed to save quick track items. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to save quick track items. Please try again." });
     } finally {
       setIsProcessing(false);
     }

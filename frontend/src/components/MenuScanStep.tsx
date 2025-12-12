@@ -10,6 +10,8 @@ import { logger } from "@/lib/logger";
 import { MenuItem, User } from '@/lib/pocketbase';
 import { pb } from '@/lib/pocketbase';
 import { useSync } from '@/contexts/SyncContext';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
 
 interface MenuScanStepProps {
   restaurantId: string;
@@ -35,6 +37,11 @@ export default function MenuScanStep({
 
   const { status, progress, menuItems, error, debugData, processMenuImage, reset } = useMenuOCR();
 
+  const { error: validationError, showValidation, handleError, clearError } = useErrorHandler({
+    source: 'MenuScanStep',
+    defaultSeverity: 'warning',
+  });
+
   // Fetch last upload date when component mounts
   useEffect(() => {
     const fetchLastUpload = async () => {
@@ -48,9 +55,15 @@ export default function MenuScanStep({
     const file = event.target.files?.[0];
     if (!file) return;
 
+    clearError(); // Clear previous validation errors
+
     // Validate file size (max 10MB before compression)
     if (file.size > 10 * 1024 * 1024) {
-      alert('Image is too large. Please select an image under 10MB');
+      showValidation('Image is too large. Please select an image under 10MB');
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
 
@@ -63,10 +76,10 @@ export default function MenuScanStep({
 
     if (isHEIF) {
       if (!isOnline) {
-        alert(
-          'HEIC/HEIF conversion requires internet connection.\n\n' +
-          'You are offline. To use iPhone HEIC photos while offline:\n' +
-          '1. Convert the photo to JPEG first, or\n' +
+        showValidation(
+          'HEIC/HEIF conversion requires internet connection. ' +
+          'You are offline. To use iPhone HEIC photos while offline: ' +
+          '1. Convert the photo to JPEG first, or ' +
           '2. Change iPhone settings (Settings > Camera > Formats > Most Compatible) to capture as JPEG'
         );
         // Reset the file input
@@ -115,13 +128,12 @@ export default function MenuScanStep({
       } catch (error) {
         setIsConvertingHeic(false);
         logger.error('Failed to convert HEIC image:', error);
-        alert(
-          'Failed to convert HEIC image. The image may be corrupted or an unsupported format.\n\n' +
-          'Try:\n' +
-          '1. Taking a new photo\n' +
-          '2. Converting to JPEG first\n' +
-          '3. Changing iPhone settings to capture as JPEG (Settings > Camera > Formats > Most Compatible)'
-        );
+        handleError(error as Error, {
+          customMessage: 'Failed to convert HEIC image. The image may be corrupted or an unsupported format. ' +
+            'Try: 1. Taking a new photo, 2. Converting to JPEG first, or ' +
+            '3. Changing iPhone settings to capture as JPEG (Settings > Camera > Formats > Most Compatible)',
+          severity: 'error'
+        });
         // Reset the file input
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -132,7 +144,11 @@ export default function MenuScanStep({
 
     // Validate file type (after potential conversion)
     if (!processedFile.type.startsWith('image/')) {
-      alert('Please select an image file (JPEG, PNG, etc.)');
+      showValidation('Please select an image file (JPEG, PNG, etc.)');
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
 
@@ -234,6 +250,13 @@ export default function MenuScanStep({
           }
           return null;
         })()}
+
+        {/* Validation errors */}
+        <ErrorDisplay
+          error={validationError}
+          onClear={clearError}
+          testId="menu-scan-validation-error"
+        />
 
         {/* File input (hidden, triggered by buttons) */}
         <input

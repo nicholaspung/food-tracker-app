@@ -33,6 +33,7 @@ import {
 } from "@/services/menuReviewService";
 import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 interface SelectedItemWithDescription {
   menuItem: MenuItem;
@@ -82,6 +83,10 @@ export default function AddItemsToVisit({
   // Online/offline status
   const { isOnline } = useSync();
   const isKeyboardVisible = useKeyboardVisible();
+  const { handleError, showValidation, showSuccess } = useErrorHandler({
+    source: 'AddItemsToVisit',
+    autoClearMs: 5000,
+  });
 
   // Fetch menu items using TanStack Query (supports offline cached items)
   const { data: cachedMenuItems } = useQuery({
@@ -295,7 +300,7 @@ export default function AddItemsToVisit({
     if (!manualItemName.trim()) return;
 
     if (!isOnline) {
-      alert(
+      showValidation(
         "Adding menu items requires internet connection. You can still proceed with the visit without adding new menu items."
       );
       return;
@@ -330,7 +335,7 @@ export default function AddItemsToVisit({
       }
     } catch (error) {
       logger.error("Failed to create menu item:", error);
-      alert("Failed to add item. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to add item. Please try again." });
     } finally {
       setIsAdding(false);
     }
@@ -338,7 +343,7 @@ export default function AddItemsToVisit({
 
   const handleComplete = () => {
     if (selectedItems.size === 0) {
-      alert("Please add at least one item to your visit.");
+      showValidation("Please add at least one item to your visit.");
       return;
     }
 
@@ -425,7 +430,7 @@ export default function AddItemsToVisit({
       }, 3000);
     } catch (error) {
       logger.error("Failed to request menu review:", error);
-      alert("Failed to request review. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to request review. Please try again." });
     }
   };
 

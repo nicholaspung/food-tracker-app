@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { X, Upload, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 export interface BulkPhoto {
   id: string;
@@ -29,6 +30,7 @@ export default function BulkPhotoGallery({
   disabled = false,
 }: BulkPhotoGalleryProps) {
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const { showValidation } = useErrorHandler({ source: 'BulkPhotoGallery' });
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -40,7 +42,7 @@ export default function BulkPhotoGallery({
 
     if (totalPhotosAfterUpload > maxPhotos) {
       const remainingSlots = Math.max(0, maxPhotos - photos.length);
-      alert(
+      showValidation(
         `You can only upload ${maxPhotos} photo${maxPhotos !== 1 ? 's' : ''} (one per menu item). ` +
         `You already have ${photos.length} photo${photos.length !== 1 ? 's' : ''} uploaded. ` +
         `${remainingSlots > 0 ? `You can add ${remainingSlots} more.` : 'Please remove some photos before adding more.'}`

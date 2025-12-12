@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 interface AdminMenuReviewsPageProps {
   onNavigateBack?: () => void;
@@ -36,6 +37,9 @@ interface EditingMenuItem {
 
 export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }: AdminMenuReviewsPageProps) {
   const queryClient = useQueryClient();
+  const { handleError, showValidation } = useErrorHandler({
+    source: 'AdminMenuReviewsPage',
+  });
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequest>({});
   const [adminNotes, setAdminNotes] = useState<{ [key: string]: string }>({});
   const [selectedImage, setSelectedImage] = useState<{ url: string; name: string } | null>(null);
@@ -79,7 +83,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     },
     onError: (err: any) => {
       logger.error('Failed to update menu item:', err);
-      alert(err.message || 'Failed to update menu item');
+      handleError(err, { customMessage: 'Failed to update menu item' });
     },
   });
 
@@ -96,7 +100,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     },
     onError: (err: any) => {
       logger.error('Failed to delete menu item:', err);
-      alert(err.message || 'Failed to delete menu item');
+      handleError(err, { customMessage: 'Failed to delete menu item' });
       setDeletingItemId(null);
     },
   });
@@ -127,7 +131,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     },
     onError: (err: any) => {
       logger.error('Failed to update review request status:', err);
-      alert(err.message || 'Failed to update review request');
+      handleError(err, { customMessage: 'Failed to update review request' });
     },
   });
 
@@ -166,7 +170,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     if (!editingItem) return;
 
     if (!editingItem.name.trim()) {
-      alert('Name cannot be empty');
+      showValidation('Name cannot be empty');
       return;
     }
 

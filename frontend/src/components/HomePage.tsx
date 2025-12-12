@@ -8,6 +8,7 @@ import { useVisits } from "@/hooks/api/useVisits";
 import { useFoodItems } from "@/hooks/api/useFoodItems";
 import { utcToLocalDateString } from "@/lib/dateUtils";
 import { useOfflineQuickTrackDelete } from "@/hooks/useOfflineQuickTrackDelete";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
 import {
   Card,
   CardContent,
@@ -134,6 +135,10 @@ export default function HomePage({
   onAddVisit,
 }: HomePageProps = {}) {
   const navigate = useNavigate();
+  const { handleError, showValidation, showSuccess } = useErrorHandler({
+    source: 'HomePage',
+    autoClearMs: 5000,
+  });
   const [monthsToLoad, setMonthsToLoad] = useState(1); // Start with 1 month
   const [renderedMonthsLimit, setRenderedMonthsLimit] = useState(3); // Only render 3 months at a time
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
@@ -263,7 +268,7 @@ export default function HomePage({
       setVisitToDelete(null);
     } catch (error) {
       console.error("Failed to delete visit:", error);
-      alert("Failed to delete visit. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to delete visit. Please try again." });
     } finally {
       setIsDeleting(false);
     }
@@ -291,12 +296,10 @@ export default function HomePage({
         error instanceof Error &&
         error.message?.includes("queued")
       ) {
-        alert(
-          "You're offline. Your deletion has been queued and will sync when you're back online."
-        );
+        showSuccess("You're offline. Your deletion has been queued and will sync when you're back online.");
         setQuickTrackItemToDelete(null);
       } else {
-        alert("Failed to delete item. Please try again.");
+        handleError(error, { customMessage: "Failed to delete item. Please try again." });
       }
     } finally {
       setIsDeleting(false);
@@ -311,9 +314,7 @@ export default function HomePage({
     visitDate: string
   ) => {
     if (!isOnline) {
-      alert(
-        "Photo sharing requires internet connection. Please connect and try again."
-      );
+      showValidation("Photo sharing requires internet connection. Please connect and try again.");
       return;
     }
 
@@ -338,7 +339,7 @@ export default function HomePage({
       setIsShareModalOpen(true);
     } catch (error) {
       console.error("Error loading photo:", error);
-      alert("Failed to load photo. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to load photo. Please try again." });
     }
   }, [isOnline, pb]);
 
@@ -375,10 +376,10 @@ export default function HomePage({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      alert("Photo downloaded! Share it on your favorite social media.");
+      showSuccess("Photo downloaded! Share it on your favorite social media.");
     } catch (error) {
       console.error("Error sharing photo:", error);
-      alert("Failed to share photo. Please try again.");
+      handleError(error as Error, { customMessage: "Failed to share photo. Please try again." });
     }
   }, [shareOverlayData]);
 
@@ -390,7 +391,7 @@ export default function HomePage({
     );
 
     if (photosForVisit.length === 0) {
-      alert("This visit has no photos to share.");
+      showValidation("This visit has no photos to share.");
       return;
     }
 

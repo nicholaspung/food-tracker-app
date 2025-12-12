@@ -32,6 +32,7 @@ import {
 } from "@/lib/dateUtils";
 import { ITEM_CATEGORIES } from "@/components/QuickTrackPage";
 import { usePhotoManager } from "@/hooks/usePhotoManager";
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 interface EditQuickTrackPageProps {
   itemId: string;
@@ -39,6 +40,7 @@ interface EditQuickTrackPageProps {
 
 export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) {
   const navigate = useNavigate();
+  const { showSuccess } = useErrorHandler({ source: 'EditQuickTrackPage', autoClearMs: 5000 });
 
   // Fetch the quick track item
   const { data: item, isLoading: itemLoading } = useFoodItem(itemId);
@@ -177,7 +179,7 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
 
       // Show helpful message if offline
       if (!isOnline && error.message?.includes("queued")) {
-        alert(
+        showSuccess(
           "You're offline. Your changes have been saved and will sync when you're back online."
         );
         navigate({ to: "/home" });
