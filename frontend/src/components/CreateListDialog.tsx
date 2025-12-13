@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Lock, Users, Globe } from "lucide-react";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface CreateListDialogProps {
   open: boolean;
@@ -27,7 +30,10 @@ export default function CreateListDialog({
   const [listName, setListName] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<"private" | "friends" | "public">("private");
-  const [error, setError] = useState<string | null>(null);
+  const { error, handleError, clearError } = useErrorHandler({
+    source: 'CreateListDialog',
+    defaultSeverity: 'error',
+  });
   const user = pb.authStore.record as User;
 
   // Reset form when dialog closes
@@ -36,22 +42,22 @@ export default function CreateListDialog({
       setListName("");
       setDescription("");
       setVisibility("private");
-      setError(null);
+      clearError();
     }
-  }, [open]);
+  }, [open, clearError]);
 
   const createListMutation = useMutation({
     mutationFn: async () => {
       if (!listName.trim()) {
-        throw new Error("List name is required");
+        throw new Error(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("List name"));
       }
 
       if (listName.length > 100) {
-        throw new Error("List name must be 100 characters or less");
+        throw new Error(ERROR_MESSAGES.VALIDATION.MAX_LENGTH("List name", 100));
       }
 
       if (description.length > 500) {
-        throw new Error("Description must be 500 characters or less");
+        throw new Error(ERROR_MESSAGES.VALIDATION.MAX_LENGTH("Description", 500));
       }
 
       return await pb.collection("restaurant_lists").create({
@@ -66,13 +72,13 @@ export default function CreateListDialog({
       onOpenChange(false);
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : "Failed to create list");
+      handleError(err, { customMessage: ERROR_MESSAGES.LISTS.CREATE_FAILED });
     },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    clearError();
     await createListMutation.mutateAsync();
   };
 
@@ -228,11 +234,7 @@ export default function CreateListDialog({
           </div>
 
           {/* Error Message */}
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
+          <ErrorDisplay error={error} onClear={clearError} />
 
           {/* Actions */}
           <div className="flex gap-2 pt-2">

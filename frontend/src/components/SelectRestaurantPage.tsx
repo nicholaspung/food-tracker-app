@@ -33,6 +33,9 @@ import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { useNearbyRestaurants } from "@/hooks/useNearbyRestaurants";
 import RestaurantSearchBar from "@/components/select-restaurant/RestaurantSearchBar";
 import RestaurantList from "@/components/select-restaurant/RestaurantList";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface SelectRestaurantPageProps {
   onRestaurantSelected: () => void;
@@ -53,7 +56,10 @@ export default function SelectRestaurantPage({
     "private" | "friends" | "public"
   >("friends");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
-  const [error, setError] = useState("");
+  const { error, handleError, clearError, showValidation } = useErrorHandler({
+    source: 'SelectRestaurantPage',
+    defaultSeverity: 'error',
+  });
   const [loading, setLoading] = useState(false);
   const [showRestaurantNameFinder, setShowRestaurantNameFinder] =
     useState(false);
@@ -179,7 +185,7 @@ export default function SelectRestaurantPage({
       onRestaurantSelected();
     },
     onError: (err: any) => {
-      setError(err.message || "Failed to add restaurant");
+      handleError(err, { customMessage: ERROR_MESSAGES.RESTAURANT.CREATE_FAILED });
     },
   });
 
@@ -220,15 +226,15 @@ export default function SelectRestaurantPage({
 
   const handleAddRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    clearError();
 
     if (!newRestaurantName.trim()) {
-      setError("Restaurant name is required");
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("Restaurant name"));
       return;
     }
 
     if (!newRestaurantLocation.trim()) {
-      setError("Location is required");
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("Location"));
       return;
     }
 
@@ -312,7 +318,7 @@ export default function SelectRestaurantPage({
 
   const handleSearchNearby = async () => {
     setShowNearbyPlaces(true);
-    setError("");
+    clearError();
     await nearbyRestaurants.requestLocation();
   };
 
@@ -379,11 +385,7 @@ export default function SelectRestaurantPage({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
-            {error}
-          </div>
-        )}
+        <ErrorDisplay error={error} onClear={clearError} />
 
         <div className="space-y-4">
           {/* Search options */}

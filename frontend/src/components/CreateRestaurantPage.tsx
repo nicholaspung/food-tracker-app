@@ -26,6 +26,9 @@ import { useSync } from "@/contexts/SyncContext";
 import { pb } from "@/lib/pocketbase";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { useScrollIntoView } from "@/hooks/useScrollIntoView";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface CreateRestaurantPageProps {
   onRestaurantCreated: () => void;
@@ -53,7 +56,10 @@ export default function CreateRestaurantPage({
   const [visibility, setVisibility] = useState<"private" | "friends" | "public">("friends");
   const [menuItems, setMenuItems] = useState<string[]>([]);
   const [currentMenuItem, setCurrentMenuItem] = useState("");
-  const [error, setError] = useState("");
+  const { error, handleError, clearError, showValidation } = useErrorHandler({
+    source: 'CreateRestaurantPage',
+    defaultSeverity: 'error',
+  });
   const [showOfflineDialog, setShowOfflineDialog] = useState(false);
   const [offlineMenuItemCount, setOfflineMenuItemCount] = useState(0);
 
@@ -80,15 +86,15 @@ export default function CreateRestaurantPage({
 
   const handleSubmit = async () => {
     console.log('[CreateRestaurant] handleSubmit called');
-    setError("");
+    clearError();
 
     if (!restaurantName.trim()) {
-      setError("Restaurant name is required");
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("Restaurant name"));
       return;
     }
 
     if (!restaurantLocation.trim()) {
-      setError("Location is required");
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("Location"));
       return;
     }
 
@@ -137,7 +143,7 @@ export default function CreateRestaurantPage({
       }
     } catch (err: any) {
       console.error('[CreateRestaurant] Error creating restaurant:', err);
-      setError(err.message || "Failed to create restaurant");
+      handleError(err, { customMessage: ERROR_MESSAGES.RESTAURANT.CREATE_FAILED });
     }
   };
 
@@ -169,13 +175,7 @@ export default function CreateRestaurantPage({
           )}
 
           {/* Error Message */}
-          {error && (
-            <Card className="border-red-500 bg-red-50">
-              <CardContent className="pt-4">
-                <p className="text-sm text-red-600">{error}</p>
-              </CardContent>
-            </Card>
-          )}
+          <ErrorDisplay error={error} onClear={clearError} />
 
           {/* Restaurant Details */}
           <Card>

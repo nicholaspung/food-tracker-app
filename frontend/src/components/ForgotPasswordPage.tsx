@@ -5,6 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface ForgotPasswordPageProps {
   onNavigateToLogin: () => void;
@@ -12,23 +15,27 @@ interface ForgotPasswordPageProps {
 
 export default function ForgotPasswordPage({ onNavigateToLogin }: ForgotPasswordPageProps) {
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
+  const { error, handleError, clearError, showSuccess } = useErrorHandler({
+    source: 'ForgotPasswordPage',
+    defaultSeverity: 'error',
+  });
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    clearError();
     setSuccess(false);
     setLoading(true);
 
     try {
       await pb.collection('users').requestPasswordReset(email);
       setSuccess(true);
+      showSuccess("Password reset email sent! Check your inbox.");
       setEmail(""); // Clear the form
     } catch (err: any) {
       logger.error("Password reset request error:", err);
-      setError("Failed to send password reset email. Please check your email address and try again.");
+      handleError(err, { customMessage: ERROR_MESSAGES.AUTH.SEND_RESET_EMAIL_FAILED });
     } finally {
       setLoading(false);
     }
@@ -47,11 +54,7 @@ export default function ForgotPasswordPage({ onNavigateToLogin }: ForgotPassword
         </CardHeader>
         <form onSubmit={handleSubmit} data-testid="forgot-password-form">
           <CardContent className="space-y-4">
-            {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="forgot-password-error">
-                {error}
-              </div>
-            )}
+            <ErrorDisplay error={error} onClear={clearError} testId="forgot-password-error" />
             {success && (
               <div className="p-3 text-sm text-green-500 bg-green-50 border border-green-200 rounded-md" data-testid="forgot-password-success">
                 Password reset email sent! Please check your inbox and spam folder.

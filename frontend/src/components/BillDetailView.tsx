@@ -18,6 +18,9 @@ import {
 import { getBill, markParticipantPaid, markParticipantPending, settleBill, deleteBill } from '@/lib/billService';
 import { formatCurrency, getBillSummary } from '@/lib/billCalculations';
 import { pb } from '@/lib/pocketbase';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 
 interface BillDetailViewProps {
   billId: string;
@@ -29,7 +32,10 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
   const currentUserId = pb.authStore.record?.id || '';
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showSettleDialog, setShowSettleDialog] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { error, handleError, clearError } = useErrorHandler({
+    source: 'BillDetailView',
+    defaultSeverity: 'error',
+  });
 
   const { data: bill, isLoading, error: queryError } = useQuery({
     queryKey: ['bill', billId],
@@ -75,7 +81,7 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
       queryClient.invalidateQueries({ queryKey: ['bills'] });
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to update payment status');
+      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.UPDATE_FAILED("payment status") });
     },
   });
 
@@ -87,7 +93,7 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
       setShowSettleDialog(false);
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to settle bill');
+      handleError(err, { customMessage: "Failed to settle bill" });
     },
   });
 
@@ -98,7 +104,7 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
       onBack?.();
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to delete bill');
+      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.DELETE_FAILED("bill") });
     },
   });
 
@@ -238,11 +244,7 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Error Alert */}
-          {error && (
-            <Alert variant="destructive">
-              <div className="text-sm">{error}</div>
-            </Alert>
-          )}
+          <ErrorDisplay error={error} onClear={clearError} />
 
           {/* Summary Card */}
           <Card className="p-4">

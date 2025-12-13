@@ -18,6 +18,9 @@ import {
 } from '@/components/ui/dialog';
 import { MessageSquare, Plus, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 
 const STATUS_COLORS = {
   open: 'bg-blue-500',
@@ -37,7 +40,7 @@ export default function FeedbackPage() {
   const [showNewFeedbackDialog, setShowNewFeedbackDialog] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [error, setError] = useState('');
+  const { error, handleError, clearError, showValidation } = useErrorHandler({ source: 'FeedbackPage', defaultSeverity: 'error' });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const matches = useMatches();
@@ -80,10 +83,10 @@ export default function FeedbackPage() {
       setShowNewFeedbackDialog(false);
       setTitle('');
       setDescription('');
-      setError('');
+      clearError();
     },
     onError: (err: Error) => {
-      setError(err.message || 'Failed to create feedback');
+      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.CREATE_FAILED('feedback') });
     },
   });
 
@@ -94,11 +97,11 @@ export default function FeedbackPage() {
 
   const handleCreateFeedback = () => {
     if (!title.trim()) {
-      setError('Title is required');
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD('Title'));
       return;
     }
     if (!description.trim()) {
-      setError('Description is required');
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD('Description'));
       return;
     }
 
@@ -265,7 +268,7 @@ export default function FeedbackPage() {
               />
             </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            <ErrorDisplay error={error} onClear={clearError} />
           </div>
 
           <DialogFooter>
@@ -275,7 +278,7 @@ export default function FeedbackPage() {
                 setShowNewFeedbackDialog(false);
                 setTitle('');
                 setDescription('');
-                setError('');
+                clearError();
               }}
               disabled={createFeedbackMutation.isPending}
             >

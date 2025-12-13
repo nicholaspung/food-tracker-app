@@ -12,6 +12,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 
 interface OnboardingDialogProps {
   open: boolean;
@@ -20,7 +23,10 @@ interface OnboardingDialogProps {
 
 export default function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
   const [name, setName] = useState('');
-  const [error, setError] = useState('');
+  const { error, handleError, clearError, showValidation } = useErrorHandler({
+    source: 'OnboardingDialog',
+    defaultSeverity: 'error',
+  });
 
   const updateNameMutation = useMutation({
     mutationFn: async (newName: string) => {
@@ -35,16 +41,16 @@ export default function OnboardingDialog({ open, onComplete }: OnboardingDialogP
       onComplete();
     },
     onError: (err: any) => {
-      setError(err.message || 'Failed to update name');
+      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.UPDATE_FAILED("name") });
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    clearError();
 
     if (!name.trim()) {
-      setError('Please enter your name');
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD('Your name'));
       return;
     }
 
@@ -64,11 +70,7 @@ export default function OnboardingDialog({ open, onComplete }: OnboardingDialogP
             <div className="space-y-4">
               <p>Let's get you set up. What should we call you?</p>
 
-              {error && (
-                <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md">
-                  {error}
-                </div>
-              )}
+              <ErrorDisplay error={error} onClear={clearError} />
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">

@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { pb, User } from "@/lib/pocketbase";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Lock, Users, Check, Globe } from "lucide-react";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface SettingsPageProps {
   onNavigateBack?: () => void;
@@ -20,7 +23,10 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
   const [selectedRestaurantVisibility, setSelectedRestaurantVisibility] = useState<'private' | 'friends' | 'public'>(
     user?.defaultRestaurantVisibility || 'private'
   );
-  const [error, setError] = useState("");
+  const { error, handleError, clearError, showSuccess } = useErrorHandler({
+    source: 'SettingsPage',
+    defaultSeverity: 'error',
+  });
   const [successMessage, setSuccessMessage] = useState("");
 
   const updateVisibilityMutation = useMutation({
@@ -37,7 +43,7 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
       });
     },
     onSuccess: () => {
-      setError('');
+      clearError();
       setSuccessMessage('Settings saved successfully');
       // Clear success message after 3 seconds
       setTimeout(() => setSuccessMessage(''), 3000);
@@ -45,7 +51,7 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
       queryClient.invalidateQueries({ queryKey: ['user'] });
     },
     onError: (error: Error) => {
-      setError(error.message);
+      handleError(error, { customMessage: ERROR_MESSAGES.GENERIC.UPDATE_FAILED("settings") });
       setSuccessMessage('');
     },
   });
@@ -258,11 +264,7 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
           </CardContent>
         </Card>
 
-        {error && (
-          <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-            {error}
-          </div>
-        )}
+        <ErrorDisplay error={error} onClear={clearError} />
 
         {successMessage && (
           <div className="p-3 bg-green-50 text-green-600 rounded-lg text-sm flex items-center gap-2">

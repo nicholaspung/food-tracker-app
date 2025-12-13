@@ -37,6 +37,9 @@ import {
 } from "lucide-react";
 import QRScanner from "@/components/QRScanner";
 import { useSync } from "@/contexts/SyncContext";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 // Generate a unique friend code from user ID (base62 encoding for shorter code)
 function generateFriendCode(userId: string): string {
@@ -56,8 +59,11 @@ export default function FriendsPage() {
   const [friendCode, setFriendCode] = useState("");
   const [showQRCode, setShowQRCode] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { error, handleError, clearError, showSuccess, showValidation } = useErrorHandler({
+    source: 'FriendsPage',
+    defaultSeverity: 'error',
+    autoClearMs: 3000,
+  });
   const [friendToRemove, setFriendToRemove] =
     useState<FriendWithDetails | null>(null);
   const queryClient = useQueryClient();
@@ -109,7 +115,7 @@ export default function FriendsPage() {
       if (!currentUser) throw new Error("Not authenticated");
 
       if (!isOnline) {
-        throw new Error("Friend code lookup requires internet connection. Please connect and try again.");
+        throw new Error(ERROR_MESSAGES.FRIENDS.OFFLINE_LOOKUP);
       }
 
       // Find user by friend code using backend API
@@ -121,13 +127,13 @@ export default function FriendsPage() {
       );
 
       if (!response.found) {
-        throw new Error("Friend code not found");
+        throw new Error(ERROR_MESSAGES.FRIENDS.CODE_NOT_FOUND);
       }
 
       const targetUser = response.user;
 
       if (targetUser.id === currentUser.id) {
-        throw new Error("Cannot add yourself as a friend");
+        throw new Error(ERROR_MESSAGES.FRIENDS.CANNOT_ADD_SELF);
       }
 
       // Check if friendship already exists
@@ -138,7 +144,7 @@ export default function FriendsPage() {
       );
 
       if (existingFriendship) {
-        throw new Error("Friend request already exists");
+        throw new Error(ERROR_MESSAGES.FRIENDS.REQUEST_EXISTS);
       }
 
       // Create friend request
@@ -154,13 +160,10 @@ export default function FriendsPage() {
         queryKey: ["pendingFriendRequestsCount"],
       });
       setFriendCode("");
-      setSuccess("Friend request sent!");
-      setError("");
-      setTimeout(() => setSuccess(""), 3000);
+      showSuccess("Friend request sent!");
     },
     onError: (err: any) => {
-      setError(err.message || "Failed to send friend request");
-      setSuccess("");
+      handleError(err, { customMessage: ERROR_MESSAGES.FRIENDS.SEND_REQUEST_FAILED });
     },
   });
 
@@ -198,7 +201,7 @@ export default function FriendsPage() {
   const handleSendFriendRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!friendCode.trim()) {
-      setError("Please enter a friend code");
+      showValidation(ERROR_MESSAGES.FRIENDS.CODE_REQUIRED);
       return;
     }
     await sendFriendRequestMutation.mutateAsync(friendCode.trim());
@@ -206,15 +209,13 @@ export default function FriendsPage() {
 
   const copyFriendCode = () => {
     navigator.clipboard.writeText(myFriendCode);
-    setSuccess("Friend code copied!");
-    setTimeout(() => setSuccess(""), 2000);
+    showSuccess("Friend code copied!");
   };
 
   const handleQRScan = (scannedCode: string) => {
     setFriendCode(scannedCode.toUpperCase());
     setShowScanner(false);
-    setSuccess("QR code scanned! Review and send request.");
-    setTimeout(() => setSuccess(""), 3000);
+    showSuccess("QR code scanned! Review and send request.");
   };
 
   const getFriendInfo = (friendship: FriendWithDetails) => {
@@ -266,16 +267,7 @@ export default function FriendsPage() {
 
           <div className="flex-1 overflow-y-auto p-4">
             {/* Success/Error Messages */}
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
-                {error}
-              </div>
-            )}
-            {success && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-600">
-                {success}
-              </div>
-            )}
+            <ErrorDisplay error={error} onClear={clearError} />
 
             {/* Friends List Tab */}
             <TabsContent value="friends-list" className="mt-0 space-y-4">

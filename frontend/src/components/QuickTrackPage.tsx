@@ -28,6 +28,7 @@ import {
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { usePhotoManager } from "@/hooks/usePhotoManager";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/offlineHelpers";
 
 // Category options for Quick Track
 export const ITEM_CATEGORIES = [
@@ -139,10 +140,8 @@ export default function QuickTrackPage() {
       console.error("Failed to save quick track item:", error);
 
       // Show helpful message if offline
-      if (!isOnline && error.message?.includes("queued")) {
-        showSuccess(
-          "You're offline. Your item has been saved and will sync when you're back online."
-        );
+      if (!isOnline && isOfflineError(error)) {
+        handleOfflineSuccess(OFFLINE_MESSAGES.ITEM_SAVED, showSuccess);
         localStorage.setItem("hasRatedBefore", "true");
         navigate({ to: "/home" });
       }

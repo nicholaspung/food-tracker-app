@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { X, Camera } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 
 interface QRScannerProps {
   onScan: (result: string) => void;
@@ -12,7 +15,7 @@ interface QRScannerProps {
 
 export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [error, setError] = useState<string>('');
+  const { error, handleError, clearError } = useErrorHandler({ source: 'QRScanner', defaultSeverity: 'error' });
   const [isScanning, setIsScanning] = useState(true);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
 
@@ -28,7 +31,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
 
         if (videoInputDevices.length === 0) {
-          setError('No camera found on this device');
+          handleError(new Error('No camera found on this device'));
           return;
         }
 
@@ -54,7 +57,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         );
       } catch (err) {
         logger.error('Scanner error:', err);
-        setError('Failed to access camera. Please check permissions.');
+        handleError(err, { customMessage: 'Failed to access camera. Please check permissions.' });
       }
     };
 
@@ -90,8 +93,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         {error ? (
           <Card className="m-4">
             <CardContent className="pt-6">
-              <p className="text-red-600 text-center">{error}</p>
-              <Button onClick={onClose} className="w-full mt-4">
+              <ErrorDisplay error={error} onClear={clearError} className="mb-4" />
+              <Button onClick={onClose} className="w-full">
                 Close
               </Button>
             </CardContent>

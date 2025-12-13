@@ -4,6 +4,9 @@ import { Camera, Copy, RotateCcw, Loader2, Check, WifiOff } from 'lucide-react';
 import { pb } from '@/lib/pocketbase';
 import ExpandableImageWithBox from '@/components/ExpandableImageWithBox';
 import { useSync } from '@/contexts/SyncContext';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 
 interface TextBlock {
   text: string;
@@ -25,7 +28,10 @@ export default function CameraOCR() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [textBlocks, setTextBlocks] = useState<TextBlock[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string>('');
+  const { error, handleError, clearError, showValidation, checkOffline } = useErrorHandler({
+    source: 'CameraOCR',
+    defaultSeverity: 'error',
+  });
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,18 +40,18 @@ export default function CameraOCR() {
 
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
-      setError('Image is too large. Please select an image under 10MB');
+      showValidation(ERROR_MESSAGES.OCR.IMAGE_TOO_LARGE);
       return;
     }
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      setError('Please select an image file (JPEG, PNG, etc.)');
+      showValidation(ERROR_MESSAGES.OCR.INVALID_FILE_TYPE);
       return;
     }
 
     setSelectedImage(file);
-    setError('');
+    clearError();
     setTextBlocks([]);
 
     // Create preview URL for display
@@ -62,13 +68,13 @@ export default function CameraOCR() {
   const runOCR = async (imageFile: File) => {
     // Check if online before proceeding
     if (!isOnline) {
-      setError('OCR requires an internet connection. Please connect and try again.');
+      showValidation(ERROR_MESSAGES.OCR.OFFLINE_REQUIRED);
       return;
     }
 
     setCurrentStep('processing');
     setIsProcessing(true);
-    setError('');
+    clearError();
     setTextBlocks([]);
 
     try {
@@ -100,12 +106,12 @@ export default function CameraOCR() {
         setCurrentStep('result');
       } else {
         setTextBlocks([]);
-        setError('No text detected in the image. Try another image with clearer text.');
+        showValidation(ERROR_MESSAGES.OCR.NO_TEXT_DETECTED);
         setCurrentStep('result');
       }
     } catch (err: any) {
       console.error('OCR error:', err);
-      setError(`Failed to extract text: ${err.message || 'Unknown error'}. Please try another image.`);
+      handleError(err, { customMessage: ERROR_MESSAGES.OCR.EXTRACTION_FAILED(err.message || 'Unknown error') });
       setTextBlocks([]);
       setCurrentStep('result');
     } finally {
@@ -154,7 +160,7 @@ export default function CameraOCR() {
     setSelectedImage(null);
     setImagePreview(null);
     setTextBlocks([]);
-    setError('');
+    clearError();
     setCopiedIndex(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -170,7 +176,7 @@ export default function CameraOCR() {
       setTimeout(() => setCopiedIndex(null), 2000);
     } catch (err) {
       console.error('Failed to copy text:', err);
-      setError('Failed to copy text to clipboard');
+      showValidation(ERROR_MESSAGES.OCR.COPY_FAILED);
     }
   };
 
@@ -250,11 +256,7 @@ export default function CameraOCR() {
         )}
 
         {/* Error Message */}
-        {error && (
-          <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md">
-            {error}
-          </div>
-        )}
+        <ErrorDisplay error={error} onClear={clearError} />
 
         {/* Processing State */}
         {isProcessing && (
