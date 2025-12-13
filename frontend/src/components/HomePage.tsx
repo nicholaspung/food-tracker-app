@@ -1,20 +1,23 @@
-import { useState, useMemo, useEffect, useDeferredValue, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { pb, Restaurant } from "@/lib/pocketbase";
+import { pb, Restaurant, Visit, FoodItem } from "@/lib/pocketbase";
 import { syncQueue } from "@/lib/syncQueue";
 import { useSync } from "@/contexts/SyncContext";
 import { useVisits } from "@/hooks/api/useVisits";
 import { useFoodItems } from "@/hooks/api/useFoodItems";
-import { utcToLocalDateString } from "@/lib/dateUtils";
+import { useVisitFilters } from "@/hooks/useVisitFilters";
+import { useVisitGrouping } from "@/hooks/useVisitGrouping";
+import { usePhotoSharing } from "@/hooks/usePhotoSharing";
+import { getDateMonthsAgo } from "@/lib/dateUtils";
 import { useOfflineQuickTrackDelete } from "@/hooks/useOfflineQuickTrackDelete";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
+import VisitCard from "@/components/home/VisitCard";
+import QuickTrackCard from "@/components/home/QuickTrackCard";
+import VisitListHeader from "@/components/home/VisitListHeader";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,34 +32,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Calendar,
   MapPin,
   Utensils,
-  Pencil,
   ChevronDown,
   ChevronRight,
-  Trash2,
   Users,
   Plus,
   Search,
   X,
-  Share2,
-  Lock,
-  UserCheck,
-  SlidersHorizontal,
 } from "lucide-react";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
-import { Input } from "@/components/ui/input";
 import ShareCustomizationModal from "@/components/ShareCustomizationModal";
 import VisitShareModal from "@/components/VisitShareModal";
-import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
 interface VisitWithDetails extends Omit<Visit, "restaurant"> {
   restaurant?: Restaurant;
@@ -79,101 +67,21 @@ interface HomePageProps {
   onAddVisit?: () => void;
 }
 
-// Helper to get month key (YYYY-MM) in local timezone
-function getMonthKey(date: string): string {
-  const d = new Date(date); // Parses UTC datetime, converts to local
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-// Helper to get day key (YYYY-MM-DD) in local timezone
-function getDayKey(date: string, isFriendVisit: boolean = false): string {
-  // For friend visits, return month key to mask exact date
-  if (isFriendVisit) {
-    return getMonthKey(date);
-  }
-  // Convert UTC datetime to local date string
-  return utcToLocalDateString(date);
-}
-
-// Helper to format month label
-function formatMonthLabel(monthKey: string): string {
-  const [year, month] = monthKey.split("-");
-  const date = new Date(parseInt(year), parseInt(month) - 1);
-  return date.toLocaleDateString("en-US", { year: "numeric", month: "long" });
-}
-
-// Helper to format day label
-function formatDayLabel(
-  dayKey: string,
-  isFriendVisit: boolean = false
-): string {
-  // For friend visits, dayKey is actually a month key (YYYY-MM)
-  if (isFriendVisit) {
-    const [year, month] = dayKey.split("-");
-    const date = new Date(parseInt(year), parseInt(month) - 1);
-    return date.toLocaleDateString("en-US", { year: "numeric", month: "long" });
-  }
-  const date = new Date(dayKey + "T00:00:00");
-  return date.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-// Helper to get date N months ago
-function getDateMonthsAgo(months: number): Date {
-  const date = new Date();
-  date.setMonth(date.getMonth() - months);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
 export default function HomePage({
   onEditVisit,
   onAddVisit,
 }: HomePageProps = {}) {
   const navigate = useNavigate();
-  const { handleError, showValidation, showSuccess } = useErrorHandler({
+  const { handleError, showSuccess } = useErrorHandler({
     source: 'HomePage',
     autoClearMs: 5000,
   });
   const [monthsToLoad, setMonthsToLoad] = useState(1); // Start with 1 month
-  const [renderedMonthsLimit, setRenderedMonthsLimit] = useState(3); // Only render 3 months at a time
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
-    new Set([getMonthKey(new Date().toISOString())])
-  ); // Current month expanded by default
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(
     null
   );
   const [quickTrackItemToDelete, setQuickTrackItemToDelete] =
     useState<QuickTrackItemWithDetails | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [previousSearchQuery, setPreviousSearchQuery] = useState("");
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [filterType, setFilterType] = useState<
-    "all" | "user_visits" | "user_quick_track" | "user_both" | "friends"
-  >("all");
-  const [visibilityFilter, setVisibilityFilter] = useState<
-    "all" | "private" | "friends"
-  >("all");
-  const [ratingFilter, setRatingFilter] = useState<
-    "all" | "1" | "2" | "3" | "4" | "5"
-  >("all");
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [sharePhotoFile, setSharePhotoFile] = useState<File | null>(null);
-  const [sharePhotoUrl, setSharePhotoUrl] = useState<string>("");
-  const [shareOverlayData, setShareOverlayData] = useState<{
-    restaurantName: string;
-    dishName: string;
-    rating: number;
-    visitDate: string;
-  } | null>(null);
-  const [visitToShare, setVisitToShare] = useState<VisitWithDetails | null>(
-    null
-  );
   const [fullscreenPhoto, setFullscreenPhoto] = useState<{
     url: string;
     dishName: string;
@@ -224,6 +132,25 @@ export default function HomePage({
   const { isOnline } = useSync();
   const [isDeleting, setIsDeleting] = useState(false);
   const deleteQuickTrackMutation = useOfflineQuickTrackDelete();
+
+  // Use photo sharing hook
+  const sharing = usePhotoSharing({
+    visitPhotos,
+    isOnline,
+  });
+
+  const {
+    isShareModalOpen,
+    sharePhotoFile,
+    sharePhotoUrl,
+    shareOverlayData,
+    handleSharePhotoClick,
+    handleShare,
+    closeShareModal,
+    visitToShare,
+    handleShareVisitClick,
+    closeVisitShareModal,
+  } = sharing;
 
   // Delete visit with offline support
   const handleDeleteVisit = useCallback(async (visitId: string) => {
@@ -306,98 +233,6 @@ export default function HomePage({
     }
   }, [deleteQuickTrackMutation, isOnline]);
 
-  // Handle opening share modal
-  const handleSharePhotoClick = useCallback(async (
-    photo: any,
-    foodItem: FoodItem,
-    restaurant: Restaurant | null,
-    visitDate: string
-  ) => {
-    if (!isOnline) {
-      showValidation("Photo sharing requires internet connection. Please connect and try again.");
-      return;
-    }
-
-    try {
-      // Get full resolution photo URL
-      const photoUrl = pb.files.getURL(photo, photo.photo);
-
-      // Fetch the photo as a blob
-      const response = await fetch(photoUrl);
-      const blob = await response.blob();
-      const file = new File([blob], "dish-photo.jpg", { type: "image/jpeg" });
-
-      setSharePhotoFile(file);
-      setSharePhotoUrl(photoUrl);
-      setShareOverlayData({
-        restaurantName:
-          restaurant?.name || foodItem.location_text || "Quick Track",
-        dishName: foodItem.name,
-        rating: foodItem.rating,
-        visitDate: visitDate,
-      });
-      setIsShareModalOpen(true);
-    } catch (error) {
-      console.error("Error loading photo:", error);
-      handleError(error as Error, { customMessage: "Failed to load photo. Please try again." });
-    }
-  }, [isOnline, pb]);
-
-  // Handle final share action from modal
-  const handleShare = useCallback(async (shareBlob: Blob) => {
-    if (!shareOverlayData) return;
-
-    try {
-      // Try Web Share API first (native sharing on mobile)
-      if (navigator.share && navigator.canShare) {
-        const shareFile = new File([shareBlob], "food-tracker-share.jpg", {
-          type: "image/jpeg",
-        });
-
-        const canShareFile = navigator.canShare({ files: [shareFile] });
-
-        if (canShareFile) {
-          await navigator.share({
-            files: [shareFile],
-            title: `${shareOverlayData.dishName} at ${shareOverlayData.restaurantName}`,
-            text: `Check out this dish I tried! Rated ${shareOverlayData.rating}/5`,
-          });
-          return;
-        }
-      }
-
-      // Fallback: Download the image
-      const url = URL.createObjectURL(shareBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${shareOverlayData.dishName.replace(/[^a-z0-9]/gi, "_")}_${shareOverlayData.restaurantName.replace(/[^a-z0-9]/gi, "_")}.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showSuccess("Photo downloaded! Share it on your favorite social media.");
-    } catch (error) {
-      console.error("Error sharing photo:", error);
-      handleError(error as Error, { customMessage: "Failed to share photo. Please try again." });
-    }
-  }, [shareOverlayData]);
-
-  // Handle share visit button click
-  const handleShareVisitClick = useCallback((visit: VisitWithDetails) => {
-    // Check if visit has any photos
-    const photosForVisit = visitPhotos.filter((photo: any) =>
-      visit.foodItems?.some((item) => item.id === photo.food_item)
-    );
-
-    if (photosForVisit.length === 0) {
-      showValidation("This visit has no photos to share.");
-      return;
-    }
-
-    setVisitToShare(visit);
-  }, [visitPhotos]);
-
   // Separate quick track items (items explicitly marked as quick track)
   const quickTrackItems: QuickTrackItemWithDetails[] = useMemo(
     () =>
@@ -418,276 +253,62 @@ export default function HomePage({
     [visits, restaurants, foodItems]
   );
 
-  // Filter visits based on monthsToLoad and search query
+  // Calculate cutoff date for filtering
   const cutoffDate = useMemo(
     () => getDateMonthsAgo(monthsToLoad),
     [monthsToLoad]
   );
-  const filteredVisits = useMemo(() => {
-    // If searching, search ALL visits (ignore time filter)
-    // Otherwise, filter by time range
-    let filtered = deferredSearchQuery.trim()
-      ? visitsWithDetails
-      : visitsWithDetails.filter(
-          (visit) => new Date(visit.visitDate) >= cutoffDate
-        );
 
-    // Apply search filter
-    if (deferredSearchQuery.trim()) {
-      const query = deferredSearchQuery.toLowerCase();
-      filtered = filtered.filter((visit) => {
-        // Search in restaurant name
-        const restaurantName = visit.restaurant?.name?.toLowerCase() || "";
-        if (restaurantName.includes(query)) return true;
-
-        // Search in restaurant location
-        const restaurantLocation =
-          visit.restaurant?.location?.toLowerCase() || "";
-        if (restaurantLocation.includes(query)) return true;
-
-        // Search in restaurant cuisine type
-        const cuisineType = visit.restaurant?.cuisineType?.toLowerCase() || "";
-        if (cuisineType.includes(query)) return true;
-
-        // Search in food items
-        const foodItemNames =
-          visit.foodItems
-            ?.map((item) => item.name?.toLowerCase() || "")
-            .join(" ") || "";
-        if (foodItemNames.includes(query)) return true;
-
-        // Search in notes
-        const notes = visit.notes?.toLowerCase() || "";
-        if (notes.includes(query)) return true;
-
-        return false;
-      });
-    }
-
-    // Apply filter type
-    if (filterType === "user_visits") {
-      filtered = filtered.filter((visit) => !isFriendVisit(visit));
-    } else if (filterType === "user_both") {
-      filtered = filtered.filter((visit) => !isFriendVisit(visit));
-    } else if (filterType === "friends") {
-      filtered = filtered.filter((visit) => isFriendVisit(visit));
-    } else if (filterType === "user_quick_track") {
-      // No visits shown when filtering for quick track only
-      filtered = [];
-    }
-
-    // Apply visibility filter (only for user's own visits)
-    if (visibilityFilter !== "all") {
-      filtered = filtered.filter((visit) => {
-        // Only apply visibility filter to user's own visits
-        if (isFriendVisit(visit)) return true;
-        return visit.visibility === visibilityFilter;
-      });
-    }
-
-    // Apply rating filter
-    if (ratingFilter !== "all") {
-      const targetRating = parseInt(ratingFilter);
-      filtered = filtered.filter((visit) =>
-        visit.foodItems?.some((item) => item.rating === targetRating)
-      );
-    }
-
-    return filtered;
-  }, [
-    visitsWithDetails,
-    cutoffDate,
-    filterType,
-    visibilityFilter,
-    ratingFilter,
-    deferredSearchQuery,
-  ]);
-
-  // Filter quick track items based on monthsToLoad and search query
-  const filteredQuickTrackItems = useMemo(() => {
-    // Filter by time range (use itemDate if available, otherwise created date)
-    let filtered = deferredSearchQuery.trim()
-      ? quickTrackItems
-      : quickTrackItems.filter((item) => {
-          const dateToUse = item.itemDate || item.created;
-          return new Date(dateToUse) >= cutoffDate;
-        });
-
-    // Apply search filter
-    if (deferredSearchQuery.trim()) {
-      const query = deferredSearchQuery.toLowerCase();
-      filtered = filtered.filter((item) => {
-        // Search in item name
-        const itemName = item.name?.toLowerCase() || "";
-        if (itemName.includes(query)) return true;
-
-        // Search in notes
-        const notes = item.notes?.toLowerCase() || "";
-        if (notes.includes(query)) return true;
-
-        // Search in location text
-        const locationText = item.location_text?.toLowerCase() || "";
-        if (locationText.includes(query)) return true;
-
-        // Search in category
-        const category = item.itemCategory?.toLowerCase() || "";
-        if (category.includes(query)) return true;
-
-        return false;
-      });
-    }
-
-    // Quick track items filtering based on type
-    if (filterType === "friends") {
-      // Friends filter: no quick track items from user
-      return [];
-    } else if (filterType === "user_visits") {
-      // User visits only: no quick track items
-      return [];
-    }
-
-    // Apply visibility filter
-    if (visibilityFilter !== "all") {
-      filtered = filtered.filter(
-        (item) => item.visibility === visibilityFilter
-      );
-    }
-
-    // Apply rating filter
-    if (ratingFilter !== "all") {
-      const targetRating = parseInt(ratingFilter);
-      filtered = filtered.filter((item) => item.rating === targetRating);
-    }
-
-    return filtered;
-  }, [
+  // Use visit filters hook
+  const filters = useVisitFilters({
+    visits: visitsWithDetails,
     quickTrackItems,
     cutoffDate,
-    filterType,
-    visibilityFilter,
-    ratingFilter,
+    currentUserId: currentUserId || "",
+    isFriendVisit,
+  });
+
+  // Destructure filter values for convenience
+  const {
+    searchQuery,
+    setSearchQuery,
     deferredSearchQuery,
-  ]);
+    filterType,
+    setFilterType,
+    visibilityFilter,
+    setVisibilityFilter,
+    ratingFilter,
+    setRatingFilter,
+    filtersExpanded,
+    setFiltersExpanded,
+    filteredVisits,
+    filteredQuickTrackItems,
+    hasMoreVisits,
+    activeFiltersCount,
+  } = filters;
 
-  // Check if there are more visits to load (only when not searching)
-  const hasMoreVisits =
-    !deferredSearchQuery.trim() && visitsWithDetails.length > filteredVisits.length;
+  // Use visit grouping hook
+  const grouping = useVisitGrouping({
+    filteredVisits,
+    filteredQuickTrackItems,
+    deferredSearchQuery,
+    currentUserId: currentUserId || "",
+    isFriendVisit,
+  });
 
-  // Group visits and quick track items by month, then by day
-  const groupedVisits = useMemo(() => {
-    const byMonth: Record<
-      string,
-      Record<
-        string,
-        {
-          visits: VisitWithDetails[];
-          quickTrackItems: QuickTrackItemWithDetails[];
-        }
-      >
-    > = {};
+  // Destructure grouping values for convenience
+  const {
+    renderedGroupedVisits,
+    expandedMonths,
+    toggleMonth,
+    hasMoreMonthsToRender,
+    loadMoreRenderedMonths,
+  } = grouping;
 
-    // Add visits
-    filteredVisits.forEach((visit) => {
-      const monthKey = getMonthKey(visit.visitDate);
-      const isFriend = isFriendVisit(visit);
-      const dayKey = getDayKey(visit.visitDate, isFriend);
-
-      if (!byMonth[monthKey]) {
-        byMonth[monthKey] = {};
-      }
-      if (!byMonth[monthKey][dayKey]) {
-        byMonth[monthKey][dayKey] = { visits: [], quickTrackItems: [] };
-      }
-      byMonth[monthKey][dayKey].visits.push(visit);
-    });
-
-    // Add quick track items (use itemDate if available, otherwise created date)
-    filteredQuickTrackItems.forEach((item) => {
-      const dateToUse = item.itemDate || item.created;
-      const monthKey = getMonthKey(dateToUse);
-      const dayKey = getDayKey(dateToUse, false);
-
-      if (!byMonth[monthKey]) {
-        byMonth[monthKey] = {};
-      }
-      if (!byMonth[monthKey][dayKey]) {
-        byMonth[monthKey][dayKey] = { visits: [], quickTrackItems: [] };
-      }
-      byMonth[monthKey][dayKey].quickTrackItems.push(item);
-    });
-
-    // Sort months descending
-    const sortedMonths = Object.keys(byMonth).sort((a, b) =>
-      b.localeCompare(a)
-    );
-
-    return sortedMonths.map((monthKey) => ({
-      monthKey,
-      monthLabel: formatMonthLabel(monthKey),
-      days: Object.keys(byMonth[monthKey])
-        .sort((a, b) => b.localeCompare(a)) // Sort days descending
-        .map((dayKey) => {
-          const { visits: visitsInDay, quickTrackItems: quickTrackItemsInDay } =
-            byMonth[monthKey][dayKey];
-          // Check if this is a friend visit group (all visits in this group should be same type)
-          const isFriend =
-            visitsInDay.length > 0 && isFriendVisit(visitsInDay[0]);
-          return {
-            dayKey,
-            dayLabel: formatDayLabel(dayKey, isFriend),
-            visits: visitsInDay,
-            quickTrackItems: quickTrackItemsInDay,
-            isFriendGroup: isFriend,
-          };
-        }),
-    }));
-  }, [filteredVisits, filteredQuickTrackItems]);
-
-  // Limit the number of rendered months for performance (but show all when searching)
-  const renderedGroupedVisits = useMemo(() => {
-    // When searching, show all results
-    if (deferredSearchQuery.trim()) {
-      return groupedVisits;
-    }
-    // Otherwise, limit to improve performance
-    return groupedVisits.slice(0, renderedMonthsLimit);
-  }, [groupedVisits, renderedMonthsLimit, deferredSearchQuery]);
-
-  const hasMoreMonthsToRender = !deferredSearchQuery.trim() && groupedVisits.length > renderedMonthsLimit;
-
-  const toggleMonth = useCallback((monthKey: string) => {
-    setExpandedMonths((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(monthKey)) {
-        newSet.delete(monthKey);
-      } else {
-        newSet.add(monthKey);
-      }
-      return newSet;
-    });
-  }, []);
-
+  // Load more months callback
   const loadMoreMonths = useCallback(() => {
     setMonthsToLoad((prev) => prev + 1);
   }, []);
-
-  const loadMoreRenderedMonths = useCallback(() => {
-    setRenderedMonthsLimit((prev) => prev + 3); // Load 3 more months at a time
-  }, []);
-
-  // Auto-expand all months when searching
-  useEffect(() => {
-    if (deferredSearchQuery.trim() && deferredSearchQuery !== previousSearchQuery) {
-      // When user starts searching or changes search, expand all months with results
-      const allMonthKeys = groupedVisits.map((g) => g.monthKey);
-      setExpandedMonths(new Set(allMonthKeys));
-      setPreviousSearchQuery(deferredSearchQuery);
-    } else if (!deferredSearchQuery.trim() && previousSearchQuery) {
-      // When search is cleared, collapse to current month only
-      setExpandedMonths(new Set([getMonthKey(new Date().toISOString())]));
-      setPreviousSearchQuery("");
-    }
-  }, [deferredSearchQuery, groupedVisits, previousSearchQuery]);
 
   if (visitsLoading) {
     return (
@@ -706,161 +327,25 @@ export default function HomePage({
       <WhatsNewDialog />
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-2 space-y-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {deferredSearchQuery.trim()
-              ? `Found ${filteredVisits.length + filteredQuickTrackItems.length} items (${filteredVisits.length} visits, ${filteredQuickTrackItems.length} quick items)`
-              : (() => {
-                  const parts = [];
-                  if (userVisitsCount > 0) {
-                    parts.push(
-                      `${userVisitsCount} visit${userVisitsCount !== 1 ? "s" : ""}`
-                    );
-                  }
-                  if (friendVisitsCount > 0) {
-                    parts.push(
-                      `${friendVisitsCount} friend visit${friendVisitsCount !== 1 ? "s" : ""}`
-                    );
-                  }
-                  if (quickTrackItems.length > 0) {
-                    parts.push(
-                      `${quickTrackItems.length} quick item${quickTrackItems.length !== 1 ? "s" : ""}`
-                    );
-                  }
-                  return parts.join(" • ");
-                })()}
-          </p>
-        </div>
-
-        {/* Search and Filter Row */}
-        <div className="space-y-2">
-          {/* Search Input and Filter Toggle Button */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                type="text"
-                placeholder="Search restaurants, food, notes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  aria-label="Clear search"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Filter Toggle Button */}
-            <Button
-              variant={filtersExpanded ? "default" : "outline"}
-              size="default"
-              onClick={() => {
-                if (filtersExpanded) {
-                  // Reset filters before hiding
-                  setFilterType("all");
-                  setVisibilityFilter("all");
-                  setRatingFilter("all");
-                }
-                setFiltersExpanded(!filtersExpanded);
-              }}
-              className="flex items-center gap-2 px-4 relative"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-              <span>Filters</span>
-              {(() => {
-                const activeFiltersCount = [
-                  filterType !== "all",
-                  visibilityFilter !== "all",
-                  ratingFilter !== "all",
-                ].filter(Boolean).length;
-                return activeFiltersCount > 0 ? (
-                  <Badge className="ml-1 h-5 min-w-5 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white">
-                    {activeFiltersCount}
-                  </Badge>
-                ) : null;
-              })()}
-            </Button>
-          </div>
-
-          {/* Filter Selects Row (Collapsible) */}
-          <div
-            className={`overflow-hidden transition-all duration-200 ease-in-out ${
-              filtersExpanded ? "max-h-20 opacity-100" : "max-h-0 opacity-0"
-            }`}
-          >
-            <div className="flex gap-2 items-center">
-              {/* Type Filter */}
-              <Select
-                value={filterType}
-                onValueChange={(
-                  value:
-                    | "all"
-                    | "user_visits"
-                    | "user_quick_track"
-                    | "user_both"
-                    | "friends"
-                ) => setFilterType(value)}
-              >
-                <SelectTrigger className="flex-1 min-w-0">
-                  <SelectValue className="truncate" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="user_visits">My Visits</SelectItem>
-                  <SelectItem value="user_quick_track">My Quick Track</SelectItem>
-                  <SelectItem value="user_both">Both</SelectItem>
-                  <SelectItem value="friends">Friends</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Visibility Filter */}
-              <Select
-                value={visibilityFilter}
-                onValueChange={(value: "all" | "private" | "friends") =>
-                  setVisibilityFilter(value)
-                }
-              >
-                <SelectTrigger className="flex-1 min-w-0">
-                  <SelectValue className="truncate" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Visibility</SelectItem>
-                  <SelectItem value="private">Private</SelectItem>
-                  <SelectItem value="friends">Shared</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Rating Filter */}
-              <Select
-                value={ratingFilter}
-                onValueChange={(value: "all" | "1" | "2" | "3" | "4" | "5") =>
-                  setRatingFilter(value)
-                }
-              >
-                <SelectTrigger className="flex-1 min-w-0">
-                  <SelectValue className="truncate" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Ratings</SelectItem>
-                  <SelectItem value="5">{RATING_LABELS[4]}</SelectItem>
-                  <SelectItem value="4">{RATING_LABELS[3]}</SelectItem>
-                  <SelectItem value="3">{RATING_LABELS[2]}</SelectItem>
-                  <SelectItem value="2">{RATING_LABELS[1]}</SelectItem>
-                  <SelectItem value="1">{RATING_LABELS[0]}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-      </div>
+      <VisitListHeader
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        filterType={filterType}
+        onFilterTypeChange={setFilterType}
+        visibilityFilter={visibilityFilter}
+        onVisibilityFilterChange={setVisibilityFilter}
+        ratingFilter={ratingFilter}
+        onRatingFilterChange={setRatingFilter}
+        filtersExpanded={filtersExpanded}
+        onFiltersExpandedChange={setFiltersExpanded}
+        activeFiltersCount={activeFiltersCount}
+        userVisitsCount={userVisitsCount}
+        friendVisitsCount={friendVisitsCount}
+        quickTrackCount={quickTrackItems.length}
+        filteredVisitsCount={filteredVisits.length}
+        filteredQuickTrackCount={filteredQuickTrackItems.length}
+        isSearching={!!deferredSearchQuery.trim()}
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1067,373 +552,43 @@ export default function HomePage({
                         {/* Visits for this day */}
                         {dayVisits.map((visit) => {
                           const isFriend = isFriendVisit(visit);
-                          // Use name if available, otherwise fall back to email username
                           const friendName = isFriend
                             ? visit.expand?.user?.name ||
                               visit.expand?.user?.email?.split("@")[0]
                             : null;
 
                           return (
-                            <Card
+                            <VisitCard
                               key={visit.id}
-                              className={
-                                isFriend
-                                  ? "border-blue-200 bg-blue-50/30 gap-0"
-                                  : "gap-0"
-                              }
-                            >
-                              <CardHeader>
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                      <CardTitle className="text-lg">
-                                        {visit.restaurant?.name}
-                                      </CardTitle>
-                                      {isFriend && (
-                                        <Badge
-                                          variant="outline"
-                                          className="text-xs border-blue-300 text-blue-700"
-                                        >
-                                          <Users className="w-3 h-3 mr-1" />
-                                          {friendName}
-                                        </Badge>
-                                      )}
-                                      {!isFriend && (
-                                        <div
-                                          className="flex items-center gap-1"
-                                          title={
-                                            visit.visibility === "friends"
-                                              ? "Shared with friends"
-                                              : "Private"
-                                          }
-                                        >
-                                          {visit.visibility === "friends" ? (
-                                            <UserCheck className="w-4 h-4 text-green-600" />
-                                          ) : (
-                                            <Lock className="w-4 h-4 text-gray-400" />
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <CardDescription className="flex items-center gap-1 mt-1">
-                                      <MapPin className="w-3 h-3" />
-                                      {visit.restaurant?.location}
-                                      {visit.restaurant?.cuisineType &&
-                                        ` • ${visit.restaurant.cuisineType}`}
-                                    </CardDescription>
-                                  </div>
-                                  {!isFriend && (
-                                    <div className="flex items-center gap-1">
-                                      {/* Share Visit button - only show if visit has 2 or more photos */}
-                                      {(() => {
-                                        const photosForVisit =
-                                          visitPhotos.filter((photo: any) =>
-                                            visit.foodItems?.some(
-                                              (item) =>
-                                                item.id === photo.food_item
-                                            )
-                                          );
-                                        return photosForVisit.length >= 2;
-                                      })() && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() =>
-                                            handleShareVisitClick(visit)
-                                          }
-                                          data-testid={`share-visit-${visit.id}`}
-                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                          title="Share all photos from this visit"
-                                        >
-                                          <Share2 className="w-4 h-4" />
-                                        </Button>
-                                      )}
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => onEditVisit?.(visit.id)}
-                                        data-testid={`edit-visit-${visit.id}`}
-                                      >
-                                        <Pencil className="w-4 h-4" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setVisitToDelete(visit)}
-                                        data-testid={`delete-visit-${visit.id}`}
-                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              </CardHeader>
-                              <CardContent>
-                                {visit.foodItems &&
-                                visit.foodItems.length > 0 ? (
-                                  <div className="space-y-2">
-                                    {visit.foodItems.map((item) => {
-                                      // Find photo for this food item
-                                      const photo = visitPhotos.find(
-                                        (p: any) => p.food_item === item.id
-                                      );
-                                      // For offline photos (isPending), use the blob URL directly
-                                      // For online photos, use PocketBase file URL
-                                      const photoUrl = photo
-                                        ? photo.isPending
-                                          ? photo.photo // Blob URL for offline photos
-                                          : pb.files.getURL(
-                                              photo,
-                                              photo.photo,
-                                              { thumb: "100x100" }
-                                            )
-                                        : null;
-                                      const fullPhotoUrl = photo
-                                        ? photo.isPending
-                                          ? photo.photo // Blob URL for offline photos
-                                          : pb.files.getURL(photo, photo.photo)
-                                        : null;
-
-                                      return (
-                                        <div
-                                          key={item.id}
-                                          className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
-                                        >
-                                          {/* Photo thumbnail */}
-                                          {photoUrl &&
-                                            photo &&
-                                            fullPhotoUrl && (
-                                              <img
-                                                src={photoUrl}
-                                                alt={item.name}
-                                                className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                                                onClick={() =>
-                                                  setFullscreenPhoto({
-                                                    url: fullPhotoUrl,
-                                                    dishName: item.name,
-                                                  })
-                                                }
-                                              />
-                                            )}
-
-                                          <div className="flex-1 min-w-0 pr-2">
-                                            <p className="font-medium text-gray-900 break-words">
-                                              {item.name}
-                                            </p>
-                                            {item.description && (
-                                              <p className="text-sm text-gray-500 mt-0.5">
-                                                {item.description}
-                                              </p>
-                                            )}
-                                            {item.notes && (
-                                              <p className="text-xs text-gray-600 mt-1 italic">
-                                                "{item.notes}"
-                                              </p>
-                                            )}
-                                          </div>
-                                          <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                                            <div className="flex items-center gap-2">
-                                              <div
-                                                className={`w-3 h-3 rounded-full ${
-                                                  RATING_COLORS[
-                                                    item.rating - 1
-                                                  ] || "bg-gray-300"
-                                                }`}
-                                              />
-                                              <span className="text-xs text-gray-600 whitespace-nowrap">
-                                                {RATING_LABELS[
-                                                  item.rating - 1
-                                                ] || "Unknown"}
-                                              </span>
-                                            </div>
-                                            {/* Share button - only show if there's a photo */}
-                                            {photo && (
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleSharePhotoClick(
-                                                    photo,
-                                                    item,
-                                                    visit.restaurant!,
-                                                    visit.visitDate
-                                                  );
-                                                }}
-                                                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-                                                title="Share photo"
-                                              >
-                                                <Share2 className="w-3 h-3" />
-                                                <span>Share</span>
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <p className="text-sm text-gray-400 italic">
-                                    No items recorded
-                                  </p>
-                                )}
-                              </CardContent>
-                            </Card>
+                              visit={visit}
+                              isFriend={isFriend}
+                              friendName={friendName}
+                              visitPhotos={visitPhotos}
+                              onEdit={onEditVisit}
+                              onDelete={setVisitToDelete}
+                              onSharePhoto={handleSharePhotoClick}
+                              onShareVisit={handleShareVisitClick}
+                              onPhotoClick={setFullscreenPhoto}
+                            />
                           );
                         })}
 
                         {/* Quick Track Items for this day */}
                         {dayQuickTrackItems.map((item) => {
-                          // Find photo for this quick track item
                           const photo = visitPhotos.find(
                             (p: any) => p.food_item === item.id
                           );
-                          const photoUrl = photo
-                            ? photo.isPending
-                              ? photo.photo
-                              : pb.files.getURL(photo, photo.photo, {
-                                  thumb: "100x100",
-                                })
-                            : null;
-                          const fullPhotoUrl = photo
-                            ? photo.isPending
-                              ? photo.photo
-                              : pb.files.getURL(photo, photo.photo)
-                            : null;
 
                           return (
-                            <Card
+                            <QuickTrackCard
                               key={item.id}
-                              className="border-gray-200 bg-gray-50/50"
-                            >
-                              <CardContent>
-                                {/* Header with title and action buttons */}
-                                <div className="flex items-start justify-between mb-3">
-                                  <div className="flex items-center gap-2 flex-1">
-                                    <p className="font-medium text-gray-900 break-words">
-                                      {item.name}
-                                    </p>
-                                    {/* Visibility indicator */}
-                                    <div
-                                      className="flex items-center gap-1"
-                                      title={
-                                        item.visibility === "friends"
-                                          ? "Shared with friends"
-                                          : "Private"
-                                      }
-                                    >
-                                      {item.visibility === "friends" ? (
-                                        <UserCheck className="w-4 h-4 text-green-600" />
-                                      ) : (
-                                        <Lock className="w-4 h-4 text-gray-400" />
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Edit and Delete buttons */}
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() =>
-                                        navigate({
-                                          to: `/edit-quick-track/${item.id}`,
-                                        })
-                                      }
-                                      data-testid={`edit-quick-track-${item.id}`}
-                                    >
-                                      <Pencil className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() =>
-                                        setQuickTrackItemToDelete(item)
-                                      }
-                                      data-testid={`delete-quick-track-${item.id}`}
-                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-start gap-3">
-                                  {/* Photo thumbnail */}
-                                  {photoUrl && photo && fullPhotoUrl && (
-                                    <img
-                                      src={photoUrl}
-                                      alt={item.name}
-                                      className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                                      onClick={() =>
-                                        setFullscreenPhoto({
-                                          url: fullPhotoUrl,
-                                          dishName: item.name,
-                                        })
-                                      }
-                                    />
-                                  )}
-
-                                  <div className="flex-1 min-w-0">
-                                    {/* Category badge */}
-                                    {item.itemCategory && (
-                                      <Badge
-                                        variant="outline"
-                                        className="text-xs mt-1"
-                                      >
-                                        {item.itemCategory.replace(/_/g, " ")}
-                                      </Badge>
-                                    )}
-                                    {/* Location text */}
-                                    {item.location_text && (
-                                      <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
-                                        <MapPin className="w-3 h-3" />
-                                        {item.location_text}
-                                      </p>
-                                    )}
-                                    {/* Notes */}
-                                    {item.notes && (
-                                      <p className="text-xs text-gray-600 mt-1 italic">
-                                        "{item.notes}"
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                                    <div className="flex items-center gap-2">
-                                      <div
-                                        className={`w-3 h-3 rounded-full ${
-                                          RATING_COLORS[item.rating - 1] ||
-                                          "bg-gray-300"
-                                        }`}
-                                      />
-                                      <span className="text-xs text-gray-600 whitespace-nowrap">
-                                        {RATING_LABELS[item.rating - 1] ||
-                                          "Unknown"}
-                                      </span>
-                                    </div>
-                                    {/* Share button - only show if there's a photo */}
-                                    {photo && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleSharePhotoClick(
-                                            photo,
-                                            item,
-                                            null, // No restaurant for quick track
-                                            item.created
-                                          );
-                                        }}
-                                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-                                        title="Share photo"
-                                      >
-                                        <Share2 className="w-3 h-3" />
-                                        <span>Share</span>
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
+                              item={item}
+                              photo={photo}
+                              onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
+                              onDelete={setQuickTrackItemToDelete}
+                              onSharePhoto={(photo, item) => handleSharePhotoClick(photo, item as any, null, item.itemDate || item.created)}
+                              onPhotoClick={setFullscreenPhoto}
+                            />
                           );
                         })}
                       </div>
@@ -1453,7 +608,7 @@ export default function HomePage({
               variant="outline"
               className="w-full"
             >
-              Load More Months ({groupedVisits.length - renderedMonthsLimit} remaining)
+              Load More Months ({grouping.groupedVisits.length - grouping.renderedMonthsLimit} remaining)
             </Button>
           </div>
         )}
@@ -1622,7 +777,7 @@ export default function HomePage({
       {shareOverlayData && (
         <ShareCustomizationModal
           isOpen={isShareModalOpen}
-          onClose={() => setIsShareModalOpen(false)}
+          onClose={closeShareModal}
           photoUrl={sharePhotoUrl}
           photoFile={sharePhotoFile}
           overlayData={shareOverlayData}
@@ -1634,18 +789,18 @@ export default function HomePage({
       {visitToShare && visitToShare.restaurant && (
         <VisitShareModal
           isOpen={!!visitToShare}
-          onClose={() => setVisitToShare(null)}
+          onClose={closeVisitShareModal}
           restaurantName={visitToShare.restaurant.name}
           visitDate={visitToShare.visitDate}
           photosWithFoodItems={visitPhotos
             .filter((photo: any) =>
               visitToShare.foodItems?.some(
-                (item) => item.id === photo.food_item
+                (item: any) => item.id === photo.food_item
               )
             )
             .map((photo: any) => {
               const foodItem = visitToShare.foodItems?.find(
-                (item) => item.id === photo.food_item
+                (item: any) => item.id === photo.food_item
               );
               return {
                 photo,

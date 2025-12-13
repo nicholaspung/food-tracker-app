@@ -110,17 +110,17 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 3.1 ProcessPhotosPage.tsx (3,312 lines → 500 lines) (24 hours)
 
-- [ ] **Extract Photo Upload Step** (6 hours)
+- [x] **Extract Photo Upload Step** (6 hours)
   - Create `frontend/src/components/photos/PhotoUploadStep.tsx`
   - Lines 1-800: Choice screen + file upload
   - Props: `onPhotosSelected`, `processType`, `onProcessTypeChange`
 
-- [ ] **Extract Photo Processing Step** (6 hours)
+- [x] **Extract Photo Processing Step** (6 hours)
   - Create `frontend/src/components/photos/PhotoProcessingStep.tsx`
   - Lines 801-1600: OCR processing + progress indicator
   - Props: `photos`, `onComplete`, `onError`
 
-- [ ] **Extract Photo Review Step** (8 hours)
+- [x] **Extract Photo Review Step** (8 hours)
   - Create `frontend/src/components/photos/PhotoReviewStep.tsx`
   - Lines 1601-3312: Review and edit processed photos
   - Sub-components:
@@ -128,7 +128,7 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
     - `QuickTrackPhotoCard.tsx`
     - `PhotoCardActions.tsx`
 
-- [ ] **Create Supporting Hooks** (4 hours)
+- [x] **Create Supporting Hooks** (4 hours)
   - `usePhotoUpload.ts` - Upload logic
   - `usePhotoProcessing.ts` - OCR processing logic
   - `usePhotoReview.ts` - Review/edit logic

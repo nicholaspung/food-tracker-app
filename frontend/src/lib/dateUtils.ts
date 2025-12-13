@@ -88,3 +88,85 @@ export function formatLocalDateForDisplay(
   const date = new Date(localDateString + 'T00:00:00');
   return date.toLocaleDateString('en-US', options);
 }
+
+/**
+ * Get month key (YYYY-MM) in local timezone from a UTC datetime string
+ * Used for grouping visits by month
+ *
+ * @param date - UTC datetime string (ISO 8601)
+ * @returns Month key in YYYY-MM format (e.g., "2025-01")
+ */
+export function getMonthKey(date: string): string {
+  const d = new Date(date); // Parses UTC datetime, converts to local
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Get day key (YYYY-MM-DD) in local timezone from a UTC datetime string
+ * For friend visits, returns month key instead to mask exact date
+ *
+ * @param date - UTC datetime string (ISO 8601)
+ * @param isFriendVisit - Whether this is a friend's visit (masks exact date)
+ * @returns Day key in YYYY-MM-DD format, or month key (YYYY-MM) for friend visits
+ */
+export function getDayKey(date: string, isFriendVisit: boolean = false): string {
+  // For friend visits, return month key to mask exact date
+  if (isFriendVisit) {
+    return getMonthKey(date);
+  }
+  // Convert UTC datetime to local date string
+  return utcToLocalDateString(date);
+}
+
+/**
+ * Format month label from month key for display
+ *
+ * @param monthKey - Month key in YYYY-MM format (e.g., "2025-01")
+ * @returns Formatted month label (e.g., "January 2025")
+ */
+export function formatMonthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split("-");
+  const date = new Date(parseInt(year), parseInt(month) - 1);
+  return date.toLocaleDateString("en-US", { year: "numeric", month: "long" });
+}
+
+/**
+ * Format day label from day key for display
+ * For friend visits, dayKey is actually a month key and formatted as month only
+ *
+ * @param dayKey - Day key in YYYY-MM-DD format, or month key (YYYY-MM) for friends
+ * @param isFriendVisit - Whether this is a friend's visit (different formatting)
+ * @returns Formatted day label (e.g., "Friday, January 10, 2025" or "January 2025" for friends)
+ */
+export function formatDayLabel(
+  dayKey: string,
+  isFriendVisit: boolean = false
+): string {
+  // For friend visits, dayKey is actually a month key (YYYY-MM)
+  if (isFriendVisit) {
+    const [year, month] = dayKey.split("-");
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString("en-US", { year: "numeric", month: "long" });
+  }
+  const date = new Date(dayKey + "T00:00:00");
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/**
+ * Get date N months ago from current date
+ * Used for filtering visits by time range
+ *
+ * @param months - Number of months to go back
+ * @returns Date object set to N months ago at midnight
+ */
+export function getDateMonthsAgo(months: number): Date {
+  const date = new Date();
+  date.setMonth(date.getMonth() - months);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
