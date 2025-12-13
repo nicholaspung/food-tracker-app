@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { pb, Friendship } from "@/lib/pocketbase";
 import { useRestaurants, Restaurant } from "@/hooks/api/useRestaurants";
 import { useVisitsByUser, useFriendVisits } from "@/hooks/api/useVisits";
@@ -18,8 +18,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   X,
-  Search,
-  Calendar,
   Check,
   MapPin,
   Loader2,
@@ -27,21 +25,14 @@ import {
   Users,
   Lock,
   Globe,
-  Camera,
-  WifiOff,
 } from "lucide-react";
-import { useGeolocation } from "@/hooks/useGeolocation";
-import {
-  searchAndCacheNearbyRestaurants,
-  searchAndCacheRestaurantsByText,
-  calculateDistance,
-  formatDistance,
-  geocodeLocation,
-} from "@/services/googlePlaces";
 import RestaurantNameFinder from "@/components/RestaurantNameFinder";
 import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
-import { useScrollIntoView } from "@/hooks/useScrollIntoView";
+import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
+import { useNearbyRestaurants } from "@/hooks/useNearbyRestaurants";
+import RestaurantSearchBar from "@/components/select-restaurant/RestaurantSearchBar";
+import RestaurantList from "@/components/select-restaurant/RestaurantList";
 
 interface SelectRestaurantPageProps {
   onRestaurantSelected: () => void;
@@ -54,9 +45,6 @@ export default function SelectRestaurantPage({
   onNavigateToCreateRestaurant,
   onCancel,
 }: SelectRestaurantPageProps) {
-  const savedRestaurantsRef = useRef<HTMLDivElement>(null);
-  const nearbyPlacesRef = useRef<HTMLDivElement>(null);
-
   const [showAddRestaurant, setShowAddRestaurant] = useState(false);
   const [newRestaurantName, setNewRestaurantName] = useState("");
   const [newRestaurantLocation, setNewRestaurantLocation] = useState("");
@@ -70,56 +58,18 @@ export default function SelectRestaurantPage({
   const [showRestaurantNameFinder, setShowRestaurantNameFinder] =
     useState(false);
 
-  // Google Places integration
-  const [nearbyPlaces, setNearbyPlaces] = useState<Restaurant[]>([]);
-  const [placesLoading, setPlacesLoading] = useState(false);
-  const [placesError, setPlacesError] = useState("");
   const [showNearbyPlaces, setShowNearbyPlaces] = useState(false);
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [savedRestaurantsPage, setSavedRestaurantsPage] = useState(1);
-  const RESULTS_PER_PAGE = 20;
-
-  // Manual location and text search
-  const [manualLocation, setManualLocation] = useState("");
-  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
   const [highlightedRestaurants, setHighlightedRestaurants] = useState<
     Set<string>
   >(new Set());
 
-  // Success notification
-  const [showSuccessNotification, setShowSuccessNotification] = useState(false);
-
-  const [currentLocationContext, setCurrentLocationContext] = useState<{
-    type: "gps" | "manual";
-    location?: string;
-    latitude?: number;
-    longitude?: number;
-  } | null>(null);
-
-  // Reference coordinates for distance calculation
-  const [referenceCoords, setReferenceCoords] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
-
-  // Location - only fetch when user requests nearby search
-  const {
-    position,
-    error: locationError,
-    loading: locationLoading,
-    refetch: refetchLocation,
-  } = useGeolocation(false);
-
-  const queryClient = useQueryClient();
   const { isOnline } = useSync();
   const isKeyboardVisible = useKeyboardVisible();
   const user = pb.authStore.record;
 
-  // Refs for auto-scrolling inputs into view on mobile
-  const restaurantSearchInputRef = useScrollIntoView<HTMLInputElement>();
-  const manualLocationInputRef = useScrollIntoView<HTMLInputElement>();
+  // Use custom hooks
+  const restaurantSearch = useRestaurantSearch({ isOnline });
+  const nearbyRestaurants = useNearbyRestaurants({ isOnline });
 
   // Initialize restaurant visibility from user's default preference
   useEffect(() => {
@@ -132,10 +82,11 @@ export default function SelectRestaurantPage({
   useEffect(() => {
     const savedSearchState = visitDraftService.getSearchState();
     if (savedSearchState) {
-      setRestaurantSearchQuery(savedSearchState.restaurantSearchQuery);
-      setManualLocation(savedSearchState.manualLocation);
+      restaurantSearch.setRestaurantSearchQuery(
+        savedSearchState.restaurantSearchQuery
+      );
+      restaurantSearch.setManualLocation(savedSearchState.manualLocation);
       setShowNearbyPlaces(savedSearchState.showNearbyPlaces);
-      setNearbyPlaces(savedSearchState.nearbyPlaces);
     }
   }, []);
 
@@ -201,8 +152,8 @@ export default function SelectRestaurantPage({
         location: data.location,
         cuisineType: data.cuisineType || "",
         visibility: data.visibility,
-        latitude: position?.latitude,
-        longitude: position?.longitude,
+        latitude: nearbyRestaurants.currentLocation?.latitude,
+        longitude: nearbyRestaurants.currentLocation?.longitude,
         createdBy: user.id,
       });
     },
@@ -210,10 +161,13 @@ export default function SelectRestaurantPage({
     onSuccess: (newRestaurant) => {
       // Save current search state
       visitDraftService.saveSearchState({
-        restaurantSearchQuery,
-        manualLocation,
+        restaurantSearchQuery: restaurantSearch.restaurantSearchQuery,
+        manualLocation: restaurantSearch.manualLocation,
         showNearbyPlaces,
-        nearbyPlaces,
+        nearbyPlaces: [
+          ...restaurantSearch.results,
+          ...nearbyRestaurants.nearbyRestaurants,
+        ],
       });
 
       // Save to localStorage
@@ -229,11 +183,14 @@ export default function SelectRestaurantPage({
     },
   });
 
-  // Combine nearby places with all restaurants when Google Places search is active
+  // Combine nearby places with all restaurants when search is active
   const allRestaurantsToShow = showNearbyPlaces
     ? [
         ...restaurants,
-        ...nearbyPlaces.filter(
+        ...restaurantSearch.results.filter(
+          (np) => !restaurants.some((r) => r.id === np.id)
+        ),
+        ...nearbyRestaurants.nearbyRestaurants.filter(
           (np) => !restaurants.some((r) => r.id === np.id)
         ),
       ]
@@ -241,10 +198,14 @@ export default function SelectRestaurantPage({
 
   const filteredRestaurants = allRestaurantsToShow.filter(
     (r) =>
-      r.name.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
-      r.location.toLowerCase().includes(restaurantSearchQuery.toLowerCase()) ||
+      r.name
+        .toLowerCase()
+        .includes(restaurantSearch.restaurantSearchQuery.toLowerCase()) ||
+      r.location
+        .toLowerCase()
+        .includes(restaurantSearch.restaurantSearchQuery.toLowerCase()) ||
       (r.cuisineType?.toLowerCase() || "").includes(
-        restaurantSearchQuery.toLowerCase()
+        restaurantSearch.restaurantSearchQuery.toLowerCase()
       )
   );
 
@@ -256,252 +217,6 @@ export default function SelectRestaurantPage({
         )
         .slice(0, 5)
     : [];
-
-  // Pagination logic for saved restaurants
-  const totalSavedPages = Math.ceil(
-    filteredRestaurants.length / RESULTS_PER_PAGE
-  );
-  const savedStartIndex = (savedRestaurantsPage - 1) * RESULTS_PER_PAGE;
-  const savedEndIndex = savedStartIndex + RESULTS_PER_PAGE;
-  const paginatedSavedRestaurants = filteredRestaurants.slice(
-    savedStartIndex,
-    savedEndIndex
-  );
-
-  // Pagination logic for nearby places
-  const totalPages = Math.ceil(nearbyPlaces.length / RESULTS_PER_PAGE);
-  const startIndex = (currentPage - 1) * RESULTS_PER_PAGE;
-  const endIndex = startIndex + RESULTS_PER_PAGE;
-  const paginatedPlaces = nearbyPlaces.slice(startIndex, endIndex);
-
-  // Calculate which pages to show in pagination
-  const getPageNumbers = (currentPageNum: number, totalPagesNum: number) => {
-    const pages: (number | string)[] = [];
-    const maxPagesToShow = 5;
-
-    if (totalPagesNum <= maxPagesToShow) {
-      for (let i = 1; i <= totalPagesNum; i++) {
-        pages.push(i);
-      }
-    } else {
-      pages.push(1);
-
-      if (currentPageNum > 3) {
-        pages.push("...");
-      }
-
-      const start = Math.max(2, currentPageNum - 1);
-      const end = Math.min(totalPagesNum - 1, currentPageNum + 1);
-
-      for (let i = start; i <= end; i++) {
-        pages.push(i);
-      }
-
-      if (currentPageNum < totalPagesNum - 2) {
-        pages.push("...");
-      }
-
-      pages.push(totalPagesNum);
-    }
-
-    return pages;
-  };
-
-  // Calculate distances for current page of nearby places and sort by distance
-  const nearbyPlacesWithDistance = paginatedPlaces
-    .map((restaurant) => {
-      let distance: number | null = null;
-      if (
-        referenceCoords &&
-        restaurant.latitude != null &&
-        restaurant.longitude != null
-      ) {
-        distance = calculateDistance(
-          referenceCoords.lat,
-          referenceCoords.lng,
-          restaurant.latitude,
-          restaurant.longitude
-        );
-      }
-      return { restaurant, distance };
-    })
-    .sort((a, b) => {
-      if (a.distance === null && b.distance === null) return 0;
-      if (a.distance === null) return 1;
-      if (b.distance === null) return -1;
-      return a.distance - b.distance;
-    });
-
-  // Handler to search nearby places
-  const handleSearchNearby = async () => {
-    // Check if online first
-    if (!isOnline) {
-      setPlacesError(
-        "Cannot search nearby restaurants while offline. Google Places requires internet connection."
-      );
-      return;
-    }
-
-    setShowNearbyPlaces(true);
-    setPlacesError("");
-    setError("");
-    setShowSuccessNotification(false);
-    setCurrentPage(1);
-
-    if (!position && !locationLoading) {
-      refetchLocation();
-    }
-
-    if (position) {
-      setReferenceCoords({
-        lat: position.latitude,
-        lng: position.longitude,
-      });
-
-      setCurrentLocationContext({
-        type: "gps",
-        latitude: position.latitude,
-        longitude: position.longitude,
-      });
-
-      setPlacesLoading(true);
-      try {
-        const restaurants = await searchAndCacheNearbyRestaurants({
-          latitude: position.latitude,
-          longitude: position.longitude,
-          radius: 5000,
-        });
-
-        setNearbyPlaces(restaurants);
-        setShowSuccessNotification(true);
-
-        queryClient.invalidateQueries({ queryKey: ["restaurants"] });
-      } catch (err) {
-        setPlacesError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load nearby food places"
-        );
-      } finally {
-        setPlacesLoading(false);
-      }
-    }
-  };
-
-  // Watch for location changes when user is viewing nearby places
-  useEffect(() => {
-    if (
-      position &&
-      showNearbyPlaces &&
-      nearbyPlaces.length === 0 &&
-      !placesLoading &&
-      isOnline // Only fetch if online
-    ) {
-      const fetchNearbyPlaces = async () => {
-        setReferenceCoords({
-          lat: position.latitude,
-          lng: position.longitude,
-        });
-
-        setCurrentLocationContext({
-          type: "gps",
-          latitude: position.latitude,
-          longitude: position.longitude,
-        });
-        setPlacesLoading(true);
-        setPlacesError("");
-        try {
-          const restaurants = await searchAndCacheNearbyRestaurants({
-            latitude: position.latitude,
-            longitude: position.longitude,
-            radius: 5000,
-          });
-
-          setNearbyPlaces(restaurants);
-          setCurrentPage(1);
-          setShowSuccessNotification(true);
-          queryClient.invalidateQueries({ queryKey: ["restaurants"] });
-        } catch (err) {
-          setPlacesError(
-            err instanceof Error
-              ? err.message
-              : "Failed to load nearby food places"
-          );
-        } finally {
-          setPlacesLoading(false);
-        }
-      };
-
-      fetchNearbyPlaces();
-    }
-  }, [position, showNearbyPlaces]);
-
-  // Auto-dismiss success notification
-  useEffect(() => {
-    if (showSuccessNotification) {
-      const timer = setTimeout(() => {
-        setShowSuccessNotification(false);
-      }, 3000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [showSuccessNotification]);
-
-  // Handle manual location and text search
-  const handleManualSearch = async () => {
-    // Check if online first
-    if (!isOnline) {
-      setPlacesError(
-        "Cannot search restaurants while offline. Google Places requires internet connection."
-      );
-      return;
-    }
-
-    if (!manualLocation.trim() && !restaurantSearchQuery.trim()) {
-      setPlacesError("Please enter a location or food place name to search");
-      return;
-    }
-
-    setPlacesLoading(true);
-    setPlacesError("");
-    setShowNearbyPlaces(true);
-    setShowSuccessNotification(false);
-    setCurrentPage(1);
-
-    try {
-      let coords: { lat: number; lng: number } | null = null;
-      if (manualLocation.trim()) {
-        coords = await geocodeLocation(manualLocation.trim());
-        if (coords) {
-          setReferenceCoords(coords);
-        }
-      }
-
-      setCurrentLocationContext({
-        type: "manual",
-        location: manualLocation.trim(),
-        latitude: coords?.lat,
-        longitude: coords?.lng,
-      });
-
-      const restaurants = await searchAndCacheRestaurantsByText({
-        query: restaurantSearchQuery.trim() || "food",
-        location: manualLocation.trim() || undefined,
-        radius: 5000,
-      });
-
-      setNearbyPlaces(restaurants);
-      setShowSuccessNotification(true);
-
-      queryClient.invalidateQueries({ queryKey: ["restaurants"] });
-    } catch (err) {
-      setPlacesError(
-        err instanceof Error ? err.message : "Failed to search food places"
-      );
-    } finally {
-      setPlacesLoading(false);
-    }
-  };
 
   const handleAddRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -534,10 +249,13 @@ export default function SelectRestaurantPage({
   const handleSelectRestaurant = (restaurant: Restaurant) => {
     // Save current search state
     visitDraftService.saveSearchState({
-      restaurantSearchQuery,
-      manualLocation,
+      restaurantSearchQuery: restaurantSearch.restaurantSearchQuery,
+      manualLocation: restaurantSearch.manualLocation,
       showNearbyPlaces,
-      nearbyPlaces,
+      nearbyPlaces: [
+        ...restaurantSearch.results,
+        ...nearbyRestaurants.nearbyRestaurants,
+      ],
     });
 
     // Check if we're switching to a different restaurant
@@ -568,35 +286,10 @@ export default function SelectRestaurantPage({
     }
   };
 
-  // Reset saved restaurants pagination when search query changes
-  useEffect(() => {
-    setSavedRestaurantsPage(1);
-  }, [restaurantSearchQuery]);
-
-  // Scroll to top of saved restaurants list when page changes
-  useEffect(() => {
-    if (savedRestaurantsRef.current && savedRestaurantsPage > 1) {
-      savedRestaurantsRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
-  }, [savedRestaurantsPage]);
-
-  // Scroll to top of nearby places list when page changes
-  useEffect(() => {
-    if (nearbyPlacesRef.current && currentPage > 1) {
-      nearbyPlacesRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
-  }, [currentPage]);
-
   // Highlight matching restaurants when search query changes
   useEffect(() => {
     if (
-      restaurantSearchQuery.trim() &&
+      restaurantSearch.restaurantSearchQuery.trim() &&
       filteredRestaurants.length > 0 &&
       filteredRestaurants.length < restaurants.length
     ) {
@@ -611,25 +304,64 @@ export default function SelectRestaurantPage({
     } else {
       setHighlightedRestaurants(new Set());
     }
-  }, [restaurantSearchQuery, filteredRestaurants.length, restaurants.length]);
+  }, [
+    restaurantSearch.restaurantSearchQuery,
+    filteredRestaurants.length,
+    restaurants.length,
+  ]);
+
+  const handleSearchNearby = async () => {
+    setShowNearbyPlaces(true);
+    setError("");
+    await nearbyRestaurants.requestLocation();
+  };
+
+  const handleManualSearch = async () => {
+    setShowNearbyPlaces(true);
+    await restaurantSearch.search();
+  };
+
+  const handleClearSearch = () => {
+    setShowNearbyPlaces(false);
+    restaurantSearch.clearSearch();
+    nearbyRestaurants.clearResults();
+  };
+
+  // Determine which results and reference coords to use
+  const displayResults = showNearbyPlaces
+    ? [
+        ...nearbyRestaurants.nearbyRestaurants,
+        ...restaurantSearch.results.filter(
+          (r) => !nearbyRestaurants.nearbyRestaurants.some((nr) => nr.id === r.id)
+        ),
+      ]
+    : [];
+
+  const displayReferenceCoords =
+    nearbyRestaurants.referenceCoords || restaurantSearch.referenceCoords;
+
+  const isLoadingSearch =
+    restaurantSearch.isSearching || nearbyRestaurants.isLoading;
+  const searchError = restaurantSearch.error || nearbyRestaurants.error;
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Floating Success Notification */}
-      {showSuccessNotification && (
+      {(restaurantSearch.showSuccessNotification ||
+        nearbyRestaurants.showSuccessNotification) && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-top duration-300">
           <div className="bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
             <Check className="w-5 h-5" />
             <div>
               <p className="font-medium">
-                Found {nearbyPlaces.length} place
-                {nearbyPlaces.length !== 1 ? "s" : ""}!
+                Found {displayResults.length} place
+                {displayResults.length !== 1 ? "s" : ""}!
               </p>
               <p className="text-xs text-green-100">
-                {currentLocationContext?.type === "gps"
+                {nearbyRestaurants.currentLocation
                   ? "Sorted by distance from your location"
-                  : currentLocationContext?.location
-                    ? `Near ${currentLocationContext.location}`
+                  : restaurantSearch.currentLocationContext?.location
+                    ? `Near ${restaurantSearch.currentLocationContext.location}`
                     : "Results loaded successfully"}
               </p>
             </div>
@@ -654,232 +386,43 @@ export default function SelectRestaurantPage({
         )}
 
         <div className="space-y-4">
-          {/* Saved restaurants view (default) */}
+          {/* Search options */}
           {!showNearbyPlaces && (
-            <>
-              {/* Search options */}
-              <Card className="border-2 border-blue-200 bg-blue-50/30 gap-0 py-3">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Search className="w-5 h-5 text-blue-600" />
-                    Search for Food Places
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {/* Restaurant name/type search */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label
-                        htmlFor="restaurant-search"
-                        className="text-sm font-medium text-gray-700"
-                      >
-                        Place name or type
-                      </Label>
-                      <button
-                        type="button"
-                        onClick={() => setShowRestaurantNameFinder(true)}
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        <Camera className="w-3.5 h-3.5" />
-                        Use camera
-                      </button>
-                    </div>
-                    <Input
-                      ref={restaurantSearchInputRef}
-                      id="restaurant-search"
-                      type="text"
-                      placeholder="e.g., Starbucks, cafe, bakery, dessert"
-                      value={restaurantSearchQuery}
-                      onChange={(e) => setRestaurantSearchQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleManualSearch();
-                        }
-                      }}
-                      className="bg-white"
-                    />
-                  </div>
-
-                  {/* Manual location search */}
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="manual-location"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Location (city, zip code, or address)
-                    </Label>
-                    <div className="flex gap-2">
-                      <Input
-                        ref={manualLocationInputRef}
-                        id="manual-location"
-                        type="text"
-                        placeholder="e.g., 90210, Los Angeles, CA"
-                        value={manualLocation}
-                        onChange={(e) => setManualLocation(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleManualSearch();
-                          }
-                        }}
-                        className="bg-white flex-1"
-                      />
-                      <Button
-                        onClick={handleSearchNearby}
-                        variant="outline"
-                        className="bg-white shrink-0"
-                        disabled={!isOnline}
-                        title="Use My Current Location"
-                      >
-                        <MapPin className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleManualSearch}
-                    variant="default"
-                    className="w-full"
-                    disabled={!isOnline}
-                  >
-                    {isOnline ? (
-                      <>
-                        <Search className="w-4 h-4 mr-2" />
-                        Search Food Places
-                      </>
-                    ) : (
-                      <>
-                        <WifiOff className="w-4 h-4 mr-2" />
-                        Search (Offline)
-                      </>
-                    )}
-                  </Button>
-
-                  {!isOnline && (
-                    <p className="text-xs text-orange-600 text-center">
-                      Google Places search requires internet connection
-                    </p>
-                  )}
-
-                  <div className="text-center">
-                    <button
-                      onClick={onNavigateToCreateRestaurant}
-                      className="text-sm text-blue-600 hover:text-blue-700 underline"
-                    >
-                      Add new restaurant
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
+            <RestaurantSearchBar
+              mode="initial"
+              restaurantSearchQuery={restaurantSearch.restaurantSearchQuery}
+              setRestaurantSearchQuery={
+                restaurantSearch.setRestaurantSearchQuery
+              }
+              manualLocation={restaurantSearch.manualLocation}
+              setManualLocation={restaurantSearch.setManualLocation}
+              isOnline={isOnline}
+              onSearch={handleManualSearch}
+              onUseGPS={handleSearchNearby}
+              onNavigateToCreateRestaurant={onNavigateToCreateRestaurant}
+              onShowCamera={() => setShowRestaurantNameFinder(true)}
+            />
           )}
 
           {/* Nearby places view */}
           {showNearbyPlaces && (
             <>
-              {/* Search inputs */}
-              <Card className="border-2 border-blue-200 bg-blue-50/30">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Search className="w-5 h-5 text-blue-600" />
-                    Search Again
-                  </CardTitle>
-                  <CardDescription>
-                    Refine your search or try a new location
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label
-                        htmlFor="restaurant-search-nearby"
-                        className="text-sm font-medium text-gray-700"
-                      >
-                        Place name or type
-                      </Label>
-                      <button
-                        type="button"
-                        onClick={() => setShowRestaurantNameFinder(true)}
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        <Camera className="w-3.5 h-3.5" />
-                        Use camera
-                      </button>
-                    </div>
-                    <Input
-                      id="restaurant-search-nearby"
-                      type="text"
-                      placeholder="e.g., Starbucks, cafe, bakery, dessert"
-                      value={restaurantSearchQuery}
-                      onChange={(e) => setRestaurantSearchQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleManualSearch();
-                        }
-                      }}
-                      className="bg-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="manual-location-nearby"
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Location (city, zip code, or address)
-                    </Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="manual-location-nearby"
-                        type="text"
-                        placeholder="e.g., 90210, Los Angeles, CA"
-                        value={manualLocation}
-                        onChange={(e) => setManualLocation(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleManualSearch();
-                          }
-                        }}
-                        className="bg-white flex-1"
-                      />
-                      <Button
-                        onClick={() => handleSearchNearby()}
-                        variant="outline"
-                        className="bg-white shrink-0"
-                        disabled={!isOnline}
-                        title="Use My Current Location"
-                      >
-                        <MapPin className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={() => handleManualSearch()}
-                    variant="default"
-                    className="w-full"
-                    disabled={!isOnline}
-                  >
-                    {isOnline ? (
-                      <>
-                        <Search className="w-4 h-4 mr-2" />
-                        New Search
-                      </>
-                    ) : (
-                      <>
-                        <WifiOff className="w-4 h-4 mr-2" />
-                        Offline
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
+              <RestaurantSearchBar
+                mode="refine"
+                restaurantSearchQuery={restaurantSearch.restaurantSearchQuery}
+                setRestaurantSearchQuery={
+                  restaurantSearch.setRestaurantSearchQuery
+                }
+                manualLocation={restaurantSearch.manualLocation}
+                setManualLocation={restaurantSearch.setManualLocation}
+                isOnline={isOnline}
+                onSearch={handleManualSearch}
+                onUseGPS={handleSearchNearby}
+                onShowCamera={() => setShowRestaurantNameFinder(true)}
+              />
 
               {/* Location status */}
-              {locationLoading && (
+              {nearbyRestaurants.locationLoading && (
                 <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="pt-4 flex items-center gap-3">
                     <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
@@ -895,7 +438,7 @@ export default function SelectRestaurantPage({
                 </Card>
               )}
 
-              {locationError && (
+              {nearbyRestaurants.locationError && (
                 <Card className="bg-yellow-50 border-yellow-200">
                   <CardContent className="pt-4">
                     <div className="flex items-start gap-3">
@@ -905,12 +448,12 @@ export default function SelectRestaurantPage({
                           Location unavailable
                         </p>
                         <p className="text-xs text-yellow-700 mt-1">
-                          {locationError}
+                          {nearbyRestaurants.locationError}
                         </p>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={refetchLocation}
+                          onClick={nearbyRestaurants.requestLocation}
                           className="mt-2"
                         >
                           <RefreshCw className="w-3 h-3 mr-2" />
@@ -921,13 +464,8 @@ export default function SelectRestaurantPage({
                   </CardContent>
                 </Card>
               )}
-            </>
-          )}
 
-          {/* Google Places nearby restaurants */}
-          {showNearbyPlaces && (
-            <>
-              {placesLoading && (
+              {isLoadingSearch && (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
                   <span className="ml-2 text-sm text-gray-500">
@@ -936,186 +474,48 @@ export default function SelectRestaurantPage({
                 </div>
               )}
 
-              {placesError && (
+              {searchError && (
                 <Card className="bg-red-50 border-red-200">
                   <CardContent>
-                    <p className="text-sm text-red-600">{placesError}</p>
+                    <p className="text-sm text-red-600">{searchError}</p>
                   </CardContent>
                 </Card>
               )}
 
-              {!placesLoading &&
-                nearbyPlaces.length === 0 &&
-                !placesError &&
-                position && (
-                  <Card className="bg-gray-50">
-                    <CardContent className="pt-4 text-center">
-                      <p className="text-sm text-gray-600">
-                        No nearby food places found
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowNearbyPlaces(false)}
-                        className="mt-3"
-                      >
-                        Add Manually
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
-
-              <div ref={nearbyPlacesRef} className="space-y-3">
-                {nearbyPlacesWithDistance.map(({ restaurant, distance }) => {
-                  const stats = getRestaurantStats(restaurant.id);
-                  return (
-                    <Card
-                      key={restaurant.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow py-3"
-                      onClick={() => handleSelectRestaurant(restaurant)}
+              {!isLoadingSearch && displayResults.length === 0 && !searchError && (
+                <Card className="bg-gray-50">
+                  <CardContent className="pt-4 text-center">
+                    <p className="text-sm text-gray-600">
+                      No nearby food places found
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowNearbyPlaces(false)}
+                      className="mt-3"
                     >
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="text-lg">
-                                {restaurant.name}
-                              </CardTitle>
-                              {getVisibilityIcon(restaurant.visibility)}
-                            </div>
-                            <CardDescription className="mt-1">
-                              {restaurant.location}
-                              {restaurant.cuisineType &&
-                                ` • ${restaurant.cuisineType}`}
-                            </CardDescription>
-                          </div>
-                          <Badge variant="secondary" className="ml-2">
-                            <MapPin className="w-3 h-3 mr-1" />
-                            {distance !== null
-                              ? formatDistance(distance)
-                              : "Near"}
-                          </Badge>
-                        </div>
-                        {(stats.userVisitCount > 0 ||
-                          stats.friendCount > 0) && (
-                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
-                            {stats.userVisitCount > 0 && (
-                              <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                <span>
-                                  You: {stats.userVisitCount}{" "}
-                                  {stats.userVisitCount === 1
-                                    ? "visit"
-                                    : "visits"}
-                                </span>
-                              </div>
-                            )}
-                            {stats.friendCount > 0 && (
-                              <div className="flex items-center gap-1">
-                                <Users className="w-3 h-3" />
-                                <span>
-                                  {stats.friendCount}{" "}
-                                  {stats.friendCount === 1
-                                    ? "friend"
-                                    : "friends"}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </CardHeader>
-                    </Card>
-                  );
-                })}
-              </div>
-
-              {/* Pagination Controls */}
-              {nearbyPlaces.length > 0 && totalPages > 1 && !placesLoading && (
-                <div className="flex items-center justify-center gap-1 py-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
-                    className="px-2"
-                  >
-                    &lt;&lt;
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-2"
-                  >
-                    &lt;
-                  </Button>
-
-                  {getPageNumbers(currentPage, totalPages).map((page, idx) =>
-                    page === "..." ? (
-                      <span
-                        key={`ellipsis-${idx}`}
-                        className="px-2 text-gray-400"
-                      >
-                        ...
-                      </span>
-                    ) : (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setCurrentPage(page as number)}
-                        className="min-w-[2.5rem]"
-                      >
-                        {page}
-                      </Button>
-                    )
-                  )}
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="px-2"
-                  >
-                    &gt;
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage === totalPages}
-                    className="px-2"
-                  >
-                    &gt;&gt;
-                  </Button>
-                </div>
+                      Add Manually
+                    </Button>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Page info */}
-              {nearbyPlaces.length > 0 && !placesLoading && (
-                <div className="text-center text-sm text-gray-600">
-                  Showing {startIndex + 1}-
-                  {Math.min(endIndex, nearbyPlaces.length)} of{" "}
-                  {nearbyPlaces.length} places
-                  {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
-                </div>
+              {displayResults.length > 0 && (
+                <RestaurantList
+                  restaurants={displayResults}
+                  referenceCoords={displayReferenceCoords}
+                  getRestaurantStats={getRestaurantStats}
+                  onSelectRestaurant={handleSelectRestaurant}
+                  showPagination={true}
+                  resultsPerPage={20}
+                />
               )}
 
-              {(nearbyPlaces.length > 0 || placesError || locationError) && (
+              {(displayResults.length > 0 ||
+                searchError ||
+                nearbyRestaurants.locationError) && (
                 <Button
-                  onClick={() => {
-                    setShowNearbyPlaces(false);
-                    setNearbyPlaces([]);
-                    setPlacesError("");
-                    setCurrentLocationContext(null);
-                    setReferenceCoords(null);
-                    setCurrentPage(1);
-                    setShowSuccessNotification(false);
-                  }}
+                  onClick={handleClearSearch}
                   variant="outline"
                   className="w-full"
                 >
@@ -1133,7 +533,7 @@ export default function SelectRestaurantPage({
                 <Card>
                   <CardHeader>
                     <CardTitle>Add New Restaurant</CardTitle>
-                    {position && (
+                    {nearbyRestaurants.currentLocation && (
                       <CardDescription className="flex items-center gap-1 text-xs text-green-600">
                         <MapPin className="w-3 h-3" />
                         Current location will be saved
@@ -1363,159 +763,14 @@ export default function SelectRestaurantPage({
                   </CardContent>
                 </Card>
               ) : (
-                <>
-                  <div ref={savedRestaurantsRef} className="space-y-3">
-                    {paginatedSavedRestaurants.map((restaurant) => {
-                      const stats = getRestaurantStats(restaurant.id);
-                      const isHighlighted = highlightedRestaurants.has(
-                        restaurant.id
-                      );
-                      return (
-                        <Card
-                          key={restaurant.id}
-                          className={`cursor-pointer hover:shadow-md transition-all py-3 ${
-                            isHighlighted
-                              ? "border-2 border-yellow-400 bg-yellow-50 animate-pulse shadow-lg"
-                              : ""
-                          }`}
-                          onClick={() => handleSelectRestaurant(restaurant)}
-                        >
-                          <CardHeader>
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="text-lg">
-                                {restaurant.name}
-                              </CardTitle>
-                              {getVisibilityIcon(restaurant.visibility)}
-                            </div>
-                            <CardDescription>
-                              {restaurant.location}
-                              {restaurant.cuisineType &&
-                                ` • ${restaurant.cuisineType}`}
-                            </CardDescription>
-                            {(stats.userVisitCount > 0 ||
-                              stats.friendCount > 0) && (
-                              <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
-                                {stats.userVisitCount > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    <span>
-                                      You: {stats.userVisitCount}{" "}
-                                      {stats.userVisitCount === 1
-                                        ? "visit"
-                                        : "visits"}
-                                    </span>
-                                  </div>
-                                )}
-                                {stats.friendCount > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <Users className="w-3 h-3" />
-                                    <span>
-                                      {stats.friendCount}{" "}
-                                      {stats.friendCount === 1
-                                        ? "friend"
-                                        : "friends"}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </CardHeader>
-                        </Card>
-                      );
-                    })}
-                  </div>
-
-                  {/* Pagination Controls for Saved Restaurants */}
-                  {filteredRestaurants.length > 0 && totalSavedPages > 1 && (
-                    <>
-                      <div className="flex items-center justify-center gap-1 py-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSavedRestaurantsPage(1)}
-                          disabled={savedRestaurantsPage === 1}
-                          className="px-2"
-                        >
-                          &lt;&lt;
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setSavedRestaurantsPage((p) => Math.max(1, p - 1))
-                          }
-                          disabled={savedRestaurantsPage === 1}
-                          className="px-2"
-                        >
-                          &lt;
-                        </Button>
-
-                        {getPageNumbers(
-                          savedRestaurantsPage,
-                          totalSavedPages
-                        ).map((page, idx) =>
-                          page === "..." ? (
-                            <span
-                              key={`ellipsis-${idx}`}
-                              className="px-2 text-gray-400"
-                            >
-                              ...
-                            </span>
-                          ) : (
-                            <Button
-                              key={page}
-                              variant={
-                                savedRestaurantsPage === page
-                                  ? "default"
-                                  : "outline"
-                              }
-                              size="sm"
-                              onClick={() =>
-                                setSavedRestaurantsPage(page as number)
-                              }
-                              className="min-w-[2.5rem]"
-                            >
-                              {page}
-                            </Button>
-                          )
-                        )}
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setSavedRestaurantsPage((p) =>
-                              Math.min(totalSavedPages, p + 1)
-                            )
-                          }
-                          disabled={savedRestaurantsPage === totalSavedPages}
-                          className="px-2"
-                        >
-                          &gt;
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setSavedRestaurantsPage(totalSavedPages)
-                          }
-                          disabled={savedRestaurantsPage === totalSavedPages}
-                          className="px-2"
-                        >
-                          &gt;&gt;
-                        </Button>
-                      </div>
-
-                      <div className="text-center text-sm text-gray-600">
-                        Showing {savedStartIndex + 1}-
-                        {Math.min(savedEndIndex, filteredRestaurants.length)} of{" "}
-                        {filteredRestaurants.length} restaurants
-                        {totalSavedPages > 1 &&
-                          ` (Page ${savedRestaurantsPage} of ${totalSavedPages})`}
-                      </div>
-                    </>
-                  )}
-                </>
+                <RestaurantList
+                  restaurants={filteredRestaurants}
+                  highlightedRestaurants={highlightedRestaurants}
+                  getRestaurantStats={getRestaurantStats}
+                  onSelectRestaurant={handleSelectRestaurant}
+                  showPagination={true}
+                  resultsPerPage={20}
+                />
               )}
             </>
           )}
@@ -1536,7 +791,7 @@ export default function SelectRestaurantPage({
         <div className="fixed inset-0 z-50 bg-white">
           <RestaurantNameFinder
             onSelectName={(name) => {
-              setRestaurantSearchQuery(name);
+              restaurantSearch.setRestaurantSearchQuery(name);
               setShowRestaurantNameFinder(false);
             }}
             onClose={() => setShowRestaurantNameFinder(false)}

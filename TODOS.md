@@ -136,27 +136,27 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 3.2 HomePage.tsx (1,698 lines → 400 lines) (16 hours)
 
-- [ ] **Extract Filtering Hook** (4 hours)
+- [x] **Extract Filtering Hook** (4 hours)
   - Create `frontend/src/hooks/useVisitFilters.ts`
   - Extract filtering logic (lines 435-653)
   - Return: `{ filteredVisits, filterParams, setFilterParams }`
 
-- [ ] **Extract Grouping Hook** (3 hours)
+- [x] **Extract Grouping Hook** (3 hours)
   - Create `frontend/src/hooks/useVisitGrouping.ts`
   - Extract month/day grouping logic
   - Return: `{ groupedVisits, renderedMonths, loadMore }`
 
-- [ ] **Extract VisitCard Component** (3 hours)
+- [x] **Extract VisitCard Component** (3 hours)
   - Create `frontend/src/components/home/VisitCard.tsx`
   - Lines 1086-1290: Individual visit display
   - Props: `visit`, `onEdit`, `onDelete`, `onShare`
 
-- [ ] **Extract QuickTrackCard Component** (3 hours)
+- [x] **Extract QuickTrackCard Component** (3 hours)
   - Create `frontend/src/components/home/QuickTrackCard.tsx`
   - Lines 1313-1446: Quick track display
   - Props: `item`, `onEdit`, `onDelete`
 
-- [ ] **Extract Supporting Components** (3 hours)
+- [x] **Extract Supporting Components** (3 hours)
   - `VisitListHeader.tsx` - Search, filters, view toggles
   - `SharePhotoModal.tsx` - Photo sharing dialog
   - `usePhotoSharing.ts` - Photo sharing logic
