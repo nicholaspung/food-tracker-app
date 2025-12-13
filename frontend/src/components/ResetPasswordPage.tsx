@@ -5,6 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface ResetPasswordPageProps {
   token: string;
@@ -15,24 +18,27 @@ interface ResetPasswordPageProps {
 export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuccess }: ResetPasswordPageProps) {
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [error, setError] = useState("");
+  const { error, handleError, clearError, showValidation } = useErrorHandler({
+    source: 'ResetPasswordPage',
+    defaultSeverity: 'error',
+  });
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(3);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    clearError();
     setSuccess(false);
 
     // Client-side validation
     if (password !== passwordConfirm) {
-      setError("Passwords do not match");
+      showValidation(ERROR_MESSAGES.VALIDATION.PASSWORDS_MISMATCH);
       return;
     }
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      showValidation(ERROR_MESSAGES.VALIDATION.MIN_LENGTH("Password", 8));
       return;
     }
 
@@ -43,7 +49,7 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
       setSuccess(true);
     } catch (err: any) {
       logger.error("Password reset error:", err);
-      setError(err?.message || "Failed to reset password. The link may be invalid or expired.");
+      handleError(err, { customMessage: ERROR_MESSAGES.AUTH.RESET_PASSWORD_FAILED });
     } finally {
       setLoading(false);
     }
@@ -74,11 +80,7 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
         </CardHeader>
         <form onSubmit={handleSubmit} data-testid="reset-password-form">
           <CardContent className="space-y-4">
-            {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="reset-password-error">
-                {error}
-              </div>
-            )}
+            <ErrorDisplay error={error} onClear={clearError} testId="reset-password-error" />
             {success && (
               <div className="p-3 text-sm text-green-500 bg-green-50 border border-green-200 rounded-md" data-testid="reset-password-success">
                 <div>Password reset successfully!</div>

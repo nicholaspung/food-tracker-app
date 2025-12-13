@@ -12,6 +12,7 @@ import { usePhotoSharing } from "@/hooks/usePhotoSharing";
 import { getDateMonthsAgo } from "@/lib/dateUtils";
 import { useOfflineQuickTrackDelete } from "@/hooks/useOfflineQuickTrackDelete";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/offlineHelpers";
 import VisitCard from "@/components/home/VisitCard";
 import QuickTrackCard from "@/components/home/QuickTrackCard";
 import VisitListHeader from "@/components/home/VisitListHeader";
@@ -229,12 +230,8 @@ export default function HomePage({
       console.error("Failed to delete quick track item:", error);
 
       // Show helpful message if offline
-      if (
-        !isOnline &&
-        error instanceof Error &&
-        error.message?.includes("queued")
-      ) {
-        showSuccess("You're offline. Your deletion has been queued and will sync when you're back online.");
+      if (!isOnline && isOfflineError(error)) {
+        handleOfflineSuccess(OFFLINE_MESSAGES.DELETION_QUEUED, showSuccess);
         setQuickTrackItemToDelete(null);
       } else {
         handleError(error, { customMessage: "Failed to delete item. Please try again." });

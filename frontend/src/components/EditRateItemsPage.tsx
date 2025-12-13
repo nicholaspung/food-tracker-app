@@ -18,6 +18,9 @@ import { RatingSelector } from "@/components/ui/RatingSelector";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
 import { usePhotoManager } from "@/hooks/usePhotoManager";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface VisitPhoto {
   id: string;
@@ -42,7 +45,10 @@ export default function EditRateItemsPage({
 }: EditRateItemsPageProps) {
   const queryClient = useQueryClient();
   const draft = editVisitDraftService.getDraft(visitId);
-  const [error, setError] = useState("");
+  const { error, handleError, clearError } = useErrorHandler({
+    source: 'EditRateItemsPage',
+    defaultSeverity: 'error',
+  });
   const [isInitialized, setIsInitialized] = useState(false);
 
   const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>(
@@ -244,8 +250,8 @@ export default function EditRateItemsPage({
         editVisitDraftService.clearDraft();
       }, 100);
     },
-    onError: (error: unknown) => {
-      setError(error instanceof Error ? error.message : "Failed to update visit");
+    onError: (err: unknown) => {
+      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.UPDATE_FAILED("visit") });
       // Reset upload state on error so user can retry
       resetUploadState();
     },
@@ -293,11 +299,7 @@ export default function EditRateItemsPage({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
-            {error}
-          </div>
-        )}
+        <ErrorDisplay error={error} onClear={clearError} />
 
         <div className="space-y-4">
           {/* Date and Visibility Card */}

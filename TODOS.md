@@ -195,37 +195,57 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 4.1 Fix Type Safety Issues
 
-- [ ] **Fix Any Types** (6 hours)
+- [x] **Fix Any Types** (6 hours)
   - `ProcessPhotosPage.tsx:94` - restaurant: any → Restaurant | null
   - `AdminMenuReviewsPage.tsx` - Define MenuReview interface
   - Create type guards in `lib/pocketbase.ts`
 
-- [ ] **Add Return Types** (4 hours)
+- [x] **Add Return Types** (4 hours)
   - Add explicit return types to all async functions
   - Add to all event handlers
   - Enable stricter TypeScript rules incrementally
 
-- [ ] **Create Type Guards** (2 hours)
+- [x] **Create Type Guards** (2 hours)
   - Create `isAuthenticatedUser()` type guard
   - Create guards for PocketBase record types
   - Add to `lib/pocketbase.ts`
 
 ### 4.2 Standardize Error Handling
 
-- [ ] **Replace alert() with Toast System** (4 hours)
-  - Install/configure toast library (e.g., sonner)
-  - Replace all alert() calls with toast notifications
-  - Better UX for success/error messages
+**Status**: Sophisticated error handling system already exists (`useErrorHandler` hook + `ErrorDisplay` component).
+**What's Done**: ✅ No alert() calls, ✅ PocketBase error parsing, ✅ 18 components using modern approach
+**What's Left**: Migrate 20 legacy components, add offline helpers, create error constants
 
-- [ ] **Add Offline Error Helpers** (2 hours)
+- [x] **Create Offline Error Helpers** (2 hours)
   - Create `lib/offlineHelpers.ts`
-  - `handleOfflineSuccess()` utility
-  - Update HomePage, QuickTrackPage, RateItemsPage
+  - `handleOfflineSuccess()` - Standardize "queued for sync" messages
+  - `isOfflineError()` - Check if error is offline-related
+  - Update HomePage, QuickTrackPage, RateItemsPage to use helpers
+  - Currently duplicated across 3+ pages
 
-- [ ] **Standardize Error Messages** (2 hours)
+- [x] **Create Error Message Constants** (2 hours)
+  - Create `lib/errorMessages.ts`
+  - Extract hardcoded error strings ("Failed to delete visit", "Failed to add restaurant", etc.)
   - Map backend errors to user-friendly messages
-  - Create error message constants
   - Consistent formatting across app
+
+- [x] **Migrate Legacy Components to useErrorHandler** (6 hours)
+  - Convert 20 components from `const [error, setError] = useState("")` to `useErrorHandler`
+  - Add `<ErrorDisplay>` components where missing
+  - Priority components:
+    - SelectRestaurantPage.tsx (line 56)
+    - EditRateItemsPage.tsx
+    - FriendDetailPage.tsx
+    - ViewMenuItemsPage.tsx
+    - AddItemsToVisit.tsx
+    - + 15 others
+  - Test error display in each updated component
+
+- [ ] **Optional: Install Toast Library** (3 hours)
+  - Install Sonner for global toast notifications
+  - Use for transient success/info messages
+  - Keep `ErrorDisplay` for contextual inline errors
+  - Better UX for non-critical notifications
 
 ---
 

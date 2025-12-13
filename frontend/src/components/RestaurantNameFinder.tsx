@@ -16,6 +16,9 @@ import {
 } from "lucide-react";
 import { pb, User } from "@/lib/pocketbase";
 import { useSync } from "@/contexts/SyncContext";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface RestaurantOption {
   name: string;
@@ -83,7 +86,7 @@ export default function RestaurantNameFinder(
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [result, setResult] = useState<RestaurantNameResponse | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string>("");
+  const { error, handleError, clearError, showValidation } = useErrorHandler({ source: 'RestaurantNameFinder', defaultSeverity: 'error' });
   const [copied, setCopied] = useState(false);
   const [storedResults, setStoredResults] = useState<StoredResult[]>([]);
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>({ date: getTodayString(), count: 0 });
@@ -170,7 +173,7 @@ export default function RestaurantNameFinder(
     const hasUnlimited = hasUnlimitedParsing();
     const today = getTodayString();
     if (!hasUnlimited && dailyUsage.date === today && dailyUsage.count >= DAILY_LIMIT) {
-      setError(`Daily limit reached. You can process up to ${DAILY_LIMIT} photos per day. Try again tomorrow!`);
+      showValidation(`Daily limit reached. You can process up to ${DAILY_LIMIT} photos per day. Try again tomorrow!`);
       // Clear file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -180,17 +183,17 @@ export default function RestaurantNameFinder(
 
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
-      setError("Image is too large. Please select an image under 10MB");
+      showValidation(ERROR_MESSAGES.OCR.IMAGE_TOO_LARGE);
       return;
     }
 
     // Validate file type
     if (!file.type.startsWith("image/")) {
-      setError("Please select an image file (JPEG, PNG, etc.)");
+      showValidation(ERROR_MESSAGES.OCR.INVALID_FILE_TYPE);
       return;
     }
 
-    setError("");
+    clearError();
     setResult(null);
 
     // Create preview URL for display - wait for it to load
@@ -211,14 +214,14 @@ export default function RestaurantNameFinder(
   const findRestaurantName = async (imageFile: File, imageDataUrl: string) => {
     // Check if online first
     if (!isOnline) {
-      setError("Restaurant name finder requires internet connection. Please connect and try again.");
+      showValidation(ERROR_MESSAGES.OCR.OFFLINE_REQUIRED);
       setCurrentStep("preview");
       return;
     }
 
     setCurrentStep("processing");
     setIsProcessing(true);
-    setError("");
+    clearError();
     setResult(null);
 
     try {
@@ -266,11 +269,15 @@ export default function RestaurantNameFinder(
 
       if (data.error) {
         if (data.error === "NOT_RESTAURANT") {
-          setError(
-            `This doesn't appear to be a restaurant image. ${data.reason || ""}`
+          handleError(
+            new Error(data.reason || "Not a restaurant image"),
+            { customMessage: `This doesn't appear to be a restaurant image. ${data.reason || ""}` }
           );
         } else {
-          setError(`Error: ${data.reason || "Unknown error"}`);
+          handleError(
+            new Error(data.reason || "Unknown error"),
+            { customMessage: `Error: ${data.reason || "Unknown error"}` }
+          );
         }
         setResult(null);
         setCurrentStep("result");
@@ -304,9 +311,9 @@ export default function RestaurantNameFinder(
       }
     } catch (err: any) {
       console.error("Restaurant name finder error:", err);
-      setError(
-        `Failed to analyze image: ${err.message || "Unknown error"}. Please try another image.`
-      );
+      handleError(err, {
+        customMessage: `Failed to analyze image: ${err.message || "Unknown error"}. Please try another image.`
+      });
       setResult(null);
       setCurrentStep("result");
     } finally {
@@ -318,7 +325,7 @@ export default function RestaurantNameFinder(
     setCurrentStep("capture");
     setImagePreview(null);
     setResult(null);
-    setError("");
+    clearError();
     setCopied(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -334,7 +341,7 @@ export default function RestaurantNameFinder(
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy text:", err);
-      setError("Failed to copy text to clipboard");
+      showValidation(ERROR_MESSAGES.OCR.COPY_FAILED);
     }
   };
 
@@ -514,12 +521,7 @@ export default function RestaurantNameFinder(
         )}
 
         {/* Error Message */}
-        {error && (
-          <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <ErrorDisplay error={error} onClear={clearError} />
 
         {/* Processing State */}
         {isProcessing && (

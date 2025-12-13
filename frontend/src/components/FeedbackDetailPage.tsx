@@ -14,6 +14,9 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft, Send } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 
 interface FeedbackDetailPageProps {
   feedbackId: string;
@@ -39,7 +42,7 @@ export default function FeedbackDetailPage({
   onNavigateBack,
 }: FeedbackDetailPageProps) {
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const { error, handleError, clearError, showValidation } = useErrorHandler({ source: 'FeedbackDetailPage', defaultSeverity: 'error' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -133,14 +136,14 @@ export default function FeedbackDetailPage({
     },
     onSuccess: () => {
       setMessage('');
-      setError('');
+      clearError();
       queryClient.invalidateQueries({ queryKey: ['feedback_messages', feedbackId] });
       queryClient.invalidateQueries({ queryKey: ['feedback', feedbackId] });
       queryClient.invalidateQueries({ queryKey: ['feedback'] });
       queryClient.invalidateQueries({ queryKey: ['feedbackUnreadCount'] });
     },
     onError: (err: Error) => {
-      setError(err.message || 'Failed to send message');
+      handleError(err, { customMessage: 'Failed to send message' });
     },
   });
 
@@ -160,7 +163,7 @@ export default function FeedbackDetailPage({
 
   const handleSendMessage = () => {
     if (!message.trim()) {
-      setError('Message cannot be empty');
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD('Message'));
       return;
     }
 
@@ -281,7 +284,7 @@ export default function FeedbackDetailPage({
 
       {/* Message Input */}
       <div className="bg-white border-t border-gray-200 px-4 py-3">
-        {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+        <ErrorDisplay error={error} onClear={clearError} className="mb-2" />
         <div className="flex gap-2">
           <Textarea
             value={message}

@@ -9,6 +9,9 @@ import { Alert } from '@/components/ui/alert';
 import { pb } from '@/lib/pocketbase';
 import { createBill } from '@/lib/billService';
 import { validateBillName, getFirstError } from '@/lib/billValidation';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 import type { Friendship, User } from '@/lib/pocketbase';
 
 interface CreateCustomSplitBillDialogProps {
@@ -35,7 +38,10 @@ export default function CreateCustomSplitBillDialog({
   const [billName, setBillName] = useState('');
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [participantAmounts, setParticipantAmounts] = useState<ParticipantAmount[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { error, handleError, clearError } = useErrorHandler({
+    source: 'CreateCustomSplitBillDialog',
+    defaultSeverity: 'error',
+  });
   const [pendingBillId, setPendingBillId] = useState<string | null>(null);
 
   // Fetch friends list
@@ -143,7 +149,7 @@ export default function CreateCustomSplitBillDialog({
       onClose();
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to create bill');
+      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.CREATE_FAILED("bill") });
     },
   });
 
@@ -160,7 +166,7 @@ export default function CreateCustomSplitBillDialog({
     setBillName('');
     setSelectedFriendIds([]);
     setParticipantAmounts([]);
-    setError(null);
+    clearError();
     setPendingBillId(null);
   };
 
@@ -305,14 +311,7 @@ export default function CreateCustomSplitBillDialog({
           )}
 
           {/* Error */}
-          {error && (
-            <Alert variant="destructive">
-              <div className="flex items-start gap-2">
-                <X className="w-4 h-4 mt-0.5" />
-                <div className="text-sm">{error}</div>
-              </div>
-            </Alert>
-          )}
+          <ErrorDisplay error={error} onClear={clearError} />
         </div>
 
         {/* Actions */}

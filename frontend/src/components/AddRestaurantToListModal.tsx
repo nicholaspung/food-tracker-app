@@ -17,6 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { Search, ArrowLeft, Plus, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface AddRestaurantToListModalProps {
   open: boolean;
@@ -37,7 +40,10 @@ export default function AddRestaurantToListModal({
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [selectedFoodItems, setSelectedFoodItems] = useState<string[]>([]);
   const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const { error, handleError, clearError } = useErrorHandler({
+    source: 'AddRestaurantToListModal',
+    defaultSeverity: 'error',
+  });
 
   // Fetch restaurants the user has visited (where they have food items)
   const { data: visitedRestaurants = [], isLoading: loadingRestaurants } = useQuery<
@@ -125,7 +131,7 @@ export default function AddRestaurantToListModal({
       handleClose();
     },
     onError: (err: any) => {
-      setError(err?.message || "Failed to add restaurant. Please try again.");
+      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.CREATE_FAILED("list item") });
     },
   });
 
@@ -134,7 +140,7 @@ export default function AddRestaurantToListModal({
     setSelectedRestaurant(null);
     setSelectedFoodItems([]);
     setNote("");
-    setError(null);
+    clearError();
     onOpenChange(false);
   };
 
@@ -184,29 +190,9 @@ export default function AddRestaurantToListModal({
         </DialogHeader>
 
         {/* Error Alert - Show at top */}
-        {error && (
-          <div className="bg-red-50 border border-red-300 rounded-md p-4 mx-6">
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-red-800 mb-1">
-                  Error Adding Restaurant
-                </h3>
-                <p className="text-sm text-red-700">{error}</p>
-                <p className="text-xs text-red-600 mt-2">
-                  Make sure the backend server is running (go run main.go serve)
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setError(null)}
-                className="p-1 h-auto text-red-800 hover:text-red-900"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <div className="mx-6">
+          <ErrorDisplay error={error} onClear={clearError} />
+        </div>
 
         <div className="flex-1 overflow-y-auto space-y-4">
           {!selectedRestaurant ? (
@@ -345,7 +331,7 @@ export default function AddRestaurantToListModal({
               variant="outline"
               onClick={() => {
                 setSelectedRestaurant(null);
-                setError(null);
+                clearError();
               }}
               className="flex-1"
               disabled={addRestaurantMutation.isPending}

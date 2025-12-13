@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface VerifyEmailPageProps {
   token: string;
@@ -11,7 +14,10 @@ interface VerifyEmailPageProps {
 
 export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmailPageProps) {
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
-  const [error, setError] = useState("");
+  const { error, handleError, clearError } = useErrorHandler({
+    source: 'VerifyEmailPage',
+    defaultSeverity: 'error',
+  });
   const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
@@ -22,7 +28,7 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
       } catch (err: any) {
         logger.error("Email verification error:", err);
         setStatus('error');
-        setError(err?.message || "Failed to verify email. The link may be invalid or expired.");
+        handleError(err, { customMessage: "Failed to verify email. The link may be invalid or expired." });
       }
     };
 
@@ -70,9 +76,7 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
             </div>
           )}
           {status === 'error' && (
-            <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-md" data-testid="verify-email-error">
-              {error}
-            </div>
+            <ErrorDisplay error={error} onClear={clearError} testId="verify-email-error" />
           )}
         </CardContent>
         {status !== 'verifying' && (

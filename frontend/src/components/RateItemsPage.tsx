@@ -18,6 +18,7 @@ import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { usePhotoManager } from "@/hooks/usePhotoManager";
 import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/offlineHelpers";
 
 interface RateItemsPageProps {
   onSubmit: () => void;
@@ -112,10 +113,8 @@ export default function RateItemsPage({
       resetUploadState();
 
       // Show helpful message if offline
-      if (!isOnline && error.message?.includes("queued")) {
-        showSuccess(
-          "You're offline. Your visit has been saved and will sync when you're back online."
-        );
+      if (!isOnline && isOfflineError(error)) {
+        handleOfflineSuccess(OFFLINE_MESSAGES.VISIT_SAVED, showSuccess);
         visitDraftService.clearDraft();
         localStorage.setItem("hasRatedBefore", "true");
         onSubmit();

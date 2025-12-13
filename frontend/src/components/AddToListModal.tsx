@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Lock, Users, Globe, Plus } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface AddToListModalProps {
   open: boolean;
@@ -27,7 +30,10 @@ export default function AddToListModal({
 }: AddToListModalProps) {
   const queryClient = useQueryClient();
   const [selectedLists, setSelectedLists] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
+  const { error, handleError, clearError, showValidation } = useErrorHandler({
+    source: 'AddToListModal',
+    defaultSeverity: 'error',
+  });
   const user = pb.authStore.record;
 
   // Fetch user's lists
@@ -94,9 +100,7 @@ export default function AddToListModal({
       onOpenChange(false);
     },
     onError: (err) => {
-      setError(
-        err instanceof Error ? err.message : "Failed to add to lists"
-      );
+      handleError(err, { customMessage: ERROR_MESSAGES.LISTS.ADD_TO_LIST_FAILED });
     },
   });
 
@@ -112,10 +116,10 @@ export default function AddToListModal({
 
   const handleSubmit = async () => {
     if (selectedLists.size === 0) {
-      setError("Please select at least one list");
+      showValidation(ERROR_MESSAGES.LISTS.SELECT_AT_LEAST_ONE);
       return;
     }
-    setError(null);
+    clearError();
     await addToListsMutation.mutateAsync();
   };
 
@@ -230,11 +234,7 @@ export default function AddToListModal({
           )}
 
           {/* Error Message */}
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
+          <ErrorDisplay error={error} onClear={clearError} />
 
           {/* Actions */}
           {lists.length > 0 && (
