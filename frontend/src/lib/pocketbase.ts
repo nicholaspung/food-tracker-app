@@ -255,3 +255,92 @@ export interface ListItem {
     recommendedItems?: FoodItem[];
   };
 }
+
+// Expand type definitions for type-safe access to PocketBase expand properties
+
+export interface MenuReviewRequestExpand {
+  restaurant?: Restaurant;
+  requestedBy?: User;
+}
+
+export interface MenuReviewRequestWithExpand extends MenuReviewRequest {
+  expand?: MenuReviewRequestExpand;
+}
+
+export interface MenuItemExpand {
+  sourceImage?: MenuImage;
+  createdBy?: User;
+}
+
+export interface MenuItemWithExpand extends MenuItem {
+  expand?: MenuItemExpand;
+}
+
+export interface VisitExpand {
+  restaurant?: Restaurant;
+  user?: User;
+}
+
+export interface VisitWithExpand extends Visit {
+  expand?: VisitExpand;
+}
+
+export interface FoodItemExpand {
+  visit?: VisitWithExpand;
+}
+
+export interface FoodItemWithExpand extends FoodItem {
+  expand?: FoodItemExpand;
+}
+
+// Type guards for safe access to expand properties
+
+/**
+ * Type guard to check if user is authenticated
+ */
+export function isAuthenticatedUser(record: unknown): record is User {
+  return (
+    record !== null &&
+    typeof record === 'object' &&
+    'id' in record &&
+    'email' in record &&
+    typeof record.id === 'string' &&
+    typeof record.email === 'string'
+  );
+}
+
+/**
+ * Type guard for MenuReviewRequest with expand
+ */
+export function hasMenuReviewExpand(
+  request: MenuReviewRequest
+): request is MenuReviewRequestWithExpand {
+  return 'expand' in request && request.expand !== undefined;
+}
+
+/**
+ * Type guard for MenuItem with expand
+ */
+export function hasMenuItemExpand(
+  item: MenuItem
+): item is MenuItemWithExpand {
+  return 'expand' in item && item.expand !== undefined;
+}
+
+/**
+ * Type guard for FoodItem with expand
+ */
+export function hasFoodItemExpand(
+  item: FoodItem
+): item is FoodItemWithExpand {
+  return 'expand' in item && item.expand !== undefined;
+}
+
+/**
+ * Type guard for Visit with expand
+ */
+export function hasVisitExpand(
+  visit: Visit
+): visit is VisitWithExpand {
+  return 'expand' in visit && visit.expand !== undefined;
+}

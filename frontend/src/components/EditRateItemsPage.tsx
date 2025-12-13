@@ -19,6 +19,16 @@ import { DatePickerField } from "@/components/ui/DatePickerField";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
 import { usePhotoManager } from "@/hooks/usePhotoManager";
 
+interface VisitPhoto {
+  id: string;
+  visit: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+}
+
 interface EditRateItemsPageProps {
   visitId: string;
   onBack: () => void;
@@ -76,7 +86,7 @@ export default function EditRateItemsPage({
   const isKeyboardVisible = useKeyboardVisible();
 
   // Fetch existing photos for this visit
-  const { data: existingPhotos = [] } = useQuery({
+  const { data: existingPhotos = [] } = useQuery<VisitPhoto[]>({
     queryKey: ["visitPhotos", visitId],
     queryFn: async () => {
       return await pb.collection("visit_photos").getFullList({
@@ -116,7 +126,7 @@ export default function EditRateItemsPage({
   const handleDeleteExistingPhoto = (foodItemId: string | number) => {
     const id = String(foodItemId);
     const existingPhoto = existingPhotos.find(
-      (p: any) => p.food_item === id
+      (p) => p.food_item === id
     );
     if (existingPhoto) {
       const newDeletedIds = new Set(deletedPhotoIds);
@@ -128,7 +138,7 @@ export default function EditRateItemsPage({
   // Get existing photo URL for a food item (only if not marked for deletion)
   const getExistingPhotoUrl = (foodItemId: string) => {
     const existingPhoto = existingPhotos.find(
-      (p: any) => p.food_item === foodItemId
+      (p) => p.food_item === foodItemId
     );
     if (existingPhoto && !deletedPhotoIds.has(existingPhoto.id)) {
       return pb.files.getURL(existingPhoto, existingPhoto.photo);
@@ -177,7 +187,7 @@ export default function EditRateItemsPage({
           const newPhoto = itemPhotos.get(item.id);
           if (newPhoto) {
             const existingPhoto = existingPhotos.find(
-              (p: any) => p.food_item === item.id
+              (p) => p.food_item === item.id
             );
             photoUploads.push({
               photo: newPhoto,
@@ -234,8 +244,8 @@ export default function EditRateItemsPage({
         editVisitDraftService.clearDraft();
       }, 100);
     },
-    onError: (err: any) => {
-      setError(err.message || "Failed to update visit");
+    onError: (error: unknown) => {
+      setError(error instanceof Error ? error.message : "Failed to update visit");
       // Reset upload state on error so user can retry
       resetUploadState();
     },

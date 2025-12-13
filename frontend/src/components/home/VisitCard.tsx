@@ -1,4 +1,4 @@
-import { pb } from "@/lib/pocketbase";
+import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
 import {
   Card,
   CardContent,
@@ -19,15 +19,38 @@ import {
 } from "lucide-react";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
+interface VisitPhoto {
+  id: string;
+  visit: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+  isPending?: boolean;
+}
+
+interface VisitWithDetails {
+  id: string;
+  restaurant?: Restaurant;
+  user: string;
+  visitDate: string;
+  visibility: 'private' | 'friends';
+  notes?: string;
+  created: string;
+  updated: string;
+  foodItems?: FoodItem[];
+}
+
 interface VisitCardProps {
-  visit: any; // VisitWithDetails type
+  visit: VisitWithDetails;
   isFriend: boolean;
   friendName?: string | null;
-  visitPhotos: any[];
+  visitPhotos: VisitPhoto[];
   onEdit?: (visitId: string) => void;
-  onDelete: (visit: any) => void;
-  onSharePhoto: (photo: any, foodItem: any, restaurant: any, visitDate: string) => void;
-  onShareVisit: (visit: any) => void;
+  onDelete: (visit: VisitWithDetails) => void;
+  onSharePhoto: (photo: VisitPhoto, foodItem: FoodItem, restaurant: Restaurant, visitDate: string) => void;
+  onShareVisit: (visit: VisitWithDetails) => void;
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
 }
 
@@ -95,9 +118,9 @@ export default function VisitCard({
               {/* Share Visit button - only show if visit has 2 or more photos */}
               {(() => {
                 const photosForVisit =
-                  visitPhotos.filter((photo: any) =>
+                  visitPhotos.filter((photo) =>
                     visit.foodItems?.some(
-                      (item: any) =>
+                      (item) =>
                         item.id === photo.food_item
                     )
                   );
@@ -139,10 +162,10 @@ export default function VisitCard({
         {visit.foodItems &&
         visit.foodItems.length > 0 ? (
           <div className="space-y-2">
-            {visit.foodItems.map((item: any) => {
+            {visit.foodItems.map((item) => {
               // Find photo for this food item
               const photo = visitPhotos.find(
-                (p: any) => p.food_item === item.id
+                (p) => p.food_item === item.id
               );
               // For offline photos (isPending), use the blob URL directly
               // For online photos, use PocketBase file URL

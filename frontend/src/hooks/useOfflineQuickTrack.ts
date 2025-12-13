@@ -11,7 +11,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '@/lib/pocketbase';
+import { pb, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from './usePhotoUpload';
@@ -29,9 +29,18 @@ export interface QuickTrackData {
   itemDate?: string; // Date when item was consumed/tracked (ISO string)
 }
 
+interface QuickTrackPhotoResult {
+  id: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+}
+
 export interface QuickTrackResult {
-  foodItem: any;
-  photoResult?: any;
+  foodItem: FoodItem;
+  photoResult?: QuickTrackPhotoResult;
   isQueued?: boolean; // Flag to indicate if offline and queued for sync
 }
 
@@ -112,26 +121,26 @@ export function useOfflineQuickTrack() {
     onSuccess: async (result) => {
       if (result.isQueued) {
         // Offline: Add optimistic data to cache
-        queryClient.setQueryData(['allFoodItems'], (old: any[] = []) => {
+        queryClient.setQueryData<FoodItem[]>(['allFoodItems'], (old = []) => {
           return [result.foodItem, ...old];
         });
-        queryClient.setQueryData(['quickTrackItems'], (old: any[] = []) => {
+        queryClient.setQueryData<FoodItem[]>(['quickTrackItems'], (old = []) => {
           return [result.foodItem, ...old];
         });
 
         // Also cache the photo if exists
-        if (result.foodItem.photoPreviewUrl) {
-          const optimisticPhoto = {
+        const foodItemWithPhoto = result.foodItem as FoodItem & { photoPreviewUrl?: string };
+        if (foodItemWithPhoto.photoPreviewUrl) {
+          const optimisticPhoto: QuickTrackPhotoResult = {
             id: `temp_photo_${result.foodItem.id}`,
             food_item: result.foodItem.id,
             user: result.foodItem.user,
-            photo: result.foodItem.photoPreviewUrl, // Use preview URL as photo
+            photo: foodItemWithPhoto.photoPreviewUrl, // Use preview URL as photo
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
-            isPending: true,
           };
 
-          queryClient.setQueryData(['allVisitPhotos'], (old: any[] = []) => {
+          queryClient.setQueryData<QuickTrackPhotoResult[]>(['allVisitPhotos'], (old = []) => {
             return [optimisticPhoto, ...old];
           });
         }
@@ -186,7 +195,7 @@ async function executeQuickTrack(
   console.log('[executeQuickTrack] Food item created:', foodItem.id);
 
   // 2. Upload photo if provided
-  let photoResult: any | undefined;
+  let photoResult: QuickTrackPhotoResult | undefined;
   if (data.photo) {
     console.log('[executeQuickTrack] Uploading photo...');
     const photoUpload: PhotoUploadItem = {

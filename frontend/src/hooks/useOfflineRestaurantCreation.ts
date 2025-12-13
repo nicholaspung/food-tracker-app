@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '@/lib/pocketbase';
+import { pb, type Restaurant, type MenuItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { logger } from '@/lib/logger';
@@ -16,8 +16,8 @@ interface RestaurantCreationData {
 }
 
 interface RestaurantCreationResult {
-  restaurant: any;
-  menuItems: any[];
+  restaurant: Restaurant;
+  menuItems: MenuItem[];
   isQueued?: boolean;
 }
 
@@ -128,7 +128,7 @@ export function useOfflineRestaurantCreation() {
     onSuccess: (result) => {
       // Add optimistic restaurant to cache immediately
       if (result.isQueued) {
-        queryClient.setQueryData(['restaurants'], (old: any[] = []) => {
+        queryClient.setQueryData<Restaurant[]>(['restaurants'], (old = []) => {
           return [result.restaurant, ...old];
         });
 
@@ -175,7 +175,7 @@ async function executeRestaurantCreation(
   logger.log('[OfflineRestaurant] Restaurant created:', restaurant.id);
 
   // 2. Create initial menu items if provided
-  const createdMenuItems: any[] = [];
+  const createdMenuItems: MenuItem[] = [];
   if (data.menuItems && data.menuItems.length > 0) {
     for (const itemName of data.menuItems) {
       try {

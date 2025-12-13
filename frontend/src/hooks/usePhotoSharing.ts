@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { pb } from "@/lib/pocketbase";
+import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/useErrorHandler";
 
 export interface ShareOverlayData {
@@ -9,8 +9,34 @@ export interface ShareOverlayData {
   visitDate: string;
 }
 
+interface VisitPhoto {
+  id: string;
+  visit: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+}
+
+interface FoodItemWithLocation extends FoodItem {
+  location_text?: string;
+}
+
+interface VisitWithFoodItems {
+  id: string;
+  restaurant?: Restaurant;
+  user: string;
+  visitDate: string;
+  visibility: string;
+  notes?: string;
+  created: string;
+  updated: string;
+  foodItems?: FoodItem[];
+}
+
 export interface UsePhotoSharingParams {
-  visitPhotos: any[];
+  visitPhotos: VisitPhoto[];
   isOnline: boolean;
 }
 
@@ -21,17 +47,17 @@ export interface UsePhotoSharingReturn {
   sharePhotoUrl: string;
   shareOverlayData: ShareOverlayData | null;
   handleSharePhotoClick: (
-    photo: any,
-    foodItem: any,
-    restaurant: any,
+    photo: VisitPhoto,
+    foodItem: FoodItemWithLocation,
+    restaurant: Restaurant | null,
     visitDate: string
   ) => Promise<void>;
   handleShare: (shareBlob: Blob) => Promise<void>;
   closeShareModal: () => void;
 
   // Visit share (multiple photos)
-  visitToShare: any | null;
-  handleShareVisitClick: (visit: any) => void;
+  visitToShare: VisitWithFoodItems | null;
+  handleShareVisitClick: (visit: VisitWithFoodItems) => void;
   closeVisitShareModal: () => void;
 }
 
@@ -55,11 +81,11 @@ export function usePhotoSharing({
   const [shareOverlayData, setShareOverlayData] = useState<ShareOverlayData | null>(null);
 
   // Visit share state (multiple photos)
-  const [visitToShare, setVisitToShare] = useState<any | null>(null);
+  const [visitToShare, setVisitToShare] = useState<VisitWithFoodItems | null>(null);
 
   // Handle opening share modal for individual photo
   const handleSharePhotoClick = useCallback(
-    async (photo: any, foodItem: any, restaurant: any, visitDate: string) => {
+    async (photo: VisitPhoto, foodItem: FoodItemWithLocation, restaurant: Restaurant | null, visitDate: string) => {
       if (!isOnline) {
         showValidation("Photo sharing requires internet connection. Please connect and try again.");
         return;
@@ -142,10 +168,10 @@ export function usePhotoSharing({
 
   // Handle share visit button click
   const handleShareVisitClick = useCallback(
-    (visit: any) => {
+    (visit: VisitWithFoodItems) => {
       // Check if visit has any photos
-      const photosForVisit = visitPhotos.filter((photo: any) =>
-        visit.foodItems?.some((item: any) => item.id === photo.food_item)
+      const photosForVisit = visitPhotos.filter((photo) =>
+        visit.foodItems?.some((item) => item.id === photo.food_item)
       );
 
       if (photosForVisit.length === 0) {

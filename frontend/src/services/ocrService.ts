@@ -13,9 +13,9 @@ export interface OCRResult {
     candidatesCount: number;
     model: string;
     prompt: string;
-    finishReason?: any;
-    safetyRatings?: any;
-    parts?: any[];
+    finishReason?: unknown;
+    safetyRatings?: unknown;
+    parts?: unknown[];
   };
 }
 
@@ -353,7 +353,7 @@ export async function createMenuItems(
       }
 
       // Create new menu item
-      const data: any = {
+      const data: Partial<MenuItem> = {
         restaurant: restaurantId,
         name: item.name,
         createdBy: pb.authStore.model?.id,
