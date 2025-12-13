@@ -11,7 +11,23 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { syncQueue, type QueuedOperation, type SyncQueueStats } from '@/lib/syncQueue';
-import { pb } from '@/lib/pocketbase';
+import { pb, type FoodItem, type Visit, type Restaurant, type MenuItem } from '@/lib/pocketbase';
+
+interface VisitCreationData {
+  visit: Partial<Visit>;
+  foodItems: Partial<FoodItem>[];
+  photos?: Array<{ index: number; file: File }>;
+}
+
+interface VisitDeletionData {
+  visitId: string;
+  foodItemIds: string[];
+}
+
+interface RestaurantCreationData {
+  restaurant: Partial<Restaurant>;
+  menuItems?: Partial<MenuItem>[];
+}
 
 export interface SyncContextValue {
   isOnline: boolean;
@@ -42,7 +58,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Update queue statistics
    */
-  const updateStats = useCallback(async () => {
+  const updateStats = useCallback(async (): Promise<void> => {
     try {
       const stats = await syncQueue.getStats();
       setQueueStats(stats);
@@ -93,10 +109,10 @@ export function SyncProvider({ children }: SyncProviderProps) {
 
       // Success - remove from queue
       await syncQueue.dequeue(operation.id);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Increment retries and store error
       operation.retries += 1;
-      operation.error = error?.message || 'Unknown error';
+      operation.error = error instanceof Error ? error.message : 'Unknown error';
 
       // Keep in queue for retry (up to 3 times)
       if (operation.retries < 3) {
@@ -114,7 +130,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Execute complex visit creation (visit + food items + photos)
    */
-  const executeComplexVisitCreation = async (data: any): Promise<void> => {
+  const executeComplexVisitCreation = async (data: VisitCreationData): Promise<void> => {
     const { visit: visitData, foodItems, photos } = data;
 
     console.log('[SyncContext] Attempting to create visit with data:', visitData);
@@ -131,9 +147,9 @@ export function SyncProvider({ children }: SyncProviderProps) {
     console.log('Created visit:', visit.id);
 
     // 2. Create food items sequentially
-    const createdFoodItems: any[] = [];
+    const createdFoodItems: FoodItem[] = [];
     for (const item of foodItems) {
-      const foodItem = await pb.collection('food_items').create({
+      const foodItem = await pb.collection('food_items').create<FoodItem>({
         ...item,
         visit: visit.id,
       });
@@ -160,7 +176,9 @@ export function SyncProvider({ children }: SyncProviderProps) {
             formData.append('photo', compressed);
             formData.append('visit', visit.id);
             formData.append('food_item', foodItem.id);
-            formData.append('user', visitData.user);
+            if (visitData.user) {
+              formData.append('user', visitData.user);
+            }
 
             await pb.collection('visit_photos').create(formData);
             console.log('Uploaded photo for food item:', foodItem.id);
@@ -178,7 +196,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Execute complex visit deletion (delete food items + visit)
    */
-  const executeComplexVisitDeletion = async (data: any): Promise<void> => {
+  const executeComplexVisitDeletion = async (data: VisitDeletionData): Promise<void> => {
     const { visitId, foodItemIds } = data;
 
     // 1. Delete all food items
@@ -197,7 +215,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Execute complex restaurant creation (restaurant + menu items)
    */
-  const executeComplexRestaurantCreation = async (data: any, operation: QueuedOperation): Promise<void> => {
+  const executeComplexRestaurantCreation = async (data: RestaurantCreationData, operation: QueuedOperation): Promise<void> => {
     const { restaurant: restaurantData, menuItems } = data;
 
     // 1. Create restaurant
@@ -232,7 +250,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Sync all pending operations
    */
-  const syncOperations = useCallback(async () => {
+  const syncOperations = useCallback(async (): Promise<void> => {
     // Prevent concurrent syncs
     if (syncInProgressRef.current) {
       console.log('Sync already in progress, skipping...');
@@ -294,9 +312,9 @@ export function SyncProvider({ children }: SyncProviderProps) {
       if (failCount > 0) {
         setSyncError(`${failCount} operation(s) failed to sync`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sync failed:', error);
-      setSyncError(error?.message || 'Sync failed');
+      setSyncError(error instanceof Error ? error.message : 'Sync failed');
     } finally {
       setIsSyncing(false);
       syncInProgressRef.current = false;
@@ -307,7 +325,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Clear all operations from queue (destructive)
    */
-  const clearQueue = useCallback(async () => {
+  const clearQueue = useCallback(async (): Promise<void> => {
     try {
       await syncQueue.clear();
       await updateStats();
@@ -319,7 +337,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   /**
    * Retry all failed operations
    */
-  const retryFailedOperations = useCallback(async () => {
+  const retryFailedOperations = useCallback(async (): Promise<void> => {
     try {
       const failedOps = await syncQueue.getFailedOperations();
 
@@ -342,7 +360,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
    * Handle online/offline events
    */
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = (): void => {
       console.log('Connection restored, triggering sync...');
       setIsOnline(true);
       // Trigger sync after a short delay to ensure connection is stable
@@ -351,7 +369,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       }, 1000);
     };
 
-    const handleOffline = () => {
+    const handleOffline = (): void => {
       console.log('Connection lost');
       setIsOnline(false);
     };

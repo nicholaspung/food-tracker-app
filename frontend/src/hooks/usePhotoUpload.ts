@@ -48,9 +48,9 @@ export const usePhotoUpload = () => {
           const compressed = await compressDishPhoto(item.photo);
           console.log(`[usePhotoUpload] Compressed photo ${index + 1}/${totalPhotos}`);
           return { ...item, compressed };
-        } catch (err: any) {
-          console.error(`[usePhotoUpload] Failed to compress photo ${index + 1}:`, err);
-          throw err;
+        } catch (error: unknown) {
+          console.error(`[usePhotoUpload] Failed to compress photo ${index + 1}:`, error);
+          throw error;
         }
       });
 
@@ -112,9 +112,9 @@ export const usePhotoUpload = () => {
 
           console.log(`[usePhotoUpload] Uploaded photo ${index + 1}/${totalPhotos}`, result.id);
           return result;
-        } catch (err: any) {
-          console.error(`[usePhotoUpload] Failed to upload photo ${index + 1}:`, err);
-          throw err;
+        } catch (error: unknown) {
+          console.error(`[usePhotoUpload] Failed to upload photo ${index + 1}:`, error);
+          throw error;
         }
       });
 
@@ -129,18 +129,19 @@ export const usePhotoUpload = () => {
       });
 
       console.log(`[usePhotoUpload] Upload complete for ${totalPhotos} photos`, results);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[usePhotoUpload] Upload failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload photos';
       setState(prev => ({
         ...prev,
         status: 'error',
-        error: error.message || 'Failed to upload photos',
+        error: errorMessage,
       }));
       throw error;
     }
   };
 
-  const reset = () => {
+  const reset = (): void => {
     setState({
       status: 'idle',
       progress: 0,

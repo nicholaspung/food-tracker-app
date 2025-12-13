@@ -46,6 +46,17 @@ import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import ShareCustomizationModal from "@/components/ShareCustomizationModal";
 import VisitShareModal from "@/components/VisitShareModal";
 
+interface VisitPhoto {
+  id: string;
+  visit: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+  isPending?: boolean;
+}
+
 interface VisitWithDetails extends Omit<Visit, "restaurant"> {
   restaurant?: Restaurant;
   foodItems?: FoodItem[];
@@ -120,7 +131,7 @@ export default function HomePage({
   const { data: foodItems = [] } = useFoodItems();
 
   // Fetch all visit photos
-  const { data: visitPhotos = [] } = useQuery({
+  const { data: visitPhotos = [] } = useQuery<VisitPhoto[]>({
     queryKey: ["allVisitPhotos"],
     queryFn: async () => {
       return await pb.collection("visit_photos").getFullList({
@@ -576,7 +587,7 @@ export default function HomePage({
                         {/* Quick Track Items for this day */}
                         {dayQuickTrackItems.map((item) => {
                           const photo = visitPhotos.find(
-                            (p: any) => p.food_item === item.id
+                            (p) => p.food_item === item.id
                           );
 
                           return (
@@ -585,8 +596,8 @@ export default function HomePage({
                               item={item}
                               photo={photo}
                               onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
-                              onDelete={setQuickTrackItemToDelete}
-                              onSharePhoto={(photo, item) => handleSharePhotoClick(photo, item as any, null, item.itemDate || item.created)}
+                              onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
+                              onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
                               onPhotoClick={setFullscreenPhoto}
                             />
                           );
@@ -756,7 +767,7 @@ export default function HomePage({
               onClick={() => {
                 if (quickTrackItemToDelete) {
                   const photo = visitPhotos.find(
-                    (p: any) => p.food_item === quickTrackItemToDelete.id
+                    (p) => p.food_item === quickTrackItemToDelete.id
                   );
                   handleDeleteQuickTrackItem(
                     quickTrackItemToDelete.id,
@@ -793,14 +804,14 @@ export default function HomePage({
           restaurantName={visitToShare.restaurant.name}
           visitDate={visitToShare.visitDate}
           photosWithFoodItems={visitPhotos
-            .filter((photo: any) =>
+            .filter((photo) =>
               visitToShare.foodItems?.some(
-                (item: any) => item.id === photo.food_item
+                (item) => item.id === photo.food_item
               )
             )
-            .map((photo: any) => {
+            .map((photo) => {
               const foodItem = visitToShare.foodItems?.find(
-                (item: any) => item.id === photo.food_item
+                (item) => item.id === photo.food_item
               );
               return {
                 photo,

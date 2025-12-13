@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { pb, MenuReviewRequest, MenuItem, MenuImage, Restaurant } from '@/lib/pocketbase';
+import { pb, MenuReviewRequest, MenuItem, MenuImage, Restaurant, hasMenuReviewExpand, hasMenuItemExpand } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, Pencil, Trash2, X, Check } from 'lucide-react';
@@ -81,9 +81,9 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
       // Invalidate the menu items query for this restaurant
       queryClient.invalidateQueries({ queryKey: ['menuItems'] });
     },
-    onError: (err: any) => {
-      logger.error('Failed to update menu item:', err);
-      handleError(err, { customMessage: 'Failed to update menu item' });
+    onError: (error: unknown) => {
+      logger.error('Failed to update menu item:', error);
+      handleError(error, { customMessage: 'Failed to update menu item' });
     },
   });
 
@@ -98,9 +98,9 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
       // Invalidate the menu items query
       queryClient.invalidateQueries({ queryKey: ['menuItems'] });
     },
-    onError: (err: any) => {
-      logger.error('Failed to delete menu item:', err);
-      handleError(err, { customMessage: 'Failed to delete menu item' });
+    onError: (error: unknown) => {
+      logger.error('Failed to delete menu item:', error);
+      handleError(error, { customMessage: 'Failed to delete menu item' });
       setDeletingItemId(null);
     },
   });
@@ -129,20 +129,20 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
         return newNotes;
       });
     },
-    onError: (err: any) => {
-      logger.error('Failed to update review request status:', err);
-      handleError(err, { customMessage: 'Failed to update review request' });
+    onError: (error: unknown) => {
+      logger.error('Failed to update review request status:', error);
+      handleError(error, { customMessage: 'Failed to update review request' });
     },
   });
 
-  const toggleExpandRequest = (requestId: string) => {
+  const toggleExpandRequest = (requestId: string): void => {
     setExpandedRequests((prev) => ({
       ...prev,
       [requestId]: !prev[requestId],
     }));
   };
 
-  const handleMarkAsReviewed = (requestId: string) => {
+  const handleMarkAsReviewed = (requestId: string): void => {
     updateStatusMutation.mutate({
       requestId,
       status: 'reviewed',
@@ -150,7 +150,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     });
   };
 
-  const handleDismiss = (requestId: string) => {
+  const handleDismiss = (requestId: string): void => {
     updateStatusMutation.mutate({
       requestId,
       status: 'dismissed',
@@ -158,7 +158,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     });
   };
 
-  const handleEditMenuItem = (item: MenuItem) => {
+  const handleEditMenuItem = (item: MenuItem): void => {
     setEditingItem({
       id: item.id,
       name: item.name,
@@ -166,7 +166,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     });
   };
 
-  const handleSaveMenuItem = () => {
+  const handleSaveMenuItem = (): void => {
     if (!editingItem) return;
 
     if (!editingItem.name.trim()) {
@@ -181,32 +181,38 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     });
   };
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = (): void => {
     setEditingItem(null);
   };
 
-  const handleDeleteMenuItem = (itemId: string) => {
+  const handleDeleteMenuItem = (itemId: string): void => {
     setDeletingItemId(itemId);
   };
 
-  const confirmDeleteMenuItem = () => {
+  const confirmDeleteMenuItem = (): void => {
     if (deletingItemId) {
       deleteMenuItemMutation.mutate(deletingItemId);
     }
   };
 
-  const handleImageClick = (imageId: string, imageName: string) => {
+  const handleImageClick = (imageId: string, imageName: string): void => {
     // Build the image URL
     const imageUrl = `${pb.baseUrl}/api/files/menu_images/${imageId}/${imageName}`;
     setSelectedImage({ url: imageUrl, name: imageName });
   };
 
   const getExpandedRestaurant = (request: MenuReviewRequest): Restaurant | undefined => {
-    return (request as any).expand?.restaurant;
+    if (hasMenuReviewExpand(request)) {
+      return request.expand?.restaurant;
+    }
+    return undefined;
   };
 
-  const getExpandedRequestedBy = (request: MenuReviewRequest): any => {
-    return (request as any).expand?.requestedBy;
+  const getExpandedRequestedBy = (request: MenuReviewRequest) => {
+    if (hasMenuReviewExpand(request)) {
+      return request.expand?.requestedBy;
+    }
+    return undefined;
   };
 
   if (isLoading) {
@@ -495,7 +501,10 @@ function MenuItemsList({
   });
 
   const getExpandedSourceImage = (item: MenuItem): MenuImage | undefined => {
-    return (item as any).expand?.sourceImage;
+    if (hasMenuItemExpand(item)) {
+      return item.expand?.sourceImage;
+    }
+    return undefined;
   };
 
   if (isLoading) {

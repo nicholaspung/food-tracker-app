@@ -11,7 +11,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '@/lib/pocketbase';
+import { pb, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from './usePhotoUpload';
@@ -31,9 +31,18 @@ export interface QuickTrackUpdateData {
   visibility?: 'private' | 'friends';
 }
 
+interface QuickTrackUpdatePhotoResult {
+  id: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+}
+
 export interface QuickTrackUpdateResult {
-  foodItem: any;
-  photoResult?: any;
+  foodItem: FoodItem;
+  photoResult?: QuickTrackUpdatePhotoResult;
   isQueued?: boolean;
 }
 
@@ -96,7 +105,7 @@ export function useOfflineQuickTrackUpdate() {
     onSuccess: async (result) => {
       if (result.isQueued) {
         // Offline: Update optimistic data in cache
-        queryClient.setQueryData(['allFoodItems'], (old: any[] = []) => {
+        queryClient.setQueryData<FoodItem[]>(['allFoodItems'], (old = []) => {
           return old.map(item =>
             item.id === result.foodItem.id ? { ...item, ...result.foodItem } : item
           );
@@ -139,7 +148,7 @@ async function executeUpdate(
   console.log('[executeUpdate] Food item updated:', foodItem.id);
 
   // 2. Handle photo changes
-  let photoResult: any | undefined;
+  let photoResult: QuickTrackUpdatePhotoResult | undefined;
 
   // Remove existing photo if requested
   if (data.existingPhotoId && data.photo === null) {

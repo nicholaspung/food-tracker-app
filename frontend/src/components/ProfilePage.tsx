@@ -111,8 +111,8 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       queryClient.invalidateQueries({ queryKey: ['friendships'] });
       queryClient.invalidateQueries({ queryKey: ['allVisits'] });
     },
-    onError: (err: any) => {
-      handleError(err, { customMessage: 'Failed to update name' });
+    onError: (error: unknown) => {
+      handleError(error, { customMessage: 'Failed to update name' });
     },
   });
 
@@ -148,8 +148,8 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       queryClient.invalidateQueries({ queryKey: ['friendships'] });
       queryClient.invalidateQueries({ queryKey: ['allVisits'] });
     },
-    onError: (err: any) => {
-      handleError(err, { customMessage: 'Failed to update name' });
+    onError: (error: unknown) => {
+      handleError(error, { customMessage: 'Failed to update name' });
     },
   });
 
@@ -187,9 +187,16 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       // Clear success message after 5 seconds
       setTimeout(() => setSubscriberSuccess(''), 5000);
     },
-    onError: (err: any) => {
+    onError: (error: unknown) => {
       // Extract error message from backend response
-      const errorMessage = err.data?.message || err.message || 'Failed to elevate user to subscriber';
+      let errorMessage = 'Failed to elevate user to subscriber';
+      if (error && typeof error === 'object') {
+        if ('data' in error && error.data && typeof error.data === 'object' && 'message' in error.data) {
+          errorMessage = String(error.data.message);
+        } else if ('message' in error) {
+          errorMessage = String(error.message);
+        }
+      }
       handleSubscriberError(errorMessage);
       setSubscriberSuccess('');
     },
@@ -291,14 +298,14 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
       // Refresh the codes list
       await fetchInviteCodes();
-    } catch (err: any) {
-      logger.error("Error generating invite codes:", err);
+    } catch (error: unknown) {
+      logger.error("Error generating invite codes:", error);
 
       // Check if it's a forbidden error (not initial user)
-      if (err.status === 403) {
-        handleError(err, { customMessage: 'Only the initial user can generate unlimited invite codes' });
+      if (error && typeof error === 'object' && 'status' in error && error.status === 403) {
+        handleError(error, { customMessage: 'Only the initial user can generate unlimited invite codes' });
       } else {
-        handleError(err, { customMessage: "Failed to generate invite codes" });
+        handleError(error, { customMessage: "Failed to generate invite codes" });
       }
     } finally {
       setGeneratingCodes(false);
@@ -369,9 +376,9 @@ Looking forward to seeing you there!`;
 
       // Call success callback
       onDeleteSuccess?.();
-    } catch (err: any) {
-      logger.error("Delete account error:", err);
-      handleError(err, { customMessage: "Failed to delete account. Please try again." });
+    } catch (error: unknown) {
+      logger.error("Delete account error:", error);
+      handleError(error, { customMessage: "Failed to delete account. Please try again." });
       setLoading(false);
     }
   };

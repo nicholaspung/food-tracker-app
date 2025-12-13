@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useSync } from '@/contexts/SyncContext';
+import { isPocketBaseError } from '@/lib/errors';
 
 export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
 
@@ -73,22 +74,25 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
   /**
    * Clear the current error
    */
-  const clearError = useCallback(() => {
+  const clearError = useCallback((): void => {
     setErrorState(null);
   }, []);
 
   /**
    * Parse PocketBase API error responses
    */
-  const parsePocketBaseError = useCallback((err: any): string => {
-    if (err?.response?.data) {
-      const errorData = err.response.data;
+  const parsePocketBaseError = useCallback((error: unknown): string => {
+    // Check if it's a PocketBase error
+    if (isPocketBaseError(error) && error.response?.data) {
+      const errorData = error.response.data;
 
       // Field-specific errors
       const fieldErrors = Object.entries(errorData)
         .filter(([key]) => key !== 'code' && key !== 'message')
-        .map(([field, value]: [string, any]) => {
-          const message = value?.message || value;
+        .map(([field, value]) => {
+          const message = typeof value === 'object' && value !== null && 'message' in value
+            ? value.message
+            : value;
           return `${field}: ${message}`;
         });
 
@@ -96,23 +100,33 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
         return fieldErrors[0]; // Return first field error
       }
 
-      // Fallback to data message
-      if (errorData.message) {
+      // Fallback to data message (if it exists as a string)
+      if ('message' in errorData && typeof errorData.message === 'string') {
         return errorData.message;
       }
     }
 
-    // Standard error message
-    return err?.message || 'An unexpected error occurred';
+    // Check if it's a standard Error
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    // Check if it's a PocketBase error with message
+    if (isPocketBaseError(error) && error.message) {
+      return error.message;
+    }
+
+    // Fallback
+    return 'An unexpected error occurred';
   }, []);
 
   /**
    * Main error handler
    */
   const handleError = useCallback((
-    err: any,
+    error: unknown,
     handleOptions: HandleErrorOptions = {}
-  ) => {
+  ): void => {
     const {
       severity = defaultSeverity,
       retryable = false,
@@ -123,10 +137,10 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
 
     if (customMessage) {
       message = customMessage;
-    } else if (typeof err === 'string') {
-      message = err;
+    } else if (typeof error === 'string') {
+      message = error;
     } else {
-      message = parsePocketBaseError(err);
+      message = parsePocketBaseError(error);
     }
 
     const newErrorState: ErrorState = {
@@ -140,9 +154,9 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
 
     // Console logging for debugging
     if (source) {
-      console.error(`[${source}] Error:`, err);
+      console.error(`[${source}] Error:`, error);
     } else {
-      console.error('Error:', err);
+      console.error('Error:', error);
     }
 
     // Auto-clear if specified
@@ -154,7 +168,7 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
   /**
    * Show a validation error
    */
-  const showValidation = useCallback((message: string) => {
+  const showValidation = useCallback((message: string): void => {
     setErrorState({
       message,
       severity: 'warning',
@@ -166,7 +180,7 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
   /**
    * Show an offline error
    */
-  const showOffline = useCallback((message?: string) => {
+  const showOffline = useCallback((message?: string): void => {
     const defaultMessage = 'This action requires an internet connection. Please connect and try again.';
 
     setErrorState({
@@ -180,7 +194,7 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
   /**
    * Show a success message (info severity)
    */
-  const showSuccess = useCallback((message: string, autoClear = true) => {
+  const showSuccess = useCallback((message: string, autoClear = true): void => {
     setErrorState({
       message,
       severity: 'info',

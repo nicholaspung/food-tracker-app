@@ -1,4 +1,4 @@
-import { pb } from "@/lib/pocketbase";
+import { pb, type FoodItem } from "@/lib/pocketbase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,12 +12,23 @@ import {
 } from "lucide-react";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
+interface VisitPhoto {
+  id: string;
+  visit: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+  isPending?: boolean;
+}
+
 interface QuickTrackCardProps {
-  item: any; // QuickTrackItemWithDetails type
-  photo?: any;
+  item: FoodItem;
+  photo?: VisitPhoto;
   onEdit: (itemId: string) => void;
-  onDelete: (item: any) => void;
-  onSharePhoto: (photo: any, item: any) => void;
+  onDelete: (item: FoodItem) => void;
+  onSharePhoto: (photo: VisitPhoto, item: FoodItem) => void;
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
 }
 

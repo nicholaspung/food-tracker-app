@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncQueue, type OperationType } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 
-export interface OfflineMutationConfig<TData = any, TVariables = any> {
+export interface OfflineMutationConfig<TData = unknown, TVariables = unknown> {
   collection: string;
   type: OperationType;
   mutationFn?: (variables: TVariables) => Promise<TData>;
@@ -52,7 +52,7 @@ export interface OfflineMutationConfig<TData = any, TVariables = any> {
  *   invalidateQueries: ['visits'],
  * });
  */
-export function useOfflineMutation<TData = any, TVariables = any>({
+export function useOfflineMutation<TData = unknown, TVariables = unknown>({
   collection,
   type,
   mutationFn,
@@ -74,9 +74,13 @@ export function useOfflineMutation<TData = any, TVariables = any>({
         // Online: Execute immediately
         try {
           return await mutationFn(variables);
-        } catch (error: any) {
+        } catch (error: unknown) {
           // If network error, queue the operation
-          if (error?.isAbort || error?.status === 0 || !error?.status) {
+          const isNetworkError =
+            (error && typeof error === 'object' && 'isAbort' in error && error.isAbort) ||
+            (error && typeof error === 'object' && 'status' in error && (error.status === 0 || !error.status));
+
+          if (isNetworkError) {
             console.log('Network error detected, queueing operation:', type, collection);
             await queueOperation(variables);
             throw new Error('Operation queued for later sync (offline)');
@@ -142,7 +146,7 @@ export function useOfflineMutation<TData = any, TVariables = any>({
  * Simplified hooks for common operations
  */
 
-export function useOfflineCreate<TData = any, TVariables = any>(
+export function useOfflineCreate<TData = unknown, TVariables = unknown>(
   collection: string,
   options?: Omit<OfflineMutationConfig<TData, TVariables>, 'type' | 'collection'>
 ) {
@@ -153,7 +157,7 @@ export function useOfflineCreate<TData = any, TVariables = any>(
   });
 }
 
-export function useOfflineUpdate<TData = any, TVariables = any>(
+export function useOfflineUpdate<TData = unknown, TVariables = unknown>(
   collection: string,
   options?: Omit<OfflineMutationConfig<TData, TVariables>, 'type' | 'collection'>
 ) {
@@ -164,7 +168,7 @@ export function useOfflineUpdate<TData = any, TVariables = any>(
   });
 }
 
-export function useOfflineDelete<TData = any, TVariables = any>(
+export function useOfflineDelete<TData = unknown, TVariables = unknown>(
   collection: string,
   options?: Omit<OfflineMutationConfig<TData, TVariables>, 'type' | 'collection'>
 ) {

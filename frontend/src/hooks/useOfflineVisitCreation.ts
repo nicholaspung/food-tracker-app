@@ -12,7 +12,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '@/lib/pocketbase';
+import { pb, type Visit, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from './usePhotoUpload';
@@ -33,10 +33,20 @@ export interface VisitCreationData {
   itemPhotos: Map<number, File>; // Map of item index to photo file
 }
 
+interface VisitPhotoRecord {
+  id: string;
+  visit: string;
+  food_item: string;
+  user: string;
+  photo: string;
+  created: string;
+  updated: string;
+}
+
 export interface VisitCreationResult {
-  visit: any;
-  foodItems: any[];
-  photoResults?: any[];
+  visit: Visit;
+  foodItems: FoodItem[];
+  photoResults?: VisitPhotoRecord[];
   isQueued?: boolean; // Flag to indicate if offline and queued for sync
 }
 
@@ -109,38 +119,41 @@ export function useOfflineVisitCreation() {
     onSuccess: async (result) => {
       if (result.isQueued) {
         // Offline: Add optimistic data to cache
-        queryClient.setQueryData(['visits'], (old: any[] = []) => {
+        queryClient.setQueryData<Visit[]>(['visits'], (old = []) => {
           return [result.visit, ...old];
         });
-        queryClient.setQueryData(['userVisits'], (old: any[] = []) => {
+        queryClient.setQueryData<Visit[]>(['userVisits'], (old = []) => {
           return [result.visit, ...old];
         });
-        queryClient.setQueryData(['allVisits'], (old: any[] = []) => {
+        queryClient.setQueryData<Visit[]>(['allVisits'], (old = []) => {
           return [result.visit, ...old];
         });
 
         // Also cache the food items
         if (result.foodItems && result.foodItems.length > 0) {
-          queryClient.setQueryData(['allFoodItems'], (old: any[] = []) => {
+          queryClient.setQueryData<FoodItem[]>(['allFoodItems'], (old = []) => {
             return [...result.foodItems, ...old];
           });
 
           // Create optimistic visit_photos for items with photoPreviewUrl
           const optimisticPhotos = result.foodItems
-            .filter(item => item.photoPreviewUrl)
-            .map(item => ({
-              id: `temp_photo_${item.id}`,
-              visit: result.visit.id,
-              food_item: item.id,
-              user: item.user,
-              photo: item.photoPreviewUrl, // Use preview URL as photo
-              created: new Date().toISOString(),
-              updated: new Date().toISOString(),
-              isPending: true,
-            }));
+            .filter(item => (item as FoodItem & { photoPreviewUrl?: string }).photoPreviewUrl)
+            .map(item => {
+              const itemWithPhoto = item as FoodItem & { photoPreviewUrl?: string };
+              return {
+                id: `temp_photo_${item.id}`,
+                visit: result.visit.id,
+                food_item: item.id,
+                user: item.user,
+                photo: itemWithPhoto.photoPreviewUrl!, // Use preview URL as photo
+                created: new Date().toISOString(),
+                updated: new Date().toISOString(),
+                isPending: true,
+              };
+            });
 
           if (optimisticPhotos.length > 0) {
-            queryClient.setQueryData(['allVisitPhotos'], (old: any[] = []) => {
+            queryClient.setQueryData<VisitPhotoRecord[]>(['allVisitPhotos'], (old = []) => {
               return [...optimisticPhotos, ...old];
             });
           }
@@ -177,7 +190,7 @@ async function executeVisitCreation(
   });
 
   // 2. Create all food items sequentially
-  const foodItems: any[] = [];
+  const foodItems: FoodItem[] = [];
   for (const item of data.foodItems) {
     const foodItem = await pb.collection('food_items').create({
       name: item.name,
