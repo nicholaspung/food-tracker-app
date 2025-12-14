@@ -1,3 +1,14 @@
+/**
+ * Visit Draft Service
+ *
+ * NOTE: This service uses a legacy pattern. For new draft implementations,
+ * consider using the generic useDraftState hook from @/hooks/utils/useDraftState
+ *
+ * This service is kept as-is due to its complex domain logic and tight integration
+ * with the visit creation flow. A future refactoring could migrate this to use
+ * useDraftState while preserving the helper methods as custom hooks.
+ */
+
 import { Restaurant, MenuItem } from '@/lib/pocketbase';
 import { getTodayLocalDateString } from '@/lib/dateUtils';
 

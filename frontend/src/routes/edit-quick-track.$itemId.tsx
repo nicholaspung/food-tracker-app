@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { pb } from "@/lib/pocketbase";
-import EditQuickTrackPage from "@/components/EditQuickTrackPage";
+import EditQuickTrackPage from "@/components/quick-track/EditQuickTrackPage";
 
 export const Route = createFileRoute("/edit-quick-track/$itemId")({
   beforeLoad: () => {

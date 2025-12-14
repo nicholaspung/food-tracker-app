@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import CreateRestaurantPage from '@/components/CreateRestaurantPage';
+import CreateRestaurantPage from '@/components/visits/add/CreateRestaurantPage';
 
 export const Route = createFileRoute('/add-visit/create-restaurant')({
   beforeLoad: () => {

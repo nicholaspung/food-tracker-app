@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import LoginPage from '@/components/LoginPage';
+import LoginPage from '@/components/auth/LoginPage';
 
 export const Route = createFileRoute('/')({
   beforeLoad: () => {

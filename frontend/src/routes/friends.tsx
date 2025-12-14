@@ -1,6 +1,6 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import FriendsPage from '@/components/FriendsPage';
+import FriendsPage from '@/components/profile/FriendsPage';
 
 export const Route = createFileRoute('/friends')({
   component: Friends,

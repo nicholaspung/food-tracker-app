@@ -1,15 +1,12 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb, FoodItem } from "@/lib/pocketbase";
+import { foodItemKeys } from "@/constants/queryKeys";
 
 // Re-export FoodItem type for convenience
 export type { FoodItem };
 
-// Query key factory for consistent query keys across the app
-export const foodItemKeys = {
-  all: ["allFoodItems"] as const,
-  byVisit: (visitId: string) => ["foodItems", visitId] as const,
-  detail: (id: string) => ["foodItem", id] as const,
-};
+// Re-export query keys for backward compatibility
+export { foodItemKeys };
 
 /**
  * Hook to fetch all food items

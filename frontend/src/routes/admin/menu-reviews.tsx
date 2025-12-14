@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import AdminMenuReviewsPage from '@/components/AdminMenuReviewsPage';
+import AdminMenuReviewsPage from '@/components/settings/AdminMenuReviewsPage';
 
 export const Route = createFileRoute('/admin/menu-reviews')({
   beforeLoad: () => {

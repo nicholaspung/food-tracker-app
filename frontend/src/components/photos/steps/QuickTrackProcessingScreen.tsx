@@ -17,7 +17,7 @@ import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { RatingSelector } from "@/components/ui/RatingSelector";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
-import { ITEM_CATEGORIES } from "@/components/QuickTrackPage";
+import { ITEM_CATEGORIES } from "@/constants/quickTrack";
 
 interface QuickTrackProcessingScreenProps {
   // Photo data

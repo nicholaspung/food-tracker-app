@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import FeedbackDetailPage from '@/components/FeedbackDetailPage';
+import FeedbackDetailPage from '@/components/settings/FeedbackDetailPage';
 
 export const Route = createFileRoute('/feedback/$feedbackId')({
   beforeLoad: () => {

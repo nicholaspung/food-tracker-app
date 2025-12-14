@@ -1,16 +1,12 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb, Visit } from "@/lib/pocketbase";
+import { visitKeys } from "@/constants/queryKeys";
 
 // Re-export Visit type for convenience
 export type { Visit };
 
-// Query key factory for consistent query keys across the app
-export const visitKeys = {
-  all: ["allVisits"] as const,
-  byUser: (userId: string) => ["userVisits", userId] as const,
-  friendVisits: (userId: string, friendshipCount: number) =>
-    ["friendVisits", userId, friendshipCount] as const,
-};
+// Re-export query keys for backward compatibility
+export { visitKeys };
 
 interface UseVisitsOptions {
   expand?: string;

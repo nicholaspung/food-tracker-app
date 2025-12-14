@@ -1,3 +1,13 @@
+/**
+ * Edit Visit Draft Service
+ *
+ * NOTE: This service uses a legacy pattern. For new draft implementations,
+ * consider using the generic useDraftState hook from @/hooks/utils/useDraftState
+ *
+ * This service is kept as-is due to its complex domain logic. A future refactoring
+ * could migrate this to use useDraftState while preserving the helper methods.
+ */
+
 import { Visit, FoodItem, Restaurant } from '@/lib/pocketbase';
 
 const EDIT_VISIT_DRAFT_KEY = 'editVisitDraft';

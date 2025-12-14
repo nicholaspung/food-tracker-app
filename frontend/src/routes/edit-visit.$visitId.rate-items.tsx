@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useNavigate, useParams } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import { editVisitDraftService } from '@/services/editVisitDraftService';
-import EditRateItemsPage from '@/components/EditRateItemsPage';
+import EditRateItemsPage from '@/components/visits/edit/EditRateItemsPage';
 import { useEffect } from 'react';
 
 export const Route = createFileRoute('/edit-visit/$visitId/rate-items')({

@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import FeedbackPage from '@/components/FeedbackPage';
+import FeedbackPage from '@/components/settings/FeedbackPage';
 
 export const Route = createFileRoute('/feedback')({
   beforeLoad: () => {

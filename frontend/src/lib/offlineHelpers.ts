@@ -3,6 +3,9 @@
  * Standardizes offline success messaging and error detection
  */
 
+// Re-export offline messages from constants
+export { OFFLINE_MESSAGES } from '@/constants/offline';
+
 /**
  * Check if an error is an offline-related queued error
  */
@@ -24,13 +27,3 @@ export function handleOfflineSuccess(
 ): void {
   showSuccess(`You're offline. ${message} will sync when you're back online.`);
 }
-
-/**
- * Predefined offline success messages
- */
-export const OFFLINE_MESSAGES = {
-  ITEM_SAVED: "Your item has been saved and",
-  VISIT_SAVED: "Your visit has been saved and",
-  DELETION_QUEUED: "Your deletion has been queued and",
-  UPDATE_QUEUED: "Your update has been queued and",
-} as const;

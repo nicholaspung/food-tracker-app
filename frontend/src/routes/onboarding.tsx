@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import OnboardingPage from '@/components/OnboardingPage';
+import OnboardingPage from '@/components/auth/OnboardingPage';
 
 export const Route = createFileRoute('/onboarding')({
   component: Onboarding,

@@ -5,11 +5,11 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { BottomTabNavigation } from "@/components/BottomTabNavigation";
+import { BottomTabNavigation } from "@/components/shared/BottomTabNavigation";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { SyncProvider } from "@/contexts/SyncContext";
-import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
-import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { SyncStatusIndicator } from "@/components/shared/SyncStatusIndicator";
+import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
 
 // Create a query client instance
 const queryClient = new QueryClient({
