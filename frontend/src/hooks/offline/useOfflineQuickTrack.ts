@@ -15,6 +15,7 @@ import { pb, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
+import { blobUrlManager } from '@/lib/blobUrlManager';
 
 export interface QuickTrackData {
   name: string;
@@ -88,16 +89,20 @@ export function useOfflineQuickTrack() {
         console.log('[useOfflineQuickTrack] Offline - queueing for sync');
         await queueQuickTrack(data, user.id);
 
-        // Create preview URL for photo (for offline display)
+        // Create unique timestamp for consistent IDs
+        const timestamp = Date.now();
+
+        // Create preview URL for photo using blobUrlManager (prevents memory leaks)
         let photoPreviewUrl: string | undefined;
         if (data.photo) {
-          photoPreviewUrl = URL.createObjectURL(data.photo);
+          const tempPhotoId = `temp_quick_track_photo_${timestamp}`;
+          photoPreviewUrl = blobUrlManager.create(tempPhotoId, data.photo);
         }
 
         // Return optimistic data
         return {
           foodItem: {
-            id: `temp_quick_track_${Date.now()}`,
+            id: `temp_quick_track_${timestamp}`,
             name: data.name,
             rating: data.rating,
             notes: data.notes,
@@ -115,6 +120,7 @@ export function useOfflineQuickTrack() {
             photoPreviewUrl, // Add preview URL if photo exists
           },
           isQueued: true,
+          _photoTimestamp: timestamp, // Store timestamp for cleanup
         };
       }
     },
@@ -151,6 +157,12 @@ export function useOfflineQuickTrack() {
           queryClient.invalidateQueries({ queryKey: ['quickTrackItems'] }),
           queryClient.invalidateQueries({ queryKey: ['allVisitPhotos'] }),
         ]);
+
+        // Cleanup: Revoke blob URL for photo (if it exists)
+        if ((result as any)._photoTimestamp) {
+          const timestamp = (result as any)._photoTimestamp;
+          blobUrlManager.revoke(`temp_quick_track_photo_${timestamp}`);
+        }
       }
     },
   });

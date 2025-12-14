@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
 import {
   Card,
@@ -54,7 +55,7 @@ interface VisitCardProps {
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
 }
 
-export default function VisitCard({
+const VisitCard = memo(function VisitCard({
   visit,
   isFriend,
   friendName,
@@ -268,4 +269,6 @@ export default function VisitCard({
       </CardContent>
     </Card>
   );
-}
+});
+
+export default VisitCard;

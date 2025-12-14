@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Store, Camera, X, ChevronRight } from "lucide-react";
@@ -28,6 +29,17 @@ export function UploadScreen({
   onNext,
   isKeyboardVisible,
 }: UploadScreenProps) {
+  // Cleanup: Revoke all blob URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      photos.forEach((photo) => {
+        if (photo.previewUrl) {
+          URL.revokeObjectURL(photo.previewUrl);
+        }
+      });
+    };
+  }, [photos]);
+
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}

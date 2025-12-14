@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PhotoToProcess } from "@/types/photos";
 import { extractImageCaptureDate } from "@/lib/photoUtils";
 import { processPhotosDraftService } from "@/services/processPhotosDraftServiceDB";
@@ -16,6 +16,17 @@ import { processPhotosDraftService } from "@/services/processPhotosDraftServiceD
 export function usePhotoUpload() {
   const [photos, setPhotos] = useState<PhotoToProcess[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+
+  // Cleanup: Revoke all blob URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      photos.forEach((photo) => {
+        if (photo.previewUrl) {
+          URL.revokeObjectURL(photo.previewUrl);
+        }
+      });
+    };
+  }, [photos]);
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -44,6 +55,12 @@ export function usePhotoUpload() {
   };
 
   const clearPhotos = () => {
+    // Revoke blob URLs before clearing to prevent memory leaks
+    photos.forEach((photo) => {
+      if (photo.previewUrl) {
+        URL.revokeObjectURL(photo.previewUrl);
+      }
+    });
     setPhotos([]);
     setCurrentPhotoIndex(0);
   };

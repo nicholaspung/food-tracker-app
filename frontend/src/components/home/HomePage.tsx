@@ -131,6 +131,24 @@ export default function HomePage({
   // Fetch all food items
   const { data: foodItems = [] } = useFoodItems();
 
+  // O(1) lookup maps for performance (prevents O(n²) complexity)
+  const restaurantMap = useMemo(
+    () => new Map(restaurants.map((r) => [r.id, r])),
+    [restaurants]
+  );
+
+  const foodItemsByVisit = useMemo(() => {
+    const map = new Map<string, FoodItem[]>();
+    for (const item of foodItems) {
+      if (!item.visit) continue; // Skip items without visit
+      if (!map.has(item.visit)) {
+        map.set(item.visit, []);
+      }
+      map.get(item.visit)!.push(item);
+    }
+    return map;
+  }, [foodItems]);
+
   // Fetch all visit photos
   const { data: visitPhotos = [] } = useQuery<VisitPhoto[]>({
     queryKey: ["allVisitPhotos"],
@@ -250,15 +268,15 @@ export default function HomePage({
     [foodItems]
   );
 
-  // Combine data
+  // Combine data (using Maps for O(1) lookups instead of O(n²) find/filter)
   const visitsWithDetails: VisitWithDetails[] = useMemo(
     () =>
       visits.map((visit) => ({
         ...visit,
-        restaurant: restaurants.find((r) => r.id === visit.restaurant),
-        foodItems: foodItems.filter((item) => item.visit === visit.id),
+        restaurant: restaurantMap.get(visit.restaurant),
+        foodItems: foodItemsByVisit.get(visit.id) || [],
       })),
-    [visits, restaurants, foodItems]
+    [visits, restaurantMap, foodItemsByVisit]
   );
 
   // Calculate cutoff date for filtering

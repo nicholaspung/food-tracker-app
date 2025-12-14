@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +34,7 @@ interface DishPhotoCardProps {
   };
 }
 
-export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
+const DishPhotoCard = memo(function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const { isOnline } = useSync();
@@ -50,7 +50,7 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
 
   const photoUrl = pb.files.getURL(photoRecord, photoRecord.photo);
 
-  const handleShareClick = async () => {
+  const handleShareClick = useCallback(async () => {
     if (checkOffline("Photo sharing requires internet connection. Please connect and try again.")) {
       return;
     }
@@ -72,7 +72,7 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
       console.error('Error loading photo:', error);
       handleError(error as Error, { customMessage: 'Failed to load photo. Please try again.' });
     }
-  };
+  }, [photoUrl, foodItem, visit, restaurant, checkOffline, showValidation, handleError]);
 
   const handleShare = async (shareBlob: Blob) => {
     if (!foodItem || !restaurant) return;
@@ -113,7 +113,7 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     if (!isOnline) {
       showValidation("Photo download requires internet connection. Please connect and try again.");
       return;
@@ -134,7 +134,7 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
       console.error('Error downloading photo:', error);
       handleError(error as Error, { customMessage: 'Failed to download photo' });
     }
-  };
+  }, [isOnline, photoUrl, photoRecord.id, showValidation, handleError]);
 
   return (
     <Card>
@@ -223,4 +223,6 @@ export default function DishPhotoCard({ photoRecord }: DishPhotoCardProps) {
       )}
     </Card>
   );
-}
+});
+
+export default DishPhotoCard;

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { pb, type FoodItem } from "@/lib/pocketbase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ interface QuickTrackCardProps {
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
 }
 
-export default function QuickTrackCard({
+const QuickTrackCard = memo(function QuickTrackCard({
   item,
   photo,
   onEdit,
@@ -177,4 +178,6 @@ export default function QuickTrackCard({
       </CardContent>
     </Card>
   );
-}
+});
+
+export default QuickTrackCard;
