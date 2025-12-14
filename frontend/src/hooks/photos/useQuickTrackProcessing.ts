@@ -17,7 +17,7 @@ export function useQuickTrackProcessing() {
 
   // Form state for quick track items
   const [qtItemName, setQtItemName] = useState("");
-  const [qtCategory, setQtCategory] = useState("");
+  const [qtCategory, setQtCategory] = useState<'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | ''>("");
   const [qtRating, setQtRating] = useState<number | null>(3);
   const [qtLocationText, setQtLocationText] = useState("");
   const [qtNotes, setQtNotes] = useState("");

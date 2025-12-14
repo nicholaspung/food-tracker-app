@@ -23,7 +23,7 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
   const [selectedRestaurantVisibility, setSelectedRestaurantVisibility] = useState<'private' | 'friends' | 'public'>(
     user?.defaultRestaurantVisibility || 'private'
   );
-  const { error, handleError, clearError, showSuccess } = useErrorHandler({
+  const { error, handleError, clearError } = useErrorHandler({
     source: 'SettingsPage',
     defaultSeverity: 'error',
   });

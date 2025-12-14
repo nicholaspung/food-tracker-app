@@ -41,7 +41,6 @@ export default function SignUpPage({
     clearError,
     showValidation,
     checkOffline,
-    showSuccess,
   } = useErrorHandler({
     source: 'SignUpPage',
     defaultSeverity: 'error',

@@ -5,7 +5,6 @@ import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
-import { ERROR_MESSAGES } from "@/lib/errorMessages";
 
 interface VerifyEmailPageProps {
   token: string;

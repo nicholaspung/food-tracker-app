@@ -1253,7 +1253,7 @@ export async function generateVisitCompositeImage(
 
         // Draw dish name and rating overlay at bottom of each photo (only if showDishNames is true)
         if (options.showDishNames !== false) {
-          drawDishBadge(ctx, x, y, width, height, dishName, rating, options.theme, options.showRating !== false);
+          drawDishBadge(ctx, x, y, width, height, dishName, rating, options.theme ?? 'modern', options.showRating !== false);
         }
       }
 

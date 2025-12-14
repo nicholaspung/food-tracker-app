@@ -55,22 +55,22 @@ export function usePhotoSubmission() {
       }
 
       // Submit each group as a separate visit
-      for (const [groupKey, groupPhotos] of photosByRestaurantAndDate) {
+      for (const [_groupKey, groupPhotos] of photosByRestaurantAndDate) {
         const firstPhoto = groupPhotos[0];
         const visitDate = firstPhoto.captureDate || new Date();
 
         await visitCreationMutation.mutateAsync({
-          restaurant: firstPhoto.restaurant,
-          menuItems: groupPhotos.map((p) => ({
+          restaurant: firstPhoto.restaurant.id,
+          foodItems: groupPhotos.map((p) => ({
             name: p.menuItemName,
             description: p.menuItemDescription,
             rating: p.rating,
             notes: p.notes,
-            isNewMenuItem: p.isNewMenuItem,
           })),
-          photos: groupPhotos.map((p) => p.photo),
+          itemPhotos: new Map(groupPhotos.map((p, index) => [index, p.photo])),
           visitDate: visitDate.toISOString(),
           visibility,
+          notes: '',
         });
       }
 

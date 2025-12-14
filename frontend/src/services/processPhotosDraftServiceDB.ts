@@ -16,6 +16,21 @@ export interface ProcessedPhotoDraft {
   rating: number;
   notes: string;
   isNewMenuItem: boolean;
+  captureDate?: Date | null; // Capture date from EXIF data
+}
+
+export interface QuickTrackPhotoDraft {
+  photoId: string;
+  photoDataUrl: string; // Store as base64 data URL (fully serializable)
+  photoFileName: string;
+  photoFileType: string;
+  itemName: string;
+  category: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | '';
+  rating: number;
+  locationText: string;
+  notes: string;
+  visibility: 'friends' | 'private';
+  captureDate?: Date | null; // Capture date from EXIF data
 }
 
 export interface ProcessPhotosDraft {
@@ -27,6 +42,7 @@ export interface ProcessPhotosDraft {
   }>;
   currentPhotoIndex: number;
   processedPhotos: ProcessedPhotoDraft[];
+  quickTrackPhotos?: QuickTrackPhotoDraft[]; // Quick track items
   visitVisibility: 'friends' | 'private';
   currentFormState?: {
     selectedRestaurant: Restaurant | null;

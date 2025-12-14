@@ -7,7 +7,6 @@ import { useSync } from "@/contexts/SyncContext";
 import { useMenuOCR } from "@/hooks/menu/useMenuOCR";
 import { useOfflineVisitCreation } from "@/hooks/offline/useOfflineVisitCreation";
 import { useOfflineRestaurantCreation } from "@/hooks/offline/useOfflineRestaurantCreation";
-import { useOfflineQuickTrack } from "@/hooks/offline/useOfflineQuickTrack";
 
 // Custom hooks
 import { usePhotoUpload } from "@/hooks/photos/usePhotoUpload";
@@ -94,10 +93,14 @@ export default function ProcessPhotosPage() {
   const quickTrackProcessing = useQuickTrackProcessing();
   const submission = usePhotoSubmission();
 
+  // Wrapper for category setter to handle string values from QuickTrackProcessingScreen
+  const handleQuickTrackCategoryChange = (cat: string) => {
+    quickTrackProcessing.setCategory(cat as 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | '');
+  };
+
   // Mutations
   const visitCreationMutation = useOfflineVisitCreation();
   const restaurantCreationMutation = useOfflineRestaurantCreation();
-  const quickTrackMutation = useOfflineQuickTrack();
 
   // Menu OCR hook
   const {
@@ -105,8 +108,6 @@ export default function ProcessPhotosPage() {
     progress: ocrProgress,
     menuItems: scannedMenuItems,
     error: ocrError,
-    processMenuImage,
-    reset: resetOCR,
   } = useMenuOCR();
 
   // Restaurant search state
@@ -314,7 +315,7 @@ export default function ProcessPhotosPage() {
       });
 
       // Select the newly created item
-      restaurantProcessing.setSelectedMenuItem(newMenuItem);
+      restaurantProcessing.setSelectedMenuItem(newMenuItem as unknown as MenuItem);
       restaurantProcessing.setMenuItemSelectionMode("search");
     } catch (error) {
       console.error("Failed to create menu item:", error);
@@ -392,7 +393,7 @@ export default function ProcessPhotosPage() {
           date={quickTrackProcessing.date}
           visibility={quickTrackProcessing.visibility}
           onItemNameChange={quickTrackProcessing.setItemName}
-          onCategoryChange={quickTrackProcessing.setCategory}
+          onCategoryChange={handleQuickTrackCategoryChange}
           onRatingChange={quickTrackProcessing.setRating}
           onLocationTextChange={quickTrackProcessing.setLocationText}
           onNotesChange={quickTrackProcessing.setNotes}
@@ -587,7 +588,7 @@ export default function ProcessPhotosPage() {
       {showCameraMode && (
         <div className="fixed inset-0 z-50 bg-white">
           <RestaurantNameFinder
-            onSelectName={(name) => {
+            onSelectName={() => {
               setShowCameraMode(false);
             }}
             onClose={() => setShowCameraMode(false)}

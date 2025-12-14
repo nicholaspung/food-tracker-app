@@ -58,7 +58,7 @@ export function useVisitFilters<V extends {
   visits,
   quickTrackItems,
   cutoffDate,
-  currentUserId,
+  currentUserId: _currentUserId,
   isFriendVisit,
 }: UseVisitFiltersParams<V, Q>): UseVisitFiltersReturn<V, Q> {
 

@@ -21,7 +21,7 @@ export interface QuickTrackData {
   name: string;
   rating: number;
   notes?: string;
-  itemCategory?: string;
+  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
   location_text?: string;
   latitude?: number;
   longitude?: number;
@@ -218,12 +218,12 @@ async function executeQuickTrack(
     };
 
     await uploadPhotos([photoUpload]);
-    photoResult = { foodItemId: foodItem.id };
+    // photoResult remains undefined - data will be refetched via query invalidation
     console.log('[executeQuickTrack] Photo uploaded successfully');
   }
 
   console.log('[executeQuickTrack] Returning result');
-  return { foodItem, photoResult };
+  return { foodItem: foodItem as unknown as FoodItem, photoResult };
 }
 
 /**

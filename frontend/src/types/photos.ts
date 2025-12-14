@@ -43,7 +43,7 @@ export interface QuickTrackPhotoData {
   photo: File;
   previewUrl: string;
   itemName: string;
-  category: string;
+  category: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | '';
   rating: number;
   locationText: string;
   notes: string;

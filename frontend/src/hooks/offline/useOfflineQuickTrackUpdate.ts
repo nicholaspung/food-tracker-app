@@ -22,7 +22,7 @@ export interface QuickTrackUpdateData {
   name: string;
   rating: number;
   notes?: string;
-  itemCategory?: string;
+  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
   location_text?: string;
   latitude?: number;
   longitude?: number;
@@ -99,6 +99,7 @@ export function useOfflineQuickTrackUpdate() {
             user: user.id,
             isQuickTrack: true,
             visibility: data.visibility || 'private',
+            created: new Date().toISOString(),
             updated: new Date().toISOString(),
             isPending: true,
             photoPreviewUrl,
@@ -188,17 +189,17 @@ async function executeUpdate(
     };
 
     await uploadPhotos([photoUpload]);
-    photoResult = { foodItemId: foodItem.id };
+    // photoResult remains undefined - data will be refetched via query invalidation
     console.log('[executeUpdate] Photo uploaded successfully');
   }
 
-  return { foodItem, photoResult };
+  return { foodItem: foodItem as unknown as FoodItem, photoResult };
 }
 
 /**
  * Queue update for offline sync
  */
-async function queueUpdate(data: QuickTrackUpdateData, userId: string): Promise<void> {
+async function queueUpdate(data: QuickTrackUpdateData, _userId: string): Promise<void> {
   await syncQueue.enqueue({
     type: 'update',
     collection: 'quick_track_item_update',

@@ -28,7 +28,7 @@ export interface FoodItemData {
 export interface VisitCreationData {
   restaurant: string;
   visitDate: string;
-  visibility: string;
+  visibility: 'friends' | 'private';
   notes: string;
   foodItems: FoodItemData[];
   itemPhotos: Map<number, File>; // Map of item index to photo file
@@ -216,7 +216,7 @@ async function executeVisitCreation(
       notes: item.notes,
       user: userId,
     });
-    foodItems.push(foodItem);
+    foodItems.push(foodItem as unknown as FoodItem);
   }
 
   // 3. Upload photos in parallel if any
@@ -242,7 +242,7 @@ async function executeVisitCreation(
     }
   }
 
-  return { visit, foodItems, photoResults };
+  return { visit: visit as unknown as Visit, foodItems, photoResults };
 }
 
 /**

@@ -59,8 +59,13 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
 
   // Form state
   const [itemName, setItemName] = useState("");
-  const [category, setCategory] = useState<string | undefined>(undefined);
+  const [category, setCategory] = useState<'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | undefined>(undefined);
   const [rating, setRating] = useState<number | null>(3);
+
+  // Wrapper for category setter to handle string values from Select component
+  const handleCategoryChange = (value: string) => {
+    setCategory(value as 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | undefined);
+  };
 
   // Photo management hook
   const {
@@ -315,7 +320,7 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
                 <Select
                   key={`category-${itemId}`}
                   value={category}
-                  onValueChange={setCategory}
+                  onValueChange={handleCategoryChange}
                   disabled={isLoading}
                 >
                   <SelectTrigger id="category">

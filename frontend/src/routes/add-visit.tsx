@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Outlet, useNavigate, useLocation } from '@tanstack/react-router';
+import { createFileRoute, redirect, Outlet, useLocation } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import { visitDraftService } from '@/services/visitDraftService';
 import { useEffect, useRef } from 'react';
@@ -15,7 +15,6 @@ export const Route = createFileRoute('/add-visit')({
 });
 
 function AddVisitLayout() {
-  const navigate = useNavigate();
   const location = useLocation();
   const previousPathRef = useRef<string>(location.pathname);
   const isBasePath = location.pathname === '/add-visit';

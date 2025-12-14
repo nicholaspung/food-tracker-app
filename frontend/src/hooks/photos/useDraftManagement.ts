@@ -83,7 +83,7 @@ export function useDraftManagement() {
             rating: p.rating,
             notes: p.notes,
             isNewMenuItem: p.isNewMenuItem,
-            captureDate: p.captureDate,
+            captureDate: p.captureDate ?? null,
           };
         })
       );
@@ -107,7 +107,7 @@ export function useDraftManagement() {
             locationText: p.locationText,
             notes: p.notes,
             visibility: p.visibility,
-            captureDate: p.captureDate,
+            captureDate: p.captureDate ?? null,
           };
         })
       );
@@ -127,7 +127,7 @@ export function useDraftManagement() {
     }
   };
 
-  const saveDraft = async (data: PhotoDraft) => {
+  const saveDraft = async (_data: PhotoDraft) => {
     try {
       // The draft service expects the raw format, so we'll call it directly
       // This is a simplified version - in practice you may need to convert back to the format expected

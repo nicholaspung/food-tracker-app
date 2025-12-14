@@ -59,7 +59,7 @@ export function useVisitGrouping<V extends {
   filteredVisits,
   filteredQuickTrackItems,
   deferredSearchQuery,
-  currentUserId,
+  currentUserId: _currentUserId,
   isFriendVisit,
 }: UseVisitGroupingParams<V, Q>): UseVisitGroupingReturn<V, Q> {
 

@@ -52,21 +52,6 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
     queryFn: getPendingReviewRequests,
   });
 
-  // Fetch menu items for a specific restaurant
-  const fetchMenuItems = async (restaurantId: string): Promise<MenuItem[]> => {
-    try {
-      const items = await pb.collection('menu_items').getFullList<MenuItem>({
-        filter: `restaurant = "${restaurantId}"`,
-        sort: '-created',
-        expand: 'sourceImage',
-      });
-      return items;
-    } catch (err) {
-      logger.error('Failed to fetch menu items:', err);
-      return [];
-    }
-  };
-
   // Update menu item mutation
   const updateMenuItemMutation = useMutation({
     mutationFn: async ({ id, name, description }: { id: string; name: string; description: string }) => {
@@ -75,7 +60,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
         description,
       });
     },
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       logger.log('Menu item updated successfully');
       setEditingItem(null);
       // Invalidate the menu items query for this restaurant
