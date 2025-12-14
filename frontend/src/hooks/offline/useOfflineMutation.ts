@@ -6,6 +6,7 @@
  * When online, mutations execute immediately.
  */
 
+import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncQueue, type OperationType } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
@@ -30,7 +31,7 @@ export interface OfflineMutationConfig<TData = unknown, TVariables = unknown> {
  * const createMutation = useOfflineMutation({
  *   collection: 'restaurants',
  *   type: 'create',
- *   mutationFn: async (data) => pb.collection('restaurants').create(data),
+ *   mutationFn: async (data) => pb.collection(COLLECTIONS.RESTAURANTS).create(data),
  *   invalidateQueries: ['restaurants'],
  * });
  *
@@ -38,7 +39,7 @@ export interface OfflineMutationConfig<TData = unknown, TVariables = unknown> {
  * const updateMutation = useOfflineMutation({
  *   collection: 'food_items',
  *   type: 'update',
- *   mutationFn: async ({ id, data }) => pb.collection('food_items').update(id, data),
+ *   mutationFn: async ({ id, data }) => pb.collection(COLLECTIONS.FOOD_ITEMS).update(id, data),
  *   getRecordId: (variables) => variables.id,
  *   invalidateQueries: ['food_items'],
  * });
@@ -47,7 +48,7 @@ export interface OfflineMutationConfig<TData = unknown, TVariables = unknown> {
  * const deleteMutation = useOfflineMutation({
  *   collection: 'visits',
  *   type: 'delete',
- *   mutationFn: async (id) => pb.collection('visits').delete(id),
+ *   mutationFn: async (id) => pb.collection(COLLECTIONS.VISITS).delete(id),
  *   getRecordId: (variables) => variables,
  *   invalidateQueries: ['visits'],
  * });

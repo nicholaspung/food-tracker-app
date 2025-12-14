@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Card,
   CardContent,
@@ -105,7 +106,7 @@ export default function SignUpPage({
       }
 
       // Create the user account with invite code
-      await pb.collection("users").create({
+      await pb.collection(COLLECTIONS.USERS).create({
         email,
         password,
         passwordConfirm,
@@ -115,7 +116,7 @@ export default function SignUpPage({
       });
 
       // Send verification email
-      await pb.collection("users").requestVerification(email);
+      await pb.collection(COLLECTIONS.USERS).requestVerification(email);
 
       // If we found an inviter, store their info for post-login friend suggestion
       if (inviterInfo) {

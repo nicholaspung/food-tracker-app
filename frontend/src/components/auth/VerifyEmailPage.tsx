@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
+import { COLLECTIONS } from '@/constants/collections';
 
 interface VerifyEmailPageProps {
   token: string;
@@ -22,7 +23,7 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
   useEffect(() => {
     const verifyEmail = async () => {
       try {
-        await pb.collection('users').confirmVerification(token);
+        await pb.collection(COLLECTIONS.USERS).confirmVerification(token);
         setStatus('success');
       } catch (err: any) {
         logger.error("Email verification error:", err);

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb, Friendship } from "@/lib/pocketbase";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Card,
   CardContent,
@@ -74,7 +75,7 @@ export default function FriendsPage() {
   const { data: friendships = [], isLoading } = useQuery<FriendWithDetails[]>({
     queryKey: ["friendships"],
     queryFn: async () => {
-      return await pb.collection("friendships").getFullList<FriendWithDetails>({
+      return await pb.collection(COLLECTIONS.FRIENDSHIPS).getFullList<FriendWithDetails>({
         sort: "-created",
         expand: "user,friend",
       });
@@ -146,7 +147,7 @@ export default function FriendsPage() {
       }
 
       // Create friend request
-      return await pb.collection("friendships").create({
+      return await pb.collection(COLLECTIONS.FRIENDSHIPS).create({
         user: currentUser.id,
         friend: targetUser.id,
         status: "pending",
@@ -168,7 +169,7 @@ export default function FriendsPage() {
   // Accept friend request mutation
   const acceptFriendRequestMutation = useMutation({
     mutationFn: async (friendshipId: string) => {
-      return await pb.collection("friendships").update(friendshipId, {
+      return await pb.collection(COLLECTIONS.FRIENDSHIPS).update(friendshipId, {
         status: "accepted",
       });
     },
@@ -184,7 +185,7 @@ export default function FriendsPage() {
   // Reject/Remove friend mutation
   const removeFriendMutation = useMutation({
     mutationFn: async (friendshipId: string) => {
-      return await pb.collection("friendships").delete(friendshipId);
+      return await pb.collection(COLLECTIONS.FRIENDSHIPS).delete(friendshipId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["friendships"] });

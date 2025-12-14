@@ -6,6 +6,7 @@ import { useVisitsByUser, useFriendVisits } from "@/hooks/api/useVisits";
 import { useOfflineCreate } from "@/hooks/offline/useOfflineMutation";
 import { visitDraftService } from "@/services/visitDraftService";
 import { Button } from "@/components/ui/button";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Card,
   CardContent,
@@ -107,7 +108,7 @@ export default function SelectRestaurantPage({
     queryKey: ["friendships", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      return await pb.collection("friendships").getFullList({
+      return await pb.collection(COLLECTIONS.FRIENDSHIPS).getFullList({
         filter: `(user = "${user.id}" || friend = "${user.id}") && status = "accepted"`,
       });
     },
@@ -153,7 +154,7 @@ export default function SelectRestaurantPage({
       const user = pb.authStore.record;
       if (!user) throw new Error("User not authenticated");
 
-      return await pb.collection("restaurants").create<Restaurant>({
+      return await pb.collection(COLLECTIONS.RESTAURANTS).create<Restaurant>({
         name: data.name,
         location: data.location,
         cuisineType: data.cuisineType || "",

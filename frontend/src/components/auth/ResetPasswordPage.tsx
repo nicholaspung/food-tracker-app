@@ -8,6 +8,7 @@ import { pb } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import { COLLECTIONS } from '@/constants/collections';
 
 interface ResetPasswordPageProps {
   token: string;
@@ -45,7 +46,7 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
     setLoading(true);
 
     try {
-      await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm);
+      await pb.collection(COLLECTIONS.USERS).confirmPasswordReset(token, password, passwordConfirm);
       setSuccess(true);
     } catch (err: any) {
       logger.error("Password reset error:", err);

@@ -9,6 +9,7 @@ import { ArrowLeft, Lock, Users, Check, Globe } from "lucide-react";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import { COLLECTIONS } from '@/constants/collections';
 
 interface SettingsPageProps {
   onNavigateBack?: () => void;
@@ -37,7 +38,7 @@ export default function SettingsPage({ onNavigateBack }: SettingsPageProps) {
       const userId = pb.authStore.record?.id;
       if (!userId) throw new Error('Not authenticated');
 
-      return await pb.collection('users').update(userId, {
+      return await pb.collection(COLLECTIONS.USERS).update(userId, {
         defaultVisitVisibility: data.visitVisibility,
         defaultRestaurantVisibility: data.restaurantVisibility,
       });

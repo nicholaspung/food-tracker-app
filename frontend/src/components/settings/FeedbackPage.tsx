@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Dialog,
   DialogContent,
@@ -42,7 +43,7 @@ export default function FeedbackPage() {
   const { data: feedbackList = [], isLoading } = useQuery<Feedback[]>({
     queryKey: ['feedback'],
     queryFn: async () => {
-      return await pb.collection('feedback').getFullList<Feedback>({
+      return await pb.collection(COLLECTIONS.FEEDBACK).getFullList<Feedback>({
         sort: '-last_message_at,-created',
         expand: 'user',
       });
@@ -55,7 +56,7 @@ export default function FeedbackPage() {
     mutationFn: async (data: { title: string; description: string }) => {
       if (!currentUser) throw new Error('Not authenticated');
 
-      return await pb.collection('feedback').create({
+      return await pb.collection(COLLECTIONS.FEEDBACK).create({
         user: currentUser.id,
         title: data.title,
         description: data.description,

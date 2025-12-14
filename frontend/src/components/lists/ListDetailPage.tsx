@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   ArrowLeft,
   Lock,
@@ -45,7 +46,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
   const { data: list, isLoading: listLoading } = useQuery<RestaurantList>({
     queryKey: ["restaurant_list", listId],
     queryFn: async () => {
-      return await pb.collection("restaurant_lists").getOne(listId);
+      return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).getOne(listId);
     },
   });
 
@@ -55,7 +56,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
   >({
     queryKey: ["list_items", listId],
     queryFn: async () => {
-      return await pb.collection("list_items").getFullList({
+      return await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
         filter: `list = "${listId}"`,
         sort: "position",
         expand: "restaurant,recommendedItems",
@@ -67,7 +68,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
   // Delete list item mutation
   const deleteItemMutation = useMutation({
     mutationFn: async (itemId: string) => {
-      await pb.collection("list_items").delete(itemId);
+      await pb.collection(COLLECTIONS.LIST_ITEMS).delete(itemId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["list_items", listId] });
@@ -79,7 +80,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
   // Delete list mutation
   const deleteListMutation = useMutation({
     mutationFn: async () => {
-      await pb.collection("restaurant_lists").delete(listId);
+      await pb.collection(COLLECTIONS.RESTAURANT_LISTS).delete(listId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["restaurant_lists"] });

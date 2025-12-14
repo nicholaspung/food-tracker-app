@@ -5,13 +5,49 @@
  * Supports create, update, and delete operations across all PocketBase collections.
  */
 
+import type { FoodItem, Visit, Restaurant, MenuItem } from '@/lib/pocketbase';
+
 export type OperationType = 'create' | 'update' | 'delete';
+
+/**
+ * Complex operation data types for multi-record operations
+ */
+export interface VisitCreationData {
+  visit: Partial<Visit>;
+  foodItems: Partial<FoodItem>[];
+  photos?: Array<{ index: number; file: File }>;
+}
+
+export interface VisitDeletionData {
+  visitId: string;
+  foodItemIds: string[];
+}
+
+export interface RestaurantCreationData {
+  restaurant: Partial<Restaurant>;
+  menuItems?: Partial<MenuItem>[];
+}
+
+/**
+ * Discriminated union for all possible operation data types
+ */
+export type OperationData =
+  // Complex operations
+  | { collection: 'visits_with_items'; type: 'create'; data: VisitCreationData }
+  | { collection: 'visits_with_items_delete'; type: 'delete'; data: VisitDeletionData }
+  | { collection: 'restaurants_with_menu_items'; type: 'create'; data: RestaurantCreationData }
+  // Standard create operations
+  | { collection: string; type: 'create'; data: Record<string, unknown> }
+  // Standard update operations
+  | { collection: string; type: 'update'; data: Record<string, unknown> }
+  // Standard delete operations (data not used for deletes)
+  | { collection: string; type: 'delete'; data?: never };
 
 export interface QueuedOperation {
   id: string; // Unique ID for this queued operation
   type: OperationType;
   collection: string;
-  data: any; // The payload for create/update operations
+  data: VisitCreationData | VisitDeletionData | RestaurantCreationData | Record<string, unknown> | undefined;
   recordId?: string; // PocketBase record ID for update/delete operations
   timestamp: number;
   retries: number;

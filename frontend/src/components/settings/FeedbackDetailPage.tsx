@@ -5,6 +5,7 @@ import { pb, Feedback, FeedbackMessage } from '@/lib/pocketbase';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Select,
   SelectContent,
@@ -40,7 +41,7 @@ export default function FeedbackDetailPage({
   const { data: feedback } = useQuery<Feedback>({
     queryKey: ['feedback', feedbackId],
     queryFn: async () => {
-      return await pb.collection('feedback').getOne<Feedback>(feedbackId, {
+      return await pb.collection(COLLECTIONS.FEEDBACK).getOne<Feedback>(feedbackId, {
         expand: 'user',
       });
     },
@@ -71,7 +72,7 @@ export default function FeedbackDetailPage({
 
       if (currentCount && currentCount > 0) {
         try {
-          await pb.collection('feedback').update(feedbackId, {
+          await pb.collection(COLLECTIONS.FEEDBACK).update(feedbackId, {
             [unreadField]: 0,
           });
           queryClient.invalidateQueries({ queryKey: ['feedback'] });
@@ -119,7 +120,7 @@ export default function FeedbackDetailPage({
         updateData.admin_unread_count = currentCount + 1;
       }
 
-      await pb.collection('feedback').update(feedbackId, updateData);
+      await pb.collection(COLLECTIONS.FEEDBACK).update(feedbackId, updateData);
     },
     onSuccess: () => {
       setMessage('');
@@ -137,7 +138,7 @@ export default function FeedbackDetailPage({
   // Update status mutation (admin only)
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: Feedback['status']) => {
-      return await pb.collection('feedback').update(feedbackId, {
+      return await pb.collection(COLLECTIONS.FEEDBACK).update(feedbackId, {
         status: newStatus,
       });
     },
