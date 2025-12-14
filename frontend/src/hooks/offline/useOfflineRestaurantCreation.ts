@@ -54,7 +54,7 @@ export function useOfflineRestaurantCreation() {
           const tempRestaurantId = `temp_restaurant_${Date.now()}`;
 
           try {
-            const queueId = await syncQueue.enqueue({
+            await syncQueue.enqueue({
               type: 'create',
               collection: 'restaurants_with_menu_items',
               data: {
@@ -185,7 +185,7 @@ async function executeRestaurantCreation(
           createdBy: userId,
           visibility: data.visibility, // Match restaurant visibility
         });
-        createdMenuItems.push(menuItem);
+        createdMenuItems.push(menuItem as unknown as MenuItem);
         logger.log('[OfflineRestaurant] Menu item created:', menuItem.id, itemName);
       } catch (error) {
         logger.error('[OfflineRestaurant] Failed to create menu item:', itemName, error);
@@ -195,7 +195,7 @@ async function executeRestaurantCreation(
   }
 
   return {
-    restaurant,
+    restaurant: restaurant as unknown as Restaurant,
     menuItems: createdMenuItems,
   };
 }

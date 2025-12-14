@@ -48,11 +48,9 @@ function generateFriendCode(userId: string): string {
   return cleanId.slice(0, 8);
 }
 
+// FriendWithDetails inherits expand property from Friendship interface
 interface FriendWithDetails extends Friendship {
-  expand?: {
-    user?: { id: string; email: string; name?: string };
-    friend?: { id: string; email: string; name?: string };
-  };
+  // No need to redefine expand - it's already in Friendship
 }
 
 export default function FriendsPage() {

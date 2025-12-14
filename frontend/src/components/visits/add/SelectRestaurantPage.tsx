@@ -278,19 +278,6 @@ export default function SelectRestaurantPage({
     onRestaurantSelected();
   };
 
-  // Get visibility icon for restaurant
-  const getVisibilityIcon = (visibility?: "private" | "friends" | "public") => {
-    switch (visibility) {
-      case "private":
-        return <Lock className="w-3 h-3 text-gray-600" />;
-      case "friends":
-        return <Users className="w-3 h-3 text-blue-600" />;
-      case "public":
-        return <Globe className="w-3 h-3 text-green-600" />;
-      default:
-        return <Globe className="w-3 h-3 text-green-600" />; // Default to public for existing data
-    }
-  };
 
   // Highlight matching restaurants when search query changes
   useEffect(() => {

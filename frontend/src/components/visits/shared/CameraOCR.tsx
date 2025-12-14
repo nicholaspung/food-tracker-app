@@ -28,7 +28,7 @@ export default function CameraOCR() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [textBlocks, setTextBlocks] = useState<TextBlock[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const { error, handleError, clearError, showValidation, checkOffline } = useErrorHandler({
+  const { error, handleError, clearError, showValidation } = useErrorHandler({
     source: 'CameraOCR',
     defaultSeverity: 'error',
   });
@@ -136,14 +136,6 @@ export default function CameraOCR() {
     if (selectedImage) {
       await runOCR(selectedImage);
     }
-  };
-
-  const handleCancelRegionSelection = () => {
-    setCurrentStep('preview');
-  };
-
-  const handleProceedToRegionSelection = () => {
-    setCurrentStep('select-region');
   };
 
   const handleCancelPreview = () => {

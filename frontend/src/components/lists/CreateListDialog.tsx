@@ -34,7 +34,7 @@ export default function CreateListDialog({
     source: 'CreateListDialog',
     defaultSeverity: 'error',
   });
-  const user = pb.authStore.record as User;
+  const user = pb.authStore.record as unknown as User;
 
   // Reset form when dialog closes
   useEffect(() => {

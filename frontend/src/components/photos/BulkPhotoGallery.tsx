@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { X, Upload, Check } from "lucide-react";
 import { cn } from "@/lib/utils";

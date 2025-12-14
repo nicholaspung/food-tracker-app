@@ -65,8 +65,8 @@ interface RestaurantProcessingScreenProps {
 
   // Menu item photo
   menuItemPhotoPreview: string | null;
-  onMenuItemPhotoCapture: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onMenuItemPhotoRemove: () => void;
+  onMenuItemPhotoCapture: (keyOrFile: File, file?: File) => void;
+  onMenuItemPhotoRemove: (key?: undefined) => void;
 
   // OCR state
   ocrStatus: "idle" | "preprocessing" | "compressing" | "uploading" | "processing" | "complete" | "error";
@@ -198,8 +198,18 @@ export function RestaurantProcessingScreen(props: RestaurantProcessingScreenProp
     }, 100);
   };
 
+  // Adapter functions for MenuItemPhotoInput
+  // The component expects (key, file) but usePhotoManager in single mode provides (file, file?)
+  const handlePhotoCapture = (_key: string | number, file: File) => {
+    onMenuItemPhotoCapture(file);
+  };
+
+  const handlePhotoRemove = (_key: string | number) => {
+    onMenuItemPhotoRemove();
+  };
+
   // Filter menu items
-  const usedMenuItemNames = []; // Would need to pass processedPhotos to calculate this
+  const usedMenuItemNames: string[] = []; // Would need to pass processedPhotos to calculate this
   const filteredMenuItems = menuItemSelectionMode === "scan"
     ? scannedMenuItems
     : menuItems.filter(
@@ -518,8 +528,8 @@ export function RestaurantProcessingScreen(props: RestaurantProcessingScreenProp
                       <MenuItemPhotoInput
                         photoKey="current"
                         newPhotoPreviewUrl={menuItemPhotoPreview || undefined}
-                        onPhotoCapture={onMenuItemPhotoCapture}
-                        onRemoveNewPhoto={onMenuItemPhotoRemove}
+                        onPhotoCapture={handlePhotoCapture}
+                        onRemoveNewPhoto={handlePhotoRemove}
                         showLabel={false}
                         showNewPhotoBadge={false}
                         labelText=""

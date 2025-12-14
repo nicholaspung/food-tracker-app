@@ -22,7 +22,6 @@ interface MenuScanStepProps {
 
 export default function MenuScanStep({
   restaurantId,
-  restaurantName,
   onItemsExtracted,
   onSkip,
 }: MenuScanStepProps) {
@@ -232,7 +231,7 @@ export default function MenuScanStep({
 
           if (failedAttempts > 0) {
             return (
-              <Alert variant={remaining === 0 ? 'destructive' : 'default'}>
+              <Alert className={remaining === 0 ? 'border-red-500 bg-red-50' : ''}>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
                   {remaining === 0 ? (

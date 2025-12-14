@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, DollarSign } from 'lucide-react';
+import { DollarSign } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert } from '@/components/ui/alert';
 import { pb } from '@/lib/pocketbase';
 import { createBill } from '@/lib/billService';
 import { validateBillName, getFirstError } from '@/lib/billValidation';
@@ -33,7 +32,6 @@ export default function CreateCustomSplitBillDialog({
 }: CreateCustomSplitBillDialogProps) {
   const queryClient = useQueryClient();
   const currentUserId = pb.authStore.record?.id || '';
-  const currentUserEmail = pb.authStore.record?.email || '';
 
   const [billName, setBillName] = useState('');
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);

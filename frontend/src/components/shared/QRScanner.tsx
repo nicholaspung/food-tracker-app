@@ -6,7 +6,6 @@ import { X, Camera } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
-import { ERROR_MESSAGES } from '@/lib/errorMessages';
 
 interface QRScannerProps {
   onScan: (result: string) => void;

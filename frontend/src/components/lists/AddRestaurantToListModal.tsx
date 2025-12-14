@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, ArrowLeft, Plus, X } from "lucide-react";
+import { Search, ArrowLeft, Plus} from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";

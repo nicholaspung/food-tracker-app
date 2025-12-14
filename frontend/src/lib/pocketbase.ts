@@ -129,6 +129,10 @@ export interface Friendship {
   status: 'pending' | 'accepted' | 'blocked';
   created: string;
   updated: string;
+  expand?: {
+    user?: User;
+    friend?: User;
+  };
 }
 
 export interface MenuReviewRequest {

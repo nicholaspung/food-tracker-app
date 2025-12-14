@@ -4,7 +4,6 @@ import { ArrowLeft, Users, DollarSign, CheckCircle, Clock, Trash2 } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,

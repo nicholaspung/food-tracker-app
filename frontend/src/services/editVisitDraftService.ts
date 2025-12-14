@@ -8,7 +8,7 @@
  * could migrate this to use useDraftState while preserving the helper methods.
  */
 
-import { Visit, FoodItem, Restaurant } from '@/lib/pocketbase';
+import { Restaurant } from '@/lib/pocketbase';
 
 const EDIT_VISIT_DRAFT_KEY = 'editVisitDraft';
 

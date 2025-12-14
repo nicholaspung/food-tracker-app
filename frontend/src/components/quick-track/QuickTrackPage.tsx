@@ -40,8 +40,13 @@ export default function QuickTrackPage() {
 
   // Form state
   const [itemName, setItemName] = useState("");
-  const [category, setCategory] = useState<string>("");
+  const [category, setCategory] = useState<'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | ''>("");
   const [rating, setRating] = useState<number | null>(3); // Default to "worth trying"
+
+  // Wrapper for category setter to handle string values from Select component
+  const handleCategoryChange = (value: string) => {
+    setCategory(value as 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | '');
+  };
 
   // Photo management hook
   const {
@@ -234,7 +239,7 @@ export default function QuickTrackPage() {
                 </Label>
                 <Select
                   value={category}
-                  onValueChange={setCategory}
+                  onValueChange={handleCategoryChange}
                   disabled={isLoading}
                 >
                   <SelectTrigger id="category">
