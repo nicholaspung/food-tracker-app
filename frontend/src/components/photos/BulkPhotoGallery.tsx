@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { X, Upload, Check } from "lucide-react";
@@ -31,6 +31,17 @@ export default function BulkPhotoGallery({
 }: BulkPhotoGalleryProps) {
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const { showValidation } = useErrorHandler({ source: 'BulkPhotoGallery' });
+
+  // Cleanup: Revoke all blob URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      photos.forEach((photo) => {
+        if (photo.previewUrl) {
+          URL.revokeObjectURL(photo.previewUrl);
+        }
+      });
+    };
+  }, [photos]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);

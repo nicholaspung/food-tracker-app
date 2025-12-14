@@ -255,7 +255,7 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 5.1 Reorganize Components
 
-- [ ] **Create Feature-Based Structure** (8 hours)
+- [x] **Create Feature-Based Structure** (8 hours)
   ```
   components/
   ├── home/           - HomePage + related
@@ -272,7 +272,7 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 5.2 Organize Hooks and Utils
 
-- [ ] **Organize Hooks by Domain** (3 hours)
+- [x] **Organize Hooks by Domain** (3 hours)
   ```
   hooks/
   ├── api/            - Data fetching hooks
@@ -281,12 +281,12 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
   └── utils/          - General utilities
   ```
 
-- [ ] **Create Constants Directory** (2 hours)
+- [x] **Create Constants Directory** (2 hours)
   - Move rating options to `constants/ratings.ts`
   - Move filter options to `constants/filters.ts`
   - Extract other scattered constants
 
-- [ ] **Consolidate Draft Services** (1 hour)
+- [x] **Consolidate Draft Services** (1 hour)
   - Move draft services to hooks/
   - Consider generic `useDraftState<T>` hook
 
@@ -298,27 +298,20 @@ Based on comprehensive codebase analysis, 78 refactoring opportunities identifie
 
 ### 6.1 Optimize Re-renders
 
-- [ ] **Audit useMemo Dependencies** (4 hours)
+- [x] **Audit useMemo Dependencies** (4 hours)
   - Review HomePage filtering/grouping
   - Split into smaller memoized chunks
   - Optimize dependency arrays
 
-- [ ] **Add React.memo to Cards** (3 hours)
+- [x] **Add React.memo to Cards** (3 hours)
   - Memo VisitCard, QuickTrackCard
   - Memo PhotoCard components
   - Use useCallback for handlers
 
-- [ ] **Optimize Photo Preview Management** (3 hours)
+- [x] **Optimize Photo Preview Management** (3 hours)
   - Ensure cleanup in usePhotoManager
   - Audit all URL.createObjectURL usage
   - Add cleanup on unmount everywhere
-
-### 6.2 Bundle Optimization
-
-- [ ] **Add Route-Based Code Splitting** (2 hours)
-  - Use React.lazy() for route components
-  - Add Suspense boundaries
-  - Measure bundle size improvement
 
 ---
 

@@ -16,6 +16,7 @@ import { pb, type Visit, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
+import { blobUrlManager } from '@/lib/blobUrlManager';
 
 export interface FoodItemData {
   name: string;
@@ -81,17 +82,21 @@ export function useOfflineVisitCreation() {
         // OFFLINE: Queue the operation
         await queueVisitCreation(data, user.id);
 
-        // Create preview URLs for photos (for offline display)
+        // Create unique timestamp for consistent IDs
+        const timestamp = Date.now();
+
+        // Create preview URLs for photos using blobUrlManager (prevents memory leaks)
         const photoPreviewUrls = new Map<number, string>();
         for (const [index, file] of data.itemPhotos.entries()) {
-          const previewUrl = URL.createObjectURL(file);
+          const tempPhotoId = `temp_photo_${timestamp}_${index}`;
+          const previewUrl = blobUrlManager.create(tempPhotoId, file);
           photoPreviewUrls.set(index, previewUrl);
         }
 
         // Return optimistic data
         return {
           visit: {
-            id: `temp_visit_${Date.now()}`,
+            id: `temp_visit_${timestamp}`,
             restaurant: data.restaurant,
             user: user.id,
             visitDate: data.visitDate,
@@ -102,10 +107,10 @@ export function useOfflineVisitCreation() {
             isPending: true, // Flag to indicate this is pending sync
           },
           foodItems: data.foodItems.map((item, index) => ({
-            id: `temp_food_${Date.now()}_${index}`,
+            id: `temp_food_${timestamp}_${index}`,
             ...item,
             user: user.id,
-            visit: `temp_visit_${Date.now()}`,
+            visit: `temp_visit_${timestamp}`,
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
             isPending: true,
@@ -113,6 +118,7 @@ export function useOfflineVisitCreation() {
             photoPreviewUrl: photoPreviewUrls.get(index),
           })),
           isQueued: true,
+          _photoTimestamp: timestamp, // Store timestamp for cleanup
         };
       }
     },
@@ -167,6 +173,16 @@ export function useOfflineVisitCreation() {
           queryClient.invalidateQueries({ queryKey: ['allFoodItems'] }),
           queryClient.invalidateQueries({ queryKey: ['allVisitPhotos'] }),
         ]);
+
+        // Cleanup: Revoke blob URLs for photos (they're now replaced with real server URLs)
+        // Note: This may clean up URLs from other pending operations too, but that's okay
+        // since the real data from the server will have proper photo URLs
+        if ((result as any)._photoTimestamp) {
+          const timestamp = (result as any)._photoTimestamp;
+          result.foodItems.forEach((_, index) => {
+            blobUrlManager.revoke(`temp_photo_${timestamp}_${index}`);
+          });
+        }
       }
     },
   });

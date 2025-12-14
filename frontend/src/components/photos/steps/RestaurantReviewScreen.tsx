@@ -1,3 +1,4 @@
+import { useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -49,6 +50,22 @@ export function RestaurantReviewScreen({
     }
     photosByRestaurantAndDate.get(groupKey)!.push(photo);
   }
+
+  // Create blob URLs once and cache in Map for performance and memory safety
+  const photoUrlMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const photo of processedPhotos) {
+      map.set(photo.photoId, URL.createObjectURL(photo.photo));
+    }
+    return map;
+  }, [processedPhotos]);
+
+  // Cleanup: Revoke all blob URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      photoUrlMap.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [photoUrlMap]);
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -117,9 +134,7 @@ export function RestaurantReviewScreen({
                   {restaurantPhotos.length > 0 ? (
                     <div className="space-y-2">
                       {restaurantPhotos.map((processedPhoto) => {
-                        const photoUrl = URL.createObjectURL(
-                          processedPhoto.photo
-                        );
+                        const photoUrl = photoUrlMap.get(processedPhoto.photoId)!;
 
                         return (
                           <div

@@ -15,6 +15,7 @@ import { pb, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
+import { blobUrlManager } from '@/lib/blobUrlManager';
 
 export interface QuickTrackUpdateData {
   id: string; // Item ID to update
@@ -73,10 +74,14 @@ export function useOfflineQuickTrackUpdate() {
         console.log('[useOfflineQuickTrackUpdate] Offline - queueing for sync');
         await queueUpdate(data, user.id);
 
-        // Create preview URL for new photo (for offline display)
+        // Create unique timestamp for consistent IDs
+        const timestamp = Date.now();
+
+        // Create preview URL for new photo using blobUrlManager (prevents memory leaks)
         let photoPreviewUrl: string | undefined;
         if (data.photo instanceof File) {
-          photoPreviewUrl = URL.createObjectURL(data.photo);
+          const tempPhotoId = `temp_quick_track_update_photo_${timestamp}`;
+          photoPreviewUrl = blobUrlManager.create(tempPhotoId, data.photo);
         }
 
         // Return optimistic data
@@ -99,6 +104,7 @@ export function useOfflineQuickTrackUpdate() {
             photoPreviewUrl,
           },
           isQueued: true,
+          _photoTimestamp: timestamp, // Store timestamp for cleanup
         };
       }
     },
@@ -117,6 +123,12 @@ export function useOfflineQuickTrackUpdate() {
           queryClient.invalidateQueries({ queryKey: ['quickTrackItems'] }),
           queryClient.invalidateQueries({ queryKey: ['allVisitPhotos'] }),
         ]);
+
+        // Cleanup: Revoke blob URL for photo (if it exists)
+        if ((result as any)._photoTimestamp) {
+          const timestamp = (result as any)._photoTimestamp;
+          blobUrlManager.revoke(`temp_quick_track_update_photo_${timestamp}`);
+        }
       }
     },
   });
