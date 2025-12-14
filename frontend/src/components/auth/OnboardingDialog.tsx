@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
+import { COLLECTIONS } from '@/constants/collections';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -33,7 +34,7 @@ export default function OnboardingDialog({ open, onComplete }: OnboardingDialogP
       const userId = pb.authStore.record?.id;
       if (!userId) throw new Error('Not authenticated');
 
-      return await pb.collection('users').update(userId, {
+      return await pb.collection(COLLECTIONS.USERS).update(userId, {
         name: newName,
       });
     },

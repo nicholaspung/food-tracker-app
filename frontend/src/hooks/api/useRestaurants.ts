@@ -1,6 +1,7 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb, Restaurant } from "@/lib/pocketbase";
 import { restaurantKeys } from "@/constants/queryKeys";
+import { COLLECTIONS } from '@/constants/collections';
 
 // Re-export Restaurant type for convenience
 export type { Restaurant };
@@ -16,7 +17,7 @@ export function useRestaurants(): UseQueryResult<Restaurant[], Error> {
   return useQuery<Restaurant[], Error>({
     queryKey: restaurantKeys.all,
     queryFn: async () => {
-      return await pb.collection("restaurants").getFullList<Restaurant>({
+      return await pb.collection(COLLECTIONS.RESTAURANTS).getFullList<Restaurant>({
         sort: "-created",
       });
     },
@@ -37,7 +38,7 @@ export function useRestaurant(
     queryKey: restaurantId ? restaurantKeys.detail(restaurantId) : ["restaurant", "null"],
     queryFn: async () => {
       if (!restaurantId) return null;
-      return await pb.collection("restaurants").getOne<Restaurant>(restaurantId);
+      return await pb.collection(COLLECTIONS.RESTAURANTS).getOne<Restaurant>(restaurantId);
     },
     enabled: enabled !== undefined ? enabled : !!restaurantId,
   });

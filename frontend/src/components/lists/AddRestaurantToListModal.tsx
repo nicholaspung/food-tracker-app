@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb, Restaurant, FoodItem } from "@/lib/pocketbase";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Dialog,
   DialogContent,
@@ -52,7 +53,7 @@ export default function AddRestaurantToListModal({
     queryKey: ["visited_restaurants", user?.id],
     queryFn: async () => {
       // Get all food items for this user
-      const foodItems = await pb.collection("food_items").getFullList<FoodItem>({
+      const foodItems = await pb.collection(COLLECTIONS.FOOD_ITEMS).getFullList<FoodItem>({
         filter: `user = "${user?.id}"`,
         expand: "visit.restaurant",
       });
@@ -79,7 +80,7 @@ export default function AddRestaurantToListModal({
       if (!selectedRestaurant) return [];
 
       // Get all visits for this restaurant by this user
-      const visits = await pb.collection("visits").getFullList({
+      const visits = await pb.collection(COLLECTIONS.VISITS).getFullList({
         filter: `restaurant = "${selectedRestaurant.id}" && user = "${user?.id}"`,
       });
 
@@ -89,7 +90,7 @@ export default function AddRestaurantToListModal({
       const visitIds = visits.map((v) => v.id);
       const filter = visitIds.map((id) => `visit = "${id}"`).join(" || ");
 
-      return await pb.collection("food_items").getFullList<FoodItem>({
+      return await pb.collection(COLLECTIONS.FOOD_ITEMS).getFullList<FoodItem>({
         filter: `user = "${user?.id}" && (${filter})`,
         sort: "-rating,-created",
       });
@@ -108,7 +109,7 @@ export default function AddRestaurantToListModal({
       if (!selectedRestaurant) throw new Error("No restaurant selected");
 
       // Get the current max position for this list
-      const existingItems = await pb.collection("list_items").getFullList({
+      const existingItems = await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
         filter: `list = "${listId}"`,
         sort: "-position",
       });
@@ -116,7 +117,7 @@ export default function AddRestaurantToListModal({
       const nextPosition = existingItems.length > 0 ? existingItems[0].position + 1 : 0;
 
       // Create the list item
-      return await pb.collection("list_items").create({
+      return await pb.collection(COLLECTIONS.LIST_ITEMS).create({
         list: listId,
         restaurant: selectedRestaurant.id,
         addedBy: user?.id,

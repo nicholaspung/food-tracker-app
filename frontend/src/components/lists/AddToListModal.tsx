@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb, RestaurantList } from "@/lib/pocketbase";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Dialog,
   DialogContent,
@@ -40,7 +41,7 @@ export default function AddToListModal({
   const { data: lists = [], isLoading } = useQuery<RestaurantList[]>({
     queryKey: ["restaurant_lists", user?.id],
     queryFn: async () => {
-      return await pb.collection("restaurant_lists").getFullList({
+      return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).getFullList({
         sort: "-updated",
         filter: `user = "${user?.id}"`,
       });
@@ -52,7 +53,7 @@ export default function AddToListModal({
   const { data: existingListItems = [] } = useQuery({
     queryKey: ["list_items_for_restaurant", restaurantId],
     queryFn: async () => {
-      return await pb.collection("list_items").getFullList({
+      return await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
         filter: `restaurant = "${restaurantId}"`,
       });
     },
@@ -72,7 +73,7 @@ export default function AddToListModal({
         if (existingListIds.has(listId)) return;
 
         // Get current max position in list
-        const existingItems = await pb.collection("list_items").getFullList({
+        const existingItems = await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
           filter: `list = "${listId}"`,
           sort: "-position",
         });
@@ -81,7 +82,7 @@ export default function AddToListModal({
           existingItems.length > 0 ? existingItems[0].position : -1;
 
         // Create list item
-        return await pb.collection("list_items").create({
+        return await pb.collection(COLLECTIONS.LIST_ITEMS).create({
           list: listId,
           restaurant: restaurantId,
           addedBy: user?.id,

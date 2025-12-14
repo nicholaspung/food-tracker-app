@@ -1,6 +1,7 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb, FoodItem } from "@/lib/pocketbase";
 import { foodItemKeys } from "@/constants/queryKeys";
+import { COLLECTIONS } from '@/constants/collections';
 
 // Re-export FoodItem type for convenience
 export type { FoodItem };
@@ -16,7 +17,7 @@ export function useFoodItems(): UseQueryResult<FoodItem[], Error> {
   return useQuery<FoodItem[], Error>({
     queryKey: foodItemKeys.all,
     queryFn: async () => {
-      return await pb.collection("food_items").getFullList<FoodItem>({
+      return await pb.collection(COLLECTIONS.FOOD_ITEMS).getFullList<FoodItem>({
         sort: "-created",
       });
     },
@@ -37,7 +38,7 @@ export function useFoodItemsByVisit(
     queryKey: visitId ? foodItemKeys.byVisit(visitId) : ["foodItems", "null"],
     queryFn: async () => {
       if (!visitId) return [];
-      return await pb.collection("food_items").getFullList<FoodItem>({
+      return await pb.collection(COLLECTIONS.FOOD_ITEMS).getFullList<FoodItem>({
         filter: `visit = "${visitId}"`,
         sort: "created",
       });
@@ -60,7 +61,7 @@ export function useFoodItem(
     queryKey: foodItemId ? foodItemKeys.detail(foodItemId) : ["foodItem", "null"],
     queryFn: async () => {
       if (!foodItemId) return null;
-      return await pb.collection("food_items").getOne<FoodItem>(foodItemId);
+      return await pb.collection(COLLECTIONS.FOOD_ITEMS).getOne<FoodItem>(foodItemId);
     },
     enabled: enabled !== undefined ? enabled : !!foodItemId,
   });

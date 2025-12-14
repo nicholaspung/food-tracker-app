@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
 import { localDateStringToUTC } from "@/lib/dateUtils";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   editVisitDraftService,
   EditVisitDraftItem,
@@ -95,7 +96,7 @@ export default function EditRateItemsPage({
   const { data: existingPhotos = [] } = useQuery<VisitPhoto[]>({
     queryKey: ["visitPhotos", visitId],
     queryFn: async () => {
-      return await pb.collection("visit_photos").getFullList({
+      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList({
         filter: `visit = "${visitId}"`,
       });
     },
@@ -161,14 +162,14 @@ export default function EditRateItemsPage({
       const visitDateUTC = localDateStringToUTC(visitDate);
 
       // Update visit
-      await pb.collection("visits").update(visitId, {
+      await pb.collection(COLLECTIONS.VISITS).update(visitId, {
         visitDate: visitDateUTC,
         visibility: visitVisibility,
       });
 
       // Delete marked photos first
       for (const photoId of deletedPhotoIds) {
-        await pb.collection("visit_photos").delete(photoId);
+        await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(photoId);
       }
 
       // Track photo uploads for parallel processing
@@ -178,11 +179,11 @@ export default function EditRateItemsPage({
       for (const item of menuItems) {
         if (item._deleted && item.id) {
           // Delete existing item and its photos
-          await pb.collection("food_items").delete(item.id);
+          await pb.collection(COLLECTIONS.FOOD_ITEMS).delete(item.id);
           // Photos will be cascade deleted by backend
         } else if (item.id) {
           // Update existing item
-          await pb.collection("food_items").update(item.id, {
+          await pb.collection(COLLECTIONS.FOOD_ITEMS).update(item.id, {
             name: item.name,
             description: item.description,
             rating: item.rating,
@@ -205,7 +206,7 @@ export default function EditRateItemsPage({
           }
         } else if (!item._deleted) {
           // Create new item
-          const foodItem = await pb.collection("food_items").create({
+          const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create({
             name: item.name,
             description: item.description,
             visit: visitId,

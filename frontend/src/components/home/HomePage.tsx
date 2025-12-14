@@ -16,6 +16,7 @@ import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/of
 import VisitCard from "@/components/home/VisitCard";
 import QuickTrackCard from "@/components/home/QuickTrackCard";
 import VisitListHeader from "@/components/home/VisitListHeader";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Card,
   CardContent,
@@ -124,7 +125,7 @@ export default function HomePage({
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
     queryKey: ["restaurants"],
     queryFn: async () => {
-      return await pb.collection("restaurants").getFullList();
+      return await pb.collection(COLLECTIONS.RESTAURANTS).getFullList();
     },
   });
 
@@ -153,7 +154,7 @@ export default function HomePage({
   const { data: visitPhotos = [] } = useQuery<VisitPhoto[]>({
     queryKey: ["allVisitPhotos"],
     queryFn: async () => {
-      return await pb.collection("visit_photos").getFullList({
+      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList({
         sort: "-created",
       });
     },
@@ -193,10 +194,10 @@ export default function HomePage({
         );
         await Promise.all(
           foodItemsToDelete.map((item) =>
-            pb.collection("food_items").delete(item.id)
+            pb.collection(COLLECTIONS.FOOD_ITEMS).delete(item.id)
           )
         );
-        await pb.collection("visits").delete(visitId);
+        await pb.collection(COLLECTIONS.VISITS).delete(visitId);
       } else {
         // Offline: Queue the deletion
         // Queue as complex operation to delete food items and visit together

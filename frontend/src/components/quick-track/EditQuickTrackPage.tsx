@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Select,
   SelectContent,
@@ -49,7 +50,7 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
   const { data: visitPhotos = [] } = useQuery({
     queryKey: ["allVisitPhotos"],
     queryFn: async () => {
-      return await pb.collection("visit_photos").getFullList({
+      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList({
         sort: "-created",
       });
     },

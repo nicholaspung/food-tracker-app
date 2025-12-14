@@ -3,6 +3,7 @@ import { pb, type Restaurant, type MenuItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { logger } from '@/lib/logger';
+import { COLLECTIONS } from '@/constants/collections';
 
 interface RestaurantCreationData {
   name: string;
@@ -161,7 +162,7 @@ async function executeRestaurantCreation(
   logger.log('[OfflineRestaurant] Creating restaurant immediately (online):', data.name);
 
   // 1. Create the restaurant
-  const restaurant = await pb.collection('restaurants').create({
+  const restaurant = await pb.collection(COLLECTIONS.RESTAURANTS).create({
     name: data.name,
     location: data.address,
     cuisineType: data.cuisineType,
@@ -179,7 +180,7 @@ async function executeRestaurantCreation(
   if (data.menuItems && data.menuItems.length > 0) {
     for (const itemName of data.menuItems) {
       try {
-        const menuItem = await pb.collection('menu_items').create({
+        const menuItem = await pb.collection(COLLECTIONS.MENU_ITEMS).create({
           name: itemName,
           restaurant: restaurant.id,
           createdBy: userId,

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Card,
   CardHeader,
@@ -100,7 +101,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       const userId = pb.authStore.record?.id;
       if (!userId) throw new Error('Not authenticated');
 
-      return await pb.collection('users').update(userId, {
+      return await pb.collection(COLLECTIONS.USERS).update(userId, {
         name: newName,
       });
     },
@@ -136,7 +137,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       const userId = pb.authStore.record?.id;
       if (!userId) throw new Error('Not authenticated');
 
-      return await pb.collection('users').update(userId, {
+      return await pb.collection(COLLECTIONS.USERS).update(userId, {
         name: newName,
       });
     },
@@ -367,7 +368,7 @@ Looking forward to seeing you there!`;
 
     try {
       // Delete the user account via PocketBase API
-      await pb.collection('users').delete(user.id);
+      await pb.collection(COLLECTIONS.USERS).delete(user.id);
 
       // Clear auth store
       pb.authStore.clear();

@@ -10,6 +10,7 @@
  * - Executed when connection returns
  */
 
+import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
@@ -39,7 +40,7 @@ export function useOfflineQuickTrackDelete() {
         // Delete photo first if exists
         if (data.photoId) {
           try {
-            await pb.collection('visit_photos').delete(data.photoId);
+            await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(data.photoId);
             console.log('[useOfflineQuickTrackDelete] Photo deleted:', data.photoId);
           } catch (error) {
             console.log('[useOfflineQuickTrackDelete] Photo deletion failed or not found:', error);
@@ -47,7 +48,7 @@ export function useOfflineQuickTrackDelete() {
         }
 
         // Delete food item
-        await pb.collection('food_items').delete(data.id);
+        await pb.collection(COLLECTIONS.FOOD_ITEMS).delete(data.id);
         console.log('[useOfflineQuickTrackDelete] Food item deleted:', data.id);
       } else {
         // OFFLINE: Queue the operation

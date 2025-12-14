@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Camera,
   CheckCircle,
@@ -62,7 +63,7 @@ export default function AddItemsToVisit({
     queryKey: ["menu_items", restaurantId],
     queryFn: async () => {
       if (!isOnline) return [];
-      return await pb.collection("menu_items").getFullList<MenuItem>({
+      return await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
         filter: `restaurant = "${restaurantId}"`,
         sort: "-created",
       });

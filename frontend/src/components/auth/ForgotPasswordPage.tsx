@@ -8,6 +8,7 @@ import { pb } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import { COLLECTIONS } from '@/constants/collections';
 
 interface ForgotPasswordPageProps {
   onNavigateToLogin: () => void;
@@ -29,7 +30,7 @@ export default function ForgotPasswordPage({ onNavigateToLogin }: ForgotPassword
     setLoading(true);
 
     try {
-      await pb.collection('users').requestPasswordReset(email);
+      await pb.collection(COLLECTIONS.USERS).requestPasswordReset(email);
       setSuccess(true);
       showSuccess("Password reset email sent! Check your inbox.");
       setEmail(""); // Clear the form

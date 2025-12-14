@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { MenuItem, pb } from "@/lib/pocketbase";
 import { searchMenuItems } from "@/services/ocrService";
 import { logger } from "@/lib/logger";
+import { COLLECTIONS } from '@/constants/collections';
 
 export interface UseMenuItemSearchParams {
   restaurantId: string;
@@ -57,7 +58,7 @@ export function useMenuItemSearch({
 
     setIsSearching(true);
     try {
-      const items = await pb.collection("menu_items").getFullList<MenuItem>({
+      const items = await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
         filter: `restaurant = "${restaurantId}"`,
         sort: "-created",
       });

@@ -10,6 +10,7 @@ import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 import { ERROR_MESSAGES } from '@/lib/errorMessages';
 import { calculateEvenSplit } from '@/lib/billCalculations';
+import { COLLECTIONS } from '@/constants/collections';
 import {
   validateBillName,
   validateTotalAmount,
@@ -44,7 +45,7 @@ export default function CreateEvenSplitBillDialog({
   const { data: friendships } = useQuery({
     queryKey: ['friendships', currentUserId],
     queryFn: async () => {
-      const records = await pb.collection('friendships').getFullList<Friendship>({
+      const records = await pb.collection(COLLECTIONS.FRIENDSHIPS).getFullList<Friendship>({
         filter: `(user="${currentUserId}" || friend="${currentUserId}") && status="accepted"`,
         expand: 'user,friend',
       });

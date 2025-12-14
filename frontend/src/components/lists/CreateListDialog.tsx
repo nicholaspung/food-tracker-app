@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { pb, User } from "@/lib/pocketbase";
+import { COLLECTIONS } from '@/constants/collections';
 import {
   Dialog,
   DialogContent,
@@ -60,7 +61,7 @@ export default function CreateListDialog({
         throw new Error(ERROR_MESSAGES.VALIDATION.MAX_LENGTH("Description", 500));
       }
 
-      return await pb.collection("restaurant_lists").create({
+      return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).create({
         name: listName.trim(),
         description: description.trim() || undefined,
         visibility,

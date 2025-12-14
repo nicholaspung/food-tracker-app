@@ -10,24 +10,16 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { syncQueue, type QueuedOperation, type SyncQueueStats } from '@/lib/syncQueue';
-import { pb, type FoodItem, type Visit, type Restaurant, type MenuItem } from '@/lib/pocketbase';
-
-interface VisitCreationData {
-  visit: Partial<Visit>;
-  foodItems: Partial<FoodItem>[];
-  photos?: Array<{ index: number; file: File }>;
-}
-
-interface VisitDeletionData {
-  visitId: string;
-  foodItemIds: string[];
-}
-
-interface RestaurantCreationData {
-  restaurant: Partial<Restaurant>;
-  menuItems?: Partial<MenuItem>[];
-}
+import {
+  syncQueue,
+  type QueuedOperation,
+  type SyncQueueStats,
+  type VisitCreationData,
+  type VisitDeletionData,
+  type RestaurantCreationData,
+} from '@/lib/syncQueue';
+import { pb, type FoodItem } from '@/lib/pocketbase';
+import { COLLECTIONS } from '@/constants/collections';
 
 export interface SyncContextValue {
   isOnline: boolean;
@@ -143,13 +135,13 @@ export function SyncProvider({ children }: SyncProviderProps) {
     });
 
     // 1. Create visit
-    const visit = await pb.collection('visits').create(visitData);
+    const visit = await pb.collection(COLLECTIONS.VISITS).create(visitData);
     console.log('Created visit:', visit.id);
 
     // 2. Create food items sequentially
     const createdFoodItems: FoodItem[] = [];
     for (const item of foodItems) {
-      const foodItem = await pb.collection('food_items').create<FoodItem>({
+      const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create<FoodItem>({
         ...item,
         visit: visit.id,
       });
@@ -180,7 +172,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
               formData.append('user', visitData.user);
             }
 
-            await pb.collection('visit_photos').create(formData);
+            await pb.collection(COLLECTIONS.VISIT_PHOTOS).create(formData);
             console.log('Uploaded photo for food item:', foodItem.id);
           } catch (error) {
             console.error('Failed to upload photo, continuing...', error);
@@ -202,13 +194,13 @@ export function SyncProvider({ children }: SyncProviderProps) {
     // 1. Delete all food items
     if (foodItemIds && foodItemIds.length > 0) {
       await Promise.all(
-        foodItemIds.map((id: string) => pb.collection('food_items').delete(id))
+        foodItemIds.map((id: string) => pb.collection(COLLECTIONS.FOOD_ITEMS).delete(id))
       );
       console.log('Deleted', foodItemIds.length, 'food items');
     }
 
     // 2. Delete visit
-    await pb.collection('visits').delete(visitId);
+    await pb.collection(COLLECTIONS.VISITS).delete(visitId);
     console.log('Deleted visit:', visitId);
   };
 
@@ -219,7 +211,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     const { restaurant: restaurantData, menuItems } = data;
 
     // 1. Create restaurant
-    const restaurant = await pb.collection('restaurants').create(restaurantData);
+    const restaurant = await pb.collection(COLLECTIONS.RESTAURANTS).create(restaurantData);
     console.log('Created restaurant:', restaurant.id);
 
     // 2. Update any queued operations that reference the temp restaurant ID
@@ -232,7 +224,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     if (menuItems && menuItems.length > 0) {
       for (const item of menuItems) {
         try {
-          const menuItem = await pb.collection('menu_items').create({
+          const menuItem = await pb.collection(COLLECTIONS.MENU_ITEMS).create({
             ...item,
             restaurant: restaurant.id,
           });

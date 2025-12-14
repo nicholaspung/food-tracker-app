@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ImageOff } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import DishPhotoCard from "@/components/visits/shared/DishPhotoCard";
+import { COLLECTIONS } from '@/constants/collections';
 
 export default function PhotosPage() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function PhotosPage() {
       if (!user) throw new Error("Not authenticated");
 
       // Fetch photos with expanded relations
-      const records = await pb.collection("visit_photos").getFullList({
+      const records = await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList({
         filter: `user = "${user.id}"`,
         expand: "food_item,food_item.visit,food_item.visit.restaurant",
         sort: "-created",

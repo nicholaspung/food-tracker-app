@@ -11,6 +11,7 @@
  * - Photos: Stored as File objects, uploaded when synced
  */
 
+import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type Visit, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
@@ -197,7 +198,7 @@ async function executeVisitCreation(
   uploadPhotos: (items: PhotoUploadItem[]) => Promise<void>
 ): Promise<VisitCreationResult> {
   // 1. Create visit
-  const visit = await pb.collection('visits').create({
+  const visit = await pb.collection(COLLECTIONS.VISITS).create({
     restaurant: data.restaurant,
     user: userId,
     visitDate: data.visitDate,
@@ -208,7 +209,7 @@ async function executeVisitCreation(
   // 2. Create all food items sequentially
   const foodItems: FoodItem[] = [];
   for (const item of data.foodItems) {
-    const foodItem = await pb.collection('food_items').create({
+    const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create({
       name: item.name,
       description: item.description,
       visit: visit.id,

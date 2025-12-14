@@ -2,6 +2,7 @@
  * Bill service for CRUD operations with PocketBase
  */
 
+import { COLLECTIONS } from '@/constants/collections';
 import { pb, Bill, BillParticipant, BillItem, BillReminder } from './pocketbase';
 import type { RecordListOptions } from 'pocketbase';
 
@@ -50,7 +51,7 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
   }
 
   // Create the bill
-  const bill = await pb.collection('bills').create<Bill>({
+  const bill = await pb.collection(COLLECTIONS.BILLS).create<Bill>({
     creator_user: currentUser.id,
     bill_name: data.bill_name,
     total_amount: data.total_amount,
@@ -65,7 +66,7 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
   // Create participants
   const participants: BillParticipant[] = [];
   for (const participantData of data.participants) {
-    const participant = await pb.collection('bill_participants').create<BillParticipant>({
+    const participant = await pb.collection(COLLECTIONS.BILL_PARTICIPANTS).create<BillParticipant>({
       bill: bill.id,
       user: participantData.user_id || null,
       participant_name: participantData.participant_name || '',
@@ -88,7 +89,7 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
         index => participants[index].id
       );
 
-      const item = await pb.collection('bill_items').create<BillItem>({
+      const item = await pb.collection(COLLECTIONS.BILL_ITEMS).create<BillItem>({
         bill: bill.id,
         item_name: itemData.item_name,
         price: itemData.price,
@@ -109,7 +110,7 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
  * Get a bill by ID with participants and items
  */
 export async function getBill(billId: string): Promise<BillWithDetails> {
-  const bill = await pb.collection('bills').getOne<Bill>(billId);
+  const bill = await pb.collection(COLLECTIONS.BILLS).getOne<Bill>(billId);
 
   const participants = await pb
     .collection('bill_participants')
@@ -121,7 +122,7 @@ export async function getBill(billId: string): Promise<BillWithDetails> {
 
   let items: BillItem[] | undefined;
   if (bill.split_mode === 'itemized') {
-    items = await pb.collection('bill_items').getFullList<BillItem>({
+    items = await pb.collection(COLLECTIONS.BILL_ITEMS).getFullList<BillItem>({
       filter: `bill="${billId}"`,
       sort: 'created',
     });
@@ -189,7 +190,7 @@ export async function listBills(
         : creatorFilter;
   }
 
-  const bills = await pb.collection('bills').getFullList<Bill>({
+  const bills = await pb.collection(COLLECTIONS.BILLS).getFullList<Bill>({
     filter: filterQuery,
     sort: '-created',
     ...options,
@@ -208,7 +209,7 @@ export async function listBills(
 
     let items: BillItem[] | undefined;
     if (bill.split_mode === 'itemized') {
-      items = await pb.collection('bill_items').getFullList<BillItem>({
+      items = await pb.collection(COLLECTIONS.BILL_ITEMS).getFullList<BillItem>({
         filter: `bill="${bill.id}"`,
         sort: 'created',
       });
@@ -231,14 +232,14 @@ export async function updateBill(
   billId: string,
   data: UpdateBillData
 ): Promise<Bill> {
-  return await pb.collection('bills').update<Bill>(billId, data);
+  return await pb.collection(COLLECTIONS.BILLS).update<Bill>(billId, data);
 }
 
 /**
  * Delete a bill
  */
 export async function deleteBill(billId: string): Promise<void> {
-  await pb.collection('bills').delete(billId);
+  await pb.collection(COLLECTIONS.BILLS).delete(billId);
 }
 
 /**
@@ -248,7 +249,7 @@ export async function markParticipantPaid(
   participantId: string,
   paymentMethod?: string
 ): Promise<BillParticipant> {
-  return await pb.collection('bill_participants').update<BillParticipant>(participantId, {
+  return await pb.collection(COLLECTIONS.BILL_PARTICIPANTS).update<BillParticipant>(participantId, {
     paid_status: 'paid',
     paid_date: new Date().toISOString(),
     payment_method: paymentMethod || null,
@@ -261,7 +262,7 @@ export async function markParticipantPaid(
 export async function markParticipantPending(
   participantId: string
 ): Promise<BillParticipant> {
-  return await pb.collection('bill_participants').update<BillParticipant>(participantId, {
+  return await pb.collection(COLLECTIONS.BILL_PARTICIPANTS).update<BillParticipant>(participantId, {
     paid_status: 'pending',
     paid_date: null,
     payment_method: null,
@@ -280,7 +281,7 @@ export async function sendPaymentReminder(
     throw new Error('User not authenticated');
   }
 
-  return await pb.collection('bill_reminders').create<BillReminder>({
+  return await pb.collection(COLLECTIONS.BILL_REMINDERS).create<BillReminder>({
     bill: billId,
     participant: participantId,
     sent_by: currentUser.id,
@@ -291,7 +292,7 @@ export async function sendPaymentReminder(
  * Get reminders for a bill
  */
 export async function getBillReminders(billId: string): Promise<BillReminder[]> {
-  return await pb.collection('bill_reminders').getFullList<BillReminder>({
+  return await pb.collection(COLLECTIONS.BILL_REMINDERS).getFullList<BillReminder>({
     filter: `bill="${billId}"`,
     sort: '-sent_at',
   });
@@ -304,7 +305,7 @@ export async function getLastReminderForParticipant(
   billId: string,
   participantId: string
 ): Promise<BillReminder | null> {
-  const reminders = await pb.collection('bill_reminders').getList<BillReminder>(1, 1, {
+  const reminders = await pb.collection(COLLECTIONS.BILL_REMINDERS).getList<BillReminder>(1, 1, {
     filter: `bill="${billId}" && participant="${participantId}"`,
     sort: '-sent_at',
   });

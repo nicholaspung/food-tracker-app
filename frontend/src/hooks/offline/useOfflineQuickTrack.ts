@@ -10,6 +10,7 @@
  * - Photo: Stored as File object, uploaded when synced
  */
 
+import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
@@ -189,7 +190,7 @@ async function executeQuickTrack(
   });
 
   // 1. Create food item (no visit)
-  const foodItem = await pb.collection('food_items').create({
+  const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create({
     name: data.name,
     rating: data.rating,
     notes: data.notes || undefined,

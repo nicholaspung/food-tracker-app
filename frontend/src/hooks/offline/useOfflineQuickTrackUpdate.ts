@@ -10,6 +10,7 @@
  * - Photo: Stored as File object, uploaded when synced
  */
 
+import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
@@ -146,7 +147,7 @@ async function executeUpdate(
   console.log('[executeUpdate] Updating food item:', data.id);
 
   // 1. Update food item
-  const foodItem = await pb.collection('food_items').update(data.id, {
+  const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).update(data.id, {
     name: data.name,
     rating: data.rating,
     notes: data.notes || undefined,
@@ -166,7 +167,7 @@ async function executeUpdate(
   // Remove existing photo if requested
   if (data.existingPhotoId && data.photo === null) {
     console.log('[executeUpdate] Removing existing photo:', data.existingPhotoId);
-    await pb.collection('visit_photos').delete(data.existingPhotoId);
+    await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(data.existingPhotoId);
   }
 
   // Upload new photo if provided
@@ -176,7 +177,7 @@ async function executeUpdate(
     // Remove old photo first if exists
     if (data.existingPhotoId) {
       try {
-        await pb.collection('visit_photos').delete(data.existingPhotoId);
+        await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(data.existingPhotoId);
       } catch (error) {
         console.log('[executeUpdate] Old photo already removed or not found');
       }
