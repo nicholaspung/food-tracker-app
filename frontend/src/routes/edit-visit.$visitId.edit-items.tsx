@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useNavigate, useParams } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import { editVisitDraftService } from '@/services/editVisitDraftService';
-import EditItemsPage from '@/components/EditItemsPage';
+import EditItemsPage from '@/components/visits/edit/EditItemsPage';
 
 export const Route = createFileRoute('/edit-visit/$visitId/edit-items')({
   beforeLoad: () => {

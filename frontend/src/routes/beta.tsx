@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import BetaPage from '@/components/BetaPage';
+import BetaPage from '@/components/settings/BetaPage';
 
 export const Route = createFileRoute('/beta')({
   beforeLoad: () => {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ProcessedPhoto, PhotoToProcess } from "@/types/photos";
 import { MenuItem, Restaurant } from "@/lib/pocketbase";
-import { usePhotoManager } from "@/hooks/usePhotoManager";
+import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
 
 /**
  * Hook for managing Restaurant Visit photo processing form state

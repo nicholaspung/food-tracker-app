@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import ResetPasswordPage from '@/components/ResetPasswordPage';
+import ResetPasswordPage from '@/components/auth/ResetPasswordPage';
 import { z } from 'zod';
 
 // Define the search params schema

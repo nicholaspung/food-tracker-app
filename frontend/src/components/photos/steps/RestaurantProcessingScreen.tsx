@@ -24,7 +24,7 @@ import { Restaurant, MenuItem, pb } from "@/lib/pocketbase";
 import { RestaurantSelector } from "@/components/photos/restaurant/RestaurantSelector";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { RatingSelector } from "@/components/ui/RatingSelector";
-import MenuItemPhotoInput from "@/components/MenuItemPhotoInput";
+import MenuItemPhotoInput from "@/components/visits/shared/MenuItemPhotoInput";
 import { format } from "date-fns";
 
 interface RestaurantProcessingScreenProps {

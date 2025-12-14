@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate, useSearch } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import SignUpPage from '@/components/SignUpPage';
+import SignUpPage from '@/components/auth/SignUpPage';
 
 type SignUpSearch = {
   code?: string;

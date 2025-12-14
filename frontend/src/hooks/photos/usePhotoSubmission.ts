@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ProcessedPhoto, QuickTrackPhotoData } from "@/types/photos";
-import { useOfflineVisitCreation } from "@/hooks/useOfflineVisitCreation";
-import { useOfflineQuickTrack } from "@/hooks/useOfflineQuickTrack";
+import { useOfflineVisitCreation } from "@/hooks/offline/useOfflineVisitCreation";
+import { useOfflineQuickTrack } from "@/hooks/offline/useOfflineQuickTrack";
 import { processPhotosDraftService } from "@/services/processPhotosDraftServiceDB";
-import { useErrorHandler } from "@/hooks/useErrorHandler";
+import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { format } from "date-fns";
 
 /**

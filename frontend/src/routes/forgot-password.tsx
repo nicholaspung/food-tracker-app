@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import ForgotPasswordPage from '@/components/ForgotPasswordPage';
+import ForgotPasswordPage from '@/components/auth/ForgotPasswordPage';
 
 export const Route = createFileRoute('/forgot-password')({
   beforeLoad: () => {

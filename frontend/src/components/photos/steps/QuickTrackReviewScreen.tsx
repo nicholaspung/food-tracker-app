@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Check, Calendar, MapPin, Loader2 } from "lucide-react";
 import { QuickTrackPhotoData } from "@/types/photos";
 import { RATING_COLORS, RATING_LABELS } from "@/lib/ratingConstants";
-import { ITEM_CATEGORIES } from "@/components/QuickTrackPage";
+import { ITEM_CATEGORIES } from "@/constants/quickTrack";
 import { format } from "date-fns";
 
 interface QuickTrackReviewScreenProps {

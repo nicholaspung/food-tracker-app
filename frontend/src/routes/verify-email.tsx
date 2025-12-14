@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import VerifyEmailPage from '@/components/VerifyEmailPage';
+import VerifyEmailPage from '@/components/auth/VerifyEmailPage';
 import { z } from 'zod';
 
 // Define the search params schema

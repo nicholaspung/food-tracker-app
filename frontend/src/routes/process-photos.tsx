@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
-import ProcessPhotosPage from '@/components/ProcessPhotosPage';
+import ProcessPhotosPage from '@/components/photos/ProcessPhotosPage';
 
 export const Route = createFileRoute('/process-photos')({
   beforeLoad: () => {

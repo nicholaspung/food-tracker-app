@@ -2,7 +2,7 @@ import { createFileRoute, redirect, Outlet, useNavigate, useLocation } from '@ta
 import { pb } from '@/lib/pocketbase';
 import { visitDraftService } from '@/services/visitDraftService';
 import { useEffect, useRef } from 'react';
-import AddVisitOptionSelector from '@/components/AddVisitOptionSelector';
+import AddVisitOptionSelector from '@/components/visits/add/AddVisitOptionSelector';
 
 export const Route = createFileRoute('/add-visit')({
   beforeLoad: () => {

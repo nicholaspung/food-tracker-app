@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
-import HomePage from '@/components/HomePage';
-import OnboardingDialog from '@/components/OnboardingDialog';
+import HomePage from '@/components/home/HomePage';
+import OnboardingDialog from '@/components/auth/OnboardingDialog';
 import {
   AlertDialog,
   AlertDialogAction,

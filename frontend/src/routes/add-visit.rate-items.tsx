@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import { visitDraftService } from '@/services/visitDraftService';
-import RateItemsPage from '@/components/RateItemsPage';
+import RateItemsPage from '@/components/visits/add/RateItemsPage';
 import { useEffect } from 'react';
 
 export const Route = createFileRoute('/add-visit/rate-items')({

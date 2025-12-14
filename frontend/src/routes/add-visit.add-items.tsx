@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import { visitDraftService } from '@/services/visitDraftService';
-import AddItemsToVisit from '@/components/AddItemsToVisit';
+import AddItemsToVisit from '@/components/visits/add/AddItemsToVisit';
 import { useEffect } from 'react';
 
 export const Route = createFileRoute('/add-visit/add-items')({
