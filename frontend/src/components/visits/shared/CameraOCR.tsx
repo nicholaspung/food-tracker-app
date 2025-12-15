@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Camera, Copy, RotateCcw, Loader2, Check, WifiOff } from 'lucide-react';
@@ -110,7 +111,7 @@ export default function CameraOCR() {
         setCurrentStep('result');
       }
     } catch (err: any) {
-      console.error('OCR error:', err);
+      logger.error('OCR error:', err);
       handleError(err, { customMessage: ERROR_MESSAGES.OCR.EXTRACTION_FAILED(err.message || 'Unknown error') });
       setTextBlocks([]);
       setCurrentStep('result');
@@ -167,7 +168,7 @@ export default function CameraOCR() {
       setCopiedIndex(index);
       setTimeout(() => setCopiedIndex(null), 2000);
     } catch (err) {
-      console.error('Failed to copy text:', err);
+      logger.error('Failed to copy text:', err);
       showValidation(ERROR_MESSAGES.OCR.COPY_FAILED);
     }
   };

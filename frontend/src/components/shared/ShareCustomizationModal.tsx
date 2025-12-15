@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,7 @@ export default function ShareCustomizationModal({
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
       } catch (error) {
-        console.error('Error generating preview:', error);
+        logger.error('Error generating preview:', error);
       }
     };
 
@@ -89,7 +90,7 @@ export default function ShareCustomizationModal({
       await onShare(shareBlob);
       onClose();
     } catch (error) {
-      console.error('Error sharing:', error);
+      logger.error('Error sharing:', error);
       handleError(error as Error, { customMessage: 'Failed to share photo. Please try again.' });
     } finally {
       setIsGenerating(false);

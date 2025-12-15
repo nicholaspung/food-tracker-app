@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, memo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,7 +70,7 @@ const DishPhotoCard = memo(function DishPhotoCard({ photoRecord }: DishPhotoCard
       setPhotoFile(file);
       setIsModalOpen(true);
     } catch (error) {
-      console.error('Error loading photo:', error);
+      logger.error('Error loading photo:', error);
       handleError(error as Error, { customMessage: 'Failed to load photo. Please try again.' });
     }
   }, [photoUrl, foodItem, visit, restaurant, checkOffline, showValidation, handleError]);
@@ -108,7 +109,7 @@ const DishPhotoCard = memo(function DishPhotoCard({ photoRecord }: DishPhotoCard
 
       showSuccess('Photo downloaded! Share it on your favorite social media.');
     } catch (error) {
-      console.error('Error sharing photo:', error);
+      logger.error('Error sharing photo:', error);
       handleError(error as Error, { customMessage: 'Failed to share photo. Please try again.' });
     }
   };
@@ -131,7 +132,7 @@ const DishPhotoCard = memo(function DishPhotoCard({ photoRecord }: DishPhotoCard
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error downloading photo:', error);
+      logger.error('Error downloading photo:', error);
       handleError(error as Error, { customMessage: 'Failed to download photo' });
     }
   }, [isOnline, photoUrl, photoRecord.id, showValidation, handleError]);

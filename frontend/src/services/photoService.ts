@@ -3,6 +3,7 @@
  * Optimized for social sharing with balanced quality/size
  */
 
+import { logger } from '@/lib/logger';
 import { RATING_LABELS, RATING_COLORS_HEX as RATING_COLORS } from "@/lib/ratingConstants";
 
 /**
@@ -1058,7 +1059,7 @@ export async function generateVisitCompositeImage(
 
       // Warn if there are more photos than we can display
       if (loadedImages.length > 6) {
-        console.warn(
+        logger.warn(
           `Only the first 6 photos will be included in the composite image. ${loadedImages.length - 6} photos were omitted.`
         );
       }

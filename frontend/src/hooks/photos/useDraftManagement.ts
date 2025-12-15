@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState } from "react";
 import { processPhotosDraftService } from "@/services/processPhotosDraftServiceDB";
 import { PhotoToProcess, ProcessedPhoto, QuickTrackPhotoData } from "@/types/photos";
@@ -29,10 +30,10 @@ export function useDraftManagement() {
   const loadDraft = async (): Promise<PhotoDraft | null> => {
     try {
       setIsRestoringData(true);
-      console.log("[useDraftManagement] Attempting to load draft...");
+      logger.log("[useDraftManagement] Attempting to load draft...");
 
       const draft = await processPhotosDraftService.getDraft();
-      console.log("[useDraftManagement] Draft loaded:", {
+      logger.log("[useDraftManagement] Draft loaded:", {
         photosCount: draft.photos.length,
         processedCount: draft.processedPhotos.length,
         hasFormState: !!draft.currentFormState,
@@ -42,7 +43,7 @@ export function useDraftManagement() {
         return null;
       }
 
-      console.log(
+      logger.log(
         "[useDraftManagement] Restoring draft with",
         draft.photos.length,
         "photos"
@@ -120,7 +121,7 @@ export function useDraftManagement() {
         currentFormState: draft.currentFormState,
       };
     } catch (error) {
-      console.error("Failed to load draft:", error);
+      logger.error("Failed to load draft:", error);
       return null;
     } finally {
       setIsRestoringData(false);
@@ -131,18 +132,18 @@ export function useDraftManagement() {
     try {
       // The draft service expects the raw format, so we'll call it directly
       // This is a simplified version - in practice you may need to convert back to the format expected
-      console.log("[useDraftManagement] Saving draft...");
+      logger.log("[useDraftManagement] Saving draft...");
     } catch (error) {
-      console.error("Failed to save draft:", error);
+      logger.error("Failed to save draft:", error);
     }
   };
 
   const clearDraft = async () => {
     try {
       await processPhotosDraftService.clearDraft();
-      console.log("[useDraftManagement] Draft cleared");
+      logger.log("[useDraftManagement] Draft cleared");
     } catch (error) {
-      console.error("Failed to clear draft:", error);
+      logger.error("Failed to clear draft:", error);
     }
   };
 

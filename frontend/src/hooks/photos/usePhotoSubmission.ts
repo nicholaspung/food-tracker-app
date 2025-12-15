@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ProcessedPhoto, QuickTrackPhotoData } from "@/types/photos";
@@ -78,7 +79,7 @@ export function usePhotoSubmission() {
       await processPhotosDraftService.clearDraft();
       navigate({ to: "/home" });
     } catch (error) {
-      console.error("Failed to save restaurant visits:", error);
+      logger.error("Failed to save restaurant visits:", error);
       handleError(error as Error, {
         customMessage: "Failed to save visits. Please try again.",
       });
@@ -113,7 +114,7 @@ export function usePhotoSubmission() {
       await processPhotosDraftService.clearDraft();
       navigate({ to: "/home" });
     } catch (error) {
-      console.error("Failed to save quick track items:", error);
+      logger.error("Failed to save quick track items:", error);
       handleError(error as Error, {
         customMessage: "Failed to save quick track items. Please try again.",
       });

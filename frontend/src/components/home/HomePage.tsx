@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -213,7 +214,7 @@ export default function HomePage({
           recordId: visitId,
         });
 
-        console.log("Queued visit deletion:", visitId);
+        logger.log("Queued visit deletion:", visitId);
       }
 
       // Invalidate queries (will refetch or show optimistic update)
@@ -225,7 +226,7 @@ export default function HomePage({
 
       setVisitToDelete(null);
     } catch (error) {
-      console.error("Failed to delete visit:", error);
+      logger.error("Failed to delete visit:", error);
       handleError(error as Error, { customMessage: "Failed to delete visit. Please try again." });
     } finally {
       setIsDeleting(false);
@@ -246,7 +247,7 @@ export default function HomePage({
 
       setQuickTrackItemToDelete(null);
     } catch (error) {
-      console.error("Failed to delete quick track item:", error);
+      logger.error("Failed to delete quick track item:", error);
 
       // Show helpful message if offline
       if (!isOnline && isOfflineError(error)) {

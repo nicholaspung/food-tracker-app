@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -111,7 +112,7 @@ export default function QuickTrackPage() {
         latitude = position.coords.latitude;
         longitude = position.coords.longitude;
       } catch (error) {
-        console.log("Could not get GPS location:", error);
+        logger.log("Could not get GPS location:", error);
         // Continue without GPS coordinates
       }
     }
@@ -134,7 +135,7 @@ export default function QuickTrackPage() {
       localStorage.setItem("hasRatedBefore", "true");
       navigate({ to: "/home" });
     } catch (error: any) {
-      console.error("Failed to save quick track item:", error);
+      logger.error("Failed to save quick track item:", error);
 
       // Show helpful message if offline
       if (!isOnline && isOfflineError(error)) {

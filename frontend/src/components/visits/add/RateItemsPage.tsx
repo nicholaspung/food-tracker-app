@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useEffect } from "react";
 import { pb } from "@/lib/pocketbase";
 import { localDateStringToUTC } from "@/lib/dateUtils";
@@ -72,13 +73,13 @@ export default function RateItemsPage({
 
   const handleSaveVisit = async () => {
     if (!draft.restaurant) {
-      console.error("No restaurant selected");
+      logger.error("No restaurant selected");
       return;
     }
 
     const user = pb.authStore.record;
     if (!user) {
-      console.error("User not authenticated");
+      logger.error("User not authenticated");
       return;
     }
 
@@ -109,7 +110,7 @@ export default function RateItemsPage({
       resetUploadState();
       onSubmit();
     } catch (error: any) {
-      console.error("Failed to save visit:", error);
+      logger.error("Failed to save visit:", error);
       resetUploadState();
 
       // Show helpful message if offline

@@ -10,6 +10,7 @@
  * - Photo: Stored as File object, uploaded when synced
  */
 
+import { logger } from '@/lib/logger';
 import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type FoodItem } from '@/lib/pocketbase';
@@ -66,7 +67,7 @@ export function useOfflineQuickTrack() {
     // CRITICAL: Allow mutation to run even when browser is offline
     networkMode: 'always',
     mutationFn: async (data) => {
-      console.log('[useOfflineQuickTrack] Mutation function called with data:', {
+      logger.log('[useOfflineQuickTrack] Mutation function called with data:', {
         name: data.name,
         rating: data.rating,
         hasPhoto: !!data.photo,
@@ -75,19 +76,19 @@ export function useOfflineQuickTrack() {
 
       const user = pb.authStore.record;
       if (!user) {
-        console.error('[useOfflineQuickTrack] User not authenticated!');
+        logger.error('[useOfflineQuickTrack] User not authenticated!');
         throw new Error('User not authenticated');
       }
 
-      console.log('[useOfflineQuickTrack] User authenticated:', user.id);
+      logger.log('[useOfflineQuickTrack] User authenticated:', user.id);
 
       if (isOnline) {
         // ONLINE: Execute immediately
-        console.log('[useOfflineQuickTrack] Online - executing immediately');
+        logger.log('[useOfflineQuickTrack] Online - executing immediately');
         return await executeQuickTrack(data, user.id, uploadPhotos);
       } else {
         // OFFLINE: Queue the operation
-        console.log('[useOfflineQuickTrack] Offline - queueing for sync');
+        logger.log('[useOfflineQuickTrack] Offline - queueing for sync');
         await queueQuickTrack(data, user.id);
 
         // Create unique timestamp for consistent IDs
@@ -177,7 +178,7 @@ async function executeQuickTrack(
   userId: string,
   uploadPhotos: (items: PhotoUploadItem[]) => Promise<void>
 ): Promise<QuickTrackResult> {
-  console.log('[executeQuickTrack] Creating food item with data:', {
+  logger.log('[executeQuickTrack] Creating food item with data:', {
     name: data.name,
     rating: data.rating,
     notes: data.notes,
@@ -205,12 +206,12 @@ async function executeQuickTrack(
     // visit field is intentionally omitted (Quick Track mode)
   });
 
-  console.log('[executeQuickTrack] Food item created:', foodItem.id);
+  logger.log('[executeQuickTrack] Food item created:', foodItem.id);
 
   // 2. Upload photo if provided
   let photoResult: QuickTrackPhotoResult | undefined;
   if (data.photo) {
-    console.log('[executeQuickTrack] Uploading photo...');
+    logger.log('[executeQuickTrack] Uploading photo...');
     const photoUpload: PhotoUploadItem = {
       photo: data.photo,
       foodItemId: foodItem.id,
@@ -220,10 +221,10 @@ async function executeQuickTrack(
 
     await uploadPhotos([photoUpload]);
     // photoResult remains undefined - data will be refetched via query invalidation
-    console.log('[executeQuickTrack] Photo uploaded successfully');
+    logger.log('[executeQuickTrack] Photo uploaded successfully');
   }
 
-  console.log('[executeQuickTrack] Returning result');
+  logger.log('[executeQuickTrack] Returning result');
   return { foodItem: foodItem as unknown as FoodItem, photoResult };
 }
 
@@ -253,5 +254,5 @@ async function queueQuickTrack(data: QuickTrackData, userId: string): Promise<vo
     },
   });
 
-  console.log('Queued Quick Track item:', data.name, 'with date:', data.itemDate, 'photo:', !!data.photo);
+  logger.log('Queued Quick Track item:', data.name, 'with date:', data.itemDate, 'photo:', !!data.photo);
 }

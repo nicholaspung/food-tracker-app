@@ -6,6 +6,7 @@
  * When online, mutations execute immediately.
  */
 
+import { logger } from '@/lib/logger';
 import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncQueue, type OperationType } from '@/lib/syncQueue';
@@ -82,7 +83,7 @@ export function useOfflineMutation<TData = unknown, TVariables = unknown>({
             (error && typeof error === 'object' && 'status' in error && (error.status === 0 || !error.status));
 
           if (isNetworkError) {
-            console.log('Network error detected, queueing operation:', type, collection);
+            logger.log('Network error detected, queueing operation:', type, collection);
             await queueOperation(variables);
             throw new Error('Operation queued for later sync (offline)');
           }
@@ -118,7 +119,7 @@ export function useOfflineMutation<TData = unknown, TVariables = unknown>({
       }
     },
     onError: (error, variables) => {
-      console.error('Mutation error:', error);
+      logger.error('Mutation error:', error);
       if (onError) {
         onError(error, variables);
       }
@@ -139,7 +140,7 @@ export function useOfflineMutation<TData = unknown, TVariables = unknown>({
       localId: `temp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     });
 
-    console.log(`Queued ${type} operation for ${collection}`, { recordId, data: variables });
+    logger.log(`Queued ${type} operation for ${collection}`, { recordId, data: variables });
   }
 }
 

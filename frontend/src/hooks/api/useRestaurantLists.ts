@@ -1,6 +1,7 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
 import { COLLECTIONS } from '@/constants/collections';
+import { restaurantListKeys } from '@/constants/queryKeys';
 
 export interface RestaurantList {
   id: string;
@@ -41,7 +42,7 @@ export function useRestaurantLists(options?: {
   const userId = pb.authStore.record?.id;
 
   return useQuery<RestaurantList[], Error>({
-    queryKey: ['restaurant_lists', userId, options?.visibility],
+    queryKey: userId ? restaurantListKeys.all(userId, options?.visibility) : ['restaurant_lists'],
     queryFn: async () => {
       if (!userId) return [];
 
@@ -70,7 +71,7 @@ export function useRestaurantList(
   enabled?: boolean
 ): UseQueryResult<RestaurantList | null, Error> {
   return useQuery<RestaurantList | null, Error>({
-    queryKey: ['restaurant_list', listId],
+    queryKey: listId ? restaurantListKeys.detail(listId) : ['restaurant_lists'],
     queryFn: async () => {
       if (!listId) return null;
       return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).getOne<RestaurantList>(listId);
@@ -90,7 +91,7 @@ export function useListItems(
   options?: { enabled?: boolean; expand?: string }
 ): UseQueryResult<ListItem[], Error> {
   return useQuery<ListItem[], Error>({
-    queryKey: ['list_items', listId],
+    queryKey: listId ? restaurantListKeys.items(listId) : ['list_items'],
     queryFn: async () => {
       if (!listId) return [];
       return await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList<ListItem>({

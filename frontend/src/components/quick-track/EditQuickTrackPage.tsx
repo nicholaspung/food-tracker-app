@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -158,7 +159,7 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
         latitude = position.coords.latitude;
         longitude = position.coords.longitude;
       } catch (error) {
-        console.log("Could not get GPS location:", error);
+        logger.log("Could not get GPS location:", error);
       }
     }
 
@@ -181,7 +182,7 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
       // Success
       navigate({ to: "/home" });
     } catch (error: any) {
-      console.error("Failed to update quick track item:", error);
+      logger.error("Failed to update quick track item:", error);
 
       // Show helpful message if offline
       if (!isOnline && error.message?.includes("queued")) {

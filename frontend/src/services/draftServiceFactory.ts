@@ -65,13 +65,13 @@ export function createDraftService<T extends Record<string, any>>(
 
         // Validate if validator provided
         if (validate && !validate(draft)) {
-          console.warn(`Draft validation failed for key "${key}", returning default`);
+          logger.warn(`Draft validation failed for key "${key}", returning default`);
           return defaultValue;
         }
 
         return draft;
       } catch (error) {
-        console.error(`Failed to load draft from "${key}":`, error);
+        logger.error(`Failed to load draft from "${key}":`, error);
         return defaultValue;
       }
     },
@@ -80,13 +80,13 @@ export function createDraftService<T extends Record<string, any>>(
       try {
         // Validate before saving if validator provided
         if (validate && !validate(draft)) {
-          console.error(`Cannot save invalid draft for key "${key}"`);
+          logger.error(`Cannot save invalid draft for key "${key}"`);
           return;
         }
 
         localStorage.setItem(key, JSON.stringify(draft));
       } catch (error) {
-        console.error(`Failed to save draft to "${key}":`, error);
+        logger.error(`Failed to save draft to "${key}":`, error);
       }
     },
 
@@ -99,7 +99,7 @@ export function createDraftService<T extends Record<string, any>>(
       try {
         localStorage.removeItem(key);
       } catch (error) {
-        console.error(`Failed to clear draft from "${key}":`, error);
+        logger.error(`Failed to clear draft from "${key}":`, error);
       }
     },
 
@@ -190,19 +190,19 @@ export function createIdBasedDraftService<T>(
 
         // Verify ID matches
         if (getId(draft) !== id) {
-          console.warn(`Draft ID mismatch for key "${key}", expected ${id}, got ${getId(draft)}`);
+          logger.warn(`Draft ID mismatch for key "${key}", expected ${id}, got ${getId(draft)}`);
           return null;
         }
 
         // Validate if validator provided
         if (validate && !validate(draft)) {
-          console.warn(`Draft validation failed for key "${key}_${id}"`);
+          logger.warn(`Draft validation failed for key "${key}_${id}"`);
           return null;
         }
 
         return draft;
       } catch (error) {
-        console.error(`Failed to load draft for "${key}_${id}":`, error);
+        logger.error(`Failed to load draft for "${key}_${id}":`, error);
         return null;
       }
     },
@@ -211,19 +211,19 @@ export function createIdBasedDraftService<T>(
       try {
         // Verify ID matches
         if (getId(draft) !== id) {
-          console.error(`Cannot save draft: ID mismatch (expected ${id}, got ${getId(draft)})`);
+          logger.error(`Cannot save draft: ID mismatch (expected ${id}, got ${getId(draft)})`);
           return;
         }
 
         // Validate if validator provided
         if (validate && !validate(draft)) {
-          console.error(`Cannot save invalid draft for "${key}_${id}"`);
+          logger.error(`Cannot save invalid draft for "${key}_${id}"`);
           return;
         }
 
         localStorage.setItem(getStorageKey(id), JSON.stringify(draft));
       } catch (error) {
-        console.error(`Failed to save draft for "${key}_${id}":`, error);
+        logger.error(`Failed to save draft for "${key}_${id}":`, error);
       }
     },
 
@@ -231,7 +231,7 @@ export function createIdBasedDraftService<T>(
       try {
         localStorage.removeItem(getStorageKey(id));
       } catch (error) {
-        console.error(`Failed to clear draft for "${key}_${id}":`, error);
+        logger.error(`Failed to clear draft for "${key}_${id}":`, error);
       }
     },
 

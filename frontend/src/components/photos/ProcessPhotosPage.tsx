@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -319,7 +320,7 @@ export default function ProcessPhotosPage() {
       restaurantProcessing.setSelectedMenuItem(newMenuItem as unknown as MenuItem);
       restaurantProcessing.setMenuItemSelectionMode("search");
     } catch (error) {
-      console.error("Failed to create menu item:", error);
+      logger.error("Failed to create menu item:", error);
       handleError(error as Error, {
         customMessage: "Failed to create menu item. Please try again.",
       });
@@ -344,7 +345,7 @@ export default function ProcessPhotosPage() {
       restaurantProcessing.setEditingMenuItemId(null);
       restaurantProcessing.setEditingMenuItemName("");
     } catch (error) {
-      console.error("Failed to edit menu item:", error);
+      logger.error("Failed to edit menu item:", error);
       handleError(error as Error, {
         customMessage: "Failed to edit menu item. Please try again.",
       });

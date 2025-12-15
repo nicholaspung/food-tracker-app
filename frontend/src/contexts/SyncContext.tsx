@@ -8,6 +8,7 @@
  * - Manual sync trigger
  */
 
+import { logger } from '@/lib/logger';
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -55,7 +56,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       const stats = await syncQueue.getStats();
       setQueueStats(stats);
     } catch (error) {
-      console.error('Failed to get queue stats:', error);
+      logger.error('Failed to get queue stats:', error);
     }
   }, []);
 
@@ -112,7 +113,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       } else {
         // Mark as permanently failed but keep in queue for manual retry
         await syncQueue.update(operation);
-        console.error(`Operation ${operation.id} failed after 3 retries:`, error);
+        logger.error(`Operation ${operation.id} failed after 3 retries:`, error);
       }
 
       throw error;
@@ -125,8 +126,8 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const executeComplexVisitCreation = async (data: VisitCreationData): Promise<void> => {
     const { visit: visitData, foodItems, photos } = data;
 
-    console.log('[SyncContext] Attempting to create visit with data:', visitData);
-    console.log('[SyncContext] Visit fields:', {
+    logger.log('[SyncContext] Attempting to create visit with data:', visitData);
+    logger.log('[SyncContext] Visit fields:', {
       restaurant: visitData.restaurant,
       user: visitData.user,
       visitDate: visitData.visitDate,
@@ -136,7 +137,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
 
     // 1. Create visit
     const visit = await pb.collection(COLLECTIONS.VISITS).create(visitData);
-    console.log('Created visit:', visit.id);
+    logger.log('Created visit:', visit.id);
 
     // 2. Create food items sequentially
     const createdFoodItems: FoodItem[] = [];
@@ -146,7 +147,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
         visit: visit.id,
       });
       createdFoodItems.push(foodItem);
-      console.log('Created food item:', foodItem.id);
+      logger.log('Created food item:', foodItem.id);
     }
 
     // 3. Upload photos if any
@@ -173,16 +174,16 @@ export function SyncProvider({ children }: SyncProviderProps) {
             }
 
             await pb.collection(COLLECTIONS.VISIT_PHOTOS).create(formData);
-            console.log('Uploaded photo for food item:', foodItem.id);
+            logger.log('Uploaded photo for food item:', foodItem.id);
           } catch (error) {
-            console.error('Failed to upload photo, continuing...', error);
+            logger.error('Failed to upload photo, continuing...', error);
             // Don't fail the entire operation if photo upload fails
           }
         }
       }
     }
 
-    console.log('Complex visit creation complete');
+    logger.log('Complex visit creation complete');
   };
 
   /**
@@ -196,12 +197,12 @@ export function SyncProvider({ children }: SyncProviderProps) {
       await Promise.all(
         foodItemIds.map((id: string) => pb.collection(COLLECTIONS.FOOD_ITEMS).delete(id))
       );
-      console.log('Deleted', foodItemIds.length, 'food items');
+      logger.log('Deleted', foodItemIds.length, 'food items');
     }
 
     // 2. Delete visit
     await pb.collection(COLLECTIONS.VISITS).delete(visitId);
-    console.log('Deleted visit:', visitId);
+    logger.log('Deleted visit:', visitId);
   };
 
   /**
@@ -212,11 +213,11 @@ export function SyncProvider({ children }: SyncProviderProps) {
 
     // 1. Create restaurant
     const restaurant = await pb.collection(COLLECTIONS.RESTAURANTS).create(restaurantData);
-    console.log('Created restaurant:', restaurant.id);
+    logger.log('Created restaurant:', restaurant.id);
 
     // 2. Update any queued operations that reference the temp restaurant ID
     if (operation.localId) {
-      console.log(`Updating queued operations: replacing temp ID ${operation.localId} with real ID ${restaurant.id}`);
+      logger.log(`Updating queued operations: replacing temp ID ${operation.localId} with real ID ${restaurant.id}`);
       await syncQueue.replaceRestaurantId(operation.localId, restaurant.id);
     }
 
@@ -228,15 +229,15 @@ export function SyncProvider({ children }: SyncProviderProps) {
             ...item,
             restaurant: restaurant.id,
           });
-          console.log('Created menu item:', menuItem.id, menuItem.name);
+          logger.log('Created menu item:', menuItem.id, menuItem.name);
         } catch (error) {
-          console.error('Failed to create menu item, continuing...', error);
+          logger.error('Failed to create menu item, continuing...', error);
           // Don't fail the entire operation if one menu item fails
         }
       }
     }
 
-    console.log('Complex restaurant creation complete');
+    logger.log('Complex restaurant creation complete');
   };
 
   /**
@@ -245,7 +246,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const syncOperations = useCallback(async (): Promise<void> => {
     // Prevent concurrent syncs
     if (syncInProgressRef.current) {
-      console.log('Sync already in progress, skipping...');
+      logger.log('Sync already in progress, skipping...');
       return;
     }
 
@@ -275,7 +276,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
         }
 
         if (successCount === 0) {
-          console.log(`Syncing ${operationsToSync.length} operations...`);
+          logger.log(`Syncing ${operationsToSync.length} operations...`);
         }
 
         // Execute ONE operation at a time and refetch
@@ -287,12 +288,12 @@ export function SyncProvider({ children }: SyncProviderProps) {
           successCount++;
         } catch (error) {
           failCount++;
-          console.error('Failed to sync operation:', operation, error);
+          logger.error('Failed to sync operation:', operation, error);
           // Continue with other operations even if one fails
         }
       }
 
-      console.log(`Sync complete: ${successCount} succeeded, ${failCount} failed`);
+      logger.log(`Sync complete: ${successCount} succeeded, ${failCount} failed`);
 
       // Invalidate all queries to refetch fresh data
       if (successCount > 0) {
@@ -305,7 +306,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
         setSyncError(`${failCount} operation(s) failed to sync`);
       }
     } catch (error: unknown) {
-      console.error('Sync failed:', error);
+      logger.error('Sync failed:', error);
       setSyncError(error instanceof Error ? error.message : 'Sync failed');
     } finally {
       setIsSyncing(false);
@@ -322,7 +323,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       await syncQueue.clear();
       await updateStats();
     } catch (error) {
-      console.error('Failed to clear queue:', error);
+      logger.error('Failed to clear queue:', error);
     }
   }, [updateStats]);
 
@@ -344,7 +345,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
         await syncOperations();
       }
     } catch (error) {
-      console.error('Failed to retry operations:', error);
+      logger.error('Failed to retry operations:', error);
     }
   }, [isOnline, syncOperations, updateStats]);
 
@@ -353,7 +354,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
    */
   useEffect(() => {
     const handleOnline = (): void => {
-      console.log('Connection restored, triggering sync...');
+      logger.log('Connection restored, triggering sync...');
       setIsOnline(true);
       // Trigger sync after a short delay to ensure connection is stable
       setTimeout(() => {
@@ -362,7 +363,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     };
 
     const handleOffline = (): void => {
-      console.log('Connection lost');
+      logger.log('Connection lost');
       setIsOnline(false);
     };
 
@@ -385,7 +386,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       // Auto-sync on mount if online and there are pending operations
       syncQueue.getStats().then(stats => {
         if (stats.pending > 0 && navigator.onLine) {
-          console.log('Found pending operations on mount, syncing...');
+          logger.log('Found pending operations on mount, syncing...');
           syncOperations();
         }
       });
