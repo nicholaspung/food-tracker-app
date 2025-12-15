@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useCallback } from 'react';
 import { useSync } from '@/contexts/SyncContext';
 import { isPocketBaseError } from '@/lib/errors';
@@ -154,9 +155,9 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
 
     // Console logging for debugging
     if (source) {
-      console.error(`[${source}] Error:`, error);
+      logger.error(`[${source}] Error:`, error);
     } else {
-      console.error('Error:', error);
+      logger.error('Error:', error);
     }
 
     // Auto-clear if specified

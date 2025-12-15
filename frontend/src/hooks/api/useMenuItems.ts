@@ -1,6 +1,7 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb, MenuItem } from "@/lib/pocketbase";
 import { COLLECTIONS } from '@/constants/collections';
+import { menuItemKeys } from '@/constants/queryKeys';
 
 // Re-export MenuItem type for convenience
 export type { MenuItem };
@@ -16,7 +17,7 @@ export function useMenuItems(
   options?: { enabled?: boolean; sort?: string }
 ): UseQueryResult<MenuItem[], Error> {
   return useQuery<MenuItem[], Error>({
-    queryKey: ['menu_items', restaurantId],
+    queryKey: restaurantId ? menuItemKeys.byRestaurant(restaurantId) : menuItemKeys.all,
     queryFn: async () => {
       if (!restaurantId) return [];
       return await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
@@ -39,7 +40,7 @@ export function useMenuItem(
   enabled?: boolean
 ): UseQueryResult<MenuItem | null, Error> {
   return useQuery<MenuItem | null, Error>({
-    queryKey: ['menu_item', menuItemId],
+    queryKey: menuItemId ? menuItemKeys.detail(menuItemId) : menuItemKeys.all,
     queryFn: async () => {
       if (!menuItemId) return null;
       return await pb.collection(COLLECTIONS.MENU_ITEMS).getOne<MenuItem>(menuItemId);
@@ -55,7 +56,7 @@ export function useMenuItem(
  */
 export function useAllMenuItems(filter?: string): UseQueryResult<MenuItem[], Error> {
   return useQuery<MenuItem[], Error>({
-    queryKey: ['menu_items', 'all', filter],
+    queryKey: menuItemKeys.filtered(filter),
     queryFn: async () => {
       return await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
         filter,

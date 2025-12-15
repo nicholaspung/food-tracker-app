@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -97,40 +98,40 @@ export default function RestaurantNameFinder(
     try {
       // Load history
       const saved = localStorage.getItem('restaurantNameFinderHistory');
-      console.log('[RestaurantNameFinder] Loading history from localStorage:', saved);
+      logger.log('[RestaurantNameFinder] Loading history from localStorage:', saved);
       if (saved) {
         const parsed = JSON.parse(saved);
-        console.log('[RestaurantNameFinder] Parsed history:', parsed);
+        logger.log('[RestaurantNameFinder] Parsed history:', parsed);
         setStoredResults(parsed);
         // Set initial view to history if there are results
         if (parsed.length > 0) {
-          console.log('[RestaurantNameFinder] Setting view to history');
+          logger.log('[RestaurantNameFinder] Setting view to history');
           setCurrentView('history');
         }
       }
 
       // Load daily usage
       const savedUsage = localStorage.getItem('restaurantNameFinderDailyUsage');
-      console.log('[RestaurantNameFinder] Loading daily usage from localStorage:', savedUsage);
+      logger.log('[RestaurantNameFinder] Loading daily usage from localStorage:', savedUsage);
       if (savedUsage) {
         const usage: DailyUsage = JSON.parse(savedUsage);
         const today = getTodayString();
 
         // Reset count if it's a new day
         if (usage.date !== today) {
-          console.log('[RestaurantNameFinder] New day, resetting count');
+          logger.log('[RestaurantNameFinder] New day, resetting count');
           setDailyUsage({ date: today, count: 0 });
         } else {
-          console.log('[RestaurantNameFinder] Loading saved usage:', usage);
+          logger.log('[RestaurantNameFinder] Loading saved usage:', usage);
           setDailyUsage(usage);
         }
       }
 
       // Mark as initialized so we can start saving changes
       setIsInitialized(true);
-      console.log('[RestaurantNameFinder] Initialization complete');
+      logger.log('[RestaurantNameFinder] Initialization complete');
     } catch (err) {
-      console.error('Failed to load data from localStorage:', err);
+      logger.error('Failed to load data from localStorage:', err);
       setIsInitialized(true); // Still mark as initialized even if there's an error
     }
   }, []);
@@ -138,28 +139,28 @@ export default function RestaurantNameFinder(
   // Save stored results to localStorage whenever they change (but only after initialization)
   useEffect(() => {
     if (!isInitialized) {
-      console.log('[RestaurantNameFinder] Skipping save - not initialized yet');
+      logger.log('[RestaurantNameFinder] Skipping save - not initialized yet');
       return;
     }
     try {
-      console.log('[RestaurantNameFinder] Saving history to localStorage:', storedResults);
+      logger.log('[RestaurantNameFinder] Saving history to localStorage:', storedResults);
       localStorage.setItem('restaurantNameFinderHistory', JSON.stringify(storedResults));
     } catch (err) {
-      console.error('Failed to save history to localStorage:', err);
+      logger.error('Failed to save history to localStorage:', err);
     }
   }, [storedResults, isInitialized]);
 
   // Save daily usage to localStorage whenever it changes (but only after initialization)
   useEffect(() => {
     if (!isInitialized) {
-      console.log('[RestaurantNameFinder] Skipping daily usage save - not initialized yet');
+      logger.log('[RestaurantNameFinder] Skipping daily usage save - not initialized yet');
       return;
     }
     try {
-      console.log('[RestaurantNameFinder] Saving daily usage to localStorage:', dailyUsage);
+      logger.log('[RestaurantNameFinder] Saving daily usage to localStorage:', dailyUsage);
       localStorage.setItem('restaurantNameFinderDailyUsage', JSON.stringify(dailyUsage));
     } catch (err) {
-      console.error('Failed to save daily usage to localStorage:', err);
+      logger.error('Failed to save daily usage to localStorage:', err);
     }
   }, [dailyUsage, isInitialized]);
 
@@ -249,22 +250,22 @@ export default function RestaurantNameFinder(
       }
 
       const data: RestaurantNameResponse = await response.json();
-      console.log('[RestaurantNameFinder] API response:', data);
+      logger.log('[RestaurantNameFinder] API response:', data);
 
       // Increment daily usage count after successful API call (skip for subscribers/admins)
       const hasUnlimited = hasUnlimitedParsing();
       if (!hasUnlimited) {
         const today = getTodayString();
-        console.log('[RestaurantNameFinder] Incrementing daily usage, today:', today);
+        logger.log('[RestaurantNameFinder] Incrementing daily usage, today:', today);
         setDailyUsage(prev => {
           const newUsage = prev.date === today
             ? { ...prev, count: prev.count + 1 }
             : { date: today, count: 1 };
-          console.log('[RestaurantNameFinder] New usage:', newUsage);
+          logger.log('[RestaurantNameFinder] New usage:', newUsage);
           return newUsage;
         });
       } else {
-        console.log('[RestaurantNameFinder] Skipping usage increment - user has unlimited parsing');
+        logger.log('[RestaurantNameFinder] Skipping usage increment - user has unlimited parsing');
       }
 
       if (data.error) {
@@ -287,7 +288,7 @@ export default function RestaurantNameFinder(
 
         // Save successful result to parking lot with the image data URL
         if (data.found && data.options && data.options.length > 0) {
-          console.log('[RestaurantNameFinder] Saving result to history');
+          logger.log('[RestaurantNameFinder] Saving result to history');
           const newStoredResult: StoredResult = {
             id: Date.now().toString(),
             imagePreview: imageDataUrl,
@@ -295,14 +296,14 @@ export default function RestaurantNameFinder(
             timestamp: Date.now(),
             expanded: false,
           };
-          console.log('[RestaurantNameFinder] New stored result:', newStoredResult);
+          logger.log('[RestaurantNameFinder] New stored result:', newStoredResult);
           setStoredResults(prev => {
             const updated = [newStoredResult, ...prev];
-            console.log('[RestaurantNameFinder] Updated stored results:', updated);
+            logger.log('[RestaurantNameFinder] Updated stored results:', updated);
             return updated;
           });
         } else {
-          console.log('[RestaurantNameFinder] NOT saving result - conditions not met:', {
+          logger.log('[RestaurantNameFinder] NOT saving result - conditions not met:', {
             found: data.found,
             hasOptions: !!data.options,
             optionsLength: data.options?.length
@@ -310,7 +311,7 @@ export default function RestaurantNameFinder(
         }
       }
     } catch (err: any) {
-      console.error("Restaurant name finder error:", err);
+      logger.error("Restaurant name finder error:", err);
       handleError(err, {
         customMessage: `Failed to analyze image: ${err.message || "Unknown error"}. Please try another image.`
       });
@@ -340,7 +341,7 @@ export default function RestaurantNameFinder(
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error("Failed to copy text:", err);
+      logger.error("Failed to copy text:", err);
       showValidation(ERROR_MESSAGES.OCR.COPY_FAILED);
     }
   };

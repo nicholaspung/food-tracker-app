@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import ExifReader from "exifreader";
 
 /**
@@ -38,7 +39,7 @@ export async function extractImageCaptureDate(file: File): Promise<Date | null> 
       }
     }
   } catch (error) {
-    console.warn("Failed to extract EXIF date from image:", error);
+    logger.warn("Failed to extract EXIF date from image:", error);
   }
 
   // Fallback to file modification date or current date

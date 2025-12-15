@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,7 +75,7 @@ export function RestaurantSelector({
         setCameraHistory(JSON.parse(saved));
       }
     } catch (err) {
-      console.error("Failed to load camera history:", err);
+      logger.error("Failed to load camera history:", err);
     }
   }, []);
 
@@ -159,7 +160,7 @@ export function RestaurantSelector({
       setNewRestaurantCuisine("");
       setShowAddRestaurant(false);
     } catch (error) {
-      console.error("Failed to create restaurant:", error);
+      logger.error("Failed to create restaurant:", error);
       onHandleError?.(error as Error, {
         customMessage: "Failed to create restaurant. Please try again.",
       });

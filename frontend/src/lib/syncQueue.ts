@@ -5,6 +5,7 @@
  * Supports create, update, and delete operations across all PocketBase collections.
  */
 
+import { logger } from '@/lib/logger';
 import type { FoodItem, Visit, Restaurant, MenuItem } from '@/lib/pocketbase';
 
 export type OperationType = 'create' | 'update' | 'delete';
@@ -277,7 +278,7 @@ class SyncQueueManager {
       }
 
       if (updated) {
-        console.log(`Updated operation ${op.id}: replaced restaurant ${tempId} -> ${realId}`);
+        logger.log(`Updated operation ${op.id}: replaced restaurant ${tempId} -> ${realId}`);
         await this.update(op);
       }
     }

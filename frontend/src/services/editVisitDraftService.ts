@@ -8,6 +8,7 @@
  * could migrate this to use useDraftState while preserving the helper methods.
  */
 
+import { logger } from '@/lib/logger';
 import { Restaurant } from '@/lib/pocketbase';
 
 const EDIT_VISIT_DRAFT_KEY = 'editVisitDraft';
@@ -47,7 +48,7 @@ export const editVisitDraftService = {
       }
       return null;
     } catch (error) {
-      console.error('Failed to load edit visit draft:', error);
+      logger.error('Failed to load edit visit draft:', error);
       return null;
     }
   },
@@ -59,7 +60,7 @@ export const editVisitDraftService = {
     try {
       localStorage.setItem(EDIT_VISIT_DRAFT_KEY, JSON.stringify(draft));
     } catch (error) {
-      console.error('Failed to save edit visit draft:', error);
+      logger.error('Failed to save edit visit draft:', error);
     }
   },
 
@@ -104,7 +105,7 @@ export const editVisitDraftService = {
     try {
       localStorage.removeItem(EDIT_VISIT_DRAFT_KEY);
     } catch (error) {
-      console.error('Failed to clear edit visit draft:', error);
+      logger.error('Failed to clear edit visit draft:', error);
     }
   },
 

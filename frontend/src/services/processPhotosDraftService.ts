@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { Restaurant } from '@/lib/pocketbase';
 
 const PROCESS_PHOTOS_DRAFT_KEY = 'processPhotosDraft';
@@ -47,7 +48,7 @@ export const processPhotosDraftService = {
       }
       return JSON.parse(stored);
     } catch (error) {
-      console.error('Failed to load process photos draft:', error);
+      logger.error('Failed to load process photos draft:', error);
       return getEmptyDraft();
     }
   },

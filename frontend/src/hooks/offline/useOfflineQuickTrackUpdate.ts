@@ -10,6 +10,7 @@
  * - Photo: Stored as File object, uploaded when synced
  */
 
+import { logger } from '@/lib/logger';
 import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type FoodItem } from '@/lib/pocketbase';
@@ -59,7 +60,7 @@ export function useOfflineQuickTrackUpdate() {
   return useMutation<QuickTrackUpdateResult, Error, QuickTrackUpdateData>({
     networkMode: 'always',
     mutationFn: async (data) => {
-      console.log('[useOfflineQuickTrackUpdate] Updating item:', data.id);
+      logger.log('[useOfflineQuickTrackUpdate] Updating item:', data.id);
 
       const user = pb.authStore.record;
       if (!user) {
@@ -68,11 +69,11 @@ export function useOfflineQuickTrackUpdate() {
 
       if (isOnline) {
         // ONLINE: Execute immediately
-        console.log('[useOfflineQuickTrackUpdate] Online - executing immediately');
+        logger.log('[useOfflineQuickTrackUpdate] Online - executing immediately');
         return await executeUpdate(data, user.id, uploadPhotos);
       } else {
         // OFFLINE: Queue the operation
-        console.log('[useOfflineQuickTrackUpdate] Offline - queueing for sync');
+        logger.log('[useOfflineQuickTrackUpdate] Offline - queueing for sync');
         await queueUpdate(data, user.id);
 
         // Create unique timestamp for consistent IDs
@@ -144,7 +145,7 @@ async function executeUpdate(
   userId: string,
   uploadPhotos: (items: PhotoUploadItem[]) => Promise<void>
 ): Promise<QuickTrackUpdateResult> {
-  console.log('[executeUpdate] Updating food item:', data.id);
+  logger.log('[executeUpdate] Updating food item:', data.id);
 
   // 1. Update food item
   const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).update(data.id, {
@@ -159,27 +160,27 @@ async function executeUpdate(
     itemDate: data.itemDate || undefined,
   });
 
-  console.log('[executeUpdate] Food item updated:', foodItem.id);
+  logger.log('[executeUpdate] Food item updated:', foodItem.id);
 
   // 2. Handle photo changes
   let photoResult: QuickTrackUpdatePhotoResult | undefined;
 
   // Remove existing photo if requested
   if (data.existingPhotoId && data.photo === null) {
-    console.log('[executeUpdate] Removing existing photo:', data.existingPhotoId);
+    logger.log('[executeUpdate] Removing existing photo:', data.existingPhotoId);
     await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(data.existingPhotoId);
   }
 
   // Upload new photo if provided
   if (data.photo instanceof File) {
-    console.log('[executeUpdate] Uploading new photo...');
+    logger.log('[executeUpdate] Uploading new photo...');
 
     // Remove old photo first if exists
     if (data.existingPhotoId) {
       try {
         await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(data.existingPhotoId);
       } catch (error) {
-        console.log('[executeUpdate] Old photo already removed or not found');
+        logger.log('[executeUpdate] Old photo already removed or not found');
       }
     }
 
@@ -191,7 +192,7 @@ async function executeUpdate(
 
     await uploadPhotos([photoUpload]);
     // photoResult remains undefined - data will be refetched via query invalidation
-    console.log('[executeUpdate] Photo uploaded successfully');
+    logger.log('[executeUpdate] Photo uploaded successfully');
   }
 
   return { foodItem: foodItem as unknown as FoodItem, photoResult };
@@ -224,5 +225,5 @@ async function queueUpdate(data: QuickTrackUpdateData, _userId: string): Promise
     recordId: data.id,
   });
 
-  console.log('Queued Quick Track item update:', data.name);
+  logger.log('Queued Quick Track item update:', data.name);
 }

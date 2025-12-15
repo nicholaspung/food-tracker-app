@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { Restaurant } from '@/lib/pocketbase';
 
 const DB_NAME = 'ProcessPhotosDB';
@@ -90,12 +91,12 @@ async function getFromDB<T>(key: string): Promise<T | null> {
     const request = store.get(key);
 
     request.onerror = () => {
-      console.error('[IndexedDB] GET error:', request.error);
+      logger.error('[IndexedDB] GET error:', request.error);
       reject(request.error);
     };
     request.onsuccess = () => {
       const result = request.result || null;
-      console.log('[IndexedDB] GET success:', {
+      logger.log('[IndexedDB] GET success:', {
         key,
         hasResult: !!result,
         resultType: typeof result,
@@ -112,7 +113,7 @@ async function getFromDB<T>(key: string): Promise<T | null> {
 async function saveToDB<T>(key: string, value: T): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    console.log('[IndexedDB] Attempting to PUT:', {
+    logger.log('[IndexedDB] Attempting to PUT:', {
       key,
       valueType: typeof value,
       value: value, // Log the actual value being saved
@@ -123,21 +124,21 @@ async function saveToDB<T>(key: string, value: T): Promise<void> {
 
     // Add transaction error handler
     transaction.onerror = () => {
-      console.error('[IndexedDB] Transaction error:', transaction.error);
+      logger.error('[IndexedDB] Transaction error:', transaction.error);
     };
 
     transaction.onabort = () => {
-      console.error('[IndexedDB] Transaction aborted');
+      logger.error('[IndexedDB] Transaction aborted');
     };
 
     const request = store.put(value, key);
 
     request.onerror = () => {
-      console.error('[IndexedDB] PUT error:', request.error);
+      logger.error('[IndexedDB] PUT error:', request.error);
       reject(request.error);
     };
     request.onsuccess = () => {
-      console.log('[IndexedDB] PUT success:', { key });
+      logger.log('[IndexedDB] PUT success:', { key });
       resolve();
     };
   });
@@ -164,9 +165,9 @@ export const processPhotosDraftService = {
    */
   async getDraft(): Promise<ProcessPhotosDraft> {
     try {
-      console.log('[DraftService] Getting draft from IndexedDB...');
+      logger.log('[DraftService] Getting draft from IndexedDB...');
       const draft = await getFromDB<ProcessPhotosDraft>(DRAFT_KEY);
-      console.log('[DraftService] Draft retrieved:', {
+      logger.log('[DraftService] Draft retrieved:', {
         hasDraft: !!draft,
         photosCount: draft?.photos?.length || 0,
         processedCount: draft?.processedPhotos?.length || 0,
@@ -181,7 +182,7 @@ export const processPhotosDraftService = {
       });
       return draft || getEmptyDraft();
     } catch (error) {
-      console.error('[DraftService] Failed to load process photos draft:', error);
+      logger.error('[DraftService] Failed to load process photos draft:', error);
       return getEmptyDraft();
     }
   },
@@ -203,7 +204,7 @@ export const processPhotosDraftService = {
    */
   async savePhotos(files: File[]): Promise<void> {
     try {
-      console.log('[DraftService] Saving photos to draft:', files.length);
+      logger.log('[DraftService] Saving photos to draft:', files.length);
 
       // Convert Files to data URLs (base64) for fully serializable storage
       const photos = await Promise.all(
@@ -222,9 +223,9 @@ export const processPhotosDraftService = {
       draft.currentFormState = undefined;
       draft.visitVisibility = draft.visitVisibility || 'friends'; // Preserve or default to 'friends'
       await saveToDB(DRAFT_KEY, draft);
-      console.log('[DraftService] Photos saved successfully');
+      logger.log('[DraftService] Photos saved successfully');
     } catch (error) {
-      console.error('[DraftService] Failed to save photos:', error);
+      logger.error('[DraftService] Failed to save photos:', error);
       throw error;
     }
   },
@@ -298,7 +299,7 @@ export const processPhotosDraftService = {
     isCreatingNewItem: boolean
   ): Promise<void> {
     try {
-      console.log('[DraftService] Saving form state:', {
+      logger.log('[DraftService] Saving form state:', {
         hasRestaurant: !!selectedRestaurant,
         restaurantName: selectedRestaurant?.name,
         menuItemName,
@@ -334,7 +335,7 @@ export const processPhotosDraftService = {
       };
 
       // Log what we're about to save
-      console.log('[DraftService] About to save draft:', {
+      logger.log('[DraftService] About to save draft:', {
         photosCount: draft.photos.length,
         processedCount: draft.processedPhotos.length,
         hasFormState: !!draft.currentFormState,
@@ -345,7 +346,7 @@ export const processPhotosDraftService = {
 
       // Verify it was saved by reading it back
       const verifyDraft = await this.getDraft();
-      console.log('[DraftService] Form state saved and verified:', {
+      logger.log('[DraftService] Form state saved and verified:', {
         hasFormState: !!verifyDraft.currentFormState,
         hasRestaurant: !!verifyDraft.currentFormState?.selectedRestaurant,
         restaurantName: verifyDraft.currentFormState?.selectedRestaurant?.name,
@@ -353,7 +354,7 @@ export const processPhotosDraftService = {
         fullFormState: verifyDraft.currentFormState,
       });
     } catch (error) {
-      console.error('[DraftService] Failed to save form state:', error);
+      logger.error('[DraftService] Failed to save form state:', error);
       throw error;
     }
   },
@@ -363,11 +364,11 @@ export const processPhotosDraftService = {
    */
   async clearDraft(): Promise<void> {
     try {
-      console.log('[DraftService] Clearing draft');
+      logger.log('[DraftService] Clearing draft');
       await deleteFromDB(DRAFT_KEY);
-      console.log('[DraftService] Draft cleared successfully');
+      logger.log('[DraftService] Draft cleared successfully');
     } catch (error) {
-      console.error('[DraftService] Failed to clear draft:', error);
+      logger.error('[DraftService] Failed to clear draft:', error);
       throw error;
     }
   },

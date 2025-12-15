@@ -3,6 +3,7 @@
  * Provides a reusable pattern for managing temporary/draft data
  */
 
+import { logger } from '@/lib/logger';
 import { useState, useCallback } from 'react';
 
 export interface DraftStorageAdapter<T> {
@@ -35,7 +36,7 @@ export function createLocalStorageAdapter<T>(
         }
         return draft;
       } catch (error) {
-        console.error(`Failed to load draft from ${config.key}:`, error);
+        logger.error(`Failed to load draft from ${config.key}:`, error);
         return null;
       }
     },
@@ -44,7 +45,7 @@ export function createLocalStorageAdapter<T>(
       try {
         localStorage.setItem(config.key, JSON.stringify(draft));
       } catch (error) {
-        console.error(`Failed to save draft to ${config.key}:`, error);
+        logger.error(`Failed to save draft to ${config.key}:`, error);
       }
     },
 
@@ -52,7 +53,7 @@ export function createLocalStorageAdapter<T>(
       try {
         localStorage.removeItem(config.key);
       } catch (error) {
-        console.error(`Failed to clear draft from ${config.key}:`, error);
+        logger.error(`Failed to clear draft from ${config.key}:`, error);
       }
     },
 

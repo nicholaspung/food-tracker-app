@@ -11,6 +11,7 @@
  * - Photos: Stored as File objects, uploaded when synced
  */
 
+import { logger } from '@/lib/logger';
 import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type Visit, type FoodItem } from '@/lib/pocketbase';
@@ -276,5 +277,5 @@ async function queueVisitCreation(data: VisitCreationData, userId: string): Prom
     },
   });
 
-  console.log('Queued visit creation with', data.foodItems.length, 'items and', photosArray.length, 'photos');
+  logger.log('Queued visit creation with', data.foodItems.length, 'items and', photosArray.length, 'photos');
 }

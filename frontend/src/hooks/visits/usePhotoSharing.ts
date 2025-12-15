@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useCallback } from "react";
 import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
@@ -111,7 +112,7 @@ export function usePhotoSharing({
         });
         setIsShareModalOpen(true);
       } catch (error) {
-        console.error("Error loading photo:", error);
+        logger.error("Error loading photo:", error);
         handleError(error as Error, { customMessage: "Failed to load photo. Please try again." });
       }
     },
@@ -154,7 +155,7 @@ export function usePhotoSharing({
 
         showSuccess("Photo downloaded! Share it on your favorite social media.");
       } catch (error) {
-        console.error("Error sharing photo:", error);
+        logger.error("Error sharing photo:", error);
         handleError(error as Error, { customMessage: "Failed to share photo. Please try again." });
       }
     },

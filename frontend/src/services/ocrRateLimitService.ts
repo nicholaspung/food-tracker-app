@@ -26,7 +26,7 @@ export function getFailedAttemptsToday(): number {
     const stored = localStorage.getItem(key);
     return stored ? parseInt(stored, 10) : 0;
   } catch (error) {
-    console.error('Failed to get OCR rate limit:', error);
+    logger.error('Failed to get OCR rate limit:', error);
     return 0;
   }
 }
@@ -43,7 +43,7 @@ export function incrementFailedAttempts(): void {
     // Clean up old entries (keep last 7 days)
     cleanupOldEntries();
   } catch (error) {
-    console.error('Failed to increment OCR rate limit:', error);
+    logger.error('Failed to increment OCR rate limit:', error);
   }
 }
 
@@ -86,7 +86,7 @@ function cleanupOldEntries(): void {
       }
     }
   } catch (error) {
-    console.error('Failed to cleanup old OCR rate limit entries:', error);
+    logger.error('Failed to cleanup old OCR rate limit entries:', error);
   }
 }
 
@@ -98,6 +98,6 @@ export function resetTodayCounter(): void {
     const key = getTodayKey();
     localStorage.removeItem(key);
   } catch (error) {
-    console.error('Failed to reset OCR rate limit:', error);
+    logger.error('Failed to reset OCR rate limit:', error);
   }
 }

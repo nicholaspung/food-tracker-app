@@ -9,6 +9,7 @@
  * useDraftState while preserving the helper methods as custom hooks.
  */
 
+import { logger } from '@/lib/logger';
 import { Restaurant, MenuItem } from '@/lib/pocketbase';
 import { getTodayLocalDateString } from '@/lib/dateUtils';
 
@@ -55,7 +56,7 @@ export const visitDraftService = {
       }
       return JSON.parse(stored);
     } catch (error) {
-      console.error('Failed to load visit draft:', error);
+      logger.error('Failed to load visit draft:', error);
       return getEmptyDraft();
     }
   },

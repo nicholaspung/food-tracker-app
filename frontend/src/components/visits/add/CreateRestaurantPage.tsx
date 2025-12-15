@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +86,7 @@ export default function CreateRestaurantPage({
   };
 
   const handleSubmit = async () => {
-    console.log('[CreateRestaurant] handleSubmit called');
+    logger.log('[CreateRestaurant] handleSubmit called');
     clearError();
 
     if (!restaurantName.trim()) {
@@ -99,19 +100,19 @@ export default function CreateRestaurantPage({
     }
 
     try {
-      console.log('[CreateRestaurant] Starting mutation with data:', {
+      logger.log('[CreateRestaurant] Starting mutation with data:', {
         name: restaurantName.trim(),
         address: restaurantLocation.trim(),
         cuisineType: restaurantCuisine.trim() || undefined,
         visibility,
         menuItems,
       });
-      console.log('[CreateRestaurant] Mutation state before mutateAsync:', {
+      logger.log('[CreateRestaurant] Mutation state before mutateAsync:', {
         isPending: createRestaurantMutation.isPending,
         isError: createRestaurantMutation.isError,
         isSuccess: createRestaurantMutation.isSuccess,
       });
-      console.log('[CreateRestaurant] About to call mutateAsync...');
+      logger.log('[CreateRestaurant] About to call mutateAsync...');
 
       const result = await createRestaurantMutation.mutateAsync({
         name: restaurantName.trim(),
@@ -122,11 +123,11 @@ export default function CreateRestaurantPage({
         longitude: position?.longitude,
         menuItems: menuItems.length > 0 ? menuItems : undefined,
       }).catch((mutationError) => {
-        console.error('[CreateRestaurant] Mutation error from mutateAsync:', mutationError);
+        logger.error('[CreateRestaurant] Mutation error from mutateAsync:', mutationError);
         throw mutationError;
       });
 
-      console.log('[CreateRestaurant] Mutation completed successfully, result:', result);
+      logger.log('[CreateRestaurant] Mutation completed successfully, result:', result);
 
       // Save to draft service
       visitDraftService.saveRestaurant(result.restaurant);
@@ -138,11 +139,11 @@ export default function CreateRestaurantPage({
         setShowOfflineDialog(true);
       } else {
         // Online - proceed immediately
-        console.log('[CreateRestaurant] Proceeding to next step');
+        logger.log('[CreateRestaurant] Proceeding to next step');
         onRestaurantCreated();
       }
     } catch (err: any) {
-      console.error('[CreateRestaurant] Error creating restaurant:', err);
+      logger.error('[CreateRestaurant] Error creating restaurant:', err);
       handleError(err, { customMessage: ERROR_MESSAGES.RESTAURANT.CREATE_FAILED });
     }
   };

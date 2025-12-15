@@ -10,6 +10,7 @@
  * - Executed when connection returns
  */
 
+import { logger } from '@/lib/logger';
 import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
@@ -31,28 +32,28 @@ export function useOfflineQuickTrackDelete() {
   return useMutation<void, Error, QuickTrackDeleteData>({
     networkMode: 'always',
     mutationFn: async (data) => {
-      console.log('[useOfflineQuickTrackDelete] Deleting item:', data.id);
+      logger.log('[useOfflineQuickTrackDelete] Deleting item:', data.id);
 
       if (isOnline) {
         // ONLINE: Execute immediately
-        console.log('[useOfflineQuickTrackDelete] Online - executing immediately');
+        logger.log('[useOfflineQuickTrackDelete] Online - executing immediately');
 
         // Delete photo first if exists
         if (data.photoId) {
           try {
             await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(data.photoId);
-            console.log('[useOfflineQuickTrackDelete] Photo deleted:', data.photoId);
+            logger.log('[useOfflineQuickTrackDelete] Photo deleted:', data.photoId);
           } catch (error) {
-            console.log('[useOfflineQuickTrackDelete] Photo deletion failed or not found:', error);
+            logger.log('[useOfflineQuickTrackDelete] Photo deletion failed or not found:', error);
           }
         }
 
         // Delete food item
         await pb.collection(COLLECTIONS.FOOD_ITEMS).delete(data.id);
-        console.log('[useOfflineQuickTrackDelete] Food item deleted:', data.id);
+        logger.log('[useOfflineQuickTrackDelete] Food item deleted:', data.id);
       } else {
         // OFFLINE: Queue the operation
-        console.log('[useOfflineQuickTrackDelete] Offline - queueing for sync');
+        logger.log('[useOfflineQuickTrackDelete] Offline - queueing for sync');
         await syncQueue.enqueue({
           type: 'delete',
           collection: 'quick_track_item_delete',
@@ -63,7 +64,7 @@ export function useOfflineQuickTrackDelete() {
           recordId: data.id,
         });
 
-        console.log('Queued Quick Track item deletion:', data.id);
+        logger.log('Queued Quick Track item deletion:', data.id);
       }
     },
     onSuccess: async () => {
