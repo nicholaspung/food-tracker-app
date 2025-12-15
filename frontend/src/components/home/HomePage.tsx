@@ -24,16 +24,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
+import { LoadingState } from "@/components/ui/LoadingState";
 import {
   Calendar,
   MapPin,
@@ -339,14 +331,7 @@ export default function HomePage({
   }, []);
 
   if (visitsLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState fullScreen message="Loading..." />;
   }
 
   return (
@@ -656,150 +641,122 @@ export default function HomePage({
       </div>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog
+      <DeleteConfirmationDialog
         open={!!visitToDelete}
         onOpenChange={(open) => !open && setVisitToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Visit?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>
-                  Are you sure you want to delete this visit? This action cannot
-                  be undone.
-                </p>
-                {visitToDelete && (
-                  <div className="bg-gray-50 p-3 rounded-lg space-y-2">
-                    <div>
-                      <p className="font-semibold text-gray-900">
-                        {visitToDelete.restaurant?.name}
+        onConfirm={() => visitToDelete && handleDeleteVisit(visitToDelete.id)}
+        title="Delete Visit?"
+        description={
+          <div className="space-y-3">
+            <p>
+              Are you sure you want to delete this visit? This action cannot
+              be undone.
+            </p>
+            {visitToDelete && (
+              <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {visitToDelete.restaurant?.name}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {visitToDelete.restaurant?.location}
+                    {visitToDelete.restaurant?.cuisineType &&
+                      ` • ${visitToDelete.restaurant.cuisineType}`}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(visitToDelete.visitDate).toLocaleDateString(
+                      "en-US",
+                      {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      }
+                    )}
+                  </p>
+                </div>
+                {visitToDelete.foodItems &&
+                  visitToDelete.foodItems.length > 0 && (
+                    <div className="border-t border-gray-200 pt-2">
+                      <p className="text-sm font-medium text-gray-700 mb-1">
+                        This will also delete{" "}
+                        {visitToDelete.foodItems.length} food item
+                        {visitToDelete.foodItems.length !== 1 ? "s" : ""}:
                       </p>
-                      <p className="text-sm text-gray-600">
-                        {visitToDelete.restaurant?.location}
-                        {visitToDelete.restaurant?.cuisineType &&
-                          ` • ${visitToDelete.restaurant.cuisineType}`}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(visitToDelete.visitDate).toLocaleDateString(
-                          "en-US",
-                          {
-                            weekday: "long",
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                          }
-                        )}
-                      </p>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        {visitToDelete.foodItems.map((item) => (
+                          <li
+                            key={item.id}
+                            className="flex items-center gap-2"
+                          >
+                            <span className="text-gray-400">•</span>
+                            <span>{item.name}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    {visitToDelete.foodItems &&
-                      visitToDelete.foodItems.length > 0 && (
-                        <div className="border-t border-gray-200 pt-2">
-                          <p className="text-sm font-medium text-gray-700 mb-1">
-                            This will also delete{" "}
-                            {visitToDelete.foodItems.length} food item
-                            {visitToDelete.foodItems.length !== 1 ? "s" : ""}:
-                          </p>
-                          <ul className="text-sm text-gray-600 space-y-1">
-                            {visitToDelete.foodItems.map((item) => (
-                              <li
-                                key={item.id}
-                                className="flex items-center gap-2"
-                              >
-                                <span className="text-gray-400">•</span>
-                                <span>{item.name}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                  </div>
-                )}
+                  )}
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                visitToDelete && handleDeleteVisit(visitToDelete.id)
-              }
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            )}
+          </div>
+        }
+        isDeleting={isDeleting}
+      />
 
       {/* Delete Quick Track Item Confirmation Dialog */}
-      <AlertDialog
+      <DeleteConfirmationDialog
         open={!!quickTrackItemToDelete}
         onOpenChange={(open) => !open && setQuickTrackItemToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Quick Track Item?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>
-                  Are you sure you want to delete this item? This action cannot
-                  be undone.
-                </p>
-                {quickTrackItemToDelete && (
-                  <div className="bg-gray-50 p-3 rounded-lg space-y-2">
-                    <div>
-                      <p className="font-semibold text-gray-900">
-                        {quickTrackItemToDelete.name}
-                      </p>
-                      {quickTrackItemToDelete.itemCategory && (
-                        <Badge variant="outline" className="text-xs mt-1">
-                          {quickTrackItemToDelete.itemCategory.replace(
-                            /_/g,
-                            " "
-                          )}
-                        </Badge>
+        onConfirm={() => {
+          if (quickTrackItemToDelete) {
+            const photo = visitPhotos.find(
+              (p) => p.food_item === quickTrackItemToDelete.id
+            );
+            handleDeleteQuickTrackItem(
+              quickTrackItemToDelete.id,
+              photo?.id
+            );
+          }
+        }}
+        title="Delete Quick Track Item?"
+        description={
+          <div className="space-y-3">
+            <p>
+              Are you sure you want to delete this item? This action cannot
+              be undone.
+            </p>
+            {quickTrackItemToDelete && (
+              <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {quickTrackItemToDelete.name}
+                  </p>
+                  {quickTrackItemToDelete.itemCategory && (
+                    <Badge variant="outline" className="text-xs mt-1">
+                      {quickTrackItemToDelete.itemCategory.replace(
+                        /_/g,
+                        " "
                       )}
-                      {quickTrackItemToDelete.location_text && (
-                        <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {quickTrackItemToDelete.location_text}
-                        </p>
-                      )}
-                      {quickTrackItemToDelete.notes && (
-                        <p className="text-xs text-gray-600 mt-1 italic">
-                          "{quickTrackItemToDelete.notes}"
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
+                    </Badge>
+                  )}
+                  {quickTrackItemToDelete.location_text && (
+                    <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {quickTrackItemToDelete.location_text}
+                    </p>
+                  )}
+                  {quickTrackItemToDelete.notes && (
+                    <p className="text-xs text-gray-600 mt-1 italic">
+                      "{quickTrackItemToDelete.notes}"
+                    </p>
+                  )}
+                </div>
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (quickTrackItemToDelete) {
-                  const photo = visitPhotos.find(
-                    (p) => p.food_item === quickTrackItemToDelete.id
-                  );
-                  handleDeleteQuickTrackItem(
-                    quickTrackItemToDelete.id,
-                    photo?.id
-                  );
-                }
-              }}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            )}
+          </div>
+        }
+        isDeleting={isDeleting}
+      />
 
       {/* Share Customization Modal */}
       {shareOverlayData && (

@@ -13,16 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
+import { LoadingState } from "@/components/ui/LoadingState";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -229,14 +221,7 @@ export default function FriendsPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState fullScreen message="Loading..." />;
   }
 
   return (
@@ -598,37 +583,23 @@ export default function FriendsPage() {
       </div>
 
       {/* Remove Friend Confirmation Dialog */}
-      <AlertDialog
+      <DeleteConfirmationDialog
         open={!!friendToRemove}
         onOpenChange={(open) => !open && setFriendToRemove(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove{" "}
-              <span className="font-semibold">
-                {friendToRemove && getFriendInfo(friendToRemove).friendName}
-              </span>{" "}
-              from your friends? You will no longer see their visits.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removeFriendMutation.isPending}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                friendToRemove && removeFriendMutation.mutate(friendToRemove.id)
-              }
-              disabled={removeFriendMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {removeFriendMutation.isPending ? "Removing..." : "Remove"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={() => friendToRemove && removeFriendMutation.mutate(friendToRemove.id)}
+        title="Remove Friend?"
+        description={
+          <>
+            Are you sure you want to remove{" "}
+            <span className="font-semibold">
+              {friendToRemove && getFriendInfo(friendToRemove).friendName}
+            </span>{" "}
+            from your friends? You will no longer see their visits.
+          </>
+        }
+        confirmText="Remove"
+        isDeleting={removeFriendMutation.isPending}
+      />
 
       {/* QR Code Scanner */}
       {showScanner && (

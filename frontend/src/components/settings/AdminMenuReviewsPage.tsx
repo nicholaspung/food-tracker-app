@@ -20,6 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { DeleteConfirmationDialog } from '@/components/ui/DeleteConfirmationDialog';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
 
 interface AdminMenuReviewsPageProps {
@@ -234,10 +236,10 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
           </div>
         </div>
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="text-center">
-            <p className="text-red-500 mb-2">Failed to load review requests</p>
-            <p className="text-sm text-gray-600">{(error as Error).message}</p>
-          </div>
+          <ErrorState
+            title="Failed to load review requests"
+            message={(error as Error).message}
+          />
         </div>
       </div>
     );
@@ -272,32 +274,14 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
       </AlertDialog>
 
       {/* Delete Confirmation Modal */}
-      <AlertDialog open={deletingItemId !== null} onOpenChange={() => setDeletingItemId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Menu Item</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this menu item? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeletingItemId(null)}
-              disabled={deleteMenuItemMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDeleteMenuItem}
-              disabled={deleteMenuItemMutation.isPending}
-            >
-              {deleteMenuItemMutation.isPending ? 'Deleting...' : 'Delete'}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmationDialog
+        open={deletingItemId !== null}
+        onOpenChange={() => setDeletingItemId(null)}
+        onConfirm={confirmDeleteMenuItem}
+        title="Delete Menu Item"
+        description="Are you sure you want to delete this menu item? This action cannot be undone."
+        isDeleting={deleteMenuItemMutation.isPending}
+      />
 
       <div className="flex flex-col h-full bg-gray-50" data-testid="admin-menu-reviews-page">
         {/* Header */}
