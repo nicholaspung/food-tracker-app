@@ -14,6 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { DeleteConfirmationDialog } from '@/components/ui/DeleteConfirmationDialog';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { getBill, markParticipantPaid, markParticipantPending, settleBill, deleteBill } from '@/lib/billService';
 import { formatCurrency, getBillSummary } from '@/lib/billCalculations';
 import { pb } from '@/lib/pocketbase';
@@ -108,25 +111,17 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
   });
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-8">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
-        <p className="text-gray-600">Loading bill...</p>
-      </div>
-    );
+    return <LoadingState fullScreen message="Loading bill..." />;
   }
 
   if (queryError) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
-        <div className="bg-red-50 rounded-full p-6 mb-4">
-          <DollarSign className="w-12 h-12 text-red-600" />
-        </div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Error loading bill</h2>
-        <p className="text-sm text-gray-600 text-center max-w-md mb-4">
-          {queryError instanceof Error ? queryError.message : 'An unknown error occurred'}
-        </p>
-        <Button onClick={onBack} variant="outline">
+        <ErrorState
+          title="Error loading bill"
+          message={queryError instanceof Error ? queryError.message : 'An unknown error occurred'}
+        />
+        <Button onClick={onBack} variant="outline" className="mt-4">
           <ArrowLeft className="w-4 h-4 mr-1" />
           Back to Bills
         </Button>
@@ -153,14 +148,11 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
   if (!bill.participants || !Array.isArray(bill.participants)) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
-        <div className="bg-red-50 rounded-full p-6 mb-4">
-          <DollarSign className="w-12 h-12 text-red-600" />
-        </div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Error loading bill data</h2>
-        <p className="text-sm text-gray-600 text-center max-w-md mb-4">
-          Bill participants data is invalid or missing
-        </p>
-        <Button onClick={onBack} variant="outline">
+        <ErrorState
+          title="Error loading bill data"
+          message="Bill participants data is invalid or missing"
+        />
+        <Button onClick={onBack} variant="outline" className="mt-4">
           <ArrowLeft className="w-4 h-4 mr-1" />
           Back to Bills
         </Button>
@@ -179,25 +171,14 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
   return (
     <>
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Bill?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this bill and all related data. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteBillMutation.mutate()}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmationDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={() => deleteBillMutation.mutate()}
+        title="Delete Bill?"
+        description="This will permanently delete this bill and all related data. This action cannot be undone."
+        isDeleting={deleteBillMutation.isPending}
+      />
 
       {/* Settle Confirmation Dialog */}
       <AlertDialog open={showSettleDialog} onOpenChange={setShowSettleDialog}>

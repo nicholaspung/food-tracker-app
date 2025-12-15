@@ -6,6 +6,7 @@ import { pb } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { COLLECTIONS } from '@/constants/collections';
+import { LoadingState } from "@/components/ui/LoadingState";
 
 interface VerifyEmailPageProps {
   token: string;
@@ -64,9 +65,7 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
         </CardHeader>
         <CardContent className="space-y-4">
           {status === 'verifying' && (
-            <div className="flex justify-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
+            <LoadingState message="" size="lg" />
           )}
           {status === 'success' && (
             <div className="p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="verify-email-success">
