@@ -20,6 +20,7 @@ import { useSync } from "@/contexts/SyncContext";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import { RESTAURANT_DETECTION_DAILY_LIMIT } from "@/constants";
 
 interface RestaurantOption {
   name: string;
@@ -51,8 +52,6 @@ interface DailyUsage {
 
 type Step = "capture" | "preview" | "processing" | "result";
 type View = "capture" | "history";
-
-const DAILY_LIMIT = 5;
 
 // Helper function to get today's date string in YYYY-MM-DD format
 const getTodayString = () => {
@@ -98,38 +97,31 @@ export default function RestaurantNameFinder(
     try {
       // Load history
       const saved = localStorage.getItem('restaurantNameFinderHistory');
-      logger.log('[RestaurantNameFinder] Loading history from localStorage:', saved);
       if (saved) {
         const parsed = JSON.parse(saved);
-        logger.log('[RestaurantNameFinder] Parsed history:', parsed);
         setStoredResults(parsed);
         // Set initial view to history if there are results
         if (parsed.length > 0) {
-          logger.log('[RestaurantNameFinder] Setting view to history');
           setCurrentView('history');
         }
       }
 
       // Load daily usage
       const savedUsage = localStorage.getItem('restaurantNameFinderDailyUsage');
-      logger.log('[RestaurantNameFinder] Loading daily usage from localStorage:', savedUsage);
       if (savedUsage) {
         const usage: DailyUsage = JSON.parse(savedUsage);
         const today = getTodayString();
 
         // Reset count if it's a new day
         if (usage.date !== today) {
-          logger.log('[RestaurantNameFinder] New day, resetting count');
           setDailyUsage({ date: today, count: 0 });
         } else {
-          logger.log('[RestaurantNameFinder] Loading saved usage:', usage);
           setDailyUsage(usage);
         }
       }
 
       // Mark as initialized so we can start saving changes
       setIsInitialized(true);
-      logger.log('[RestaurantNameFinder] Initialization complete');
     } catch (err) {
       logger.error('Failed to load data from localStorage:', err);
       setIsInitialized(true); // Still mark as initialized even if there's an error
@@ -138,12 +130,8 @@ export default function RestaurantNameFinder(
 
   // Save stored results to localStorage whenever they change (but only after initialization)
   useEffect(() => {
-    if (!isInitialized) {
-      logger.log('[RestaurantNameFinder] Skipping save - not initialized yet');
-      return;
-    }
+    if (!isInitialized) return;
     try {
-      logger.log('[RestaurantNameFinder] Saving history to localStorage:', storedResults);
       localStorage.setItem('restaurantNameFinderHistory', JSON.stringify(storedResults));
     } catch (err) {
       logger.error('Failed to save history to localStorage:', err);
@@ -152,12 +140,8 @@ export default function RestaurantNameFinder(
 
   // Save daily usage to localStorage whenever it changes (but only after initialization)
   useEffect(() => {
-    if (!isInitialized) {
-      logger.log('[RestaurantNameFinder] Skipping daily usage save - not initialized yet');
-      return;
-    }
+    if (!isInitialized) return;
     try {
-      logger.log('[RestaurantNameFinder] Saving daily usage to localStorage:', dailyUsage);
       localStorage.setItem('restaurantNameFinderDailyUsage', JSON.stringify(dailyUsage));
     } catch (err) {
       logger.error('Failed to save daily usage to localStorage:', err);
@@ -173,8 +157,8 @@ export default function RestaurantNameFinder(
     // Check daily limit (skip for subscribers and admins)
     const hasUnlimited = hasUnlimitedParsing();
     const today = getTodayString();
-    if (!hasUnlimited && dailyUsage.date === today && dailyUsage.count >= DAILY_LIMIT) {
-      showValidation(`Daily limit reached. You can process up to ${DAILY_LIMIT} photos per day. Try again tomorrow!`);
+    if (!hasUnlimited && dailyUsage.date === today && dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT) {
+      showValidation(`Daily limit reached. You can process up to ${RESTAURANT_DETECTION_DAILY_LIMIT} photos per day. Try again tomorrow!`);
       // Clear file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -250,22 +234,17 @@ export default function RestaurantNameFinder(
       }
 
       const data: RestaurantNameResponse = await response.json();
-      logger.log('[RestaurantNameFinder] API response:', data);
 
       // Increment daily usage count after successful API call (skip for subscribers/admins)
       const hasUnlimited = hasUnlimitedParsing();
       if (!hasUnlimited) {
         const today = getTodayString();
-        logger.log('[RestaurantNameFinder] Incrementing daily usage, today:', today);
         setDailyUsage(prev => {
           const newUsage = prev.date === today
             ? { ...prev, count: prev.count + 1 }
             : { date: today, count: 1 };
-          logger.log('[RestaurantNameFinder] New usage:', newUsage);
           return newUsage;
         });
-      } else {
-        logger.log('[RestaurantNameFinder] Skipping usage increment - user has unlimited parsing');
       }
 
       if (data.error) {
@@ -288,7 +267,6 @@ export default function RestaurantNameFinder(
 
         // Save successful result to parking lot with the image data URL
         if (data.found && data.options && data.options.length > 0) {
-          logger.log('[RestaurantNameFinder] Saving result to history');
           const newStoredResult: StoredResult = {
             id: Date.now().toString(),
             imagePreview: imageDataUrl,
@@ -296,21 +274,10 @@ export default function RestaurantNameFinder(
             timestamp: Date.now(),
             expanded: false,
           };
-          logger.log('[RestaurantNameFinder] New stored result:', newStoredResult);
-          setStoredResults(prev => {
-            const updated = [newStoredResult, ...prev];
-            logger.log('[RestaurantNameFinder] Updated stored results:', updated);
-            return updated;
-          });
-        } else {
-          logger.log('[RestaurantNameFinder] NOT saving result - conditions not met:', {
-            found: data.found,
-            hasOptions: !!data.options,
-            optionsLength: data.options?.length
-          });
+          setStoredResults(prev => [newStoredResult, ...prev]);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Restaurant name finder error:", err);
       handleError(err, {
         customMessage: `Failed to analyze image: ${err.message || "Unknown error"}. Please try another image.`
@@ -704,33 +671,33 @@ export default function RestaurantNameFinder(
             {/* Daily Usage Counter (hidden for subscribers and admins) */}
             {!hasUnlimitedParsing() && (
               <div className={`rounded-lg border p-3 ${
-                dailyUsage.count >= DAILY_LIMIT
+                dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT
                   ? 'bg-red-50 border-red-200'
-                  : dailyUsage.count >= DAILY_LIMIT - 1
+                  : dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT - 1
                     ? 'bg-yellow-50 border-yellow-200'
                     : 'bg-gray-50 border-gray-200'
               }`}>
                 <div className="flex items-center justify-between">
                   <p className={`text-sm font-medium ${
-                    dailyUsage.count >= DAILY_LIMIT
+                    dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT
                       ? 'text-red-800'
-                      : dailyUsage.count >= DAILY_LIMIT - 1
+                      : dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT - 1
                         ? 'text-yellow-800'
                         : 'text-gray-700'
                   }`}>
-                    Daily photos: {dailyUsage.count} / {DAILY_LIMIT}
+                    Daily photos: {dailyUsage.count} / {RESTAURANT_DETECTION_DAILY_LIMIT}
                   </p>
                   <span className={`text-xs px-2 py-1 rounded-full ${
-                    dailyUsage.count >= DAILY_LIMIT
+                    dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT
                       ? 'bg-red-100 text-red-800'
-                      : dailyUsage.count >= DAILY_LIMIT - 1
+                      : dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT - 1
                         ? 'bg-yellow-100 text-yellow-800'
                         : 'bg-blue-100 text-blue-800'
                   }`}>
-                    {DAILY_LIMIT - dailyUsage.count} remaining
+                    {RESTAURANT_DETECTION_DAILY_LIMIT - dailyUsage.count} remaining
                   </span>
                 </div>
-                {dailyUsage.count >= DAILY_LIMIT && (
+                {dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT && (
                   <p className="text-xs text-red-700 mt-2">
                     You've reached today's limit. Reset tomorrow.
                   </p>
@@ -749,14 +716,14 @@ export default function RestaurantNameFinder(
                 className="w-full"
                 size="lg"
                 data-testid="take-photo-button"
-                disabled={!isOnline || (!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT)}
+                disabled={!isOnline || (!hasUnlimitedParsing() && dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT)}
               >
                 {!isOnline ? (
                   <>
                     <WifiOff className="w-5 h-5 mr-2" />
                     AI Feature (Offline)
                   </>
-                ) : !hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT ? (
+                ) : !hasUnlimitedParsing() && dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT ? (
                   <>
                     <Camera className="w-5 h-5 mr-2" />
                     Daily Limit Reached
@@ -772,7 +739,7 @@ export default function RestaurantNameFinder(
                 <p className="text-xs text-orange-600 text-center">
                   AI restaurant name finder requires internet connection
                 </p>
-              ) : (hasUnlimitedParsing() || dailyUsage.count < DAILY_LIMIT) ? (
+              ) : (hasUnlimitedParsing() || dailyUsage.count < RESTAURANT_DETECTION_DAILY_LIMIT) ? (
                 <p className="text-xs text-gray-500 text-center">
                   On mobile: Opens camera or photo library
                 </p>
@@ -786,10 +753,10 @@ export default function RestaurantNameFinder(
                 className="w-full"
                 size="lg"
                 data-testid="retake-button"
-                disabled={isProcessing || (!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT)}
+                disabled={isProcessing || (!hasUnlimitedParsing() && dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT)}
               >
                 <RotateCcw className="w-5 h-5 mr-2" />
-                {!hasUnlimitedParsing() && dailyUsage.count >= DAILY_LIMIT ? 'Daily Limit Reached' : 'Take Another Photo'}
+                {!hasUnlimitedParsing() && dailyUsage.count >= RESTAURANT_DETECTION_DAILY_LIMIT ? 'Daily Limit Reached' : 'Take Another Photo'}
               </Button>
             )
           )}

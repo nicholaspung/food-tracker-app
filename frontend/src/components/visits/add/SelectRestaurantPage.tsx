@@ -185,7 +185,7 @@ export default function SelectRestaurantPage({
       setNewRestaurantCuisine("");
       onRestaurantSelected();
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       handleError(err, { customMessage: ERROR_MESSAGES.RESTAURANT.CREATE_FAILED });
     },
   });

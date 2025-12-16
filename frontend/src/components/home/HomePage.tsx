@@ -18,6 +18,7 @@ import VisitCard from "@/components/home/VisitCard";
 import QuickTrackCard from "@/components/home/QuickTrackCard";
 import VisitListHeader from "@/components/home/VisitListHeader";
 import { COLLECTIONS } from '@/constants/collections';
+import { INITIAL_MONTHS_TO_LOAD } from '@/constants';
 import {
   Card,
   CardContent,
@@ -82,7 +83,7 @@ export default function HomePage({
     source: 'HomePage',
     autoClearMs: 5000,
   });
-  const [monthsToLoad, setMonthsToLoad] = useState(1); // Start with 1 month
+  const [monthsToLoad, setMonthsToLoad] = useState(INITIAL_MONTHS_TO_LOAD);
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(
     null
   );
@@ -152,6 +153,17 @@ export default function HomePage({
       });
     },
   });
+
+  // Create a Map for O(1) photo lookups by food_item ID
+  const visitPhotosByFoodItem = useMemo(() => {
+    const map = new Map<string, VisitPhoto>();
+    visitPhotos.forEach((photo) => {
+      if (photo.food_item) {
+        map.set(photo.food_item, photo);
+      }
+    });
+    return map;
+  }, [visitPhotos]);
 
   const { isOnline } = useSync();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -588,9 +600,7 @@ export default function HomePage({
 
                         {/* Quick Track Items for this day */}
                         {dayQuickTrackItems.map((item) => {
-                          const photo = visitPhotos.find(
-                            (p) => p.food_item === item.id
-                          );
+                          const photo = visitPhotosByFoodItem.get(item.id);
 
                           return (
                             <QuickTrackCard
@@ -709,9 +719,7 @@ export default function HomePage({
         onOpenChange={(open) => !open && setQuickTrackItemToDelete(null)}
         onConfirm={() => {
           if (quickTrackItemToDelete) {
-            const photo = visitPhotos.find(
-              (p) => p.food_item === quickTrackItemToDelete.id
-            );
+            const photo = visitPhotosByFoodItem.get(quickTrackItemToDelete.id);
             handleDeleteQuickTrackItem(
               quickTrackItemToDelete.id,
               photo?.id
@@ -771,34 +779,35 @@ export default function HomePage({
       )}
 
       {/* Visit Share Modal */}
-      {visitToShare && visitToShare.restaurant && (
-        <VisitShareModal
-          isOpen={!!visitToShare}
-          onClose={closeVisitShareModal}
-          restaurantName={visitToShare.restaurant.name}
-          visitDate={visitToShare.visitDate}
-          photosWithFoodItems={visitPhotos
-            .filter((photo) =>
-              visitToShare.foodItems?.some(
-                (item) => item.id === photo.food_item
-              )
-            )
-            .map((photo) => {
-              const foodItem = visitToShare.foodItems?.find(
-                (item) => item.id === photo.food_item
-              );
-              return {
-                photo,
-                foodItem: {
-                  id: foodItem!.id,
-                  name: foodItem!.name,
-                  rating: foodItem!.rating,
-                },
-              };
-            })}
-          pb={pb}
-        />
-      )}
+      {visitToShare && visitToShare.restaurant && (() => {
+        // Create a Map for O(1) food item lookups
+        const foodItemsMap = new Map(
+          (visitToShare.foodItems || []).map((item) => [item.id, item])
+        );
+
+        return (
+          <VisitShareModal
+            isOpen={!!visitToShare}
+            onClose={closeVisitShareModal}
+            restaurantName={visitToShare.restaurant.name}
+            visitDate={visitToShare.visitDate}
+            photosWithFoodItems={visitPhotos
+              .filter((photo) => photo.food_item && foodItemsMap.has(photo.food_item))
+              .map((photo) => {
+                const foodItem = foodItemsMap.get(photo.food_item!)!;
+                return {
+                  photo,
+                  foodItem: {
+                    id: foodItem.id,
+                    name: foodItem.name,
+                    rating: foodItem.rating,
+                  },
+                };
+              })}
+            pb={pb}
+          />
+        );
+      })()}
 
       {/* Fullscreen Photo Viewer */}
       {fullscreenPhoto && (

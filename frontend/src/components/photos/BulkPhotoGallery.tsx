@@ -15,7 +15,7 @@ interface BulkPhotoGalleryProps {
   photos: BulkPhoto[];
   items: Array<{ menuItem: { name: string } }>;
   onPhotosChange: (photos: BulkPhoto[]) => void;
-  onAssignPhoto: (photoId: string, itemIndex: number) => void;
+  onAssignPhoto: (photoId: string, itemIndex: number | null) => void;
   onRemovePhoto: (photoId: string) => void;
   disabled?: boolean;
 }
@@ -96,7 +96,7 @@ export default function BulkPhotoGallery({
 
   const handleUnassignPhoto = (photoId: string) => {
     // Unassign the photo (set assignedToIndex back to null) instead of removing it
-    onAssignPhoto(photoId, null as any);
+    onAssignPhoto(photoId, null);
   };
 
   const unassignedPhotos = photos.filter((p) => p.assignedToIndex === null);

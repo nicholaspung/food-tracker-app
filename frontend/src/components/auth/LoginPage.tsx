@@ -87,7 +87,7 @@ export default function LoginPage({
 
       // Call success callback
       onLoginSuccess?.();
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Login error:", err);
       handleError(err, {
         customMessage: "Invalid email or password. Please try again.",
@@ -110,7 +110,7 @@ export default function LoginPage({
     try {
       await pb.collection(COLLECTIONS.USERS).requestVerification(email);
       setVerificationSent(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Resend verification error:", err);
       handleError(err, {
         customMessage: "Failed to resend verification email. Please try again.",

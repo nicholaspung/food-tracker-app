@@ -36,7 +36,6 @@ interface InviteCode {
 }
 
 interface ProfilePageProps {
-  onNavigateBack?: () => void;
   onDeleteSuccess?: () => void;
   onLogout?: () => void;
   onNavigateToWhatsNew?: () => void;
@@ -56,32 +55,39 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToPhotos, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
+export default function ProfilePage({ onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToPhotos, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
-  const [loading, setLoading] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
-  const [loadingCodes, setLoadingCodes] = useState(true);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [generatingCodes, setGeneratingCodes] = useState(false);
-  const [dismissedProfileVersion, setDismissedProfileVersion] = useState<string | null>(null);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editedName, setEditedName] = useState(user?.name || '');
-  const [showMandatoryNameDialog, setShowMandatoryNameDialog] = useState(false);
-  const [mandatoryName, setMandatoryName] = useState('');
 
-  // Admin: Subscriber management
-  const [subscriberEmail, setSubscriberEmail] = useState('');
-  const [subscriberSuccess, setSubscriberSuccess] = useState('');
+  // Grouped state for better organization
+  const [uiState, setUiState] = useState({
+    loading: false,
+    showConfirm: false,
+    isEditingName: false,
+    showMandatoryNameDialog: false,
+    dismissedProfileVersion: null as string | null,
+  });
+
+  const [nameState, setNameState] = useState({
+    editedName: user?.name || '',
+    mandatoryName: '',
+  });
+
+  const [inviteState, setInviteState] = useState({
+    codes: [] as InviteCode[],
+    loading: true,
+    copiedCode: null as string | null,
+    generating: false,
+  });
+
+  const [subscriberState, setSubscriberState] = useState({
+    email: '',
+    success: '',
+  });
 
   const { error, handleError, clearError, showValidation, checkOffline } = useErrorHandler({
     source: 'ProfilePage',
-  });
-
-  const { error: subscriberError, handleError: handleSubscriberError, clearError: clearSubscriberError } = useErrorHandler({
-    source: 'ProfilePage-Subscriber',
   });
 
   // Check if user is the initial user from the user record
@@ -91,7 +97,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   // Check if user needs to set a name
   useEffect(() => {
     if (!user?.name) {
-      setShowMandatoryNameDialog(true);
+      setUiState(prev => ({ ...prev, showMandatoryNameDialog: true }));
     }
   }, [user?.name]);
 
@@ -106,7 +112,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       });
     },
     onSuccess: () => {
-      setIsEditingName(false);
+      setUiState(prev => ({ ...prev, isEditingName: false }));
       clearError();
       // Refresh queries that might use the user name
       queryClient.invalidateQueries({ queryKey: ['friendships'] });
@@ -118,16 +124,16 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   });
 
   const handleSaveName = () => {
-    if (!editedName.trim()) {
+    if (!nameState.editedName.trim()) {
       showValidation('Name cannot be empty');
       return;
     }
-    updateNameMutation.mutate(editedName.trim());
+    updateNameMutation.mutate(nameState.editedName.trim());
   };
 
   const handleCancelEditName = () => {
-    setEditedName(user?.name || '');
-    setIsEditingName(false);
+    setNameState(prev => ({ ...prev, editedName: user?.name || '' }));
+    setUiState(prev => ({ ...prev, isEditingName: false }));
     clearError();
   };
 
@@ -142,8 +148,8 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       });
     },
     onSuccess: () => {
-      setShowMandatoryNameDialog(false);
-      setMandatoryName('');
+      setUiState(prev => ({ ...prev, showMandatoryNameDialog: false }));
+      setNameState(prev => ({ ...prev, mandatoryName: '' }));
       clearError();
       // Refresh queries that might use the user name
       queryClient.invalidateQueries({ queryKey: ['friendships'] });
@@ -158,12 +164,12 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
     e.preventDefault();
     clearError();
 
-    if (!mandatoryName.trim()) {
+    if (!nameState.mandatoryName.trim()) {
       showValidation('Please enter your name');
       return;
     }
 
-    updateMandatoryNameMutation.mutate(mandatoryName.trim());
+    updateMandatoryNameMutation.mutate(nameState.mandatoryName.trim());
   };
 
   // Admin: Elevate user to subscriber
@@ -182,11 +188,10 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       return response;
     },
     onSuccess: () => {
-      setSubscriberSuccess('User successfully elevated to subscriber!');
-      clearSubscriberError();
-      setSubscriberEmail('');
+      setSubscriberState(prev => ({ ...prev, success: 'User successfully elevated to subscriber!', email: '' }));
+      clearError();
       // Clear success message after 5 seconds
-      setTimeout(() => setSubscriberSuccess(''), 5000);
+      setTimeout(() => setSubscriberState(prev => ({ ...prev, success: '' })), 5000);
     },
     onError: (error: unknown) => {
       // Extract error message from backend response
@@ -198,35 +203,35 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
           errorMessage = String(error.message);
         }
       }
-      handleSubscriberError(errorMessage);
-      setSubscriberSuccess('');
+      handleError(errorMessage);
+      setSubscriberState(prev => ({ ...prev, success: '' }));
     },
   });
 
   const handleElevateToSubscriber = (e: React.FormEvent) => {
     e.preventDefault();
-    clearSubscriberError();
-    setSubscriberSuccess('');
+    clearError();
+    setSubscriberState(prev => ({ ...prev, success: '' }));
 
-    if (!subscriberEmail.trim()) {
-      handleSubscriberError('Please enter an email address');
+    if (!subscriberState.email.trim()) {
+      showValidation('Please enter an email address');
       return;
     }
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(subscriberEmail.trim())) {
-      handleSubscriberError('Please enter a valid email address');
+    if (!emailRegex.test(subscriberState.email.trim())) {
+      showValidation('Please enter a valid email address');
       return;
     }
 
-    elevateToSubscriberMutation.mutate(subscriberEmail.trim());
+    elevateToSubscriberMutation.mutate(subscriberState.email.trim());
   };
 
   // Load dismissed profile version from localStorage on mount
   useEffect(() => {
     const dismissed = localStorage.getItem(DISMISSED_PROFILE_VERSION_KEY);
-    setDismissedProfileVersion(dismissed);
+    setUiState(prev => ({ ...prev, dismissedProfileVersion: dismissed }));
   }, []);
 
   // Fetch changelog to check for new releases
@@ -243,7 +248,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
   });
 
   const latestVersion = changelog?.[0]?.version;
-  const hasNewReleaseInProfile = latestVersion && latestVersion !== dismissedProfileVersion;
+  const hasNewReleaseInProfile = latestVersion && latestVersion !== uiState.dismissedProfileVersion;
 
   // Fetch pending review count (admin only)
   const { data: pendingReviewCount } = useQuery({
@@ -259,12 +264,12 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
     if (!isOnline) {
       logger.log("Cannot fetch invite codes while offline");
-      setLoadingCodes(false);
+      setInviteState(prev => ({ ...prev, loading: false }));
       return;
     }
 
     try {
-      setLoadingCodes(true);
+      setInviteState(prev => ({ ...prev, loading: true }));
       // Use PocketBase SDK's send method for proper authentication
       const data = await pb.send('/api/invite-codes', {
         method: 'GET',
@@ -272,11 +277,11 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
 
       logger.log("Fetched invite codes:", data);
       logger.log("Codes with lock status:", data.codes);
-      setInviteCodes(data.codes || []);
+      setInviteState(prev => ({ ...prev, codes: data.codes || [] }));
     } catch (err) {
       logger.error("Error fetching invite codes:", err);
     } finally {
-      setLoadingCodes(false);
+      setInviteState(prev => ({ ...prev, loading: false }));
     }
   };
 
@@ -286,7 +291,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
       return;
     }
 
-    setGeneratingCodes(true);
+    setInviteState(prev => ({ ...prev, generating: true }));
     clearError();
 
     try {
@@ -309,7 +314,7 @@ export default function ProfilePage({ onNavigateBack: _onNavigateBack, onDeleteS
         handleError(error, { customMessage: "Failed to generate invite codes" });
       }
     } finally {
-      setGeneratingCodes(false);
+      setInviteState(prev => ({ ...prev, generating: false }));
     }
   };
 
@@ -333,8 +338,8 @@ Your invite code: ${code}
 Looking forward to seeing you there!`;
 
       await navigator.clipboard.writeText(message);
-      setCopiedCode(code);
-      setTimeout(() => setCopiedCode(null), 2000);
+      setInviteState(prev => ({ ...prev, copiedCode: code }));
+      setTimeout(() => setInviteState(prev => ({ ...prev, copiedCode: null })), 2000);
 
       // Lock the code for 7 days (or extend if already locked)
       if (isOnline) {
@@ -363,7 +368,7 @@ Looking forward to seeing you there!`;
       return;
     }
 
-    setLoading(true);
+    setUiState(prev => ({ ...prev, loading: true }));
     clearError();
 
     try {
@@ -380,7 +385,7 @@ Looking forward to seeing you there!`;
     } catch (error: unknown) {
       logger.error("Delete account error:", error);
       handleError(error, { customMessage: "Failed to delete account. Please try again." });
-      setLoading(false);
+      setUiState(prev => ({ ...prev, loading: false }));
     }
   };
 
@@ -393,7 +398,7 @@ Looking forward to seeing you there!`;
   const handleDismissProfileUpdate = () => {
     if (latestVersion) {
       localStorage.setItem(DISMISSED_PROFILE_VERSION_KEY, latestVersion);
-      setDismissedProfileVersion(latestVersion);
+      setUiState(prev => ({ ...prev, dismissedProfileVersion: latestVersion }));
     }
   };
 
@@ -401,7 +406,7 @@ Looking forward to seeing you there!`;
     if (latestVersion) {
       localStorage.setItem(DISMISSED_PROFILE_VERSION_KEY, latestVersion);
       localStorage.setItem(LAST_VIEWED_VERSION_KEY, latestVersion);
-      setDismissedProfileVersion(latestVersion);
+      setUiState(prev => ({ ...prev, dismissedProfileVersion: latestVersion }));
     }
     onNavigateToWhatsNew?.();
   };
@@ -409,7 +414,7 @@ Looking forward to seeing you there!`;
   return (
     <>
       {/* Mandatory Name Dialog */}
-      <AlertDialog open={showMandatoryNameDialog} onOpenChange={() => {}}>
+      <AlertDialog open={uiState.showMandatoryNameDialog} onOpenChange={() => {}}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Set Your Name</AlertDialogTitle>
@@ -426,8 +431,8 @@ Looking forward to seeing you there!`;
                       id="mandatory-name"
                       type="text"
                       placeholder="Enter your name"
-                      value={mandatoryName}
-                      onChange={(e) => setMandatoryName(e.target.value)}
+                      value={nameState.mandatoryName}
+                      onChange={(e) => setNameState(prev => ({ ...prev, mandatoryName: e.target.value }))}
                       disabled={updateMandatoryNameMutation.isPending}
                       autoFocus
                       data-testid="mandatory-name-input"
@@ -523,11 +528,11 @@ Looking forward to seeing you there!`;
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-xs font-medium text-gray-500">Name</p>
-                    {!isEditingName && (
+                    {!uiState.isEditingName && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setIsEditingName(true)}
+                        onClick={() => setUiState(prev => ({ ...prev, isEditingName: true }))}
                         className="h-6 w-6 p-0"
                         data-testid="edit-name-button"
                       >
@@ -535,12 +540,12 @@ Looking forward to seeing you there!`;
                       </Button>
                     )}
                   </div>
-                  {isEditingName ? (
+                  {uiState.isEditingName ? (
                     <div className="flex items-center gap-2">
                       <Input
                         type="text"
-                        value={editedName}
-                        onChange={(e) => setEditedName(e.target.value)}
+                        value={nameState.editedName}
+                        onChange={(e) => setNameState(prev => ({ ...prev, editedName: e.target.value }))}
                         placeholder="Enter your name"
                         disabled={updateNameMutation.isPending}
                         className="text-sm"
@@ -639,13 +644,13 @@ Looking forward to seeing you there!`;
                   onClick={generateMoreCodes}
                   variant="outline"
                   size="sm"
-                  disabled={!isOnline || generatingCodes || loadingCodes}
+                  disabled={!isOnline || inviteState.generating || inviteState.loading}
                   className="text-xs"
                   data-testid="generate-codes-button"
                 >
                   {!isOnline ? (
                     <><WifiOff className="w-3 h-3 mr-1" />Offline</>
-                  ) : generatingCodes ? (
+                  ) : inviteState.generating ? (
                     'Generating...'
                   ) : (
                     'Generate 5 More'
@@ -663,9 +668,9 @@ Looking forward to seeing you there!`;
                 </div>
               </div>
             )}
-            {loadingCodes ? (
+            {inviteState.loading ? (
               <p className="text-sm text-gray-500">Loading codes...</p>
-            ) : inviteCodes.length === 0 ? (
+            ) : inviteState.codes.length === 0 ? (
               <div className="text-center py-4">
                 <p className="text-sm text-gray-500 mb-3">
                   {!isOnline ? 'Cannot load invite codes while offline' : 'No invite codes available'}
@@ -675,12 +680,12 @@ Looking forward to seeing you there!`;
                     onClick={generateMoreCodes}
                     variant="default"
                     size="sm"
-                    disabled={!isOnline || generatingCodes}
+                    disabled={!isOnline || inviteState.generating}
                     data-testid="generate-first-codes-button"
                   >
                     {!isOnline ? (
                       <><WifiOff className="w-3 h-3 mr-1" />Generate (Offline)</>
-                    ) : generatingCodes ? (
+                    ) : inviteState.generating ? (
                       'Generating...'
                     ) : (
                       'Generate Codes'
@@ -690,7 +695,7 @@ Looking forward to seeing you there!`;
               </div>
             ) : (
               <div className="space-y-2">
-                {inviteCodes.map((inviteCode) => {
+                {inviteState.codes.map((inviteCode) => {
                   logger.log(`Rendering code ${inviteCode.code}: locked=${inviteCode.locked}, lockedUntil=${inviteCode.lockedUntil}`);
                   return (
                   <div
@@ -723,7 +728,7 @@ Looking forward to seeing you there!`;
                       className="ml-2 text-xs"
                       data-testid={`copy-code-${inviteCode.code}`}
                     >
-                      {copiedCode === inviteCode.code ? '✓ Copied!' : 'Copy Invite'}
+                      {inviteState.copiedCode === inviteCode.code ? '✓ Copied!' : 'Copy Invite'}
                     </Button>
                   </div>
                   );
@@ -821,13 +826,13 @@ Looking forward to seeing you there!`;
                   </div>
                 )}
 
-                {subscriberSuccess && (
+                {subscriberState.success && (
                   <div className="p-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" data-testid="subscriber-success">
-                    {subscriberSuccess}
+                    {subscriberState.success}
                   </div>
                 )}
 
-                <ErrorDisplay error={subscriberError} onClear={clearSubscriberError} testId="subscriber-error" />
+                <ErrorDisplay error={error} onClear={clearError} testId="subscriber-error" />
 
                 <form onSubmit={handleElevateToSubscriber} className="space-y-2">
                   <div className="space-y-1">
@@ -838,8 +843,8 @@ Looking forward to seeing you there!`;
                       id="subscriber-email"
                       type="email"
                       placeholder="user@example.com"
-                      value={subscriberEmail}
-                      onChange={(e) => setSubscriberEmail(e.target.value)}
+                      value={subscriberState.email}
+                      onChange={(e) => setSubscriberState(prev => ({ ...prev, email: e.target.value }))}
                       disabled={!isOnline || elevateToSubscriberMutation.isPending}
                       className="text-sm"
                       data-testid="subscriber-email-input"
@@ -890,7 +895,7 @@ Looking forward to seeing you there!`;
             <CardDescription>Irreversible and destructive actions</CardDescription>
           </CardHeader>
           <CardContent>
-            {!showConfirm ? (
+            {!uiState.showConfirm ? (
               <div className="space-y-3">
                 <div className="p-3 bg-red-50 border border-red-200 rounded-md">
                   <p className="text-sm font-medium text-red-900">Delete Account</p>
@@ -899,11 +904,11 @@ Looking forward to seeing you there!`;
                   </p>
                 </div>
                 <Button
-                  onClick={() => setShowConfirm(true)}
+                  onClick={() => setUiState(prev => ({ ...prev, showConfirm: true }))}
                   variant="destructive"
                   className="w-full"
                   data-testid="delete-account-button"
-                  disabled={loading}
+                  disabled={uiState.loading}
                 >
                   Delete Account
                 </Button>
@@ -927,11 +932,11 @@ Looking forward to seeing you there!`;
 
                 <div className="flex gap-2">
                   <Button
-                    onClick={() => setShowConfirm(false)}
+                    onClick={() => setUiState(prev => ({ ...prev, showConfirm: false }))}
                     variant="outline"
                     className="flex-1"
                     data-testid="cancel-delete-button"
-                    disabled={loading}
+                    disabled={uiState.loading}
                   >
                     Cancel
                   </Button>
@@ -940,9 +945,9 @@ Looking forward to seeing you there!`;
                     variant="destructive"
                     className="flex-1"
                     data-testid="confirm-delete-button"
-                    disabled={loading}
+                    disabled={uiState.loading}
                   >
-                    {loading ? "Deleting..." : "Yes, Delete Forever"}
+                    {uiState.loading ? "Deleting..." : "Yes, Delete Forever"}
                   </Button>
                 </div>
               </div>

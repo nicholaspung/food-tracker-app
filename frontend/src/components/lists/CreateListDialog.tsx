@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { pb, User } from "@/lib/pocketbase";
-import { COLLECTIONS } from '@/constants/collections';
+import { useOfflineCreateList } from "@/hooks/offline/useOfflineListOperations";
 import {
   Dialog,
   DialogContent,
@@ -47,27 +46,7 @@ export default function CreateListDialog({
     }
   }, [open, clearError]);
 
-  const createListMutation = useMutation({
-    mutationFn: async () => {
-      if (!listName.trim()) {
-        throw new Error(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("List name"));
-      }
-
-      if (listName.length > 100) {
-        throw new Error(ERROR_MESSAGES.VALIDATION.MAX_LENGTH("List name", 100));
-      }
-
-      if (description.length > 500) {
-        throw new Error(ERROR_MESSAGES.VALIDATION.MAX_LENGTH("Description", 500));
-      }
-
-      return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).create({
-        name: listName.trim(),
-        description: description.trim() || undefined,
-        visibility,
-        user: user.id,
-      });
-    },
+  const createListMutation = useOfflineCreateList({
     onSuccess: () => {
       onSuccess?.();
       onOpenChange(false);
@@ -80,7 +59,28 @@ export default function CreateListDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    await createListMutation.mutateAsync();
+
+    // Client-side validation
+    if (!listName.trim()) {
+      handleError(new Error(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("List name")));
+      return;
+    }
+
+    if (listName.length > 100) {
+      handleError(new Error(ERROR_MESSAGES.VALIDATION.MAX_LENGTH("List name", 100)));
+      return;
+    }
+
+    if (description.length > 500) {
+      handleError(new Error(ERROR_MESSAGES.VALIDATION.MAX_LENGTH("Description", 500)));
+      return;
+    }
+
+    await createListMutation.mutateAsync({
+      name: listName.trim(),
+      description: description.trim() || undefined,
+      visibility,
+    });
   };
 
   return (

@@ -7,9 +7,11 @@ import {
   BadgeTheme,
 } from "@/services/photoService";
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
+import { VisitPhoto } from '@/lib/pocketbase';
+import type PocketBase from 'pocketbase';
 
 interface PhotoWithFoodItem {
-  photo: any; // visit_photo record
+  photo: VisitPhoto;
   foodItem: {
     id: string;
     name: string;
@@ -23,7 +25,7 @@ interface VisitShareModalProps {
   restaurantName: string;
   visitDate: string;
   photosWithFoodItems: PhotoWithFoodItem[];
-  pb: any; // PocketBase instance
+  pb: PocketBase;
 }
 
 export default function VisitShareModal({

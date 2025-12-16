@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
 import {
   Card,
@@ -66,6 +66,17 @@ const VisitCard = memo(function VisitCard({
   onShareVisit,
   onPhotoClick,
 }: VisitCardProps) {
+  // Create a Map for O(1) photo lookups by food_item ID
+  const visitPhotosByFoodItem = useMemo(() => {
+    const map = new Map<string, VisitPhoto>();
+    visitPhotos.forEach((photo) => {
+      if (photo.food_item) {
+        map.set(photo.food_item, photo);
+      }
+    });
+    return map;
+  }, [visitPhotos]);
+
   return (
     <Card
       className={
@@ -165,9 +176,7 @@ const VisitCard = memo(function VisitCard({
           <div className="space-y-2">
             {visit.foodItems.map((item) => {
               // Find photo for this food item
-              const photo = visitPhotos.find(
-                (p) => p.food_item === item.id
-              );
+              const photo = visitPhotosByFoodItem.get(item.id);
               // For offline photos (isPending), use the blob URL directly
               // For online photos, use PocketBase file URL
               const photoUrl = photo

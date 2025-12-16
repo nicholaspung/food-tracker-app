@@ -153,7 +153,7 @@ export default function FriendsPage() {
       setFriendCode("");
       showSuccess("Friend request sent!");
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       handleError(err, { customMessage: ERROR_MESSAGES.FRIENDS.SEND_REQUEST_FAILED });
     },
   });

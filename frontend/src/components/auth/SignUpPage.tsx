@@ -151,7 +151,7 @@ export default function SignUpPage({
       setPassword("");
       setPasswordConfirm("");
       setInviteCode(initialInviteCode || "");
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Sign up error:", err);
 
       // useErrorHandler automatically parses PocketBase errors

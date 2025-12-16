@@ -142,7 +142,7 @@ export default function CreateRestaurantPage({
         logger.log('[CreateRestaurant] Proceeding to next step');
         onRestaurantCreated();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('[CreateRestaurant] Error creating restaurant:', err);
       handleError(err, { customMessage: ERROR_MESSAGES.RESTAURANT.CREATE_FAILED });
     }

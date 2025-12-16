@@ -17,9 +17,6 @@ function Profile() {
 
   return (
     <ProfilePage
-      onNavigateBack={() => {
-        navigate({ to: '/home' });
-      }}
       onDeleteSuccess={() => {
         navigate({ to: '/' });
       }}
