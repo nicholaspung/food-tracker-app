@@ -102,6 +102,17 @@ export default function EditRateItemsPage({
     },
   });
 
+  // Create a Map for O(1) photo lookups by food_item ID
+  const existingPhotosByFoodItem = useMemo(() => {
+    const map = new Map<string, VisitPhoto>();
+    existingPhotos.forEach((photo) => {
+      if (photo.food_item) {
+        map.set(photo.food_item, photo);
+      }
+    });
+    return map;
+  }, [existingPhotos]);
+
   // Only check for draft on initial mount
   useEffect(() => {
     if (
@@ -132,9 +143,7 @@ export default function EditRateItemsPage({
   // Mark an existing photo for deletion
   const handleDeleteExistingPhoto = (foodItemId: string | number) => {
     const id = String(foodItemId);
-    const existingPhoto = existingPhotos.find(
-      (p) => p.food_item === id
-    );
+    const existingPhoto = existingPhotosByFoodItem.get(id);
     if (existingPhoto) {
       const newDeletedIds = new Set(deletedPhotoIds);
       newDeletedIds.add(existingPhoto.id);
@@ -144,9 +153,7 @@ export default function EditRateItemsPage({
 
   // Get existing photo URL for a food item (only if not marked for deletion)
   const getExistingPhotoUrl = (foodItemId: string) => {
-    const existingPhoto = existingPhotos.find(
-      (p) => p.food_item === foodItemId
-    );
+    const existingPhoto = existingPhotosByFoodItem.get(foodItemId);
     if (existingPhoto && !deletedPhotoIds.has(existingPhoto.id)) {
       return pb.files.getURL(existingPhoto, existingPhoto.photo);
     }
@@ -193,9 +200,7 @@ export default function EditRateItemsPage({
           // Check for photo to upload
           const newPhoto = itemPhotos.get(item.id);
           if (newPhoto) {
-            const existingPhoto = existingPhotos.find(
-              (p) => p.food_item === item.id
-            );
+            const existingPhoto = existingPhotosByFoodItem.get(item.id);
             photoUploads.push({
               photo: newPhoto,
               foodItemId: item.id,

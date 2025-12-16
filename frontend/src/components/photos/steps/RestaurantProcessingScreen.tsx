@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,8 @@ import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import { RatingSelector } from "@/components/ui/RatingSelector";
 import MenuItemPhotoInput from "@/components/visits/shared/MenuItemPhotoInput";
 import { format } from "date-fns";
+import { useOfflineVisitCreation } from "@/hooks/offline/useOfflineVisitCreation";
+import { useOfflineRestaurantCreation } from "@/hooks/offline/useOfflineRestaurantCreation";
 
 interface RestaurantProcessingScreenProps {
   // Photo data
@@ -98,8 +100,8 @@ interface RestaurantProcessingScreenProps {
   onLegendExpandedChange: (expanded: boolean) => void;
 
   // Mutations
-  restaurantCreationMutation: any;
-  visitCreationMutation: any;
+  restaurantCreationMutation: ReturnType<typeof useOfflineRestaurantCreation>;
+  visitCreationMutation: ReturnType<typeof useOfflineVisitCreation>;
 
   // Error handlers
   onShowValidation?: (message: string) => void;
@@ -116,7 +118,7 @@ interface RestaurantProcessingScreenProps {
  * - Photo date picker
  * - Progress tracking
  */
-export function RestaurantProcessingScreen(props: RestaurantProcessingScreenProps) {
+function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenProps) {
   const {
     currentPhoto,
     currentPhotoIndex,
@@ -838,3 +840,27 @@ export function RestaurantProcessingScreen(props: RestaurantProcessingScreenProp
     </div>
   );
 }
+
+/**
+ * Memoized version of RestaurantProcessingScreen with custom equality check
+ * Only re-renders when critical props change (photo, restaurant, menu items)
+ */
+export const RestaurantProcessingScreen = memo(
+  RestaurantProcessingScreenComponent,
+  (prevProps, nextProps) => {
+    // Compare critical props that affect rendering
+    return (
+      prevProps.currentPhoto.id === nextProps.currentPhoto.id &&
+      prevProps.currentPhoto.previewUrl === nextProps.currentPhoto.previewUrl &&
+      prevProps.selectedRestaurant?.id === nextProps.selectedRestaurant?.id &&
+      prevProps.menuItems.length === nextProps.menuItems.length &&
+      prevProps.selectedMenuItem?.id === nextProps.selectedMenuItem?.id &&
+      prevProps.rating === nextProps.rating &&
+      prevProps.notes === nextProps.notes &&
+      prevProps.isProcessing === nextProps.isProcessing &&
+      prevProps.ocrStatus === nextProps.ocrStatus &&
+      prevProps.isOnline === nextProps.isOnline &&
+      prevProps.canSubmit === nextProps.canSubmit
+    );
+  }
+);

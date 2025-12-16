@@ -26,7 +26,7 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
       try {
         await pb.collection(COLLECTIONS.USERS).confirmVerification(token);
         setStatus('success');
-      } catch (err: any) {
+      } catch (err: unknown) {
         logger.error("Email verification error:", err);
         setStatus('error');
         handleError(err, { customMessage: "Failed to verify email. The link may be invalid or expired." });

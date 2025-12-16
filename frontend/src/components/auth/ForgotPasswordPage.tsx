@@ -34,7 +34,7 @@ export default function ForgotPasswordPage({ onNavigateToLogin }: ForgotPassword
       setSuccess(true);
       showSuccess("Password reset email sent! Check your inbox.");
       setEmail(""); // Clear the form
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Password reset request error:", err);
       handleError(err, { customMessage: ERROR_MESSAGES.AUTH.SEND_RESET_EMAIL_FAILED });
     } finally {

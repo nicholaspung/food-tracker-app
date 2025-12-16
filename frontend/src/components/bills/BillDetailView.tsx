@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Users, DollarSign, CheckCircle, Clock, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { getBill, markParticipantPaid, markParticipantPending, settleBill, deleteBill } from '@/lib/billService';
 import { formatCurrency, getBillSummary } from '@/lib/billCalculations';
-import { pb } from '@/lib/pocketbase';
+import { pb, BillParticipant } from '@/lib/pocketbase';
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 import { ERROR_MESSAGES } from '@/lib/errorMessages';
@@ -45,8 +45,17 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
     enabled: !!billId,
   });
 
+  // Create a Map for O(1) participant lookups by ID
+  const participantsById = useMemo(() => {
+    const map = new Map<string, BillParticipant>();
+    bill?.participants?.forEach((participant) => {
+      map.set(participant.id, participant);
+    });
+    return map;
+  }, [bill?.participants]);
+
   // Helper function to safely get participant name
-  const getParticipantName = (participant: any, isCurrentUser: boolean) => {
+  const getParticipantName = (participant: BillParticipant, isCurrentUser: boolean) => {
     if (isCurrentUser) return 'You';
 
     // Try to get name from expanded user data
@@ -69,7 +78,7 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
 
   const togglePaymentMutation = useMutation({
     mutationFn: async (participantId: string) => {
-      const participant = bill?.participants.find(p => p.id === participantId);
+      const participant = participantsById.get(participantId);
       if (!participant) throw new Error('Participant not found');
 
       if (participant.paid_status === 'paid') {

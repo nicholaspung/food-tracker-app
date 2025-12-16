@@ -41,7 +41,7 @@ export default function OnboardingDialog({ open, onComplete }: OnboardingDialogP
     onSuccess: () => {
       onComplete();
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.UPDATE_FAILED("name") });
     },
   });

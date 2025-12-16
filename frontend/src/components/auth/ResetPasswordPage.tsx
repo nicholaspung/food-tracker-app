@@ -48,7 +48,7 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
     try {
       await pb.collection(COLLECTIONS.USERS).confirmPasswordReset(token, password, passwordConfirm);
       setSuccess(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("Password reset error:", err);
       handleError(err, { customMessage: ERROR_MESSAGES.AUTH.RESET_PASSWORD_FAILED });
     } finally {

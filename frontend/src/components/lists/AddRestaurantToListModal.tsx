@@ -131,7 +131,7 @@ export default function AddRestaurantToListModal({
       onSuccess?.();
       handleClose();
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.CREATE_FAILED("list item") });
     },
   });

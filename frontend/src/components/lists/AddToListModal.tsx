@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { pb, RestaurantList } from "@/lib/pocketbase";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { pb, RestaurantList, ListItem } from "@/lib/pocketbase";
 import { COLLECTIONS } from '@/constants/collections';
+import { useOfflineAddToList } from "@/hooks/offline/useOfflineListOperations";
 import {
   Dialog,
   DialogContent,
@@ -50,7 +51,7 @@ export default function AddToListModal({
   });
 
   // Fetch existing list items for this restaurant
-  const { data: existingListItems = [] } = useQuery({
+  const { data: existingListItems = [] } = useQuery<ListItem[]>({
     queryKey: ["list_items_for_restaurant", restaurantId],
     queryFn: async () => {
       return await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
@@ -62,36 +63,11 @@ export default function AddToListModal({
 
   // Get IDs of lists that already contain this restaurant
   const existingListIds = new Set(
-    existingListItems.map((item: any) => item.list)
+    existingListItems.map((item) => item.list)
   );
 
   // Add to lists mutation
-  const addToListsMutation = useMutation({
-    mutationFn: async () => {
-      const promises = Array.from(selectedLists).map(async (listId) => {
-        // Skip if already in list
-        if (existingListIds.has(listId)) return;
-
-        // Get current max position in list
-        const existingItems = await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
-          filter: `list = "${listId}"`,
-          sort: "-position",
-        });
-
-        const maxPosition =
-          existingItems.length > 0 ? existingItems[0].position : -1;
-
-        // Create list item
-        return await pb.collection(COLLECTIONS.LIST_ITEMS).create({
-          list: listId,
-          restaurant: restaurantId,
-          addedBy: user?.id,
-          position: maxPosition + 1,
-        });
-      });
-
-      await Promise.all(promises);
-    },
+  const addToListMutation = useOfflineAddToList({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["list_items"] });
       queryClient.invalidateQueries({
@@ -121,7 +97,31 @@ export default function AddToListModal({
       return;
     }
     clearError();
-    await addToListsMutation.mutateAsync();
+
+    // Add restaurant to each selected list
+    const promises = Array.from(selectedLists).map(async (listId) => {
+      // Skip if already in list
+      if (existingListIds.has(listId)) return;
+
+      // Get current max position in list
+      const existingItems = await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
+        filter: `list = "${listId}"`,
+        sort: "-position",
+      });
+
+      const maxPosition =
+        existingItems.length > 0 ? existingItems[0].position : -1;
+
+      // Add to list using offline-aware mutation
+      return addToListMutation.mutateAsync({
+        list: listId,
+        restaurant: restaurantId,
+        addedBy: user?.id,
+        position: maxPosition + 1,
+      });
+    });
+
+    await Promise.all(promises);
   };
 
   const getVisibilityIcon = (visibility: "private" | "friends" | "public") => {
@@ -244,11 +244,11 @@ export default function AddToListModal({
                 onClick={handleSubmit}
                 className="flex-1"
                 disabled={
-                  addToListsMutation.isPending || selectedLists.size === 0
+                  addToListMutation.isPending || selectedLists.size === 0
                 }
                 data-testid="add-to-lists-submit"
               >
-                {addToListsMutation.isPending
+                {addToListMutation.isPending
                   ? "Adding..."
                   : `Add to ${selectedLists.size} ${
                       selectedLists.size === 1 ? "List" : "Lists"
@@ -257,7 +257,7 @@ export default function AddToListModal({
               <Button
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                disabled={addToListsMutation.isPending}
+                disabled={addToListMutation.isPending}
               >
                 Cancel
               </Button>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DollarSign } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -68,6 +68,23 @@ export default function CreateCustomSplitBillDialog({
       })
       .filter((friend): friend is User => friend !== undefined && friend !== null) || [];
 
+  // Create Maps for O(1) lookups
+  const friendsById = useMemo(() => {
+    const map = new Map<string, User>();
+    friends.forEach(friend => {
+      map.set(friend.id, friend);
+    });
+    return map;
+  }, [friends]);
+
+  const participantAmountsByUserId = useMemo(() => {
+    const map = new Map<string, string>();
+    participantAmounts.forEach(p => {
+      map.set(p.userId, p.amount);
+    });
+    return map;
+  }, [participantAmounts]);
+
   // Update participant amounts when friends are selected/deselected
   useEffect(() => {
     const newParticipants: ParticipantAmount[] = [
@@ -75,16 +92,16 @@ export default function CreateCustomSplitBillDialog({
       {
         userId: currentUserId,
         userName: 'You',
-        amount: participantAmounts.find(p => p.userId === currentUserId)?.amount || '',
+        amount: participantAmountsByUserId.get(currentUserId) || '',
       },
       // Selected friends
       ...selectedFriendIds.map(friendId => {
-        const friend = friends.find(f => f.id === friendId);
-        const existingAmount = participantAmounts.find(p => p.userId === friendId);
+        const friend = friendsById.get(friendId);
+        const existingAmount = participantAmountsByUserId.get(friendId);
         return {
           userId: friendId,
           userName: friend?.name || friend?.email?.split('@')[0] || 'Unknown',
-          amount: existingAmount?.amount || '',
+          amount: existingAmount || '',
         };
       }),
     ];

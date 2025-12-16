@@ -110,7 +110,7 @@ export default function CameraOCR() {
         showValidation(ERROR_MESSAGES.OCR.NO_TEXT_DETECTED);
         setCurrentStep('result');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('OCR error:', err);
       handleError(err, { customMessage: ERROR_MESSAGES.OCR.EXTRACTION_FAILED(err.message || 'Unknown error') });
       setTextBlocks([]);

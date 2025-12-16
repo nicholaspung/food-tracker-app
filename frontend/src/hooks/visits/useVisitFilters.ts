@@ -45,6 +45,7 @@ export function useVisitFilters<V extends {
   foodItems?: Array<{ name?: string; rating: number }>;
   notes?: string;
   visibility?: string;
+  visitDate: string;
 }, Q extends {
   name?: string;
   notes?: string;
@@ -76,7 +77,7 @@ export function useVisitFilters<V extends {
     // Otherwise, filter by time range
     let filtered = deferredSearchQuery.trim()
       ? visits
-      : visits.filter((visit: any) => new Date(visit.visitDate) >= cutoffDate);
+      : visits.filter((visit) => new Date(visit.visitDate) >= cutoffDate);
 
     // Apply search filter
     if (deferredSearchQuery.trim()) {
