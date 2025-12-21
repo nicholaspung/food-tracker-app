@@ -53,6 +53,7 @@ interface VisitCardProps {
   onSharePhoto: (photo: VisitPhoto, foodItem: FoodItem, restaurant: Restaurant, visitDate: string) => void;
   onShareVisit: (visit: VisitWithDetails) => void;
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
+  ratingFilter?: "all" | "1" | "2" | "3" | "4" | "5";
 }
 
 const VisitCard = memo(function VisitCard({
@@ -65,6 +66,7 @@ const VisitCard = memo(function VisitCard({
   onSharePhoto,
   onShareVisit,
   onPhotoClick,
+  ratingFilter = "all",
 }: VisitCardProps) {
   // Create a Map for O(1) photo lookups by food_item ID
   const visitPhotosByFoodItem = useMemo(() => {
@@ -76,6 +78,15 @@ const VisitCard = memo(function VisitCard({
     });
     return map;
   }, [visitPhotos]);
+
+  // Filter food items based on rating filter
+  const filteredFoodItems = useMemo(() => {
+    if (!visit.foodItems) return [];
+    if (ratingFilter === "all") return visit.foodItems;
+
+    const targetRating = parseInt(ratingFilter);
+    return visit.foodItems.filter((item) => item.rating === targetRating);
+  }, [visit.foodItems, ratingFilter]);
 
   return (
     <Card
@@ -171,10 +182,9 @@ const VisitCard = memo(function VisitCard({
         </div>
       </CardHeader>
       <CardContent>
-        {visit.foodItems &&
-        visit.foodItems.length > 0 ? (
+        {filteredFoodItems.length > 0 ? (
           <div className="space-y-2">
-            {visit.foodItems.map((item) => {
+            {filteredFoodItems.map((item) => {
               // Find photo for this food item
               const photo = visitPhotosByFoodItem.get(item.id);
               // For offline photos (isPending), use the blob URL directly

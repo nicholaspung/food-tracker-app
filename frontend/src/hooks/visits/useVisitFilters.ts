@@ -10,6 +10,7 @@ export interface UseVisitFiltersParams<V, Q> {
   cutoffDate: Date;
   currentUserId: string;
   isFriendVisit: (visit: V) => boolean;
+  isFriendQuickTrack?: (item: Q) => boolean;
 }
 
 export interface UseVisitFiltersReturn<V, Q> {
@@ -59,9 +60,19 @@ export function useVisitFilters<V extends {
   visits,
   quickTrackItems,
   cutoffDate,
-  currentUserId: _currentUserId,
+  currentUserId,
   isFriendVisit,
+  isFriendQuickTrack,
 }: UseVisitFiltersParams<V, Q>): UseVisitFiltersReturn<V, Q> {
+
+  // Helper to check if a quick track item is from a friend
+  const isQuickTrackFromFriend = (item: Q) => {
+    if (isFriendQuickTrack) {
+      return isFriendQuickTrack(item);
+    }
+    // Fallback: check if the item's user is different from current user
+    return 'user' in item && item.user !== currentUserId;
+  };
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -118,7 +129,9 @@ export function useVisitFilters<V extends {
       filtered = filtered.filter((visit) => !isFriendVisit(visit));
     } else if (filterType === "friends") {
       filtered = filtered.filter((visit) => isFriendVisit(visit));
-    } else if (filterType === "user_quick_track") {
+    } else if (filterType === "friend_visits") {
+      filtered = filtered.filter((visit) => isFriendVisit(visit));
+    } else if (filterType === "user_quick_track" || filterType === "friend_quick_track") {
       // No visits shown when filtering for quick track only
       filtered = [];
     }
@@ -186,12 +199,15 @@ export function useVisitFilters<V extends {
     }
 
     // Quick track items filtering based on type
-    if (filterType === "friends") {
-      // Friends filter: no quick track items from user
+    if (filterType === "friends" || filterType === "friend_quick_track") {
+      // Friends filter: only show quick track items from friends
+      filtered = filtered.filter(isQuickTrackFromFriend);
+    } else if (filterType === "user_visits" || filterType === "friend_visits") {
+      // Visits only filters: no quick track items
       return [];
-    } else if (filterType === "user_visits") {
-      // User visits only: no quick track items
-      return [];
+    } else if (filterType === "user_both" || filterType === "user_quick_track") {
+      // User's items only: filter out friend quick track items
+      filtered = filtered.filter((item) => !isQuickTrackFromFriend(item));
     }
 
     // Apply visibility filter
@@ -221,8 +237,14 @@ export function useVisitFilters<V extends {
   const hasMoreVisits = !deferredSearchQuery.trim() && visits.length > filteredVisits.length;
 
   // Count active filters
+  // Don't count the type filter if it's in "all" mode (user_both or friends)
+  const isTypeFilterActive =
+    filterType !== "all" &&
+    filterType !== "user_both" &&
+    filterType !== "friends";
+
   const activeFiltersCount = [
-    filterType !== "all",
+    isTypeFilterActive,
     visibilityFilter !== "all",
     ratingFilter !== "all",
   ].filter(Boolean).length;

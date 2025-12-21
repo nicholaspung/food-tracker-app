@@ -8,12 +8,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X, SlidersHorizontal } from "lucide-react";
+import { Search, X, SlidersHorizontal, User, Users } from "lucide-react";
 import { RATING_LABELS } from "@/lib/ratingConstants";
-
-type FilterType = "all" | "user_visits" | "user_quick_track" | "user_both" | "friends";
-type VisibilityFilter = "all" | "private" | "friends";
-type RatingFilter = "all" | "1" | "2" | "3" | "4" | "5";
+import { FilterType, VisibilityFilter, RatingFilter } from "@/constants/filters";
 
 interface VisitListHeaderProps {
   // Search
@@ -69,10 +66,97 @@ export default function VisitListHeader({
     onFiltersExpandedChange(!filtersExpanded);
   };
 
+  // Determine if we're in "my ratings" or "friends' ratings" mode
+  const isShowingFriends = filterType === "friends" || filterType === "friend_visits" || filterType === "friend_quick_track";
+
+  // Handler for toggle - preserve the sub-filter when switching
+  const handleToggle = (showFriends: boolean) => {
+    const currentSubFilter = getContextualFilterValue();
+
+    if (showFriends) {
+      // Switching to friends view
+      if (currentSubFilter === "visits") {
+        onFilterTypeChange("friend_visits");
+      } else if (currentSubFilter === "quick_track") {
+        onFilterTypeChange("friend_quick_track");
+      } else {
+        onFilterTypeChange("friends");
+      }
+    } else {
+      // Switching to mine view
+      if (currentSubFilter === "visits") {
+        onFilterTypeChange("user_visits");
+      } else if (currentSubFilter === "quick_track") {
+        onFilterTypeChange("user_quick_track");
+      } else {
+        onFilterTypeChange("user_both");
+      }
+    }
+  };
+
+  // Get current type filter value relative to the toggle context
+  // When showing friends, map "friends" to "all", "friend_visits" to "visits", etc.
+  // When showing mine, map "user_both" to "all", "user_visits" to "visits", "user_quick_track" to "quick_track"
+  const getContextualFilterValue = () => {
+    if (isShowingFriends) {
+      if (filterType === "friends") return "all";
+      if (filterType === "friend_visits") return "visits";
+      if (filterType === "friend_quick_track") return "quick_track";
+      return "all";
+    } else {
+      if (filterType === "user_both" || filterType === "all") return "all";
+      if (filterType === "user_visits") return "visits";
+      if (filterType === "user_quick_track") return "quick_track";
+      return "all";
+    }
+  };
+
+  const handleContextualFilterChange = (value: string) => {
+    if (isShowingFriends) {
+      // For friends, map to friend filter types
+      if (value === "all") onFilterTypeChange("friends");
+      else if (value === "visits") onFilterTypeChange("friend_visits");
+      else if (value === "quick_track") onFilterTypeChange("friend_quick_track");
+    } else {
+      // For mine, map back to the full filter type
+      if (value === "all") onFilterTypeChange("user_both");
+      else if (value === "visits") onFilterTypeChange("user_visits");
+      else if (value === "quick_track") onFilterTypeChange("user_quick_track");
+    }
+  };
+
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-2 space-y-3">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Visits</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Ratings</h1>
+
+          {/* Toggle between My Ratings and Friends' Ratings */}
+          <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-0.5">
+            <button
+              onClick={() => handleToggle(false)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                !isShowingFriends
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <User className="w-4 h-4" />
+              Mine
+            </button>
+            <button
+              onClick={() => handleToggle(true)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                isShowingFriends
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Friends
+            </button>
+          </div>
+        </div>
         <p className="text-sm text-gray-500 mt-1">
           {isSearching
             ? `Found ${filteredVisitsCount + filteredQuickTrackCount} items (${filteredVisitsCount} visits, ${filteredQuickTrackCount} quick items)`
@@ -148,18 +232,26 @@ export default function VisitListHeader({
           <div className="flex gap-2 items-center">
             {/* Type Filter */}
             <Select
-              value={filterType}
-              onValueChange={(value: FilterType) => onFilterTypeChange(value)}
+              value={getContextualFilterValue()}
+              onValueChange={handleContextualFilterChange}
             >
               <SelectTrigger className="flex-1 min-w-0">
                 <SelectValue className="truncate" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="user_visits">My Visits</SelectItem>
-                <SelectItem value="user_quick_track">My Quick Track</SelectItem>
-                <SelectItem value="user_both">Both</SelectItem>
-                <SelectItem value="friends">Friends</SelectItem>
+                {!isShowingFriends && (
+                  <>
+                    <SelectItem value="visits">My Visits</SelectItem>
+                    <SelectItem value="quick_track">My Quick Track</SelectItem>
+                  </>
+                )}
+                {isShowingFriends && (
+                  <>
+                    <SelectItem value="visits">Friend Visits</SelectItem>
+                    <SelectItem value="quick_track">Friend Quick Track</SelectItem>
+                  </>
+                )}
               </SelectContent>
             </Select>
 
