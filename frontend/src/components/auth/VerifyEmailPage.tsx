@@ -49,8 +49,8 @@ export default function VerifyEmailPage({ token, onNavigateToLogin }: VerifyEmai
   }, [status, countdown, onNavigateToLogin]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="verify-email-page">
-      <Card className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background" data-testid="verify-email-page">
+      <Card className="w-full min-h-screen lg:min-h-0 lg:max-w-md lg:rounded-lg rounded-none border-0 lg:border shadow-none lg:shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center" data-testid="verify-email-title">
             {status === 'verifying' && 'Verifying Email...'}

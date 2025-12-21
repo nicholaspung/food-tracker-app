@@ -1,5 +1,32 @@
 [
   {
+    "version": "0.5.8",
+    "date": "2025-12-21",
+    "title": "Modern Login Experience & OAuth Support",
+    "summary": "Completely redesigned login and sign up experience with full-screen mobile-optimized design, OAuth support for Google and Facebook (coming soon), and smart returning user experience!",
+    "features": [
+      "OAuth authentication: Sign in with Google or Facebook (buttons ready, coming soon)",
+      "Returning user experience: App remembers your last login method and offers quick login",
+      "Full-screen mobile design: Login and sign up pages now use entire screen for better mobile experience",
+      "Smart login suggestions: Continue with your previous login method with one tap",
+      "Flexible login options: Easily switch between email, Google, and Facebook authentication"
+    ],
+    "improvements": [
+      "Modern login UI: Clean, mobile-first design with centered layout and better spacing",
+      "Improved onboarding: Better responsive design for onboarding screens on mobile",
+      "Better visual hierarchy: Clear separation between primary and alternative login methods",
+      "Returning user flow: Last login method saved for 30 days for faster future logins",
+      "Profile page updates: Minor UI improvements for consistency",
+      "Streamlined authentication: Simplified flow between different authentication methods",
+      "Full-screen forms: Auth pages now fill the screen on mobile for better focus"
+    ],
+    "fixes": [
+      "Fixed login page layout on mobile devices",
+      "Fixed inconsistent padding and spacing on auth pages",
+      "Fixed card borders and shadows on mobile for cleaner appearance"
+    ]
+  },
+  {
     "version": "0.5.7",
     "date": "2025-12-20",
     "title": "Enhanced Feed Organization & Filtering",
@@ -292,7 +319,7 @@
     "version": "0.3.1",
     "date": "2025-11-03",
     "title": "New Brand Identity & Onboarding Experience",
-    "summary": "Welcome to the refreshed Track Your Foods! New users now get a beautiful introduction to the app, and everyone benefits from faster login with saved email addresses.",
+    "summary": "Welcome to the refreshed Yummy Recs! New users now get a beautiful introduction to the app, and everyone benefits from faster login with saved email addresses.",
     "features": [
       "Interactive onboarding: New users see 4 beautiful intro screens explaining key features before signing up",
       "Brand new logo: Professional speech bubble + plate design represents our food recommendation network",
@@ -510,7 +537,7 @@
   {
     "version": "0.1.0",
     "date": "2025-10-27",
-    "title": "Welcome to Track Your Foods",
+    "title": "Welcome to Yummy Recs",
     "summary": "The initial release brings you a comprehensive food tracking experience with social features, location-based restaurant search, and privacy controls.",
     "features": [
       "Track restaurant visits with ratings, notes, and photos",

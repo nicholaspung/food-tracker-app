@@ -69,8 +69,8 @@ export default function ResetPasswordPage({ token, onNavigateToLogin, onResetSuc
   }, [success, countdown, onResetSuccess]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="reset-password-page">
-      <Card className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background" data-testid="reset-password-page">
+      <Card className="w-full min-h-screen lg:min-h-0 lg:max-w-md lg:rounded-lg rounded-none border-0 lg:border shadow-none lg:shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center" data-testid="reset-password-title">
             Reset Password

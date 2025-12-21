@@ -3,20 +3,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { repositories } from '@/repositories';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { pb } from "@/lib/pocketbase";
 import { useSync } from "@/contexts/SyncContext";
 import { WifiOff } from "lucide-react";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
+import { OAuthButton } from "@/components/auth/OAuthButton";
+import { useOAuth } from "@/hooks/auth/useOAuth";
+
+const LAST_LOGIN_METHOD_KEY = "lastLoginMethod";
+
+interface SavedLoginMethod {
+  method: "google" | "facebook" | "email";
+  email?: string;
+  timestamp: number;
+}
 
 interface SignUpPageProps {
   onNavigateToLogin: () => void;
@@ -34,6 +36,7 @@ export default function SignUpPage({
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(5);
+  const [showEmailSignup, setShowEmailSignup] = useState(false);
   const { isOnline } = useSync();
 
   const {
@@ -45,6 +48,16 @@ export default function SignUpPage({
   } = useErrorHandler({
     source: 'SignUpPage',
     defaultSeverity: 'error',
+  });
+
+  const { authenticateWithOAuth, isAuthenticating, currentProvider } = useOAuth({
+    onSuccess: onNavigateToLogin,
+    onError: (err) => {
+      handleError(err, {
+        customMessage: err.message,
+        severity: 'error'
+      });
+    },
   });
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -118,6 +131,14 @@ export default function SignUpPage({
       // Send verification email
       await repositories.users.requestVerification(email);
 
+      // Save signup method for future logins
+      const signupMethodData: SavedLoginMethod = {
+        method: "email",
+        email: email,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(LAST_LOGIN_METHOD_KEY, JSON.stringify(signupMethodData));
+
       // If we found an inviter, store their info for post-login friend suggestion
       if (inviterInfo) {
         const suggestionData = {
@@ -180,42 +201,90 @@ export default function SignUpPage({
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center bg-background p-4"
+      className="min-h-screen flex flex-col bg-background"
       data-testid="signup-page"
     >
-      <Card className="w-full max-w-sm">
-        <CardHeader className="space-y-1">
-          <div className="flex justify-center items-center gap-3 mb-4">
-            <img
-              src="/logo-speech-bubble-plate.svg"
-              alt="Yummy Recs Logo"
-              className="w-14 h-14"
-            />
-            <div className="text-xl font-bold text-foreground">
-              Track Your Foods
-            </div>
+      {/* Header */}
+      <div className="pt-8 pb-4 flex justify-center items-center gap-3 px-4">
+        <img
+          src="/logo-speech-bubble-plate.svg"
+          alt="Yummy Recs Logo"
+          className="w-14 h-14"
+        />
+        <div className="text-xl font-bold text-foreground">
+          Yummy Recs
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col justify-center px-4 py-8">
+        <div className="w-full max-w-md mx-auto space-y-8">
+          <div className="space-y-3 text-center">
+            <h1 className="text-3xl font-bold text-foreground" data-testid="signup-title">
+              Create account
+            </h1>
+            <p className="text-muted-foreground text-sm" data-testid="signup-description">
+              {initialInviteCode
+                ? "🎉 You've been invited! Choose how to join"
+                : "Choose how you'd like to get started"}
+            </p>
           </div>
-          <CardTitle
-            className="text-2xl text-center"
-            data-testid="signup-title"
-          >
-            Create an account
-          </CardTitle>
-          <CardDescription
-            className="text-center"
-            data-testid="signup-description"
-          >
-            {initialInviteCode
-              ? "🎉 You've been invited! Complete the form below to join."
-              : "Enter your invite code, email and password to sign up"}
-          </CardDescription>
-        </CardHeader>
-        <form
-          onSubmit={handleSignUp}
-          data-testid="signup-form"
-          className="space-y-4"
-        >
-          <CardContent className="space-y-4">
+
+          {!success && (
+            <>
+              {/* Social Signup Buttons - Primary */}
+              <div className="space-y-3">
+                <OAuthButton
+                  provider="google"
+                  onClick={() => authenticateWithOAuth("google")}
+                  disabled={!isOnline || loading || isAuthenticating}
+                  loading={isAuthenticating && currentProvider === "google"}
+                />
+                <OAuthButton
+                  provider="facebook"
+                  onClick={() => authenticateWithOAuth("facebook")}
+                  disabled={!isOnline || loading || isAuthenticating}
+                  loading={isAuthenticating && currentProvider === "facebook"}
+                />
+              </div>
+
+              {/* Divider */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    Or
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Email Signup - Secondary */}
+          {!success && !showEmailSignup ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowEmailSignup(true)}
+              disabled={!isOnline}
+              data-testid="show-email-signup"
+            >
+              {!isOnline ? (
+                <><WifiOff className="w-4 h-4 mr-2" />Sign up with email (Offline)</>
+              ) : (
+                "Sign up with email"
+              )}
+            </Button>
+          ) : !success && showEmailSignup ? (
+            <form
+              onSubmit={handleSignUp}
+              data-testid="signup-form"
+              className="space-y-4"
+            >
+              <div className="space-y-4">
             {!isOnline && !success && (
               <div
                 className="p-3 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-md"
@@ -316,50 +385,63 @@ export default function SignUpPage({
                 data-testid="signup-password-confirm"
               />
             </div>
-          </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
-            {success ? (
-              <Button
-                type="button"
-                className="w-full"
-                onClick={onNavigateToLogin}
-                data-testid="signup-goto-login-success"
-              >
-                Back to Login
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={!isOnline || loading}
-                data-testid="signup-submit"
-              >
-                {!isOnline ? (
-                  <><WifiOff className="w-4 h-4 mr-2" />Sign Up (Offline)</>
-                ) : loading ? (
-                  "Creating account..."
-                ) : (
-                  "Sign Up"
-                )}
-              </Button>
-            )}
-            {!success && (
-              <div className="text-sm text-muted-foreground text-center">
+            </div>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={!isOnline || loading || isAuthenticating}
+                  data-testid="signup-submit"
+                >
+                  {!isOnline ? (
+                    <><WifiOff className="w-4 h-4 mr-2" />Create account (Offline)</>
+                  ) : loading ? (
+                    "Creating account..."
+                  ) : (
+                    "Create account"
+                  )}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full text-sm"
+                  onClick={() => setShowEmailSignup(false)}
+                  disabled={loading || isAuthenticating}
+                  data-testid="hide-email-signup"
+                >
+                  Use a different method
+                </Button>
+              </form>
+            ) : null}
+
+          {success ? (
+            <Button
+              type="button"
+              className="w-full"
+              onClick={onNavigateToLogin}
+              data-testid="signup-goto-login-success"
+            >
+              Back to Sign in
+            </Button>
+          ) : (
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">
                 Already have an account?{" "}
                 <button
                   type="button"
-                  className="text-primary hover:underline font-medium"
+                  className="text-primary hover:underline font-semibold"
                   onClick={onNavigateToLogin}
-                  disabled={loading}
+                  disabled={loading || isAuthenticating}
                   data-testid="signup-goto-login"
                 >
                   Sign in
                 </button>
-              </div>
-            )}
-          </CardFooter>
-        </form>
-      </Card>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

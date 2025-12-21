@@ -463,10 +463,10 @@ Looking forward to seeing you there!`;
             <div className="flex items-center gap-2">
               <img
                 src="/logo-speech-bubble-plate.svg"
-                alt="Track Your Foods Logo"
+                alt="Yummy Recs Logo"
                 className="w-10 h-10"
               />
-              <span className="text-lg font-semibold text-gray-700">Track Your Foods</span>
+              <span className="text-lg font-semibold text-gray-700">Yummy Recs</span>
             </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
