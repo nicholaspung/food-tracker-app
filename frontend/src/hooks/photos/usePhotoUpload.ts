@@ -4,7 +4,7 @@ import { extractImageCaptureDate } from "@/lib/photoUtils";
 import { processPhotosDraftService } from "@/services/processPhotosDraftServiceDB";
 import { pb } from "@/lib/pocketbase";
 import { compressImage } from "@/services/ocrService";
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 
 /**
  * Item to be uploaded with photo and metadata
@@ -152,9 +152,9 @@ export function usePhotoUpload() {
 
         // Upload photo (update if existingPhotoId provided, otherwise create)
         if (item.existingPhotoId) {
-          await pb.collection(COLLECTIONS.VISIT_PHOTOS).update(item.existingPhotoId, formData);
+          await repositories.visitPhotos.update(item.existingPhotoId, formData);
         } else {
-          await pb.collection(COLLECTIONS.VISIT_PHOTOS).create(formData);
+          await repositories.visitPhotos.create(formData);
         }
 
         // Update upload progress (50-100%)

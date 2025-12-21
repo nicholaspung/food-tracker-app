@@ -37,9 +37,11 @@ export const COLLECTIONS = {
   BILL_PARTICIPANTS: 'bill_participants',
   BILL_ITEMS: 'bill_items',
   BILL_REMINDERS: 'bill_reminders',
+  BILL_INVITES: 'bill_invites',
 
   // User feedback
   FEEDBACK: 'feedback',
+  FEEDBACK_MESSAGES: 'feedback_messages',
 } as const;
 
 /**

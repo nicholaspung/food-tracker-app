@@ -1,6 +1,6 @@
 import { pb, MenuImage, MenuItem, User } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 import {
   hasExceededDailyLimit,
   getRemainingAttempts,
@@ -271,7 +271,7 @@ export async function uploadMenuImage(
   formData.append('uploadedBy', pb.authStore.model?.id || '');
   formData.append('image', imageFile);
 
-  const record = await pb.collection(COLLECTIONS.MENU_IMAGES).create<MenuImage>(formData);
+  const record = await repositories.menuImages.create(formData);
   return record;
 }
 
@@ -343,7 +343,7 @@ export async function createMenuItems(
       const sanitizedName = sanitizeForQuery(item.name);
 
       // Check if item already exists for this restaurant (case-insensitive)
-      const existingItems = await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
+      const existingItems = await repositories.menuItems.getFullList({
         filter: `restaurant = "${restaurantId}" && name ?~ "${sanitizedName}"`,
       });
 
@@ -376,7 +376,7 @@ export async function createMenuItems(
       // OCR items are community visible (public), manual items are friends-only by default
       data.visibility = isFromOCR ? 'public' : 'friends';
 
-      const record = await pb.collection(COLLECTIONS.MENU_ITEMS).create<MenuItem>(data);
+      const record = await repositories.menuItems.create(data);
       createdItems.push(record);
     } catch (error) {
       logger.error(`Failed to create menu item "${item.name}":`, error);
@@ -394,7 +394,7 @@ export async function getLastMenuUploadDate(
   restaurantId: string
 ): Promise<Date | null> {
   try {
-    const images = await pb.collection(COLLECTIONS.MENU_IMAGES).getFullList<MenuImage>({
+    const images = await repositories.menuImages.getFullList({
       filter: `restaurant = "${restaurantId}"`,
       sort: '-created',
       limit: 1,
@@ -418,8 +418,7 @@ export async function getRestaurantMenuItems(
   restaurantId: string
 ): Promise<MenuItem[]> {
   try {
-    const items = await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
-      filter: `restaurant = "${restaurantId}"`,
+    const items = await repositories.menuItems.getByRestaurant(restaurantId, {
       sort: 'name',
     });
 
@@ -446,8 +445,7 @@ export async function searchMenuItems(
     const sanitized = sanitizeForQuery(searchTerm);
 
     // Use ~ for case-insensitive partial match
-    const items = await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
-      filter: `restaurant = "${restaurantId}" && name ~ "${sanitized}"`,
+    const items = await repositories.menuItems.searchByName(sanitized, restaurantId, {
       sort: 'name',
     });
 

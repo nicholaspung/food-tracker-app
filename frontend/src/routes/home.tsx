@@ -5,7 +5,7 @@ import { pb } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
 import HomePage from '@/components/home/HomePage';
 import OnboardingDialog from '@/components/auth/OnboardingDialog';
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -93,7 +93,7 @@ function Home() {
       if (!currentUserId) throw new Error('Not authenticated');
 
       // Create an accepted friendship (bidirectional by creating from inviter to new user)
-      return await pb.collection(COLLECTIONS.FRIENDSHIPS).create({
+      return await repositories.friendships.create({
         user: inviterId,
         friend: currentUserId,
         status: 'accepted',

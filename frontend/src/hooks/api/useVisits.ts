@@ -1,7 +1,7 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
-import { pb, Visit } from "@/lib/pocketbase";
+import { Visit } from "@/lib/pocketbase";
 import { visitKeys } from "@/constants/queryKeys";
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 
 // Re-export Visit type for convenience
 export type { Visit };
@@ -32,7 +32,7 @@ export function useVisits(
       ...(filter ? [filter] : []),
     ],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.VISITS).getFullList<Visit>({
+      return await repositories.visits.getFullList({
         ...(expand && { expand }),
         sort,
         ...(filter && { filter }),
@@ -55,9 +55,7 @@ export function useVisitsByUser(
     queryKey: userId ? visitKeys.byUser(userId) : ["userVisits", "null"],
     queryFn: async () => {
       if (!userId) return [];
-      return await pb.collection(COLLECTIONS.VISITS).getFullList<Visit>({
-        filter: `user = "${userId}"`,
-      });
+      return await repositories.visits.getByUser(userId);
     },
     enabled: enabled !== undefined ? enabled : !!userId,
   });
@@ -86,7 +84,7 @@ export function useFriendVisits(
       const filterConditions = friendIds
         .map((id) => `user = "${id}"`)
         .join(" || ");
-      return await pb.collection(COLLECTIONS.VISITS).getFullList<Visit>({
+      return await repositories.visits.getFullList({
         filter: `(${filterConditions}) && visibility = "friends"`,
       });
     },

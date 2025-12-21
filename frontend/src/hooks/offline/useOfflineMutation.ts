@@ -7,7 +7,6 @@
  */
 
 import { logger } from '@/lib/logger';
-import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncQueue, type OperationType } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';

@@ -11,13 +11,13 @@
  */
 
 import { logger } from '@/lib/logger';
-import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
 import { blobUrlManager } from '@/lib/blobUrlManager';
+import { repositories } from '@/repositories';
 
 export interface QuickTrackData {
   name: string;
@@ -191,7 +191,7 @@ async function executeQuickTrack(
   });
 
   // 1. Create food item (no visit)
-  const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create({
+  const foodItem = await repositories.foodItems.create({
     name: data.name,
     rating: data.rating,
     notes: data.notes || undefined,

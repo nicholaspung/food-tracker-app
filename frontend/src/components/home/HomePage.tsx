@@ -3,6 +3,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { pb, Restaurant, Visit, FoodItem } from "@/lib/pocketbase";
+import { type VisitPhoto } from '@/repositories';
 import { syncQueue } from "@/lib/syncQueue";
 import { useSync } from "@/contexts/SyncContext";
 import { useVisits } from "@/hooks/api/useVisits";
@@ -17,7 +18,7 @@ import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/of
 import VisitCard from "@/components/home/VisitCard";
 import QuickTrackCard from "@/components/home/QuickTrackCard";
 import VisitListHeader from "@/components/home/VisitListHeader";
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 import { INITIAL_MONTHS_TO_LOAD } from '@/constants';
 import {
   Card,
@@ -41,17 +42,6 @@ import {
 import { WhatsNewDialog } from "@/components/shared/WhatsNewDialog";
 import ShareCustomizationModal from "@/components/shared/ShareCustomizationModal";
 import VisitShareModal from "@/components/visits/shared/VisitShareModal";
-
-interface VisitPhoto {
-  id: string;
-  visit: string;
-  food_item: string;
-  user: string;
-  photo: string;
-  created: string;
-  updated: string;
-  isPending?: boolean;
-}
 
 interface VisitWithDetails extends Omit<Visit, "restaurant"> {
   restaurant?: Restaurant;
@@ -119,7 +109,7 @@ export default function HomePage({
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
     queryKey: ["restaurants"],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.RESTAURANTS).getFullList();
+      return await repositories.restaurants.getFullList();
     },
   });
 
@@ -148,7 +138,7 @@ export default function HomePage({
   const { data: visitPhotos = [] } = useQuery<VisitPhoto[]>({
     queryKey: ["allVisitPhotos"],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList({
+      return await repositories.visitPhotos.getFullList({
         sort: "-created",
       });
     },
@@ -199,10 +189,10 @@ export default function HomePage({
         );
         await Promise.all(
           foodItemsToDelete.map((item) =>
-            pb.collection(COLLECTIONS.FOOD_ITEMS).delete(item.id)
+            repositories.foodItems.delete(item.id)
           )
         );
-        await pb.collection(COLLECTIONS.VISITS).delete(visitId);
+        await repositories.visits.delete(visitId);
       } else {
         // Offline: Queue the deletion
         // Queue as complex operation to delete food items and visit together

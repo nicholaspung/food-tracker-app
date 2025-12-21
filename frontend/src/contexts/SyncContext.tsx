@@ -20,7 +20,7 @@ import {
   type RestaurantCreationData,
 } from '@/lib/syncQueue';
 import { pb, type FoodItem } from '@/lib/pocketbase';
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 
 export interface SyncContextValue {
   isOnline: boolean;
@@ -61,6 +61,33 @@ export function SyncProvider({ children }: SyncProviderProps) {
   }, []);
 
   /**
+   * Get repository for a collection (maps PB collection names to repository keys)
+   */
+  const getRepository = (collection: string): any => {
+    // Map PocketBase collection names to repository keys
+    const collectionMap: Record<string, keyof typeof repositories> = {
+      'visits': 'visits',
+      'food_items': 'foodItems',
+      'visit_photos': 'visitPhotos',
+      'restaurants': 'restaurants',
+      'menu_items': 'menuItems',
+      'restaurant_lists': 'restaurantLists',
+      'list_items': 'listItems',
+      'friendships': 'friendships',
+      'users': 'users',
+      'invite_codes': 'inviteCodes',
+      'menu_images': 'menuImages',
+    };
+
+    const repoKey = collectionMap[collection];
+    if (!repoKey) {
+      throw new Error(`No repository found for collection: ${collection}`);
+    }
+
+    return repositories[repoKey];
+  };
+
+  /**
    * Execute a single queued operation
    */
   const executeOperation = async (operation: QueuedOperation): Promise<void> => {
@@ -79,20 +106,22 @@ export function SyncProvider({ children }: SyncProviderProps) {
       else if (collection === 'restaurants_with_menu_items' && type === 'create') {
         await executeComplexRestaurantCreation(data, operation);
       } else {
-        // Standard operations
+        // Standard operations - use repository pattern
+        const repository = getRepository(collection);
+
         switch (type) {
           case 'create':
-            await pb.collection(collection).create(data);
+            await repository.create(data);
             break;
 
           case 'update':
             if (!recordId) throw new Error('Record ID required for update');
-            await pb.collection(collection).update(recordId, data);
+            await repository.update(recordId, data);
             break;
 
           case 'delete':
             if (!recordId) throw new Error('Record ID required for delete');
-            await pb.collection(collection).delete(recordId);
+            await repository.delete(recordId);
             break;
 
           default:
@@ -136,13 +165,13 @@ export function SyncProvider({ children }: SyncProviderProps) {
     });
 
     // 1. Create visit
-    const visit = await pb.collection(COLLECTIONS.VISITS).create(visitData);
+    const visit = await repositories.visits.create(visitData);
     logger.log('Created visit:', visit.id);
 
     // 2. Create food items sequentially
     const createdFoodItems: FoodItem[] = [];
     for (const item of foodItems) {
-      const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create<FoodItem>({
+      const foodItem = await repositories.foodItems.create({
         ...item,
         visit: visit.id,
       });
@@ -173,7 +202,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
               formData.append('user', visitData.user);
             }
 
-            await pb.collection(COLLECTIONS.VISIT_PHOTOS).create(formData);
+            await repositories.visitPhotos.create(formData);
             logger.log('Uploaded photo for food item:', foodItem.id);
           } catch (error) {
             logger.error('Failed to upload photo, continuing...', error);
@@ -195,13 +224,13 @@ export function SyncProvider({ children }: SyncProviderProps) {
     // 1. Delete all food items
     if (foodItemIds && foodItemIds.length > 0) {
       await Promise.all(
-        foodItemIds.map((id: string) => pb.collection(COLLECTIONS.FOOD_ITEMS).delete(id))
+        foodItemIds.map((id: string) => repositories.foodItems.delete(id))
       );
       logger.log('Deleted', foodItemIds.length, 'food items');
     }
 
     // 2. Delete visit
-    await pb.collection(COLLECTIONS.VISITS).delete(visitId);
+    await repositories.visits.delete(visitId);
     logger.log('Deleted visit:', visitId);
   };
 
@@ -212,7 +241,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     const { restaurant: restaurantData, menuItems } = data;
 
     // 1. Create restaurant
-    const restaurant = await pb.collection(COLLECTIONS.RESTAURANTS).create(restaurantData);
+    const restaurant = await repositories.restaurants.create(restaurantData);
     logger.log('Created restaurant:', restaurant.id);
 
     // 2. Update any queued operations that reference the temp restaurant ID
@@ -225,7 +254,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     if (menuItems && menuItems.length > 0) {
       for (const item of menuItems) {
         try {
-          const menuItem = await pb.collection(COLLECTIONS.MENU_ITEMS).create({
+          const menuItem = await repositories.menuItems.create({
             ...item,
             restaurant: restaurant.id,
           });

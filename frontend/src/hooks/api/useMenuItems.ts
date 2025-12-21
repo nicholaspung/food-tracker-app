@@ -1,7 +1,7 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
-import { pb, MenuItem } from "@/lib/pocketbase";
-import { COLLECTIONS } from '@/constants/collections';
+import { MenuItem } from "@/lib/pocketbase";
 import { menuItemKeys } from '@/constants/queryKeys';
+import { repositories } from '@/repositories';
 
 // Re-export MenuItem type for convenience
 export type { MenuItem };
@@ -20,8 +20,7 @@ export function useMenuItems(
     queryKey: restaurantId ? menuItemKeys.byRestaurant(restaurantId) : menuItemKeys.all,
     queryFn: async () => {
       if (!restaurantId) return [];
-      return await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
-        filter: `restaurant = "${restaurantId}"`,
+      return await repositories.menuItems.getByRestaurant(restaurantId, {
         sort: options?.sort || '-created',
       });
     },
@@ -43,7 +42,7 @@ export function useMenuItem(
     queryKey: menuItemId ? menuItemKeys.detail(menuItemId) : menuItemKeys.all,
     queryFn: async () => {
       if (!menuItemId) return null;
-      return await pb.collection(COLLECTIONS.MENU_ITEMS).getOne<MenuItem>(menuItemId);
+      return await repositories.menuItems.getOne(menuItemId);
     },
     enabled: enabled !== undefined ? enabled : !!menuItemId,
   });
@@ -58,7 +57,7 @@ export function useAllMenuItems(filter?: string): UseQueryResult<MenuItem[], Err
   return useQuery<MenuItem[], Error>({
     queryKey: menuItemKeys.filtered(filter),
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
+      return await repositories.menuItems.getFullList({
         filter,
         sort: '-created',
       });

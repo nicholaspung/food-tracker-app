@@ -12,13 +12,13 @@
  */
 
 import { logger } from '@/lib/logger';
-import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb, type Visit, type FoodItem } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
 import { blobUrlManager } from '@/lib/blobUrlManager';
+import { repositories } from '@/repositories';
 
 export interface FoodItemData {
   name: string;
@@ -199,7 +199,7 @@ async function executeVisitCreation(
   uploadPhotos: (items: PhotoUploadItem[]) => Promise<void>
 ): Promise<VisitCreationResult> {
   // 1. Create visit
-  const visit = await pb.collection(COLLECTIONS.VISITS).create({
+  const visit = await repositories.visits.create({
     restaurant: data.restaurant,
     user: userId,
     visitDate: data.visitDate,
@@ -210,7 +210,7 @@ async function executeVisitCreation(
   // 2. Create all food items sequentially
   const foodItems: FoodItem[] = [];
   for (const item of data.foodItems) {
-    const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create({
+    const foodItem = await repositories.foodItems.create({
       name: item.name,
       description: item.description,
       visit: visit.id,
