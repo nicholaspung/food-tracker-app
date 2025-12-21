@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.5.6",
+    "date": "2025-12-20",
+    "title": "Code Quality & Performance Improvements",
+    "summary": "Major under-the-hood refactoring to improve app stability, performance, and maintainability for future feature development!",
+    "features": [],
+    "improvements": [
+      "Improved code organization with repository pattern for better data management",
+      "Enhanced TypeScript type safety across the entire application",
+      "Optimized backend performance and reliability",
+      "Better error handling throughout the app for more graceful error recovery",
+      "Refactored core components (HomePage, ProcessPhotosPage, AddItemsToVisit, SelectRestaurantPage) for better performance",
+      "Improved custom hooks (usePhotoManager, useErrorHandler, queries) for more efficient state management",
+      "Better file organization for easier navigation and maintenance"
+    ],
+    "fixes": [
+      "Fixed various TypeScript errors that could cause unexpected behavior",
+      "Fixed potential edge cases in error handling",
+      "Fixed performance bottlenecks in data fetching and state management"
+    ]
+  },
+  {
     "version": "0.5.5",
     "date": "2025-11-29",
     "title": "Restaurant Location Validation",
