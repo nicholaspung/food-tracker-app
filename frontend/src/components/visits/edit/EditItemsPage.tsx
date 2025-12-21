@@ -7,7 +7,7 @@ import { utcToLocalDateString } from '@/lib/dateUtils';
 import { editVisitDraftService } from '@/services/editVisitDraftService';
 import AddItemsToVisit from '@/components/visits/add/AddItemsToVisit';
 import { Button } from '@/components/ui/button';
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 
 interface EditItemsPageProps {
   visitId: string;
@@ -26,7 +26,7 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
   const { data: visit, isLoading: visitLoading } = useQuery({
     queryKey: ['visit', visitId],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.VISITS).getOne(visitId);
+      return await repositories.visits.getOne(visitId);
     },
   });
 
@@ -41,8 +41,7 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
     queryKey: ['menuItems', restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      return await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<DBMenuItem>({
-        filter: `restaurant = "${restaurant.id}"`,
+      return await repositories.menuItems.getByRestaurant(restaurant.id, {
         sort: '-created',
       });
     },

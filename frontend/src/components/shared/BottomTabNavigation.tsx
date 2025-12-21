@@ -3,7 +3,7 @@ import { Home, User, Plus, Users, MessageSquare } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pb, Feedback } from '@/lib/pocketbase';
 import { useKeyboardVisible } from '@/hooks/ui/useKeyboardVisible';
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 
 export function BottomTabNavigation() {
   const router = useRouterState();
@@ -17,7 +17,7 @@ export function BottomTabNavigation() {
     queryFn: async () => {
       if (!currentUser?.id) return 0;
 
-      const friendships = await pb.collection(COLLECTIONS.FRIENDSHIPS).getFullList({
+      const friendships = await repositories.friendships.getFullList({
         filter: `friend = "${currentUser.id}" && status = "pending"`,
       });
 
@@ -34,7 +34,7 @@ export function BottomTabNavigation() {
       if (!currentUser?.id) return 0;
 
       const isAdmin = currentUser.isAdmin === true;
-      const feedbackList = await pb.collection(COLLECTIONS.FEEDBACK).getFullList<Feedback>();
+      const feedbackList = await repositories.feedback.getFullList();
 
       return feedbackList.reduce((count, feedback) => {
         const unreadCount = isAdmin

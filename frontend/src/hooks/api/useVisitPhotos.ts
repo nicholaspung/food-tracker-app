@@ -1,7 +1,7 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
-import { pb, VisitPhoto } from "@/lib/pocketbase";
-import { COLLECTIONS } from '@/constants/collections';
+import { pb } from "@/lib/pocketbase";
 import { visitPhotoKeys } from '@/constants/queryKeys';
+import { repositories, type VisitPhoto } from '@/repositories';
 
 // Re-export VisitPhoto type for convenience
 export type { VisitPhoto };
@@ -20,10 +20,7 @@ export function useVisitPhotos(
     queryKey: visitId ? visitPhotoKeys.byVisit(visitId) : visitPhotoKeys.all,
     queryFn: async () => {
       if (!visitId) return [];
-      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList<VisitPhoto>({
-        filter: `visit = "${visitId}"`,
-        sort: '-created',
-      });
+      return await repositories.visitPhotos.getByVisit(visitId);
     },
     enabled: options?.enabled !== undefined ? options.enabled : !!visitId,
   });
@@ -50,7 +47,7 @@ export function useAllVisitPhotos(options?: {
         filters.push(options.filter);
       }
 
-      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList<VisitPhoto>({
+      return await repositories.visitPhotos.getFullList({
         filter: filters.join(' && '),
         expand: options?.expand,
         sort: '-created',
@@ -74,7 +71,7 @@ export function useVisitPhoto(
     queryKey: photoId ? visitPhotoKeys.detail(photoId) : visitPhotoKeys.all,
     queryFn: async () => {
       if (!photoId) return null;
-      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getOne<VisitPhoto>(photoId);
+      return await repositories.visitPhotos.getOne(photoId);
     },
     enabled: enabled !== undefined ? enabled : !!photoId,
   });

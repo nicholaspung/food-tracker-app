@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { Button } from "@/components/ui/button";
 import { Plus, Lock, Users, Globe, Image } from "lucide-react";
 import CreateListDialog from "./CreateListDialog";
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 
 interface ListsPageProps {
   onSelectList?: (listId: string) => void;
@@ -20,7 +20,7 @@ export default function ListsPage({ onSelectList }: ListsPageProps) {
   const { data: lists = [], isLoading } = useQuery<RestaurantList[]>({
     queryKey: ["restaurant_lists", user?.id],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).getFullList({
+      return await repositories.restaurantLists.getFullList({
         sort: "-updated",
         filter: `user = "${user?.id}"`,
       });
@@ -34,7 +34,7 @@ export default function ListsPage({ onSelectList }: ListsPageProps) {
     queryFn: async () => {
       const counts: Record<string, number> = {};
       for (const list of lists) {
-        const items = await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList({
+        const items = await repositories.listItems.getFullList({
           filter: `list = "${list.id}"`,
         });
         counts[list.id] = items.length;

@@ -7,7 +7,7 @@ import { pb, MenuReviewRequest, MenuItem, MenuImage, Restaurant, hasMenuReviewEx
 import { logger } from '@/lib/logger';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, Pencil, Trash2, X, Check } from 'lucide-react';
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 import {
   getPendingReviewRequests,
   updateReviewRequestStatus,
@@ -58,7 +58,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
   // Update menu item mutation
   const updateMenuItemMutation = useMutation({
     mutationFn: async ({ id, name, description }: { id: string; name: string; description: string }) => {
-      return await pb.collection(COLLECTIONS.MENU_ITEMS).update(id, {
+      return await repositories.menuItems.update(id, {
         name,
         description,
       });
@@ -78,7 +78,7 @@ export default function AdminMenuReviewsPage({ onNavigateBack: _onNavigateBack }
   // Delete menu item mutation
   const deleteMenuItemMutation = useMutation({
     mutationFn: async (itemId: string) => {
-      return await pb.collection(COLLECTIONS.MENU_ITEMS).delete(itemId);
+      return await repositories.menuItems.delete(itemId);
     },
     onSuccess: () => {
       logger.log('Menu item deleted successfully');
@@ -461,8 +461,7 @@ function MenuItemsList({
   const { data: menuItems, isLoading } = useQuery({
     queryKey: ['menuItems', restaurantId],
     queryFn: async () => {
-      const items = await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
-        filter: `restaurant = "${restaurantId}"`,
+      const items = await repositories.menuItems.getByRestaurant(restaurantId, {
         sort: '-created',
         expand: 'sourceImage',
       });

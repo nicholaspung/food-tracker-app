@@ -5,7 +5,7 @@ import { pb, Feedback, FeedbackMessage } from '@/lib/pocketbase';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 import {
   Select,
   SelectContent,
@@ -41,7 +41,7 @@ export default function FeedbackDetailPage({
   const { data: feedback } = useQuery<Feedback>({
     queryKey: ['feedback', feedbackId],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.FEEDBACK).getOne<Feedback>(feedbackId, {
+      return await repositories.feedback.getOne(feedbackId, {
         expand: 'user',
       });
     },
@@ -51,9 +51,7 @@ export default function FeedbackDetailPage({
   const { data: messages = [] } = useQuery<FeedbackMessage[]>({
     queryKey: ['feedback_messages', feedbackId],
     queryFn: async () => {
-      return await pb.collection('feedback_messages').getFullList<FeedbackMessage>({
-        filter: `feedback = '${feedbackId}'`,
-        sort: 'created',
+      return await repositories.feedbackMessages.getByFeedback(feedbackId, {
         expand: 'user',
       });
     },
@@ -72,7 +70,7 @@ export default function FeedbackDetailPage({
 
       if (currentCount && currentCount > 0) {
         try {
-          await pb.collection(COLLECTIONS.FEEDBACK).update(feedbackId, {
+          await repositories.feedback.update(feedbackId, {
             [unreadField]: 0,
           });
           queryClient.invalidateQueries({ queryKey: ['feedback'] });
@@ -99,7 +97,7 @@ export default function FeedbackDetailPage({
       if (!currentUser) throw new Error('Not authenticated');
 
       // Create the message
-      await pb.collection('feedback_messages').create({
+      await repositories.feedbackMessages.create({
         feedback: feedbackId,
         user: currentUser.id,
         message: messageText,
@@ -120,7 +118,7 @@ export default function FeedbackDetailPage({
         updateData.admin_unread_count = currentCount + 1;
       }
 
-      await pb.collection(COLLECTIONS.FEEDBACK).update(feedbackId, updateData);
+      await repositories.feedback.update(feedbackId, updateData);
     },
     onSuccess: () => {
       setMessage('');
@@ -138,7 +136,7 @@ export default function FeedbackDetailPage({
   // Update status mutation (admin only)
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: Feedback['status']) => {
-      return await pb.collection(COLLECTIONS.FEEDBACK).update(feedbackId, {
+      return await repositories.feedback.update(feedbackId, {
         status: newStatus,
       });
     },

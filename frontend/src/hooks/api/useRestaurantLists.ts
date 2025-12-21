@@ -1,35 +1,10 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
-import { pb } from "@/lib/pocketbase";
-import { COLLECTIONS } from '@/constants/collections';
+import { pb, type RestaurantList, type ListItem } from "@/lib/pocketbase";
 import { restaurantListKeys } from '@/constants/queryKeys';
+import { repositories } from '@/repositories';
 
-export interface RestaurantList {
-  id: string;
-  name: string;
-  description?: string;
-  user: string;
-  visibility: 'private' | 'friends' | 'public';
-  created: string;
-  updated: string;
-}
-
-export interface ListItem {
-  id: string;
-  list: string;
-  restaurant: string;
-  notes?: string;
-  user: string;
-  created: string;
-  updated: string;
-  expand?: {
-    restaurant?: {
-      id: string;
-      name: string;
-      location: string;
-      cuisineType?: string;
-    };
-  };
-}
+// Re-export types for convenience
+export type { RestaurantList, ListItem };
 
 /**
  * Hook to fetch all restaurant lists for the current user
@@ -51,7 +26,7 @@ export function useRestaurantLists(options?: {
         filters.push(`visibility = "${options.visibility}"`);
       }
 
-      return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).getFullList<RestaurantList>({
+      return await repositories.restaurantLists.getFullList({
         filter: filters.join(' && '),
         sort: '-created',
       });
@@ -74,7 +49,7 @@ export function useRestaurantList(
     queryKey: listId ? restaurantListKeys.detail(listId) : ['restaurant_lists'],
     queryFn: async () => {
       if (!listId) return null;
-      return await pb.collection(COLLECTIONS.RESTAURANT_LISTS).getOne<RestaurantList>(listId);
+      return await repositories.restaurantLists.getOne(listId);
     },
     enabled: enabled !== undefined ? enabled : !!listId,
   });
@@ -94,8 +69,7 @@ export function useListItems(
     queryKey: listId ? restaurantListKeys.items(listId) : ['list_items'],
     queryFn: async () => {
       if (!listId) return [];
-      return await pb.collection(COLLECTIONS.LIST_ITEMS).getFullList<ListItem>({
-        filter: `list = "${listId}"`,
+      return await repositories.listItems.getByList(listId, {
         expand: options?.expand || 'restaurant',
         sort: '-created',
       });

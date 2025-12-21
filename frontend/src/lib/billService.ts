@@ -2,8 +2,8 @@
  * Bill service for CRUD operations with PocketBase
  */
 
-import { COLLECTIONS } from '@/constants/collections';
 import { pb, Bill, BillParticipant, BillItem, BillReminder } from './pocketbase';
+import { repositories } from '@/repositories';
 import type { RecordListOptions } from 'pocketbase';
 
 export interface CreateBillData {
@@ -51,7 +51,7 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
   }
 
   // Create the bill
-  const bill = await pb.collection(COLLECTIONS.BILLS).create<Bill>({
+  const bill = await repositories.bills.create({
     creator_user: currentUser.id,
     bill_name: data.bill_name,
     total_amount: data.total_amount,
@@ -66,7 +66,7 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
   // Create participants
   const participants: BillParticipant[] = [];
   for (const participantData of data.participants) {
-    const participant = await pb.collection(COLLECTIONS.BILL_PARTICIPANTS).create<BillParticipant>({
+    const participant = await repositories.billParticipants.create({
       bill: bill.id,
       user: participantData.user_id || null,
       participant_name: participantData.participant_name || '',
@@ -89,7 +89,7 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
         index => participants[index].id
       );
 
-      const item = await pb.collection(COLLECTIONS.BILL_ITEMS).create<BillItem>({
+      const item = await repositories.billItems.create({
         bill: bill.id,
         item_name: itemData.item_name,
         price: itemData.price,
@@ -110,20 +110,16 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
  * Get a bill by ID with participants and items
  */
 export async function getBill(billId: string): Promise<BillWithDetails> {
-  const bill = await pb.collection(COLLECTIONS.BILLS).getOne<Bill>(billId);
+  const bill = await repositories.bills.getOne(billId);
 
-  const participants = await pb
-    .collection('bill_participants')
-    .getFullList<BillParticipant>({
-      filter: `bill="${billId}"`,
-      sort: 'created',
-      expand: 'user',
-    });
+  const participants = await repositories.billParticipants.getByBill(billId, {
+    sort: 'created',
+    expand: 'user',
+  });
 
   let items: BillItem[] | undefined;
   if (bill.split_mode === 'itemized') {
-    items = await pb.collection(COLLECTIONS.BILL_ITEMS).getFullList<BillItem>({
-      filter: `bill="${billId}"`,
+    items = await repositories.billItems.getByBill(billId, {
       sort: 'created',
     });
   }
@@ -154,11 +150,9 @@ export async function listBills(
     filterQuery = `creator_user="${currentUser.id}" && status="settled"`;
   } else if (filter === 'you_owe') {
     // Bills where user is a participant and hasn't paid
-    const participantRecords = await pb
-      .collection('bill_participants')
-      .getFullList<BillParticipant>({
-        filter: `user="${currentUser.id}" && paid_status="pending"`,
-      });
+    const participantRecords = await repositories.billParticipants.getFullList({
+      filter: `user="${currentUser.id}" && paid_status="pending"`,
+    });
 
     const billIds = participantRecords.map(p => p.bill);
     if (billIds.length === 0) {
@@ -171,11 +165,9 @@ export async function listBills(
     filterQuery = `creator_user="${currentUser.id}" && status="active"`;
   } else {
     // All bills (created by user or where user is participant)
-    const participantRecords = await pb
-      .collection('bill_participants')
-      .getFullList<BillParticipant>({
-        filter: `user="${currentUser.id}"`,
-      });
+    const participantRecords = await repositories.billParticipants.getFullList({
+      filter: `user="${currentUser.id}"`,
+    });
 
     const participantBillIds = participantRecords.map(p => p.bill);
     const creatorFilter = `creator_user="${currentUser.id}"`;
@@ -190,7 +182,7 @@ export async function listBills(
         : creatorFilter;
   }
 
-  const bills = await pb.collection(COLLECTIONS.BILLS).getFullList<Bill>({
+  const bills = await repositories.bills.getFullList({
     filter: filterQuery,
     sort: '-created',
     ...options,
@@ -199,18 +191,14 @@ export async function listBills(
   // Fetch participants and items for each bill
   const billsWithDetails: BillWithDetails[] = [];
   for (const bill of bills) {
-    const participants = await pb
-      .collection('bill_participants')
-      .getFullList<BillParticipant>({
-        filter: `bill="${bill.id}"`,
-        sort: 'created',
-        expand: 'user',
-      });
+    const participants = await repositories.billParticipants.getByBill(bill.id, {
+      sort: 'created',
+      expand: 'user',
+    });
 
     let items: BillItem[] | undefined;
     if (bill.split_mode === 'itemized') {
-      items = await pb.collection(COLLECTIONS.BILL_ITEMS).getFullList<BillItem>({
-        filter: `bill="${bill.id}"`,
+      items = await repositories.billItems.getByBill(bill.id, {
         sort: 'created',
       });
     }
@@ -232,14 +220,14 @@ export async function updateBill(
   billId: string,
   data: UpdateBillData
 ): Promise<Bill> {
-  return await pb.collection(COLLECTIONS.BILLS).update<Bill>(billId, data);
+  return await repositories.bills.update(billId, data);
 }
 
 /**
  * Delete a bill
  */
 export async function deleteBill(billId: string): Promise<void> {
-  await pb.collection(COLLECTIONS.BILLS).delete(billId);
+  await repositories.bills.delete(billId);
 }
 
 /**
@@ -249,7 +237,7 @@ export async function markParticipantPaid(
   participantId: string,
   paymentMethod?: string
 ): Promise<BillParticipant> {
-  return await pb.collection(COLLECTIONS.BILL_PARTICIPANTS).update<BillParticipant>(participantId, {
+  return await repositories.billParticipants.update(participantId, {
     paid_status: 'paid',
     paid_date: new Date().toISOString(),
     payment_method: paymentMethod || null,
@@ -262,7 +250,7 @@ export async function markParticipantPaid(
 export async function markParticipantPending(
   participantId: string
 ): Promise<BillParticipant> {
-  return await pb.collection(COLLECTIONS.BILL_PARTICIPANTS).update<BillParticipant>(participantId, {
+  return await repositories.billParticipants.update(participantId, {
     paid_status: 'pending',
     paid_date: null,
     payment_method: null,
@@ -281,7 +269,7 @@ export async function sendPaymentReminder(
     throw new Error('User not authenticated');
   }
 
-  return await pb.collection(COLLECTIONS.BILL_REMINDERS).create<BillReminder>({
+  return await repositories.billReminders.create({
     bill: billId,
     participant: participantId,
     sent_by: currentUser.id,
@@ -292,10 +280,7 @@ export async function sendPaymentReminder(
  * Get reminders for a bill
  */
 export async function getBillReminders(billId: string): Promise<BillReminder[]> {
-  return await pb.collection(COLLECTIONS.BILL_REMINDERS).getFullList<BillReminder>({
-    filter: `bill="${billId}"`,
-    sort: '-sent_at',
-  });
+  return await repositories.billReminders.getByBill(billId);
 }
 
 /**
@@ -305,12 +290,7 @@ export async function getLastReminderForParticipant(
   billId: string,
   participantId: string
 ): Promise<BillReminder | null> {
-  const reminders = await pb.collection(COLLECTIONS.BILL_REMINDERS).getList<BillReminder>(1, 1, {
-    filter: `bill="${billId}" && participant="${participantId}"`,
-    sort: '-sent_at',
-  });
-
-  return reminders.items.length > 0 ? reminders.items[0] : null;
+  return await repositories.billReminders.getLastForParticipant(billId, participantId);
 }
 
 /**

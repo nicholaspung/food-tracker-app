@@ -5,6 +5,7 @@ import { useSync } from '@/contexts/SyncContext';
 import { logger } from '@/lib/logger';
 import { COLLECTIONS } from '@/constants/collections';
 import { restaurantListKeys } from '@/constants/queryKeys';
+import { repositories } from '@/repositories';
 
 interface CreateListData {
   name: string;
@@ -41,7 +42,7 @@ export function useOfflineCreateList(
 
       if (isOnline) {
         // Online: Execute immediately
-        const result = await pb.collection(COLLECTIONS.RESTAURANT_LISTS).create(listData);
+        const result = await repositories.restaurantLists.create(listData);
         logger.log('[OfflineList] List created online:', result.id);
         return result;
       } else {
@@ -66,13 +67,13 @@ export function useOfflineCreateList(
         return optimisticList;
       }
     },
-    onSuccess: (result, variables, context) => {
+    onSuccess: (result, variables) => {
       // Invalidate lists query
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.all(pb.authStore.record?.id || '', undefined)
       });
 
-      options?.onSuccess?.(result, variables, context);
+      options?.onSuccess?.(result, variables);
     },
   });
 }
@@ -102,7 +103,7 @@ export function useOfflineAddToList(
 
       if (isOnline) {
         // Online: Execute immediately
-        const result = await pb.collection(COLLECTIONS.LIST_ITEMS).create(itemData);
+        const result = await repositories.listItems.create(itemData);
         logger.log('[OfflineList] Item added to list online:', result.id);
         return result;
       } else {
@@ -127,13 +128,13 @@ export function useOfflineAddToList(
         return optimisticItem;
       }
     },
-    onSuccess: (result, variables, context) => {
+    onSuccess: (result, variables) => {
       // Invalidate list items query
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.items(variables.listId)
       });
 
-      options?.onSuccess?.(result, variables, context);
+      options?.onSuccess?.(result, variables);
     },
   });
 }
@@ -153,7 +154,7 @@ export function useOfflineDeleteListItem(
     mutationFn: async ({ itemId }) => {
       if (isOnline) {
         // Online: Execute immediately
-        await pb.collection(COLLECTIONS.LIST_ITEMS).delete(itemId);
+        await repositories.listItems.delete(itemId);
         logger.log('[OfflineList] Item deleted online:', itemId);
       } else {
         // Offline: Queue the operation
@@ -167,13 +168,13 @@ export function useOfflineDeleteListItem(
         });
       }
     },
-    onSuccess: (result, variables, context) => {
+    onSuccess: (result, variables) => {
       // Invalidate list items query
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.items(variables.listId)
       });
 
-      options?.onSuccess?.(result, variables, context);
+      options?.onSuccess?.(result, variables);
     },
   });
 }
@@ -193,7 +194,7 @@ export function useOfflineDeleteList(
     mutationFn: async (listId) => {
       if (isOnline) {
         // Online: Execute immediately
-        await pb.collection(COLLECTIONS.RESTAURANT_LISTS).delete(listId);
+        await repositories.restaurantLists.delete(listId);
         logger.log('[OfflineList] List deleted online:', listId);
       } else {
         // Offline: Queue the operation
@@ -207,13 +208,13 @@ export function useOfflineDeleteList(
         });
       }
     },
-    onSuccess: (result, variables, context) => {
+    onSuccess: (result, variables) => {
       // Invalidate lists query
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.all(pb.authStore.record?.id || '', undefined)
       });
 
-      options?.onSuccess?.(result, variables, context);
+      options?.onSuccess?.(result, variables);
     },
   });
 }

@@ -11,11 +11,10 @@
  */
 
 import { logger } from '@/lib/logger';
-import { COLLECTIONS } from '@/constants/collections';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { pb } from '@/lib/pocketbase';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
+import { repositories } from '@/repositories';
 
 export interface QuickTrackDeleteData {
   id: string; // Item ID to delete
@@ -41,7 +40,7 @@ export function useOfflineQuickTrackDelete() {
         // Delete photo first if exists
         if (data.photoId) {
           try {
-            await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(data.photoId);
+            await repositories.visitPhotos.delete(data.photoId);
             logger.log('[useOfflineQuickTrackDelete] Photo deleted:', data.photoId);
           } catch (error) {
             logger.log('[useOfflineQuickTrackDelete] Photo deletion failed or not found:', error);
@@ -49,7 +48,7 @@ export function useOfflineQuickTrackDelete() {
         }
 
         // Delete food item
-        await pb.collection(COLLECTIONS.FOOD_ITEMS).delete(data.id);
+        await repositories.foodItems.delete(data.id);
         logger.log('[useOfflineQuickTrackDelete] Food item deleted:', data.id);
       } else {
         // OFFLINE: Queue the operation

@@ -7,7 +7,7 @@ import {
   BadgeTheme,
 } from "@/services/photoService";
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
-import { VisitPhoto } from '@/lib/pocketbase';
+import { type VisitPhoto } from '@/repositories';
 import type PocketBase from 'pocketbase';
 
 interface PhotoWithFoodItem {

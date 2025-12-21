@@ -1,6 +1,6 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 import { friendshipKeys } from '@/constants/queryKeys';
 
 export interface Friendship {
@@ -45,7 +45,7 @@ export function useFriendships(options?: {
         filters.push(`status = "${options.status}"`);
       }
 
-      return await pb.collection(COLLECTIONS.FRIENDSHIPS).getFullList<Friendship>({
+      return await repositories.friendships.getFullList({
         filter: filters.join(' && '),
         expand: options?.expand || 'user,friend',
         sort: '-created',
@@ -69,7 +69,7 @@ export function useFriendship(
     queryKey: friendshipId ? friendshipKeys.detail(friendshipId) : friendshipKeys.all,
     queryFn: async () => {
       if (!friendshipId) return null;
-      return await pb.collection(COLLECTIONS.FRIENDSHIPS).getOne<Friendship>(friendshipId, {
+      return await repositories.friendships.getOne(friendshipId, {
         expand: 'user,friend',
       });
     },

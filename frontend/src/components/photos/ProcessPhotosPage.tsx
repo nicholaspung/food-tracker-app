@@ -8,7 +8,7 @@ import { useSync } from "@/contexts/SyncContext";
 import { useMenuOCR } from "@/hooks/menu/useMenuOCR";
 import { useOfflineVisitCreation } from "@/hooks/offline/useOfflineVisitCreation";
 import { useOfflineRestaurantCreation } from "@/hooks/offline/useOfflineRestaurantCreation";
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories } from '@/repositories';
 
 // Custom hooks
 import { usePhotoUpload } from "@/hooks/photos/usePhotoUpload";
@@ -120,7 +120,7 @@ export default function ProcessPhotosPage() {
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
     queryKey: ["restaurants"],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.RESTAURANTS).getFullList({
+      return await repositories.restaurants.getFullList({
         sort: "-created",
       });
     },
@@ -146,8 +146,7 @@ export default function ProcessPhotosPage() {
     queryKey: ["menu_items", restaurantProcessing.selectedRestaurant?.id],
     queryFn: async () => {
       if (!restaurantProcessing.selectedRestaurant?.id || !isOnline) return [];
-      return await pb.collection(COLLECTIONS.MENU_ITEMS).getFullList<MenuItem>({
-        filter: `restaurant = "${restaurantProcessing.selectedRestaurant.id}"`,
+      return await repositories.menuItems.getByRestaurant(restaurantProcessing.selectedRestaurant.id, {
         sort: "-created",
       });
     },
@@ -305,7 +304,7 @@ export default function ProcessPhotosPage() {
     if (!restaurantProcessing.menuItemName.trim()) return;
 
     try {
-      const newMenuItem = await pb.collection(COLLECTIONS.MENU_ITEMS).create({
+      const newMenuItem = await repositories.menuItems.create({
         restaurant: restaurantProcessing.selectedRestaurant.id,
         name: restaurantProcessing.menuItemName.trim(),
         createdBy: pb.authStore.model?.id,
@@ -332,7 +331,7 @@ export default function ProcessPhotosPage() {
     if (!restaurantProcessing.editingMenuItemName.trim()) return;
 
     try {
-      await pb.collection(COLLECTIONS.MENU_ITEMS).update(itemId, {
+      await repositories.menuItems.update(itemId, {
         name: restaurantProcessing.editingMenuItemName.trim(),
       });
 

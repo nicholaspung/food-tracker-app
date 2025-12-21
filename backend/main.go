@@ -26,6 +26,25 @@ func main() {
 		log.Printf("Warning: Error loading .env file: %v", err)
 	}
 
+	// Validate required environment variables before starting the server
+	requiredEnvVars := []string{
+		"GEMINI_API_KEY",
+		"GOOGLE_PLACES_API_KEY",
+	}
+
+	missingVars := []string{}
+	for _, envVar := range requiredEnvVars {
+		if os.Getenv(envVar) == "" {
+			missingVars = append(missingVars, envVar)
+		}
+	}
+
+	if len(missingVars) > 0 {
+		log.Fatalf("FATAL: Missing required environment variables: %s\nPlease set these variables in your .env file or environment", strings.Join(missingVars, ", "))
+	}
+
+	log.Printf("Environment variables validated successfully")
+
 	app := pocketbase.New()
 
 	// Register migrations with automigrate enabled when running with `go run`
@@ -55,16 +74,40 @@ func main() {
 	}
 	var pendingInviteCodes = make(map[string]inviteCodeInfo) // userEmail -> inviteCodeInfo
 
-	// Rate limiting for invite code attempts
-	type rateLimitInfo struct {
-		attempts  int
-		lockedUntil int64 // Unix timestamp
-	}
-	var inviteCodeAttempts = make(map[string]*rateLimitInfo) // IP -> rateLimitInfo
+	// Rate limiting constants
 	const (
-		maxAttempts     = 5      // Maximum attempts before lockout
-		lockoutDuration = 15 * 60 // 15 minutes in seconds
+		maxAttempts        = 5       // Maximum attempts before lockout
+		baseLockoutSeconds = 15 * 60 // 15 minutes base lockout in seconds
 	)
+
+	// Helper function to get or create rate limit record from database
+	getRateLimitRecord := func(clientIP string) (record *core.Record, err error) {
+		// Try to find existing record
+		record, err = app.FindFirstRecordByFilter(
+			"rate_limits",
+			"ip_address = {:ip}",
+			map[string]any{"ip": clientIP},
+		)
+
+		// If not found, create a new one
+		if err != nil || record == nil {
+			collection, err := app.FindCollectionByNameOrId("rate_limits")
+			if err != nil {
+				return nil, fmt.Errorf("could not find rate_limits collection: %w", err)
+			}
+
+			record = core.NewRecord(collection)
+			record.Set("ip_address", clientIP)
+			record.Set("attempts", 0)
+			record.Set("locked_until", int64(0))
+
+			if err := app.Save(record); err != nil {
+				return nil, fmt.Errorf("could not create rate limit record: %w", err)
+			}
+		}
+
+		return record, nil
+	}
 
 	// Hook to validate invite code before user creation
 	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
@@ -82,21 +125,31 @@ func main() {
 			clientIP = clientIP[:idx]
 		}
 
-		// Check rate limiting
-		now := time.Now().Unix()
-		if rateLimitData, exists := inviteCodeAttempts[clientIP]; exists {
+		// Get or create rate limit record from database
+		rateLimitRecord, err := getRateLimitRecord(clientIP)
+		if err != nil {
+			log.Printf("Error getting rate limit record: %v", err)
+			// Continue without rate limiting if database error (fail open)
+		} else {
+			// Check rate limiting
+			now := time.Now().Unix()
+			lockedUntil := int64(rateLimitRecord.GetInt("locked_until"))
+
 			// Check if still locked out
-			if rateLimitData.lockedUntil > now {
-				remainingSeconds := rateLimitData.lockedUntil - now
+			if lockedUntil > now {
+				remainingSeconds := lockedUntil - now
 				remainingMinutes := remainingSeconds / 60
 				log.Printf("Rate limit: IP %s is locked out for %d more seconds", clientIP, remainingSeconds)
 				return apis.NewBadRequestError(fmt.Sprintf("too many failed attempts, please try again in %d minutes", remainingMinutes), nil)
 			}
 
 			// Lockout expired, reset attempts
-			if rateLimitData.lockedUntil > 0 && rateLimitData.lockedUntil <= now {
-				rateLimitData.attempts = 0
-				rateLimitData.lockedUntil = 0
+			if lockedUntil > 0 && lockedUntil <= now {
+				rateLimitRecord.Set("attempts", 0)
+				rateLimitRecord.Set("locked_until", int64(0))
+				if err := app.Save(rateLimitRecord); err != nil {
+					log.Printf("Error resetting rate limit: %v", err)
+				}
 			}
 		}
 
@@ -130,27 +183,58 @@ func main() {
 
 		if err != nil || inviteCodeRecord == nil {
 			// Invalid invite code - increment failed attempts
-			if inviteCodeAttempts[clientIP] == nil {
-				inviteCodeAttempts[clientIP] = &rateLimitInfo{attempts: 0, lockedUntil: 0}
+			rateLimitRecord, err := getRateLimitRecord(clientIP)
+			if err != nil {
+				log.Printf("Error getting rate limit record for failed attempt: %v", err)
+				return apis.NewBadRequestError("invalid or already used invite code", nil)
 			}
-			inviteCodeAttempts[clientIP].attempts++
 
-			log.Printf("Rate limit: IP %s failed attempt %d/%d", clientIP, inviteCodeAttempts[clientIP].attempts, maxAttempts)
+			now := time.Now().Unix()
+			attempts := rateLimitRecord.GetInt("attempts") + 1
+			rateLimitRecord.Set("attempts", attempts)
+			rateLimitRecord.Set("last_attempt_at", time.Now())
 
-			// Check if should be locked out
-			if inviteCodeAttempts[clientIP].attempts >= maxAttempts {
-				inviteCodeAttempts[clientIP].lockedUntil = now + lockoutDuration
-				log.Printf("Rate limit: IP %s locked out for %d minutes", clientIP, lockoutDuration/60)
-				return apis.NewBadRequestError("too many failed attempts, please try again in 15 minutes", nil)
+			log.Printf("Rate limit: IP %s failed attempt %d/%d", clientIP, attempts, maxAttempts)
+
+			// Check if should be locked out with exponential backoff
+			if attempts >= maxAttempts {
+				// Calculate exponential backoff: baseSeconds * 2^(attempts - maxAttempts)
+				// For attempts 5, 6, 7, 8, ... this gives: 15min, 30min, 60min, 120min, ...
+				backoffMultiplier := int64(1 << uint(attempts-maxAttempts))
+				lockoutSeconds := baseLockoutSeconds * backoffMultiplier
+
+				// Cap at 24 hours to prevent extremely long lockouts
+				const maxLockoutSeconds = 24 * 60 * 60
+				if lockoutSeconds > maxLockoutSeconds {
+					lockoutSeconds = maxLockoutSeconds
+				}
+
+				rateLimitRecord.Set("locked_until", now+lockoutSeconds)
+				lockoutMinutes := lockoutSeconds / 60
+				log.Printf("Rate limit: IP %s locked out for %d minutes (attempt %d)", clientIP, lockoutMinutes, attempts)
+
+				if err := app.Save(rateLimitRecord); err != nil {
+					log.Printf("Error saving rate limit lockout: %v", err)
+				}
+
+				return apis.NewBadRequestError(fmt.Sprintf("too many failed attempts, please try again in %d minutes", lockoutMinutes), nil)
+			}
+
+			if err := app.Save(rateLimitRecord); err != nil {
+				log.Printf("Error saving rate limit attempts: %v", err)
 			}
 
 			return apis.NewBadRequestError("invalid or already used invite code", nil)
 		}
 
 		// Valid invite code - clear any previous failed attempts
-		if inviteCodeAttempts[clientIP] != nil {
-			inviteCodeAttempts[clientIP].attempts = 0
-			inviteCodeAttempts[clientIP].lockedUntil = 0
+		rateLimitRecord, err = getRateLimitRecord(clientIP)
+		if err == nil {
+			rateLimitRecord.Set("attempts", 0)
+			rateLimitRecord.Set("locked_until", int64(0))
+			if err := app.Save(rateLimitRecord); err != nil {
+				log.Printf("Error clearing rate limit: %v", err)
+			}
 		}
 
 		// Store the invite code info for marking as used after creation

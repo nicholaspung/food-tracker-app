@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { pb } from "@/lib/pocketbase";
 import { localDateStringToUTC } from "@/lib/dateUtils";
-import { COLLECTIONS } from '@/constants/collections';
+import { repositories, type VisitPhoto } from '@/repositories';
 import {
   editVisitDraftService,
   EditVisitDraftItem,
@@ -22,16 +22,6 @@ import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
-
-interface VisitPhoto {
-  id: string;
-  visit: string;
-  food_item: string;
-  user: string;
-  photo: string;
-  created: string;
-  updated: string;
-}
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -96,9 +86,7 @@ export default function EditRateItemsPage({
   const { data: existingPhotos = [] } = useQuery<VisitPhoto[]>({
     queryKey: ["visitPhotos", visitId],
     queryFn: async () => {
-      return await pb.collection(COLLECTIONS.VISIT_PHOTOS).getFullList({
-        filter: `visit = "${visitId}"`,
-      });
+      return await repositories.visitPhotos.getByVisit(visitId);
     },
   });
 
@@ -169,14 +157,14 @@ export default function EditRateItemsPage({
       const visitDateUTC = localDateStringToUTC(visitDate);
 
       // Update visit
-      await pb.collection(COLLECTIONS.VISITS).update(visitId, {
+      await repositories.visits.update(visitId, {
         visitDate: visitDateUTC,
         visibility: visitVisibility,
       });
 
       // Delete marked photos first
       for (const photoId of deletedPhotoIds) {
-        await pb.collection(COLLECTIONS.VISIT_PHOTOS).delete(photoId);
+        await repositories.visitPhotos.delete(photoId);
       }
 
       // Track photo uploads for parallel processing
@@ -186,11 +174,11 @@ export default function EditRateItemsPage({
       for (const item of menuItems) {
         if (item._deleted && item.id) {
           // Delete existing item and its photos
-          await pb.collection(COLLECTIONS.FOOD_ITEMS).delete(item.id);
+          await repositories.foodItems.delete(item.id);
           // Photos will be cascade deleted by backend
         } else if (item.id) {
           // Update existing item
-          await pb.collection(COLLECTIONS.FOOD_ITEMS).update(item.id, {
+          await repositories.foodItems.update(item.id, {
             name: item.name,
             description: item.description,
             rating: item.rating,
@@ -211,7 +199,7 @@ export default function EditRateItemsPage({
           }
         } else if (!item._deleted) {
           // Create new item
-          const foodItem = await pb.collection(COLLECTIONS.FOOD_ITEMS).create({
+          const foodItem = await repositories.foodItems.create({
             name: item.name,
             description: item.description,
             visit: visitId,
