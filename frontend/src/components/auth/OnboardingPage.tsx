@@ -65,25 +65,25 @@ export default function OnboardingPage({ onNavigateToSignUp, onNavigateToLogin }
             className="w-16 h-16"
           />
           <div className="text-2xl font-bold text-foreground">
-            Track Your Foods
+            Yummy Recs
           </div>
         </div>
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-12">
         {/* Icon with gradient background */}
         <div className={`w-24 h-24 rounded-full bg-gradient-to-br ${currentScreenData.gradient} flex items-center justify-center mb-8 shadow-lg`}>
           <Icon className="w-12 h-12 text-white" strokeWidth={2} />
         </div>
 
         {/* Title */}
-        <h1 className="text-3xl font-bold text-center mb-4 text-foreground">
+        <h1 className="text-3xl font-bold text-center mb-4 text-foreground px-4">
           {currentScreenData.title}
         </h1>
 
         {/* Description */}
-        <p className="text-lg text-center text-muted-foreground max-w-md mb-8 leading-relaxed">
+        <p className="text-lg text-center text-muted-foreground w-full px-4 mb-8 leading-relaxed">
           {currentScreenData.description}
         </p>
 
@@ -102,7 +102,7 @@ export default function OnboardingPage({ onNavigateToSignUp, onNavigateToLogin }
         </div>
 
         {/* Navigation buttons */}
-        <div className="w-full max-w-md space-y-3">
+        <div className="w-full px-4 space-y-3">
           <Button
             onClick={handleNext}
             className="w-full h-12 text-lg font-semibold"

@@ -43,8 +43,8 @@ export default function ForgotPasswordPage({ onNavigateToLogin }: ForgotPassword
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4" data-testid="forgot-password-page">
-      <Card className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background" data-testid="forgot-password-page">
+      <Card className="w-full min-h-screen lg:min-h-0 lg:max-w-md lg:rounded-lg rounded-none border-0 lg:border shadow-none lg:shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center" data-testid="forgot-password-title">
             Forgot Password?

@@ -81,8 +81,9 @@ export function useVisitGrouping<V extends {
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
     new Set([getMonthKey(new Date().toISOString())])
   ); // Current month expanded by default
-  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set()); // Days start collapsed
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set()); // Days start expanded (initialized via effect)
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
+  const [daysInitialized, setDaysInitialized] = useState(false);
 
   // Group visits and quick track items by month, then by day
   const groupedVisits = useMemo(() => {
@@ -198,6 +199,15 @@ export function useVisitGrouping<V extends {
     setRenderedMonthsLimit((prev) => prev + 3); // Load 3 more months at a time
   }, []);
 
+  // Initialize all days as expanded on first load
+  useEffect(() => {
+    if (!daysInitialized && groupedVisits.length > 0) {
+      const allDayKeys = groupedVisits.flatMap((g) => g.days.map((d) => d.dayKey));
+      setExpandedDays(new Set(allDayKeys));
+      setDaysInitialized(true);
+    }
+  }, [groupedVisits, daysInitialized]);
+
   // Auto-expand all months and days when searching
   useEffect(() => {
     if (deferredSearchQuery.trim() && deferredSearchQuery !== previousSearchQuery) {
@@ -208,9 +218,10 @@ export function useVisitGrouping<V extends {
       setExpandedDays(new Set(allDayKeys));
       setPreviousSearchQuery(deferredSearchQuery);
     } else if (!deferredSearchQuery.trim() && previousSearchQuery) {
-      // When search is cleared, collapse to current month only and collapse all days
+      // When search is cleared, collapse to current month only and expand all days
       setExpandedMonths(new Set([getMonthKey(new Date().toISOString())]));
-      setExpandedDays(new Set());
+      const allDayKeys = groupedVisits.flatMap((g) => g.days.map((d) => d.dayKey));
+      setExpandedDays(new Set(allDayKeys));
       setPreviousSearchQuery("");
     }
   }, [deferredSearchQuery, groupedVisits, previousSearchQuery]);
