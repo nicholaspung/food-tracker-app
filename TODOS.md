@@ -20,14 +20,13 @@
 
 - remove the feedback tab and put it into the "profile" tab and replace the feedback tab with additional features, i.e. the lists feature and bill split management feature
 
-- in the friends tab, add another tab in the "friends/add friend" which will eventually be a "group rating session", where the user can create a ephemeral group where the user sets up the restaurants + menu items the group is going to rate (i.e. hangout where someone buys 10 teas from 10 stores to try out), and then there's a code that someone can provide. then users on the app can enter that code in and then it will prepopulate the restaurants + menu items in the order the creator made. then after each rating, then group can view everyone's ratings before the group eventually disappears, but everyone's ratings will be saved
+- in the friends tab, add another tab in the "friends/add friend" which will eventually then after each rating, then group can view everyone's ratings before the group eventually disappears, but everyone's ratings will be saved
 
-- in the homepage feed, add a way to collapse single day visits too
 - in add quick track item, when I go into an input, and the footer with the tabs and the next/cancel buttons are supposed to disappear, there's still a white bar at the bottom, and then when i exit the input, the white bar shows up above the tabs and below the next/cancel buttons
 - in the add new, can you also add a way for a user to just write down notes for what they are going to process next? i.e. user goes to a restaurant and types in the restaurant name in freeform notes, and also what they ordered, and then they would also like to add a photo then too. and then this would be a "saved note entry" for the user to then be able to process later
 - add a way for the user to toggle a notification to be sent to the user to either process the note afterwards or to just generally notify the user to track what they just ate
 - when a user is selecting restaurants, currently, they will select a specific google maps location or restaurant they created. what happens when the user goes to a "chain" or similar restaurant names" to view what they ordered? how do we showcase this to the user?
-  - right now, when a user searches for a restaurant, we can see if they or their friends went to the place, but not what they ordered, can we think of a way to showcase what the user or their friends ordered?
+  - right now, when a user searches for a restaurant, we can see if they or their friendsbe a "group rating session", where the user can create a ephemeral group where the user sets up the restaurants + menu items the group is going to rate (i.e. hangout where someone buys 10 teas from 10 stores to try out), and then there's a code that someone can provide. then users on the app can enter that code in and then it will prepopulate the restaurants + menu items in the order the creator made.  went to the place, but not what they ordered, can we think of a way to showcase what the user or their friends ordered?
   - in the quick track item, there's also no way to see if a user has already eaten that item before
   - in the process saved photos, there's also no way for the user to see if they or their friends have been to the same restaurant before, can we think of a way to showcase what the user or their friends ordered before?
 

@@ -26,6 +26,7 @@ export interface UseVisitGroupingParams<V, Q> {
   deferredSearchQuery: string;
   currentUserId: string;
   isFriendVisit: (visit: V) => boolean;
+  isFriendQuickTrack?: (item: Q) => boolean;
 }
 
 export interface UseVisitGroupingReturn<V, Q> {
@@ -36,6 +37,8 @@ export interface UseVisitGroupingReturn<V, Q> {
   // Expansion state
   expandedMonths: Set<string>;
   toggleMonth: (monthKey: string) => void;
+  expandedDays: Set<string>;
+  toggleDay: (dayKey: string) => void;
 
   // Rendering
   renderedMonthsLimit: number;
@@ -59,15 +62,26 @@ export function useVisitGrouping<V extends {
   filteredVisits,
   filteredQuickTrackItems,
   deferredSearchQuery,
-  currentUserId: _currentUserId,
+  currentUserId,
   isFriendVisit,
+  isFriendQuickTrack,
 }: UseVisitGroupingParams<V, Q>): UseVisitGroupingReturn<V, Q> {
+
+  // Helper to check if a quick track item is from a friend
+  const isQuickTrackFromFriend = (item: Q) => {
+    if (isFriendQuickTrack) {
+      return isFriendQuickTrack(item);
+    }
+    // Fallback: check if the item's user is different from current user
+    return 'user' in item && item.user !== currentUserId;
+  };
 
   // Rendering state
   const [renderedMonthsLimit, setRenderedMonthsLimit] = useState(3); // Only render 3 months at a time
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
     new Set([getMonthKey(new Date().toISOString())])
   ); // Current month expanded by default
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set()); // Days start collapsed
   const [previousSearchQuery, setPreviousSearchQuery] = useState("");
 
   // Group visits and quick track items by month, then by day
@@ -102,7 +116,8 @@ export function useVisitGrouping<V extends {
     filteredQuickTrackItems.forEach((item) => {
       const dateToUse = item.itemDate || item.created;
       const monthKey = getMonthKey(dateToUse);
-      const dayKey = getDayKey(dateToUse, false);
+      const isFriend = isQuickTrackFromFriend(item);
+      const dayKey = getDayKey(dateToUse, isFriend);
 
       if (!byMonth[monthKey]) {
         byMonth[monthKey] = {};
@@ -165,21 +180,37 @@ export function useVisitGrouping<V extends {
     });
   }, []);
 
+  // Toggle day expansion
+  const toggleDay = useCallback((dayKey: string) => {
+    setExpandedDays((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(dayKey)) {
+        newSet.delete(dayKey);
+      } else {
+        newSet.add(dayKey);
+      }
+      return newSet;
+    });
+  }, []);
+
   // Load more rendered months (increase rendering limit)
   const loadMoreRenderedMonths = useCallback(() => {
     setRenderedMonthsLimit((prev) => prev + 3); // Load 3 more months at a time
   }, []);
 
-  // Auto-expand all months when searching
+  // Auto-expand all months and days when searching
   useEffect(() => {
     if (deferredSearchQuery.trim() && deferredSearchQuery !== previousSearchQuery) {
-      // When user starts searching or changes search, expand all months with results
+      // When user starts searching or changes search, expand all months and days with results
       const allMonthKeys = groupedVisits.map((g) => g.monthKey);
+      const allDayKeys = groupedVisits.flatMap((g) => g.days.map((d) => d.dayKey));
       setExpandedMonths(new Set(allMonthKeys));
+      setExpandedDays(new Set(allDayKeys));
       setPreviousSearchQuery(deferredSearchQuery);
     } else if (!deferredSearchQuery.trim() && previousSearchQuery) {
-      // When search is cleared, collapse to current month only
+      // When search is cleared, collapse to current month only and collapse all days
       setExpandedMonths(new Set([getMonthKey(new Date().toISOString())]));
+      setExpandedDays(new Set());
       setPreviousSearchQuery("");
     }
   }, [deferredSearchQuery, groupedVisits, previousSearchQuery]);
@@ -192,6 +223,8 @@ export function useVisitGrouping<V extends {
     // Expansion state
     expandedMonths,
     toggleMonth,
+    expandedDays,
+    toggleDay,
 
     // Rendering
     renderedMonthsLimit,

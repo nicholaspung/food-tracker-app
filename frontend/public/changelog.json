@@ -1,5 +1,31 @@
 [
   {
+    "version": "0.5.7",
+    "date": "2025-12-20",
+    "title": "Enhanced Feed Organization & Filtering",
+    "summary": "Better control over your feed with collapsible daily sections, streamlined Mine/Friends toggle, and improved filter behavior for finding exactly what you're looking for!",
+    "features": [
+      "Collapsible day sections: Tap any day header to collapse/expand that day's items for cleaner browsing",
+      "Item count badges: See number of items in each day at a glance",
+      "Mine/Friends toggle: Quick toggle at the top to switch between your ratings and friends' ratings",
+      "Contextual type filters: Filter options adapt based on whether you're viewing your items or friends' items"
+    ],
+    "improvements": [
+      "Simplified header: Changed 'Visits' to 'Ratings' to better reflect all tracked items",
+      "Smart filter preservation: Switching between Mine/Friends preserves your type filter preference (visits/quick track/all)",
+      "Rating filter now applies to individual food items within visits for more precise filtering",
+      "Auto-expand on search: Days automatically expand when searching to show all matching results",
+      "Auto-collapse when cleared: Days collapse when search is cleared for cleaner default view",
+      "Improved scrolling on Quick Track pages: Better overflow handling for smoother scrolling experience",
+      "Better filter counting: Only shows active filter count for meaningful filter selections"
+    ],
+    "fixes": [
+      "Fixed friend quick track items not being properly filtered when using type filters",
+      "Fixed filter behavior inconsistencies between user and friend views",
+      "Fixed rating filter not applying to individual food items within visits"
+    ]
+  },
+  {
     "version": "0.5.6",
     "date": "2025-12-20",
     "title": "Code Quality & Performance Improvements",
