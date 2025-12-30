@@ -21,6 +21,8 @@ import {
 } from '@/lib/syncQueue';
 import { pb, type FoodItem } from '@/lib/pocketbase';
 import { repositories } from '@/repositories';
+import { analytics } from '@/lib/analytics';
+import { ANALYTICS_EVENTS, type OfflineSyncProperties } from '@/types/posthog';
 
 export interface SyncContextValue {
   isOnline: boolean;
@@ -283,6 +285,8 @@ export function SyncProvider({ children }: SyncProviderProps) {
     setIsSyncing(true);
     setSyncError(null);
 
+    const syncStartTime = Date.now();
+
     try {
       let successCount = 0;
       let failCount = 0;
@@ -334,9 +338,27 @@ export function SyncProvider({ children }: SyncProviderProps) {
       if (failCount > 0) {
         setSyncError(`${failCount} operation(s) failed to sync`);
       }
+
+      // Track sync completion
+      const syncDuration = Date.now() - syncStartTime;
+      const syncProps: OfflineSyncProperties = {
+        operationCount: successCount + failCount,
+        successCount,
+        failCount,
+        syncDuration,
+        source: 'SyncContext',
+      };
+      analytics.track(ANALYTICS_EVENTS.OFFLINE_SYNC_COMPLETED, syncProps);
     } catch (error: unknown) {
       logger.error('Sync failed:', error);
       setSyncError(error instanceof Error ? error.message : 'Sync failed');
+
+      // Track sync failure
+      analytics.track(ANALYTICS_EVENTS.OFFLINE_SYNC_FAILED, {
+        errorType: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : 'Sync failed',
+        source: 'SyncContext',
+      });
     } finally {
       setIsSyncing(false);
       syncInProgressRef.current = false;

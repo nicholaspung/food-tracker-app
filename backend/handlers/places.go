@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/maps/places/apiv1"
 	"cloud.google.com/go/maps/places/apiv1/placespb"
@@ -14,6 +16,8 @@ import (
 	"google.golang.org/genproto/googleapis/type/latlng"
 	"google.golang.org/grpc/metadata"
 	"googlemaps.github.io/maps"
+
+	"myapp/lib"
 )
 
 // RegisterPlacesHandlers registers all Google Places API endpoints
@@ -81,14 +85,40 @@ func RegisterPlacesHandlers(se *core.ServeEvent, app core.App) {
 		ctx = metadata.AppendToOutgoingContext(ctx,
 			"x-goog-fieldmask", "places.id,places.displayName,places.shortFormattedAddress,places.types,places.location")
 
+		// Start tracking for analytics
+		startTime := time.Now()
+
 		// Perform nearby search
 		resp, err := placesClient.SearchNearby(ctx, searchReq)
+
+		// Calculate duration
+		durationMs := time.Since(startTime).Milliseconds()
+
+		// Handle error case
 		if err != nil {
 			log.Printf("Google Places API error: %v", err)
+
+			// Track failed API call
+			lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+				APIType:     "nearby",
+				DurationMs:  durationMs,
+				Success:     false,
+				ErrorType:   fmt.Sprintf("%T", err),
+				ResultCount: 0,
+			})
+
 			return apis.NewApiError(500, "failed to search nearby places", err)
 		}
 
 		log.Printf("Found %d nearby places", len(resp.Places))
+
+		// Track successful API call
+		lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+			APIType:     "nearby",
+			DurationMs:  durationMs,
+			Success:     true,
+			ResultCount: len(resp.Places),
+		})
 
 		// Transform results to match frontend PlaceResult interface
 		placesResult := make([]map[string]any, len(resp.Places))
@@ -217,14 +247,44 @@ func RegisterPlacesHandlers(se *core.ServeEvent, app core.App) {
 		ctx = metadata.AppendToOutgoingContext(ctx,
 			"x-goog-fieldmask", "places.id,places.displayName,places.formattedAddress,places.types,places.location")
 
+		// Start tracking for analytics
+		startTime := time.Now()
+
 		// Perform text search
 		resp, err := placesClient.SearchText(ctx, searchReq)
+
+		// Calculate duration
+		durationMs := time.Since(startTime).Milliseconds()
+
+		// Handle error case
 		if err != nil {
 			log.Printf("Google Places text search error: %v", err)
+
+			// Track failed API call
+			lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+				APIType:     "search",
+				DurationMs:  durationMs,
+				Success:     false,
+				ErrorType:   fmt.Sprintf("%T", err),
+				ResultCount: 0,
+				Query:       requestData.Query,
+				HasLocation: requestData.Location != "",
+			})
+
 			return apis.NewApiError(500, "failed to search places", err)
 		}
 
 		log.Printf("Text search found %d places", len(resp.Places))
+
+		// Track successful API call
+		lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+			APIType:     "search",
+			DurationMs:  durationMs,
+			Success:     true,
+			ResultCount: len(resp.Places),
+			Query:       requestData.Query,
+			HasLocation: requestData.Location != "",
+		})
 
 		// Transform results to match frontend PlaceResult interface
 		placesResult := make([]map[string]any, len(resp.Places))
@@ -313,13 +373,42 @@ func RegisterPlacesHandlers(se *core.ServeEvent, app core.App) {
 			Address: requestData.Location,
 		}
 
+		// Start tracking for analytics
+		startTime := time.Now()
+
 		resp, err := mapsClient.Geocode(ctx, request)
+
+		// Calculate duration
+		durationMs := time.Since(startTime).Milliseconds()
+
+		// Handle error case
 		if err != nil {
 			log.Printf("Geocoding error: %v", err)
+
+			// Track failed API call
+			lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+				APIType:     "geocode",
+				DurationMs:  durationMs,
+				Success:     false,
+				ErrorType:   fmt.Sprintf("%T", err),
+				ResultCount: 0,
+				Query:       requestData.Location,
+			})
+
 			return apis.NewApiError(500, "failed to geocode location", err)
 		}
 
-		if len(resp) == 0 {
+		resultCount := len(resp)
+		if resultCount == 0 {
+			// Track successful but empty result
+			lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+				APIType:     "geocode",
+				DurationMs:  durationMs,
+				Success:     true,
+				ResultCount: 0,
+				Query:       requestData.Location,
+			})
+
 			return e.JSON(200, map[string]any{
 				"found": false,
 			})
@@ -327,6 +416,15 @@ func RegisterPlacesHandlers(se *core.ServeEvent, app core.App) {
 
 		location := resp[0].Geometry.Location
 		log.Printf("Geocoded to: lat=%f, lng:%f", location.Lat, location.Lng)
+
+		// Track successful API call
+		lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
+			APIType:     "geocode",
+			DurationMs:  durationMs,
+			Success:     true,
+			ResultCount: resultCount,
+			Query:       requestData.Location,
+		})
 
 		return e.JSON(200, map[string]any{
 			"found": true,

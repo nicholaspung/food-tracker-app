@@ -17,6 +17,8 @@ import {
   getFirstError,
 } from '@/lib/billValidation';
 import type { Friendship, User } from '@/lib/pocketbase';
+import { useTrackEvent } from '@/hooks/ui/useTrackEvent';
+import { ANALYTICS_EVENTS } from '@/constants/analyticsEvents';
 
 interface CreateEvenSplitBillDialogProps {
   open: boolean;
@@ -39,6 +41,7 @@ export default function CreateEvenSplitBillDialog({
     source: 'CreateEvenSplitBillDialog',
     defaultSeverity: 'error',
   });
+  const trackEvent = useTrackEvent();
   const [pendingBillId, setPendingBillId] = useState<string | null>(null);
 
   // Fetch friends list
@@ -116,6 +119,14 @@ export default function CreateEvenSplitBillDialog({
       });
     },
     onSuccess: (data) => {
+      // Track bill created
+      trackEvent(ANALYTICS_EVENTS.BILL_CREATED, {
+        source: 'CreateEvenSplitBillDialog',
+        splitMode: 'even',
+        participantCount: selectedFriendIds.length + 1,
+        totalAmount: parseFloat(totalAmount),
+      });
+
       queryClient.invalidateQueries({ queryKey: ['bills'] });
       setPendingBillId(data.id);
       resetForm();

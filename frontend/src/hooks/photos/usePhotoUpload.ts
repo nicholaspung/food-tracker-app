@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { PhotoToProcess } from "@/types/photos";
 import { extractImageCaptureDate } from "@/lib/photoUtils";
 import { processPhotosDraftService } from "@/services/processPhotosDraftServiceDB";
 import { pb } from "@/lib/pocketbase";
 import { compressImage } from "@/services/ocrService";
 import { repositories } from '@/repositories';
+import { analytics } from '@/lib/analytics';
+import { ANALYTICS_EVENTS } from '@/types/posthog';
 
 /**
  * Item to be uploaded with photo and metadata
@@ -48,13 +50,30 @@ export function usePhotoUpload() {
     error: null,
   });
 
-  // Cleanup: Revoke all blob URLs on unmount to prevent memory leaks
+  // Track all blob URLs that have been created
+  const createdUrlsRef = useRef<Set<string>>(new Set());
+
+  // Track which URLs are removed and revoke them, cleanup all on unmount
   useEffect(() => {
+    const currentUrls = new Set(photos.map(p => p.previewUrl).filter(Boolean));
+
+    // Revoke URLs that were previously tracked but are no longer in the photos array
+    createdUrlsRef.current.forEach(url => {
+      if (!currentUrls.has(url)) {
+        URL.revokeObjectURL(url);
+        createdUrlsRef.current.delete(url);
+      }
+    });
+
+    // Add new URLs to our tracking set
+    currentUrls.forEach(url => {
+      createdUrlsRef.current.add(url);
+    });
+
+    // Cleanup on unmount: revoke all tracked URLs
     return () => {
-      photos.forEach((photo) => {
-        if (photo.previewUrl) {
-          URL.revokeObjectURL(photo.previewUrl);
-        }
+      createdUrlsRef.current.forEach(url => {
+        URL.revokeObjectURL(url);
       });
     };
   }, [photos]);
@@ -156,6 +175,14 @@ export function usePhotoUpload() {
         } else {
           await repositories.visitPhotos.create(formData);
         }
+
+        // Track photo uploaded
+        analytics.track(ANALYTICS_EVENTS.PHOTO_UPLOADED, {
+          source: 'usePhotoUpload',
+          isUpdate: !!item.existingPhotoId,
+          hasVisit: !!item.visitId,
+          fileSize: compressed.size,
+        });
 
         // Update upload progress (50-100%)
         const progress = Math.round(50 + ((i + 1) / totalItems) * 50);

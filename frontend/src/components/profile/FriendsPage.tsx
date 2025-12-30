@@ -33,6 +33,8 @@ import { useSync } from "@/contexts/SyncContext";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import { useTrackEvent } from "@/hooks/ui/useTrackEvent";
+import { ANALYTICS_EVENTS } from "@/constants/analyticsEvents";
 
 // Generate a unique friend code from user ID (base62 encoding for shorter code)
 function generateFriendCode(userId: string): string {
@@ -59,6 +61,7 @@ export default function FriendsPage() {
     useState<FriendWithDetails | null>(null);
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
+  const trackEvent = useTrackEvent();
 
   const currentUser = pb.authStore.record;
   const myFriendCode = currentUser ? generateFriendCode(currentUser.id) : "";
@@ -146,6 +149,12 @@ export default function FriendsPage() {
       });
     },
     onSuccess: () => {
+      // Track friend request sent
+      trackEvent(ANALYTICS_EVENTS.FRIEND_REQUEST_SENT, {
+        source: 'FriendsPage',
+        method: 'friend_code',
+      });
+
       queryClient.invalidateQueries({ queryKey: ["friendships"] });
       queryClient.invalidateQueries({
         queryKey: ["pendingFriendRequestsCount"],
@@ -166,6 +175,11 @@ export default function FriendsPage() {
       });
     },
     onSuccess: () => {
+      // Track friend request accepted
+      trackEvent(ANALYTICS_EVENTS.FRIEND_REQUEST_ACCEPTED, {
+        source: 'FriendsPage',
+      });
+
       queryClient.invalidateQueries({ queryKey: ["friendships"] });
       queryClient.invalidateQueries({ queryKey: ["allVisits"] });
       queryClient.invalidateQueries({
@@ -179,7 +193,14 @@ export default function FriendsPage() {
     mutationFn: async (friendshipId: string) => {
       return await repositories.friendships.delete(friendshipId);
     },
-    onSuccess: () => {
+    onSuccess: (data, friendshipId) => {
+      // Track friend removed
+      const wasAccepted = friendships.find(f => f.id === friendshipId)?.status === 'accepted';
+      trackEvent(ANALYTICS_EVENTS.FRIEND_REMOVED, {
+        source: 'FriendsPage',
+        wasAcceptedFriend: wasAccepted,
+      });
+
       queryClient.invalidateQueries({ queryKey: ["friendships"] });
       queryClient.invalidateQueries({ queryKey: ["allVisits"] });
       queryClient.invalidateQueries({
@@ -242,7 +263,7 @@ export default function FriendsPage() {
           defaultValue="friends-list"
           className="w-full h-full flex flex-col"
         >
-          <div className="bg-white border-b border-gray-200 px-4">
+          <div className="bg-white border-b border-gray-200 px-4 py-3">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="friends-list">Friends</TabsTrigger>
               <TabsTrigger value="add-friend">Add Friend</TabsTrigger>
@@ -300,21 +321,29 @@ export default function FriendsPage() {
               {/* Friends Sub-tabs */}
               <Tabs defaultValue="friends" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="friends">
-                    Friends ({acceptedFriends.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="received" className="relative">
-                    <span>Requests ({pendingReceived.length})</span>
-                    {pendingReceived.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-1">
-                        {pendingReceived.length > 9
-                          ? "9+"
-                          : pendingReceived.length}
-                      </span>
+                  <TabsTrigger value="friends" className="text-xs px-2">
+                    Friends
+                    {acceptedFriends.length > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] px-1.5 text-[10px]">
+                        {acceptedFriends.length}
+                      </Badge>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="sent">
-                    Sent ({pendingSent.length})
+                  <TabsTrigger value="received" className="text-xs px-2">
+                    Requests
+                    {pendingReceived.length > 0 && (
+                      <Badge className="ml-1 h-5 min-w-[20px] px-1.5 text-[10px] bg-red-500">
+                        {pendingReceived.length > 9 ? "9+" : pendingReceived.length}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="sent" className="text-xs px-2">
+                    Sent
+                    {pendingSent.length > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] px-1.5 text-[10px]">
+                        {pendingSent.length}
+                      </Badge>
+                    )}
                   </TabsTrigger>
                 </TabsList>
 

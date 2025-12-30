@@ -157,14 +157,14 @@ export default function QuickTrackPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-full bg-gray-50">
+    <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4">
         <h1 className="text-2xl font-bold text-gray-900">Quick Track Item</h1>
       </div>
 
       {/* Content */}
-      <div className="flex-1 p-4">
+      <div className="flex-1 overflow-y-auto p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Date picker */}
           <DatePickerField

@@ -2,6 +2,8 @@ import { logger } from '@/lib/logger';
 import { useState, useCallback } from 'react';
 import { useSync } from '@/contexts/SyncContext';
 import { isPocketBaseError } from '@/lib/errors';
+import { analytics } from '@/lib/analytics';
+import { ANALYTICS_EVENTS, type ErrorEventProperties } from '@/types/posthog';
 
 export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
 
@@ -159,6 +161,21 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
     } else {
       logger.error('Error:', error);
     }
+
+    // Track error in analytics
+    // Map severity to analytics-compatible types (critical -> error)
+    const analyticsSeverity: 'error' | 'warning' | 'info' =
+      severity === 'critical' ? 'error' : severity;
+
+    const errorProps: ErrorEventProperties = {
+      errorType: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: customMessage || message,
+      severity: analyticsSeverity,
+      userFacing: true,
+      retryable: retryable && !!onRetry,
+      source: source || 'unknown',
+    };
+    analytics.track(ANALYTICS_EVENTS.ERROR_OCCURRED, errorProps);
 
     // Auto-clear if specified
     if (autoClearMs) {

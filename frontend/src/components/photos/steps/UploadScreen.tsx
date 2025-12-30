@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Store, Camera, X, ChevronRight } from "lucide-react";
@@ -18,6 +17,10 @@ interface UploadScreenProps {
 
 /**
  * Upload Screen - Select and manage photos to process
+ *
+ * Note: Blob URL cleanup is handled by usePhotoUpload hook when the entire
+ * flow unmounts. We don't clean up here to preserve URLs when navigating
+ * back and forth between upload and processing screens.
  */
 export function UploadScreen({
   processType,
@@ -29,17 +32,6 @@ export function UploadScreen({
   onNext,
   isKeyboardVisible,
 }: UploadScreenProps) {
-  // Cleanup: Revoke all blob URLs on unmount to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      photos.forEach((photo) => {
-        if (photo.previewUrl) {
-          URL.revokeObjectURL(photo.previewUrl);
-        }
-      });
-    };
-  }, [photos]);
-
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}

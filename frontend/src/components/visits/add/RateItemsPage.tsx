@@ -1,11 +1,19 @@
 import { logger } from '@/lib/logger';
 import { useState, useEffect } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { pb } from "@/lib/pocketbase";
 import { localDateStringToUTC } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { visitDraftService } from "@/services/visitDraftService";
 import { useScrollIntoView } from "@/hooks/ui/useScrollIntoView";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
@@ -17,7 +25,7 @@ import MenuItemPhotoInput from "@/components/visits/shared/MenuItemPhotoInput";
 import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
 import { DatePickerField } from "@/components/ui/DatePickerField";
-import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
+import { useVisitDraftPhotoStore } from "@/stores/visitDraftPhotoStore";
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
 import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/offlineHelpers";
 
@@ -36,21 +44,21 @@ export default function RateItemsPage({
   const [visitDate, setVisitDate] = useState(draft.visitDate);
   const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
 
-  // Photo management hook - track photo for each item (max 1 for now)
-  const {
-    photos: itemPhotos,
-    previewUrls: photoPreviewUrls,
-    handleCapture,
-    handleRemove,
-  } = usePhotoManager<number>(true);
+  // Edit item dialog state
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+
+  // Photo management using persistent store (survives back navigation)
+  const { photos: itemPhotos, previewUrls: photoPreviewUrls, setPhoto, removePhoto, clearAllPhotos } = useVisitDraftPhotoStore();
 
   // Wrap handlers to match MenuItemPhotoInput signature
   const handlePhotoCapture = (index: string | number, file: File) => {
-    handleCapture(Number(index), file);
+    setPhoto(Number(index), file);
   };
 
   const handleRemovePhoto = (index: string | number) => {
-    handleRemove(Number(index));
+    removePhoto(Number(index));
   };
 
   // Check if user has rated before - expand legend for first-timers
@@ -106,6 +114,7 @@ export default function RateItemsPage({
 
       // Success
       visitDraftService.clearDraft();
+      clearAllPhotos();
       localStorage.setItem("hasRatedBefore", "true");
       resetUploadState();
       onSubmit();
@@ -117,6 +126,7 @@ export default function RateItemsPage({
       if (!isOnline && isOfflineError(error)) {
         handleOfflineSuccess(OFFLINE_MESSAGES.VISIT_SAVED, showSuccess);
         visitDraftService.clearDraft();
+        clearAllPhotos();
         localStorage.setItem("hasRatedBefore", "true");
         onSubmit();
       }
@@ -132,6 +142,54 @@ export default function RateItemsPage({
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
     visitDraftService.updateItem(index, { [field]: value });
+  };
+
+  // Open edit dialog for an item
+  const handleEditItem = (index: number) => {
+    const item = items[index];
+    setEditName(item.menuItem.name);
+    setEditDescription(item.description || "");
+    setEditingIndex(index);
+  };
+
+  // Save edited item
+  const handleSaveEdit = () => {
+    if (editingIndex === null || !editName.trim()) return;
+
+    const newItems = [...items];
+    newItems[editingIndex] = {
+      ...newItems[editingIndex],
+      menuItem: {
+        ...newItems[editingIndex].menuItem,
+        name: editName.trim(),
+      },
+      description: editDescription.trim(),
+    };
+    setItems(newItems);
+
+    // Update in draft service
+    visitDraftService.updateItem(editingIndex, { description: editDescription.trim() });
+
+    // Close dialog
+    setEditingIndex(null);
+    setEditName("");
+    setEditDescription("");
+  };
+
+  // Remove item from list
+  const handleRemoveItem = (index: number) => {
+    const newItems = items.filter((_, i) => i !== index);
+    setItems(newItems);
+
+    // Remove associated photo if any
+    removePhoto(index);
+
+    // Update draft service - rebuild items array
+    const updatedItems = newItems.map((item) => ({
+      ...item.menuItem,
+      description: item.description,
+    }));
+    visitDraftService.saveItems(updatedItems);
   };
 
 
@@ -167,13 +225,35 @@ export default function RateItemsPage({
           {items.map((item, index) => (
             <Card key={index}>
               <CardContent className="space-y-3">
-                <div>
-                  <Label className="font-semibold">{item.menuItem.name}</Label>
-                  {item.description && (
-                    <p className="text-sm text-gray-600 mt-1">
-                      {item.description}
-                    </p>
-                  )}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <Label className="font-semibold">{item.menuItem.name}</Label>
+                    {item.description && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        {item.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => handleEditItem(index)}
+                      title="Edit item"
+                    >
+                      <Pencil className="h-4 w-4 text-gray-500" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => handleRemoveItem(index)}
+                      title="Remove item"
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
                 </div>
 
                 <div>
@@ -263,7 +343,8 @@ export default function RateItemsPage({
               disabled={
                 saveVisitMutation.isPending ||
                 uploadState.status === "uploading" ||
-                uploadState.status === "compressing"
+                uploadState.status === "compressing" ||
+                items.length === 0
               }
               className="flex-1"
             >
@@ -272,6 +353,43 @@ export default function RateItemsPage({
           </div>
         </div>
       )}
+
+      {/* Edit Item Dialog */}
+      <Dialog open={editingIndex !== null} onOpenChange={(open) => !open && setEditingIndex(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Item Name</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Enter item name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description (optional)</Label>
+              <Input
+                id="edit-description"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="e.g., extra spicy, no onions"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingIndex(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={!editName.trim()}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

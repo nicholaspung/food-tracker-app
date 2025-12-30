@@ -34,7 +34,5 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Don't handle any fetch requests - let them go to the network
-self.addEventListener('fetch', () => {
-  // Do nothing, let requests pass through to network
-});
+// No fetch handler needed - this allows requests to pass through to network
+// without triggering the "no-op fetch handler" warning

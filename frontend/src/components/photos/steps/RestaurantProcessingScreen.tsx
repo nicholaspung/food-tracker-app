@@ -245,7 +245,7 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {/* Photo Preview */}
-        <div className="mb-4">
+        <div className="mb-4" key={currentPhoto.id}>
           <div className="relative aspect-video rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity">
             <img
               src={currentPhoto.previewUrl}
@@ -843,7 +843,7 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
 
 /**
  * Memoized version of RestaurantProcessingScreen with custom equality check
- * Only re-renders when critical props change (photo, restaurant, menu items)
+ * Only re-renders when critical props change (photo, restaurant, menu items, search queries)
  */
 export const RestaurantProcessingScreen = memo(
   RestaurantProcessingScreenComponent,
@@ -860,7 +860,12 @@ export const RestaurantProcessingScreen = memo(
       prevProps.isProcessing === nextProps.isProcessing &&
       prevProps.ocrStatus === nextProps.ocrStatus &&
       prevProps.isOnline === nextProps.isOnline &&
-      prevProps.canSubmit === nextProps.canSubmit
+      prevProps.canSubmit === nextProps.canSubmit &&
+      // Include search queries to ensure inputs update on keystroke
+      prevProps.restaurantSearchQuery === nextProps.restaurantSearchQuery &&
+      prevProps.locationSearchQuery === nextProps.locationSearchQuery &&
+      prevProps.menuItemSearchQuery === nextProps.menuItemSearchQuery &&
+      prevProps.menuItemName === nextProps.menuItemName
     );
   }
 );

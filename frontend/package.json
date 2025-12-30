@@ -38,6 +38,7 @@
     "exifreader": "^4.32.0",
     "lucide-react": "^0.544.0",
     "pocketbase": "^0.26.2",
+    "posthog-js": "^1.309.1",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

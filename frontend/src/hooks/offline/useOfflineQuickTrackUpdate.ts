@@ -18,6 +18,8 @@ import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
 import { blobUrlManager } from '@/lib/blobUrlManager';
 import { repositories } from '@/repositories';
+import { analytics } from '@/lib/analytics';
+import { ANALYTICS_EVENTS } from '@/types/posthog';
 
 export interface QuickTrackUpdateData {
   id: string; // Item ID to update
@@ -111,7 +113,16 @@ export function useOfflineQuickTrackUpdate() {
         };
       }
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
+      // Track quick track updated
+      analytics.track(ANALYTICS_EVENTS.QUICK_TRACK_UPDATED, {
+        source: 'useOfflineQuickTrackUpdate',
+        hasPhoto: !!variables.photo,
+        photoChanged: variables.photo !== undefined,
+        hasCategory: !!variables.itemCategory,
+        isOffline: result.isQueued || false,
+      });
+
       if (result.isQueued) {
         // Offline: Update optimistic data in cache
         queryClient.setQueryData<FoodItem[]>(['allFoodItems'], (old = []) => {

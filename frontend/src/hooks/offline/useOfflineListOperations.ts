@@ -6,6 +6,8 @@ import { logger } from '@/lib/logger';
 import { COLLECTIONS } from '@/constants/collections';
 import { restaurantListKeys } from '@/constants/queryKeys';
 import { repositories } from '@/repositories';
+import { analytics } from '@/lib/analytics';
+import { ANALYTICS_EVENTS } from '@/types/posthog';
 
 interface CreateListData {
   name: string;
@@ -68,6 +70,13 @@ export function useOfflineCreateList(
       }
     },
     onSuccess: (result, variables) => {
+      // Track list created
+      analytics.track(ANALYTICS_EVENTS.LIST_CREATED, {
+        source: 'useOfflineCreateList',
+        visibility: variables.visibility,
+        isOffline: !isOnline,
+      });
+
       // Invalidate lists query
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.all(pb.authStore.record?.id || '', undefined)
@@ -129,6 +138,13 @@ export function useOfflineAddToList(
       }
     },
     onSuccess: (result, variables) => {
+      // Track item added to list
+      analytics.track(ANALYTICS_EVENTS.LIST_ITEM_ADDED, {
+        source: 'useOfflineAddToList',
+        hasNotes: !!variables.notes,
+        isOffline: !isOnline,
+      });
+
       // Invalidate list items query
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.items(variables.listId)
@@ -209,6 +225,12 @@ export function useOfflineDeleteList(
       }
     },
     onSuccess: (result, variables) => {
+      // Track list deleted
+      analytics.track(ANALYTICS_EVENTS.LIST_DELETED, {
+        source: 'useOfflineDeleteList',
+        isOffline: !isOnline,
+      });
+
       // Invalidate lists query
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.all(pb.authStore.record?.id || '', undefined)

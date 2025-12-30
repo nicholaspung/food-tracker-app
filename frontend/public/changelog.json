@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.5.9",
+    "date": "2025-12-29",
+    "title": "Move Food Items & Analytics Foundation",
+    "summary": "Move food items between visits with long-press, improved feed filtering defaults, and behind-the-scenes analytics infrastructure for app improvements!",
+    "features": [
+      "Move food items: Long-press any food item in a visit to move it to a different visit",
+      "Context menu: New mobile-friendly context menu appears on long-press for item actions",
+      "Analytics foundation: Added PostHog analytics infrastructure to help improve the app based on usage patterns"
+    ],
+    "improvements": [
+      "Better default filter: Home feed now defaults to showing your own items instead of all items",
+      "Smarter 'Load More': Load more button now correctly appears when viewing friends' items with older content",
+      "Friends page tabs: Cleaner tab design with badge-style counters instead of inline numbers",
+      "Single friend group display: When viewing friends' items for a month, skips redundant inner collapsible sections",
+      "Improved filter reset: Reset button now correctly switches between 'Show All Mine' and 'Show All Friends' based on current view"
+    ],
+    "fixes": [
+      "Fixed empty state messages showing incorrect text when filtering by friends' quick track items",
+      "Fixed visibility filter being counted in active filters when viewing friends' items (not applicable)",
+      "Fixed 'Load More' button appearing incorrectly when all friend items are already loaded"
+    ]
+  },
+  {
     "version": "0.5.8",
     "date": "2025-12-21",
     "title": "Modern Login Experience & OAuth Support",

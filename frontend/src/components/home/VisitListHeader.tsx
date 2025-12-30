@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X, SlidersHorizontal, User, Users } from "lucide-react";
+import { Search, X, SlidersHorizontal, Users } from "lucide-react";
 import { RATING_LABELS } from "@/lib/ratingConstants";
 import { FilterType, VisibilityFilter, RatingFilter } from "@/constants/filters";
 
@@ -59,7 +59,7 @@ export default function VisitListHeader({
   const handleFilterToggle = () => {
     if (filtersExpanded) {
       // Reset filters before hiding
-      onFilterTypeChange("all");
+      onFilterTypeChange("user_both");
       onVisibilityFilterChange("all");
       onRatingFilterChange("all");
     }
@@ -75,6 +75,9 @@ export default function VisitListHeader({
 
     if (showFriends) {
       // Switching to friends view
+      // Reset visibility filter since it doesn't apply to friends' items
+      onVisibilityFilterChange("all");
+
       if (currentSubFilter === "visits") {
         onFilterTypeChange("friend_visits");
       } else if (currentSubFilter === "quick_track") {
@@ -135,13 +138,12 @@ export default function VisitListHeader({
           <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-0.5">
             <button
               onClick={() => handleToggle(false)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 !isShowingFriends
                   ? "bg-white text-gray-900 shadow-sm"
                   : "text-gray-600 hover:text-gray-900"
               }`}
             >
-              <User className="w-4 h-4" />
               Mine
             </button>
             <button
@@ -255,22 +257,24 @@ export default function VisitListHeader({
               </SelectContent>
             </Select>
 
-            {/* Visibility Filter */}
-            <Select
-              value={visibilityFilter}
-              onValueChange={(value: VisibilityFilter) =>
-                onVisibilityFilterChange(value)
-              }
-            >
-              <SelectTrigger className="flex-1 min-w-0">
-                <SelectValue className="truncate" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Visibility</SelectItem>
-                <SelectItem value="private">Private</SelectItem>
-                <SelectItem value="friends">Shared</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Visibility Filter - Only show for user's own items */}
+            {!isShowingFriends && (
+              <Select
+                value={visibilityFilter}
+                onValueChange={(value: VisibilityFilter) =>
+                  onVisibilityFilterChange(value)
+                }
+              >
+                <SelectTrigger className="flex-1 min-w-0">
+                  <SelectValue className="truncate" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Visibility</SelectItem>
+                  <SelectItem value="private">Private</SelectItem>
+                  <SelectItem value="friends">Shared</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
 
             {/* Rating Filter */}
             <Select

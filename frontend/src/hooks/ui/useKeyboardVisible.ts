@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 /**
  * Hook to detect if the mobile keyboard is visible
@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
  */
 export function useKeyboardVisible() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const maxHeightRef = useRef<number>(0);
 
   useEffect(() => {
     // Check if Visual Viewport API is supported
@@ -15,25 +16,32 @@ export function useKeyboardVisible() {
     }
 
     const viewport = window.visualViewport;
-    let initialHeight = viewport.height;
+
+    // Track the maximum height we've seen - this is the "full" viewport height
+    maxHeightRef.current = Math.max(maxHeightRef.current, viewport.height);
 
     const handleResize = () => {
       if (!viewport) return;
 
       const currentHeight = viewport.height;
 
-      // If viewport height decreased significantly (more than 150px),
+      // Update max height if we see a larger viewport (keyboard dismissed, orientation change, etc.)
+      if (currentHeight > maxHeightRef.current) {
+        maxHeightRef.current = currentHeight;
+      }
+
+      // If viewport height decreased significantly (more than 150px) from max,
       // keyboard is likely visible
-      const heightDiff = initialHeight - currentHeight;
+      const heightDiff = maxHeightRef.current - currentHeight;
       const isKeyboardShown = heightDiff > 150;
 
       setIsKeyboardVisible(isKeyboardShown);
     };
 
-    // Set initial height when component mounts
-    initialHeight = viewport.height;
-
     viewport.addEventListener('resize', handleResize);
+
+    // Initial check
+    handleResize();
 
     return () => {
       viewport.removeEventListener('resize', handleResize);

@@ -18,6 +18,8 @@ import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
 import { blobUrlManager } from '@/lib/blobUrlManager';
 import { repositories } from '@/repositories';
+import { useTrackEvent } from '@/hooks/ui/useTrackEvent';
+import { ANALYTICS_EVENTS, type QuickTrackProperties } from '@/types/posthog';
 
 export interface QuickTrackData {
   name: string;
@@ -62,6 +64,7 @@ export function useOfflineQuickTrack() {
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
   const { uploadPhotos } = usePhotoUpload();
+  const trackEvent = useTrackEvent();
 
   return useMutation<QuickTrackResult, Error, QuickTrackData>({
     // CRITICAL: Allow mutation to run even when browser is offline
@@ -126,7 +129,17 @@ export function useOfflineQuickTrack() {
         };
       }
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
+      // Track successful quick track creation
+      const foodItemWithPhoto = result.foodItem as FoodItem & { photoPreviewUrl?: string };
+      const eventProps: QuickTrackProperties = {
+        category: result.foodItem.itemCategory,
+        hasPhoto: !!variables.photo || !!foodItemWithPhoto.photoPreviewUrl,
+        isOffline: result.isQueued,
+        source: 'useOfflineQuickTrack',
+      };
+      trackEvent(ANALYTICS_EVENTS.QUICK_TRACK_CREATED, eventProps);
+
       if (result.isQueued) {
         // Offline: Add optimistic data to cache
         queryClient.setQueryData<FoodItem[]>(['allFoodItems'], (old = []) => {
@@ -137,7 +150,6 @@ export function useOfflineQuickTrack() {
         });
 
         // Also cache the photo if exists
-        const foodItemWithPhoto = result.foodItem as FoodItem & { photoPreviewUrl?: string };
         if (foodItemWithPhoto.photoPreviewUrl) {
           const optimisticPhoto: QuickTrackPhotoResult = {
             id: `temp_photo_${result.foodItem.id}`,
@@ -166,6 +178,14 @@ export function useOfflineQuickTrack() {
           blobUrlManager.revoke(`temp_quick_track_photo_${timestamp}`);
         }
       }
+    },
+    onError: (error) => {
+      // Track failed quick track creation
+      trackEvent(ANALYTICS_EVENTS.VISIT_CREATION_FAILED, {
+        errorType: error.name,
+        errorMessage: error.message,
+        source: 'useOfflineQuickTrack',
+      });
     },
   });
 }

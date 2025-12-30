@@ -1,9 +1,12 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
 import { Utensils, Zap, Images, ChevronRight, ArrowLeft } from "lucide-react";
+import { useTrackEvent } from "@/hooks/ui/useTrackEvent";
+import { ANALYTICS_EVENTS } from "@/constants/analyticsEvents";
 
 export default function AddVisitOptionSelector() {
   const navigate = useNavigate();
+  const trackEvent = useTrackEvent();
 
   const options = [
     {
@@ -59,7 +62,23 @@ export default function AddVisitOptionSelector() {
           return (
             <button
               key={option.id}
-              onClick={() => navigate({ to: option.path })}
+              onClick={() => {
+                // Track flow started based on option selected
+                if (option.id === "restaurant-visit") {
+                  trackEvent(ANALYTICS_EVENTS.VISIT_CREATION_STARTED, {
+                    source: 'AddVisitOptionSelector',
+                  });
+                } else if (option.id === "quick-track") {
+                  trackEvent(ANALYTICS_EVENTS.QUICK_TRACK_STARTED, {
+                    source: 'AddVisitOptionSelector',
+                  });
+                } else if (option.id === "process-photos") {
+                  trackEvent(ANALYTICS_EVENTS.PHOTO_PROCESSING_STARTED, {
+                    source: 'AddVisitOptionSelector',
+                  });
+                }
+                navigate({ to: option.path });
+              }}
               className="w-full text-left"
             >
               <Card className="hover:shadow-lg transition-shadow border-2 hover:border-primary">

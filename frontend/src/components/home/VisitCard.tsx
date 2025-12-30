@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
 import {
   Card,
@@ -17,8 +17,11 @@ import {
   Share2,
   Lock,
   UserCheck,
+  ArrowRightLeft,
 } from "lucide-react";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
+import { useLongPress } from "@/hooks/ui/useLongPress";
+import { ContextMenu } from "@/components/ui/ContextMenu";
 
 interface VisitPhoto {
   id: string;
@@ -53,8 +56,96 @@ interface VisitCardProps {
   onSharePhoto: (photo: VisitPhoto, foodItem: FoodItem, restaurant: Restaurant, visitDate: string) => void;
   onShareVisit: (visit: VisitWithDetails) => void;
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
+  onMoveItem?: (foodItem: FoodItem, visitId: string) => void;
   ratingFilter?: "all" | "1" | "2" | "3" | "4" | "5";
 }
+
+// Sub-component for food item row with long-press support
+interface FoodItemRowProps {
+  item: FoodItem;
+  photo: VisitPhoto | undefined;
+  photoUrl: string | null;
+  fullPhotoUrl: string | null;
+  onPhotoClick: (photo: { url: string; dishName: string }) => void;
+  onSharePhoto: () => void;
+  onLongPress: () => void;
+  enableLongPress: boolean;
+}
+
+const FoodItemRow = memo(function FoodItemRow({
+  item,
+  photo,
+  photoUrl,
+  fullPhotoUrl,
+  onPhotoClick,
+  onSharePhoto,
+  onLongPress,
+  enableLongPress,
+}: FoodItemRowProps) {
+  const longPressHandlers = useLongPress({
+    threshold: 500,
+    onLongPress: enableLongPress ? onLongPress : () => {},
+  });
+
+  return (
+    <div
+      key={item.id}
+      className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg select-none"
+      {...(enableLongPress ? longPressHandlers : {})}
+    >
+      {/* Photo thumbnail */}
+      {photoUrl && photo && fullPhotoUrl && (
+        <img
+          src={photoUrl}
+          alt={item.name}
+          className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() =>
+            onPhotoClick({
+              url: fullPhotoUrl,
+              dishName: item.name,
+            })
+          }
+        />
+      )}
+
+      <div className="flex-1 min-w-0 pr-2">
+        <p className="font-medium text-gray-900 break-words">{item.name}</p>
+        {item.description && (
+          <p className="text-sm text-gray-500 mt-0.5">{item.description}</p>
+        )}
+        {item.notes && (
+          <p className="text-xs text-gray-600 mt-1 italic">"{item.notes}"</p>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-3 h-3 rounded-full ${
+              RATING_COLORS[item.rating - 1] || "bg-gray-300"
+            }`}
+          />
+          <span className="text-xs text-gray-600 whitespace-nowrap">
+            {RATING_LABELS[item.rating - 1] || "Unknown"}
+          </span>
+        </div>
+        {/* Share button - only show if there's a photo */}
+        {photo && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSharePhoto();
+            }}
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+            title="Share photo"
+          >
+            <Share2 className="w-3 h-3" />
+            <span>Share</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
 
 const VisitCard = memo(function VisitCard({
   visit,
@@ -66,8 +157,25 @@ const VisitCard = memo(function VisitCard({
   onSharePhoto,
   onShareVisit,
   onPhotoClick,
+  onMoveItem,
   ratingFilter = "all",
 }: VisitCardProps) {
+  // State for context menu
+  const [selectedItem, setSelectedItem] = useState<FoodItem | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+
+  const handleLongPress = (item: FoodItem) => {
+    setSelectedItem(item);
+    setShowContextMenu(true);
+  };
+
+  const handleMoveItem = () => {
+    if (selectedItem && onMoveItem) {
+      onMoveItem(selectedItem, visit.id);
+    }
+    setShowContextMenu(false);
+    setSelectedItem(null);
+  };
   // Create a Map for O(1) photo lookups by food_item ID
   const visitPhotosByFoodItem = useMemo(() => {
     const map = new Map<string, VisitPhoto>();
@@ -205,78 +313,17 @@ const VisitCard = memo(function VisitCard({
                 : null;
 
               return (
-                <div
+                <FoodItemRow
                   key={item.id}
-                  className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
-                >
-                  {/* Photo thumbnail */}
-                  {photoUrl &&
-                    photo &&
-                    fullPhotoUrl && (
-                      <img
-                        src={photoUrl}
-                        alt={item.name}
-                        className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={() =>
-                          onPhotoClick({
-                            url: fullPhotoUrl,
-                            dishName: item.name,
-                          })
-                        }
-                      />
-                    )}
-
-                  <div className="flex-1 min-w-0 pr-2">
-                    <p className="font-medium text-gray-900 break-words">
-                      {item.name}
-                    </p>
-                    {item.description && (
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        {item.description}
-                      </p>
-                    )}
-                    {item.notes && (
-                      <p className="text-xs text-gray-600 mt-1 italic">
-                        "{item.notes}"
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`w-3 h-3 rounded-full ${
-                          RATING_COLORS[
-                            item.rating - 1
-                          ] || "bg-gray-300"
-                        }`}
-                      />
-                      <span className="text-xs text-gray-600 whitespace-nowrap">
-                        {RATING_LABELS[
-                          item.rating - 1
-                        ] || "Unknown"}
-                      </span>
-                    </div>
-                    {/* Share button - only show if there's a photo */}
-                    {photo && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSharePhoto(
-                            photo,
-                            item,
-                            visit.restaurant!,
-                            visit.visitDate
-                          );
-                        }}
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-                        title="Share photo"
-                      >
-                        <Share2 className="w-3 h-3" />
-                        <span>Share</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  item={item}
+                  photo={photo}
+                  photoUrl={photoUrl}
+                  fullPhotoUrl={fullPhotoUrl}
+                  onPhotoClick={onPhotoClick}
+                  onSharePhoto={() => onSharePhoto(photo!, item, visit.restaurant!, visit.visitDate)}
+                  onLongPress={() => handleLongPress(item)}
+                  enableLongPress={!isFriend && !!onMoveItem}
+                />
               );
             })}
           </div>
@@ -286,6 +333,20 @@ const VisitCard = memo(function VisitCard({
           </p>
         )}
       </CardContent>
+
+      {/* Context menu for food item actions */}
+      <ContextMenu
+        open={showContextMenu}
+        onOpenChange={setShowContextMenu}
+        title={selectedItem?.name}
+        options={[
+          {
+            label: 'Move to another visit',
+            icon: ArrowRightLeft,
+            onClick: handleMoveItem,
+          },
+        ]}
+      />
     </Card>
   );
 });

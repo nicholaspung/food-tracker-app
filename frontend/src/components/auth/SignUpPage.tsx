@@ -11,6 +11,8 @@ import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { OAuthButton } from "@/components/auth/OAuthButton";
 import { useOAuth } from "@/hooks/auth/useOAuth";
+import { useTrackEvent } from "@/hooks/ui/useTrackEvent";
+import { ANALYTICS_EVENTS } from "@/constants/analyticsEvents";
 
 const LAST_LOGIN_METHOD_KEY = "lastLoginMethod";
 
@@ -50,9 +52,18 @@ export default function SignUpPage({
     defaultSeverity: 'error',
   });
 
+  const trackEvent = useTrackEvent();
+
   const { authenticateWithOAuth, isAuthenticating, currentProvider } = useOAuth({
     onSuccess: onNavigateToLogin,
     onError: (err) => {
+      // Track OAuth signup failure
+      trackEvent(ANALYTICS_EVENTS.SIGNUP_FAILED, {
+        source: 'SignUpPage',
+        signupMethod: currentProvider || 'oauth',
+        errorType: err.name || 'OAuthError',
+      });
+
       handleError(err, {
         customMessage: err.message,
         severity: 'error'
@@ -161,6 +172,13 @@ export default function SignUpPage({
         );
       }
 
+      // Track signup success
+      trackEvent(ANALYTICS_EVENTS.SIGNUP_SUCCESS, {
+        source: 'SignUpPage',
+        signupMethod: 'email',
+        hasInviter: !!inviterInfo,
+      });
+
       // Show success message
       setSuccess(true);
 
@@ -174,6 +192,13 @@ export default function SignUpPage({
       setInviteCode(initialInviteCode || "");
     } catch (err: unknown) {
       logger.error("Sign up error:", err);
+
+      // Track signup failure
+      trackEvent(ANALYTICS_EVENTS.SIGNUP_FAILED, {
+        source: 'SignUpPage',
+        signupMethod: 'email',
+        errorType: (err as Error).name || 'SignupError',
+      });
 
       // useErrorHandler automatically parses PocketBase errors
       handleError(err, {

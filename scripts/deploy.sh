@@ -319,16 +319,32 @@ build_frontend() {
     # Create environment-specific .env file
     log "Creating frontend .env for $ENVIRONMENT environment..."
 
-    # Create .env file with API URL only (API keys are now in backend)
+    # Read PostHog configuration from environment variables (optional)
+    local posthog_key="${VITE_POSTHOG_KEY:-}"
+    local disable_analytics="${VITE_DISABLE_ANALYTICS:-false}"
+
+    # Create .env file with API URL and analytics configuration
     cat > .env <<EOF
 # Frontend Environment Variables - $ENVIRONMENT
 # PocketBase automatically appends /api/ to requests
 VITE_API_URL=https://$DOMAIN
 
+# Analytics Configuration (PostHog)
+# Analytics requests are proxied through backend at /api/visit-insights
+# This path is disguised to blend with the app and bypass ad blockers
+VITE_POSTHOG_KEY=${posthog_key}
+VITE_DISABLE_ANALYTICS=${disable_analytics}
+
 # NOTE: Google Places API and Gemini API keys are now stored in the backend
 # See backend/.env for API key configuration
 EOF
     log "Frontend .env created with API URL: https://$DOMAIN"
+
+    if [ -n "$posthog_key" ]; then
+        log "✓ VITE_POSTHOG_KEY configured for analytics (via /api/visit-insights proxy)"
+    else
+        warn "VITE_POSTHOG_KEY not set. Frontend analytics will be disabled."
+    fi
 
     # Clean install dependencies
     log "Installing dependencies..."
@@ -439,6 +455,8 @@ configure_backend() {
     # Read API keys from environment variables (set by GitHub Actions or manually on server)
     local gemini_key="${GEMINI_API_KEY:-}"
     local places_key="${GOOGLE_PLACES_API_KEY:-}"
+    local posthog_api_key="${POSTHOG_API_KEY:-}"
+    local posthog_host="${POSTHOG_HOST:-https://us.i.posthog.com}"
 
     # If env vars not set, try to read from existing env file
     if [ -z "$gemini_key" ] && [ -f "$env_file_storage" ]; then
@@ -447,6 +465,14 @@ configure_backend() {
 
     if [ -z "$places_key" ] && [ -f "$env_file_storage" ]; then
         places_key=$(grep "^GOOGLE_PLACES_API_KEY=" "$env_file_storage" | cut -d '=' -f 2)
+    fi
+
+    if [ -z "$posthog_api_key" ] && [ -f "$env_file_storage" ]; then
+        posthog_api_key=$(grep "^POSTHOG_API_KEY=" "$env_file_storage" | cut -d '=' -f 2)
+    fi
+
+    if [ -z "$posthog_host" ] && [ -f "$env_file_storage" ]; then
+        posthog_host=$(grep "^POSTHOG_HOST=" "$env_file_storage" | cut -d '=' -f 2)
     fi
 
     # Warn if API keys are missing
@@ -460,6 +486,10 @@ configure_backend() {
         warn "Set it via: export GOOGLE_PLACES_API_KEY=your_key"
     fi
 
+    if [ -z "$posthog_api_key" ]; then
+        warn "POSTHOG_API_KEY not set. Backend analytics will be disabled."
+    fi
+
     # Create backend .env file in secure location
     cat > "$env_file_storage" <<EOF
 # Backend Environment Variables - $ENVIRONMENT
@@ -470,6 +500,10 @@ GEMINI_API_KEY=${gemini_key}
 
 # Google Places API Key for restaurant search
 GOOGLE_PLACES_API_KEY=${places_key}
+
+# PostHog Analytics (Optional)
+POSTHOG_API_KEY=${posthog_api_key}
+POSTHOG_HOST=${posthog_host}
 EOF
 
     # Secure the env file
@@ -481,6 +515,8 @@ EOF
     # Export environment variables so docker-compose can use them
     export GEMINI_API_KEY="$gemini_key"
     export GOOGLE_PLACES_API_KEY="$places_key"
+    export POSTHOG_API_KEY="$posthog_api_key"
+    export POSTHOG_HOST="$posthog_host"
 
     log "Backend .env configured at $env_file_storage (symlinked to backend/.env)"
 
@@ -490,6 +526,10 @@ EOF
 
     if [ -n "$places_key" ]; then
         log "✓ GOOGLE_PLACES_API_KEY configured and exported"
+    fi
+
+    if [ -n "$posthog_api_key" ]; then
+        log "✓ POSTHOG_API_KEY configured and exported"
     fi
 }
 
