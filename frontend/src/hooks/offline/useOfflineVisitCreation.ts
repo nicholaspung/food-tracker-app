@@ -19,6 +19,8 @@ import { useSync } from '@/contexts/SyncContext';
 import { usePhotoUpload, type PhotoUploadItem } from '@/hooks/photos/usePhotoUpload';
 import { blobUrlManager } from '@/lib/blobUrlManager';
 import { repositories } from '@/repositories';
+import { useTrackEvent } from '@/hooks/ui/useTrackEvent';
+import { ANALYTICS_EVENTS, type VisitCreatedProperties } from '@/types/posthog';
 
 export interface FoodItemData {
   name: string;
@@ -68,6 +70,7 @@ export function useOfflineVisitCreation() {
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
   const { uploadPhotos } = usePhotoUpload();
+  const trackEvent = useTrackEvent();
 
   return useMutation<VisitCreationResult, Error, VisitCreationData>({
     // CRITICAL: Allow mutation to run even when browser is offline
@@ -124,7 +127,18 @@ export function useOfflineVisitCreation() {
         };
       }
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
+      // Track successful visit creation
+      const eventProps: VisitCreatedProperties = {
+        visitVisibility: result.visit.visibility,
+        itemCount: result.foodItems.length,
+        hasPhotos: variables.itemPhotos.size > 0,
+        hasNotes: !!result.visit.notes,
+        creationMethod: 'manual',
+        source: 'useOfflineVisitCreation',
+      };
+      trackEvent(ANALYTICS_EVENTS.VISIT_CREATION_COMPLETED, eventProps);
+
       if (result.isQueued) {
         // Offline: Add optimistic data to cache
         queryClient.setQueryData<Visit[]>(['visits'], (old = []) => {
@@ -186,6 +200,14 @@ export function useOfflineVisitCreation() {
           });
         }
       }
+    },
+    onError: (error) => {
+      // Track failed visit creation
+      trackEvent(ANALYTICS_EVENTS.VISIT_CREATION_FAILED, {
+        errorType: error.name,
+        errorMessage: error.message,
+        source: 'useOfflineVisitCreation',
+      });
     },
   });
 }

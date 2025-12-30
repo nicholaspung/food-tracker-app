@@ -15,6 +15,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncQueue } from '@/lib/syncQueue';
 import { useSync } from '@/contexts/SyncContext';
 import { repositories } from '@/repositories';
+import { analytics } from '@/lib/analytics';
+import { ANALYTICS_EVENTS } from '@/types/posthog';
 
 export interface QuickTrackDeleteData {
   id: string; // Item ID to delete
@@ -66,7 +68,14 @@ export function useOfflineQuickTrackDelete() {
         logger.log('Queued Quick Track item deletion:', data.id);
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (result, variables) => {
+      // Track quick track deleted
+      analytics.track(ANALYTICS_EVENTS.QUICK_TRACK_DELETED, {
+        source: 'useOfflineQuickTrackDelete',
+        hadPhoto: !!variables.photoId,
+        isOffline: !isOnline,
+      });
+
       // Invalidate queries to refetch fresh data
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['allFoodItems'] }),

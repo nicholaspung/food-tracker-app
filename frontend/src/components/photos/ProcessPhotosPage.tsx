@@ -86,7 +86,15 @@ export default function ProcessPhotosPage() {
     setShowCameraMode,
     setShowBackDialog,
     setShowRequiredFieldsDialog,
+    reset: resetStore,
   } = usePhotoProcessingStore();
+
+  // Reset store state when component unmounts to ensure fresh start on re-entry
+  useEffect(() => {
+    return () => {
+      resetStore();
+    };
+  }, [resetStore]);
 
   // Custom hooks
   const photoUpload = usePhotoUpload();

@@ -23,6 +23,8 @@ import { pb, BillParticipant } from '@/lib/pocketbase';
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 import { ERROR_MESSAGES } from '@/lib/errorMessages';
+import { useTrackEvent } from '@/hooks/ui/useTrackEvent';
+import { ANALYTICS_EVENTS } from '@/constants/analyticsEvents';
 
 interface BillDetailViewProps {
   billId: string;
@@ -38,6 +40,7 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
     source: 'BillDetailView',
     defaultSeverity: 'error',
   });
+  const trackEvent = useTrackEvent();
 
   const { data: bill, isLoading, error: queryError } = useQuery({
     queryKey: ['bill', billId],
@@ -99,6 +102,19 @@ export default function BillDetailView({ billId, onBack }: BillDetailViewProps) 
   const settleBillMutation = useMutation({
     mutationFn: () => settleBill(billId),
     onSuccess: () => {
+      // Track bill settled
+      if (bill) {
+        trackEvent(ANALYTICS_EVENTS.BILL_SETTLED, {
+          source: 'BillDetailView',
+          splitMode: bill.split_mode,
+          participantCount: bill.participants?.length || 0,
+          totalAmount: bill.total_amount,
+          daysSinceCreated: Math.floor(
+            (Date.now() - new Date(bill.created).getTime()) / (1000 * 60 * 60 * 24)
+          ),
+        });
+      }
+
       queryClient.invalidateQueries({ queryKey: ['bill', billId] });
       queryClient.invalidateQueries({ queryKey: ['bills'] });
       setShowSettleDialog(false);

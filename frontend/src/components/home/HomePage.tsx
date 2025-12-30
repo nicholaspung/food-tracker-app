@@ -15,8 +15,11 @@ import { getDateMonthsAgo } from "@/lib/dateUtils";
 import { useOfflineQuickTrackDelete } from "@/hooks/offline/useOfflineQuickTrackDelete";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/offlineHelpers";
+import { useTrackEvent } from "@/hooks/ui/useTrackEvent";
+import { ANALYTICS_EVENTS } from "@/constants/analyticsEvents";
 import VisitCard from "@/components/home/VisitCard";
 import QuickTrackCard from "@/components/home/QuickTrackCard";
+import { MoveItemDialog } from "@/components/home/MoveItemDialog";
 import VisitListHeader from "@/components/home/VisitListHeader";
 import { repositories } from '@/repositories';
 import { INITIAL_MONTHS_TO_LOAD } from '@/constants';
@@ -73,6 +76,7 @@ export default function HomePage({
     source: 'HomePage',
     autoClearMs: 5000,
   });
+  const trackEvent = useTrackEvent();
   const [monthsToLoad, setMonthsToLoad] = useState(INITIAL_MONTHS_TO_LOAD);
   const [visitToDelete, setVisitToDelete] = useState<VisitWithDetails | null>(
     null
@@ -82,6 +86,10 @@ export default function HomePage({
   const [fullscreenPhoto, setFullscreenPhoto] = useState<{
     url: string;
     dishName: string;
+  } | null>(null);
+  const [itemToMove, setItemToMove] = useState<{
+    foodItem: FoodItem;
+    visitId: string;
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -217,6 +225,14 @@ export default function HomePage({
         logger.log("Queued visit deletion:", visitId);
       }
 
+      // Track visit deleted
+      const itemCount = foodItems.filter(item => item.visit === visitId).length;
+      trackEvent(ANALYTICS_EVENTS.VISIT_DELETED, {
+        source: 'HomePage',
+        itemCount,
+        isOffline: !isOnline,
+      });
+
       // Invalidate queries (will refetch or show optimistic update)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["allVisits"] }),
@@ -231,7 +247,7 @@ export default function HomePage({
     } finally {
       setIsDeleting(false);
     }
-  }, [isOnline, foodItems, queryClient]);
+  }, [isOnline, foodItems, queryClient, trackEvent]);
 
   // Delete quick track item with offline support
   const handleDeleteQuickTrackItem = useCallback(async (
@@ -451,31 +467,34 @@ export default function HomePage({
               )}
 
               {/* No results due to filter selection */}
-              {!deferredSearchQuery.trim() && !hasMoreVisits && (
-                <Card>
-                  <CardContent className="pt-6 text-center">
-                    <Users className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                    <p className="text-gray-600 mb-2">
-                      {filterType === "friends"
-                        ? "No visits from friends"
-                        : filterType === "user_visits"
-                          ? "No visits from you"
-                          : filterType === "user_quick_track"
-                            ? "No quick track items from you"
-                            : "No items from you"}
-                    </p>
-                    <p className="text-sm text-gray-500 mb-4">
-                      Try changing the filter to see all items
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => setFilterType("all")}
-                    >
-                      Show All
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
+              {!deferredSearchQuery.trim() && !hasMoreVisits && (() => {
+                const isShowingFriends = filterType === "friends" || filterType === "friend_visits" || filterType === "friend_quick_track";
+                const emptyMessage =
+                  filterType === "friends" ? "No items from friends" :
+                  filterType === "friend_visits" ? "No visits from friends" :
+                  filterType === "friend_quick_track" ? "No quick track items from friends" :
+                  filterType === "user_visits" ? "No visits from you" :
+                  filterType === "user_quick_track" ? "No quick track items from you" :
+                  "No items from you";
+
+                return (
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <Users className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                      <p className="text-gray-600 mb-2">{emptyMessage}</p>
+                      <p className="text-sm text-gray-500 mb-4">
+                        Try changing the filter to see all items
+                      </p>
+                      <Button
+                        variant="outline"
+                        onClick={() => setFilterType(isShowingFriends ? "friends" : "user_both")}
+                      >
+                        {isShowingFriends ? "Show All Friends" : "Show All Mine"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
             </>
           )}
 
@@ -541,103 +560,161 @@ export default function HomePage({
             </button>
 
             {/* Month Content */}
-            {expandedMonths.has(monthKey) && (
-              <div className="space-y-4 pl-2">
-                {days.map(
-                  ({
-                    dayKey,
-                    dayLabel,
-                    visits: dayVisits,
-                    quickTrackItems: dayQuickTrackItems,
-                    isFriendGroup,
-                  }) => {
-                    const totalItemsInDay = dayVisits.length + dayQuickTrackItems.length;
+            {expandedMonths.has(monthKey) && (() => {
+              // Check if this month has only one friend group (skip redundant inner collapsible)
+              const isSingleFriendGroup = days.length === 1 && days[0].isFriendGroup;
 
-                    return (
-                      <div key={dayKey} className="space-y-3">
-                        {/* Day Header - Clickable */}
-                        <button
-                          onClick={() => toggleDay(dayKey)}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 transition-colors"
-                        >
-                          {expandedDays.has(dayKey) ? (
-                            <ChevronDown className="w-4 h-4 text-gray-500" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-gray-500" />
+              if (isSingleFriendGroup) {
+                // Render items directly without the inner day collapsible
+                const { visits: dayVisits, quickTrackItems: dayQuickTrackItems } = days[0];
+                return (
+                  <div className="space-y-3 pl-2">
+                    {/* Visits */}
+                    {dayVisits.map((visit) => {
+                      const isFriend = isFriendVisit(visit);
+                      const friendName = isFriend
+                        ? visit.expand?.user?.name ||
+                          visit.expand?.user?.email?.split("@")[0]
+                        : null;
+
+                      return (
+                        <VisitCard
+                          key={visit.id}
+                          visit={visit}
+                          isFriend={isFriend}
+                          friendName={friendName}
+                          visitPhotos={visitPhotos}
+                          onEdit={onEditVisit}
+                          onDelete={setVisitToDelete}
+                          onSharePhoto={handleSharePhotoClick}
+                          onShareVisit={handleShareVisitClick}
+                          onPhotoClick={setFullscreenPhoto}
+                          onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
+                          ratingFilter={ratingFilter}
+                        />
+                      );
+                    })}
+
+                    {/* Quick Track Items */}
+                    {dayQuickTrackItems.map((item) => {
+                      const photo = visitPhotosByFoodItem.get(item.id);
+
+                      return (
+                        <QuickTrackCard
+                          key={item.id}
+                          item={item}
+                          photo={photo}
+                          onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
+                          onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
+                          onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
+                          onPhotoClick={setFullscreenPhoto}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              // Normal rendering with day collapsibles
+              return (
+                <div className="space-y-4 pl-2">
+                  {days.map(
+                    ({
+                      dayKey,
+                      dayLabel,
+                      visits: dayVisits,
+                      quickTrackItems: dayQuickTrackItems,
+                      isFriendGroup,
+                    }) => {
+                      const totalItemsInDay = dayVisits.length + dayQuickTrackItems.length;
+
+                      return (
+                        <div key={dayKey} className="space-y-3">
+                          {/* Day Header - Clickable */}
+                          <button
+                            onClick={() => toggleDay(dayKey)}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 transition-colors"
+                          >
+                            {expandedDays.has(dayKey) ? (
+                              <ChevronDown className="w-4 h-4 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-gray-500" />
+                            )}
+                            {isFriendGroup ? (
+                              <Users className="w-4 h-4 text-blue-500" />
+                            ) : (
+                              <Calendar className="w-4 h-4 text-gray-500" />
+                            )}
+                            <h3 className="text-sm font-medium text-gray-700">
+                              {dayLabel}
+                            </h3>
+                            <span className="text-xs text-gray-500 ml-1">
+                              ({totalItemsInDay})
+                            </span>
+                            {isFriendGroup && (
+                              <Badge
+                                variant="secondary"
+                                className="ml-auto text-xs bg-blue-100 text-blue-700"
+                              >
+                                Friends
+                              </Badge>
+                            )}
+                          </button>
+
+                          {/* Items for this day (visits + quick track) */}
+                          {expandedDays.has(dayKey) && (
+                            <div className="space-y-3">
+                              {/* Visits for this day */}
+                              {dayVisits.map((visit) => {
+                                const isFriend = isFriendVisit(visit);
+                                const friendName = isFriend
+                                  ? visit.expand?.user?.name ||
+                                    visit.expand?.user?.email?.split("@")[0]
+                                  : null;
+
+                                return (
+                                  <VisitCard
+                                    key={visit.id}
+                                    visit={visit}
+                                    isFriend={isFriend}
+                                    friendName={friendName}
+                                    visitPhotos={visitPhotos}
+                                    onEdit={onEditVisit}
+                                    onDelete={setVisitToDelete}
+                                    onSharePhoto={handleSharePhotoClick}
+                                    onShareVisit={handleShareVisitClick}
+                                    onPhotoClick={setFullscreenPhoto}
+                                    onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
+                                    ratingFilter={ratingFilter}
+                                  />
+                                );
+                              })}
+
+                              {/* Quick Track Items for this day */}
+                              {dayQuickTrackItems.map((item) => {
+                                const photo = visitPhotosByFoodItem.get(item.id);
+
+                                return (
+                                  <QuickTrackCard
+                                    key={item.id}
+                                    item={item}
+                                    photo={photo}
+                                    onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
+                                    onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
+                                    onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
+                                    onPhotoClick={setFullscreenPhoto}
+                                  />
+                                );
+                              })}
+                            </div>
                           )}
-                          {isFriendGroup ? (
-                            <Users className="w-4 h-4 text-blue-500" />
-                          ) : (
-                            <Calendar className="w-4 h-4 text-gray-500" />
-                          )}
-                          <h3 className="text-sm font-medium text-gray-700">
-                            {dayLabel}
-                          </h3>
-                          <span className="text-xs text-gray-500 ml-1">
-                            ({totalItemsInDay})
-                          </span>
-                          {isFriendGroup && (
-                            <Badge
-                              variant="secondary"
-                              className="ml-auto text-xs bg-blue-100 text-blue-700"
-                            >
-                              Friends
-                            </Badge>
-                          )}
-                        </button>
-
-                        {/* Items for this day (visits + quick track) */}
-                        {expandedDays.has(dayKey) && (
-                          <div className="space-y-3">
-                            {/* Visits for this day */}
-                            {dayVisits.map((visit) => {
-                              const isFriend = isFriendVisit(visit);
-                              const friendName = isFriend
-                                ? visit.expand?.user?.name ||
-                                  visit.expand?.user?.email?.split("@")[0]
-                                : null;
-
-                              return (
-                                <VisitCard
-                                  key={visit.id}
-                                  visit={visit}
-                                  isFriend={isFriend}
-                                  friendName={friendName}
-                                  visitPhotos={visitPhotos}
-                                  onEdit={onEditVisit}
-                                  onDelete={setVisitToDelete}
-                                  onSharePhoto={handleSharePhotoClick}
-                                  onShareVisit={handleShareVisitClick}
-                                  onPhotoClick={setFullscreenPhoto}
-                                  ratingFilter={ratingFilter}
-                                />
-                              );
-                            })}
-
-                            {/* Quick Track Items for this day */}
-                            {dayQuickTrackItems.map((item) => {
-                              const photo = visitPhotosByFoodItem.get(item.id);
-
-                              return (
-                                <QuickTrackCard
-                                  key={item.id}
-                                  item={item}
-                                  photo={photo}
-                                  onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
-                                  onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
-                                  onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
-                                  onPhotoClick={setFullscreenPhoto}
-                                />
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-            )}
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ))}
 
@@ -850,6 +927,20 @@ export default function HomePage({
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {/* Move Item Dialog */}
+      {itemToMove && (
+        <MoveItemDialog
+          open={!!itemToMove}
+          onOpenChange={(open) => !open && setItemToMove(null)}
+          foodItem={itemToMove.foodItem}
+          currentVisitId={itemToMove.visitId}
+          onSuccess={() => {
+            setItemToMove(null);
+            showSuccess('Item moved successfully');
+          }}
+        />
       )}
     </div>
   );

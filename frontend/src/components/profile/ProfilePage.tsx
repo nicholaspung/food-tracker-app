@@ -39,7 +39,6 @@ interface ProfilePageProps {
   onDeleteSuccess?: () => void;
   onLogout?: () => void;
   onNavigateToWhatsNew?: () => void;
-  onNavigateToPhotos?: () => void;
   onNavigateToSettings?: () => void;
   onNavigateToBeta?: () => void;
   onNavigateToAdminReviews?: () => void;
@@ -55,7 +54,7 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToPhotos, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
+export default function ProfilePage({ onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
@@ -752,15 +751,6 @@ Looking forward to seeing you there!`;
               data-testid="whats-new-button"
             >
               What's New
-            </Button>
-
-            <Button
-              onClick={onNavigateToPhotos}
-              variant="outline"
-              className="w-full"
-              data-testid="photos-button"
-            >
-              My Photos
             </Button>
 
             <Button

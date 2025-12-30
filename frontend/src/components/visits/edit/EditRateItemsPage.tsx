@@ -22,6 +22,8 @@ import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import { useTrackEvent } from "@/hooks/ui/useTrackEvent";
+import { ANALYTICS_EVENTS } from "@/constants/analyticsEvents";
 
 interface EditRateItemsPageProps {
   visitId: string;
@@ -40,6 +42,7 @@ export default function EditRateItemsPage({
     source: 'EditRateItemsPage',
     defaultSeverity: 'error',
   });
+  const trackEvent = useTrackEvent();
   const [isInitialized, setIsInitialized] = useState(false);
 
   const [menuItems, setMenuItems] = useState<EditVisitDraftItem[]>(
@@ -228,6 +231,20 @@ export default function EditRateItemsPage({
       }
     },
     onSuccess: () => {
+      // Track visit updated
+      const itemsAdded = menuItems.filter(item => !item.id && !item._deleted).length;
+      const itemsDeleted = menuItems.filter(item => item._deleted).length;
+      const photosAdded = Array.from(itemPhotos.values()).length;
+
+      trackEvent(ANALYTICS_EVENTS.VISIT_UPDATED, {
+        source: 'EditRateItemsPage',
+        itemsAdded,
+        itemsDeleted,
+        photosAdded,
+        photosDeleted: deletedPhotoIds.size,
+        totalItems: menuItems.filter(item => !item._deleted).length,
+      });
+
       queryClient.invalidateQueries({ queryKey: ["allVisits"] });
       queryClient.invalidateQueries({ queryKey: ["visit", visitId] });
       queryClient.invalidateQueries({ queryKey: ["foodItems", visitId] });

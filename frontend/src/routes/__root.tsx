@@ -10,6 +10,8 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { SyncStatusIndicator } from "@/components/shared/SyncStatusIndicator";
 import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
+import { AnalyticsProvider } from "@/contexts/AnalyticsContext";
+import { useRouterAnalytics } from "@/hooks/ui/useRouterAnalytics";
 
 // Create a query client instance
 const queryClient = new QueryClient({
@@ -39,11 +41,15 @@ const ROUTES_WITH_TABS = [
   "/admin",
 ];
 
-function RootComponent() {
+// Inner component that uses analytics (must be inside AnalyticsProvider)
+function AppContent() {
   const router = useRouterState();
   const mainRef = useRef<HTMLElement>(null);
   const currentPath = router.location.pathname;
   const isKeyboardVisible = useKeyboardVisible();
+
+  // Track route changes for analytics (safe to call here - inside AnalyticsProvider)
+  useRouterAnalytics();
 
   // Check if current path or any parent path should show tabs
   const showTabs = ROUTES_WITH_TABS.some((route) =>
@@ -58,25 +64,33 @@ function RootComponent() {
   }, [currentPath]);
 
   return (
+    <SyncProvider>
+      <div className="h-screen bg-white flex flex-col overflow-hidden">
+        {/* Sync status indicator */}
+        <SyncStatusIndicator />
+
+        {/* Scrollable content area */}
+        <main
+          ref={mainRef}
+          className={`flex-1 overflow-y-auto ${showTabs && !isKeyboardVisible ? "pb-[64px]" : ""}`}
+        >
+          <Outlet />
+        </main>
+
+        {/* Persistent bottom tabs */}
+        {showTabs && <BottomTabNavigation />}
+        <TanStackRouterDevtools />
+      </div>
+    </SyncProvider>
+  );
+}
+
+function RootComponent() {
+  return (
     <QueryClientProvider client={queryClient}>
-      <SyncProvider>
-        <div className="h-screen bg-white flex flex-col overflow-hidden">
-          {/* Sync status indicator */}
-          <SyncStatusIndicator />
-
-          {/* Scrollable content area */}
-          <main
-            ref={mainRef}
-            className={`flex-1 overflow-y-auto ${showTabs && !isKeyboardVisible ? "pb-[64px]" : ""}`}
-          >
-            <Outlet />
-          </main>
-
-          {/* Persistent bottom tabs */}
-          {showTabs && <BottomTabNavigation />}
-          <TanStackRouterDevtools />
-        </div>
-      </SyncProvider>
+      <AnalyticsProvider>
+        <AppContent />
+      </AnalyticsProvider>
     </QueryClientProvider>
   );
 }

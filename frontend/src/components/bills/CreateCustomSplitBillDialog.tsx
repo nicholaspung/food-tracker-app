@@ -13,6 +13,8 @@ import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 import { ERROR_MESSAGES } from '@/lib/errorMessages';
 import type { Friendship, User } from '@/lib/pocketbase';
 import { COLLECTIONS } from '@/constants/collections';
+import { useTrackEvent } from '@/hooks/ui/useTrackEvent';
+import { ANALYTICS_EVENTS } from '@/constants/analyticsEvents';
 
 interface CreateCustomSplitBillDialogProps {
   open: boolean;
@@ -41,6 +43,7 @@ export default function CreateCustomSplitBillDialog({
     source: 'CreateCustomSplitBillDialog',
     defaultSeverity: 'error',
   });
+  const trackEvent = useTrackEvent();
   const [pendingBillId, setPendingBillId] = useState<string | null>(null);
 
   // Fetch friends list
@@ -159,6 +162,19 @@ export default function CreateCustomSplitBillDialog({
       });
     },
     onSuccess: (data) => {
+      // Track bill created
+      const totalAmount = participantAmounts.reduce(
+        (sum, p) => sum + parseFloat(p.amount),
+        0
+      );
+
+      trackEvent(ANALYTICS_EVENTS.BILL_CREATED, {
+        source: 'CreateCustomSplitBillDialog',
+        splitMode: 'custom',
+        participantCount: participantAmounts.length,
+        totalAmount,
+      });
+
       queryClient.invalidateQueries({ queryKey: ['bills'] });
       setPendingBillId(data.id);
       resetForm();

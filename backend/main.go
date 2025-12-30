@@ -18,6 +18,7 @@ import (
 
 	_ "myapp/migrations"
 	"myapp/handlers"
+	"myapp/lib"
 )
 
 func main() {
@@ -45,6 +46,13 @@ func main() {
 
 	log.Printf("Environment variables validated successfully")
 
+	// Initialize PostHog analytics (optional - continues if not configured)
+	if err := lib.InitAnalytics(); err != nil {
+		log.Printf("Warning: Failed to initialize analytics: %v", err)
+	}
+	// Ensure PostHog client is closed on shutdown
+	defer lib.CloseAnalytics()
+
 	app := pocketbase.New()
 
 	// Register migrations with automigrate enabled when running with `go run`
@@ -59,6 +67,7 @@ func main() {
 		handlers.RegisterUserHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)
+		handlers.RegisterPostHogProxyHandlers(se)
 
 		// Serves static files from the provided public dir (if exists)
 		// IMPORTANT: This must be registered LAST as it's a catch-all route

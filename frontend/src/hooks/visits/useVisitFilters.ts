@@ -77,7 +77,7 @@ export function useVisitFilters<V extends {
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [filterType, setFilterType] = useState<FilterType>("all");
+  const [filterType, setFilterType] = useState<FilterType>("user_both");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -231,10 +231,37 @@ export function useVisitFilters<V extends {
     visibilityFilter,
     ratingFilter,
     deferredSearchQuery,
+    isFriendQuickTrack,
+    currentUserId,
   ]);
 
   // Check if there are more visits to load (only when not searching)
-  const hasMoreVisits = !deferredSearchQuery.trim() && visits.length > filteredVisits.length;
+  // When viewing friends, only count if there are more friend items beyond the cutoff
+  const hasMoreVisits = useMemo(() => {
+    if (deferredSearchQuery.trim()) return false;
+
+    const isShowingFriendsOnly = filterType === "friends" || filterType === "friend_visits" || filterType === "friend_quick_track";
+
+    if (isShowingFriendsOnly) {
+      // Count friend visits and quick track items before and after cutoff
+      const friendVisitsBeforeCutoff = visits.filter(
+        (visit) => isFriendVisit(visit) && new Date(visit.visitDate) >= cutoffDate
+      ).length;
+      const totalFriendVisits = visits.filter((visit) => isFriendVisit(visit)).length;
+
+      const friendQuickTrackBeforeCutoff = quickTrackItems.filter((item) => {
+        const dateToUse = item.itemDate || item.created;
+        return isQuickTrackFromFriend(item) && new Date(dateToUse) >= cutoffDate;
+      }).length;
+      const totalFriendQuickTrack = quickTrackItems.filter(isQuickTrackFromFriend).length;
+
+      // Only show "load more" if there are friend items older than cutoff
+      return (totalFriendVisits > friendVisitsBeforeCutoff) || (totalFriendQuickTrack > friendQuickTrackBeforeCutoff);
+    }
+
+    // Default behavior for user's own items
+    return visits.length > filteredVisits.length;
+  }, [deferredSearchQuery, filterType, visits, quickTrackItems, filteredVisits.length, cutoffDate, isFriendVisit]);
 
   // Count active filters
   // Don't count the type filter if it's in "all" mode (user_both or friends)
@@ -243,15 +270,21 @@ export function useVisitFilters<V extends {
     filterType !== "user_both" &&
     filterType !== "friends";
 
+  // Don't count visibility filter when viewing friends' items (it's not shown)
+  const isShowingFriends =
+    filterType === "friends" ||
+    filterType === "friend_visits" ||
+    filterType === "friend_quick_track";
+
   const activeFiltersCount = [
     isTypeFilterActive,
-    visibilityFilter !== "all",
+    !isShowingFriends && visibilityFilter !== "all",
     ratingFilter !== "all",
   ].filter(Boolean).length;
 
   // Reset all filters
   const resetFilters = () => {
-    setFilterType("all");
+    setFilterType("user_both");
     setVisibilityFilter("all");
     setRatingFilter("all");
     setSearchQuery("");

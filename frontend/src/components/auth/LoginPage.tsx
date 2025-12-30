@@ -10,6 +10,8 @@ import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { OAuthButton } from "@/components/auth/OAuthButton";
 import { useOAuth, type OAuthProvider } from "@/hooks/auth/useOAuth";
+import { useTrackEvent } from "@/hooks/ui/useTrackEvent";
+import { ANALYTICS_EVENTS } from "@/constants/analyticsEvents";
 
 interface LoginPageProps {
   onNavigateToSignUp: () => void;
@@ -51,6 +53,8 @@ export default function LoginPage({
     defaultSeverity: "error",
   });
 
+  const trackEvent = useTrackEvent();
+
   const { authenticateWithOAuth, isAuthenticating, currentProvider } = useOAuth(
     {
       onSuccess: () => {
@@ -58,6 +62,13 @@ export default function LoginPage({
         onLoginSuccess?.();
       },
       onError: (err) => {
+        // Track OAuth login failure
+        trackEvent(ANALYTICS_EVENTS.LOGIN_FAILED, {
+          source: 'LoginPage',
+          loginMethod: currentProvider || 'oauth',
+          errorType: err.name || 'OAuthError',
+        });
+
         handleError(err, {
           customMessage: err.message,
           severity: "error",
@@ -140,6 +151,14 @@ export default function LoginPage({
       onLoginSuccess?.();
     } catch (err: unknown) {
       logger.error("Login error:", err);
+
+      // Track login failure
+      trackEvent(ANALYTICS_EVENTS.LOGIN_FAILED, {
+        source: 'LoginPage',
+        loginMethod: 'email',
+        errorType: (err as Error).name || 'LoginError',
+      });
+
       handleError(err, {
         customMessage: "Invalid email or password. Please try again.",
         severity: "error",

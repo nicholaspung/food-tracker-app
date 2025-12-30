@@ -120,7 +120,7 @@ const QuickTrackCard = memo(function QuickTrackCard({
             />
           )}
 
-          <div className="flex-1 space-y-2">
+          <div className="flex-1 min-w-0 pr-2">
             {/* Category badge */}
             {item.itemCategory && (
               <Badge
@@ -133,7 +133,7 @@ const QuickTrackCard = memo(function QuickTrackCard({
 
             {/* Location */}
             {item.location_text && (
-              <p className="flex items-center gap-1 text-sm text-gray-600">
+              <p className="flex items-center gap-1 text-sm text-gray-600 mt-1">
                 <MapPin className="w-3 h-3" />
                 {item.location_text}
               </p>
@@ -141,12 +141,14 @@ const QuickTrackCard = memo(function QuickTrackCard({
 
             {/* Notes */}
             {item.notes && (
-              <p className="text-xs text-gray-600 italic">
+              <p className="text-xs text-gray-600 mt-1 italic">
                 "{item.notes}"
               </p>
             )}
+          </div>
 
-            {/* Rating */}
+          {/* Rating and Share - right side like VisitCard */}
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
             <div className="flex items-center gap-2">
               <div
                 className={`w-3 h-3 rounded-full ${
@@ -154,7 +156,7 @@ const QuickTrackCard = memo(function QuickTrackCard({
                   "bg-gray-300"
                 }`}
               />
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-gray-600 whitespace-nowrap">
                 {RATING_LABELS[item.rating - 1] || "Unknown"}
               </span>
             </div>
