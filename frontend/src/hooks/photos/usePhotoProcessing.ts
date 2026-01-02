@@ -1,7 +1,19 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { ProcessedPhoto, PhotoToProcess } from "@/types/photos";
 import { MenuItem, Restaurant } from "@/lib/pocketbase";
 import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
+
+/**
+ * In-progress form state for a photo (before submission)
+ */
+interface PhotoFormState {
+  restaurant: Restaurant | null;
+  menuItem: MenuItem | null;
+  menuItemName: string;
+  rating: number | null;
+  notes: string;
+  photoDate: Date;
+}
 
 /**
  * Hook for managing Restaurant Visit photo processing form state
@@ -14,9 +26,13 @@ import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
  * - Processed photos array
  * - Menu item photo management
  * - Form validation
+ * - Per-photo state preservation for back navigation
  */
 export function usePhotoProcessing() {
   const [processedPhotos, setProcessedPhotos] = useState<ProcessedPhoto[]>([]);
+
+  // Store in-progress form state per photo (for photos not yet submitted)
+  const photoFormStatesRef = useRef<Map<string, PhotoFormState>>(new Map());
 
   // Restaurant state
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
@@ -69,6 +85,65 @@ export function usePhotoProcessing() {
     }
   };
 
+  // Save current form state for a photo (called before navigating away)
+  const saveFormStateForPhoto = useCallback((photoId: string) => {
+    const currentState: PhotoFormState = {
+      restaurant: selectedRestaurant,
+      menuItem: selectedMenuItem,
+      menuItemName,
+      rating,
+      notes,
+      photoDate,
+    };
+    photoFormStatesRef.current.set(photoId, currentState);
+  }, [selectedRestaurant, selectedMenuItem, menuItemName, rating, notes, photoDate]);
+
+  // Restore form state for a photo (called when navigating to a photo)
+  const restoreFormStateForPhoto = useCallback((photoId: string, captureDate?: Date | null) => {
+    // First check if photo was already submitted (in processedPhotos)
+    const submittedPhoto = processedPhotos.find(p => p.photoId === photoId);
+    if (submittedPhoto) {
+      setSelectedRestaurant(submittedPhoto.restaurant);
+      // We need to reconstruct a MenuItem-like object
+      setSelectedMenuItem({
+        id: '', // We don't have the ID, but it's not needed for display
+        restaurant: submittedPhoto.restaurant.id,
+        name: submittedPhoto.menuItemName,
+        description: submittedPhoto.menuItemDescription,
+        created: '',
+        updated: '',
+      } as MenuItem);
+      setMenuItemName(submittedPhoto.menuItemName);
+      setRating(submittedPhoto.rating);
+      setNotes(submittedPhoto.notes);
+      setPhotoDate(submittedPhoto.captureDate || new Date());
+      setIsCreatingNewItem(submittedPhoto.isNewMenuItem);
+      return;
+    }
+
+    // Then check if we have saved in-progress state
+    const savedState = photoFormStatesRef.current.get(photoId);
+    if (savedState) {
+      setSelectedRestaurant(savedState.restaurant);
+      setSelectedMenuItem(savedState.menuItem);
+      setMenuItemName(savedState.menuItemName);
+      setRating(savedState.rating);
+      setNotes(savedState.notes);
+      setPhotoDate(savedState.photoDate);
+      return;
+    }
+
+    // No saved state - reset to defaults
+    setSelectedRestaurant(null);
+    setSelectedMenuItem(null);
+    setMenuItemName("");
+    setMenuItemSearchQuery("");
+    setRating(3);
+    setNotes("");
+    setPhotoDate(captureDate || new Date());
+    setIsCreatingNewItem(false);
+  }, [processedPhotos]);
+
   const handleSubmitCurrent = async (photo: PhotoToProcess) => {
     if (!selectedRestaurant || !selectedMenuItem || rating === null) {
       return;
@@ -77,6 +152,7 @@ export function usePhotoProcessing() {
     const processedData: ProcessedPhoto = {
       photoId: photo.id,
       photo: photo.file,
+      previewUrl: photo.previewUrl, // Keep original preview URL
       restaurant: selectedRestaurant,
       menuItemName: selectedMenuItem.name,
       menuItemDescription: selectedMenuItem.description || "",
@@ -86,13 +162,27 @@ export function usePhotoProcessing() {
       captureDate: photo.captureDate || photoDate,
     };
 
-    setProcessedPhotos((prev) => [...prev, processedData]);
+    // Check if this photo was already submitted - update instead of add
+    setProcessedPhotos((prev) => {
+      const existingIndex = prev.findIndex(p => p.photoId === photo.id);
+      if (existingIndex >= 0) {
+        // Update existing entry
+        const updated = [...prev];
+        updated[existingIndex] = processedData;
+        return updated;
+      }
+      // Add new entry
+      return [...prev, processedData];
+    });
 
     // Save that user has rated before
     localStorage.setItem("hasRatedBefore", "true");
 
-    // Reset form for next photo (keep restaurant selected for convenience)
-    resetFormExceptRestaurant();
+    // Clear any in-progress state for this photo since it's now submitted
+    photoFormStatesRef.current.delete(photo.id);
+
+    // Reset form completely for next photo
+    resetForm();
   };
 
   const resetFormExceptRestaurant = () => {
@@ -185,5 +275,9 @@ export function usePhotoProcessing() {
     resetFormExceptRestaurant,
     canSubmitCurrent,
     updateDateFromPhoto,
+
+    // Photo navigation state management
+    saveFormStateForPhoto,
+    restoreFormStateForPhoto,
   };
 }

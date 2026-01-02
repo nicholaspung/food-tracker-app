@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logger';
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
@@ -124,6 +124,10 @@ export default function ProcessPhotosPage() {
   const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
   const [locationSearchQuery, setLocationSearchQuery] = useState("");
 
+  // Track which restaurant we've set the default menu mode for
+  // This prevents the mode from resetting when menuItems.length changes
+  const lastDefaultModeRestaurantRef = useRef<string | null>(null);
+
   // Fetch restaurants
   const { data: restaurants = [] } = useQuery<Restaurant[]>({
     queryKey: ["restaurants"],
@@ -150,7 +154,7 @@ export default function ProcessPhotosPage() {
   });
 
   // Fetch menu items for selected restaurant
-  const { data: menuItems = [] } = useQuery<MenuItem[]>({
+  const { data: menuItems = [], isFetching: isMenuItemsFetching } = useQuery<MenuItem[]>({
     queryKey: ["menu_items", restaurantProcessing.selectedRestaurant?.id],
     queryFn: async () => {
       if (!restaurantProcessing.selectedRestaurant?.id || !isOnline) return [];
@@ -162,15 +166,34 @@ export default function ProcessPhotosPage() {
   });
 
   // Set default menu item selection mode based on whether restaurant has menu items
+  // Only runs ONCE when switching to a new restaurant (after menu items are fetched)
   useEffect(() => {
-    if (restaurantProcessing.selectedRestaurant) {
-      if (menuItems.length === 0) {
-        restaurantProcessing.setMenuItemSelectionMode("create");
-      } else {
-        restaurantProcessing.setMenuItemSelectionMode("search");
-      }
+    const currentRestaurantId = restaurantProcessing.selectedRestaurant?.id ?? null;
+
+    // Skip if no restaurant selected
+    if (!currentRestaurantId) {
+      lastDefaultModeRestaurantRef.current = null;
+      return;
     }
-  }, [restaurantProcessing.selectedRestaurant, menuItems.length]);
+
+    // Skip if still fetching menu items for this restaurant
+    if (isMenuItemsFetching) {
+      return;
+    }
+
+    // Skip if we've already set the default mode for this restaurant
+    if (lastDefaultModeRestaurantRef.current === currentRestaurantId) {
+      return;
+    }
+
+    // Set the default mode based on whether menu items exist
+    lastDefaultModeRestaurantRef.current = currentRestaurantId;
+    if (menuItems.length === 0) {
+      restaurantProcessing.setMenuItemSelectionMode("create");
+    } else {
+      restaurantProcessing.setMenuItemSelectionMode("search");
+    }
+  }, [restaurantProcessing.selectedRestaurant?.id, menuItems.length, isMenuItemsFetching]);
 
   // Clear menu item selection when switching tabs
   useEffect(() => {
@@ -186,33 +209,41 @@ export default function ProcessPhotosPage() {
     }
   }, [restaurantProcessing.menuItemSelectionMode]);
 
-  // Initialize photo date when current photo changes
+  // Track previous photo ID for state management
+  const previousPhotoIdRef = useRef<string | null>(null);
+
+  // Save/restore form state when navigating between photos
   useEffect(() => {
     const currentPhoto = photoUpload.currentPhoto;
-    if (processType === "restaurant" && currentPhoto) {
-      restaurantProcessing.updateDateFromPhoto(currentPhoto);
-    } else if (processType === "quickTrack" && currentPhoto) {
-      quickTrackProcessing.updateDateFromPhoto(currentPhoto);
+    if (!currentPhoto) return;
+
+    const currentPhotoId = currentPhoto.id;
+    const previousPhotoId = previousPhotoIdRef.current;
+
+    // If we're navigating to a different photo
+    if (previousPhotoId && previousPhotoId !== currentPhotoId) {
+      // Save state for the previous photo (if it wasn't just submitted)
+      if (processType === "restaurant") {
+        restaurantProcessing.saveFormStateForPhoto(previousPhotoId);
+      } else if (processType === "quickTrack") {
+        quickTrackProcessing.saveFormStateForPhoto(previousPhotoId);
+      }
     }
+
+    // Restore state for the current photo
+    if (processType === "restaurant") {
+      restaurantProcessing.restoreFormStateForPhoto(currentPhotoId, currentPhoto.captureDate);
+    } else if (processType === "quickTrack") {
+      quickTrackProcessing.restoreFormStateForPhoto(currentPhotoId, currentPhoto.captureDate);
+    }
+
+    // Update the previous photo ID ref
+    previousPhotoIdRef.current = currentPhotoId;
   }, [photoUpload.currentPhotoIndex, photoUpload.photos, processType]);
 
-  // Load draft on mount
+  // Clear any existing draft on mount - user must start fresh on page refresh
   useEffect(() => {
-    draftManagement.loadDraft().then((draft) => {
-      if (draft && draft.photos.length > 0) {
-        photoUpload.setPhotos(draft.photos);
-        photoUpload.setCurrentPhotoIndex(draft.currentPhotoIndex);
-        setScreen("process");
-
-        if (draft.processedPhotos.length > 0) {
-          restaurantProcessing.setProcessedPhotos(draft.processedPhotos);
-          setProcessType("restaurant");
-        } else if (draft.quickTrackPhotos.length > 0) {
-          quickTrackProcessing.setQuickTrackPhotos(draft.quickTrackPhotos);
-          setProcessType("quickTrack");
-        }
-      }
-    });
+    draftManagement.clearDraft();
   }, []);
 
   // Screen-specific handlers
@@ -286,7 +317,23 @@ export default function ProcessPhotosPage() {
 
   const handleEditFromReview = () => {
     // Go back to the last photo
-    photoUpload.setCurrentPhotoIndex(photoUpload.photos.length - 1);
+    const lastPhotoIndex = photoUpload.photos.length - 1;
+    const lastPhoto = photoUpload.photos[lastPhotoIndex];
+
+    photoUpload.setCurrentPhotoIndex(lastPhotoIndex);
+
+    // Explicitly restore the form state for the last photo
+    // This is needed because the useEffect might not trigger if the index didn't change
+    if (lastPhoto) {
+      if (processType === "restaurant") {
+        restaurantProcessing.restoreFormStateForPhoto(lastPhoto.id, lastPhoto.captureDate);
+      } else if (processType === "quickTrack") {
+        quickTrackProcessing.restoreFormStateForPhoto(lastPhoto.id, lastPhoto.captureDate);
+      }
+      // Update the previous photo ref to match
+      previousPhotoIdRef.current = lastPhoto.id;
+    }
+
     setScreen("process");
   };
 
@@ -316,6 +363,7 @@ export default function ProcessPhotosPage() {
         restaurant: restaurantProcessing.selectedRestaurant.id,
         name: restaurantProcessing.menuItemName.trim(),
         createdBy: pb.authStore.model?.id,
+        visibility: 'friends', // Default visibility for user-created items
       });
 
       // Invalidate menu items query to refetch
@@ -338,14 +386,28 @@ export default function ProcessPhotosPage() {
   const handleEditMenuItem = async (itemId: string) => {
     if (!restaurantProcessing.editingMenuItemName.trim()) return;
 
+    const newName = restaurantProcessing.editingMenuItemName.trim();
+    const restaurantId = restaurantProcessing.selectedRestaurant?.id;
+
     try {
       await repositories.menuItems.update(itemId, {
-        name: restaurantProcessing.editingMenuItemName.trim(),
+        name: newName,
       });
 
-      // Invalidate menu items query to refetch
+      // Optimistically update the cache immediately so UI reflects the change
+      queryClient.setQueryData<MenuItem[]>(
+        ["menu_items", restaurantId],
+        (oldData) => {
+          if (!oldData) return oldData;
+          return oldData.map((item) =>
+            item.id === itemId ? { ...item, name: newName } : item
+          );
+        }
+      );
+
+      // Also invalidate to ensure consistency with server
       queryClient.invalidateQueries({
-        queryKey: ["menu_items", restaurantProcessing.selectedRestaurant?.id],
+        queryKey: ["menu_items", restaurantId],
       });
 
       // Clear editing state
@@ -419,6 +481,16 @@ export default function ProcessPhotosPage() {
       );
     }
 
+    // Calculate menu items already used for this restaurant (excluding current photo)
+    const usedMenuItemNames = restaurantProcessing.processedPhotos
+      .filter(
+        (p) =>
+          p.restaurant?.id === restaurantProcessing.selectedRestaurant?.id &&
+          p.photoId !== currentPhoto.id &&
+          p.menuItem?.name // Only include entries that have a menu item
+      )
+      .map((p) => p.menuItem.name.toLowerCase());
+
     return (
       <RestaurantProcessingScreen
         currentPhoto={currentPhoto}
@@ -456,6 +528,7 @@ export default function ProcessPhotosPage() {
         menuItemName={restaurantProcessing.menuItemName}
         menuItemSearchQuery={restaurantProcessing.menuItemSearchQuery}
         menuItemSelectionMode={restaurantProcessing.menuItemSelectionMode}
+        usedMenuItemNames={usedMenuItemNames}
         onMenuItemSelected={restaurantProcessing.setSelectedMenuItem}
         onMenuItemNameChange={restaurantProcessing.setMenuItemName}
         onMenuItemSearchChange={restaurantProcessing.setMenuItemSearchQuery}

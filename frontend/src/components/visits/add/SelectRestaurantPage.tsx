@@ -372,7 +372,7 @@ export default function SelectRestaurantPage({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-4">
         <ErrorDisplay error={error} onClear={clearError} />
 
         <div className="space-y-4">

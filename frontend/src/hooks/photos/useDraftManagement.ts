@@ -109,6 +109,7 @@ export function useDraftManagement() {
             notes: p.notes,
             visibility: p.visibility,
             captureDate: p.captureDate ?? null,
+            date: p.date, // Restore user-edited date
           };
         })
       );

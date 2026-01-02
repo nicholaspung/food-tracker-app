@@ -10,6 +10,7 @@ import {
   Share2,
   Lock,
   UserCheck,
+  Users,
 } from "lucide-react";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
@@ -27,19 +28,25 @@ interface VisitPhoto {
 interface QuickTrackCardProps {
   item: FoodItem;
   photo?: VisitPhoto;
+  isFriend?: boolean;
+  friendName?: string | null;
   onEdit: (itemId: string) => void;
   onDelete: (item: FoodItem) => void;
   onSharePhoto: (photo: VisitPhoto, item: FoodItem) => void;
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
+  showVisibilityIndicator?: boolean;
 }
 
 const QuickTrackCard = memo(function QuickTrackCard({
   item,
   photo,
+  isFriend = false,
+  friendName,
   onEdit,
   onDelete,
   onSharePhoto,
   onPhotoClick,
+  showVisibilityIndicator = true,
 }: QuickTrackCardProps) {
   const photoUrl = photo
     ? photo.isPending
@@ -56,7 +63,11 @@ const QuickTrackCard = memo(function QuickTrackCard({
 
   return (
     <Card
-      className="border-gray-200 bg-gray-50/50"
+      className={
+        isFriend
+          ? "border-blue-200 bg-blue-50/30"
+          : "border-gray-200 bg-gray-50/50"
+      }
     >
       <CardContent>
         {/* Header with title and action buttons */}
@@ -65,43 +76,57 @@ const QuickTrackCard = memo(function QuickTrackCard({
             <p className="font-medium text-gray-900 break-words">
               {item.name}
             </p>
-            {/* Visibility indicator */}
-            <div
-              className="flex items-center gap-1"
-              title={
-                item.visibility === "friends"
-                  ? "Shared with friends"
-                  : "Private"
-              }
-            >
-              {item.visibility === "friends" ? (
-                <UserCheck className="w-4 h-4 text-green-600" />
-              ) : (
-                <Lock className="w-4 h-4 text-gray-400" />
-              )}
-            </div>
+            {/* Friend badge - shown for friends' items */}
+            {isFriend && (
+              <Badge
+                variant="outline"
+                className="text-xs border-blue-300 text-blue-700"
+              >
+                <Users className="w-3 h-3 mr-1" />
+                {friendName}
+              </Badge>
+            )}
+            {/* Visibility indicator - only show for own items */}
+            {!isFriend && showVisibilityIndicator && (
+              <div
+                className="flex items-center gap-1"
+                title={
+                  item.visibility === "friends"
+                    ? "Shared with friends"
+                    : "Private"
+                }
+              >
+                {item.visibility === "friends" ? (
+                  <UserCheck className="w-4 h-4 text-green-600" />
+                ) : (
+                  <Lock className="w-4 h-4 text-gray-400" />
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Edit and Delete buttons */}
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onEdit(item.id)}
-              data-testid={`edit-quick-track-${item.id}`}
-            >
-              <Pencil className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onDelete(item)}
-              data-testid={`delete-quick-track-${item.id}`}
-              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          </div>
+          {/* Edit and Delete buttons - only show for own items */}
+          {!isFriend && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onEdit(item.id)}
+                data-testid={`edit-quick-track-${item.id}`}
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onDelete(item)}
+                data-testid={`delete-quick-track-${item.id}`}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="flex items-start gap-3">

@@ -32,6 +32,7 @@ export interface QuickTrackPhotoDraft {
   notes: string;
   visibility: 'friends' | 'private';
   captureDate?: Date | null; // Capture date from EXIF data
+  date: string; // User-edited date in yyyy-MM-dd format
 }
 
 export interface ProcessPhotosDraft {

@@ -1,5 +1,30 @@
 [
   {
+    "version": "0.6.0",
+    "date": "2026-01-02",
+    "title": "Improved Photo Processing & Friends Feed",
+    "summary": "Better photo processing experience with state preservation when navigating between photos, friends' quick track items now visible in your feed, and various UI improvements!",
+    "features": [
+      "Friends' quick track items: See your friends' snacks and quick track items in your home feed with a distinctive blue card style",
+      "Friend badges: Quick track items from friends show the friend's name for easy identification"
+    ],
+    "improvements": [
+      "Photo navigation state: Form data is now preserved when navigating back/forward between photos in Process Photos",
+      "Edit from review: Going back to edit from the review screen now properly restores all form data for the last photo",
+      "Better date handling: Quick track dates in Process Photos are now correctly preserved and displayed in the review screen",
+      "Review screen styling: Quick track review screen now matches the home feed card styling for visual consistency",
+      "Improved scrolling: Better scroll behavior on Quick Track and Process Photos pages with overscroll containment",
+      "Visibility indicators: Only shown when viewing mixed content (not when filtering to just your own items)",
+      "Cleaner button layout: Quick Track page buttons now always visible (no longer hidden when keyboard appears)"
+    ],
+    "fixes": [
+      "Fixed menu item selection mode resetting when switching between search/create tabs in Process Photos",
+      "Fixed photo form state being lost when navigating between photos in Process Photos workflow",
+      "Fixed edit functionality in Process Photos not restoring the correct form data",
+      "Fixed quick track review screen not showing the user-edited date (was showing capture date instead)"
+    ]
+  },
+  {
     "version": "0.5.9",
     "date": "2025-12-29",
     "title": "Move Food Items & Analytics Foundation",

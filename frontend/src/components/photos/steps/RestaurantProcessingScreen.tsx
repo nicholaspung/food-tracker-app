@@ -53,6 +53,7 @@ interface RestaurantProcessingScreenProps {
   menuItemName: string;
   menuItemSearchQuery: string;
   menuItemSelectionMode: "search" | "scan" | "create";
+  usedMenuItemNames: string[]; // Menu items already used in other photos for this restaurant
   onMenuItemSelected: (item: MenuItem | null) => void;
   onMenuItemNameChange: (name: string) => void;
   onMenuItemSearchChange: (q: string) => void;
@@ -140,6 +141,7 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
     menuItemName,
     menuItemSearchQuery,
     menuItemSelectionMode,
+    usedMenuItemNames,
     onMenuItemSelected,
     onMenuItemNameChange,
     onMenuItemSearchChange,
@@ -210,8 +212,7 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
     onMenuItemPhotoRemove();
   };
 
-  // Filter menu items
-  const usedMenuItemNames: string[] = []; // Would need to pass processedPhotos to calculate this
+  // Filter menu items - exclude already used items for this restaurant
   const filteredMenuItems = menuItemSelectionMode === "scan"
     ? scannedMenuItems
     : menuItems.filter(
@@ -243,7 +244,7 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-4">
         {/* Photo Preview */}
         <div className="mb-4" key={currentPhoto.id}>
           <div className="relative aspect-video rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity">
@@ -865,7 +866,17 @@ export const RestaurantProcessingScreen = memo(
       prevProps.restaurantSearchQuery === nextProps.restaurantSearchQuery &&
       prevProps.locationSearchQuery === nextProps.locationSearchQuery &&
       prevProps.menuItemSearchQuery === nextProps.menuItemSearchQuery &&
-      prevProps.menuItemName === nextProps.menuItemName
+      prevProps.menuItemName === nextProps.menuItemName &&
+      // Include editing state to ensure edit mode renders correctly
+      prevProps.editingMenuItemId === nextProps.editingMenuItemId &&
+      prevProps.editingMenuItemName === nextProps.editingMenuItemName &&
+      // Include menu item selection mode to ensure tab changes render
+      prevProps.menuItemSelectionMode === nextProps.menuItemSelectionMode &&
+      // Include legend expanded state to ensure collapsible works
+      prevProps.isLegendExpanded === nextProps.isLegendExpanded &&
+      // Include used menu item names to filter already-selected items
+      prevProps.usedMenuItemNames.length === nextProps.usedMenuItemNames.length &&
+      prevProps.usedMenuItemNames.every((name, i) => name === nextProps.usedMenuItemNames[i])
     );
   }
 );

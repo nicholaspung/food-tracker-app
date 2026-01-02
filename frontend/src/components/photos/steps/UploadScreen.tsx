@@ -95,7 +95,7 @@ export function UploadScreen({
       ) : (
         // Photos selected - show review UI
         <>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto overscroll-contain p-4">
             <p className="text-sm text-muted-foreground mb-4">
               {photos.length} photo{photos.length !== 1 ? "s" : ""} selected.
               Review and remove any you don't want to process.

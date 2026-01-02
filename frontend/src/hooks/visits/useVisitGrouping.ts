@@ -142,9 +142,11 @@ export function useVisitGrouping<V extends {
         .map((dayKey) => {
           const { visits: visitsInDay, quickTrackItems: quickTrackItemsInDay } =
             byMonth[monthKey][dayKey];
-          // Check if this is a friend visit group (all visits in this group should be same type)
+          // Check if this is a friend group (all items in this group should be same type)
+          // First check visits, then check quick track items if no visits
           const isFriend =
-            visitsInDay.length > 0 && isFriendVisit(visitsInDay[0]);
+            (visitsInDay.length > 0 && isFriendVisit(visitsInDay[0])) ||
+            (visitsInDay.length === 0 && quickTrackItemsInDay.length > 0 && isQuickTrackFromFriend(quickTrackItemsInDay[0]));
           return {
             dayKey,
             dayLabel: formatDayLabel(dayKey, isFriend),

@@ -58,6 +58,7 @@ interface VisitCardProps {
   onPhotoClick: (photo: { url: string; dishName: string }) => void;
   onMoveItem?: (foodItem: FoodItem, visitId: string) => void;
   ratingFilter?: "all" | "1" | "2" | "3" | "4" | "5";
+  showVisibilityIndicator?: boolean;
 }
 
 // Sub-component for food item row with long-press support
@@ -159,6 +160,7 @@ const VisitCard = memo(function VisitCard({
   onPhotoClick,
   onMoveItem,
   ratingFilter = "all",
+  showVisibilityIndicator = true,
 }: VisitCardProps) {
   // State for context menu
   const [selectedItem, setSelectedItem] = useState<FoodItem | null>(null);
@@ -220,7 +222,7 @@ const VisitCard = memo(function VisitCard({
                   {friendName}
                 </Badge>
               )}
-              {!isFriend && (
+              {!isFriend && showVisibilityIndicator && (
                 <div
                   className="flex items-center gap-1"
                   title={
