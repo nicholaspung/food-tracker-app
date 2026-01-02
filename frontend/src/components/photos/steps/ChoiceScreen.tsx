@@ -31,7 +31,7 @@ export function ChoiceScreen({ onSelectType, onBack }: ChoiceScreenProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 p-4 flex flex-col items-center justify-center gap-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col items-center justify-center gap-4">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Choose tracking type
         </h2>

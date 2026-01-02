@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +82,12 @@ export function QuickTrackProcessingScreen({
 }: QuickTrackProcessingScreenProps) {
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
   const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top when navigating to a different photo
+  useEffect(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [currentPhotoIndex]);
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -104,7 +110,7 @@ export function QuickTrackProcessingScreen({
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4">
         {/* Photo Preview */}
         <div className="mb-4" key={currentPhoto.id}>
           <div className="relative aspect-video rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity">

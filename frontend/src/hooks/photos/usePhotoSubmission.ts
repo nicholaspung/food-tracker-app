@@ -106,7 +106,12 @@ export function usePhotoSubmission() {
           location_text: item.locationText || undefined,
           photo: item.photo,
           visibility: item.visibility,
-          itemDate: item.captureDate ? item.captureDate.toISOString() : undefined,
+          // Use user-edited date if available, otherwise fall back to captureDate
+          itemDate: item.date
+            ? new Date(item.date).toISOString()
+            : item.captureDate
+              ? item.captureDate.toISOString()
+              : undefined,
         });
       }
 

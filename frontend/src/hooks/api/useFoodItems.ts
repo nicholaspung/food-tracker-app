@@ -19,6 +19,7 @@ export function useFoodItems(): UseQueryResult<FoodItem[], Error> {
     queryFn: async () => {
       return await repositories.foodItems.getFullList({
         sort: "-created",
+        expand: "user",
       });
     },
   });

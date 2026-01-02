@@ -60,6 +60,7 @@ interface VisitWithDetails extends Omit<Visit, "restaurant"> {
 
 interface QuickTrackItemWithDetails extends FoodItem {
   type: "quick_track";
+  expand?: FoodItem["expand"];
 }
 
 interface HomePageProps {
@@ -591,6 +592,7 @@ export default function HomePage({
                           onPhotoClick={setFullscreenPhoto}
                           onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
                           ratingFilter={ratingFilter}
+                          showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
                       );
                     })}
@@ -598,16 +600,24 @@ export default function HomePage({
                     {/* Quick Track Items */}
                     {dayQuickTrackItems.map((item) => {
                       const photo = visitPhotosByFoodItem.get(item.id);
+                      const isFriend = isFriendQuickTrack(item);
+                      const friendName = isFriend
+                        ? item.expand?.user?.name ||
+                          item.expand?.user?.email?.split("@")[0]
+                        : null;
 
                       return (
                         <QuickTrackCard
                           key={item.id}
                           item={item}
                           photo={photo}
+                          isFriend={isFriend}
+                          friendName={friendName}
                           onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
                           onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
                           onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
                           onPhotoClick={setFullscreenPhoto}
+                          showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
                       );
                     })}
@@ -686,6 +696,7 @@ export default function HomePage({
                                     onPhotoClick={setFullscreenPhoto}
                                     onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
                                     ratingFilter={ratingFilter}
+                                    showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />
                                 );
                               })}
@@ -693,16 +704,24 @@ export default function HomePage({
                               {/* Quick Track Items for this day */}
                               {dayQuickTrackItems.map((item) => {
                                 const photo = visitPhotosByFoodItem.get(item.id);
+                                const isFriend = isFriendQuickTrack(item);
+                                const friendName = isFriend
+                                  ? item.expand?.user?.name ||
+                                    item.expand?.user?.email?.split("@")[0]
+                                  : null;
 
                                 return (
                                   <QuickTrackCard
                                     key={item.id}
                                     item={item}
                                     photo={photo}
+                                    isFriend={isFriend}
+                                    friendName={friendName}
                                     onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
                                     onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
                                     onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
                                     onPhotoClick={setFullscreenPhoto}
+                                    showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />
                                 );
                               })}

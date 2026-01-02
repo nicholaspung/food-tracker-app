@@ -21,7 +21,6 @@ import { RatingLegend } from "@/components/ui/RatingLegend";
 import { useOfflineQuickTrack } from "@/hooks/offline/useOfflineQuickTrack";
 import { useSync } from "@/contexts/SyncContext";
 import { useScrollIntoView } from "@/hooks/ui/useScrollIntoView";
-import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
 import {
   getTodayLocalDateString,
   localDateStringToUTC,
@@ -74,7 +73,6 @@ export default function QuickTrackPage() {
   // Offline-aware Quick Track
   const { isOnline } = useSync();
   const saveItemMutation = useOfflineQuickTrack();
-  const isKeyboardVisible = useKeyboardVisible();
 
   const handlePhotoCapture = useCallback(
     (_key: string | number, file: File) => {
@@ -164,7 +162,7 @@ export default function QuickTrackPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Date picker */}
           <DatePickerField
@@ -307,28 +305,26 @@ export default function QuickTrackPage() {
       </div>
 
       {/* Bottom Action Buttons */}
-      {!isKeyboardVisible && (
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={() => navigate({ to: "/add-visit" })}
-              className="flex-1"
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveItem}
-              disabled={isSubmitDisabled}
-              className="flex-1"
-            >
-              {isLoading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-              {isLoading ? "Saving..." : "Save Item"}
-            </Button>
-          </div>
+      <div className="bg-white border-t border-gray-200 p-4">
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={() => navigate({ to: "/add-visit" })}
+            className="flex-1"
+            disabled={isLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveItem}
+            disabled={isSubmitDisabled}
+            className="flex-1"
+          >
+            {isLoading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+            {isLoading ? "Saving..." : "Save Item"}
+          </Button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

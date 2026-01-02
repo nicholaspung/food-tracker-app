@@ -97,6 +97,11 @@ export interface FoodItem {
         restaurant?: Restaurant;
       };
     };
+    user?: {
+      id: string;
+      email: string;
+      name?: string;
+    };
   };
 }
 

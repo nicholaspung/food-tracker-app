@@ -26,6 +26,7 @@ export interface PhotoToProcess {
 export interface ProcessedPhoto {
   photoId: string;
   photo: File;
+  previewUrl: string; // Original preview URL to avoid creating new blob URLs
   restaurant: any;
   menuItemName: string;
   menuItemDescription: string;
@@ -49,6 +50,8 @@ export interface QuickTrackPhotoData {
   notes: string;
   visibility: "friends" | "private";
   captureDate: Date | null;
+  /** User-edited date in yyyy-MM-dd format (defaults to captureDate, but can be changed by user) */
+  date: string;
 }
 
 /**
