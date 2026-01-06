@@ -40,6 +40,7 @@ interface ProfilePageProps {
   onLogout?: () => void;
   onNavigateToWhatsNew?: () => void;
   onNavigateToSettings?: () => void;
+  onNavigateToFeedback?: () => void;
   onNavigateToBeta?: () => void;
   onNavigateToAdminReviews?: () => void;
 }
@@ -54,7 +55,7 @@ interface ChangelogEntry {
 const LAST_VIEWED_VERSION_KEY = 'lastViewedChangelogVersion';
 const DISMISSED_PROFILE_VERSION_KEY = 'dismissedProfileChangelogVersion';
 
-export default function ProfilePage({ onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
+export default function ProfilePage({ onDeleteSuccess, onLogout, onNavigateToWhatsNew, onNavigateToSettings, onNavigateToFeedback, onNavigateToBeta, onNavigateToAdminReviews }: ProfilePageProps) {
   const user = pb.authStore.model;
   const queryClient = useQueryClient();
   const { isOnline } = useSync();
@@ -254,6 +255,25 @@ export default function ProfilePage({ onDeleteSuccess, onLogout, onNavigateToWha
     queryKey: ['pendingReviewCount'],
     queryFn: getPendingReviewCount,
     enabled: isAdmin, // Only fetch if user is admin
+    staleTime: 1000 * 60, // Cache for 1 minute
+  });
+
+  // Query for unread feedback count
+  const { data: feedbackUnreadCount = 0 } = useQuery({
+    queryKey: ['feedbackUnreadCount'],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+
+      const feedbackList = await repositories.feedback.getFullList();
+
+      return feedbackList.reduce((count, feedback) => {
+        const unreadCount = isAdmin
+          ? feedback.admin_unread_count || 0
+          : feedback.user_unread_count || 0;
+        return count + (unreadCount > 0 ? 1 : 0);
+      }, 0);
+    },
+    enabled: !!user?.id,
     staleTime: 1000 * 60, // Cache for 1 minute
   });
 
@@ -627,6 +647,27 @@ Looking forward to seeing you there!`;
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Feedback Section */}
+        <Card>
+          <CardContent className="pt-6">
+            <Button
+              onClick={onNavigateToFeedback}
+              variant="outline"
+              className="w-full"
+              data-testid="feedback-button"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <span>Feedback & Support</span>
+                {feedbackUnreadCount > 0 && (
+                  <Badge variant="destructive" className="text-xs">
+                    {feedbackUnreadCount}
+                  </Badge>
+                )}
+              </div>
+            </Button>
           </CardContent>
         </Card>
 

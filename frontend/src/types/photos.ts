@@ -55,6 +55,14 @@ export interface QuickTrackPhotoData {
 }
 
 /**
+ * Restaurant stats returned by getRestaurantStats
+ */
+export interface RestaurantStats {
+  userVisitCount: number;
+  friendCount: number;
+}
+
+/**
  * Props for RestaurantSelector component
  */
 export interface RestaurantSelectorProps {
@@ -73,6 +81,8 @@ export interface RestaurantSelectorProps {
   restaurantCreationMutation: any;
   onShowValidation?: (message: string) => void;
   onHandleError?: (error: Error, options?: { customMessage?: string }) => void;
+  /** Function to get visit stats for a restaurant */
+  getRestaurantStats?: (restaurantId: string) => RestaurantStats;
 }
 
 /**

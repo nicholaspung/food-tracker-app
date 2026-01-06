@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.6.1",
+    "date": "2026-01-06",
+    "title": "Restaurant Lists & Navigation Improvements",
+    "summary": "Create and organize restaurant lists with friends or keep them private! Plus a new More tab for easier navigation and the ability to edit menu items you've created.",
+    "features": [
+      "Restaurant Lists: Create custom lists to organize restaurants (e.g., 'Date Night Spots', 'Best Brunch', 'To Try')",
+      "List visibility controls: Keep lists private, share with friends, or make them public for everyone",
+      "Browse friends' and public lists: Discover new restaurants from your friends' curated lists",
+      "Add restaurants to lists: Easily add any restaurant to one or more of your lists",
+      "Edit menu items: Update names and visibility of menu items you've created"
+    ],
+    "improvements": [
+      "New 'More' tab: Streamlined navigation with tips, restaurant lists access, and beta features in one place",
+      "Feedback on Profile: Feedback & Support moved to Profile page with unread message count badge",
+      "Better edit mode: When editing a visit, previously selected items stay visible even when unchecked",
+      "Cleaner bottom navigation: Reorganized tabs for more intuitive navigation"
+    ],
+    "fixes": [
+      "Fixed menu items disappearing when unchecked during visit editing",
+      "Fixed list items not being creatable due to permission rules"
+    ]
+  },
+  {
     "version": "0.6.0",
     "date": "2026-01-02",
     "title": "Improved Photo Processing & Friends Feed",

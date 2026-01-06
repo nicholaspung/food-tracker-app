@@ -56,18 +56,18 @@ export default function VisitListHeader({
   filteredQuickTrackCount,
   isSearching,
 }: VisitListHeaderProps) {
+  // Determine if we're in "my ratings" or "friends' ratings" mode
+  const isShowingFriends = filterType === "friends" || filterType === "friend_visits" || filterType === "friend_quick_track";
+
   const handleFilterToggle = () => {
     if (filtersExpanded) {
-      // Reset filters before hiding
-      onFilterTypeChange("user_both");
+      // Reset filters before hiding, but preserve the current tab
+      onFilterTypeChange(isShowingFriends ? "friends" : "user_both");
       onVisibilityFilterChange("all");
       onRatingFilterChange("all");
     }
     onFiltersExpandedChange(!filtersExpanded);
   };
-
-  // Determine if we're in "my ratings" or "friends' ratings" mode
-  const isShowingFriends = filterType === "friends" || filterType === "friend_visits" || filterType === "friend_quick_track";
 
   // Handler for toggle - preserve the sub-filter when switching
   const handleToggle = (showFriends: boolean) => {

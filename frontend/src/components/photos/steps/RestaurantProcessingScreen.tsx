@@ -1,5 +1,6 @@
 import { useRef, memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +19,11 @@ import {
   X,
   Pencil,
   WifiOff,
+  Lock,
+  Users,
+  Globe,
 } from "lucide-react";
-import { PhotoToProcess } from "@/types/photos";
+import { PhotoToProcess, RestaurantStats } from "@/types/photos";
 import { Restaurant, MenuItem, pb } from "@/lib/pocketbase";
 import { RestaurantSelector } from "@/components/photos/restaurant/RestaurantSelector";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
@@ -62,8 +66,10 @@ interface RestaurantProcessingScreenProps {
   // Edit menu item state
   editingMenuItemId: string | null;
   editingMenuItemName: string;
+  editingMenuItemVisibility: "private" | "friends" | "public";
   onEditingMenuItemIdChange: (id: string | null) => void;
   onEditingMenuItemNameChange: (name: string) => void;
+  onEditingMenuItemVisibilityChange: (visibility: "private" | "friends" | "public") => void;
   onEditMenuItem: (id: string) => Promise<void>;
 
   // Menu item photo
@@ -107,6 +113,12 @@ interface RestaurantProcessingScreenProps {
   // Error handlers
   onShowValidation?: (message: string) => void;
   onHandleError?: (error: Error, options?: { customMessage?: string }) => void;
+
+  // Restaurant stats
+  getRestaurantStats?: (restaurantId: string) => RestaurantStats;
+
+  // Camera mode
+  onOpenCamera: () => void;
 }
 
 /**
@@ -149,8 +161,10 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
     // Edit menu item
     editingMenuItemId,
     editingMenuItemName,
+    editingMenuItemVisibility,
     onEditingMenuItemIdChange,
     onEditingMenuItemNameChange,
+    onEditingMenuItemVisibilityChange,
     onEditMenuItem,
     // Menu item photo
     menuItemPhotoPreview,
@@ -187,6 +201,10 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
     // Error handlers
     onShowValidation,
     onHandleError,
+    // Restaurant stats
+    getRestaurantStats,
+    // Camera mode
+    onOpenCamera,
   } = props;
 
   // Refs for auto-scrolling
@@ -291,15 +309,14 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
                 locationQuery={locationSearchQuery}
                 onLocationQueryChange={onLocationSearchChange}
                 isOnline={isOnline}
-                onOpenCamera={() => {
-                  // Handle camera mode - would need to be passed as prop
-                }}
+                onOpenCamera={onOpenCamera}
                 previousRestaurant={previousRestaurant}
                 onUsePreviousRestaurant={onUsePreviousRestaurant}
                 showSameAsAbove={showSameAsAbove}
                 restaurantCreationMutation={restaurantCreationMutation}
                 onShowValidation={onShowValidation}
                 onHandleError={onHandleError}
+                getRestaurantStats={getRestaurantStats}
               />
             </CardContent>
           </Card>
@@ -378,68 +395,150 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
                                   >
                                     <CardContent>
                                       {isEditing ? (
-                                        <div className="flex items-center gap-2">
-                                          <Input
-                                            type="text"
-                                            value={editingMenuItemName}
-                                            onChange={(e) =>
-                                              onEditingMenuItemNameChange(
-                                                e.target.value
-                                              )
-                                            }
-                                            placeholder="Menu item name"
-                                            className="flex-1"
-                                            autoFocus
-                                            onKeyDown={(e) => {
-                                              if (e.key === "Enter") {
-                                                e.preventDefault();
+                                        <div className="space-y-3">
+                                          {/* Name input row */}
+                                          <div className="flex items-center gap-2">
+                                            <Input
+                                              type="text"
+                                              value={editingMenuItemName}
+                                              onChange={(e) =>
+                                                onEditingMenuItemNameChange(
+                                                  e.target.value
+                                                )
+                                              }
+                                              placeholder="Menu item name"
+                                              className="flex-1"
+                                              autoFocus
+                                              onKeyDown={(e) => {
+                                                if (e.key === "Enter") {
+                                                  e.preventDefault();
+                                                  onEditMenuItem(item.id);
+                                                } else if (e.key === "Escape") {
+                                                  onEditingMenuItemIdChange(null);
+                                                  onEditingMenuItemNameChange("");
+                                                }
+                                              }}
+                                            />
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
                                                 onEditMenuItem(item.id);
-                                              } else if (e.key === "Escape") {
+                                              }}
+                                              disabled={
+                                                !editingMenuItemName.trim() ||
+                                                isProcessing
+                                              }
+                                            >
+                                              <Check className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="ghost"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
                                                 onEditingMenuItemIdChange(null);
                                                 onEditingMenuItemNameChange("");
-                                              }
-                                            }}
-                                          />
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              onEditMenuItem(item.id);
-                                            }}
-                                            disabled={
-                                              !editingMenuItemName.trim() ||
-                                              isProcessing
-                                            }
-                                          >
-                                            <Check className="h-4 w-4" />
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              onEditingMenuItemIdChange(null);
-                                              onEditingMenuItemNameChange("");
-                                            }}
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
+                                              }}
+                                            >
+                                              <X className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+
+                                          {/* Visibility selector row */}
+                                          <div className="space-y-2">
+                                            <span className="text-xs text-gray-500 font-medium">Visibility</span>
+                                            <div className="grid grid-cols-3 gap-2">
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  onEditingMenuItemVisibilityChange("private");
+                                                }}
+                                                className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition-all border ${
+                                                  editingMenuItemVisibility === "private"
+                                                    ? "bg-gray-900 text-white border-gray-900"
+                                                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                                                }`}
+                                              >
+                                                <Lock className="h-3.5 w-3.5" />
+                                                <span>Private</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  onEditingMenuItemVisibilityChange("friends");
+                                                }}
+                                                className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition-all border ${
+                                                  editingMenuItemVisibility === "friends"
+                                                    ? "bg-blue-600 text-white border-blue-600"
+                                                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                                                }`}
+                                              >
+                                                <Users className="h-3.5 w-3.5" />
+                                                <span>Friends</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  onEditingMenuItemVisibilityChange("public");
+                                                }}
+                                                className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition-all border ${
+                                                  editingMenuItemVisibility === "public"
+                                                    ? "bg-green-600 text-white border-green-600"
+                                                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                                                }`}
+                                              >
+                                                <Globe className="h-3.5 w-3.5" />
+                                                <span>Public</span>
+                                              </button>
+                                            </div>
+                                          </div>
                                         </div>
                                       ) : (
-                                        <div className="flex items-center justify-between gap-2">
-                                          <div className="flex-1 min-w-0">
-                                            <div className="font-medium">
-                                              {item.name}
-                                            </div>
-                                            {item.description && (
-                                              <div className="text-sm text-muted-foreground mt-1">
-                                                {item.description}
+                                        <div className="space-y-2">
+                                          {/* Row 1: Name and checkmark */}
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="font-medium leading-snug">
+                                                {item.name}
                                               </div>
-                                            )}
+                                              {item.description && (
+                                                <div className="text-sm text-muted-foreground mt-1">
+                                                  {item.description}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <Check className="w-5 h-5 text-gray-300 flex-shrink-0 mt-0.5" />
                                           </div>
-                                          <div className="flex items-center gap-1 flex-shrink-0">
+
+                                          {/* Row 2: Visibility badge and edit button */}
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                              {item.visibility === "private" && (
+                                                <Badge variant="outline" className="text-xs flex items-center gap-1">
+                                                  <Lock className="h-3 w-3" />
+                                                  Private
+                                                </Badge>
+                                              )}
+                                              {item.visibility === "friends" && (
+                                                <Badge variant="outline" className="text-xs flex items-center gap-1 text-blue-600 border-blue-200">
+                                                  <Users className="h-3 w-3" />
+                                                  Friends
+                                                </Badge>
+                                              )}
+                                              {item.visibility === "public" && (
+                                                <Badge variant="outline" className="text-xs flex items-center gap-1 text-green-600 border-green-200">
+                                                  <Globe className="h-3 w-3" />
+                                                  Public
+                                                </Badge>
+                                              )}
+                                            </div>
+
                                             {isUserCreated && (
                                               <Button
                                                 type="button"
@@ -451,13 +550,16 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
                                                   onEditingMenuItemNameChange(
                                                     item.name
                                                   );
+                                                  onEditingMenuItemVisibilityChange(
+                                                    item.visibility || "private"
+                                                  );
                                                 }}
-                                                className="h-8 w-8 p-0"
+                                                className="h-7 px-2 text-xs text-gray-500"
                                               >
-                                                <Pencil className="h-4 w-4" />
+                                                <Pencil className="h-3 w-3 mr-1" />
+                                                Edit
                                               </Button>
                                             )}
-                                            <Check className="w-5 h-5 text-gray-300 flex-shrink-0" />
                                           </div>
                                         </div>
                                       )}
@@ -805,8 +907,7 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
       </div>
 
       {/* Bottom Action Buttons */}
-      {!isKeyboardVisible && (
-        <div className="bg-white border-t border-gray-200 p-4">
+      <div className="bg-white border-t border-gray-200 p-4">
           <div className="flex gap-3">
             {/* Left button: Cancel on first photo, Previous on others */}
             <Button
@@ -837,7 +938,6 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
             </Button>
           </div>
         </div>
-      )}
     </div>
   );
 }
@@ -870,13 +970,16 @@ export const RestaurantProcessingScreen = memo(
       // Include editing state to ensure edit mode renders correctly
       prevProps.editingMenuItemId === nextProps.editingMenuItemId &&
       prevProps.editingMenuItemName === nextProps.editingMenuItemName &&
+      prevProps.editingMenuItemVisibility === nextProps.editingMenuItemVisibility &&
       // Include menu item selection mode to ensure tab changes render
       prevProps.menuItemSelectionMode === nextProps.menuItemSelectionMode &&
       // Include legend expanded state to ensure collapsible works
       prevProps.isLegendExpanded === nextProps.isLegendExpanded &&
       // Include used menu item names to filter already-selected items
       prevProps.usedMenuItemNames.length === nextProps.usedMenuItemNames.length &&
-      prevProps.usedMenuItemNames.every((name, i) => name === nextProps.usedMenuItemNames[i])
+      prevProps.usedMenuItemNames.every((name, i) => name === nextProps.usedMenuItemNames[i]) &&
+      // Include restaurant stats function to update visit counts
+      prevProps.getRestaurantStats === nextProps.getRestaurantStats
     );
   }
 );

@@ -1,7 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { Home, User, Plus, Users, MessageSquare } from 'lucide-react';
+import { Home, User, Plus, Users, MoreHorizontal } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { pb, Feedback } from '@/lib/pocketbase';
+import { pb } from '@/lib/pocketbase';
 import { useKeyboardVisible } from '@/hooks/ui/useKeyboardVisible';
 import { repositories } from '@/repositories';
 
@@ -27,26 +27,6 @@ export function BottomTabNavigation() {
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  // Query for unread feedback count (admins see all unread, users see their own)
-  const { data: feedbackUnreadCount = 0 } = useQuery({
-    queryKey: ['feedbackUnreadCount'],
-    queryFn: async () => {
-      if (!currentUser?.id) return 0;
-
-      const isAdmin = currentUser.isAdmin === true;
-      const feedbackList = await repositories.feedback.getFullList();
-
-      return feedbackList.reduce((count, feedback) => {
-        const unreadCount = isAdmin
-          ? feedback.admin_unread_count || 0
-          : feedback.user_unread_count || 0;
-        return count + (unreadCount > 0 ? 1 : 0);
-      }, 0);
-    },
-    enabled: !!currentUser?.id,
-    refetchInterval: 30000, // Refresh every 30 seconds
-  });
-
   const tabs = [
     {
       name: 'Home',
@@ -67,10 +47,10 @@ export function BottomTabNavigation() {
       testId: 'tab-friends',
     },
     {
-      name: 'Feedback',
-      path: '/feedback',
-      icon: MessageSquare,
-      testId: 'tab-feedback',
+      name: 'More',
+      path: '/misc',
+      icon: MoreHorizontal,
+      testId: 'tab-misc',
     },
     {
       name: 'Profile',
@@ -98,9 +78,7 @@ export function BottomTabNavigation() {
             currentPath.startsWith(tab.path + '/') ||
             (tab.path === '/add-visit' && currentPath === '/process-photos');
 
-          const showBadge =
-            (tab.path === '/friends' && pendingRequestsCount > 0) ||
-            (tab.path === '/feedback' && feedbackUnreadCount > 0);
+          const showBadge = tab.path === '/friends' && pendingRequestsCount > 0;
 
           return (
             <Link
@@ -119,9 +97,7 @@ export function BottomTabNavigation() {
                 />
                 {showBadge && (
                   <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                    {tab.path === '/friends'
-                      ? (pendingRequestsCount > 9 ? '9+' : pendingRequestsCount)
-                      : (feedbackUnreadCount > 9 ? '9+' : feedbackUnreadCount)}
+                    {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
                   </div>
                 )}
               </div>

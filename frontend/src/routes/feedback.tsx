@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { pb } from '@/lib/pocketbase';
 import FeedbackPage from '@/components/settings/FeedbackPage';
 
@@ -9,5 +9,17 @@ export const Route = createFileRoute('/feedback')({
       throw redirect({ to: '/' });
     }
   },
-  component: FeedbackPage,
+  component: Feedback,
 });
+
+function Feedback() {
+  const navigate = useNavigate();
+
+  return (
+    <FeedbackPage
+      onNavigateBack={() => {
+        navigate({ to: '/profile' });
+      }}
+    />
+  );
+}
