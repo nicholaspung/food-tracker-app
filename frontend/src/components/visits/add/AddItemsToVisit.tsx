@@ -10,7 +10,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useScrollIntoView } from "@/hooks/ui/useScrollIntoView";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { useMenuItemSelection } from "@/hooks/menu/useMenuItemSelection";
 import { useMenuItemSearch } from "@/hooks/menu/useMenuItemSearch";
 import { useMenuReviewRequest } from "@/hooks/menu/useMenuReviewRequest";
+import { repositories } from "@/repositories";
 import {
   MenuItemSearch,
   ManualItemForm,
@@ -53,6 +54,7 @@ export default function AddItemsToVisit({
   // ===== HOOKS =====
   const { isOnline } = useSync();
   const isKeyboardVisible = useKeyboardVisible();
+  const queryClient = useQueryClient();
   const { handleError, showValidation } = useErrorHandler({
     source: "AddItemsToVisit",
     autoClearMs: 5000,
@@ -97,6 +99,12 @@ export default function AddItemsToVisit({
   const [isAdding, setIsAdding] = useState(false);
   const [showScanMenu, setShowScanMenu] = useState(false);
   const [debugData, setDebugData] = useState<any>(null);
+
+  // ===== MENU ITEM EDITING STATE =====
+  const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(null);
+  const [editingMenuItemName, setEditingMenuItemName] = useState("");
+  const [editingMenuItemVisibility, setEditingMenuItemVisibility] = useState<"private" | "friends" | "public">("private");
+  const [isEditingMenuItem, setIsEditingMenuItem] = useState(false);
 
   // ===== REFS =====
   const searchInputRef = useScrollIntoView<HTMLInputElement>();
@@ -178,6 +186,56 @@ export default function AddItemsToVisit({
 
     // Reload all menu items to show the new ones
     menuItemSearch.handleSearch("");
+  };
+
+  const handleEditMenuItem = async (itemId: string) => {
+    if (!editingMenuItemName.trim()) return;
+
+    const newName = editingMenuItemName.trim();
+    const newVisibility = editingMenuItemVisibility;
+
+    setIsEditingMenuItem(true);
+    try {
+      await repositories.menuItems.update(itemId, {
+        name: newName,
+        visibility: newVisibility,
+      });
+
+      // Optimistically update the cache immediately so UI reflects the change
+      queryClient.setQueryData<MenuItem[]>(
+        ["menu_items", restaurantId],
+        (oldData) => {
+          if (!oldData) return oldData;
+          return oldData.map((item) =>
+            item.id === itemId ? { ...item, name: newName, visibility: newVisibility } : item
+          );
+        }
+      );
+
+      // Also update the search results to reflect the change
+      menuItemSearch.setSearchResults(
+        menuItemSearch.searchResults.map((item) =>
+          item.id === itemId ? { ...item, name: newName, visibility: newVisibility } : item
+        )
+      );
+
+      // Also invalidate to ensure consistency with server
+      queryClient.invalidateQueries({
+        queryKey: ["menu_items", restaurantId],
+      });
+
+      // Clear editing state
+      setEditingMenuItemId(null);
+      setEditingMenuItemName("");
+      setEditingMenuItemVisibility("private");
+    } catch (error) {
+      logger.error("Failed to edit menu item:", error);
+      handleError(error as Error, {
+        customMessage: "Failed to edit menu item. Please try again.",
+      });
+    } finally {
+      setIsEditingMenuItem(false);
+    }
   };
 
   // Get visibility badge for menu item
@@ -340,6 +398,15 @@ export default function AddItemsToVisit({
                 menuItemSelection.handleToggleDescriptionInput
               }
               onUpdateDescription={menuItemSelection.handleUpdateDescription}
+              initiallySelectedItems={initialSelectedItems}
+              editingMenuItemId={editingMenuItemId}
+              editingMenuItemName={editingMenuItemName}
+              editingMenuItemVisibility={editingMenuItemVisibility}
+              onEditingMenuItemIdChange={setEditingMenuItemId}
+              onEditingMenuItemNameChange={setEditingMenuItemName}
+              onEditingMenuItemVisibilityChange={setEditingMenuItemVisibility}
+              onEditMenuItem={handleEditMenuItem}
+              isEditingMenuItem={isEditingMenuItem}
               isParsedItem={menuItemSearch.isParsedItem}
               getVisibilityBadge={getVisibilityBadge}
               parsedItemsCount={parsedItems.length}

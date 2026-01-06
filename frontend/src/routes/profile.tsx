@@ -29,6 +29,9 @@ function Profile() {
       onNavigateToSettings={() => {
         navigate({ to: '/settings' });
       }}
+      onNavigateToFeedback={() => {
+        navigate({ to: '/feedback' });
+      }}
       onNavigateToBeta={() => {
         navigate({ to: '/beta' });
       }}

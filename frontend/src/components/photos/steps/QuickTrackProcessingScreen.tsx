@@ -259,26 +259,24 @@ export function QuickTrackProcessingScreen({
       </div>
 
       {/* Footer */}
-      {!isKeyboardVisible && (
-        <div className="bg-white border-t border-gray-200 p-4">
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={onBack} className="flex-1">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-            <Button
-              onClick={onSubmitCurrent}
-              disabled={!canSubmit}
-              className="flex-1"
-            >
-              {currentPhotoIndex < totalPhotos - 1 ? "Next" : "Review"}
-              {currentPhotoIndex < totalPhotos - 1 && (
-                <ChevronRight className="ml-2 h-4 w-4" />
-              )}
-            </Button>
-          </div>
+      <div className="bg-white border-t border-gray-200 p-4">
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={onBack} className="flex-1">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+          <Button
+            onClick={onSubmitCurrent}
+            disabled={!canSubmit}
+            className="flex-1"
+          >
+            {currentPhotoIndex < totalPhotos - 1 ? "Next" : "Review"}
+            {currentPhotoIndex < totalPhotos - 1 && (
+              <ChevronRight className="ml-2 h-4 w-4" />
+            )}
+          </Button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

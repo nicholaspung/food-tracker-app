@@ -49,6 +49,7 @@ export function usePhotoProcessing() {
   // Edit menu item state
   const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(null);
   const [editingMenuItemName, setEditingMenuItemName] = useState("");
+  const [editingMenuItemVisibility, setEditingMenuItemVisibility] = useState<"private" | "friends" | "public">("private");
 
   // Rating & notes
   const [rating, setRating] = useState<number | null>(3);
@@ -241,8 +242,10 @@ export function usePhotoProcessing() {
     // Edit menu item state
     editingMenuItemId,
     editingMenuItemName,
+    editingMenuItemVisibility,
     setEditingMenuItemId,
     setEditingMenuItemName,
+    setEditingMenuItemVisibility,
 
     // Rating & notes
     rating,

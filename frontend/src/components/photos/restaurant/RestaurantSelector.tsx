@@ -15,6 +15,8 @@ import {
   History,
   Check,
   Copy,
+  Calendar,
+  Users,
 } from "lucide-react";
 import { searchAndCacheRestaurantsByText } from "@/services/googlePlaces";
 import { RestaurantSelectorProps, StoredCameraResult } from "@/types/photos";
@@ -47,6 +49,7 @@ export function RestaurantSelector({
   restaurantCreationMutation,
   onShowValidation,
   onHandleError,
+  getRestaurantStats,
 }: RestaurantSelectorProps & {
   onShowValidation?: (message: string) => void;
   onHandleError?: (error: Error, options?: { customMessage?: string }) => void;
@@ -427,6 +430,9 @@ export function RestaurantSelector({
               </Label>
               {restaurants.slice(0, 10).map((restaurant) => {
                 const isHighlighted = highlightedRestaurants.has(restaurant.id);
+                const stats = getRestaurantStats?.(restaurant.id);
+                const userVisitCount = stats?.userVisitCount ?? 0;
+                const friendCount = stats?.friendCount ?? 0;
                 return (
                   <Card
                     key={restaurant.id}
@@ -444,6 +450,26 @@ export function RestaurantSelector({
                         {restaurant.cuisineType &&
                           ` • ${restaurant.cuisineType}`}
                       </div>
+                      {(userVisitCount > 0 || friendCount > 0) && (
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
+                          {userVisitCount > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              <span>
+                                You: {userVisitCount} {userVisitCount === 1 ? "visit" : "visits"}
+                              </span>
+                            </div>
+                          )}
+                          {friendCount > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Users className="w-3 h-3" />
+                              <span>
+                                {friendCount} {friendCount === 1 ? "friend" : "friends"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );

@@ -17,14 +17,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { MessageSquare, Plus, ChevronRight } from 'lucide-react';
+import { MessageSquare, Plus, ChevronRight, ArrowLeft } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 import { ERROR_MESSAGES } from '@/lib/errorMessages';
 import { FEEDBACK_STATUS_COLORS as STATUS_COLORS, FEEDBACK_STATUS_LABELS as STATUS_LABELS } from '@/constants/feedback';
 
-export default function FeedbackPage() {
+interface FeedbackPageProps {
+  onNavigateBack?: () => void;
+}
+
+export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
   const [showNewFeedbackDialog, setShowNewFeedbackDialog] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -123,8 +127,17 @@ export default function FeedbackPage() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 py-4">
-          <div className="flex items-start justify-between gap-3 mb-2">
-            <div className="flex-1">
+          <div className="flex items-start gap-3 mb-2">
+            {onNavigateBack && (
+              <button
+                onClick={onNavigateBack}
+                className="p-2 -ml-2 hover:bg-gray-100 rounded-full flex-shrink-0"
+                data-testid="feedback-back-button"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                 <MessageSquare className="w-6 h-6 text-blue-600" />
                 Feedback

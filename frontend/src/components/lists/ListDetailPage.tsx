@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb, RestaurantList, ListItem, Restaurant } from "@/lib/pocketbase";
-import { useNavigate } from "@tanstack/react-router";
+import { Outlet, useMatches } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,10 @@ import {
   Trash2,
   MapPin,
   Plus,
+  Pencil,
+  ArrowUp,
+  ArrowDown,
+  GripVertical,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -25,22 +29,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import AddRestaurantToListModal from "./AddRestaurantToListModal";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
 interface ListDetailPageProps {
   listId: string;
   onNavigateBack?: () => void;
+  onEditList?: () => void;
+  onAddRestaurant?: () => void;
 }
 
-export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPageProps) {
-  const navigate = useNavigate();
+export default function ListDetailPage({ listId, onNavigateBack, onEditList, onAddRestaurant }: ListDetailPageProps) {
+  const matches = useMatches();
   const queryClient = useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<ListItem | null>(null);
   const [listToDelete, setListToDelete] = useState(false);
-  const [addRestaurantModalOpen, setAddRestaurantModalOpen] = useState(false);
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [localItems, setLocalItems] = useState<ListItem[]>([]);
   const user = pb.authStore.record;
+
+  // Check if we're rendering a child route (edit or add-restaurant page)
+  const isOnChildRoute = matches.some(
+    (match) => match.routeId === '/lists/$listId/edit' || match.routeId === '/lists/$listId/add-restaurant'
+  );
 
   // Fetch list details
   const { data: list, isLoading: listLoading } = useQuery<RestaurantList>({
@@ -48,21 +59,34 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
     queryFn: async () => {
       return await repositories.restaurantLists.getOne(listId);
     },
+    enabled: !isOnChildRoute,
   });
 
-  // Fetch list items with expanded restaurant and recommended items data
-  const { data: listItems = [], isLoading: itemsLoading } = useQuery<
+  // Fetch list items with expanded restaurant and recommended items with visit data
+  const { data: listItems = [], isLoading: itemsLoading, refetch: refetchListItems } = useQuery<
     ListItem[]
   >({
     queryKey: ["list_items", listId],
     queryFn: async () => {
       return await repositories.listItems.getByList(listId, {
         sort: "position",
-        expand: "restaurant,recommendedItems",
+        expand: "restaurant,recommendedItems.visit",
       });
     },
-    enabled: !!list,
+    enabled: !!list && !isOnChildRoute,
   });
+
+  // Track previous child route state to detect when returning from child routes
+  const wasOnChildRoute = useRef(isOnChildRoute);
+
+  // Refetch list items when returning from a child route (e.g., after adding items)
+  useEffect(() => {
+    if (wasOnChildRoute.current && !isOnChildRoute) {
+      // We just returned from a child route, refetch the data
+      refetchListItems();
+    }
+    wasOnChildRoute.current = isOnChildRoute;
+  }, [isOnChildRoute, refetchListItems]);
 
   // Delete list item mutation
   const deleteItemMutation = useMutation({
@@ -86,6 +110,59 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
       onNavigateBack?.();
     },
   });
+
+  // Reorder mutation - updates positions for all items
+  const reorderMutation = useMutation({
+    mutationFn: async (items: ListItem[]) => {
+      // Update each item's position sequentially
+      // Start from 1 to avoid issues with 0 being treated as falsy
+      for (let i = 0; i < items.length; i++) {
+        await repositories.listItems.update(items[i].id, { position: i + 1 });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["list_items", listId] });
+      setIsReorderMode(false);
+    },
+  });
+
+  // Enter reorder mode
+  const handleEnterReorderMode = () => {
+    setLocalItems([...listItems]);
+    setIsReorderMode(true);
+  };
+
+  // Cancel reorder mode
+  const handleCancelReorder = () => {
+    setLocalItems([]);
+    setIsReorderMode(false);
+  };
+
+  // Save new order
+  const handleSaveOrder = () => {
+    reorderMutation.mutate(localItems);
+  };
+
+  // Move item up
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    const newItems = [...localItems];
+    [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
+    setLocalItems(newItems);
+  };
+
+  // Move item down
+  const handleMoveDown = (index: number) => {
+    if (index === localItems.length - 1) return;
+    const newItems = [...localItems];
+    [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
+    setLocalItems(newItems);
+  };
+
+  // If we're on a child route (edit or add-restaurant), just render the Outlet
+  if (isOnChildRoute) {
+    return <Outlet />;
+  }
 
   const getVisibilityIcon = (visibility: "private" | "friends" | "public") => {
     switch (visibility) {
@@ -145,7 +222,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4">
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="sm"
@@ -154,45 +231,66 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-gray-900">{list.name}</h1>
+              <h1 className="text-xl font-bold text-gray-900 truncate">{list.name}</h1>
               {getVisibilityIcon(list.visibility)}
             </div>
-            {list.description && (
-              <p className="text-sm text-gray-600 mt-1">{list.description}</p>
-            )}
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500">
               {listItems.length} {listItems.length === 1 ? "restaurant" : "restaurants"}
             </p>
           </div>
+          {/* Actions (only for owner) */}
+          {isOwner && !isReorderMode && (
+            <div className="flex gap-2 flex-shrink-0">
+              {listItems.length > 1 && (
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleEnterReorderMode}
+                  data-testid="reorder-list-button"
+                >
+                  <GripVertical className="w-4 h-4" />
+                </Button>
+              )}
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={onEditList}
+                data-testid="edit-list-button"
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={handleDeleteList}
+                data-testid="delete-list-button"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+          {isReorderMode && (
+            <span className="text-sm text-blue-600 font-medium">Reordering...</span>
+          )}
         </div>
-
-        {/* Actions (only for owner) */}
-        {isOwner && (
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={() => setAddRestaurantModalOpen(true)}
-              className="flex items-center gap-2"
-              data-testid="add-restaurant-button"
-            >
-              <Plus className="w-4 h-4" />
-              Add Restaurant
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDeleteList}
-              className="flex items-center gap-2"
-              data-testid="delete-list-button"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete List
-            </Button>
-          </div>
+        {list.description && (
+          <p className="text-sm text-gray-600 mt-2 ml-12">{list.description}</p>
         )}
       </div>
+
+      {/* Add Visit Ratings Bar */}
+      {isOwner && !isReorderMode && (
+        <button
+          onClick={onAddRestaurant}
+          className="w-full bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors"
+          data-testid="add-restaurant-button"
+        >
+          <Plus className="w-5 h-5 text-blue-600" />
+          <span className="text-blue-700 font-medium">Add Visit Ratings to List</span>
+        </button>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
@@ -209,7 +307,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
             </p>
             {isOwner && (
               <Button
-                onClick={() => setAddRestaurantModalOpen(true)}
+                onClick={onAddRestaurant}
                 className="flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
@@ -219,7 +317,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
           </div>
         ) : (
           <div className="space-y-3">
-            {listItems.map((item, index) => {
+            {(isReorderMode ? localItems : listItems).map((item, index) => {
               const restaurant = item.expand?.restaurant as Restaurant;
               const recommendedItems = item.expand?.recommendedItems || [];
               if (!restaurant) return null;
@@ -227,18 +325,36 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
               return (
                 <Card
                   key={item.id}
-                  className="hover:shadow-md transition-shadow"
+                  className={`transition-shadow ${isReorderMode ? 'border-blue-200 bg-blue-50/30' : 'hover:shadow-md'}`}
                   data-testid={`list-item-${item.id}`}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
+                      {/* Reorder controls */}
+                      {isReorderMode && (
+                        <div className="flex flex-col gap-1">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleMoveUp(index)}
+                            disabled={index === 0}
+                          >
+                            <ArrowUp className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleMoveDown(index)}
+                            disabled={index === localItems.length - 1}
+                          >
+                            <ArrowDown className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                       <div className="flex-1">
-                        <div
-                          className="cursor-pointer"
-                          onClick={() =>
-                            navigate({ to: `/restaurants/${restaurant.id}` })
-                          }
-                        >
+                        <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-gray-500">
                               {index + 1}.
@@ -254,36 +370,48 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
                           </CardDescription>
                         </div>
 
-                        {/* Recommended Items */}
-                        {recommendedItems.length > 0 && (
+                        {/* Recommended Items - hidden in reorder mode */}
+                        {!isReorderMode && recommendedItems.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
                             <p className="text-xs font-medium text-gray-700 mb-2">
                               Recommended Items:
                             </p>
                             <div className="space-y-1.5">
-                              {recommendedItems.map((foodItem: any) => (
-                                <div
-                                  key={foodItem.id}
-                                  className="flex items-center gap-2 text-sm flex-wrap"
-                                >
-                                  <span className="text-gray-900 font-medium">
-                                    {foodItem.name}
-                                  </span>
-                                  <Badge
-                                    className={`${
-                                      RATING_COLORS[foodItem.rating - 1] || "bg-gray-500"
-                                    } text-white text-xs`}
+                              {recommendedItems.map((foodItem: any) => {
+                                const visitDate = foodItem.expand?.visit?.visitDate;
+                                return (
+                                  <div
+                                    key={foodItem.id}
+                                    className="flex items-center gap-2 text-sm flex-wrap"
                                   >
-                                    {RATING_LABELS[foodItem.rating - 1] || "Unknown"}
-                                  </Badge>
-                                </div>
-                              ))}
+                                    <span className="text-gray-900 font-medium">
+                                      {foodItem.name}
+                                    </span>
+                                    <Badge
+                                      className={`${
+                                        RATING_COLORS[foodItem.rating - 1] || "bg-gray-500"
+                                      } text-white text-xs`}
+                                    >
+                                      {RATING_LABELS[foodItem.rating - 1] || "Unknown"}
+                                    </Badge>
+                                    {visitDate && (
+                                      <span className="text-xs text-gray-400">
+                                        {new Date(visitDate).toLocaleDateString(undefined, {
+                                          month: "short",
+                                          day: "numeric",
+                                          year: "numeric",
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
 
-                        {/* Note */}
-                        {item.note && (
+                        {/* Note - hidden in reorder mode */}
+                        {!isReorderMode && item.note && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
                             <p className="text-sm text-gray-700 italic">
                               "{item.note}"
@@ -291,7 +419,7 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
                           </div>
                         )}
                       </div>
-                      {isOwner && (
+                      {isOwner && !isReorderMode && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -314,15 +442,29 @@ export default function ListDetailPage({ listId, onNavigateBack }: ListDetailPag
         )}
       </div>
 
-      {/* Add Restaurant Modal */}
-      <AddRestaurantToListModal
-        open={addRestaurantModalOpen}
-        onOpenChange={setAddRestaurantModalOpen}
-        listId={listId}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["list_items", listId] });
-        }}
-      />
+      {/* Reorder Mode Footer */}
+      {isReorderMode && (
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={handleCancelReorder}
+              disabled={reorderMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              className="flex-1"
+              onClick={handleSaveOrder}
+              disabled={reorderMutation.isPending}
+            >
+              {reorderMutation.isPending ? "Saving..." : "Save Order"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

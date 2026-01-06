@@ -2,6 +2,7 @@ import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { pb, type RestaurantList, type ListItem } from "@/lib/pocketbase";
 import { restaurantListKeys } from '@/constants/queryKeys';
 import { repositories } from '@/repositories';
+import { useFriendships, type Friendship } from './useFriendships';
 
 // Re-export types for convenience
 export type { RestaurantList, ListItem };
@@ -75,5 +76,48 @@ export function useListItems(
       });
     },
     enabled: options?.enabled !== undefined ? options.enabled : !!listId,
+  });
+}
+
+/**
+ * Hook to fetch friends' lists (visibility = 'friends' or 'public')
+ * Uses useFriendships internally to get friend IDs
+ * @returns Query result with friends' restaurant lists array
+ */
+export function useFriendsLists(): UseQueryResult<RestaurantList[], Error> {
+  const userId = pb.authStore.record?.id;
+
+  // Get accepted friendships to extract friend IDs
+  const { data: friendships = [] } = useFriendships({ status: 'accepted' });
+
+  // Extract friend IDs from friendships
+  const friendIds = friendships.map((f: Friendship) =>
+    f.user === userId ? f.friend : f.user
+  );
+
+  return useQuery<RestaurantList[], Error>({
+    queryKey: userId ? restaurantListKeys.friendsLists(userId) : ['restaurant_lists', 'friends'],
+    queryFn: async () => {
+      if (!userId || friendIds.length === 0) return [];
+      return await repositories.restaurantLists.getFriendsLists(friendIds);
+    },
+    enabled: !!userId && friendIds.length > 0,
+  });
+}
+
+/**
+ * Hook to fetch public lists from all users (excluding current user)
+ * @returns Query result with public restaurant lists array
+ */
+export function usePublicLists(): UseQueryResult<RestaurantList[], Error> {
+  const userId = pb.authStore.record?.id;
+
+  return useQuery<RestaurantList[], Error>({
+    queryKey: restaurantListKeys.publicLists(),
+    queryFn: async () => {
+      if (!userId) return [];
+      return await repositories.restaurantLists.getPublicLists(userId);
+    },
+    enabled: !!userId,
   });
 }

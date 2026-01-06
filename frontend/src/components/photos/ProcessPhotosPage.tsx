@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logger';
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
@@ -9,6 +9,8 @@ import { useMenuOCR } from "@/hooks/menu/useMenuOCR";
 import { useOfflineVisitCreation } from "@/hooks/offline/useOfflineVisitCreation";
 import { useOfflineRestaurantCreation } from "@/hooks/offline/useOfflineRestaurantCreation";
 import { repositories } from '@/repositories';
+import { useVisitsByUser, useFriendVisits } from "@/hooks/api/useVisits";
+import { Friendship } from "@/lib/pocketbase";
 
 // Custom hooks
 import { usePhotoUpload } from "@/hooks/photos/usePhotoUpload";
@@ -137,6 +139,49 @@ export default function ProcessPhotosPage() {
       });
     },
   });
+
+  // Get current user
+  const user = pb.authStore.model;
+
+  // Fetch all visits for the current user
+  const { data: userVisits = [] } = useVisitsByUser(user?.id);
+
+  // Fetch friendships to get list of friends
+  const { data: friendships = [] } = useQuery<Friendship[]>({
+    queryKey: ["friendships", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      return await repositories.friendships.getFullList({
+        filter: `(user = "${user.id}" || friend = "${user.id}") && status = "accepted"`,
+      });
+    },
+    enabled: !!user,
+  });
+
+  // Get list of friend IDs from friendships
+  const friendIds = friendships.map((f) =>
+    f.user === user?.id ? f.friend : f.user
+  );
+
+  // Fetch visits from friends
+  const { data: friendVisits = [] } = useFriendVisits(user?.id, friendIds);
+
+  // Calculate visit counts per restaurant
+  const getRestaurantStats = useCallback((restaurantId: string) => {
+    const userVisitCount = userVisits.filter(
+      (v) => v.restaurant === restaurantId
+    ).length;
+
+    // Count unique friends who have visited this restaurant
+    const friendsWhoVisited = new Set(
+      friendVisits
+        .filter((v) => v.restaurant === restaurantId)
+        .map((v) => v.user)
+    );
+    const friendCount = friendsWhoVisited.size;
+
+    return { userVisitCount, friendCount };
+  }, [userVisits, friendVisits]);
 
   const filteredRestaurants = restaurants.filter((r) => {
     const matchesSearch =
@@ -387,11 +432,13 @@ export default function ProcessPhotosPage() {
     if (!restaurantProcessing.editingMenuItemName.trim()) return;
 
     const newName = restaurantProcessing.editingMenuItemName.trim();
+    const newVisibility = restaurantProcessing.editingMenuItemVisibility;
     const restaurantId = restaurantProcessing.selectedRestaurant?.id;
 
     try {
       await repositories.menuItems.update(itemId, {
         name: newName,
+        visibility: newVisibility,
       });
 
       // Optimistically update the cache immediately so UI reflects the change
@@ -400,7 +447,7 @@ export default function ProcessPhotosPage() {
         (oldData) => {
           if (!oldData) return oldData;
           return oldData.map((item) =>
-            item.id === itemId ? { ...item, name: newName } : item
+            item.id === itemId ? { ...item, name: newName, visibility: newVisibility } : item
           );
         }
       );
@@ -413,6 +460,7 @@ export default function ProcessPhotosPage() {
       // Clear editing state
       restaurantProcessing.setEditingMenuItemId(null);
       restaurantProcessing.setEditingMenuItemName("");
+      restaurantProcessing.setEditingMenuItemVisibility("private");
     } catch (error) {
       logger.error("Failed to edit menu item:", error);
       handleError(error as Error, {
@@ -492,95 +540,143 @@ export default function ProcessPhotosPage() {
       .map((p) => p.menuItem.name.toLowerCase());
 
     return (
-      <RestaurantProcessingScreen
-        currentPhoto={currentPhoto}
-        currentPhotoIndex={photoUpload.currentPhotoIndex}
-        totalPhotos={photoUpload.photos.length}
-        // Restaurant
-        selectedRestaurant={restaurantProcessing.selectedRestaurant}
-        restaurants={filteredRestaurants}
-        restaurantSearchQuery={restaurantSearchQuery}
-        locationSearchQuery={locationSearchQuery}
-        onRestaurantSearchChange={setRestaurantSearchQuery}
-        onLocationSearchChange={setLocationSearchQuery}
-        onRestaurantSelected={restaurantProcessing.setSelectedRestaurant}
-        previousRestaurant={
-          restaurantProcessing.processedPhotos.length > 0
-            ? restaurantProcessing.processedPhotos[
+      <>
+        <RestaurantProcessingScreen
+          currentPhoto={currentPhoto}
+          currentPhotoIndex={photoUpload.currentPhotoIndex}
+          totalPhotos={photoUpload.photos.length}
+          // Restaurant
+          selectedRestaurant={restaurantProcessing.selectedRestaurant}
+          restaurants={filteredRestaurants}
+          restaurantSearchQuery={restaurantSearchQuery}
+          locationSearchQuery={locationSearchQuery}
+          onRestaurantSearchChange={setRestaurantSearchQuery}
+          onLocationSearchChange={setLocationSearchQuery}
+          onRestaurantSelected={restaurantProcessing.setSelectedRestaurant}
+          previousRestaurant={
+            restaurantProcessing.processedPhotos.length > 0
+              ? restaurantProcessing.processedPhotos[
+                  restaurantProcessing.processedPhotos.length - 1
+                ].restaurant
+              : null
+          }
+          onUsePreviousRestaurant={() => {
+            const prevRestaurant =
+              restaurantProcessing.processedPhotos[
                 restaurantProcessing.processedPhotos.length - 1
-              ].restaurant
-            : null
-        }
-        onUsePreviousRestaurant={() => {
-          const prevRestaurant =
-            restaurantProcessing.processedPhotos[
-              restaurantProcessing.processedPhotos.length - 1
-            ].restaurant;
-          restaurantProcessing.setSelectedRestaurant(prevRestaurant);
-        }}
-        showSameAsAbove={
-          photoUpload.currentPhotoIndex > 0 &&
-          restaurantProcessing.processedPhotos.length > 0
-        }
-        // Menu item
-        selectedMenuItem={restaurantProcessing.selectedMenuItem}
-        menuItems={menuItems}
-        menuItemName={restaurantProcessing.menuItemName}
-        menuItemSearchQuery={restaurantProcessing.menuItemSearchQuery}
-        menuItemSelectionMode={restaurantProcessing.menuItemSelectionMode}
-        usedMenuItemNames={usedMenuItemNames}
-        onMenuItemSelected={restaurantProcessing.setSelectedMenuItem}
-        onMenuItemNameChange={restaurantProcessing.setMenuItemName}
-        onMenuItemSearchChange={restaurantProcessing.setMenuItemSearchQuery}
-        onMenuItemModeChange={restaurantProcessing.setMenuItemSelectionMode}
-        // Edit menu item
-        editingMenuItemId={restaurantProcessing.editingMenuItemId}
-        editingMenuItemName={restaurantProcessing.editingMenuItemName}
-        onEditingMenuItemIdChange={restaurantProcessing.setEditingMenuItemId}
-        onEditingMenuItemNameChange={
-          restaurantProcessing.setEditingMenuItemName
-        }
-        onEditMenuItem={handleEditMenuItem}
-        // Menu item photo
-        menuItemPhotoPreview={restaurantProcessing.menuItemPhotoPreview}
-        onMenuItemPhotoCapture={
-          restaurantProcessing.handleMenuItemPhotoCapture
-        }
-        onMenuItemPhotoRemove={restaurantProcessing.handleMenuItemPhotoRemove}
-        // OCR
-        ocrStatus={ocrStatus}
-        ocrProgress={ocrProgress}
-        scannedMenuItems={scannedMenuItems}
-        ocrError={ocrError}
-        // Rating & notes
-        rating={restaurantProcessing.rating}
-        notes={restaurantProcessing.notes}
-        photoDate={restaurantProcessing.photoDate}
-        onRatingChange={restaurantProcessing.setRating}
-        onNotesChange={restaurantProcessing.setNotes}
-        onPhotoDateChange={restaurantProcessing.setPhotoDate}
-        // Actions
-        onCreateMenuItem={handleCreateMenuItem}
-        onSubmitCurrent={handleSubmitCurrent}
-        onPrevious={handlePreviousFromProcessing}
-        onFullscreenPhoto={(url, name) =>
-          setFullscreenPhoto({ url, dishName: name })
-        }
-        // UI state
-        isProcessing={submission.isSubmitting}
-        isKeyboardVisible={isKeyboardVisible}
-        isOnline={isOnline}
-        isRestoringData={draftManagement.isRestoringData}
-        canSubmit={restaurantProcessing.canSubmitCurrent}
-        isLegendExpanded={restaurantProcessing.isLegendExpanded}
-        onLegendExpandedChange={restaurantProcessing.setIsLegendExpanded}
-        // Mutations
-        restaurantCreationMutation={restaurantCreationMutation}
-        visitCreationMutation={visitCreationMutation}
-        // Error handlers
-        onShowValidation={showValidation}
-        onHandleError={handleError}
-      />
+              ].restaurant;
+            restaurantProcessing.setSelectedRestaurant(prevRestaurant);
+          }}
+          showSameAsAbove={
+            photoUpload.currentPhotoIndex > 0 &&
+            restaurantProcessing.processedPhotos.length > 0
+          }
+          // Menu item
+          selectedMenuItem={restaurantProcessing.selectedMenuItem}
+          menuItems={menuItems}
+          menuItemName={restaurantProcessing.menuItemName}
+          menuItemSearchQuery={restaurantProcessing.menuItemSearchQuery}
+          menuItemSelectionMode={restaurantProcessing.menuItemSelectionMode}
+          usedMenuItemNames={usedMenuItemNames}
+          onMenuItemSelected={restaurantProcessing.setSelectedMenuItem}
+          onMenuItemNameChange={restaurantProcessing.setMenuItemName}
+          onMenuItemSearchChange={restaurantProcessing.setMenuItemSearchQuery}
+          onMenuItemModeChange={restaurantProcessing.setMenuItemSelectionMode}
+          // Edit menu item
+          editingMenuItemId={restaurantProcessing.editingMenuItemId}
+          editingMenuItemName={restaurantProcessing.editingMenuItemName}
+          editingMenuItemVisibility={restaurantProcessing.editingMenuItemVisibility}
+          onEditingMenuItemIdChange={restaurantProcessing.setEditingMenuItemId}
+          onEditingMenuItemNameChange={
+            restaurantProcessing.setEditingMenuItemName
+          }
+          onEditingMenuItemVisibilityChange={
+            restaurantProcessing.setEditingMenuItemVisibility
+          }
+          onEditMenuItem={handleEditMenuItem}
+          // Menu item photo
+          menuItemPhotoPreview={restaurantProcessing.menuItemPhotoPreview}
+          onMenuItemPhotoCapture={
+            restaurantProcessing.handleMenuItemPhotoCapture
+          }
+          onMenuItemPhotoRemove={restaurantProcessing.handleMenuItemPhotoRemove}
+          // OCR
+          ocrStatus={ocrStatus}
+          ocrProgress={ocrProgress}
+          scannedMenuItems={scannedMenuItems}
+          ocrError={ocrError}
+          // Rating & notes
+          rating={restaurantProcessing.rating}
+          notes={restaurantProcessing.notes}
+          photoDate={restaurantProcessing.photoDate}
+          onRatingChange={restaurantProcessing.setRating}
+          onNotesChange={restaurantProcessing.setNotes}
+          onPhotoDateChange={restaurantProcessing.setPhotoDate}
+          // Actions
+          onCreateMenuItem={handleCreateMenuItem}
+          onSubmitCurrent={handleSubmitCurrent}
+          onPrevious={handlePreviousFromProcessing}
+          onFullscreenPhoto={(url, name) =>
+            setFullscreenPhoto({ url, dishName: name })
+          }
+          // UI state
+          isProcessing={submission.isSubmitting}
+          isKeyboardVisible={isKeyboardVisible}
+          isOnline={isOnline}
+          isRestoringData={draftManagement.isRestoringData}
+          canSubmit={restaurantProcessing.canSubmitCurrent}
+          isLegendExpanded={restaurantProcessing.isLegendExpanded}
+          onLegendExpandedChange={restaurantProcessing.setIsLegendExpanded}
+          // Mutations
+          restaurantCreationMutation={restaurantCreationMutation}
+          visitCreationMutation={visitCreationMutation}
+          // Error handlers
+          onShowValidation={showValidation}
+          onHandleError={handleError}
+          // Restaurant stats
+          getRestaurantStats={getRestaurantStats}
+          // Camera mode
+          onOpenCamera={() => setShowCameraMode(true)}
+        />
+
+        {/* Camera Mode Modal */}
+        {showCameraMode && (
+          <div className="fixed inset-0 z-50 bg-white">
+            <RestaurantNameFinder
+              onSelectName={(name) => {
+                setRestaurantSearchQuery(name);
+                setShowCameraMode(false);
+              }}
+              onClose={() => setShowCameraMode(false)}
+            />
+          </div>
+        )}
+
+        {/* Fullscreen Photo Viewer */}
+        {fullscreenPhoto && (
+          <div
+            className="fixed inset-0 bg-black z-50 flex items-center justify-center"
+            onClick={() => setFullscreenPhoto(null)}
+          >
+            <button
+              onClick={() => setFullscreenPhoto(null)}
+              className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors z-10"
+              aria-label="Close fullscreen view"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div className="absolute top-4 left-4 text-white bg-black/50 px-3 py-2 rounded-lg">
+              <p className="font-medium">{fullscreenPhoto.dishName}</p>
+            </div>
+            <img
+              src={fullscreenPhoto.url}
+              alt={fullscreenPhoto.dishName}
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
+      </>
     );
   }
 

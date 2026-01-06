@@ -39,6 +39,8 @@ const ROUTES_WITH_TABS = [
   "/settings",
   "/beta",
   "/admin",
+  "/misc",
+  "/lists",
 ];
 
 // Inner component that uses analytics (must be inside AnalyticsProvider)

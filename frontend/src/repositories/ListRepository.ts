@@ -71,6 +71,35 @@ export class RestaurantListRepository extends BaseRepository<RestaurantList> {
       ...options,
     });
   }
+
+  /**
+   * Get public lists from all users (excluding current user's lists)
+   */
+  async getPublicLists(currentUserId: string, options?: RecordListOptions): Promise<RestaurantList[]> {
+    return await this.getFullList({
+      filter: `visibility = "public" && user != "${currentUserId}"`,
+      sort: '-created',
+      expand: 'user',
+      ...options,
+    });
+  }
+
+  /**
+   * Get lists from friends (visibility = 'friends' or 'public')
+   */
+  async getFriendsLists(friendIds: string[], options?: RecordListOptions): Promise<RestaurantList[]> {
+    if (friendIds.length === 0) return [];
+
+    const userFilter = friendIds.map(id => `user = "${id}"`).join(' || ');
+    const filter = `(${userFilter}) && (visibility = "friends" || visibility = "public")`;
+
+    return await this.getFullList({
+      filter,
+      sort: '-created',
+      expand: 'user',
+      ...options,
+    });
+  }
 }
 
 /**

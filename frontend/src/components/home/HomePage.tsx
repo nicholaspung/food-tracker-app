@@ -287,6 +287,12 @@ export default function HomePage({
     [foodItems]
   );
 
+  // Count friend quick track items
+  const friendQuickTrackCount = useMemo(
+    () => quickTrackItems.filter((item) => item.user !== currentUserId).length,
+    [quickTrackItems, currentUserId]
+  );
+
   // Combine data (using Maps for O(1) lookups instead of O(n²) find/filter)
   const visitsWithDetails: VisitWithDetails[] = useMemo(
     () =>
@@ -412,10 +418,19 @@ export default function HomePage({
                   <p className="font-medium text-blue-900 mb-1">
                     See friends' visits
                   </p>
-                  <p className="text-blue-700">
+                  <p className="text-blue-700 mb-3">
                     Connect with friends to see their restaurant visits and
                     recommendations
                   </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFilterType("friends")}
+                    className="bg-white border-blue-300 text-blue-700 hover:bg-blue-100"
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    View Friends Tab
+                  </Button>
                 </div>
               </div>
             </div>
@@ -470,6 +485,28 @@ export default function HomePage({
               {/* No results due to filter selection */}
               {!deferredSearchQuery.trim() && !hasMoreVisits && (() => {
                 const isShowingFriends = filterType === "friends" || filterType === "friend_visits" || filterType === "friend_quick_track";
+
+                // When viewing friends tab and no friend items exist, show add friends prompt
+                if (isShowingFriends && friendVisitsCount === 0 && friendQuickTrackCount === 0) {
+                  return (
+                    <Card>
+                      <CardContent className="pt-6 text-center">
+                        <Users className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                        <p className="text-gray-600 mb-2">Add friends to view their ratings</p>
+                        <p className="text-sm text-gray-500 mb-4">
+                          Connect with friends to discover their food recommendations
+                        </p>
+                        <Button
+                          onClick={() => navigate({ to: "/friends" })}
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Friends
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+
                 const emptyMessage =
                   filterType === "friends" ? "No items from friends" :
                   filterType === "friend_visits" ? "No visits from friends" :
