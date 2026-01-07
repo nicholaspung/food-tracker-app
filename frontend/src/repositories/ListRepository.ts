@@ -100,6 +100,44 @@ export class RestaurantListRepository extends BaseRepository<RestaurantList> {
       ...options,
     });
   }
+
+  /**
+   * Get the user's default "Saved" list (isDefault = true)
+   */
+  async getDefaultList(userId: string): Promise<RestaurantList | null> {
+    const lists = await this.getFullList({
+      filter: `user = "${userId}" && isDefault = true`,
+    });
+    return lists.length > 0 ? lists[0] : null;
+  }
+
+  /**
+   * Create the default "Saved" list for a user.
+   * This is idempotent - if a default list already exists, it returns that instead.
+   */
+  async createDefaultList(userId: string): Promise<RestaurantList> {
+    // Always check first to prevent duplicates
+    const existingList = await this.getDefaultList(userId);
+    if (existingList) {
+      return existingList;
+    }
+
+    return await this.create({
+      name: 'Saved',
+      description: 'Items saved from other lists',
+      visibility: 'private',
+      user: userId,
+      isDefault: true,
+    });
+  }
+
+  /**
+   * Get or create the default "Saved" list for a user
+   * @deprecated Use createDefaultList instead - it's now idempotent
+   */
+  async getOrCreateDefaultList(userId: string): Promise<RestaurantList> {
+    return await this.createDefaultList(userId);
+  }
 }
 
 /**

@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X, DollarSign, List } from 'lucide-react';
+import { X, DollarSign } from 'lucide-react';
 import BillsListView from '@/components/bills/BillsListView';
-import ListsPage from '@/components/lists/ListsPage';
-import ListDetailPage from '@/components/lists/ListDetailPage';
 
 interface BetaPageProps {
   onNavigateBack?: () => void;
@@ -12,7 +10,6 @@ interface BetaPageProps {
 
 export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPageProps) {
   const [activeBetaFeature, setActiveBetaFeature] = useState<string | null>(null);
-  const [selectedListId, setSelectedListId] = useState<string | null>(null);
 
   const betaFeatures: Array<{
     id: string;
@@ -23,14 +20,6 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
     icon?: React.ComponentType<any>;
   }> = [
     {
-      id: 'restaurant-lists',
-      title: 'Restaurant Lists',
-      description: 'Create and organize lists of your favorite restaurants',
-      status: 'Phase 1 Testing',
-      component: ListsPage,
-      icon: List,
-    },
-    {
       id: 'bill-splitter',
       title: 'Bill Splitter',
       description: 'Split bills with friends and track payments easily',
@@ -39,18 +28,6 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
       icon: DollarSign,
     },
   ];
-
-  // Handle list detail view
-  if (selectedListId && activeBetaFeature === 'restaurant-lists') {
-    return (
-      <div className="flex flex-col h-full bg-gray-50">
-        <ListDetailPage
-          listId={selectedListId}
-          onNavigateBack={() => setSelectedListId(null)}
-        />
-      </div>
-    );
-  }
 
   if (activeBetaFeature) {
     const feature = betaFeatures.find(f => f.id === activeBetaFeature);
@@ -67,10 +44,7 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setActiveBetaFeature(null);
-                setSelectedListId(null);
-              }}
+              onClick={() => setActiveBetaFeature(null)}
               className="ml-2"
             >
               <X className="w-5 h-5" />
@@ -79,11 +53,7 @@ export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPagePr
 
           {/* Feature Content */}
           <div className="flex-1 overflow-y-auto">
-            {feature.id === 'restaurant-lists' ? (
-              <FeatureComponent onSelectList={(listId: string) => setSelectedListId(listId)} />
-            ) : (
-              <FeatureComponent />
-            )}
+            <FeatureComponent />
           </div>
         </div>
       );

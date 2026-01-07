@@ -242,6 +242,7 @@ export interface RestaurantList {
   user: string;
   coverImage?: string;
   isCollaborative?: boolean;
+  isDefault?: boolean;
   created: string;
   updated: string;
   expand?: {

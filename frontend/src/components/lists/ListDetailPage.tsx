@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pb, RestaurantList, ListItem, Restaurant } from "@/lib/pocketbase";
-import { Outlet, useMatches } from "@tanstack/react-router";
+import { Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { repositories } from '@/repositories';
+import { useRestaurantLists } from "@/hooks/api/useRestaurantLists";
+import SaveToListModal from "./SaveToListModal";
 import {
   ArrowLeft,
   Lock,
@@ -18,6 +20,7 @@ import {
   ArrowUp,
   ArrowDown,
   GripVertical,
+  Bookmark,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -41,12 +44,18 @@ interface ListDetailPageProps {
 export default function ListDetailPage({ listId, onNavigateBack, onEditList, onAddRestaurant }: ListDetailPageProps) {
   const matches = useMatches();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<ListItem | null>(null);
   const [listToDelete, setListToDelete] = useState(false);
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [localItems, setLocalItems] = useState<ListItem[]>([]);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [itemToSave, setItemToSave] = useState<ListItem | null>(null);
   const user = pb.authStore.record;
+
+  // Fetch user's own lists to check which restaurants are already saved
+  const { data: userLists = [] } = useRestaurantLists();
 
   // Check if we're rendering a child route (edit or add-restaurant page)
   const isOnChildRoute = matches.some(
@@ -78,6 +87,24 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
 
   // Track previous child route state to detect when returning from child routes
   const wasOnChildRoute = useRef(isOnChildRoute);
+
+  // Fetch user's saved list items to check which restaurants are already in user's lists
+  const { data: userListItems = [] } = useQuery<ListItem[]>({
+    queryKey: ["user_list_items", user?.id],
+    queryFn: async () => {
+      if (!user || userLists.length === 0) return [];
+      const listIds = userLists.map(l => l.id);
+      return await repositories.listItems.getFullList({
+        filter: listIds.map(id => `list = "${id}"`).join(' || '),
+      });
+    },
+    enabled: !!user && userLists.length > 0 && !isOnChildRoute,
+  });
+
+  // Create a set of restaurant IDs that are already in user's lists
+  const savedRestaurantIds = useMemo(() => {
+    return new Set(userListItems.map(item => item.restaurant));
+  }, [userListItems]);
 
   // Refetch list items when returning from a child route (e.g., after adding items)
   useEffect(() => {
@@ -261,14 +288,17 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
               >
                 <Pencil className="w-4 h-4" />
               </Button>
-              <Button
-                variant="destructive"
-                size="icon"
-                onClick={handleDeleteList}
-                data-testid="delete-list-button"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+              {/* Don't allow deleting the default "Saved" list */}
+              {!list.isDefault && (
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={handleDeleteList}
+                  data-testid="delete-list-button"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
             </div>
           )}
           {isReorderMode && (
@@ -419,6 +449,29 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
                           </div>
                         )}
                       </div>
+                      {/* Save to list button (only for non-owners) */}
+                      {!isOwner && !isReorderMode && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setItemToSave(item);
+                            setSaveModalOpen(true);
+                          }}
+                          className="p-2"
+                          data-testid={`save-item-${item.id}`}
+                        >
+                          <Bookmark
+                            className={`w-4 h-4 ${
+                              savedRestaurantIds.has(restaurant.id)
+                                ? 'fill-blue-600 text-blue-600'
+                                : 'text-gray-600'
+                            }`}
+                          />
+                        </Button>
+                      )}
+                      {/* Delete button (only for owners) */}
                       {isOwner && !isReorderMode && (
                         <Button
                           variant="ghost"
@@ -498,6 +551,22 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Save to List Modal */}
+      {itemToSave && (
+        <SaveToListModal
+          open={saveModalOpen}
+          onOpenChange={(open) => {
+            setSaveModalOpen(open);
+            if (!open) setItemToSave(null);
+          }}
+          restaurantId={itemToSave.expand?.restaurant?.id || itemToSave.restaurant}
+          restaurantName={itemToSave.expand?.restaurant?.name || 'Restaurant'}
+          recommendedItemIds={itemToSave.recommendedItems}
+          sourceNote={itemToSave.note}
+          onCreateNewList={() => navigate({ to: '/lists/new' })}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, useMatches } from "@tanstack/react-router";
 import { pb, type RestaurantList } from "@/lib/pocketbase";
 import {
@@ -11,13 +11,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Lock, Users, Globe, ArrowLeft, Search, X } from "lucide-react";
+import { Plus, Lock, Users, Globe, ArrowLeft, Search, X, Star } from "lucide-react";
 import { repositories } from "@/repositories";
 import {
   useRestaurantLists,
   useFriendsLists,
   usePublicLists,
+  useDefaultList,
 } from "@/hooks/api/useRestaurantLists";
+import { restaurantListKeys } from "@/constants/queryKeys";
 import { LoadingState } from "@/components/ui/LoadingState";
 
 type ListTab = "my" | "friends" | "public";
@@ -34,10 +36,13 @@ export default function ListsPage({
   onCreateList,
 }: ListsPageProps) {
   const matches = useMatches();
+  const queryClient = useQueryClient();
+  const user = pb.authStore.record;
 
   // Tab and search state
   const [activeTab, setActiveTab] = useState<ListTab>("my");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
 
   // Check if we're rendering a child route (list detail, create, or edit page)
   const isOnChildRoute = matches.some(
@@ -48,9 +53,57 @@ export default function ListsPage({
       match.routeId === "/lists/$listId/add-restaurant",
   );
 
+  // Check if user has a default "Saved" list
+  const { data: defaultList, isLoading: defaultListLoading } = useDefaultList();
+
   // Fetch data for all tabs
   const { data: myLists = [], isLoading: myListsLoading } =
     useRestaurantLists();
+
+  // Auto-create default "Saved" list if user doesn't have one
+  // Use a ref to prevent multiple effect runs from triggering creation
+  const hasTriedCreatingDefault = useRef(false);
+
+  useEffect(() => {
+    const createDefaultListIfNeeded = async () => {
+      // Skip if already tried, loading, exists, or creating
+      if (
+        !user ||
+        isOnChildRoute ||
+        defaultListLoading ||
+        defaultList ||
+        isCreatingDefaultList ||
+        hasTriedCreatingDefault.current
+      ) {
+        return;
+      }
+
+      // Mark as tried to prevent duplicate attempts from this component
+      hasTriedCreatingDefault.current = true;
+      setIsCreatingDefaultList(true);
+
+      try {
+        // createDefaultList is idempotent - it checks for existing list first
+        await repositories.restaurantLists.createDefaultList(user.id);
+        // Invalidate queries to refresh the lists
+        queryClient.invalidateQueries({
+          queryKey: restaurantListKeys.all(user.id, undefined),
+        });
+        queryClient.invalidateQueries({
+          queryKey: restaurantListKeys.defaultList(user.id),
+        });
+      } catch (error) {
+        console.error("Failed to create default Saved list:", error);
+        // Reset flag so it can try again on next visit if it failed
+        hasTriedCreatingDefault.current = false;
+      } finally {
+        setIsCreatingDefaultList(false);
+      }
+    };
+
+    createDefaultListIfNeeded();
+  }, [user, isOnChildRoute, defaultListLoading, defaultList, isCreatingDefaultList, queryClient]);
+
   const { data: friendsLists = [], isLoading: friendsListsLoading } =
     useFriendsLists();
   const { data: publicLists = [], isLoading: publicListsLoading } =
@@ -60,7 +113,12 @@ export default function ListsPage({
   const visibleLists = useMemo(() => {
     switch (activeTab) {
       case "my":
-        return myLists;
+        // Sort to put default "Saved" list first
+        return [...myLists].sort((a, b) => {
+          if (a.isDefault && !b.isDefault) return -1;
+          if (!a.isDefault && b.isDefault) return 1;
+          return new Date(b.updated).getTime() - new Date(a.updated).getTime();
+        });
       case "friends":
         return friendsLists;
       case "public":
@@ -140,7 +198,9 @@ export default function ListsPage({
   const renderListCard = (list: RestaurantList, showOwner: boolean = false) => (
     <Card
       key={list.id}
-      className="cursor-pointer hover:shadow-md transition-shadow"
+      className={`cursor-pointer hover:shadow-md transition-shadow ${
+        list.isDefault ? 'border-yellow-300 bg-yellow-50/30' : ''
+      }`}
       onClick={() => onSelectList?.(list.id)}
       data-testid={`list-card-${list.id}`}
     >
@@ -156,6 +216,9 @@ export default function ListsPage({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
+            {list.isDefault && (
+              <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+            )}
             {list.name}
             {getVisibilityIcon(list.visibility)}
           </CardTitle>
@@ -277,6 +340,7 @@ export default function ListsPage({
               size="sm"
               onClick={onNavigateBack}
               className="p-2"
+              data-testid="lists-back-button"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>

@@ -121,3 +121,54 @@ export function usePublicLists(): UseQueryResult<RestaurantList[], Error> {
     enabled: !!userId,
   });
 }
+
+/**
+ * Hook to check if a restaurant is in any of the current user's lists
+ * Used to show filled bookmark icon when viewing others' lists
+ * @param restaurantId - The ID of the restaurant to check
+ * @returns Query result with list items containing this restaurant
+ */
+export function useUserListItemsForRestaurant(
+  restaurantId: string | undefined
+): UseQueryResult<ListItem[], Error> {
+  const userId = pb.authStore.record?.id;
+
+  return useQuery<ListItem[], Error>({
+    queryKey: userId && restaurantId
+      ? restaurantListKeys.userItemsForRestaurant(userId, restaurantId)
+      : ['list_items', 'user', 'restaurant'],
+    queryFn: async () => {
+      if (!userId || !restaurantId) return [];
+
+      // Get user's lists
+      const userLists = await repositories.restaurantLists.getByUser(userId);
+      if (userLists.length === 0) return [];
+
+      const listIds = userLists.map(l => l.id);
+
+      // Get list items for this restaurant in user's lists
+      return await repositories.listItems.getFullList({
+        filter: `restaurant = "${restaurantId}" && (${listIds.map(id => `list = "${id}"`).join(' || ')})`,
+        expand: 'list',
+      });
+    },
+    enabled: !!userId && !!restaurantId,
+  });
+}
+
+/**
+ * Hook to fetch user's default "Saved" list
+ * @returns Query result with default list or null
+ */
+export function useDefaultList(): UseQueryResult<RestaurantList | null, Error> {
+  const userId = pb.authStore.record?.id;
+
+  return useQuery<RestaurantList | null, Error>({
+    queryKey: userId ? restaurantListKeys.defaultList(userId) : ['restaurant_lists', 'default'],
+    queryFn: async () => {
+      if (!userId) return null;
+      return await repositories.restaurantLists.getDefaultList(userId);
+    },
+    enabled: !!userId,
+  });
+}
