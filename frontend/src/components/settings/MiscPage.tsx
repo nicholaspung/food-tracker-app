@@ -108,36 +108,34 @@ export default function MiscPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
-        {/* Restaurant Lists Section - Admin Only (looks like a normal feature) */}
-        {isAdmin && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <List className="w-5 h-5 text-blue-600" />
-                <CardTitle>Restaurant Lists</CardTitle>
-              </div>
-              <CardDescription>Create and organize lists of your favorite restaurants</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <button
-                onClick={() => navigate({ to: '/lists' })}
-                className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                data-testid="feature-restaurant-lists"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <List className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-medium text-gray-900">View My Lists</p>
-                    <p className="text-sm text-gray-500">Browse and manage your saved lists</p>
-                  </div>
+        {/* Restaurant Lists Section */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <List className="w-5 h-5 text-blue-600" />
+              <CardTitle>Restaurant Lists</CardTitle>
+            </div>
+            <CardDescription>Create and organize lists of your favorite restaurants</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <button
+              onClick={() => navigate({ to: '/lists' })}
+              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              data-testid="feature-restaurant-lists"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <List className="w-5 h-5 text-blue-600" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
-              </button>
-            </CardContent>
-          </Card>
-        )}
+                <div className="text-left">
+                  <p className="font-medium text-gray-900">View My Lists</p>
+                  <p className="text-sm text-gray-500">Browse and manage your saved lists</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+            </button>
+          </CardContent>
+        </Card>
 
         {/* Beta Features Section - Admin Only */}
         {isAdmin && betaFeatures.length > 0 && (

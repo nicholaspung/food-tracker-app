@@ -48,6 +48,8 @@ export const ERROR_MESSAGES = {
     CREATE_FAILED: "Failed to create list",
     ADD_TO_LIST_FAILED: "Failed to add to lists",
     SELECT_AT_LEAST_ONE: "Please select at least one list",
+    SAVE_TO_LIST_FAILED: "Failed to save to list. Please try again.",
+    DEFAULT_LIST_CREATE_FAILED: "Failed to create Saved list. Please try again.",
   },
 
   // OCR/Camera errors

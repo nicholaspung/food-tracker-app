@@ -1,4 +1,4 @@
-describe('Restaurant Lists Feature (Beta)', () => {
+describe('Restaurant Lists Feature', () => {
   const testEmail = 'listtest@example.com';
   const testPassword = 'password123';
 
@@ -11,13 +11,13 @@ describe('Restaurant Lists Feature (Beta)', () => {
     cy.login(testEmail, testPassword);
     cy.url().should('include', '/home');
 
-    // Navigate to beta page (admin only)
-    cy.get('[data-testid="profile-tab"]').click();
-    cy.get('[data-testid="beta-button"]').click();
-    cy.url().should('include', '/beta');
+    // Navigate to More (misc) page and open lists
+    cy.get('[data-testid="tab-misc"]').click();
+    cy.url().should('include', '/misc');
 
     // Open Restaurant Lists feature
-    cy.get('[data-testid="try-restaurant-lists-button"]').click();
+    cy.get('[data-testid="feature-restaurant-lists"]').click();
+    cy.url().should('include', '/lists');
   });
 
   afterEach(() => {
@@ -166,10 +166,9 @@ describe('Restaurant Lists Feature (Beta)', () => {
     cy.get('[data-testid="list-name-input"]').should('not.exist');
   });
 
-  it('should return to beta page when closing lists feature', () => {
-    // Close the lists feature using the X button
-    cy.get('button').contains('X').should('exist');
-    // Note: The actual close button implementation may vary
-    // This test verifies the feature can be exited
+  it('should return to misc page when using back navigation', () => {
+    // Click the back button to return to misc page
+    cy.get('[data-testid="lists-back-button"]').click();
+    cy.url().should('include', '/misc');
   });
 });

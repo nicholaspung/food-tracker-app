@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.6.2",
+    "date": "2026-01-06",
+    "title": "Save from Friends' Lists",
+    "summary": "Save restaurants from friends' and public lists to your own lists with one tap! A new default 'Saved' list is automatically created for quick saves.",
+    "features": [
+      "Save from others' lists: Tap the bookmark icon on any restaurant in friends' or public lists to save it to your own lists",
+      "Quick Save: One-tap save to your default 'Saved' list for fast bookmarking",
+      "Auto-created Saved list: A default 'Saved' list is automatically created for you when you first visit Lists",
+      "Multi-list save: Save a restaurant to multiple lists at once from the save modal",
+      "Recommended items preserved: When saving from a friend's list, their recommended items and notes are copied too"
+    ],
+    "improvements": [
+      "Default list styling: Your 'Saved' list appears first with a star icon and subtle yellow highlight",
+      "Bookmark status: Filled bookmark icon shows when you've already saved a restaurant from someone's list",
+      "Protected default list: The auto-created 'Saved' list cannot be accidentally deleted",
+      "Save modal shows existing saves: See which of your lists already contain a restaurant"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.6.1",
     "date": "2026-01-06",
     "title": "Restaurant Lists & Navigation Improvements",

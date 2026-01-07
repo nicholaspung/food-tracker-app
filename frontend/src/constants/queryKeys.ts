@@ -76,6 +76,9 @@ export const restaurantListKeys = {
   items: (listId: string) => ["list_items", listId] as const,
   friendsLists: (userId: string) => ["restaurant_lists", "friends", userId] as const,
   publicLists: () => ["restaurant_lists", "public"] as const,
+  userItemsForRestaurant: (userId: string | undefined, restaurantId: string) =>
+    ["list_items", "user", userId, "restaurant", restaurantId] as const,
+  defaultList: (userId: string) => ["restaurant_lists", "default", userId] as const,
 };
 
 // Bill query keys
