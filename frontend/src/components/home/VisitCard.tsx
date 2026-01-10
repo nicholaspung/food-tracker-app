@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
+import { type VisitPhoto as RepoVisitPhoto } from "@/repositories";
 import {
   Card,
   CardContent,
@@ -23,16 +24,7 @@ import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 import { useLongPress } from "@/hooks/ui/useLongPress";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 
-interface VisitPhoto {
-  id: string;
-  visit: string;
-  food_item: string;
-  user: string;
-  photo: string;
-  created: string;
-  updated: string;
-  isPending?: boolean;
-}
+type VisitPhoto = RepoVisitPhoto & { isPending?: boolean };
 
 interface VisitWithDetails {
   id: string;
@@ -50,7 +42,7 @@ interface VisitCardProps {
   visit: VisitWithDetails;
   isFriend: boolean;
   friendName?: string | null;
-  visitPhotos: VisitPhoto[];
+  visitPhotosByFoodItem: Map<string, RepoVisitPhoto>;
   onEdit?: (visitId: string) => void;
   onDelete: (visit: VisitWithDetails) => void;
   onSharePhoto: (photo: VisitPhoto, foodItem: FoodItem, restaurant: Restaurant, visitDate: string) => void;
@@ -152,7 +144,7 @@ const VisitCard = memo(function VisitCard({
   visit,
   isFriend,
   friendName,
-  visitPhotos,
+  visitPhotosByFoodItem,
   onEdit,
   onDelete,
   onSharePhoto,
@@ -178,17 +170,6 @@ const VisitCard = memo(function VisitCard({
     setShowContextMenu(false);
     setSelectedItem(null);
   };
-  // Create a Map for O(1) photo lookups by food_item ID
-  const visitPhotosByFoodItem = useMemo(() => {
-    const map = new Map<string, VisitPhoto>();
-    visitPhotos.forEach((photo) => {
-      if (photo.food_item) {
-        map.set(photo.food_item, photo);
-      }
-    });
-    return map;
-  }, [visitPhotos]);
-
   // Filter food items based on rating filter
   const filteredFoodItems = useMemo(() => {
     if (!visit.foodItems) return [];
@@ -250,14 +231,10 @@ const VisitCard = memo(function VisitCard({
             <div className="flex items-center gap-1">
               {/* Share Visit button - only show if visit has 2 or more photos */}
               {(() => {
-                const photosForVisit =
-                  visitPhotos.filter((photo) =>
-                    visit.foodItems?.some(
-                      (item) =>
-                        item.id === photo.food_item
-                    )
-                  );
-                return photosForVisit.length >= 2;
+                const photosCount = visit.foodItems?.reduce((count, item) => {
+                  return visitPhotosByFoodItem.has(item.id) ? count + 1 : count;
+                }, 0) || 0;
+                return photosCount >= 2;
               })() && (
                 <Button
                   variant="ghost"
@@ -296,7 +273,7 @@ const VisitCard = memo(function VisitCard({
           <div className="space-y-2">
             {filteredFoodItems.map((item) => {
               // Find photo for this food item
-              const photo = visitPhotosByFoodItem.get(item.id);
+              const photo = visitPhotosByFoodItem.get(item.id) as VisitPhoto | undefined;
               // For offline photos (isPending), use the blob URL directly
               // For online photos, use PocketBase file URL
               const photoUrl = photo
