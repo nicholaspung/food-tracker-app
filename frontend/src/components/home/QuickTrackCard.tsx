@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { pb, type FoodItem } from "@/lib/pocketbase";
+import { type VisitPhoto as RepoVisitPhoto } from "@/repositories";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,16 +15,7 @@ import {
 } from "lucide-react";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
-interface VisitPhoto {
-  id: string;
-  visit: string;
-  food_item: string;
-  user: string;
-  photo: string;
-  created: string;
-  updated: string;
-  isPending?: boolean;
-}
+type VisitPhoto = RepoVisitPhoto & { isPending?: boolean };
 
 interface QuickTrackCardProps {
   item: FoodItem;
