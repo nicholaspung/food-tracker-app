@@ -259,9 +259,21 @@ export function useVisitFilters<V extends {
       return (totalFriendVisits > friendVisitsBeforeCutoff) || (totalFriendQuickTrack > friendQuickTrackBeforeCutoff);
     }
 
-    // Default behavior for user's own items
-    return visits.length > filteredVisits.length;
-  }, [deferredSearchQuery, filterType, visits, quickTrackItems, filteredVisits.length, cutoffDate, isFriendVisit]);
+    // User's own items: compare user's total visits/quick track vs their time-filtered counts
+    const userVisitsInTimeRange = visits.filter(
+      (visit) => !isFriendVisit(visit) && new Date(visit.visitDate) >= cutoffDate
+    ).length;
+    const totalUserVisits = visits.filter((visit) => !isFriendVisit(visit)).length;
+
+    const userQuickTrackInTimeRange = quickTrackItems.filter((item) => {
+      const dateToUse = item.itemDate || item.created;
+      return !isQuickTrackFromFriend(item) && new Date(dateToUse) >= cutoffDate;
+    }).length;
+    const totalUserQuickTrack = quickTrackItems.filter((item) => !isQuickTrackFromFriend(item)).length;
+
+    // Only show "load more" if there are user items older than cutoff
+    return (totalUserVisits > userVisitsInTimeRange) || (totalUserQuickTrack > userQuickTrackInTimeRange);
+  }, [deferredSearchQuery, filterType, visits, quickTrackItems, cutoffDate, isFriendVisit]);
 
   // Count active filters
   // Don't count the type filter if it's in "all" mode (user_both or friends)

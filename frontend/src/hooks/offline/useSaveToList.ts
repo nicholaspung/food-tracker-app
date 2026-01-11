@@ -12,13 +12,14 @@ import { ANALYTICS_EVENTS } from '@/types/posthog';
 interface SaveToListData {
   listId: string;
   restaurantId: string;
-  recommendedItemIds?: string[];
+  foodItemId: string; // Single food item being bookmarked
   note?: string;
+  sourceUserId?: string; // ID of the friend whose list items are being saved from
 }
 
 /**
- * Hook for saving a restaurant item from another user's list to your own list
- * This copies the restaurant + recommended items + note to the target list
+ * Hook for saving a single food item bookmark to a list
+ * Each call creates one list_item record for one food item
  */
 export function useSaveToList(
   options?: UseMutationOptions<any, Error, SaveToListData>
@@ -33,34 +34,50 @@ export function useSaveToList(
       const user = pb.authStore.record;
       if (!user) throw new Error('User not authenticated');
 
-      // Get the max position in the target list to append at the end
-      let maxPosition = 0;
       if (isOnline) {
+        // Check if this specific food item is already bookmarked in this list
         const existingItems = await repositories.listItems.getByList(data.listId, {
           sort: '-position',
         });
-        if (existingItems.length > 0) {
-          maxPosition = existingItems[0].position;
+
+        const existingItem = existingItems.find(item =>
+          item.foodItem === data.foodItemId
+        );
+
+        if (existingItem) {
+          // Already bookmarked, return existing
+          logger.log('[SaveToList] Food item already bookmarked, skipping');
+          return existingItem;
         }
-      }
 
-      const itemData = {
-        list: data.listId,
-        restaurant: data.restaurantId,
-        addedBy: user.id,
-        position: maxPosition + 1,
-        note: data.note,
-        recommendedItems: data.recommendedItemIds || [],
-      };
+        // Create new bookmark for this food item
+        const maxPosition = existingItems.length > 0 ? existingItems[0].position : 0;
+        const itemData = {
+          list: data.listId,
+          restaurant: data.restaurantId,
+          addedBy: user.id,
+          sourceUser: data.sourceUserId || null,
+          foodItem: data.foodItemId,
+          position: maxPosition + 1,
+          note: data.note,
+        };
 
-      if (isOnline) {
-        // Online: Execute immediately
         const result = await repositories.listItems.create(itemData);
-        logger.log('[SaveToList] Item saved to list online:', result.id);
+        logger.log('[SaveToList] Food item bookmarked:', result.id);
         return result;
       } else {
         // Offline: Queue the operation
-        logger.log('[SaveToList] Queueing save to list for offline sync');
+        logger.log('[SaveToList] Queueing bookmark for offline sync');
+
+        const itemData = {
+          list: data.listId,
+          restaurant: data.restaurantId,
+          addedBy: user.id,
+          sourceUser: data.sourceUserId || null,
+          foodItem: data.foodItemId,
+          position: 1, // Will be recalculated on sync
+          note: data.note,
+        };
 
         await syncQueue.enqueue({
           type: 'create',
@@ -70,7 +87,7 @@ export function useSaveToList(
 
         // Return optimistic data
         const optimisticItem = {
-          id: `temp_saved_item_${Date.now()}`,
+          id: `temp_bookmark_${Date.now()}`,
           ...itemData,
           created: new Date().toISOString(),
           updated: new Date().toISOString(),
@@ -87,8 +104,7 @@ export function useSaveToList(
       analytics.track(ANALYTICS_EVENTS.LIST_ITEM_ADDED, {
         source: 'useSaveToList',
         hasNote: !!variables.note,
-        hasRecommendedItems: (variables.recommendedItemIds?.length || 0) > 0,
-        recommendedItemsCount: variables.recommendedItemIds?.length || 0,
+        hasFoodItem: !!variables.foodItemId,
         isOffline: !isOnline,
       });
 
@@ -101,6 +117,14 @@ export function useSaveToList(
       if (user) {
         queryClient.invalidateQueries({
           queryKey: restaurantListKeys.userItemsForRestaurant(user.id, variables.restaurantId)
+        });
+
+        // Also invalidate the user_list_items query used in ListDetailPage for bookmark status
+        queryClient.invalidateQueries({
+          predicate: (query) => {
+            const key = query.queryKey;
+            return key[0] === 'user_list_items' && key[1] === user.id;
+          },
         });
       }
 

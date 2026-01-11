@@ -35,7 +35,7 @@ export interface VisitCreationData {
   visibility: 'friends' | 'private';
   notes: string;
   foodItems: FoodItemData[];
-  itemPhotos: Map<number, File>; // Map of item index to photo file
+  itemPhotos: Map<number, File[]>; // Map of item index to array of photo files
 }
 
 interface VisitPhotoRecord {
@@ -91,11 +91,15 @@ export function useOfflineVisitCreation() {
         const timestamp = Date.now();
 
         // Create preview URLs for photos using blobUrlManager (prevents memory leaks)
-        const photoPreviewUrls = new Map<number, string>();
-        for (const [index, file] of data.itemPhotos.entries()) {
-          const tempPhotoId = `temp_photo_${timestamp}_${index}`;
-          const previewUrl = blobUrlManager.create(tempPhotoId, file);
-          photoPreviewUrls.set(index, previewUrl);
+        const photoPreviewUrls = new Map<number, string[]>();
+        for (const [index, files] of data.itemPhotos.entries()) {
+          const urls: string[] = [];
+          files.forEach((file, photoIndex) => {
+            const tempPhotoId = `temp_photo_${timestamp}_${index}_${photoIndex}`;
+            const previewUrl = blobUrlManager.create(tempPhotoId, file);
+            urls.push(previewUrl);
+          });
+          photoPreviewUrls.set(index, urls);
         }
 
         // Return optimistic data
@@ -119,8 +123,9 @@ export function useOfflineVisitCreation() {
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
             isPending: true,
-            // Add preview URL if this item has a photo
-            photoPreviewUrl: photoPreviewUrls.get(index),
+            // Add preview URLs if this item has photos (use first as primary for backward compat)
+            photoPreviewUrl: photoPreviewUrls.get(index)?.[0],
+            photoPreviewUrls: photoPreviewUrls.get(index) || [],
           })),
           isQueued: true,
           _photoTimestamp: timestamp, // Store timestamp for cleanup
@@ -195,8 +200,12 @@ export function useOfflineVisitCreation() {
         // since the real data from the server will have proper photo URLs
         if ((result as any)._photoTimestamp) {
           const timestamp = (result as any)._photoTimestamp;
-          result.foodItems.forEach((_, index) => {
-            blobUrlManager.revoke(`temp_photo_${timestamp}_${index}`);
+          result.foodItems.forEach((item, index) => {
+            // Clean up all photos for this item (up to 10 just to be safe)
+            const photoUrls = (item as any).photoPreviewUrls || [];
+            photoUrls.forEach((_: string, photoIndex: number) => {
+              blobUrlManager.revoke(`temp_photo_${timestamp}_${index}_${photoIndex}`);
+            });
           });
         }
       }
@@ -249,8 +258,8 @@ async function executeVisitCreation(
     const photoUploads: PhotoUploadItem[] = [];
 
     for (let i = 0; i < foodItems.length; i++) {
-      const photo = data.itemPhotos.get(i);
-      if (photo) {
+      const photos = data.itemPhotos.get(i) || [];
+      for (const photo of photos) {
         photoUploads.push({
           photo,
           foodItemId: foodItems[i].id,
@@ -273,10 +282,12 @@ async function executeVisitCreation(
  * Queue visit creation for offline sync
  */
 async function queueVisitCreation(data: VisitCreationData, userId: string): Promise<void> {
-  // Convert photos Map to array of { index, file } for storage
-  const photosArray: Array<{ index: number; file: File }> = [];
-  for (const [index, file] of data.itemPhotos.entries()) {
-    photosArray.push({ index, file });
+  // Convert photos Map to array of { index, photoIndex, file } for storage
+  const photosArray: Array<{ index: number; photoIndex: number; file: File }> = [];
+  for (const [index, files] of data.itemPhotos.entries()) {
+    files.forEach((file, photoIndex) => {
+      photosArray.push({ index, photoIndex, file });
+    });
   }
 
   // Queue as a complex operation

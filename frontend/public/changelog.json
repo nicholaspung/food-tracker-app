@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.6.3",
+    "date": "2026-01-11",
+    "title": "Multiple Photos & 'I Went There' Flow",
+    "summary": "Add multiple photos per dish (up to 3), tap through your food photos in a gallery view, and use the new 'I went there' button to quickly rate items from your bookmarked lists!",
+    "features": [
+      "Multiple photos per dish: Add up to 3 photos for each food item when rating a visit",
+      "Photo gallery view: Tap any food photo to view all photos in a full-screen gallery with swipe navigation",
+      "I went there: Tap the 'I went' button on any bookmarked item to quickly create a visit and rate it",
+      "Bookmark linking: When you rate a bookmarked item, your rating is linked back to the bookmark for easy comparison",
+      "Remove bookmarks: Remove saved items from your lists with the new remove bookmark dialog"
+    ],
+    "improvements": [
+      "Photo stack display: Multiple photos show as a stack with a '+N' badge indicating additional photos",
+      "Batch photo upload: Select multiple photos at once from your photo picker",
+      "Photo gallery modal: Full-screen gallery to view, add, and remove photos for each item",
+      "Smart auto-load: When filtering shows no results, automatically loads more months to find matching content",
+      "New user onboarding: New users with friends see a helpful welcome screen with quick actions"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.6.2",
     "date": "2026-01-06",
     "title": "Save from Friends' Lists",

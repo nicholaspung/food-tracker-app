@@ -55,7 +55,7 @@ interface VisitCardProps {
   onDelete: (visit: VisitWithDetails) => void;
   onSharePhoto: (photo: VisitPhoto, foodItem: FoodItem, restaurant: Restaurant, visitDate: string) => void;
   onShareVisit: (visit: VisitWithDetails) => void;
-  onPhotoClick: (photo: { url: string; dishName: string }) => void;
+  onPhotoClick: (data: { urls: string[]; dishName: string; initialIndex?: number }) => void;
   onMoveItem?: (foodItem: FoodItem, visitId: string) => void;
   ratingFilter?: "all" | "1" | "2" | "3" | "4" | "5";
   showVisibilityIndicator?: boolean;
@@ -64,10 +64,10 @@ interface VisitCardProps {
 // Sub-component for food item row with long-press support
 interface FoodItemRowProps {
   item: FoodItem;
-  photo: VisitPhoto | undefined;
-  photoUrl: string | null;
-  fullPhotoUrl: string | null;
-  onPhotoClick: (photo: { url: string; dishName: string }) => void;
+  photos: VisitPhoto[];
+  photoUrls: string[];
+  fullPhotoUrls: string[];
+  onPhotoClick: (data: { urls: string[]; dishName: string; initialIndex?: number }) => void;
   onSharePhoto: () => void;
   onLongPress: () => void;
   enableLongPress: boolean;
@@ -75,9 +75,9 @@ interface FoodItemRowProps {
 
 const FoodItemRow = memo(function FoodItemRow({
   item,
-  photo,
-  photoUrl,
-  fullPhotoUrl,
+  photos,
+  photoUrls,
+  fullPhotoUrls,
   onPhotoClick,
   onSharePhoto,
   onLongPress,
@@ -88,25 +88,38 @@ const FoodItemRow = memo(function FoodItemRow({
     onLongPress: enableLongPress ? onLongPress : () => {},
   });
 
+  const hasPhotos = photoUrls.length > 0;
+  const photoCount = photoUrls.length;
+
   return (
     <div
       key={item.id}
       className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg select-none"
       {...(enableLongPress ? longPressHandlers : {})}
     >
-      {/* Photo thumbnail */}
-      {photoUrl && photo && fullPhotoUrl && (
-        <img
-          src={photoUrl}
-          alt={item.name}
-          className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+      {/* Photo thumbnail with count badge */}
+      {hasPhotos && (
+        <div
+          className="relative w-16 h-16 flex-shrink-0 cursor-pointer"
           onClick={() =>
             onPhotoClick({
-              url: fullPhotoUrl,
+              urls: fullPhotoUrls,
               dishName: item.name,
+              initialIndex: 0,
             })
           }
-        />
+        >
+          <img
+            src={photoUrls[0]}
+            alt={item.name}
+            className="w-16 h-16 object-cover rounded-md hover:opacity-80 transition-opacity"
+          />
+          {photoCount > 1 && (
+            <div className="absolute top-0.5 left-0.5 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded-full font-medium">
+              +{photoCount - 1}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="flex-1 min-w-0 pr-2">
@@ -129,8 +142,8 @@ const FoodItemRow = memo(function FoodItemRow({
             {RATING_LABELS[item.rating - 1] || "Unknown"}
           </span>
         </div>
-        {/* Share button - only show if there's a photo */}
-        {photo && (
+        {/* Share button - only show if there are photos */}
+        {hasPhotos && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -178,12 +191,14 @@ const VisitCard = memo(function VisitCard({
     setShowContextMenu(false);
     setSelectedItem(null);
   };
-  // Create a Map for O(1) photo lookups by food_item ID
+  // Create a Map for O(1) photo lookups by food_item ID (arrays for multiple photos)
   const visitPhotosByFoodItem = useMemo(() => {
-    const map = new Map<string, VisitPhoto>();
+    const map = new Map<string, VisitPhoto[]>();
     visitPhotos.forEach((photo) => {
       if (photo.food_item) {
-        map.set(photo.food_item, photo);
+        const existing = map.get(photo.food_item) || [];
+        existing.push(photo);
+        map.set(photo.food_item, existing);
       }
     });
     return map;
@@ -295,34 +310,30 @@ const VisitCard = memo(function VisitCard({
         {filteredFoodItems.length > 0 ? (
           <div className="space-y-2">
             {filteredFoodItems.map((item) => {
-              // Find photo for this food item
-              const photo = visitPhotosByFoodItem.get(item.id);
+              // Find photos for this food item
+              const photos = visitPhotosByFoodItem.get(item.id) || [];
               // For offline photos (isPending), use the blob URL directly
               // For online photos, use PocketBase file URL
-              const photoUrl = photo
-                ? photo.isPending
+              const photoUrls = photos.map((photo) =>
+                photo.isPending
                   ? photo.photo // Blob URL for offline photos
-                  : pb.files.getURL(
-                      photo,
-                      photo.photo,
-                      { thumb: "100x100" }
-                    )
-                : null;
-              const fullPhotoUrl = photo
-                ? photo.isPending
+                  : pb.files.getURL(photo, photo.photo, { thumb: "100x100" })
+              );
+              const fullPhotoUrls = photos.map((photo) =>
+                photo.isPending
                   ? photo.photo // Blob URL for offline photos
                   : pb.files.getURL(photo, photo.photo)
-                : null;
+              );
 
               return (
                 <FoodItemRow
                   key={item.id}
                   item={item}
-                  photo={photo}
-                  photoUrl={photoUrl}
-                  fullPhotoUrl={fullPhotoUrl}
+                  photos={photos}
+                  photoUrls={photoUrls}
+                  fullPhotoUrls={fullPhotoUrls}
                   onPhotoClick={onPhotoClick}
-                  onSharePhoto={() => onSharePhoto(photo!, item, visit.restaurant!, visit.visitDate)}
+                  onSharePhoto={() => photos.length > 0 && onSharePhoto(photos[0], item, visit.restaurant!, visit.visitDate)}
                   onLongPress={() => handleLongPress(item)}
                   enableLongPress={!isFriend && !!onMoveItem}
                 />
