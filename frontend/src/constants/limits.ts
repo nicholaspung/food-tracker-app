@@ -7,3 +7,9 @@
  * Non-subscriber users can process this many photos per day
  */
 export const RESTAURANT_DETECTION_DAILY_LIMIT = 5;
+
+/**
+ * Maximum photos allowed per food item during rating
+ * Non-subscriber users are limited to this many photos
+ */
+export const MAX_PHOTOS_PER_FOOD_ITEM = 3;

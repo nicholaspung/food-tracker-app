@@ -72,8 +72,9 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
               };
             } else {
               // Create temporary menu item for items that don't exist in menu_items table
+              // Use stable ID based on name (not Date.now()) to avoid ID changes on re-renders
               return {
-                id: `temp-${item.name}-${Date.now()}`,
+                id: `temp-${item.name.toLowerCase().replace(/\s+/g, '-')}`,
                 name: item.name,
                 description: item.description || '',
                 restaurant: restaurant.id,
@@ -102,8 +103,9 @@ export default function EditItemsPage({ visitId, onNext, onCancel }: EditItemsPa
             } as DBMenuItem & { userDescription?: string };
           } else {
             // Create temporary menu item for items that don't exist in menu_items table
+            // Use stable ID based on name (not Date.now()) to avoid ID changes on re-renders
             return {
-              id: `temp-${foodItem.name}-${Date.now()}`,
+              id: `temp-${foodItem.name.toLowerCase().replace(/\s+/g, '-')}`,
               name: foodItem.name,
               description: foodItem.description || '',
               restaurant: restaurant.id,
