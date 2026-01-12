@@ -206,6 +206,24 @@ export default function HomePage({
     });
   }, []);
 
+  // Memoized handlers to prevent unnecessary re-renders of VisitCard and QuickTrackCard
+  // which are wrapped in React.memo
+  const handleMoveItem = useCallback((foodItem: FoodItem, visitId: string) => {
+    setItemToMove({ foodItem, visitId });
+  }, []);
+
+  const handleQuickTrackEdit = useCallback((itemId: string) => {
+    navigate({ to: `/edit-quick-track/${itemId}` });
+  }, [navigate]);
+
+  const handleQuickTrackDelete = useCallback((foodItem: FoodItem) => {
+    setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const });
+  }, []);
+
+  const handleQuickTrackSharePhoto = useCallback((photo: VisitPhoto, foodItem: FoodItem) => {
+    handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created);
+  }, [handleSharePhotoClick]);
+
   // Delete visit with offline support
   const handleDeleteVisit = useCallback(async (visitId: string) => {
     setIsDeleting(true);
@@ -707,7 +725,7 @@ export default function HomePage({
                           onSharePhoto={handleSharePhotoClick}
                           onShareVisit={handleShareVisitClick}
                           onPhotoClick={handlePhotoClick}
-                          onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
+                          onMoveItem={handleMoveItem}
                           ratingFilter={ratingFilter}
                           showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
@@ -730,9 +748,9 @@ export default function HomePage({
                           photos={photos}
                           isFriend={isFriend}
                           friendName={friendName}
-                          onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
-                          onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
-                          onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
+                          onEdit={handleQuickTrackEdit}
+                          onDelete={handleQuickTrackDelete}
+                          onSharePhoto={handleQuickTrackSharePhoto}
                           onPhotoClick={handlePhotoClick}
                           showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
@@ -811,7 +829,7 @@ export default function HomePage({
                                     onSharePhoto={handleSharePhotoClick}
                                     onShareVisit={handleShareVisitClick}
                                     onPhotoClick={handlePhotoClick}
-                                    onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
+                                    onMoveItem={handleMoveItem}
                                     ratingFilter={ratingFilter}
                                     showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />
@@ -834,9 +852,9 @@ export default function HomePage({
                                     photos={photos}
                                     isFriend={isFriend}
                                     friendName={friendName}
-                                    onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
-                                    onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
-                                    onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
+                                    onEdit={handleQuickTrackEdit}
+                                    onDelete={handleQuickTrackDelete}
+                                    onSharePhoto={handleQuickTrackSharePhoto}
                                     onPhotoClick={handlePhotoClick}
                                     showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />
