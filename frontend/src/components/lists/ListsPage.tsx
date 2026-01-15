@@ -131,12 +131,39 @@ export default function ListsPage({
     queryKey: ["list_items_counts", visibleLists.map((l) => l.id)],
     queryFn: async () => {
       const counts: Record<string, number> = {};
-      for (const list of visibleLists) {
+
+      // Initialize counts to 0 for all visible lists
+      visibleLists.forEach((list) => {
+        counts[list.id] = 0;
+      });
+
+      if (visibleLists.length === 0) return counts;
+
+      // Batch requests in chunks of 50 to avoid URL length limits
+      const chunkSize = 50;
+      for (let i = 0; i < visibleLists.length; i += chunkSize) {
+        const chunk = visibleLists.slice(i, i + chunkSize);
+
+        // Construct filter: (list = "id1" || list = "id2" || ...)
+        const filter = chunk.map((l) => `list="${l.id}"`).join("||");
+
+        if (!filter) continue;
+
+        // Fetch only the 'list' field to minimize payload size
+        // optimize: batch request to avoid N+1 problem
         const items = await repositories.listItems.getFullList({
-          filter: `list = "${list.id}"`,
+          filter: `(${filter})`,
+          fields: 'list',
         });
-        counts[list.id] = items.length;
+
+        // Aggregate counts
+        for (const item of items) {
+          if (counts[item.list] !== undefined) {
+            counts[item.list]++;
+          }
+        }
       }
+
       return counts;
     },
     enabled: visibleLists.length > 0 && !isOnChildRoute,
