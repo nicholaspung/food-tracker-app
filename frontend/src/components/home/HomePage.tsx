@@ -206,6 +206,29 @@ export default function HomePage({
     });
   }, []);
 
+  // Stable handler for moving items - prevents VisitCard re-renders
+  const handleMoveItem = useCallback((foodItem: FoodItem, visitId: string) => {
+    setItemToMove({ foodItem, visitId });
+  }, []);
+
+  // Stable handlers for QuickTrack items - prevents QuickTrackCard re-renders
+  const handleEditQuickTrack = useCallback((itemId: string) => {
+    navigate({ to: `/edit-quick-track/${itemId}` });
+  }, [navigate]);
+
+  const handleDeleteQuickTrack = useCallback((foodItem: FoodItem) => {
+    setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const });
+  }, []);
+
+  const handleShareQuickTrackPhoto = useCallback((photo: VisitPhoto, foodItem: FoodItem) => {
+    handleSharePhotoClick(
+      photo,
+      foodItem,
+      null, // restaurant is null for QuickTrack
+      foodItem.itemDate || foodItem.created
+    );
+  }, [handleSharePhotoClick]);
+
   // Delete visit with offline support
   const handleDeleteVisit = useCallback(async (visitId: string) => {
     setIsDeleting(true);
@@ -707,7 +730,7 @@ export default function HomePage({
                           onSharePhoto={handleSharePhotoClick}
                           onShareVisit={handleShareVisitClick}
                           onPhotoClick={handlePhotoClick}
-                          onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
+                          onMoveItem={handleMoveItem}
                           ratingFilter={ratingFilter}
                           showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
@@ -730,9 +753,9 @@ export default function HomePage({
                           photos={photos}
                           isFriend={isFriend}
                           friendName={friendName}
-                          onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
-                          onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
-                          onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
+                          onEdit={handleEditQuickTrack}
+                          onDelete={handleDeleteQuickTrack}
+                          onSharePhoto={handleShareQuickTrackPhoto}
                           onPhotoClick={handlePhotoClick}
                           showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
@@ -811,7 +834,7 @@ export default function HomePage({
                                     onSharePhoto={handleSharePhotoClick}
                                     onShareVisit={handleShareVisitClick}
                                     onPhotoClick={handlePhotoClick}
-                                    onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
+                                    onMoveItem={handleMoveItem}
                                     ratingFilter={ratingFilter}
                                     showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />
@@ -834,9 +857,9 @@ export default function HomePage({
                                     photos={photos}
                                     isFriend={isFriend}
                                     friendName={friendName}
-                                    onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
-                                    onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
-                                    onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
+                                    onEdit={handleEditQuickTrack}
+                                    onDelete={handleDeleteQuickTrack}
+                                    onSharePhoto={handleShareQuickTrackPhoto}
                                     onPhotoClick={handlePhotoClick}
                                     showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />
@@ -958,10 +981,10 @@ export default function HomePage({
         onOpenChange={(open) => !open && setQuickTrackItemToDelete(null)}
         onConfirm={() => {
           if (quickTrackItemToDelete) {
-            const photo = visitPhotosByFoodItem.get(quickTrackItemToDelete.id);
+            const photos = visitPhotosByFoodItem.get(quickTrackItemToDelete.id);
             handleDeleteQuickTrackItem(
               quickTrackItemToDelete.id,
-              photo?.id
+              photos?.[0]?.id
             );
           }
         }}

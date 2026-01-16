@@ -2,22 +2,13 @@ import { logger } from '@/lib/logger';
 import { useState, useCallback } from "react";
 import { pb, type Restaurant, type FoodItem } from "@/lib/pocketbase";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
+import { type VisitPhoto } from '@/repositories';
 
 export interface ShareOverlayData {
   restaurantName: string;
   dishName: string;
   rating: number;
   visitDate: string;
-}
-
-interface VisitPhoto {
-  id: string;
-  visit: string;
-  food_item: string;
-  user: string;
-  photo: string;
-  created: string;
-  updated: string;
 }
 
 interface FoodItemWithLocation extends FoodItem {
