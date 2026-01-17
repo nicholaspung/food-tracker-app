@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.6.4",
+    "date": "2026-01-17",
+    "title": "Combine Photos During Processing",
+    "summary": "Combine multiple photos into a single menu item while processing! Perfect for capturing different angles of the same dish.",
+    "features": [
+      "Combine photos: Tap any remaining photo to add it to the current menu item during photo processing",
+      "Photo count badge: See how many photos are attached to each item with a badge on the image",
+      "Easy uncombine: Remove combined photos with one tap to put them back in the queue"
+    ],
+    "improvements": [
+      "Photo thumbnails: View all photos for an item in a scrollable thumbnail row",
+      "Review screen badges: Photo count badges shown on the review screen for items with multiple photos",
+      "Better menu item selection: Tap anywhere on a menu item card to select it (not just the checkmark)",
+      "State preservation: Combined photos are preserved when navigating back and forth during processing"
+    ],
+    "fixes": [
+      "Fixed photo date not updating in the UI when navigating between photos",
+      "Fixed blob URLs being revoked prematurely when combining photos"
+    ]
+  },
+  {
     "version": "0.6.3",
     "date": "2026-01-11",
     "title": "Multiple Photos & 'I Went There' Flow",

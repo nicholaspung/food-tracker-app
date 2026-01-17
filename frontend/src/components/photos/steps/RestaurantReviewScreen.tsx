@@ -116,17 +116,26 @@ export function RestaurantReviewScreen({
                 <CardContent>
                   {restaurantPhotos.length > 0 ? (
                     <div className="space-y-2">
-                      {restaurantPhotos.map((processedPhoto) => (
+                      {restaurantPhotos.map((processedPhoto) => {
+                        const totalPhotos = 1 + (processedPhoto.combinedPhotos?.length || 0);
+                        return (
                           <div
                             key={processedPhoto.photoId}
                             className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
                           >
-                            {/* Photo thumbnail */}
-                            <img
-                              src={processedPhoto.previewUrl}
-                              alt={processedPhoto.menuItemName}
-                              className="w-16 h-16 object-cover rounded-md flex-shrink-0"
-                            />
+                            {/* Photo thumbnail with count badge */}
+                            <div className="relative flex-shrink-0">
+                              <img
+                                src={processedPhoto.previewUrl}
+                                alt={processedPhoto.menuItemName}
+                                className="w-16 h-16 object-cover rounded-md"
+                              />
+                              {totalPhotos > 1 && (
+                                <div className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                                  {totalPhotos}
+                                </div>
+                              )}
+                            </div>
 
                             <div className="flex-1 min-w-0 pr-2">
                               <p className="font-medium text-gray-900 break-words">
@@ -158,7 +167,8 @@ export function RestaurantReviewScreen({
                               </div>
                             </div>
                           </div>
-                        ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm text-gray-400 italic">
