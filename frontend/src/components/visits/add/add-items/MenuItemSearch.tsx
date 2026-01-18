@@ -175,11 +175,12 @@ export default function MenuItemSearch({
                         </div>
                       )}
                       <div
-                        className={`p-3 rounded-lg border transition-all ${
+                        className={`p-3 rounded-lg border transition-all cursor-pointer ${
                           isSelected
                             ? "border-green-500 bg-green-50"
                             : "border-gray-200 hover:border-blue-500 hover:bg-blue-50"
                         }`}
+                        onClick={() => !isEditing && onToggleItem(item)}
                       >
                         <div className="space-y-2">
                           {/* Item header with toggle */}
@@ -291,30 +292,25 @@ export default function MenuItemSearch({
                             /* Normal display mode */
                             <div className="space-y-2">
                               {/* Row 1: Name and checkmark */}
-                              <button
-                                onClick={() => onToggleItem(item)}
-                                className="w-full text-left"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium leading-snug">
-                                      {item.name}
-                                    </div>
-                                    {item.description && (
-                                      <div className="text-sm text-gray-500 mt-1">
-                                        {item.description}
-                                      </div>
-                                    )}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium leading-snug">
+                                    {item.name}
                                   </div>
-                                  <CheckCircle
-                                    className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                                      isSelected
-                                        ? "text-green-600"
-                                        : "text-gray-300"
-                                    }`}
-                                  />
+                                  {item.description && (
+                                    <div className="text-sm text-gray-500 mt-1">
+                                      {item.description}
+                                    </div>
+                                  )}
                                 </div>
-                              </button>
+                                <CheckCircle
+                                  className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                                    isSelected
+                                      ? "text-green-600"
+                                      : "text-gray-300"
+                                  }`}
+                                />
+                              </div>
 
                               {/* Row 2: Badges and edit button */}
                               <div className="flex items-center justify-between">
@@ -370,7 +366,10 @@ export default function MenuItemSearch({
                           {isSelected &&
                             selectedData &&
                             selectedData.showDescriptionInput && (
-                              <div className="flex gap-2 bg-white p-2 rounded-md border border-gray-300">
+                              <div
+                                className="flex gap-2 bg-white p-2 rounded-md border border-gray-300"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <Input
                                   ref={descriptionInputRef}
                                   placeholder="Add description..."
