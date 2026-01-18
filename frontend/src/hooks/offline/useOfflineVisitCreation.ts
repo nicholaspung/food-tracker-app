@@ -21,6 +21,7 @@ import { blobUrlManager } from '@/lib/blobUrlManager';
 import { repositories } from '@/repositories';
 import { useTrackEvent } from '@/hooks/ui/useTrackEvent';
 import { ANALYTICS_EVENTS, type VisitCreatedProperties } from '@/types/posthog';
+import { noteKeys } from '@/constants/queryKeys';
 
 export interface FoodItemData {
   name: string;
@@ -36,6 +37,7 @@ export interface VisitCreationData {
   notes: string;
   foodItems: FoodItemData[];
   itemPhotos: Map<number, File[]>; // Map of item index to array of photo files
+  sourceNoteId?: string; // Optional: ID of note that was used to create this visit
 }
 
 interface VisitPhotoRecord {
@@ -143,6 +145,17 @@ export function useOfflineVisitCreation() {
         source: 'useOfflineVisitCreation',
       };
       trackEvent(ANALYTICS_EVENTS.VISIT_CREATION_COMPLETED, eventProps);
+
+      // Mark source note as used if provided
+      if (variables.sourceNoteId && !result.isQueued) {
+        try {
+          await repositories.notes.markAsUsedByVisit(variables.sourceNoteId, result.visit.id);
+          queryClient.invalidateQueries({ queryKey: noteKeys.all });
+          logger.log('[useOfflineVisitCreation] Marked note as used:', variables.sourceNoteId);
+        } catch (error) {
+          logger.error('[useOfflineVisitCreation] Failed to mark note as used:', error);
+        }
+      }
 
       if (result.isQueued) {
         // Offline: Add optimistic data to cache

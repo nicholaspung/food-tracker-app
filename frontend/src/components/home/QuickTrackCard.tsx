@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { pb, type FoodItem } from "@/lib/pocketbase";
+import { type VisitPhoto as RepoVisitPhoto } from "@/repositories";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import { type VisitPhoto as RepoVisitPhoto } from "@/repositories";
 interface VisitPhoto extends RepoVisitPhoto {
   isPending?: boolean;
 }
+type VisitPhoto = RepoVisitPhoto & { isPending?: boolean };
 
 interface QuickTrackCardProps {
   item: FoodItem;

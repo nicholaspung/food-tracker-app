@@ -53,7 +53,7 @@ export function usePhotoUpload() {
   // Track all blob URLs that have been created
   const createdUrlsRef = useRef<Set<string>>(new Set());
 
-  // Track which URLs are removed and revoke them, cleanup all on unmount
+  // Track which URLs are removed and revoke them (runs when photos array changes)
   useEffect(() => {
     const currentUrls = new Set(photos.map(p => p.previewUrl).filter(Boolean));
 
@@ -70,13 +70,18 @@ export function usePhotoUpload() {
       createdUrlsRef.current.add(url);
     });
 
-    // Cleanup on unmount: revoke all tracked URLs
+    // NO cleanup here - we don't want to revoke URLs on every re-run
+  }, [photos]);
+
+  // Separate effect for cleanup on unmount only
+  useEffect(() => {
     return () => {
+      // Cleanup on unmount: revoke all tracked URLs
       createdUrlsRef.current.forEach(url => {
         URL.revokeObjectURL(url);
       });
     };
-  }, [photos]);
+  }, []); // Empty deps - only runs on mount/unmount
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
