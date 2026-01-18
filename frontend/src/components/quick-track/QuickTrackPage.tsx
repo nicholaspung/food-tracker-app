@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logger';
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,9 +38,13 @@ export default function QuickTrackPage() {
     autoClearMs: 5000,
   });
 
+  // Check for note data from sessionStorage (from Use Saved Note flow)
+  const [sourceNoteId, setSourceNoteId] = useState<string | undefined>(undefined);
+
   // Form state
   const [itemName, setItemName] = useState("");
   const [category, setCategory] = useState<'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | ''>("");
+
   const [rating, setRating] = useState<number | null>(3); // Default to "worth trying"
 
   // Wrapper for category setter to handle string values from Select component
@@ -65,6 +69,27 @@ export default function QuickTrackPage() {
 
   // UI state
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
+
+  // Load note data from sessionStorage on mount (from Use Saved Note flow)
+  useEffect(() => {
+    const noteDataStr = sessionStorage.getItem("noteForQuickTrack");
+    if (noteDataStr) {
+      try {
+        const noteData = JSON.parse(noteDataStr);
+        setSourceNoteId(noteData.noteId);
+        // Pre-fill notes field with note content
+        setNotes(noteData.content || "");
+        // Pre-fill location if available
+        if (noteData.location_text) {
+          setLocationText(noteData.location_text);
+        }
+        // Clean up sessionStorage
+        sessionStorage.removeItem("noteForQuickTrack");
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+  }, []);
 
   // Refs for auto-scrolling
   const itemNameInputRef = useScrollIntoView<HTMLInputElement>();
@@ -127,6 +152,7 @@ export default function QuickTrackPage() {
         photo: photo || undefined,
         visibility,
         itemDate: itemDate ? localDateStringToUTC(itemDate) : undefined,
+        sourceNoteId,
       });
 
       // Success
