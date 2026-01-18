@@ -22,8 +22,10 @@ import {
   Lock,
   Users,
   Globe,
+  Plus,
+  ImagePlus,
 } from "lucide-react";
-import { PhotoToProcess, RestaurantStats } from "@/types/photos";
+import { PhotoToProcess, RestaurantStats, CombinedPhotoData } from "@/types/photos";
 import { Restaurant, MenuItem, pb } from "@/lib/pocketbase";
 import { RestaurantSelector } from "@/components/photos/restaurant/RestaurantSelector";
 import { RATING_OPTIONS } from "@/lib/ratingConstants";
@@ -119,6 +121,12 @@ interface RestaurantProcessingScreenProps {
 
   // Camera mode
   onOpenCamera: () => void;
+
+  // Combine photos feature
+  remainingPhotos: PhotoToProcess[]; // Photos not yet processed (excluding current)
+  combinedPhotos: CombinedPhotoData[]; // Photos combined with current item
+  onCombinePhoto: (photo: PhotoToProcess) => void; // Add photo to current item
+  onUncombinePhoto: (photoId: string) => void; // Remove combined photo
 }
 
 /**
@@ -205,6 +213,11 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
     getRestaurantStats,
     // Camera mode
     onOpenCamera,
+    // Combine photos feature
+    remainingPhotos,
+    combinedPhotos,
+    onCombinePhoto,
+    onUncombinePhoto,
   } = props;
 
   // Refs for auto-scrolling
@@ -277,8 +290,90 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
                 )
               }
             />
+            {/* Badge showing total photo count for this item */}
+            {combinedPhotos.length > 0 && (
+              <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+                {combinedPhotos.length + 1} photos
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Combined Photos - Photos already added to this item */}
+        {combinedPhotos.length > 0 && (
+          <div className="mb-4">
+            <Label className="text-sm font-medium text-gray-700 mb-2 block">
+              Photos for this item ({combinedPhotos.length + 1} total)
+            </Label>
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {/* Main photo thumbnail */}
+              <div className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 border-blue-500">
+                <img
+                  src={currentPhoto.previewUrl}
+                  alt="Main photo"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-blue-600 text-white text-[10px] text-center py-0.5">
+                  Main
+                </div>
+              </div>
+              {/* Combined photo thumbnails */}
+              {combinedPhotos.map((photo) => (
+                <div key={photo.photoId} className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-gray-300">
+                  <img
+                    src={photo.previewUrl}
+                    alt="Combined photo"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onUncombinePhoto(photo.photoId)}
+                    className="absolute top-0 right-0 bg-red-500 text-white rounded-bl-lg p-1"
+                    aria-label="Remove photo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Remaining Photos - Available to combine */}
+        {remainingPhotos.length > 0 && (
+          <Card className="mb-4 border-dashed border-2 border-gray-300 bg-gray-50">
+            <CardContent className="py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <ImagePlus className="w-4 h-4 text-gray-600" />
+                <Label className="text-sm font-medium text-gray-700">
+                  Add more photos to this item
+                </Label>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Tap a photo below to combine it with the current menu item. It will be removed from the queue.
+              </p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {remainingPhotos.map((photo) => (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => onCombinePhoto(photo)}
+                    className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 border-transparent hover:border-blue-500 transition-colors"
+                  >
+                    <img
+                      src={photo.previewUrl}
+                      alt="Available photo"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <Plus className="w-6 h-6 text-white opacity-0 hover:opacity-100 drop-shadow-lg" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Loading overlay while restoring data */}
         {isRestoringData && (
@@ -958,6 +1053,7 @@ export const RestaurantProcessingScreen = memo(
       prevProps.selectedMenuItem?.id === nextProps.selectedMenuItem?.id &&
       prevProps.rating === nextProps.rating &&
       prevProps.notes === nextProps.notes &&
+      prevProps.photoDate?.getTime() === nextProps.photoDate?.getTime() &&
       prevProps.isProcessing === nextProps.isProcessing &&
       prevProps.ocrStatus === nextProps.ocrStatus &&
       prevProps.isOnline === nextProps.isOnline &&
@@ -979,7 +1075,10 @@ export const RestaurantProcessingScreen = memo(
       prevProps.usedMenuItemNames.length === nextProps.usedMenuItemNames.length &&
       prevProps.usedMenuItemNames.every((name, i) => name === nextProps.usedMenuItemNames[i]) &&
       // Include restaurant stats function to update visit counts
-      prevProps.getRestaurantStats === nextProps.getRestaurantStats
+      prevProps.getRestaurantStats === nextProps.getRestaurantStats &&
+      // Include combine photos feature props
+      prevProps.remainingPhotos.length === nextProps.remainingPhotos.length &&
+      prevProps.combinedPhotos.length === nextProps.combinedPhotos.length
     );
   }
 );

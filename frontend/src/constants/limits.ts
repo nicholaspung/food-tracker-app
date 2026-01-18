@@ -13,3 +13,9 @@ export const RESTAURANT_DETECTION_DAILY_LIMIT = 5;
  * Non-subscriber users are limited to this many photos
  */
 export const MAX_PHOTOS_PER_FOOD_ITEM = 3;
+
+/**
+ * Maximum photos allowed per note
+ * Notes can have more photos since they're for personal reference
+ */
+export const MAX_PHOTOS_PER_NOTE = 5;

@@ -60,6 +60,18 @@ export function usePhotoSubmission() {
         const firstPhoto = groupPhotos[0];
         const visitDate = firstPhoto.captureDate || new Date();
 
+        // Build itemPhotos map - each item can have multiple photos (main + combined)
+        const itemPhotos = new Map<number, File[]>();
+        groupPhotos.forEach((p, index) => {
+          // Start with the main photo
+          const photos: File[] = [p.photo];
+          // Add any combined photos
+          if (p.combinedPhotos && p.combinedPhotos.length > 0) {
+            photos.push(...p.combinedPhotos.map(cp => cp.photo));
+          }
+          itemPhotos.set(index, photos);
+        });
+
         await visitCreationMutation.mutateAsync({
           restaurant: firstPhoto.restaurant.id,
           foodItems: groupPhotos.map((p) => ({
@@ -68,7 +80,7 @@ export function usePhotoSubmission() {
             rating: p.rating,
             notes: p.notes,
           })),
-          itemPhotos: new Map(groupPhotos.map((p, index) => [index, p.photo])),
+          itemPhotos,
           visitDate: visitDate.toISOString(),
           visibility,
           notes: '',

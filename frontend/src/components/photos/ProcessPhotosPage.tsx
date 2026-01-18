@@ -265,8 +265,14 @@ export default function ProcessPhotosPage() {
     const currentPhotoId = currentPhoto.id;
     const previousPhotoId = previousPhotoIdRef.current;
 
-    // If we're navigating to a different photo
-    if (previousPhotoId && previousPhotoId !== currentPhotoId) {
+    // Only save/restore when actually changing to a different photo
+    // Skip if we're staying on the same photo (e.g., when photos array changes due to combining)
+    if (previousPhotoId === currentPhotoId) {
+      return; // Same photo, no need to save/restore
+    }
+
+    // If we're navigating to a different photo (and had a previous photo)
+    if (previousPhotoId) {
       // Save state for the previous photo (if it wasn't just submitted)
       if (processType === "restaurant") {
         restaurantProcessing.saveFormStateForPhoto(previousPhotoId);
@@ -275,7 +281,7 @@ export default function ProcessPhotosPage() {
       }
     }
 
-    // Restore state for the current photo
+    // Restore state for the current photo (either new photo or first photo)
     if (processType === "restaurant") {
       restaurantProcessing.restoreFormStateForPhoto(currentPhotoId, currentPhoto.captureDate);
     } else if (processType === "quickTrack") {
@@ -321,6 +327,44 @@ export default function ProcessPhotosPage() {
     }
   };
 
+  // Handle combining a photo with the current item
+  const handleCombinePhoto = (photo: PhotoToProcess) => {
+    // Add photo to combined photos for current item
+    restaurantProcessing.combinePhoto(photo);
+
+    // Remove from the main photo queue
+    const updatedPhotos = photoUpload.photos.filter((p) => p.id !== photo.id);
+    photoUpload.setPhotos(updatedPhotos);
+
+    // Adjust indices if necessary
+    if (photoUpload.currentPhotoIndex >= updatedPhotos.length && updatedPhotos.length > 0) {
+      photoUpload.setCurrentPhotoIndex(updatedPhotos.length - 1);
+    }
+  };
+
+  // Handle uncombining a photo (putting it back in the queue)
+  const handleUncombinePhoto = (photoId: string) => {
+    // Find the photo in combined photos
+    const combinedPhoto = restaurantProcessing.combinedPhotos.find(p => p.photoId === photoId);
+    if (!combinedPhoto) return;
+
+    // Remove from combined photos
+    restaurantProcessing.uncombinePhoto(photoId);
+
+    // Add back to the photo queue after the current photo
+    const photoToRestore: PhotoToProcess = {
+      id: combinedPhoto.photoId,
+      file: combinedPhoto.photo,
+      previewUrl: combinedPhoto.previewUrl,
+      captureDate: null, // We don't have the original capture date stored
+    };
+
+    const currentIndex = photoUpload.currentPhotoIndex;
+    const updatedPhotos = [...photoUpload.photos];
+    updatedPhotos.splice(currentIndex + 1, 0, photoToRestore);
+    photoUpload.setPhotos(updatedPhotos);
+  };
+
   const handleCancel = async () => {
     await draftManagement.clearDraft();
     navigate({ to: "/add-visit" });
@@ -331,6 +375,23 @@ export default function ProcessPhotosPage() {
       showValidation("Please select at least one photo");
       return;
     }
+
+    // Restore form state for the first photo (if it was previously saved)
+    const firstPhoto = photoUpload.photos[0];
+    if (firstPhoto && processType === "restaurant") {
+      const restoredCombinedPhotos = restaurantProcessing.restoreFormStateForPhoto(
+        firstPhoto.id,
+        firstPhoto.captureDate
+      );
+
+      // If combined photos were restored, remove them from the queue
+      if (restoredCombinedPhotos.length > 0) {
+        const combinedPhotoIds = new Set(restoredCombinedPhotos.map(cp => cp.photoId));
+        const updatedPhotos = photoUpload.photos.filter(p => !combinedPhotoIds.has(p.id));
+        photoUpload.setPhotos(updatedPhotos);
+      }
+    }
+
     setScreen("process");
   };
 
@@ -356,6 +417,32 @@ export default function ProcessPhotosPage() {
     if (photoUpload.currentPhotoIndex > 0) {
       photoUpload.setCurrentPhotoIndex(photoUpload.currentPhotoIndex - 1);
     } else {
+      // Save current form state before going back (preserves combined photos, date, etc.)
+      const currentPhoto = photoUpload.currentPhoto;
+      if (currentPhoto && processType === "restaurant") {
+        restaurantProcessing.saveFormStateForPhoto(currentPhoto.id);
+      }
+
+      // Going back to upload screen - restore any combined photos to the queue
+      if (processType === "restaurant" && restaurantProcessing.combinedPhotos.length > 0) {
+        const photosToRestore: PhotoToProcess[] = restaurantProcessing.combinedPhotos.map(cp => ({
+          id: cp.photoId,
+          file: cp.photo,
+          previewUrl: cp.previewUrl,
+          captureDate: null,
+        }));
+
+        // Add combined photos back to the queue after the current photo
+        const updatedPhotos = [
+          ...photoUpload.photos,
+          ...photosToRestore,
+        ];
+        photoUpload.setPhotos(updatedPhotos);
+
+        // Clear combined photos state (but it's saved in form state)
+        restaurantProcessing.clearCombinedPhotos();
+      }
+
       setScreen("upload");
     }
   };
@@ -372,6 +459,14 @@ export default function ProcessPhotosPage() {
     if (lastPhoto) {
       if (processType === "restaurant") {
         restaurantProcessing.restoreFormStateForPhoto(lastPhoto.id, lastPhoto.captureDate);
+
+        // Restore combined photos for the last processed photo
+        const lastProcessedPhoto = restaurantProcessing.processedPhotos.find(
+          (p) => p.photoId === lastPhoto.id
+        );
+        if (lastProcessedPhoto?.combinedPhotos && lastProcessedPhoto.combinedPhotos.length > 0) {
+          restaurantProcessing.restoreCombinedPhotos(lastProcessedPhoto.combinedPhotos);
+        }
       } else if (processType === "quickTrack") {
         quickTrackProcessing.restoreFormStateForPhoto(lastPhoto.id, lastPhoto.captureDate);
       }
@@ -539,6 +634,15 @@ export default function ProcessPhotosPage() {
       )
       .map((p) => p.menuItem.name.toLowerCase());
 
+    // Calculate remaining photos available to combine (photos after current, not yet processed)
+    const processedPhotoIds = new Set(restaurantProcessing.processedPhotos.map(p => p.photoId));
+    const combinedPhotoIds = new Set(restaurantProcessing.combinedPhotos.map(p => p.photoId));
+    const remainingPhotos = photoUpload.photos.filter((photo, index) =>
+      index > photoUpload.currentPhotoIndex && // Only photos after current
+      !processedPhotoIds.has(photo.id) && // Not already processed
+      !combinedPhotoIds.has(photo.id) // Not already combined
+    );
+
     return (
       <>
         <RestaurantProcessingScreen
@@ -637,6 +741,11 @@ export default function ProcessPhotosPage() {
           getRestaurantStats={getRestaurantStats}
           // Camera mode
           onOpenCamera={() => setShowCameraMode(true)}
+          // Combine photos feature
+          remainingPhotos={remainingPhotos}
+          combinedPhotos={restaurantProcessing.combinedPhotos}
+          onCombinePhoto={handleCombinePhoto}
+          onUncombinePhoto={handleUncombinePhoto}
         />
 
         {/* Camera Mode Modal */}

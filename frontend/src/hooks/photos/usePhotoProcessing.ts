@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import { ProcessedPhoto, PhotoToProcess } from "@/types/photos";
+import { ProcessedPhoto, PhotoToProcess, CombinedPhotoData } from "@/types/photos";
 import { MenuItem, Restaurant } from "@/lib/pocketbase";
 import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
 
@@ -13,6 +13,7 @@ interface PhotoFormState {
   rating: number | null;
   notes: string;
   photoDate: Date;
+  combinedPhotos: CombinedPhotoData[];
 }
 
 /**
@@ -70,6 +71,46 @@ export function usePhotoProcessing() {
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
   const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
 
+  // Combined photos state - photos combined with the current item
+  const [combinedPhotos, setCombinedPhotos] = useState<CombinedPhotoData[]>([]);
+
+  // Combine a photo with the current item
+  // Creates a new blob URL to avoid issues when the original URL is revoked
+  const combinePhoto = useCallback((photo: PhotoToProcess) => {
+    // Create a new blob URL from the file so it's independent of the original
+    const newPreviewUrl = URL.createObjectURL(photo.file);
+    setCombinedPhotos((prev) => [
+      ...prev,
+      {
+        photoId: photo.id,
+        photo: photo.file,
+        previewUrl: newPreviewUrl,
+      },
+    ]);
+  }, []);
+
+  // Remove a combined photo and revoke its blob URL
+  const uncombinePhoto = useCallback((photoId: string) => {
+    setCombinedPhotos((prev) => {
+      const photoToRemove = prev.find((p) => p.photoId === photoId);
+      if (photoToRemove) {
+        URL.revokeObjectURL(photoToRemove.previewUrl);
+      }
+      return prev.filter((p) => p.photoId !== photoId);
+    });
+  }, []);
+
+  // Clear combined photos state (URLs are NOT revoked here - they're still needed for review screen)
+  // URLs will be revoked when the entire flow is complete or cancelled
+  const clearCombinedPhotos = useCallback(() => {
+    setCombinedPhotos([]);
+  }, []);
+
+  // Restore combined photos (for going back from review to edit)
+  const restoreCombinedPhotos = useCallback((photos: CombinedPhotoData[]) => {
+    setCombinedPhotos(photos);
+  }, []);
+
   const handleRestaurantSelected = (restaurant: Restaurant | null) => {
     setSelectedRestaurant(restaurant);
     // Clear menu item selection when restaurant changes
@@ -95,12 +136,14 @@ export function usePhotoProcessing() {
       rating,
       notes,
       photoDate,
+      combinedPhotos: [...combinedPhotos], // Save a copy of combined photos
     };
     photoFormStatesRef.current.set(photoId, currentState);
-  }, [selectedRestaurant, selectedMenuItem, menuItemName, rating, notes, photoDate]);
+  }, [selectedRestaurant, selectedMenuItem, menuItemName, rating, notes, photoDate, combinedPhotos]);
 
   // Restore form state for a photo (called when navigating to a photo)
-  const restoreFormStateForPhoto = useCallback((photoId: string, captureDate?: Date | null) => {
+  // Returns the combined photos that were restored (so caller can remove them from queue)
+  const restoreFormStateForPhoto = useCallback((photoId: string, captureDate?: Date | null): CombinedPhotoData[] => {
     // First check if photo was already submitted (in processedPhotos)
     const submittedPhoto = processedPhotos.find(p => p.photoId === photoId);
     if (submittedPhoto) {
@@ -117,9 +160,15 @@ export function usePhotoProcessing() {
       setMenuItemName(submittedPhoto.menuItemName);
       setRating(submittedPhoto.rating);
       setNotes(submittedPhoto.notes);
-      setPhotoDate(submittedPhoto.captureDate || new Date());
+      // Create new Date object to ensure React detects the change
+      setPhotoDate(submittedPhoto.captureDate ? new Date(submittedPhoto.captureDate.getTime()) : new Date());
       setIsCreatingNewItem(submittedPhoto.isNewMenuItem);
-      return;
+      // Restore combined photos if any
+      if (submittedPhoto.combinedPhotos && submittedPhoto.combinedPhotos.length > 0) {
+        setCombinedPhotos(submittedPhoto.combinedPhotos);
+        return submittedPhoto.combinedPhotos;
+      }
+      return [];
     }
 
     // Then check if we have saved in-progress state
@@ -130,8 +179,14 @@ export function usePhotoProcessing() {
       setMenuItemName(savedState.menuItemName);
       setRating(savedState.rating);
       setNotes(savedState.notes);
-      setPhotoDate(savedState.photoDate);
-      return;
+      // Create new Date object to ensure React detects the change
+      setPhotoDate(new Date(savedState.photoDate.getTime()));
+      // Restore combined photos if any
+      if (savedState.combinedPhotos && savedState.combinedPhotos.length > 0) {
+        setCombinedPhotos(savedState.combinedPhotos);
+        return savedState.combinedPhotos;
+      }
+      return [];
     }
 
     // No saved state - reset to defaults
@@ -143,6 +198,8 @@ export function usePhotoProcessing() {
     setNotes("");
     setPhotoDate(captureDate || new Date());
     setIsCreatingNewItem(false);
+    setCombinedPhotos([]);
+    return [];
   }, [processedPhotos]);
 
   const handleSubmitCurrent = async (photo: PhotoToProcess) => {
@@ -160,7 +217,9 @@ export function usePhotoProcessing() {
       rating,
       notes: notes.trim(),
       isNewMenuItem: isCreatingNewItem,
-      captureDate: photo.captureDate || photoDate,
+      captureDate: photoDate, // Always use photoDate - it's initialized from EXIF and updated by user
+      // Include any combined photos
+      combinedPhotos: combinedPhotos.length > 0 ? [...combinedPhotos] : undefined,
     };
 
     // Check if this photo was already submitted - update instead of add
@@ -181,6 +240,9 @@ export function usePhotoProcessing() {
 
     // Clear any in-progress state for this photo since it's now submitted
     photoFormStatesRef.current.delete(photo.id);
+
+    // Clear combined photos for this submission
+    clearCombinedPhotos();
 
     // Reset form completely for next photo
     resetForm();
@@ -282,5 +344,12 @@ export function usePhotoProcessing() {
     // Photo navigation state management
     saveFormStateForPhoto,
     restoreFormStateForPhoto,
+
+    // Combined photos
+    combinedPhotos,
+    combinePhoto,
+    uncombinePhoto,
+    clearCombinedPhotos,
+    restoreCombinedPhotos,
   };
 }
