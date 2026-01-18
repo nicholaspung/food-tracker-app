@@ -701,7 +701,7 @@ export default function HomePage({
                           visit={visit}
                           isFriend={isFriend}
                           friendName={friendName}
-                          visitPhotos={visitPhotos}
+                          visitPhotosByFoodItem={visitPhotosByFoodItem}
                           onEdit={onEditVisit}
                           onDelete={setVisitToDelete}
                           onSharePhoto={handleSharePhotoClick}
@@ -805,7 +805,7 @@ export default function HomePage({
                                     visit={visit}
                                     isFriend={isFriend}
                                     friendName={friendName}
-                                    visitPhotos={visitPhotos}
+                                    visitPhotosByFoodItem={visitPhotosByFoodItem}
                                     onEdit={onEditVisit}
                                     onDelete={setVisitToDelete}
                                     onSharePhoto={handleSharePhotoClick}
