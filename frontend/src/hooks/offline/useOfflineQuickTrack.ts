@@ -20,6 +20,7 @@ import { blobUrlManager } from '@/lib/blobUrlManager';
 import { repositories } from '@/repositories';
 import { useTrackEvent } from '@/hooks/ui/useTrackEvent';
 import { ANALYTICS_EVENTS, type QuickTrackProperties } from '@/types/posthog';
+import { noteKeys } from '@/constants/queryKeys';
 
 export interface QuickTrackData {
   name: string;
@@ -32,6 +33,7 @@ export interface QuickTrackData {
   photo?: File; // Optional photo
   visibility?: 'private' | 'friends'; // Visibility for quick track items
   itemDate?: string; // Date when item was consumed/tracked (ISO string)
+  sourceNoteId?: string; // Optional: ID of note that was used to create this item
 }
 
 interface QuickTrackPhotoResult {
@@ -139,6 +141,17 @@ export function useOfflineQuickTrack() {
         source: 'useOfflineQuickTrack',
       };
       trackEvent(ANALYTICS_EVENTS.QUICK_TRACK_CREATED, eventProps);
+
+      // Mark source note as used if provided
+      if (variables.sourceNoteId && !result.isQueued) {
+        try {
+          await repositories.notes.markAsUsedByFoodItem(variables.sourceNoteId, result.foodItem.id);
+          queryClient.invalidateQueries({ queryKey: noteKeys.all });
+          logger.log('[useOfflineQuickTrack] Marked note as used:', variables.sourceNoteId);
+        } catch (error) {
+          logger.error('[useOfflineQuickTrack] Failed to mark note as used:', error);
+        }
+      }
 
       if (result.isQueued) {
         // Offline: Add optimistic data to cache

@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.6.5",
+    "date": "2026-01-17",
+    "title": "Quick Notes for Food Ideas",
+    "summary": "Jot down quick notes about food you want to remember for later! Capture places, dishes, or recipe ideas with photos and location, then easily find them when you're ready to log a visit or track an item.",
+    "features": [
+      "Log a Note: New option to quickly jot down notes about food, places, or recipes for later",
+      "Multiple photo support: Add up to 5 photos per note to capture what you're seeing",
+      "Location capture: Add a location name or use GPS to remember where you were",
+      "Notes management: View, edit, and delete your saved notes in the new Manage Notes page",
+      "Filter by status: See unused notes ready to be turned into visits, or review notes you've already used"
+    ],
+    "improvements": [
+      "New Add options: 'Log a Note' and 'Manage Notes' added to the Add menu for quick access",
+      "Full-screen photo viewer: Tap any note photo to view it in a full-screen gallery"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.6.4",
     "date": "2026-01-17",
     "title": "Combine Photos During Processing",
