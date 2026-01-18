@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logger';
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { pb, Restaurant, Visit, FoodItem } from "@/lib/pocketbase";
@@ -37,6 +37,7 @@ import {
   Utensils,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Users,
   Plus,
   Search,
@@ -85,8 +86,9 @@ export default function HomePage({
   const [quickTrackItemToDelete, setQuickTrackItemToDelete] =
     useState<QuickTrackItemWithDetails | null>(null);
   const [fullscreenPhoto, setFullscreenPhoto] = useState<{
-    url: string;
+    urls: string[];
     dishName: string;
+    currentIndex: number;
   } | null>(null);
   const [itemToMove, setItemToMove] = useState<{
     foodItem: FoodItem;
@@ -159,12 +161,14 @@ export default function HomePage({
     },
   });
 
-  // Create a Map for O(1) photo lookups by food_item ID
+  // Create a Map for O(1) photo lookups by food_item ID (arrays for multiple photos)
   const visitPhotosByFoodItem = useMemo(() => {
-    const map = new Map<string, VisitPhoto>();
+    const map = new Map<string, VisitPhoto[]>();
     visitPhotos.forEach((photo) => {
       if (photo.food_item) {
-        map.set(photo.food_item, photo);
+        const existing = map.get(photo.food_item) || [];
+        existing.push(photo);
+        map.set(photo.food_item, existing);
       }
     });
     return map;
@@ -192,6 +196,15 @@ export default function HomePage({
     handleShareVisitClick,
     closeVisitShareModal,
   } = sharing;
+
+  // Handler for photo click that maps initialIndex to currentIndex
+  const handlePhotoClick = useCallback((data: { urls: string[]; dishName: string; initialIndex?: number }) => {
+    setFullscreenPhoto({
+      urls: data.urls,
+      dishName: data.dishName,
+      currentIndex: data.initialIndex || 0,
+    });
+  }, []);
 
   // Delete visit with offline support
   const handleDeleteVisit = useCallback(async (visitId: string) => {
@@ -287,11 +300,12 @@ export default function HomePage({
     [foodItems]
   );
 
-  // Count friend quick track items
+  // Count friend and user quick track items
   const friendQuickTrackCount = useMemo(
     () => quickTrackItems.filter((item) => item.user !== currentUserId).length,
     [quickTrackItems, currentUserId]
   );
+  const userQuickTrackCount = quickTrackItems.length - friendQuickTrackCount;
 
   // Combine data (using Maps for O(1) lookups instead of O(n²) find/filter)
   const visitsWithDetails: VisitWithDetails[] = useMemo(
@@ -365,6 +379,44 @@ export default function HomePage({
     setMonthsToLoad((prev) => prev + 1);
   }, []);
 
+  // Track previous filtered counts for auto-load detection
+  const prevFilteredCountRef = useRef(filteredVisits.length + filteredQuickTrackItems.length);
+  const autoLoadAttemptsRef = useRef(0);
+  const maxAutoLoadAttempts = 12; // Max ~1 year of empty months
+
+  // Auto-load more months if loading produced no new visible content
+  useEffect(() => {
+    const currentFilteredCount = filteredVisits.length + filteredQuickTrackItems.length;
+
+    // Only auto-load if:
+    // 1. User already requested loading (monthsToLoad > initial)
+    // 2. No new content appeared after loading
+    // 3. There are more visits to load
+    // 4. Haven't exceeded max auto-load attempts
+    // 5. Not currently searching
+    if (
+      monthsToLoad > INITIAL_MONTHS_TO_LOAD &&
+      currentFilteredCount === prevFilteredCountRef.current &&
+      hasMoreVisits &&
+      autoLoadAttemptsRef.current < maxAutoLoadAttempts &&
+      !deferredSearchQuery.trim()
+    ) {
+      autoLoadAttemptsRef.current += 1;
+      // Auto-load more after a brief delay
+      const timer = setTimeout(() => {
+        setMonthsToLoad((prev) => prev + 1);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+
+    // Reset auto-load attempts when content changes
+    if (currentFilteredCount !== prevFilteredCountRef.current) {
+      autoLoadAttemptsRef.current = 0;
+    }
+
+    prevFilteredCountRef.current = currentFilteredCount;
+  }, [monthsToLoad, filteredVisits.length, filteredQuickTrackItems.length, hasMoreVisits, deferredSearchQuery]);
+
   if (visitsLoading) {
     return <LoadingState fullScreen message="Loading..." />;
   }
@@ -397,6 +449,34 @@ export default function HomePage({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* New user with friend content - show onboarding with quick actions */}
+        {userVisitsCount === 0 && userQuickTrackCount === 0 && (friendVisitsCount > 0 || friendQuickTrackCount > 0) && (
+          <div className="flex flex-col items-center justify-center pt-8">
+            <Utensils className="w-16 h-16 text-gray-300 mb-4" />
+            <p className="text-gray-500 text-center mb-2">Welcome! Get started</p>
+            <p className="text-sm text-gray-400 text-center mb-6">
+              You have friends sharing their food discoveries
+            </p>
+            <div className="w-full max-w-sm space-y-3">
+              {onAddVisit && (
+                <Button onClick={onAddVisit} className="w-full" size="lg">
+                  <Plus className="w-5 h-5 mr-2" />
+                  Add Your First Entry
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setFilterType("friends")}
+                className="w-full"
+              >
+                <Users className="w-5 h-5 mr-2" />
+                See Friend's Ratings
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* No visits or quick track items at all */}
         {visits.length === 0 && quickTrackItems.length === 0 && (
           <div className="flex flex-col items-center justify-center pt-8">
@@ -626,7 +706,7 @@ export default function HomePage({
                           onDelete={setVisitToDelete}
                           onSharePhoto={handleSharePhotoClick}
                           onShareVisit={handleShareVisitClick}
-                          onPhotoClick={setFullscreenPhoto}
+                          onPhotoClick={handlePhotoClick}
                           onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
                           ratingFilter={ratingFilter}
                           showVisibilityIndicator={!filterType.startsWith("user_")}
@@ -636,7 +716,7 @@ export default function HomePage({
 
                     {/* Quick Track Items */}
                     {dayQuickTrackItems.map((item) => {
-                      const photo = visitPhotosByFoodItem.get(item.id);
+                      const photos = visitPhotosByFoodItem.get(item.id) || [];
                       const isFriend = isFriendQuickTrack(item);
                       const friendName = isFriend
                         ? item.expand?.user?.name ||
@@ -647,13 +727,13 @@ export default function HomePage({
                         <QuickTrackCard
                           key={item.id}
                           item={item}
-                          photo={photo}
+                          photos={photos}
                           isFriend={isFriend}
                           friendName={friendName}
                           onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
                           onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
                           onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
-                          onPhotoClick={setFullscreenPhoto}
+                          onPhotoClick={handlePhotoClick}
                           showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
                       );
@@ -730,7 +810,7 @@ export default function HomePage({
                                     onDelete={setVisitToDelete}
                                     onSharePhoto={handleSharePhotoClick}
                                     onShareVisit={handleShareVisitClick}
-                                    onPhotoClick={setFullscreenPhoto}
+                                    onPhotoClick={handlePhotoClick}
                                     onMoveItem={(foodItem, visitId) => setItemToMove({ foodItem, visitId })}
                                     ratingFilter={ratingFilter}
                                     showVisibilityIndicator={!filterType.startsWith("user_")}
@@ -740,7 +820,7 @@ export default function HomePage({
 
                               {/* Quick Track Items for this day */}
                               {dayQuickTrackItems.map((item) => {
-                                const photo = visitPhotosByFoodItem.get(item.id);
+                                const photos = visitPhotosByFoodItem.get(item.id) || [];
                                 const isFriend = isFriendQuickTrack(item);
                                 const friendName = isFriend
                                   ? item.expand?.user?.name ||
@@ -751,13 +831,13 @@ export default function HomePage({
                                   <QuickTrackCard
                                     key={item.id}
                                     item={item}
-                                    photo={photo}
+                                    photos={photos}
                                     isFriend={isFriend}
                                     friendName={friendName}
                                     onEdit={(itemId) => navigate({ to: `/edit-quick-track/${itemId}` })}
                                     onDelete={(foodItem) => setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const })}
                                     onSharePhoto={(photo, foodItem) => handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created)}
-                                    onPhotoClick={setFullscreenPhoto}
+                                    onPhotoClick={handlePhotoClick}
                                     showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />
                                 );
@@ -788,7 +868,8 @@ export default function HomePage({
         )}
 
         {/* Load More Data Button (older visits not yet loaded) */}
-        {hasMoreVisits && !hasMoreMonthsToRender && (
+        {/* Only show when there are already items displayed - otherwise the Card version above handles it */}
+        {hasMoreVisits && !hasMoreMonthsToRender && renderedGroupedVisits.length > 0 && (
           <div className="pt-2 pb-4">
             <Button
               onClick={loadMoreMonths}
@@ -797,6 +878,13 @@ export default function HomePage({
             >
               Load Older Visits
             </Button>
+          </div>
+        )}
+
+        {/* No more visits message */}
+        {!hasMoreVisits && !hasMoreMonthsToRender && renderedGroupedVisits.length > 0 && !deferredSearchQuery.trim() && (
+          <div className="pt-2 pb-4 text-center">
+            <p className="text-sm text-gray-400">No more visits to load</p>
           </div>
         )}
       </div>
@@ -960,12 +1048,34 @@ export default function HomePage({
         );
       })()}
 
-      {/* Fullscreen Photo Viewer */}
+      {/* Fullscreen Photo Viewer with Navigation */}
       {fullscreenPhoto && (
         <div
           className="fixed inset-0 bg-black z-50 flex items-center justify-center"
           onClick={() => setFullscreenPhoto(null)}
+          onKeyDown={(e) => {
+            if (fullscreenPhoto.urls.length > 1) {
+              if (e.key === 'ArrowLeft' && fullscreenPhoto.currentIndex > 0) {
+                e.stopPropagation();
+                setFullscreenPhoto({
+                  ...fullscreenPhoto,
+                  currentIndex: fullscreenPhoto.currentIndex - 1,
+                });
+              } else if (e.key === 'ArrowRight' && fullscreenPhoto.currentIndex < fullscreenPhoto.urls.length - 1) {
+                e.stopPropagation();
+                setFullscreenPhoto({
+                  ...fullscreenPhoto,
+                  currentIndex: fullscreenPhoto.currentIndex + 1,
+                });
+              }
+            }
+            if (e.key === 'Escape') {
+              setFullscreenPhoto(null);
+            }
+          }}
+          tabIndex={0}
         >
+          {/* Close button */}
           <button
             onClick={() => setFullscreenPhoto(null)}
             className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors z-10"
@@ -973,11 +1083,54 @@ export default function HomePage({
           >
             <X className="w-6 h-6" />
           </button>
+
+          {/* Dish name and photo counter */}
           <div className="absolute top-4 left-4 text-white bg-black/50 px-3 py-2 rounded-lg">
             <p className="font-medium">{fullscreenPhoto.dishName}</p>
+            {fullscreenPhoto.urls.length > 1 && (
+              <p className="text-sm text-gray-300">
+                {fullscreenPhoto.currentIndex + 1} of {fullscreenPhoto.urls.length}
+              </p>
+            )}
           </div>
+
+          {/* Previous button */}
+          {fullscreenPhoto.urls.length > 1 && fullscreenPhoto.currentIndex > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setFullscreenPhoto({
+                  ...fullscreenPhoto,
+                  currentIndex: fullscreenPhoto.currentIndex - 1,
+                });
+              }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors z-10"
+              aria-label="Previous photo"
+            >
+              <ChevronLeft className="w-8 h-8" />
+            </button>
+          )}
+
+          {/* Next button */}
+          {fullscreenPhoto.urls.length > 1 && fullscreenPhoto.currentIndex < fullscreenPhoto.urls.length - 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setFullscreenPhoto({
+                  ...fullscreenPhoto,
+                  currentIndex: fullscreenPhoto.currentIndex + 1,
+                });
+              }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors z-10"
+              aria-label="Next photo"
+            >
+              <ChevronRight className="w-8 h-8" />
+            </button>
+          )}
+
+          {/* Photo */}
           <img
-            src={fullscreenPhoto.url}
+            src={fullscreenPhoto.urls[fullscreenPhoto.currentIndex]}
             alt={fullscreenPhoto.dishName}
             className="max-w-full max-h-full object-contain"
             onClick={(e) => e.stopPropagation()}

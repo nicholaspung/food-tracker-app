@@ -58,14 +58,42 @@ export default function AddRestaurantToListPage({
     enabled: !!listId,
   });
 
+  // Fetch all user's lists to get userFoodItem links
+  const { data: userLists = [] } = useQuery({
+    queryKey: ["restaurant_lists", user?.id],
+    queryFn: async () => {
+      return await repositories.restaurantLists.getFullList({
+        filter: `user = "${user?.id}"`,
+      });
+    },
+    enabled: !!user,
+  });
+
+  // Fetch all list items from user's lists to find userFoodItem links
+  const { data: allUserListItems = [] } = useQuery({
+    queryKey: ["all_user_list_items", user?.id, "with_user_food_items"],
+    queryFn: async () => {
+      if (userLists.length === 0) return [];
+      const listIds = userLists.map(l => l.id);
+      return await repositories.listItems.getFullList({
+        filter: listIds.map(id => `list = "${id}"`).join(' || '),
+      });
+    },
+    enabled: userLists.length > 0,
+  });
+
   // Create a Set of restaurant IDs already in the list for quick lookup
   const existingRestaurantIds = useMemo(() => {
     return new Set(existingListItems.map((item) => item.restaurant));
   }, [existingListItems]);
 
-  // Create a Set of all food item IDs already recommended in this list
+  // Create a Set of all food item IDs that are already used:
+  // 1. Recommended items in this list
+  // 2. User's food items linked via userFoodItem on any of user's lists
   const existingRecommendedItemIds = useMemo(() => {
     const ids = new Set<string>();
+
+    // Add food items from recommendedItems in this list
     for (const listItem of existingListItems) {
       if (listItem.recommendedItems && Array.isArray(listItem.recommendedItems)) {
         for (const itemId of listItem.recommendedItems) {
@@ -73,8 +101,16 @@ export default function AddRestaurantToListPage({
         }
       }
     }
+
+    // Add food items linked via userFoodItem on any of user's list items
+    for (const listItem of allUserListItems) {
+      if (listItem.userFoodItem) {
+        ids.add(listItem.userFoodItem);
+      }
+    }
+
     return ids;
-  }, [existingListItems]);
+  }, [existingListItems, allUserListItems]);
 
   // Fetch restaurants the user has visited with stats (item count, all visit dates)
   const { data: visitedRestaurants = [], isLoading: loadingRestaurants } = useQuery<

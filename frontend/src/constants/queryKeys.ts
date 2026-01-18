@@ -95,3 +95,11 @@ export const userKeys = {
   detail: (id: string) => ["user", id] as const,
   byFriendCode: (code: string) => ["user", "friendCode", code] as const,
 };
+
+// Note query keys
+export const noteKeys = {
+  all: ["notes"] as const,
+  unused: (userId: string) => ["notes", "unused", userId] as const,
+  detail: (id: string) => ["note", id] as const,
+  photos: (noteId: string) => ["note_photos", noteId] as const,
+};

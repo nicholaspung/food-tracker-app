@@ -19,19 +19,19 @@ type VisitPhoto = RepoVisitPhoto & { isPending?: boolean };
 
 interface QuickTrackCardProps {
   item: FoodItem;
-  photo?: VisitPhoto;
+  photos?: VisitPhoto[];
   isFriend?: boolean;
   friendName?: string | null;
   onEdit: (itemId: string) => void;
   onDelete: (item: FoodItem) => void;
   onSharePhoto: (photo: VisitPhoto, item: FoodItem) => void;
-  onPhotoClick: (photo: { url: string; dishName: string }) => void;
+  onPhotoClick: (data: { urls: string[]; dishName: string; initialIndex?: number }) => void;
   showVisibilityIndicator?: boolean;
 }
 
 const QuickTrackCard = memo(function QuickTrackCard({
   item,
-  photo,
+  photos = [],
   isFriend = false,
   friendName,
   onEdit,
@@ -40,18 +40,20 @@ const QuickTrackCard = memo(function QuickTrackCard({
   onPhotoClick,
   showVisibilityIndicator = true,
 }: QuickTrackCardProps) {
-  const photoUrl = photo
-    ? photo.isPending
+  const hasPhotos = photos.length > 0;
+  const photoCount = photos.length;
+
+  const photoUrls = photos.map((photo) =>
+    photo.isPending
       ? photo.photo
-      : pb.files.getURL(photo, photo.photo, {
-          thumb: "100x100",
-        })
-    : null;
-  const fullPhotoUrl = photo
-    ? photo.isPending
+      : pb.files.getURL(photo, photo.photo, { thumb: "100x100" })
+  );
+
+  const fullPhotoUrls = photos.map((photo) =>
+    photo.isPending
       ? photo.photo
       : pb.files.getURL(photo, photo.photo)
-    : null;
+  );
 
   return (
     <Card
@@ -122,19 +124,29 @@ const QuickTrackCard = memo(function QuickTrackCard({
         </div>
 
         <div className="flex items-start gap-3">
-          {/* Photo thumbnail */}
-          {photoUrl && photo && fullPhotoUrl && (
-            <img
-              src={photoUrl}
-              alt={item.name}
-              className="w-16 h-16 object-cover rounded-md flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+          {/* Photo thumbnail with count badge */}
+          {hasPhotos && (
+            <div
+              className="relative w-16 h-16 flex-shrink-0 cursor-pointer"
               onClick={() =>
                 onPhotoClick({
-                  url: fullPhotoUrl,
+                  urls: fullPhotoUrls,
                   dishName: item.name,
+                  initialIndex: 0,
                 })
               }
-            />
+            >
+              <img
+                src={photoUrls[0]}
+                alt={item.name}
+                className="w-16 h-16 object-cover rounded-md hover:opacity-80 transition-opacity"
+              />
+              {photoCount > 1 && (
+                <div className="absolute top-0.5 left-0.5 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded-full font-medium">
+                  +{photoCount - 1}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="flex-1 min-w-0 pr-2">
@@ -178,12 +190,12 @@ const QuickTrackCard = memo(function QuickTrackCard({
               </span>
             </div>
 
-            {/* Share button - only show if there's a photo */}
-            {photo && (
+            {/* Share button - only show if there are photos */}
+            {hasPhotos && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSharePhoto(photo, item);
+                  onSharePhoto(photos[0], item);
                 }}
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
                 title="Share photo"

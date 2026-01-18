@@ -21,7 +21,8 @@ import { RatingSelector } from "@/components/ui/RatingSelector";
 import { RatingLegend } from "@/components/ui/RatingLegend";
 import { usePhotoUpload } from "@/hooks/photos/usePhotoUpload";
 import { useOfflineVisitCreation } from "@/hooks/offline/useOfflineVisitCreation";
-import MenuItemPhotoInput from "@/components/visits/shared/MenuItemPhotoInput";
+import { useLinkVisitToBookmark } from "@/hooks/offline/useLinkVisitToBookmark";
+import MenuItemPhotoSection from "@/components/visits/shared/MenuItemPhotoSection";
 import { useSync } from "@/contexts/SyncContext";
 import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
 import { DatePickerField } from "@/components/ui/DatePickerField";
@@ -44,21 +45,41 @@ export default function RateItemsPage({
   const [visitDate, setVisitDate] = useState(draft.visitDate);
   const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
 
+  // Check for sourceNoteId from sessionStorage (from Use Saved Note flow)
+  const [sourceNoteId] = useState<string | undefined>(() => {
+    const noteDataStr = sessionStorage.getItem("noteForVisit");
+    if (noteDataStr) {
+      try {
+        const noteData = JSON.parse(noteDataStr);
+        // Clean up sessionStorage after reading (will be used during submit)
+        sessionStorage.removeItem("noteForVisit");
+        return noteData.noteId;
+      } catch (e) {
+        return undefined;
+      }
+    }
+    return undefined;
+  });
+
   // Edit item dialog state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
 
   // Photo management using persistent store (survives back navigation)
-  const { photos: itemPhotos, previewUrls: photoPreviewUrls, setPhoto, removePhoto, clearAllPhotos } = useVisitDraftPhotoStore();
+  const { photos: itemPhotos, addPhoto, addMultiplePhotos, removePhoto, removeAllPhotos, getPreviewUrls, clearAllPhotos } = useVisitDraftPhotoStore();
 
-  // Wrap handlers to match MenuItemPhotoInput signature
+  // Wrap handlers to match MenuItemPhotoSection signature
   const handlePhotoCapture = (index: string | number, file: File) => {
-    setPhoto(Number(index), file);
+    addPhoto(Number(index), file);
   };
 
-  const handleRemovePhoto = (index: string | number) => {
-    removePhoto(Number(index));
+  const handleMultiPhotoCapture = (index: string | number, files: File[]) => {
+    addMultiplePhotos(Number(index), files);
+  };
+
+  const handleRemovePhoto = (index: string | number, photoIndex: number) => {
+    removePhoto(Number(index), photoIndex);
   };
 
   // Check if user has rated before - expand legend for first-timers
@@ -73,7 +94,11 @@ export default function RateItemsPage({
   // Offline-aware visit creation
   const { isOnline } = useSync();
   const saveVisitMutation = useOfflineVisitCreation();
+  const linkVisitToBookmark = useLinkVisitToBookmark();
   const isKeyboardVisible = useKeyboardVisible();
+
+  // Check if this is from a bookmark "I went there" flow
+  const sourceListItemId = visitDraftService.getSourceListItemId();
 
   useEffect(() => {
     visitDraftService.saveMetadata(visitDate, visitVisibility);
@@ -103,14 +128,33 @@ export default function RateItemsPage({
     }));
 
     try {
-      await saveVisitMutation.mutateAsync({
+      const result = await saveVisitMutation.mutateAsync({
         restaurant: draft.restaurant.id,
         visitDate: visitDateUTC,
         visibility: visitVisibility,
         notes: "",
         foodItems: foodItemsData,
         itemPhotos,
+        sourceNoteId,
       });
+
+      // If this was from a bookmark "I went there" flow, link the food item back
+      if (sourceListItemId && result.foodItems.length > 0) {
+        const userFoodItemId = result.foodItems[0].id;
+        // Only link if we have a real ID (not a temp offline ID)
+        if (!userFoodItemId.startsWith('temp_')) {
+          try {
+            await linkVisitToBookmark.mutateAsync({
+              listItemId: sourceListItemId,
+              userFoodItemId,
+            });
+            logger.log('Linked visit to bookmark:', sourceListItemId);
+          } catch (linkError) {
+            // Don't fail the whole operation if linking fails
+            logger.error('Failed to link visit to bookmark:', linkError);
+          }
+        }
+      }
 
       // Success
       visitDraftService.clearDraft();
@@ -181,8 +225,8 @@ export default function RateItemsPage({
     const newItems = items.filter((_, i) => i !== index);
     setItems(newItems);
 
-    // Remove associated photo if any
-    removePhoto(index);
+    // Remove all associated photos
+    removeAllPhotos(index);
 
     // Update draft service - rebuild items array
     const updatedItems = newItems.map((item) => ({
@@ -281,13 +325,15 @@ export default function RateItemsPage({
                 </div>
 
                 {/* Photo capture section */}
-                <MenuItemPhotoInput
+                <MenuItemPhotoSection
                   photoKey={index}
-                  newPhotoPreviewUrl={photoPreviewUrls.get(index)}
+                  newPhotoPreviewUrls={getPreviewUrls(index)}
+                  existingPhotoUrls={[]}
                   onPhotoCapture={handlePhotoCapture}
+                  onMultiPhotoCapture={handleMultiPhotoCapture}
                   onRemoveNewPhoto={handleRemovePhoto}
+                  itemName={item.menuItem.name}
                   showLabel={true}
-                  showNewPhotoBadge={false}
                 />
               </CardContent>
             </Card>
