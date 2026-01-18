@@ -45,6 +45,22 @@ export default function RateItemsPage({
   const [visitDate, setVisitDate] = useState(draft.visitDate);
   const [visitVisibility, setVisitVisibility] = useState(draft.visitVisibility);
 
+  // Check for sourceNoteId from sessionStorage (from Use Saved Note flow)
+  const [sourceNoteId] = useState<string | undefined>(() => {
+    const noteDataStr = sessionStorage.getItem("noteForVisit");
+    if (noteDataStr) {
+      try {
+        const noteData = JSON.parse(noteDataStr);
+        // Clean up sessionStorage after reading (will be used during submit)
+        sessionStorage.removeItem("noteForVisit");
+        return noteData.noteId;
+      } catch (e) {
+        return undefined;
+      }
+    }
+    return undefined;
+  });
+
   // Edit item dialog state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -119,6 +135,7 @@ export default function RateItemsPage({
         notes: "",
         foodItems: foodItemsData,
         itemPhotos,
+        sourceNoteId,
       });
 
       // If this was from a bookmark "I went there" flow, link the food item back

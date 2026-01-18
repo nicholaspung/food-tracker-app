@@ -37,6 +37,7 @@ import { FeedbackRepository, FeedbackMessageRepository } from './FeedbackReposit
 import { RestaurantListRepository, ListItemRepository } from './ListRepository';
 import { UserRepository } from './UserRepository';
 import { InviteCodeRepository } from './InviteCodeRepository';
+import { NoteRepository, NotePhotoRepository } from './NoteRepository';
 
 /**
  * Singleton repositories for all PocketBase collections.
@@ -73,6 +74,10 @@ export const repositories = {
   // Users
   users: new UserRepository(pb),
   inviteCodes: new InviteCodeRepository(pb),
+
+  // Notes
+  notes: new NoteRepository(pb),
+  notePhotos: new NotePhotoRepository(pb),
 } as const;
 
 // Export individual repository classes for advanced use cases
@@ -87,3 +92,4 @@ export { FeedbackRepository, FeedbackMessageRepository } from './FeedbackReposit
 export { RestaurantListRepository, ListItemRepository } from './ListRepository';
 export { UserRepository } from './UserRepository';
 export { InviteCodeRepository } from './InviteCodeRepository';
+export { NoteRepository, NotePhotoRepository } from './NoteRepository';

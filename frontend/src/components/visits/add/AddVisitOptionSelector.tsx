@@ -1,12 +1,23 @@
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
-import { Utensils, Zap, Images, ChevronRight, ArrowLeft } from "lucide-react";
+import { Utensils, Zap, Images, ChevronRight, ArrowLeft, FileText, FolderOpen } from "lucide-react";
 import { useTrackEvent } from "@/hooks/ui/useTrackEvent";
 import { ANALYTICS_EVENTS } from "@/constants/analyticsEvents";
+import { useUnusedNotes, type Note } from "@/hooks/api/useNotes";
+import NoteSelector from "@/components/notes/NoteSelector";
+import UseNoteDialog from "@/components/notes/UseNoteDialog";
 
 export default function AddVisitOptionSelector() {
   const navigate = useNavigate();
   const trackEvent = useTrackEvent();
+
+  // State for note selection
+  const [showNoteSelector, setShowNoteSelector] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+
+  // Fetch unused notes to conditionally show "Use Saved Note" option
+  const { data: unusedNotes = [] } = useUnusedNotes();
 
   const options = [
     {
@@ -26,6 +37,14 @@ export default function AddVisitOptionSelector() {
       path: "/quick-track",
     },
     {
+      id: "log-note",
+      title: "Log a Note",
+      description: "Jot down notes about food/places for later",
+      icon: FileText,
+      color: "bg-orange-500",
+      path: "/log-note",
+    },
+    {
       id: "process-photos",
       title: "Process Saved Photos",
       description: "Upload multiple photos and rate each one",
@@ -34,6 +53,63 @@ export default function AddVisitOptionSelector() {
       path: "/process-photos",
     },
   ];
+
+  // TODO: Re-enable "Use Saved Note" option when functionality is ready
+  // if (unusedNotes.length > 0) {
+  //   options.splice(3, 0, {
+  //     id: "use-saved-note",
+  //     title: "Use Saved Note",
+  //     description: `${unusedNotes.length} note${unusedNotes.length > 1 ? "s" : ""} ready to use`,
+  //     icon: BookOpen,
+  //     color: "bg-amber-500",
+  //     path: "", // Handled specially
+  //   });
+  // }
+
+  // Add "Manage Notes" option to view/edit/delete all notes
+  options.push({
+    id: "manage-notes",
+    title: "Manage Notes",
+    description: "View, edit, or delete your saved notes",
+    icon: FolderOpen,
+    color: "bg-gray-500",
+    path: "/notes",
+  });
+
+  const handleOptionClick = (option: typeof options[0]) => {
+    if (option.id === "use-saved-note") {
+      setShowNoteSelector(true);
+      return;
+    }
+
+    // Track flow started based on option selected
+    if (option.id === "restaurant-visit") {
+      trackEvent(ANALYTICS_EVENTS.VISIT_CREATION_STARTED, {
+        source: "AddVisitOptionSelector",
+      });
+    } else if (option.id === "quick-track") {
+      trackEvent(ANALYTICS_EVENTS.QUICK_TRACK_STARTED, {
+        source: "AddVisitOptionSelector",
+      });
+    } else if (option.id === "process-photos") {
+      trackEvent(ANALYTICS_EVENTS.PHOTO_PROCESSING_STARTED, {
+        source: "AddVisitOptionSelector",
+      });
+    }
+
+    // Pass from param for log-note so back button returns here
+    if (option.id === "log-note") {
+      navigate({ to: "/log-note", search: { from: "add-visit" } });
+      return;
+    }
+
+    navigate({ to: option.path });
+  };
+
+  const handleNoteSelect = (note: Note) => {
+    setShowNoteSelector(false);
+    setSelectedNote(note);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -62,24 +138,9 @@ export default function AddVisitOptionSelector() {
           return (
             <button
               key={option.id}
-              onClick={() => {
-                // Track flow started based on option selected
-                if (option.id === "restaurant-visit") {
-                  trackEvent(ANALYTICS_EVENTS.VISIT_CREATION_STARTED, {
-                    source: 'AddVisitOptionSelector',
-                  });
-                } else if (option.id === "quick-track") {
-                  trackEvent(ANALYTICS_EVENTS.QUICK_TRACK_STARTED, {
-                    source: 'AddVisitOptionSelector',
-                  });
-                } else if (option.id === "process-photos") {
-                  trackEvent(ANALYTICS_EVENTS.PHOTO_PROCESSING_STARTED, {
-                    source: 'AddVisitOptionSelector',
-                  });
-                }
-                navigate({ to: option.path });
-              }}
+              onClick={() => handleOptionClick(option)}
               className="w-full text-left"
+              data-testid={`add-option-${option.id}`}
             >
               <Card className="hover:shadow-lg transition-shadow border-2 hover:border-primary">
                 <CardContent>
@@ -110,6 +171,25 @@ export default function AddVisitOptionSelector() {
           );
         })}
       </div>
+
+      {/* Note Selector Modal */}
+      {showNoteSelector && (
+        <NoteSelector
+          notes={unusedNotes}
+          open={showNoteSelector}
+          onOpenChange={setShowNoteSelector}
+          onSelect={handleNoteSelect}
+        />
+      )}
+
+      {/* Use Note Dialog */}
+      {selectedNote && (
+        <UseNoteDialog
+          note={selectedNote}
+          open={!!selectedNote}
+          onOpenChange={(open) => !open && setSelectedNote(null)}
+        />
+      )}
     </div>
   );
 }
