@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pb } from '@/lib/pocketbase';
 import { logger } from '@/lib/logger';
@@ -128,11 +128,20 @@ function Home() {
     setShowOnboarding(false);
   };
 
+  // Memoized handlers to prevent unnecessary re-renders of child components
+  const handleEditVisit = useCallback((visitId: string) => {
+    navigate({ to: '/edit-visit/$visitId/edit-items', params: { visitId } });
+  }, [navigate]);
+
+  const handleAddVisit = useCallback(() => {
+    navigate({ to: '/add-visit' });
+  }, [navigate]);
+
   return (
     <>
       <HomePage
-        onEditVisit={(visitId: string) => navigate({ to: '/edit-visit/$visitId/edit-items', params: { visitId } })}
-        onAddVisit={() => navigate({ to: '/add-visit' })}
+        onEditVisit={handleEditVisit}
+        onAddVisit={handleAddVisit}
       />
 
       {/* Onboarding Dialog */}

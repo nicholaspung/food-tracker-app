@@ -272,6 +272,42 @@ export interface ListItem {
   };
 }
 
+// Notes types
+export interface Note {
+  id: string;
+  user: string;
+  content: string;
+  restaurant?: string;
+  location_text?: string;
+  latitude?: number;
+  longitude?: number;
+  status: 'draft' | 'used';
+  usedInVisit?: string;
+  usedInFoodItem?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    user?: User;
+    restaurant?: Restaurant;
+    usedInVisit?: Visit;
+    usedInFoodItem?: FoodItem;
+  };
+}
+
+export interface NotePhoto {
+  id: string;
+  note: string;
+  user: string;
+  photo: string; // filename
+  caption?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    note?: Note;
+    user?: User;
+  };
+}
+
 // Expand type definitions for type-safe access to PocketBase expand properties
 
 export interface MenuReviewRequestExpand {

@@ -42,6 +42,10 @@ export const COLLECTIONS = {
   // User feedback
   FEEDBACK: 'feedback',
   FEEDBACK_MESSAGES: 'feedback_messages',
+
+  // Notes
+  NOTES: 'notes',
+  NOTE_PHOTOS: 'note_photos',
 } as const;
 
 /**

@@ -57,16 +57,6 @@ go run main.go serve     # Start PocketBase server (port 8090)
   - macOS: `brew install libheif`
   - Required by the `/api/convert-heic` endpoint for iPhone photo uploads
 
-### E2E Testing
-```bash
-cd frontend
-npm run test:e2e         # Run all tests (starts dev server automatically)
-npm run cypress:open     # Open Cypress test runner (interactive)
-npm run cypress:run      # Run tests headless (requires dev server running)
-```
-
-Test files are in `frontend/cypress/e2e/`. The `test:e2e` command auto-starts the dev server and runs tests.
-
 **Pre-push Hook**: Tests automatically run before `git push`. Set up with `./setup-hooks.sh` from project root.
 
 ## Architecture
@@ -601,9 +591,6 @@ When adding features:
 3. **Use offline hooks** - For mutations that should work offline
 4. **Use error handling hook** - For consistent error handling
 5. **Follow mobile-first design** - Full-width, no responsive breakpoints
-6. **Add E2E tests** - in `frontend/cypress/e2e/`
-7. **Run tests** - `npm run test:e2e` to verify tests pass
-8. **Address failures** - Fix any test failures before completion
 
 **Pre-push Testing:**
 - Tests automatically run before `git push` via pre-push hook
