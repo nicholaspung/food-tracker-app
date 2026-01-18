@@ -255,14 +255,56 @@ export interface ListItem {
   list: string;
   restaurant: string;
   addedBy: string;
+  sourceUser?: string; // ID of the friend whose list items are being saved from (null for user's own items)
+  foodItem?: string; // Single food item ID being bookmarked (for individual item bookmarks)
+  userFoodItem?: string; // User's own food item ID after they visit and rate the bookmarked item
   position: number;
   note?: string;
-  recommendedItems?: string[]; // Array of food_item IDs
+  recommendedItems?: string[]; // Array of food_item IDs (legacy, for backwards compatibility)
   created: string;
   expand?: {
     restaurant?: Restaurant;
     addedBy?: User;
-    recommendedItems?: FoodItem[];
+    sourceUser?: User; // Expanded source user (friend who recommended)
+    foodItem?: FoodItem; // Expanded single food item
+    userFoodItem?: FoodItem; // User's own food item with their rating
+    recommendedItems?: FoodItem[]; // Legacy expanded items
+  };
+}
+
+// Notes types
+export interface Note {
+  id: string;
+  user: string;
+  content: string;
+  restaurant?: string;
+  location_text?: string;
+  latitude?: number;
+  longitude?: number;
+  status: 'draft' | 'used';
+  usedInVisit?: string;
+  usedInFoodItem?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    user?: User;
+    restaurant?: Restaurant;
+    usedInVisit?: Visit;
+    usedInFoodItem?: FoodItem;
+  };
+}
+
+export interface NotePhoto {
+  id: string;
+  note: string;
+  user: string;
+  photo: string; // filename
+  caption?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    note?: Note;
+    user?: User;
   };
 }
 

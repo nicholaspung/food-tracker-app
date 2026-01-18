@@ -13,8 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useScrollIntoView } from "@/hooks/ui/useScrollIntoView";
 import { usePhotoUpload, type PhotoUploadItem } from "@/hooks/photos/usePhotoUpload";
-import MenuItemPhotoInput from "@/components/visits/shared/MenuItemPhotoInput";
+import MenuItemPhotoSection from "@/components/visits/shared/MenuItemPhotoSection";
 import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
+import { MAX_PHOTOS_PER_FOOD_ITEM } from "@/constants/limits";
 import { RatingSelector } from "@/components/ui/RatingSelector";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
@@ -53,21 +54,27 @@ export default function EditRateItemsPage({
     draft?.visitVisibility || "friends"
   );
 
-  // Photo management hook - track photo for each item (using food_item id as key)
+  // Photo management hook - track photos for each item (using food_item id as key)
   const {
     photos: itemPhotos,
-    previewUrls: photoPreviewUrls,
-    handleCapture,
-    handleRemove,
+    addPhoto,
+    addMultiplePhotos,
+    removePhoto,
+    getPreviewUrls,
+    getPhotoCount,
   } = usePhotoManager<string>(true);
 
-  // Wrap handlers to match MenuItemPhotoInput signature
+  // Wrap handlers to match MenuItemPhotoSection signature
   const handlePhotoCapture = (foodItemId: string | number, file: File) => {
-    handleCapture(String(foodItemId), file);
+    addPhoto(String(foodItemId), file);
   };
 
-  const handleRemovePhoto = (foodItemId: string | number) => {
-    handleRemove(String(foodItemId));
+  const handleMultiPhotoCapture = (foodItemId: string | number, files: File[]) => {
+    addMultiplePhotos(String(foodItemId), files);
+  };
+
+  const handleRemoveNewPhoto = (foodItemId: string | number, photoIndex: number) => {
+    removePhoto(String(foodItemId), photoIndex);
   };
 
   const [deletedPhotoIds, setDeletedPhotoIds] = useState<Set<string>>(
@@ -93,12 +100,14 @@ export default function EditRateItemsPage({
     },
   });
 
-  // Create a Map for O(1) photo lookups by food_item ID
+  // Create a Map for O(1) photo lookups by food_item ID (arrays for multiple photos)
   const existingPhotosByFoodItem = useMemo(() => {
-    const map = new Map<string, VisitPhoto>();
+    const map = new Map<string, VisitPhoto[]>();
     existingPhotos.forEach((photo) => {
       if (photo.food_item) {
-        map.set(photo.food_item, photo);
+        const existing = map.get(photo.food_item) || [];
+        existing.push(photo);
+        map.set(photo.food_item, existing);
       }
     });
     return map;
@@ -131,24 +140,31 @@ export default function EditRateItemsPage({
     }
   }, [menuItems, visitDate, visitVisibility, draft]);
 
-  // Mark an existing photo for deletion
-  const handleDeleteExistingPhoto = (foodItemId: string | number) => {
+  // Mark an existing photo for deletion by index
+  const handleDeleteExistingPhoto = (foodItemId: string | number, photoIndex: number) => {
     const id = String(foodItemId);
-    const existingPhoto = existingPhotosByFoodItem.get(id);
-    if (existingPhoto) {
+    const existingPhotosForItem = existingPhotosByFoodItem.get(id) || [];
+    // Find the actual photo at the index (accounting for already deleted ones)
+    const visiblePhotos = existingPhotosForItem.filter(p => !deletedPhotoIds.has(p.id));
+    if (visiblePhotos[photoIndex]) {
       const newDeletedIds = new Set(deletedPhotoIds);
-      newDeletedIds.add(existingPhoto.id);
+      newDeletedIds.add(visiblePhotos[photoIndex].id);
       setDeletedPhotoIds(newDeletedIds);
     }
   };
 
-  // Get existing photo URL for a food item (only if not marked for deletion)
-  const getExistingPhotoUrl = (foodItemId: string) => {
-    const existingPhoto = existingPhotosByFoodItem.get(foodItemId);
-    if (existingPhoto && !deletedPhotoIds.has(existingPhoto.id)) {
-      return pb.files.getURL(existingPhoto, existingPhoto.photo);
-    }
-    return null;
+  // Get existing photo URLs for a food item (only those not marked for deletion)
+  const getExistingPhotoUrls = (foodItemId: string): string[] => {
+    const existingPhotosForItem = existingPhotosByFoodItem.get(foodItemId) || [];
+    return existingPhotosForItem
+      .filter(photo => !deletedPhotoIds.has(photo.id))
+      .map(photo => pb.files.getURL(photo, photo.photo));
+  };
+
+  // Get count of existing (non-deleted) photos for a food item
+  const getExistingPhotoCount = (foodItemId: string): number => {
+    const existingPhotosForItem = existingPhotosByFoodItem.get(foodItemId) || [];
+    return existingPhotosForItem.filter(photo => !deletedPhotoIds.has(photo.id)).length;
   };
 
   const updateVisitMutation = useMutation({
@@ -188,16 +204,14 @@ export default function EditRateItemsPage({
             notes: item.notes,
           });
 
-          // Check for photo to upload
-          const newPhoto = itemPhotos.get(item.id);
-          if (newPhoto) {
-            const existingPhoto = existingPhotosByFoodItem.get(item.id);
+          // Check for new photos to upload (array)
+          const newPhotos = itemPhotos.get(item.id) || [];
+          for (const photo of newPhotos) {
             photoUploads.push({
-              photo: newPhoto,
+              photo,
               foodItemId: item.id,
               visitId,
               userId: user.id,
-              existingPhotoId: existingPhoto?.id,
             });
           }
         } else if (!item._deleted) {
@@ -211,12 +225,12 @@ export default function EditRateItemsPage({
             user: user.id,
           });
 
-          // Check for photo to upload (use temporary key)
+          // Check for photos to upload (use temporary key)
           const tempKey = `new_${menuItems.indexOf(item)}`;
-          const newPhoto = itemPhotos.get(tempKey);
-          if (newPhoto) {
+          const newPhotos = itemPhotos.get(tempKey) || [];
+          for (const photo of newPhotos) {
             photoUploads.push({
-              photo: newPhoto,
+              photo,
               foodItemId: foodItem.id,
               visitId,
               userId: user.id,
@@ -234,7 +248,7 @@ export default function EditRateItemsPage({
       // Track visit updated
       const itemsAdded = menuItems.filter(item => !item.id && !item._deleted).length;
       const itemsDeleted = menuItems.filter(item => item._deleted).length;
-      const photosAdded = Array.from(itemPhotos.values()).length;
+      const photosAdded = Array.from(itemPhotos.values()).reduce((sum, arr) => sum + arr.length, 0);
 
       trackEvent(ANALYTICS_EVENTS.VISIT_UPDATED, {
         source: 'EditRateItemsPage',
@@ -370,20 +384,25 @@ export default function EditRateItemsPage({
                   {(() => {
                     // Get photo key (existing id or temp key for new items)
                     const photoKey = item.id || `new_${index}`;
-                    const existingPhotoUrl = item.id
-                      ? getExistingPhotoUrl(item.id)
-                      : null;
+                    const existingPhotoUrls = item.id
+                      ? getExistingPhotoUrls(item.id)
+                      : [];
+                    const newPhotoPreviewUrls = getPreviewUrls(photoKey);
+                    const totalPhotos = existingPhotoUrls.length + newPhotoPreviewUrls.length;
+                    const existingCount = item.id ? getExistingPhotoCount(item.id) : 0;
 
                     return (
-                      <MenuItemPhotoInput
+                      <MenuItemPhotoSection
                         photoKey={photoKey}
-                        newPhotoPreviewUrl={photoPreviewUrls.get(photoKey)}
-                        existingPhotoUrl={existingPhotoUrl || undefined}
+                        newPhotoPreviewUrls={newPhotoPreviewUrls}
+                        existingPhotoUrls={existingPhotoUrls}
                         onPhotoCapture={handlePhotoCapture}
-                        onRemoveNewPhoto={handleRemovePhoto}
+                        onMultiPhotoCapture={handleMultiPhotoCapture}
+                        onRemoveNewPhoto={handleRemoveNewPhoto}
                         onDeleteExistingPhoto={handleDeleteExistingPhoto}
+                        itemName={item.name}
+                        maxPhotos={MAX_PHOTOS_PER_FOOD_ITEM}
                         showLabel={true}
-                        showNewPhotoBadge={true}
                       />
                     );
                   })()}

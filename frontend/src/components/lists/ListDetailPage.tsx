@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { repositories } from '@/repositories';
 import { useRestaurantLists } from "@/hooks/api/useRestaurantLists";
 import SaveToListModal from "./SaveToListModal";
+import RemoveBookmarkDialog from "./RemoveBookmarkDialog";
+import { IWentThereButton } from "./IWentThereButton";
 import {
   ArrowLeft,
   Lock,
@@ -21,6 +23,8 @@ import {
   ArrowDown,
   GripVertical,
   Bookmark,
+  X,
+  Star,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -33,6 +37,30 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
+import { User, FoodItem } from "@/lib/pocketbase";
+
+// Interface for fullscreen user review display
+interface UserReviewData {
+  foodItem: FoodItem;
+  restaurant: Restaurant;
+  visitDate?: string;
+}
+
+// Interface for grouped restaurant data (now with individual food items)
+interface GroupedRestaurant {
+  restaurant: Restaurant;
+  // Array of bookmarked items grouped by source user
+  itemsBySource: Array<{
+    sourceUser: User | null;
+    items: Array<{
+      listItem: ListItem;
+      foodItem: FoodItem;
+    }>;
+    notes: string[];
+  }>;
+  // First position for ordering
+  firstPosition: number;
+}
 
 interface ListDetailPageProps {
   listId: string;
@@ -52,6 +80,10 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
   const [localItems, setLocalItems] = useState<ListItem[]>([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [itemToSave, setItemToSave] = useState<ListItem | null>(null);
+  const [foodItemToSave, setFoodItemToSave] = useState<FoodItem | null>(null); // Specific food item clicked
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [itemToRemove, setItemToRemove] = useState<ListItem | null>(null);
+  const [fullscreenReview, setFullscreenReview] = useState<UserReviewData | null>(null);
   const user = pb.authStore.record;
 
   // Fetch user's own lists to check which restaurants are already saved
@@ -62,16 +94,18 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
     (match) => match.routeId === '/lists/$listId/edit' || match.routeId === '/lists/$listId/add-restaurant'
   );
 
-  // Fetch list details
+  // Fetch list details with owner info for friend lists
   const { data: list, isLoading: listLoading } = useQuery<RestaurantList>({
     queryKey: ["restaurant_list", listId],
     queryFn: async () => {
-      return await repositories.restaurantLists.getOne(listId);
+      return await repositories.restaurantLists.getOne(listId, {
+        expand: "user",
+      });
     },
     enabled: !isOnChildRoute,
   });
 
-  // Fetch list items with expanded restaurant and recommended items with visit data
+  // Fetch list items with expanded restaurant, sourceUser, foodItem, and userFoodItem with visit data
   const { data: listItems = [], isLoading: itemsLoading, refetch: refetchListItems } = useQuery<
     ListItem[]
   >({
@@ -79,7 +113,7 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
     queryFn: async () => {
       return await repositories.listItems.getByList(listId, {
         sort: "position",
-        expand: "restaurant,recommendedItems.visit",
+        expand: "restaurant,sourceUser,foodItem.visit,foodItem.user,userFoodItem.visit,userFoodItem.user,recommendedItems.visit,recommendedItems.user",
       });
     },
     enabled: !!list && !isOnChildRoute,
@@ -88,23 +122,112 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
   // Track previous child route state to detect when returning from child routes
   const wasOnChildRoute = useRef(isOnChildRoute);
 
-  // Fetch user's saved list items to check which restaurants are already in user's lists
+  // Fetch user's saved list items to check which food items are already bookmarked
   const { data: userListItems = [] } = useQuery<ListItem[]>({
-    queryKey: ["user_list_items", user?.id],
+    queryKey: ["user_list_items", user?.id, "with_food_items"],
     queryFn: async () => {
       if (!user || userLists.length === 0) return [];
       const listIds = userLists.map(l => l.id);
       return await repositories.listItems.getFullList({
         filter: listIds.map(id => `list = "${id}"`).join(' || '),
+        expand: "foodItem,sourceUser",
       });
     },
     enabled: !!user && userLists.length > 0 && !isOnChildRoute,
   });
 
-  // Create a set of restaurant IDs that are already in user's lists
-  const savedRestaurantIds = useMemo(() => {
-    return new Set(userListItems.map(item => item.restaurant));
+  // Helper to check if user has saved a specific food item
+  const hasSavedFoodItem = useMemo(() => {
+    const savedItemIds = new Set(userListItems.map(item => item.foodItem).filter(Boolean));
+    return (foodItemId: string): boolean => savedItemIds.has(foodItemId);
   }, [userListItems]);
+
+  // Fetch photo for fullscreen review when a review is selected
+  const { data: reviewPhoto } = useQuery({
+    queryKey: ["visit_photo", fullscreenReview?.foodItem.id],
+    queryFn: async () => {
+      if (!fullscreenReview?.foodItem.id) return null;
+      const photos = await repositories.visitPhotos.getFullList({
+        filter: `food_item = "${fullscreenReview.foodItem.id}"`,
+        sort: "-created",
+      });
+      if (photos.length > 0) {
+        const photo = photos[0];
+        return pb.files.getURL(photo, photo.photo);
+      }
+      return null;
+    },
+    enabled: !!fullscreenReview?.foodItem.id,
+  });
+
+  // Group list items by restaurant, then by source user for consolidated display
+  // Each list_item now represents ONE bookmarked food item
+  const groupedItems = useMemo((): GroupedRestaurant[] => {
+    const restaurantMap = new Map<string, GroupedRestaurant>();
+
+    for (const item of listItems) {
+      const restaurant = item.expand?.restaurant as Restaurant | undefined;
+      if (!restaurant) continue;
+
+      // Get the food item - either from new foodItem field or legacy recommendedItems
+      const foodItem = item.expand?.foodItem as FoodItem | undefined;
+      const legacyItems = (item.expand?.recommendedItems || []) as FoodItem[];
+
+      // Skip items without food item data
+      if (!foodItem && legacyItems.length === 0) continue;
+
+      const sourceUser = item.expand?.sourceUser as User | undefined;
+      const sourceUserId = sourceUser?.id || '_self';
+
+      let grouped = restaurantMap.get(restaurant.id);
+      if (!grouped) {
+        grouped = {
+          restaurant,
+          itemsBySource: [],
+          firstPosition: item.position,
+        };
+        restaurantMap.set(restaurant.id, grouped);
+      }
+
+      // Update first position if needed
+      if (item.position < grouped.firstPosition) {
+        grouped.firstPosition = item.position;
+      }
+
+      // Find or create source group
+      let sourceGroup = grouped.itemsBySource.find(
+        s => (s.sourceUser?.id || '_self') === sourceUserId
+      );
+      if (!sourceGroup) {
+        sourceGroup = {
+          sourceUser: sourceUser || null,
+          items: [],
+          notes: [],
+        };
+        grouped.itemsBySource.push(sourceGroup);
+      }
+
+      // Add food item(s)
+      if (foodItem) {
+        sourceGroup.items.push({ listItem: item, foodItem });
+      } else {
+        // Handle legacy items
+        for (const legacyItem of legacyItems) {
+          sourceGroup.items.push({ listItem: item, foodItem: legacyItem });
+        }
+      }
+
+      // Add note if present
+      if (item.note && !sourceGroup.notes.includes(item.note)) {
+        sourceGroup.notes.push(item.note);
+      }
+    }
+
+    // Sort by first position
+    return Array.from(restaurantMap.values()).sort(
+      (a, b) => a.firstPosition - b.firstPosition
+    );
+  }, [listItems]);
 
   // Refetch list items when returning from a child route (e.g., after adding items)
   useEffect(() => {
@@ -121,7 +244,18 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
       await repositories.listItems.delete(itemId);
     },
     onSuccess: () => {
+      // Invalidate current list's items
       queryClient.invalidateQueries({ queryKey: ["list_items", listId] });
+
+      // Invalidate user's saved items queries so bookmark icons update on friend's lists
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey;
+          return key[0] === 'user_list_items' ||
+                 (key[0] === 'list_items' && key[1] === 'user');
+        },
+      });
+
       setDeleteDialogOpen(false);
       setItemToDelete(null);
     },
@@ -264,6 +398,12 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
               {getVisibilityIcon(list.visibility)}
             </div>
             <p className="text-xs text-gray-500">
+              {!isOwner && list.expand?.user && (
+                <span className="text-blue-600 font-medium">
+                  {list.expand.user.name || list.expand.user.email?.split("@")[0]}'s list
+                </span>
+              )}
+              {!isOwner && list.expand?.user && " · "}
               {listItems.length} {listItems.length === 1 ? "restaurant" : "restaurants"}
             </p>
           </div>
@@ -345,44 +485,276 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
               </Button>
             )}
           </div>
-        ) : (
+        ) : isReorderMode ? (
+          /* Reorder Mode - Show flat list for reordering individual items */
           <div className="space-y-3">
-            {(isReorderMode ? localItems : listItems).map((item, index) => {
+            {localItems.map((item, index) => {
               const restaurant = item.expand?.restaurant as Restaurant;
-              const recommendedItems = item.expand?.recommendedItems || [];
               if (!restaurant) return null;
 
               return (
                 <Card
                   key={item.id}
-                  className={`transition-shadow ${isReorderMode ? 'border-blue-200 bg-blue-50/30' : 'hover:shadow-md'}`}
+                  className="transition-shadow border-blue-200 bg-blue-50/30"
                   data-testid={`list-item-${item.id}`}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
-                      {/* Reorder controls */}
-                      {isReorderMode && (
-                        <div className="flex flex-col gap-1">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleMoveUp(index)}
-                            disabled={index === 0}
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleMoveDown(index)}
-                            disabled={index === localItems.length - 1}
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </Button>
+                      <div className="flex flex-col gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => handleMoveUp(index)}
+                          disabled={index === 0}
+                        >
+                          <ArrowUp className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => handleMoveDown(index)}
+                          disabled={index === localItems.length - 1}
+                        >
+                          <ArrowDown className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium text-gray-500">
+                            {index + 1}.
+                          </span>
+                          <CardTitle className="text-lg">
+                            {restaurant.name}
+                          </CardTitle>
                         </div>
-                      )}
+                        <CardDescription className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {restaurant.location}
+                        </CardDescription>
+                        {item.expand?.sourceUser && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-blue-300 text-blue-700 mt-1"
+                          >
+                            <Users className="w-3 h-3 mr-1" />
+                            {item.expand.sourceUser.name || item.expand.sourceUser.email?.split("@")[0]}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+              );
+            })}
+          </div>
+        ) : isOwner ? (
+          /* Owner View - Grouped by restaurant with friend attribution and per-item delete */
+          <div className="space-y-3">
+            {groupedItems.map((group, index) => (
+              <Card
+                key={group.restaurant.id}
+                className="transition-shadow hover:shadow-md"
+                data-testid={`list-item-${group.restaurant.id}`}
+              >
+                <CardHeader>
+                  <div className="flex-1">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-gray-500">
+                          {index + 1}.
+                        </span>
+                        <CardTitle className="text-lg">
+                          {group.restaurant.name}
+                        </CardTitle>
+                      </div>
+                      <CardDescription className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {group.restaurant.location}
+                        {group.restaurant.cuisineType && ` • ${group.restaurant.cuisineType}`}
+                      </CardDescription>
+                    </div>
+
+                    {/* Bookmarked Items - grouped by source with delete buttons per item */}
+                    {group.itemsBySource.some(s => s.items.length > 0) && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs font-medium text-gray-700 mb-2">
+                          Bookmarked Items:
+                        </p>
+                        <div className="space-y-2">
+                          {group.itemsBySource.flatMap((sourceGroup, sourceIdx) => {
+                            if (sourceGroup.items.length === 0) return [];
+                            const friendName = sourceGroup.sourceUser
+                              ? (sourceGroup.sourceUser.name || sourceGroup.sourceUser.email?.split("@")[0])
+                              : null;
+
+                            return sourceGroup.items.map(({ listItem, foodItem }) => {
+                              const visitDate = foodItem.expand?.visit?.visitDate;
+                              const userFoodItem = listItem.expand?.userFoodItem;
+                              const userVisitDate = userFoodItem?.expand?.visit?.visitDate;
+                              return (
+                                <div key={listItem.id} className="space-y-1">
+                                  {/* Friend's item: friend · item · rating · date */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 text-sm flex-1 min-w-0">
+                                      {friendName && (
+                                        <>
+                                          <Badge
+                                            variant="outline"
+                                            className="text-xs border-blue-300 text-blue-700 flex-shrink-0"
+                                          >
+                                            <Users className="w-3 h-3 mr-1" />
+                                            {friendName}
+                                          </Badge>
+                                          <span className="text-gray-300">·</span>
+                                        </>
+                                      )}
+                                      <span className="text-gray-900 truncate">{foodItem.name}</span>
+                                      <span className="text-gray-300">·</span>
+                                      <Badge
+                                        className={`${
+                                          RATING_COLORS[foodItem.rating - 1] || "bg-gray-500"
+                                        } text-white text-xs flex-shrink-0`}
+                                      >
+                                        {RATING_LABELS[foodItem.rating - 1] || "Unknown"}
+                                      </Badge>
+                                      {visitDate && (
+                                        <>
+                                          <span className="text-gray-300">·</span>
+                                          <span className="text-xs text-gray-400 flex-shrink-0">
+                                            {new Date(visitDate).toLocaleDateString(undefined, {
+                                              month: "short",
+                                              year: "numeric",
+                                            })}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      {!userFoodItem && group.restaurant && (
+                                        <IWentThereButton
+                                          listItem={listItem}
+                                          foodItem={foodItem}
+                                          restaurant={group.restaurant}
+                                        />
+                                      )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteItem(listItem);
+                                        }}
+                                        className="p-1 h-6 w-6"
+                                        title="Remove this item"
+                                        data-testid={`delete-item-${listItem.id}`}
+                                      >
+                                        <Trash2 className="w-3 h-3 text-red-600" />
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  {/* User's rating - subtle inline row */}
+                                  {userFoodItem && group.restaurant && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setFullscreenReview({
+                                          foodItem: userFoodItem,
+                                          restaurant: group.restaurant,
+                                          visitDate: userVisitDate,
+                                        });
+                                      }}
+                                      className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded px-1 py-0.5 ml-2 transition-colors"
+                                    >
+                                      <span className="text-blue-400">↳</span>
+                                      <span>You</span>
+                                      <span className="text-blue-300">·</span>
+                                      <Badge
+                                        className={`${
+                                          RATING_COLORS[userFoodItem.rating - 1] || "bg-gray-500"
+                                        } text-white text-[10px] px-1.5 py-0`}
+                                      >
+                                        {RATING_LABELS[userFoodItem.rating - 1] || "Unknown"}
+                                      </Badge>
+                                      {userVisitDate && (
+                                        <>
+                                          <span className="text-blue-300">·</span>
+                                          <span className="text-blue-400">
+                                            {new Date(userVisitDate).toLocaleDateString(undefined, {
+                                              month: "short",
+                                              day: "numeric",
+                                              year: "numeric",
+                                            })}
+                                          </span>
+                                        </>
+                                      )}
+                                      <span className="text-blue-300 ml-1">→</span>
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            });
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notes - grouped by source */}
+                    {group.itemsBySource.some(s => s.notes.length > 0) && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs font-medium text-gray-700 mb-2">
+                          Notes:
+                        </p>
+                        <div className="space-y-2">
+                          {group.itemsBySource.map((sourceGroup) => {
+                            if (sourceGroup.notes.length === 0) return null;
+                            const friendName = sourceGroup.sourceUser
+                              ? (sourceGroup.sourceUser.name || sourceGroup.sourceUser.email?.split("@")[0])
+                              : null;
+
+                            return sourceGroup.notes.map((note, noteIdx) => (
+                              <div key={`${sourceGroup.sourceUser?.id || 'self'}-note-${noteIdx}`} className="flex items-start gap-2">
+                                {friendName && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs border-blue-300 text-blue-700 flex-shrink-0"
+                                  >
+                                    <Users className="w-3 h-3 mr-1" />
+                                    {friendName}
+                                  </Badge>
+                                )}
+                                <p className="text-sm text-gray-700 italic">
+                                  "{note}"
+                                </p>
+                              </div>
+                            ));
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          /* Non-owner View - Grouped by restaurant for friend's list */
+          <div className="space-y-3">
+            {groupedItems.map((group, index) => {
+              // Combine all food items from this restaurant
+              const allItems = group.itemsBySource.flatMap(s => s.items);
+              const allNotes = group.itemsBySource.flatMap(s => s.notes);
+
+              return (
+                <Card
+                  key={group.restaurant.id}
+                  className="transition-shadow hover:shadow-md"
+                  data-testid={`list-item-${group.restaurant.id}`}
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
@@ -390,49 +762,77 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
                               {index + 1}.
                             </span>
                             <CardTitle className="text-lg">
-                              {restaurant.name}
+                              {group.restaurant.name}
                             </CardTitle>
                           </div>
                           <CardDescription className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
-                            {restaurant.location}
-                            {restaurant.cuisineType && ` • ${restaurant.cuisineType}`}
+                            {group.restaurant.location}
+                            {group.restaurant.cuisineType && ` • ${group.restaurant.cuisineType}`}
                           </CardDescription>
                         </div>
 
-                        {/* Recommended Items - hidden in reorder mode */}
-                        {!isReorderMode && recommendedItems.length > 0 && (
+                        {/* Recommended Items with individual bookmark buttons */}
+                        {allItems.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
                             <p className="text-xs font-medium text-gray-700 mb-2">
                               Recommended Items:
                             </p>
                             <div className="space-y-1.5">
-                              {recommendedItems.map((foodItem: any) => {
+                              {allItems.map(({ listItem, foodItem }) => {
                                 const visitDate = foodItem.expand?.visit?.visitDate;
+                                const isAlreadySaved = hasSavedFoodItem(foodItem.id);
+
                                 return (
                                   <div
-                                    key={foodItem.id}
-                                    className="flex items-center gap-2 text-sm flex-wrap"
+                                    key={`${listItem.id}-${foodItem.id}`}
+                                    className="flex items-center justify-between gap-2"
                                   >
-                                    <span className="text-gray-900 font-medium">
-                                      {foodItem.name}
-                                    </span>
-                                    <Badge
-                                      className={`${
-                                        RATING_COLORS[foodItem.rating - 1] || "bg-gray-500"
-                                      } text-white text-xs`}
-                                    >
-                                      {RATING_LABELS[foodItem.rating - 1] || "Unknown"}
-                                    </Badge>
-                                    {visitDate && (
-                                      <span className="text-xs text-gray-400">
-                                        {new Date(visitDate).toLocaleDateString(undefined, {
-                                          month: "short",
-                                          day: "numeric",
-                                          year: "numeric",
-                                        })}
+                                    <div className="flex items-center gap-2 text-sm flex-wrap flex-1 min-w-0">
+                                      <span className="text-gray-900 font-medium truncate">
+                                        {foodItem.name}
                                       </span>
-                                    )}
+                                      <Badge
+                                        className={`${
+                                          RATING_COLORS[foodItem.rating - 1] || "bg-gray-500"
+                                        } text-white text-xs flex-shrink-0`}
+                                      >
+                                        {RATING_LABELS[foodItem.rating - 1] || "Unknown"}
+                                      </Badge>
+                                      {visitDate && (
+                                        <span className="text-xs text-gray-400 flex-shrink-0">
+                                          {new Date(visitDate).toLocaleDateString(undefined, {
+                                            month: "short",
+                                            year: "numeric",
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isAlreadySaved) {
+                                          setItemToRemove(listItem);
+                                          setRemoveDialogOpen(true);
+                                        } else {
+                                          setItemToSave(listItem);
+                                          setFoodItemToSave(foodItem); // Track specific food item
+                                          setSaveModalOpen(true);
+                                        }
+                                      }}
+                                      className="p-1 h-6 w-6 flex-shrink-0"
+                                      data-testid={`save-item-${foodItem.id}`}
+                                    >
+                                      <Bookmark
+                                        className={`w-4 h-4 ${
+                                          isAlreadySaved
+                                            ? 'fill-blue-600 text-blue-600'
+                                            : 'text-gray-600'
+                                        }`}
+                                      />
+                                    </Button>
                                   </div>
                                 );
                               })}
@@ -440,52 +840,17 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
                           </div>
                         )}
 
-                        {/* Note - hidden in reorder mode */}
-                        {!isReorderMode && item.note && (
+                        {/* Notes */}
+                        {allNotes.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
-                            <p className="text-sm text-gray-700 italic">
-                              "{item.note}"
-                            </p>
+                            {allNotes.map((note, noteIdx) => (
+                              <p key={noteIdx} className="text-sm text-gray-700 italic">
+                                "{note}"
+                              </p>
+                            ))}
                           </div>
                         )}
                       </div>
-                      {/* Save to list button (only for non-owners) */}
-                      {!isOwner && !isReorderMode && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setItemToSave(item);
-                            setSaveModalOpen(true);
-                          }}
-                          className="p-2"
-                          data-testid={`save-item-${item.id}`}
-                        >
-                          <Bookmark
-                            className={`w-4 h-4 ${
-                              savedRestaurantIds.has(restaurant.id)
-                                ? 'fill-blue-600 text-blue-600'
-                                : 'text-gray-600'
-                            }`}
-                          />
-                        </Button>
-                      )}
-                      {/* Delete button (only for owners) */}
-                      {isOwner && !isReorderMode && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteItem(item);
-                          }}
-                          className="p-2"
-                          data-testid={`delete-item-${item.id}`}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </Button>
-                      )}
                     </div>
                   </CardHeader>
                 </Card>
@@ -558,14 +923,113 @@ export default function ListDetailPage({ listId, onNavigateBack, onEditList, onA
           open={saveModalOpen}
           onOpenChange={(open) => {
             setSaveModalOpen(open);
-            if (!open) setItemToSave(null);
+            if (!open) {
+              setItemToSave(null);
+              setFoodItemToSave(null);
+            }
           }}
           restaurantId={itemToSave.expand?.restaurant?.id || itemToSave.restaurant}
           restaurantName={itemToSave.expand?.restaurant?.name || 'Restaurant'}
-          recommendedItemIds={itemToSave.recommendedItems}
+          foodItems={
+            // Use specific food item if set, otherwise fall back to list item's items
+            foodItemToSave
+              ? [foodItemToSave]
+              : itemToSave.expand?.foodItem
+                ? [itemToSave.expand.foodItem]
+                : (itemToSave.expand?.recommendedItems as FoodItem[] || [])
+          }
           sourceNote={itemToSave.note}
+          sourceUserId={list?.user}
           onCreateNewList={() => navigate({ to: '/lists/new' })}
         />
+      )}
+
+      {/* Remove Bookmark Dialog */}
+      {itemToRemove && list && (
+        <RemoveBookmarkDialog
+          open={removeDialogOpen}
+          onOpenChange={(open) => {
+            setRemoveDialogOpen(open);
+            if (!open) setItemToRemove(null);
+          }}
+          restaurantId={itemToRemove.expand?.restaurant?.id || itemToRemove.restaurant}
+          restaurantName={itemToRemove.expand?.restaurant?.name || 'Restaurant'}
+          sourceUserId={list.user}
+          sourceUserName={list.expand?.user?.name || list.expand?.user?.email?.split("@")[0] || 'Friend'}
+          userListItems={userListItems}
+          userLists={userLists}
+        />
+      )}
+
+      {/* Fullscreen User Review Modal */}
+      {fullscreenReview && (
+        <div
+          className="fixed inset-0 bg-white z-[100] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header with close button */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-lg text-gray-900 truncate">{fullscreenReview.foodItem.name}</p>
+              <p className="text-sm text-gray-500 truncate">{fullscreenReview.restaurant.name}</p>
+            </div>
+            <button
+              onClick={() => setFullscreenReview(null)}
+              className="ml-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Review details - compact single line */}
+            <div className="px-4 py-3 flex items-center gap-2 flex-wrap text-sm">
+              {fullscreenReview.visitDate && (
+                <span className="text-gray-600">
+                  {new Date(fullscreenReview.visitDate).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </span>
+              )}
+              <span className="text-gray-300">·</span>
+              <Badge
+                className={`${
+                  RATING_COLORS[fullscreenReview.foodItem.rating - 1] || "bg-gray-500"
+                } text-white text-xs`}
+              >
+                {RATING_LABELS[fullscreenReview.foodItem.rating - 1] || "Unknown"}
+              </Badge>
+              {fullscreenReview.foodItem.notes && (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <span className="text-gray-700">{fullscreenReview.foodItem.notes}</span>
+                </>
+              )}
+            </div>
+
+            {/* Photo at the bottom */}
+            <div className="p-4 pt-0">
+              {reviewPhoto ? (
+                <img
+                  src={reviewPhoto}
+                  alt={fullscreenReview.foodItem.name}
+                  className="w-full rounded-lg object-cover"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-48 text-gray-400 bg-gray-100 rounded-lg">
+                  <Star className="w-12 h-12 mb-2" />
+                  <p className="text-sm">No photo for this visit</p>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom padding for safe area */}
+            <div className="h-8" />
+          </div>
+        </div>
       )}
     </div>
   );

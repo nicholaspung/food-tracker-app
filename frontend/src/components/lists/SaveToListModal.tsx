@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { pb, RestaurantList } from "@/lib/pocketbase";
+import { pb, RestaurantList, FoodItem } from "@/lib/pocketbase";
 import { repositories } from '@/repositories';
 import { useSaveToList } from "@/hooks/offline/useSaveToList";
 import { useDefaultList, useUserListItemsForRestaurant } from "@/hooks/api/useRestaurantLists";
@@ -13,19 +13,22 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { Lock, Users, Globe, Plus, Star, Check } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 
 interface SaveToListModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   restaurantName: string;
-  recommendedItemIds?: string[];
+  foodItems?: FoodItem[]; // Food items to choose from (from friend's visit)
   sourceNote?: string;
+  sourceUserId?: string; // ID of the friend whose list items are being saved from
   onCreateNewList?: () => void;
 }
 
@@ -34,12 +37,14 @@ export default function SaveToListModal({
   onOpenChange,
   restaurantId,
   restaurantName,
-  recommendedItemIds = [],
+  foodItems = [],
   sourceNote,
+  sourceUserId,
   onCreateNewList,
 }: SaveToListModalProps) {
   const queryClient = useQueryClient();
   const [selectedLists, setSelectedLists] = useState<Set<string>>(new Set());
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
   const { error, handleError, clearError, showValidation, showSuccess } = useErrorHandler({
     source: 'SaveToListModal',
@@ -62,21 +67,25 @@ export default function SaveToListModal({
     enabled: !!user && open,
   });
 
-  // Check which of user's lists already have this restaurant
+  // Check which food items are already saved in user's lists
   const { data: existingUserItems = [] } = useUserListItemsForRestaurant(restaurantId);
 
-  // Get IDs of lists that already contain this restaurant
-  const existingListIds = useMemo(() => {
-    return new Set(existingUserItems.map((item) => item.list));
-  }, [existingUserItems]);
-
-  // Sort lists to put default "Saved" list first
-  const sortedLists = useMemo(() => {
-    return [...lists].sort((a, b) => {
-      if (a.isDefault && !b.isDefault) return -1;
-      if (!a.isDefault && b.isDefault) return 1;
-      return new Date(b.updated).getTime() - new Date(a.updated).getTime();
+  // Get IDs of food items already saved from this source user
+  const alreadySavedItemIds = useMemo(() => {
+    const savedIds = new Set<string>();
+    existingUserItems.forEach(item => {
+      if (item.sourceUser === (sourceUserId || null) && item.foodItem) {
+        savedIds.add(item.foodItem);
+      }
     });
+    return savedIds;
+  }, [existingUserItems, sourceUserId]);
+
+  // Filter out the default "Saved" list and sort by updated time
+  const sortedLists = useMemo(() => {
+    return [...lists]
+      .filter((list) => !list.isDefault)
+      .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
   }, [lists]);
 
   // Save to list mutation
@@ -90,12 +99,19 @@ export default function SaveToListModal({
   });
 
   // Reset state when modal opens/closes
+  // Note: We only depend on `open` to avoid infinite loops from array recreation
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      // Pre-select all items that aren't already saved (using current values, not deps)
+      const availableItems = foodItems.filter(item => !alreadySavedItemIds.has(item.id));
+      setSelectedItems(new Set(availableItems.map(item => item.id)));
+    } else {
       setSelectedLists(new Set());
+      setSelectedItems(new Set());
       clearError();
     }
-  }, [open, clearError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Create default "Saved" list if it doesn't exist
   const createDefaultListIfNeeded = async () => {
@@ -105,7 +121,6 @@ export default function SaveToListModal({
       setIsCreatingDefaultList(true);
       const newDefaultList = await repositories.restaurantLists.createDefaultList(user!.id);
 
-      // Invalidate queries to refresh the lists
       queryClient.invalidateQueries({
         queryKey: restaurantListKeys.all(user!.id, undefined)
       });
@@ -132,39 +147,59 @@ export default function SaveToListModal({
     setSelectedLists(newSelected);
   };
 
+  const toggleItem = (itemId: string) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(itemId)) {
+      newSelected.delete(itemId);
+    } else {
+      newSelected.add(itemId);
+    }
+    setSelectedItems(newSelected);
+  };
+
   const handleSubmit = async () => {
     if (selectedLists.size === 0) {
       showValidation(ERROR_MESSAGES.LISTS.SELECT_AT_LEAST_ONE);
       return;
     }
-    clearError();
-
-    // Save restaurant to each selected list
-    const listsToSave = Array.from(selectedLists).filter(listId => !existingListIds.has(listId));
-
-    if (listsToSave.length === 0) {
-      // All selected lists already have this restaurant
-      onOpenChange(false);
+    if (selectedItems.size === 0) {
+      showValidation("Please select at least one item to save");
       return;
     }
+    clearError();
 
     try {
-      await Promise.all(
-        listsToSave.map((listId) =>
-          saveToListMutation.mutateAsync({
-            listId,
-            restaurantId,
-            recommendedItemIds,
-            note: sourceNote,
-          })
-        )
-      );
+      // Create one list_item per (foodItem, list) combination
+      const savePromises: Promise<any>[] = [];
 
-      showSuccess(`Saved to ${listsToSave.length} ${listsToSave.length === 1 ? 'list' : 'lists'}`);
+      for (const listId of selectedLists) {
+        for (const itemId of selectedItems) {
+          // Skip if already saved
+          if (alreadySavedItemIds.has(itemId)) continue;
 
-      // Small delay to show success message
+          savePromises.push(
+            saveToListMutation.mutateAsync({
+              listId,
+              restaurantId,
+              foodItemId: itemId,
+              note: sourceNote,
+              sourceUserId,
+            })
+          );
+        }
+      }
+
+      if (savePromises.length === 0) {
+        showValidation("All selected items are already saved");
+        return;
+      }
+
+      await Promise.all(savePromises);
+      showSuccess(`Saved ${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'} to ${selectedLists.size} ${selectedLists.size === 1 ? 'list' : 'lists'}`);
+
       setTimeout(() => {
         setSelectedLists(new Set());
+        setSelectedItems(new Set());
         onOpenChange(false);
       }, 500);
     } catch {
@@ -174,31 +209,44 @@ export default function SaveToListModal({
 
   // Quick save to default "Saved" list
   const handleQuickSave = async () => {
+    if (selectedItems.size === 0) {
+      showValidation("Please select at least one item to save");
+      return;
+    }
     clearError();
 
     let targetList = defaultList;
 
-    // Create default list if it doesn't exist
     if (!targetList) {
       targetList = await createDefaultListIfNeeded();
-      if (!targetList) return; // Error already shown
-    }
-
-    // Check if already saved to default list
-    if (existingListIds.has(targetList.id)) {
-      showValidation("Already saved to your Saved list");
-      return;
+      if (!targetList) return;
     }
 
     try {
-      await saveToListMutation.mutateAsync({
-        listId: targetList.id,
-        restaurantId,
-        recommendedItemIds,
-        note: sourceNote,
-      });
+      // Create one list_item per selected food item
+      const savePromises: Promise<any>[] = [];
 
-      showSuccess("Saved!");
+      for (const itemId of selectedItems) {
+        if (alreadySavedItemIds.has(itemId)) continue;
+
+        savePromises.push(
+          saveToListMutation.mutateAsync({
+            listId: targetList.id,
+            restaurantId,
+            foodItemId: itemId,
+            note: sourceNote,
+            sourceUserId,
+          })
+        );
+      }
+
+      if (savePromises.length === 0) {
+        showValidation("All selected items are already saved");
+        return;
+      }
+
+      await Promise.all(savePromises);
+      showSuccess(`Saved ${savePromises.length} ${savePromises.length === 1 ? 'item' : 'items'}!`);
 
       setTimeout(() => {
         onOpenChange(false);
@@ -220,112 +268,73 @@ export default function SaveToListModal({
   };
 
   const isLoading = listsLoading || defaultListLoading;
-  const alreadyInDefaultList = defaultList ? existingListIds.has(defaultList.id) : false;
+  const availableItemsCount = foodItems.filter(item => !alreadySavedItemIds.has(item.id)).length;
+  const allItemsAlreadySaved = availableItemsCount === 0 && foodItems.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Save "{restaurantName}"</DialogTitle>
+          <DialogTitle>Save from "{restaurantName}"</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Quick Save Button */}
-          <Button
-            onClick={handleQuickSave}
-            disabled={saveToListMutation.isPending || isCreatingDefaultList || alreadyInDefaultList}
-            className="w-full flex items-center justify-center gap-2"
-            variant={alreadyInDefaultList ? "outline" : "default"}
-          >
-            {alreadyInDefaultList ? (
-              <>
-                <Check className="w-4 h-4" />
-                Already in Saved list
-              </>
-            ) : saveToListMutation.isPending || isCreatingDefaultList ? (
-              "Saving..."
-            ) : (
-              <>
-                <Star className="w-4 h-4" />
-                Quick Save to "Saved" list
-              </>
-            )}
-          </Button>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-gray-500">Or choose lists</span>
-            </div>
-          </div>
-
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <p className="text-sm text-gray-500">Loading lists...</p>
-            </div>
-          ) : sortedLists.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <p className="text-sm text-gray-600 mb-4">
-                You don't have any lists yet
+          {/* Food Items Selection */}
+          {foodItems.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                Select items to save:
               </p>
-              {onCreateNewList && (
-                <Button
-                  onClick={() => {
-                    onOpenChange(false);
-                    onCreateNewList();
-                  }}
-                  size="sm"
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create Your First List
-                </Button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2 max-h-[40vh] overflow-y-auto">
-                {sortedLists.map((list) => {
-                  const alreadyInList = existingListIds.has(list.id);
+              <div className="space-y-2 max-h-[30vh] overflow-y-auto border rounded-lg p-2">
+                {foodItems.map((item) => {
+                  const isAlreadySaved = alreadySavedItemIds.has(item.id);
+                  const visitDate = item.expand?.visit?.visitDate;
+
                   return (
                     <div
-                      key={list.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border ${
-                        alreadyInList
-                          ? "bg-gray-50 border-gray-200 opacity-60"
-                          : selectedLists.has(list.id)
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-200 hover:border-gray-300"
+                      key={item.id}
+                      className={`flex items-center gap-3 p-2 rounded-lg ${
+                        isAlreadySaved
+                          ? "bg-gray-50 opacity-60"
+                          : selectedItems.has(item.id)
+                          ? "bg-blue-50"
+                          : "hover:bg-gray-50"
                       }`}
                     >
                       <Checkbox
-                        id={`save-list-${list.id}`}
-                        checked={alreadyInList || selectedLists.has(list.id)}
+                        id={`item-${item.id}`}
+                        checked={isAlreadySaved || selectedItems.has(item.id)}
                         onCheckedChange={() => {
-                          if (!alreadyInList) {
-                            toggleList(list.id);
+                          if (!isAlreadySaved) {
+                            toggleItem(item.id);
                           }
                         }}
-                        disabled={alreadyInList}
+                        disabled={isAlreadySaved}
                       />
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <Label
-                          htmlFor={`save-list-${list.id}`}
-                          className="flex items-center gap-2 font-semibold text-sm cursor-pointer"
+                          htmlFor={`item-${item.id}`}
+                          className="flex items-center gap-2 text-sm cursor-pointer flex-wrap"
                         >
-                          {list.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
-                          {list.name}
-                          {getVisibilityIcon(list.visibility)}
+                          <span className="font-medium truncate">{item.name}</span>
+                          <Badge
+                            className={`${
+                              RATING_COLORS[item.rating - 1] || "bg-gray-500"
+                            } text-white text-xs flex-shrink-0`}
+                          >
+                            {RATING_LABELS[item.rating - 1] || "Unknown"}
+                          </Badge>
+                          {visitDate && (
+                            <span className="text-xs text-gray-400 flex-shrink-0">
+                              {new Date(visitDate).toLocaleDateString(undefined, {
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </span>
+                          )}
                         </Label>
-                        {list.description && (
-                          <p className="text-xs text-gray-600 mt-1">
-                            {list.description}
-                          </p>
-                        )}
-                        {alreadyInList && (
-                          <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        {isAlreadySaved && (
+                          <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
                             <Check className="w-3 h-3" />
                             Already saved
                           </p>
@@ -335,49 +344,142 @@ export default function SaveToListModal({
                   );
                 })}
               </div>
+            </div>
+          )}
 
-              {onCreateNewList && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    onOpenChange(false);
-                    onCreateNewList();
-                  }}
-                  className="w-full flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create New List
-                </Button>
+          {allItemsAlreadySaved ? (
+            <div className="text-center py-4">
+              <Check className="w-8 h-8 text-green-500 mx-auto mb-2" />
+              <p className="text-sm text-gray-600">All items are already saved!</p>
+            </div>
+          ) : (
+            <>
+              {/* Quick Save Button */}
+              <Button
+                onClick={handleQuickSave}
+                disabled={saveToListMutation.isPending || isCreatingDefaultList || selectedItems.size === 0}
+                className="w-full flex items-center justify-center gap-2"
+              >
+                {saveToListMutation.isPending || isCreatingDefaultList ? (
+                  "Saving..."
+                ) : (
+                  <>
+                    <Star className="w-4 h-4" />
+                    Quick Save to "Saved" list
+                  </>
+                )}
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-gray-500">Or choose lists</span>
+                </div>
+              </div>
+
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-sm text-gray-500">Loading lists...</p>
+                </div>
+              ) : sortedLists.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <p className="text-sm text-gray-500 mb-4">
+                    No other lists available
+                  </p>
+                  {onCreateNewList && (
+                    <Button
+                      onClick={() => {
+                        onOpenChange(false);
+                        onCreateNewList();
+                      }}
+                      size="sm"
+                      variant="outline"
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create New List
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2 max-h-[25vh] overflow-y-auto">
+                    {sortedLists.map((list) => (
+                      <div
+                        key={list.id}
+                        className={`flex items-start gap-3 p-3 rounded-lg border ${
+                          selectedLists.has(list.id)
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <Checkbox
+                          id={`save-list-${list.id}`}
+                          checked={selectedLists.has(list.id)}
+                          onCheckedChange={() => toggleList(list.id)}
+                        />
+                        <div className="flex-1">
+                          <Label
+                            htmlFor={`save-list-${list.id}`}
+                            className="flex items-center gap-2 font-semibold text-sm cursor-pointer"
+                          >
+                            {list.name}
+                            {getVisibilityIcon(list.visibility)}
+                          </Label>
+                          {list.description && (
+                            <p className="text-xs text-gray-600 mt-1">
+                              {list.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {onCreateNewList && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onCreateNewList();
+                      }}
+                      className="w-full flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create New List
+                    </Button>
+                  )}
+                </>
+              )}
+
+              {/* Actions */}
+              {sortedLists.length > 0 && (
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    onClick={handleSubmit}
+                    className="flex-1"
+                    disabled={saveToListMutation.isPending || selectedLists.size === 0 || selectedItems.size === 0}
+                  >
+                    {saveToListMutation.isPending
+                      ? "Saving..."
+                      : `Save ${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'} to ${selectedLists.size} ${selectedLists.size === 1 ? 'list' : 'lists'}`}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => onOpenChange(false)}
+                    disabled={saveToListMutation.isPending}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               )}
             </>
           )}
 
           {/* Error Message */}
           <ErrorDisplay error={error} onClear={clearError} />
-
-          {/* Actions */}
-          {sortedLists.length > 0 && (
-            <div className="flex gap-2 pt-2">
-              <Button
-                onClick={handleSubmit}
-                className="flex-1"
-                disabled={saveToListMutation.isPending || selectedLists.size === 0}
-              >
-                {saveToListMutation.isPending
-                  ? "Saving..."
-                  : `Save to ${selectedLists.size} ${
-                      selectedLists.size === 1 ? "List" : "Lists"
-                    }`}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={saveToListMutation.isPending}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
         </div>
       </DialogContent>
     </Dialog>

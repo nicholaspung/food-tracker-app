@@ -21,7 +21,17 @@ export interface PhotoToProcess {
 }
 
 /**
+ * Combined photo data (for combining multiple photos into one menu item)
+ */
+export interface CombinedPhotoData {
+  photoId: string;
+  photo: File;
+  previewUrl: string;
+}
+
+/**
  * Processed photo data for restaurant visit
+ * Supports multiple photos per menu item via combinedPhotos array
  */
 export interface ProcessedPhoto {
   photoId: string;
@@ -34,6 +44,8 @@ export interface ProcessedPhoto {
   notes: string;
   isNewMenuItem: boolean;
   captureDate: Date | null;
+  /** Additional photos combined with this menu item */
+  combinedPhotos?: CombinedPhotoData[];
 }
 
 /**

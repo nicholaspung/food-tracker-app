@@ -35,6 +35,7 @@ export interface VisitDraft {
   visitDate: string;
   visitVisibility: 'friends' | 'private';
   searchState?: RestaurantSearchState;
+  sourceListItemId?: string; // List item ID to link back to after visit creation (from "I went there" flow)
 }
 
 const getEmptyDraft = (): VisitDraft => ({
@@ -174,6 +175,60 @@ export const visitDraftService = {
   clearSearchState(): void {
     const draft = this.getDraft();
     draft.searchState = undefined;
+    localStorage.setItem(VISIT_DRAFT_KEY, JSON.stringify(draft));
+  },
+
+  /**
+   * Prepopulate draft from a bookmarked item ("I went there" flow)
+   * This sets up the restaurant and item for direct navigation to rate-items
+   */
+  prepopulateFromBookmark(data: {
+    restaurant: Restaurant;
+    foodItemName: string;
+    foodItemDescription?: string;
+    listItemId: string;
+  }): void {
+    const now = new Date().toISOString();
+    // Create a pseudo-MenuItem for the bookmark flow
+    const pseudoMenuItem: MenuItem = {
+      id: `bookmark-${data.listItemId}`,
+      restaurant: data.restaurant.id,
+      name: data.foodItemName,
+      description: data.foodItemDescription,
+      created: now,
+      updated: now,
+    };
+
+    const draft: VisitDraft = {
+      restaurant: data.restaurant,
+      items: [{
+        menuItem: pseudoMenuItem,
+        description: data.foodItemDescription || '',
+        rating: 3, // Default rating
+        notes: '',
+      }],
+      visitDate: getTodayLocalDateString(),
+      visitVisibility: 'friends',
+      sourceListItemId: data.listItemId,
+    };
+
+    localStorage.setItem(VISIT_DRAFT_KEY, JSON.stringify(draft));
+  },
+
+  /**
+   * Get source list item ID (for linking after visit creation)
+   */
+  getSourceListItemId(): string | null {
+    const draft = this.getDraft();
+    return draft.sourceListItemId || null;
+  },
+
+  /**
+   * Clear source list item ID only
+   */
+  clearSourceListItemId(): void {
+    const draft = this.getDraft();
+    draft.sourceListItemId = undefined;
     localStorage.setItem(VISIT_DRAFT_KEY, JSON.stringify(draft));
   },
 };

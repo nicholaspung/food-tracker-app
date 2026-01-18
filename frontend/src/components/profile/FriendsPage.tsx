@@ -264,7 +264,8 @@ export default function FriendsPage() {
           className="w-full h-full flex flex-col"
         >
           <div className="bg-white border-b border-gray-200 px-4 py-3">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="my-code">My Code</TabsTrigger>
               <TabsTrigger value="friends-list">Friends</TabsTrigger>
               <TabsTrigger value="add-friend">Add Friend</TabsTrigger>
             </TabsList>
@@ -274,9 +275,8 @@ export default function FriendsPage() {
             {/* Success/Error Messages */}
             <ErrorDisplay error={error} onClear={clearError} />
 
-            {/* Friends List Tab */}
-            <TabsContent value="friends-list" className="mt-0 space-y-4">
-              {/* My Friend Code Section - at the top */}
+            {/* My Code Tab */}
+            <TabsContent value="my-code" className="mt-0 space-y-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -317,7 +317,10 @@ export default function FriendsPage() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
 
+            {/* Friends List Tab */}
+            <TabsContent value="friends-list" className="mt-0 space-y-4">
               {/* Friends Sub-tabs */}
               <Tabs defaultValue="friends" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">

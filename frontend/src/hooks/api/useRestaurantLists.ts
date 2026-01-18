@@ -147,9 +147,10 @@ export function useUserListItemsForRestaurant(
       const listIds = userLists.map(l => l.id);
 
       // Get list items for this restaurant in user's lists
+      // Include sourceUser in expand for proper bookmark status display
       return await repositories.listItems.getFullList({
         filter: `restaurant = "${restaurantId}" && (${listIds.map(id => `list = "${id}"`).join(' || ')})`,
-        expand: 'list',
+        expand: 'list,sourceUser',
       });
     },
     enabled: !!userId && !!restaurantId,
