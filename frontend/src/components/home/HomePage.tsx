@@ -206,12 +206,29 @@ export default function HomePage({
     });
   }, []);
 
+  // Stable handler for moving items - prevents VisitCard re-renders
   // Memoized handlers to prevent unnecessary re-renders of VisitCard and QuickTrackCard
   // which are wrapped in React.memo
   const handleMoveItem = useCallback((foodItem: FoodItem, visitId: string) => {
     setItemToMove({ foodItem, visitId });
   }, []);
 
+  // Stable handlers for QuickTrack items - prevents QuickTrackCard re-renders
+  const handleEditQuickTrack = useCallback((itemId: string) => {
+    navigate({ to: `/edit-quick-track/${itemId}` });
+  }, [navigate]);
+
+  const handleDeleteQuickTrack = useCallback((foodItem: FoodItem) => {
+    setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const });
+  }, []);
+
+  const handleShareQuickTrackPhoto = useCallback((photo: VisitPhoto, foodItem: FoodItem) => {
+    handleSharePhotoClick(
+      photo,
+      foodItem,
+      null, // restaurant is null for QuickTrack
+      foodItem.itemDate || foodItem.created
+    );
   const handleQuickTrackEdit = useCallback((itemId: string) => {
     navigate({ to: `/edit-quick-track/${itemId}` });
   }, [navigate]);
@@ -748,6 +765,9 @@ export default function HomePage({
                           photos={photos}
                           isFriend={isFriend}
                           friendName={friendName}
+                          onEdit={handleEditQuickTrack}
+                          onDelete={handleDeleteQuickTrack}
+                          onSharePhoto={handleShareQuickTrackPhoto}
                           onEdit={handleQuickTrackEdit}
                           onDelete={handleQuickTrackDelete}
                           onSharePhoto={handleQuickTrackSharePhoto}
@@ -852,6 +872,9 @@ export default function HomePage({
                                     photos={photos}
                                     isFriend={isFriend}
                                     friendName={friendName}
+                                    onEdit={handleEditQuickTrack}
+                                    onDelete={handleDeleteQuickTrack}
+                                    onSharePhoto={handleShareQuickTrackPhoto}
                                     onEdit={handleQuickTrackEdit}
                                     onDelete={handleQuickTrackDelete}
                                     onSharePhoto={handleQuickTrackSharePhoto}
@@ -976,10 +999,10 @@ export default function HomePage({
         onOpenChange={(open) => !open && setQuickTrackItemToDelete(null)}
         onConfirm={() => {
           if (quickTrackItemToDelete) {
-            const photo = visitPhotosByFoodItem.get(quickTrackItemToDelete.id);
+            const photos = visitPhotosByFoodItem.get(quickTrackItemToDelete.id);
             handleDeleteQuickTrackItem(
               quickTrackItemToDelete.id,
-              photo?.id
+              photos?.[0]?.id
             );
           }
         }}

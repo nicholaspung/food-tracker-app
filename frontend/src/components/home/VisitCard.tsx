@@ -23,7 +23,11 @@ import {
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 import { useLongPress } from "@/hooks/ui/useLongPress";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { type VisitPhoto as RepoVisitPhoto } from "@/repositories";
 
+interface VisitPhoto extends RepoVisitPhoto {
+  isPending?: boolean;
+}
 type VisitPhoto = RepoVisitPhoto & { isPending?: boolean };
 
 interface VisitWithDetails {
