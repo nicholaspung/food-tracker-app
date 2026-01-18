@@ -131,12 +131,38 @@ export default function ListsPage({
     queryKey: ["list_items_counts", visibleLists.map((l) => l.id)],
     queryFn: async () => {
       const counts: Record<string, number> = {};
+
       // Initialize counts to 0 for all visible lists
       visibleLists.forEach((list) => {
         counts[list.id] = 0;
       });
 
       if (visibleLists.length === 0) return counts;
+
+      // Batch requests in chunks of 50 to avoid URL length limits
+      const chunkSize = 50;
+      for (let i = 0; i < visibleLists.length; i += chunkSize) {
+        const chunk = visibleLists.slice(i, i + chunkSize);
+
+        // Construct filter: (list = "id1" || list = "id2" || ...)
+        const filter = chunk.map((l) => `list="${l.id}"`).join("||");
+
+        if (!filter) continue;
+
+        // Fetch only the 'list' field to minimize payload size
+        // optimize: batch request to avoid N+1 problem
+        const items = await repositories.listItems.getFullList({
+          filter: `(${filter})`,
+          fields: 'list',
+        });
+
+        // Aggregate counts
+        for (const item of items) {
+          if (counts[item.list] !== undefined) {
+            counts[item.list]++;
+          }
+        }
+      }
 
       // Chunk requests to avoid URL length limits
       // PocketBase IDs are 15 chars. Filter string `list="ID"` is ~25 chars.
