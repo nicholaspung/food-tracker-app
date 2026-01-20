@@ -14,12 +14,10 @@ import {
   Users,
 } from "lucide-react";
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
-import { type VisitPhoto as RepoVisitPhoto } from "@/repositories";
 
 interface VisitPhoto extends RepoVisitPhoto {
   isPending?: boolean;
 }
-type VisitPhoto = RepoVisitPhoto & { isPending?: boolean };
 
 interface QuickTrackCardProps {
   item: FoodItem;

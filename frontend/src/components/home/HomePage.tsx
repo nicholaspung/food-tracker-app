@@ -226,19 +226,9 @@ export default function HomePage({
     handleSharePhotoClick(
       photo,
       foodItem,
-      null, // restaurant is null for QuickTrack
+      null as unknown as Restaurant, // restaurant is null for QuickTrack
       foodItem.itemDate || foodItem.created
     );
-  const handleQuickTrackEdit = useCallback((itemId: string) => {
-    navigate({ to: `/edit-quick-track/${itemId}` });
-  }, [navigate]);
-
-  const handleQuickTrackDelete = useCallback((foodItem: FoodItem) => {
-    setQuickTrackItemToDelete({ ...foodItem, type: "quick_track" as const });
-  }, []);
-
-  const handleQuickTrackSharePhoto = useCallback((photo: VisitPhoto, foodItem: FoodItem) => {
-    handleSharePhotoClick(photo, foodItem, null as unknown as Restaurant, foodItem.itemDate || foodItem.created);
   }, [handleSharePhotoClick]);
 
   // Delete visit with offline support
@@ -768,9 +758,6 @@ export default function HomePage({
                           onEdit={handleEditQuickTrack}
                           onDelete={handleDeleteQuickTrack}
                           onSharePhoto={handleShareQuickTrackPhoto}
-                          onEdit={handleQuickTrackEdit}
-                          onDelete={handleQuickTrackDelete}
-                          onSharePhoto={handleQuickTrackSharePhoto}
                           onPhotoClick={handlePhotoClick}
                           showVisibilityIndicator={!filterType.startsWith("user_")}
                         />
@@ -875,9 +862,6 @@ export default function HomePage({
                                     onEdit={handleEditQuickTrack}
                                     onDelete={handleDeleteQuickTrack}
                                     onSharePhoto={handleShareQuickTrackPhoto}
-                                    onEdit={handleQuickTrackEdit}
-                                    onDelete={handleQuickTrackDelete}
-                                    onSharePhoto={handleQuickTrackSharePhoto}
                                     onPhotoClick={handlePhotoClick}
                                     showVisibilityIndicator={!filterType.startsWith("user_")}
                                   />

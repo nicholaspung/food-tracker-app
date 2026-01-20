@@ -115,7 +115,7 @@ const RestaurantGroupCard = memo(({
                               )}
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
-                              {!userFoodItem && group.restaurant && (
+                              {friendName && !userFoodItem && group.restaurant && (
                                 <IWentThereButton
                                   listItem={listItem}
                                   foodItem={foodItem}

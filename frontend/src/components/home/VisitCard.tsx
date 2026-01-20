@@ -23,12 +23,10 @@ import {
 import { RATING_LABELS, RATING_COLORS } from "@/lib/ratingConstants";
 import { useLongPress } from "@/hooks/ui/useLongPress";
 import { ContextMenu } from "@/components/ui/ContextMenu";
-import { type VisitPhoto as RepoVisitPhoto } from "@/repositories";
 
 interface VisitPhoto extends RepoVisitPhoto {
   isPending?: boolean;
 }
-type VisitPhoto = RepoVisitPhoto & { isPending?: boolean };
 
 interface VisitWithDetails {
   id: string;
@@ -289,8 +287,8 @@ const VisitCard = memo(function VisitCard({
         {filteredFoodItems.length > 0 ? (
           <div className="space-y-2">
             {filteredFoodItems.map((item) => {
-              // Find photo for this food item
-              const photo = visitPhotosByFoodItem.get(item.id) as VisitPhoto | undefined;
+              // Find photos for this food item
+              const photos = (visitPhotosByFoodItem.get(item.id) || []) as VisitPhoto[];
               // For offline photos (isPending), use the blob URL directly
               // For online photos, use PocketBase file URL
               const photoUrls = photos.map((photo) =>

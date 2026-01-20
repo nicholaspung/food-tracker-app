@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.6.6",
+    "date": "2026-01-20",
+    "title": "Manual GPS Location Capture",
+    "summary": "Capture your exact GPS location with one tap when tracking snacks and quick items! A new location pin button lets you save coordinates on-demand instead of automatic capture.",
+    "features": [
+      "Location capture button: Tap the pin icon next to the location field to capture your current GPS coordinates",
+      "Visual feedback: Button turns solid when location is captured, with confirmation message below"
+    ],
+    "improvements": [
+      "Better location control: GPS coordinates are now captured on-demand instead of automatically when saving",
+      "Preserved coordinates: Previously captured coordinates are shown when editing quick track items",
+      "Cleaner code: Removed duplicate code in home feed for better performance"
+    ],
+    "fixes": [
+      "Fixed 'I went there' button showing on your own list items (now only shows on friends' items)",
+      "Fixed TypeScript errors in photo handling components"
+    ]
+  },
+  {
     "version": "0.6.5",
     "date": "2026-01-17",
     "title": "Quick Notes for Food Ideas",

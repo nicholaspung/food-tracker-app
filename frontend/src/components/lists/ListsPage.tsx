@@ -164,32 +164,6 @@ export default function ListsPage({
         }
       }
 
-      // Chunk requests to avoid URL length limits
-      // PocketBase IDs are 15 chars. Filter string `list="ID"` is ~25 chars.
-      // 50 items = ~1250 chars which is safe for URL limits
-      const chunkSize = 50;
-      const chunks = [];
-      for (let i = 0; i < visibleLists.length; i += chunkSize) {
-        chunks.push(visibleLists.slice(i, i + chunkSize));
-      }
-
-      const results = await Promise.all(
-        chunks.map(async (chunk) => {
-          const filter = chunk.map((list) => `list="${list.id}"`).join(" || ");
-          return await repositories.listItems.getFullList({
-            filter,
-            fields: "list,id", // Only fetch necessary fields
-          });
-        }),
-      );
-
-      // Aggregate counts
-      results.flat().forEach((item) => {
-        if (item.list) {
-          counts[item.list] = (counts[item.list] || 0) + 1;
-        }
-      });
-
       return counts;
     },
     enabled: visibleLists.length > 0 && !isOnChildRoute,

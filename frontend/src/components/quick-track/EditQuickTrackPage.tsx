@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, MapPin } from "lucide-react";
 import MenuItemPhotoInput from "@/components/visits/shared/MenuItemPhotoInput";
 import { RatingSelector } from "@/components/ui/RatingSelector";
 import { DatePickerField } from "@/components/ui/DatePickerField";
@@ -79,6 +79,9 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
 
   const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false);
   const [locationText, setLocationText] = useState("");
+  const [latitude, setLatitude] = useState<number | undefined>(undefined);
+  const [longitude, setLongitude] = useState<number | undefined>(undefined);
+  const [isCapturingLocation, setIsCapturingLocation] = useState(false);
   const [notes, setNotes] = useState("");
   const [itemDate, setItemDate] = useState(getTodayLocalDateString());
   const [visibility, setVisibility] = useState<"friends" | "private">(
@@ -105,6 +108,8 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
       setCategory(item.itemCategory || undefined);
       setRating(item.rating || 3);
       setLocationText(item.location_text || "");
+      setLatitude(item.latitude || undefined);
+      setLongitude(item.longitude || undefined);
       setNotes(item.notes || "");
       setVisibility(item.visibility || "private");
 
@@ -137,30 +142,34 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
     [handleRemove, existingPhoto]
   );
 
-  const handleUpdateItem = async () => {
-    if (!itemName.trim() || rating === null) {
+  const handleCaptureLocation = async () => {
+    if (!navigator.geolocation) {
+      logger.log("Geolocation not supported");
       return;
     }
 
-    // Get GPS coordinates if available and location text is provided
-    let latitude: number | undefined;
-    let longitude: number | undefined;
+    setIsCapturingLocation(true);
+    try {
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 10000,
+            enableHighAccuracy: true,
+          });
+        }
+      );
+      setLatitude(position.coords.latitude);
+      setLongitude(position.coords.longitude);
+    } catch (error) {
+      logger.log("Could not get GPS location:", error);
+    } finally {
+      setIsCapturingLocation(false);
+    }
+  };
 
-    if (navigator.geolocation && locationText.trim()) {
-      try {
-        const position = await new Promise<GeolocationPosition>(
-          (resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 5000,
-              maximumAge: 300000, // 5 minutes
-            });
-          }
-        );
-        latitude = position.coords.latitude;
-        longitude = position.coords.longitude;
-      } catch (error) {
-        logger.log("Could not get GPS location:", error);
-      }
+  const handleUpdateItem = async () => {
+    if (!itemName.trim() || rating === null) {
+      return;
     }
 
     try {
@@ -342,18 +351,37 @@ export default function EditQuickTrackPage({ itemId }: EditQuickTrackPageProps) 
                 <Label htmlFor="location" className="font-semibold">
                   Location (Optional)
                 </Label>
-                <Input
-                  id="location"
-                  type="text"
-                  value={locationText}
-                  onChange={(e) => setLocationText(e.target.value)}
-                  placeholder="e.g., 7-Eleven on Main St, Trader Joe's"
-                  maxLength={200}
-                  disabled={isLoading}
-                />
-                <p className="text-xs text-gray-600">
-                  GPS coordinates will be automatically captured if available
-                </p>
+                <div className="flex gap-2">
+                  <Input
+                    id="location"
+                    type="text"
+                    value={locationText}
+                    onChange={(e) => setLocationText(e.target.value)}
+                    placeholder="e.g., 7-Eleven on Main St, Trader Joe's"
+                    maxLength={200}
+                    disabled={isLoading}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant={latitude && longitude ? "default" : "outline"}
+                    size="icon"
+                    onClick={handleCaptureLocation}
+                    disabled={isLoading || isCapturingLocation}
+                    title={latitude && longitude ? "Location captured" : "Capture current location"}
+                  >
+                    {isCapturingLocation ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <MapPin className={`h-4 w-4 ${latitude && longitude ? "text-white" : ""}`} />
+                    )}
+                  </Button>
+                </div>
+                {latitude && longitude && (
+                  <p className="text-xs text-green-600">
+                    GPS coordinates captured
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
