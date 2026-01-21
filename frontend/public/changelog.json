@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.6.8",
+    "date": "2026-01-20",
+    "title": "Subscriber Photo Limits & Note Photo Fix",
+    "summary": "Subscribers can now add up to 20 photos per note! We also fixed a bug where notes were limited to 3 photos instead of the intended 5.",
+    "features": [
+      "Subscriber photo limit: Premium subscribers can now add up to 20 photos per note (up from 5)"
+    ],
+    "improvements": [],
+    "fixes": [
+      "Fixed notes only allowing 3 photos when creating (should have been 5 for non-subscribers)"
+    ]
+  },
+  {
     "version": "0.6.7",
     "date": "2026-01-20",
     "title": "Convert Notes to Visits & Quick Track",

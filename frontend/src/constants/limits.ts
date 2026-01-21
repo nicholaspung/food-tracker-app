@@ -19,3 +19,9 @@ export const MAX_PHOTOS_PER_FOOD_ITEM = 3;
  * Notes can have more photos since they're for personal reference
  */
 export const MAX_PHOTOS_PER_NOTE = 5;
+
+/**
+ * Maximum photos allowed for subscribers
+ * Subscribers get a higher limit for all photo uploads
+ */
+export const MAX_PHOTOS_SUBSCRIBER = 20;

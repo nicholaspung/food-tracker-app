@@ -13,7 +13,8 @@ import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { useSync } from "@/contexts/SyncContext";
 import { useOfflineNoteCreation } from "@/hooks/offline/useOfflineNoteCreation";
 import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/offlineHelpers";
-import { MAX_PHOTOS_PER_NOTE } from "@/constants/limits";
+import { MAX_PHOTOS_PER_NOTE, MAX_PHOTOS_SUBSCRIBER } from "@/constants/limits";
+import { pb, User } from "@/lib/pocketbase";
 
 interface LogNotePageProps {
   from?: "add-visit" | "notes";
@@ -21,6 +22,11 @@ interface LogNotePageProps {
 
 export default function LogNotePage({ from }: LogNotePageProps) {
   const navigate = useNavigate();
+
+  // Determine photo limit based on subscription status
+  const user = pb.authStore.record as User | null;
+  const isSubscriber = user?.isSubscriber === true;
+  const maxPhotos = isSubscriber ? MAX_PHOTOS_SUBSCRIBER : MAX_PHOTOS_PER_NOTE;
 
   // Determine back navigation based on where user came from
   const backPath = from === "add-visit" ? "/add-visit" : "/notes";
@@ -34,7 +40,7 @@ export default function LogNotePage({ from }: LogNotePageProps) {
   const [locationText, setLocationText] = useState("");
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
-  // Photo management - multiple photos mode
+  // Photo management - multiple photos mode with subscriber-aware limit
   const {
     getPhotos,
     getPreviewUrls,
@@ -42,7 +48,7 @@ export default function LogNotePage({ from }: LogNotePageProps) {
     removePhoto,
     getPhotoCount,
     cleanup,
-  } = usePhotoManager<string>(true);
+  } = usePhotoManager<string>(true, maxPhotos);
 
   const photoKey = "note-photos";
   const photos = getPhotos(photoKey);
@@ -95,7 +101,7 @@ export default function LogNotePage({ from }: LogNotePageProps) {
       const added = addMultiplePhotos(photoKey, fileArray);
 
       if (added < fileArray.length) {
-        handleError(new Error(`Only ${MAX_PHOTOS_PER_NOTE} photos allowed. Added ${added} of ${fileArray.length}.`));
+        handleError(new Error(`Only ${maxPhotos} photos allowed. Added ${added} of ${fileArray.length}.`));
       }
 
       // Reset the input
@@ -260,7 +266,7 @@ export default function LogNotePage({ from }: LogNotePageProps) {
               )}
 
               {/* Add Photo Button */}
-              {photoCount < MAX_PHOTOS_PER_NOTE && (
+              {photoCount < maxPhotos && (
                 <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
                   <input
                     type="file"
@@ -272,7 +278,7 @@ export default function LogNotePage({ from }: LogNotePageProps) {
                   />
                   <Plus className="w-5 h-5 text-gray-400" />
                   <span className="text-sm text-gray-600">
-                    Add photos ({photoCount}/{MAX_PHOTOS_PER_NOTE})
+                    Add photos ({photoCount}/{maxPhotos})
                   </span>
                 </label>
               )}

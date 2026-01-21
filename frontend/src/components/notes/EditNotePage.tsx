@@ -14,8 +14,8 @@ import { useScrollIntoView } from "@/hooks/ui/useScrollIntoView";
 import { useKeyboardVisible } from "@/hooks/ui/useKeyboardVisible";
 import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
-import { pb } from "@/lib/pocketbase";
-import { MAX_PHOTOS_PER_NOTE } from "@/constants/limits";
+import { pb, User } from "@/lib/pocketbase";
+import { MAX_PHOTOS_PER_NOTE, MAX_PHOTOS_SUBSCRIBER } from "@/constants/limits";
 
 interface EditNotePageProps {
   noteId: string;
@@ -23,6 +23,11 @@ interface EditNotePageProps {
 
 export default function EditNotePage({ noteId }: EditNotePageProps) {
   const navigate = useNavigate();
+
+  // Determine photo limit based on subscription status
+  const user = pb.authStore.record as User | null;
+  const isSubscriber = user?.isSubscriber === true;
+  const maxPhotos = isSubscriber ? MAX_PHOTOS_SUBSCRIBER : MAX_PHOTOS_PER_NOTE;
   const { showSuccess, handleError, error } = useErrorHandler({
     source: "EditNotePage",
     autoClearMs: 5000,
@@ -38,7 +43,7 @@ export default function EditNotePage({ noteId }: EditNotePageProps) {
   const [photosToDelete, setPhotosToDelete] = useState<string[]>([]);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
-  // Photo management - multiple photos mode for new photos
+  // Photo management - multiple photos mode with subscriber-aware limit
   const {
     getPhotos,
     getPreviewUrls,
@@ -46,7 +51,7 @@ export default function EditNotePage({ noteId }: EditNotePageProps) {
     removePhoto,
     getPhotoCount,
     cleanup,
-  } = usePhotoManager<string>(true);
+  } = usePhotoManager<string>(true, maxPhotos);
 
   const photoKey = "note-edit-photos";
   const newPhotos = getPhotos(photoKey);
@@ -108,9 +113,9 @@ export default function EditNotePage({ noteId }: EditNotePageProps) {
       const files = event.target.files;
       if (!files || files.length === 0) return;
 
-      const remainingSlots = MAX_PHOTOS_PER_NOTE - totalPhotoCount;
+      const remainingSlots = maxPhotos - totalPhotoCount;
       if (remainingSlots <= 0) {
-        handleError(new Error(`Maximum ${MAX_PHOTOS_PER_NOTE} photos allowed.`));
+        handleError(new Error(`Maximum ${maxPhotos} photos allowed.`));
         return;
       }
 
@@ -321,7 +326,7 @@ export default function EditNotePage({ noteId }: EditNotePageProps) {
               )}
 
               {/* Add Photo Button */}
-              {totalPhotoCount < MAX_PHOTOS_PER_NOTE && (
+              {totalPhotoCount < maxPhotos && (
                 <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
                   <input
                     type="file"
@@ -333,7 +338,7 @@ export default function EditNotePage({ noteId }: EditNotePageProps) {
                   />
                   <Plus className="w-5 h-5 text-gray-400" />
                   <span className="text-sm text-gray-600">
-                    Add photos ({totalPhotoCount}/{MAX_PHOTOS_PER_NOTE})
+                    Add photos ({totalPhotoCount}/{maxPhotos})
                   </span>
                 </label>
               )}

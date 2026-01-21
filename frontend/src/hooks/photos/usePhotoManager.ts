@@ -4,16 +4,20 @@ import { MAX_PHOTOS_PER_FOOD_ITEM } from "@/constants/limits";
 /**
  * Hook for managing photo capture, preview, and cleanup
  * Supports both single photo and multiple photos (Map-based) modes
- * In multiple mode, each key can have multiple photos (up to MAX_PHOTOS_PER_FOOD_ITEM)
+ * In multiple mode, each key can have multiple photos (up to maxPhotos limit)
  *
  * @template K - Key type for multiple photos mode (number | string)
+ * @param multipleMode - Whether to use multiple photos mode
+ * @param maxPhotos - Maximum photos allowed per key (defaults to MAX_PHOTOS_PER_FOOD_ITEM)
  *
  * Usage:
  * - Single photo: const { photo, previewUrl, handleCapture, handleRemove } = usePhotoManager()
  * - Multiple photos: const { photos, previewUrls, addPhoto, removePhoto } = usePhotoManager<string>(true)
+ * - Custom limit: const { ... } = usePhotoManager<string>(true, 20) // 20 photos max
  */
 export function usePhotoManager<K extends number | string = never>(
-  multipleMode: boolean = false
+  multipleMode: boolean = false,
+  maxPhotos: number = MAX_PHOTOS_PER_FOOD_ITEM
 ) {
   // Single photo mode state
   const [photo, setPhoto] = useState<File | null>(null);
@@ -36,7 +40,7 @@ export function usePhotoManager<K extends number | string = never>(
 
         // Check limit
         const currentPhotos = photos.get(key) || [];
-        if (currentPhotos.length >= MAX_PHOTOS_PER_FOOD_ITEM) {
+        if (currentPhotos.length >= maxPhotos) {
           return false;
         }
 
@@ -74,7 +78,7 @@ export function usePhotoManager<K extends number | string = never>(
         return true;
       }
     },
-    [multipleMode, photos]
+    [multipleMode, photos, maxPhotos]
   );
 
   /**
@@ -97,7 +101,7 @@ export function usePhotoManager<K extends number | string = never>(
       if (!multipleMode) return 0;
 
       const currentPhotos = photos.get(key) || [];
-      const remainingSlots = MAX_PHOTOS_PER_FOOD_ITEM - currentPhotos.length;
+      const remainingSlots = maxPhotos - currentPhotos.length;
       if (remainingSlots <= 0) return 0;
 
       const filesToAdd = files.slice(0, remainingSlots);
@@ -121,7 +125,7 @@ export function usePhotoManager<K extends number | string = never>(
 
       return filesToAdd.length;
     },
-    [multipleMode, photos]
+    [multipleMode, photos, maxPhotos]
   );
 
   /**
