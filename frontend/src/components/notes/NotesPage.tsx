@@ -106,10 +106,9 @@ export default function NotesPage() {
     }
   }, [noteToDelete, deleteMutation, queryClient]);
 
-  // TODO: Re-enable when Use Note functionality is ready
-  // const handleUse = useCallback((note: Note) => {
-  //   setNoteToUse(note);
-  // }, []);
+  const handleUse = useCallback((note: Note) => {
+    setNoteToUse(note);
+  }, []);
 
   const handlePhotoClick = useCallback(
     (data: { urls: string[]; dishName: string; initialIndex?: number }) => {
@@ -213,8 +212,7 @@ export default function NotesPage() {
                 photos={notePhotosMap[note.id] || []}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                // TODO: Re-enable onUse when functionality is ready
-                // onUse={handleUse}
+                onUse={handleUse}
                 onPhotoClick={handlePhotoClick}
               />
             ))}
@@ -251,6 +249,7 @@ export default function NotesPage() {
       {noteToUse && (
         <UseNoteDialog
           note={noteToUse}
+          notePhotos={notePhotosMap[noteToUse.id] || []}
           open={!!noteToUse}
           onOpenChange={(open) => !open && setNoteToUse(null)}
         />

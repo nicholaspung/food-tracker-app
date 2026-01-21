@@ -34,6 +34,7 @@ import MenuItemPhotoInput from "@/components/visits/shared/MenuItemPhotoInput";
 import { format } from "date-fns";
 import { useOfflineVisitCreation } from "@/hooks/offline/useOfflineVisitCreation";
 import { useOfflineRestaurantCreation } from "@/hooks/offline/useOfflineRestaurantCreation";
+import { NoteReferencePanel } from "@/components/notes/NoteReferencePanel";
 
 interface RestaurantProcessingScreenProps {
   // Photo data
@@ -127,6 +128,10 @@ interface RestaurantProcessingScreenProps {
   combinedPhotos: CombinedPhotoData[]; // Photos combined with current item
   onCombinePhoto: (photo: PhotoToProcess) => void; // Add photo to current item
   onUncombinePhoto: (photoId: string) => void; // Remove combined photo
+
+  // Note reference
+  noteContent?: string;
+  noteLocation?: string;
 }
 
 /**
@@ -218,6 +223,9 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
     combinedPhotos,
     onCombinePhoto,
     onUncombinePhoto,
+    // Note reference
+    noteContent,
+    noteLocation,
   } = props;
 
   // Refs for auto-scrolling
@@ -276,6 +284,15 @@ function RestaurantProcessingScreenComponent(props: RestaurantProcessingScreenPr
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto overscroll-contain p-4">
+        {/* Note Reference Panel */}
+        {noteContent && (
+          <NoteReferencePanel
+            noteContent={noteContent}
+            locationText={noteLocation}
+            storageKey="restaurantProcessing"
+          />
+        )}
+
         {/* Photo Preview */}
         <div className="mb-4" key={currentPhoto.id}>
           <div className="relative aspect-video rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity">
@@ -1078,7 +1095,10 @@ export const RestaurantProcessingScreen = memo(
       prevProps.getRestaurantStats === nextProps.getRestaurantStats &&
       // Include combine photos feature props
       prevProps.remainingPhotos.length === nextProps.remainingPhotos.length &&
-      prevProps.combinedPhotos.length === nextProps.combinedPhotos.length
+      prevProps.combinedPhotos.length === nextProps.combinedPhotos.length &&
+      // Include note reference props
+      prevProps.noteContent === nextProps.noteContent &&
+      prevProps.noteLocation === nextProps.noteLocation
     );
   }
 );

@@ -30,6 +30,7 @@ import { usePhotoManager } from "@/hooks/photos/usePhotoManager";
 import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
 import { isOfflineError, handleOfflineSuccess, OFFLINE_MESSAGES } from "@/lib/offlineHelpers";
 import { ITEM_CATEGORIES } from "@/constants/quickTrack";
+import { NoteReferencePanel } from "@/components/notes/NoteReferencePanel";
 
 export default function QuickTrackPage() {
   const navigate = useNavigate();
@@ -40,6 +41,8 @@ export default function QuickTrackPage() {
 
   // Check for note data from sessionStorage (from Use Saved Note flow)
   const [sourceNoteId, setSourceNoteId] = useState<string | undefined>(undefined);
+  const [noteContent, setNoteContent] = useState<string | undefined>(undefined);
+  const [noteLocationText, setNoteLocationText] = useState<string | undefined>(undefined);
 
   // Form state
   const [itemName, setItemName] = useState("");
@@ -80,6 +83,9 @@ export default function QuickTrackPage() {
       try {
         const noteData = JSON.parse(noteDataStr);
         setSourceNoteId(noteData.noteId);
+        // Store note content for the reference panel
+        setNoteContent(noteData.content);
+        setNoteLocationText(noteData.location_text);
         // Pre-fill notes field with note content
         setNotes(noteData.content || "");
         // Pre-fill location if available
@@ -196,6 +202,15 @@ export default function QuickTrackPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto overscroll-contain p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Note Reference Panel - shown when coming from "Use Note" flow */}
+          {noteContent && (
+            <NoteReferencePanel
+              noteContent={noteContent}
+              locationText={noteLocationText}
+              storageKey="quickTrackPage"
+            />
+          )}
+
           {/* Date picker */}
           <DatePickerField
             value={itemDate}
@@ -360,7 +375,7 @@ export default function QuickTrackPage() {
         <div className="flex gap-3">
           <Button
             variant="outline"
-            onClick={() => navigate({ to: "/add-visit" })}
+            onClick={() => navigate({ to: sourceNoteId ? "/notes" : "/add-visit" })}
             className="flex-1"
             disabled={isLoading}
           >

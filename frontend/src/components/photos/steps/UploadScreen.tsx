@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Store, Camera, X, ChevronRight } from "lucide-react";
+import { Upload, Store, Camera, X, ChevronRight, Loader2 } from "lucide-react";
 import { ProcessType, PhotoToProcess } from "@/types/photos";
 import { extractImageCaptureDate } from "@/lib/photoUtils";
+import { NoteReferencePanel } from "@/components/notes/NoteReferencePanel";
 
 interface UploadScreenProps {
   processType: ProcessType;
@@ -13,6 +14,12 @@ interface UploadScreenProps {
   onCancel: () => void;
   onNext: () => void;
   isKeyboardVisible: boolean;
+  /** Note content when coming from "Use Note" flow */
+  noteContent?: string;
+  /** Note location when coming from "Use Note" flow */
+  noteLocation?: string;
+  /** Whether note photos are still loading */
+  isLoadingNotePhotos?: boolean;
 }
 
 /**
@@ -31,6 +38,9 @@ export function UploadScreen({
   onCancel,
   onNext,
   isKeyboardVisible,
+  noteContent,
+  noteLocation,
+  isLoadingNotePhotos,
 }: UploadScreenProps) {
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -67,9 +77,29 @@ export function UploadScreen({
       </div>
 
       {/* Upload Screen */}
-      {photos.length === 0 ? (
+      {isLoadingNotePhotos ? (
+        // Loading note photos
+        <div className="flex-1 p-4 flex flex-col items-center justify-center">
+          <Loader2 className="h-12 w-12 text-muted-foreground mb-4 animate-spin" />
+          <h2 className="text-xl font-semibold mb-2">Loading photos from note...</h2>
+          <p className="text-muted-foreground text-center">
+            Please wait while we prepare your photos.
+          </p>
+        </div>
+      ) : photos.length === 0 ? (
         // No photos selected yet - show upload UI
         <div className="flex-1 p-4 flex flex-col items-center justify-center">
+          {/* Show note reference if available */}
+          {noteContent && (
+            <div className="w-full max-w-md mb-6">
+              <NoteReferencePanel
+                noteContent={noteContent}
+                locationText={noteLocation}
+                storageKey="uploadScreen"
+              />
+            </div>
+          )}
+
           <Upload className="h-20 w-20 text-muted-foreground mb-4" />
           <h2 className="text-2xl font-bold mb-2">Upload Photos</h2>
           <p className="text-muted-foreground text-center mb-8 max-w-md">
@@ -96,6 +126,15 @@ export function UploadScreen({
         // Photos selected - show review UI
         <>
           <div className="flex-1 overflow-y-auto overscroll-contain p-4">
+            {/* Show note reference if available */}
+            {noteContent && (
+              <NoteReferencePanel
+                noteContent={noteContent}
+                locationText={noteLocation}
+                storageKey="uploadScreen"
+              />
+            )}
+
             <p className="text-sm text-muted-foreground mb-4">
               {photos.length} photo{photos.length !== 1 ? "s" : ""} selected.
               Review and remove any you don't want to process.

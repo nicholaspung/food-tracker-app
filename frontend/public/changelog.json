@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.6.7",
+    "date": "2026-01-20",
+    "title": "Convert Notes to Visits & Quick Track",
+    "summary": "Turn your saved notes into real entries! Use the 'Use Note' button to convert any note into a restaurant visit or quick track item. Your note content and photos are automatically loaded to help you fill in the details.",
+    "features": [
+      "Use Note button: Tap to convert any saved note into a restaurant visit or quick track entry",
+      "Auto-load note photos: Photos attached to your note are automatically loaded into the Process Photos workflow",
+      "Note reference panel: See your original note content while filling in the entry details - collapsible to save space",
+      "Smart routing: Notes with photos go through Process Photos; notes without photos go directly to Quick Track form"
+    ],
+    "improvements": [
+      "Better note tip: Log Note page now shows a helpful tip about creating one note per restaurant visit or quick track item",
+      "Note linking: When you convert a note, the entry is linked back to the original note for tracking",
+      "Smart navigation: Cancel button returns you to the Notes page when using a note"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.6.6",
     "date": "2026-01-20",
     "title": "Manual GPS Location Capture",

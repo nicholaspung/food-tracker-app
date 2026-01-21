@@ -18,6 +18,7 @@ import { RatingSelector } from "@/components/ui/RatingSelector";
 import { DatePickerField } from "@/components/ui/DatePickerField";
 import { VisibilityToggle } from "@/components/ui/VisibilityToggle";
 import { ITEM_CATEGORIES } from "@/constants/quickTrack";
+import { NoteReferencePanel } from "@/components/notes/NoteReferencePanel";
 
 interface QuickTrackProcessingScreenProps {
   // Photo data
@@ -51,6 +52,10 @@ interface QuickTrackProcessingScreenProps {
   // UI state
   isKeyboardVisible: boolean;
   canSubmit: boolean;
+
+  // Note reference
+  noteContent?: string;
+  noteLocation?: string;
 }
 
 /**
@@ -79,6 +84,8 @@ export function QuickTrackProcessingScreen({
   onFullscreenPhoto,
   isKeyboardVisible,
   canSubmit,
+  noteContent,
+  noteLocation,
 }: QuickTrackProcessingScreenProps) {
   const hasRatedBefore = localStorage.getItem("hasRatedBefore") === "true";
   const [isLegendExpanded, setIsLegendExpanded] = useState(!hasRatedBefore);
@@ -111,6 +118,15 @@ export function QuickTrackProcessingScreen({
 
       {/* Scrollable Content */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4">
+        {/* Note Reference Panel */}
+        {noteContent && (
+          <NoteReferencePanel
+            noteContent={noteContent}
+            locationText={noteLocation}
+            storageKey="quickTrackProcessing"
+          />
+        )}
+
         {/* Photo Preview */}
         <div className="mb-4" key={currentPhoto.id}>
           <div className="relative aspect-video rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity">

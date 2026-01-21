@@ -35,7 +35,8 @@ export function usePhotoSubmission() {
    */
   const submitRestaurantVisits = async (
     photos: ProcessedPhoto[],
-    visibility: "friends" | "private"
+    visibility: "friends" | "private",
+    sourceNoteId?: string
   ) => {
     setIsSubmitting(true);
 
@@ -84,6 +85,7 @@ export function usePhotoSubmission() {
           visitDate: visitDate.toISOString(),
           visibility,
           notes: '',
+          sourceNoteId,
         });
       }
 
@@ -104,7 +106,7 @@ export function usePhotoSubmission() {
   /**
    * Submit quick track items
    */
-  const submitQuickTrackItems = async (items: QuickTrackPhotoData[]) => {
+  const submitQuickTrackItems = async (items: QuickTrackPhotoData[], sourceNoteId?: string) => {
     setIsSubmitting(true);
 
     try {
@@ -124,6 +126,7 @@ export function usePhotoSubmission() {
             : item.captureDate
               ? item.captureDate.toISOString()
               : undefined,
+          sourceNoteId,
         });
       }
 

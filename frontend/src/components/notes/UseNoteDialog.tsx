@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { type Note } from "@/lib/pocketbase";
+import { type Note, type NotePhoto, pb } from "@/lib/pocketbase";
 import {
   Dialog,
   DialogContent,
@@ -9,51 +9,76 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Utensils, Zap, ChevronRight } from "lucide-react";
+import { Utensils, Zap, ChevronRight, Image } from "lucide-react";
 
 interface UseNoteDialogProps {
   note: Note;
+  notePhotos?: NotePhoto[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export default function UseNoteDialog({
   note,
+  notePhotos = [],
   open,
   onOpenChange,
 }: UseNoteDialogProps) {
   const navigate = useNavigate();
 
   const handleUseForVisit = () => {
-    // Store note data in sessionStorage for the visit flow
+    // Always go to process-photos for restaurant visits
+    // This provides a consistent flow with photo support
     sessionStorage.setItem(
-      "noteForVisit",
+      "noteForProcessPhotos",
       JSON.stringify({
         noteId: note.id,
         content: note.content,
-        restaurant: note.restaurant,
         location_text: note.location_text,
+        processType: "restaurant",
+        photoUrls: notePhotos.map(p => pb.files.getURL(p, p.photo)),
       })
     );
 
     onOpenChange(false);
-    navigate({ to: "/add-visit/select-restaurant" });
+    navigate({ to: "/process-photos" });
   };
 
   const handleUseForQuickTrack = () => {
-    // Store note data in sessionStorage for quick track
-    sessionStorage.setItem(
-      "noteForQuickTrack",
-      JSON.stringify({
-        noteId: note.id,
-        content: note.content,
-        location_text: note.location_text,
-      })
-    );
+    const hasPhotos = notePhotos.length > 0;
 
-    onOpenChange(false);
-    navigate({ to: "/quick-track" });
+    if (hasPhotos) {
+      // Go to process-photos for quick track with photos
+      sessionStorage.setItem(
+        "noteForProcessPhotos",
+        JSON.stringify({
+          noteId: note.id,
+          content: note.content,
+          location_text: note.location_text,
+          processType: "quickTrack",
+          photoUrls: notePhotos.map(p => pb.files.getURL(p, p.photo)),
+        })
+      );
+
+      onOpenChange(false);
+      navigate({ to: "/process-photos" });
+    } else {
+      // Go to simple quick track form (no photos)
+      sessionStorage.setItem(
+        "noteForQuickTrack",
+        JSON.stringify({
+          noteId: note.id,
+          content: note.content,
+          location_text: note.location_text,
+        })
+      );
+
+      onOpenChange(false);
+      navigate({ to: "/quick-track" });
+    }
   };
+
+  const hasPhotos = notePhotos.length > 0;
 
   // Truncate content for preview
   const contentPreview =
@@ -72,6 +97,12 @@ export default function UseNoteDialog({
         {/* Note Preview */}
         <div className="bg-gray-50 rounded-lg p-3 mb-4">
           <p className="text-sm text-gray-700 italic">"{contentPreview}"</p>
+          {hasPhotos && (
+            <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
+              <Image className="w-3 h-3" />
+              <span>{notePhotos.length} photo{notePhotos.length !== 1 ? "s" : ""} attached</span>
+            </div>
+          )}
         </div>
 
         {/* Options */}

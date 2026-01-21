@@ -18,6 +18,7 @@ import { useDraftManagement } from "@/hooks/photos/useDraftManagement";
 import { usePhotoProcessing } from "@/hooks/photos/usePhotoProcessing";
 import { useQuickTrackProcessing } from "@/hooks/photos/useQuickTrackProcessing";
 import { usePhotoSubmission } from "@/hooks/photos/usePhotoSubmission";
+import { useNotePhotoLoader } from "@/hooks/notes/useNotePhotoLoader";
 
 // Zustand store
 import { usePhotoProcessingStore } from "@/stores/photoProcessingStore";
@@ -125,6 +126,31 @@ export default function ProcessPhotosPage() {
   // Restaurant search state
   const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
   const [locationSearchQuery, setLocationSearchQuery] = useState("");
+
+  // Note data state (when coming from "Use Note" flow)
+  // Initialize synchronously from sessionStorage to prevent choice screen flash
+  const [noteData, setNoteData] = useState<{
+    noteId: string;
+    content: string;
+    location_text?: string;
+    processType: "restaurant" | "quickTrack";
+    photoUrls: string[];
+  } | null>(() => {
+    const noteDataStr = sessionStorage.getItem("noteForProcessPhotos");
+    if (noteDataStr) {
+      try {
+        return JSON.parse(noteDataStr);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  // Load photos from note URLs
+  const { photos: notePhotos, isLoading: isLoadingNotePhotos } = useNotePhotoLoader(
+    noteData?.photoUrls || []
+  );
 
   // Track which restaurant we've set the default menu mode for
   // This prevents the mode from resetting when menuItems.length changes
@@ -297,6 +323,27 @@ export default function ProcessPhotosPage() {
     draftManagement.clearDraft();
   }, []);
 
+  // Set up screen/processType from note data (from "Use Note" flow)
+  // Note data is loaded synchronously in useState initializer above
+  useEffect(() => {
+    if (noteData) {
+      // Set the process type from note data and skip choice screen
+      setProcessType(noteData.processType);
+      setScreen("upload");
+      // Clean up sessionStorage
+      sessionStorage.removeItem("noteForProcessPhotos");
+      logger.log("[ProcessPhotosPage] Loaded note data:", noteData.noteId);
+    }
+  }, [noteData, setProcessType, setScreen]);
+
+  // Populate photos from note when they finish loading
+  useEffect(() => {
+    if (noteData && notePhotos.length > 0 && photoUpload.photos.length === 0) {
+      photoUpload.setPhotos(notePhotos);
+      logger.log("[ProcessPhotosPage] Populated photos from note:", notePhotos.length);
+    }
+  }, [noteData, notePhotos, photoUpload.photos.length]);
+
   // Screen-specific handlers
   const handleChooseProcessType = (type: "restaurant" | "quickTrack") => {
     setProcessType(type);
@@ -367,7 +414,12 @@ export default function ProcessPhotosPage() {
 
   const handleCancel = async () => {
     await draftManagement.clearDraft();
-    navigate({ to: "/add-visit" });
+    // Navigate back to notes if we came from the "Use Note" flow
+    if (noteData) {
+      navigate({ to: "/notes" });
+    } else {
+      navigate({ to: "/add-visit" });
+    }
   };
 
   const handleStartProcessing = () => {
@@ -481,11 +533,13 @@ export default function ProcessPhotosPage() {
     if (processType === "restaurant") {
       await submission.submitRestaurantVisits(
         restaurantProcessing.processedPhotos,
-        restaurantProcessing.visitVisibility
+        restaurantProcessing.visitVisibility,
+        noteData?.noteId
       );
     } else if (processType === "quickTrack") {
       await submission.submitQuickTrackItems(
-        quickTrackProcessing.quickTrackPhotos
+        quickTrackProcessing.quickTrackPhotos,
+        noteData?.noteId
       );
     }
 
@@ -565,13 +619,20 @@ export default function ProcessPhotosPage() {
   };
 
   // Render screens based on state
-  if (screen === "choice") {
+  // Skip choice screen if we have note data (waiting for effect to set screen to "upload")
+  if (screen === "choice" && !noteData) {
     return (
       <ChoiceScreen
         onSelectType={handleChooseProcessType}
         onBack={() => navigate({ to: "/add-visit" })}
       />
     );
+  }
+
+  // Show loading state while note data is being set up
+  if (screen === "choice" && noteData) {
+    // Effect will set screen to "upload" - show nothing briefly
+    return null;
   }
 
   if (screen === "upload") {
@@ -585,6 +646,9 @@ export default function ProcessPhotosPage() {
         onCancel={handleCancel}
         onNext={handleStartProcessing}
         isKeyboardVisible={isKeyboardVisible}
+        noteContent={noteData?.content}
+        noteLocation={noteData?.location_text}
+        isLoadingNotePhotos={isLoadingNotePhotos}
       />
     );
   }
@@ -620,6 +684,8 @@ export default function ProcessPhotosPage() {
           }
           isKeyboardVisible={isKeyboardVisible}
           canSubmit={quickTrackProcessing.canSubmitCurrent}
+          noteContent={noteData?.content}
+          noteLocation={noteData?.location_text}
         />
       );
     }
@@ -746,6 +812,9 @@ export default function ProcessPhotosPage() {
           combinedPhotos={restaurantProcessing.combinedPhotos}
           onCombinePhoto={handleCombinePhoto}
           onUncombinePhoto={handleUncombinePhoto}
+          // Note reference
+          noteContent={noteData?.content}
+          noteLocation={noteData?.location_text}
         />
 
         {/* Camera Mode Modal */}

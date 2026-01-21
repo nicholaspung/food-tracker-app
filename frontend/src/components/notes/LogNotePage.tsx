@@ -197,6 +197,11 @@ export default function LogNotePage({ from }: LogNotePageProps) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto overscroll-contain p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Tip */}
+          <p className="text-sm text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+            <span className="font-medium">Tip:</span> Each note should be for one restaurant visit or one quick track item. You can convert notes to entries later.
+          </p>
+
           {/* Note Content */}
           <Card>
             <CardContent className="space-y-3">
