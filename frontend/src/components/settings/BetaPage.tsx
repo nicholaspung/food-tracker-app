@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X, DollarSign } from 'lucide-react';
-import BillsListView from '@/components/bills/BillsListView';
+import { X } from 'lucide-react';
 
 interface BetaPageProps {
   onNavigateBack?: () => void;
@@ -11,22 +10,16 @@ interface BetaPageProps {
 export default function BetaPage({ onNavigateBack: _onNavigateBack }: BetaPageProps) {
   const [activeBetaFeature, setActiveBetaFeature] = useState<string | null>(null);
 
+  // Beta features array - add new experimental features here
   const betaFeatures: Array<{
     id: string;
     title: string;
     description: string;
     status: string;
-    component: React.ComponentType<any>;
-    icon?: React.ComponentType<any>;
+    component: React.ComponentType<unknown>;
+    icon?: React.ComponentType<{ className?: string }>;
   }> = [
-    {
-      id: 'bill-splitter',
-      title: 'Bill Splitter',
-      description: 'Split bills with friends and track payments easily',
-      status: 'MVP Testing',
-      component: BillsListView,
-      icon: DollarSign,
-    },
+    // No beta features currently - Bill Splitter has graduated!
   ];
 
   if (activeBetaFeature) {

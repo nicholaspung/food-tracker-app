@@ -37,6 +37,7 @@ export default function CreateEvenSplitBillDialog({
   const [billName, setBillName] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
+  const [payerId, setPayerId] = useState<string>(currentUserId); // Who paid the bill
   const { error, handleError, clearError } = useErrorHandler({
     source: 'CreateEvenSplitBillDialog',
     defaultSeverity: 'error',
@@ -115,6 +116,7 @@ export default function CreateEvenSplitBillDialog({
         split_mode: 'even',
         extras_split_mode: 'equal',
         status: 'active',
+        payer_id: payerId,
         participants,
       });
     },
@@ -146,10 +148,18 @@ export default function CreateEvenSplitBillDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pendingBillId]);
 
+  // Reset payerId to current user if the selected payer is deselected
+  useEffect(() => {
+    if (payerId !== currentUserId && !selectedFriendIds.includes(payerId)) {
+      setPayerId(currentUserId);
+    }
+  }, [selectedFriendIds, payerId, currentUserId]);
+
   const resetForm = () => {
     setBillName('');
     setTotalAmount('');
     setSelectedFriendIds([]);
+    setPayerId(currentUserId);
     clearError();
     setPendingBillId(null);
   };
@@ -259,6 +269,32 @@ export default function CreateEvenSplitBillDialog({
               </div>
             )}
           </div>
+
+          {/* Who Paid */}
+          {selectedFriendIds.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="payer">Who paid the bill?</Label>
+              <select
+                id="payer"
+                value={payerId}
+                onChange={e => setPayerId(e.target.value)}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value={currentUserId}>
+                  Me ({pb.authStore.record?.name || pb.authStore.record?.email?.split('@')[0] || 'You'})
+                </option>
+                {selectedFriendIds.map(friendId => {
+                  const friend = friends.find(f => f.id === friendId);
+                  if (!friend) return null;
+                  return (
+                    <option key={friendId} value={friendId}>
+                      {friend.name || friend.email?.split('@')[0] || 'Unknown'}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
 
           {/* Preview */}
           {amountPerPerson > 0 && (

@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.6.9",
+    "date": "2026-01-25",
+    "title": "Bill Splitter Enhancements",
+    "summary": "Split bills your way with the new itemized bill feature! Assign individual items to specific people, use advanced split options (percentage or exact amount), and customize who paid the bill.",
+    "features": [
+      "Itemized bill splitting: Create bills where you assign specific items to specific people instead of splitting evenly",
+      "Advanced item splits: Choose between percentage-based or exact amount splits for any item",
+      "Custom tip contributions: Set how much each person contributes to the tip separately from their food total",
+      "Payer selection: Specify who paid the bill (not just the creator) so the right person gets paid back",
+      "Edit itemized bills: Modify items, prices, assignments, tax, and tip after the bill is created"
+    ],
+    "improvements": [
+      "Bill Splitter now available to all users (moved from beta)",
+      "Dedicated bills page with proper navigation",
+      "Better settled bills view: Now shows all bills you participated in, not just ones you created"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.6.8",
     "date": "2026-01-20",
     "title": "Subscriber Photo Limits & Note Photo Fix",

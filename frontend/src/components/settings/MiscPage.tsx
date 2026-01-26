@@ -1,40 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ArrowLeft, DollarSign, List, Lightbulb, ChevronRight } from 'lucide-react';
-import BillsListView from '@/components/bills/BillsListView';
-import { pb } from '@/lib/pocketbase';
-
-type ActiveFeature = 'bill-splitter' | null;
+import { DollarSign, List, Lightbulb, ChevronRight } from 'lucide-react';
 
 export default function MiscPage() {
   const navigate = useNavigate();
-  const [activeFeature, setActiveFeature] = useState<ActiveFeature>(null);
   const [expandedTips, setExpandedTips] = useState(false);
-
-  const currentUser = pb.authStore.record;
-  const isAdmin = currentUser?.isAdmin === true;
-
-  // Beta features only visible to admins (still in testing)
-  const betaFeatures: Array<{
-    id: ActiveFeature;
-    title: string;
-    description: string;
-    status: string;
-    component: React.ComponentType<any>;
-    icon: React.ComponentType<{ className?: string }>;
-  }> = [
-    {
-      id: 'bill-splitter',
-      title: 'Bill Splitter',
-      description: 'Split bills with friends and track payments easily',
-      status: 'Beta',
-      component: BillsListView,
-      icon: DollarSign,
-    },
-  ];
 
   const tips = [
     {
@@ -58,43 +30,6 @@ export default function MiscPage() {
       description: 'Add personal notes to remember specific details about dishes or restaurants.',
     },
   ];
-
-  // Handle beta feature views
-  if (activeFeature) {
-    const feature = betaFeatures.find(f => f.id === activeFeature);
-    if (feature) {
-      const FeatureComponent = feature.component;
-      return (
-        <div className="flex flex-col h-full bg-gray-50">
-          {/* Feature Header */}
-          <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setActiveFeature(null)}
-              className="p-2"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-gray-900">{feature.title}</h1>
-                <Badge variant="outline" className="text-xs border-blue-500 text-blue-700">
-                  {feature.status}
-                </Badge>
-              </div>
-              <p className="text-sm text-gray-500 mt-1">{feature.description}</p>
-            </div>
-          </div>
-
-          {/* Feature Content */}
-          <div className="flex-1 overflow-y-auto">
-            <FeatureComponent />
-          </div>
-        </div>
-      );
-    }
-  }
 
   return (
     <div className="flex flex-col h-full bg-gray-50" data-testid="misc-page">
@@ -137,41 +72,34 @@ export default function MiscPage() {
           </CardContent>
         </Card>
 
-        {/* Beta Features Section - Admin Only */}
-        {isAdmin && betaFeatures.length > 0 && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <CardTitle>Try New Features</CardTitle>
-                <Badge variant="outline" className="text-xs border-blue-500 text-blue-700">
-                  Beta
-                </Badge>
+        {/* Bill Splitter Section */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-green-600" />
+              <CardTitle>Bill Splitter</CardTitle>
+            </div>
+            <CardDescription>Split bills with friends and track payments easily</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <button
+              onClick={() => navigate({ to: '/bills' })}
+              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              data-testid="feature-bill-splitter"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <DollarSign className="w-5 h-5 text-green-600" />
+                </div>
+                <div className="text-left">
+                  <p className="font-medium text-gray-900">Split a Bill</p>
+                  <p className="text-sm text-gray-500">Create and manage bill splits</p>
+                </div>
               </div>
-              <CardDescription>Experimental features we're testing</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {betaFeatures.map((feature) => (
-                <button
-                  key={feature.id}
-                  onClick={() => setActiveFeature(feature.id)}
-                  className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                  data-testid={`feature-${feature.id}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <feature.icon className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-medium text-gray-900">{feature.title}</p>
-                      <p className="text-sm text-gray-500">{feature.description}</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+              <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+            </button>
+          </CardContent>
+        </Card>
 
         {/* Tips & Tricks Section */}
         <Card>

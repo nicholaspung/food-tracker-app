@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, DollarSign, Users, Clock } from 'lucide-react';
+import { Plus, DollarSign, Users, Clock, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,18 +9,28 @@ import { listBills } from '@/lib/billService';
 import { formatCurrency, getBillSummary } from '@/lib/billCalculations';
 import { pb } from '@/lib/pocketbase';
 import CreateEvenSplitBillDialog from '@/components/bills/CreateEvenSplitBillDialog';
-import CreateCustomSplitBillDialog from '@/components/bills/CreateCustomSplitBillDialog';
 import BillDetailView from '@/components/bills/BillDetailView';
 import type { BillWithDetails } from '@/lib/billService';
 
 type FilterType = 'all' | 'you_owe' | 'you_are_owed' | 'settled';
-type CreateDialogType = 'even' | 'custom' | null;
 
-export default function BillsListView() {
+interface BillsListViewProps {
+  onNavigateBack?: () => void;
+}
+
+export default function BillsListView({ onNavigateBack }: BillsListViewProps) {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterType>('all');
-  const [showCreateDialog, setShowCreateDialog] = useState<CreateDialogType>(null);
+  const [showEvenSplitDialog, setShowEvenSplitDialog] = useState(false);
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const currentUserId = pb.authStore.record?.id || '';
+
+  // Always call hooks before any conditional returns
+  const { data: bills, isLoading, error } = useQuery({
+    queryKey: ['bills', filter],
+    queryFn: () => listBills(filter),
+    enabled: !!currentUserId,
+  });
 
   // Show detail view if a bill is selected
   if (selectedBillId) {
@@ -30,12 +41,6 @@ export default function BillsListView() {
       />
     );
   }
-
-  const { data: bills, isLoading, error } = useQuery({
-    queryKey: ['bills', filter],
-    queryFn: () => listBills(filter),
-    enabled: !!currentUserId,
-  });
 
   const renderBillCard = (bill: BillWithDetails) => {
     // Safety check for participants
@@ -156,14 +161,8 @@ export default function BillsListView() {
   return (
     <>
       <CreateEvenSplitBillDialog
-        open={showCreateDialog === 'even'}
-        onClose={() => setShowCreateDialog(null)}
-        onSuccess={billId => setSelectedBillId(billId)}
-      />
-
-      <CreateCustomSplitBillDialog
-        open={showCreateDialog === 'custom'}
-        onClose={() => setShowCreateDialog(null)}
+        open={showEvenSplitDialog}
+        onClose={() => setShowEvenSplitDialog(false)}
         onSuccess={billId => setSelectedBillId(billId)}
       />
 
@@ -171,14 +170,26 @@ export default function BillsListView() {
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-4 py-4">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-gray-900">Bills</h1>
+            <div className="flex items-center gap-3">
+              {onNavigateBack && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onNavigateBack}
+                  className="p-2"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              )}
+              <h1 className="text-2xl font-bold text-gray-900">Bills</h1>
+            </div>
             <div className="flex gap-2">
-              <Button onClick={() => setShowCreateDialog('even')} size="sm" variant="outline">
+              <Button onClick={() => setShowEvenSplitDialog(true)} size="sm" variant="outline">
                 Even Split
               </Button>
-              <Button onClick={() => setShowCreateDialog('custom')} size="sm">
+              <Button onClick={() => navigate({ to: '/bills-itemized' })} size="sm">
                 <Plus className="w-4 h-4 mr-1" />
-                Custom
+                Itemized
               </Button>
             </div>
           </div>
@@ -218,12 +229,12 @@ export default function BillsListView() {
               Split bills with friends and track payments easily
             </p>
             <div className="flex gap-2">
-              <Button onClick={() => setShowCreateDialog('even')} variant="outline">
+              <Button onClick={() => setShowEvenSplitDialog(true)} variant="outline">
                 Even Split
               </Button>
-              <Button onClick={() => setShowCreateDialog('custom')}>
+              <Button onClick={() => navigate({ to: '/bills-itemized' })}>
                 <Plus className="w-4 h-4 mr-1" />
-                Custom Split
+                Itemized
               </Button>
             </div>
           </div>

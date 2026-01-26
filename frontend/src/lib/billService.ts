@@ -2,7 +2,7 @@
  * Bill service for CRUD operations with PocketBase
  */
 
-import { pb, Bill, BillParticipant, BillItem, BillReminder } from './pocketbase';
+import { pb, Bill, BillParticipant, BillItem, BillReminder, BillItemSplitConfig } from './pocketbase';
 import { repositories } from '@/repositories';
 import type { RecordListOptions } from 'pocketbase';
 
@@ -15,15 +15,23 @@ export interface CreateBillData {
   split_mode: 'even' | 'itemized' | 'custom';
   extras_split_mode: 'proportional' | 'equal';
   status: 'active' | 'settled' | 'cancelled';
+  payer_id?: string; // User ID of who paid the bill (defaults to current user)
   participants: Array<{
     user_id?: string | null;
     participant_name?: string;
     amount_owed: number;
+    custom_tip_contribution?: number | null; // Custom tip amount if set
   }>;
   items?: Array<{
     item_name: string;
     price: number;
     assigned_to_indices: number[]; // Indices of participants array
+    split_mode?: 'simple' | 'advanced'; // How the item is split
+    split_config?: Array<{
+      participant_index: number; // Index into participants array
+      type: 'percentage' | 'amount';
+      value: number;
+    }>;
   }>;
 }
 
@@ -64,15 +72,20 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
   });
 
   // Create participants
+  // Determine who paid the bill (defaults to current user if not specified)
+  const payerId = data.payer_id || currentUser.id;
+
   const participants: BillParticipant[] = [];
   for (const participantData of data.participants) {
+    const isPayer = participantData.user_id === payerId;
     const participant = await repositories.billParticipants.create({
       bill: bill.id,
       user: participantData.user_id || null,
       participant_name: participantData.participant_name || '',
       amount_owed: participantData.amount_owed,
-      paid_status: participantData.user_id === currentUser.id ? 'paid' : 'pending',
-      paid_date: participantData.user_id === currentUser.id ? new Date().toISOString() : null,
+      paid_status: isPayer ? 'paid' : 'pending',
+      paid_date: isPayer ? new Date().toISOString() : null,
+      custom_tip_contribution: participantData.custom_tip_contribution ?? null,
     }, {
       expand: 'user',
     });
@@ -89,11 +102,23 @@ export async function createBill(data: CreateBillData): Promise<BillWithDetails>
         index => participants[index].id
       );
 
+      // Build split_config with participant IDs instead of indices
+      let splitConfig: BillItemSplitConfig[] | undefined;
+      if (itemData.split_mode === 'advanced' && itemData.split_config) {
+        splitConfig = itemData.split_config.map(config => ({
+          participant_id: participants[config.participant_index].id,
+          type: config.type,
+          value: config.value,
+        }));
+      }
+
       const item = await repositories.billItems.create({
         bill: bill.id,
         item_name: itemData.item_name,
         price: itemData.price,
         assigned_to: assignedParticipantIds,
+        split_mode: itemData.split_mode || 'simple',
+        split_config: splitConfig || null,
       });
       items.push(item);
     }
@@ -147,7 +172,22 @@ export async function listBills(
   let filterQuery = '';
 
   if (filter === 'settled') {
-    filterQuery = `creator_user="${currentUser.id}" && status="settled"`;
+    // Settled bills where user is creator OR participant
+    const participantRecords = await repositories.billParticipants.getFullList({
+      filter: `user="${currentUser.id}"`,
+    });
+
+    const participantBillIds = participantRecords.map(p => p.bill);
+    const creatorFilter = `creator_user="${currentUser.id}" && status="settled"`;
+    const participantFilter =
+      participantBillIds.length > 0
+        ? `(${participantBillIds.map(id => `id="${id}"`).join(' || ')}) && status="settled"`
+        : '';
+
+    filterQuery =
+      participantFilter !== ''
+        ? `(${creatorFilter}) || (${participantFilter})`
+        : creatorFilter;
   } else if (filter === 'you_owe') {
     // Bills where user is a participant and hasn't paid
     const participantRecords = await repositories.billParticipants.getFullList({
@@ -254,6 +294,90 @@ export async function markParticipantPending(
     paid_status: 'pending',
     paid_date: null,
     payment_method: null,
+  });
+}
+
+/**
+ * Update a participant's amount owed
+ */
+export async function updateParticipantAmount(
+  participantId: string,
+  amountOwed: number
+): Promise<BillParticipant> {
+  return await repositories.billParticipants.update(participantId, {
+    amount_owed: Math.round(amountOwed * 100) / 100,
+  });
+}
+
+/**
+ * Update a participant's custom tip contribution
+ */
+export async function updateParticipantCustomTip(
+  participantId: string,
+  customTipContribution: number | null
+): Promise<BillParticipant> {
+  return await repositories.billParticipants.update(participantId, {
+    custom_tip_contribution: customTipContribution,
+  });
+}
+
+/**
+ * Update a participant's amount and custom tip
+ */
+export async function updateParticipantFull(
+  participantId: string,
+  amountOwed: number,
+  customTipContribution: number | null
+): Promise<BillParticipant> {
+  return await repositories.billParticipants.update(participantId, {
+    amount_owed: Math.round(amountOwed * 100) / 100,
+    custom_tip_contribution: customTipContribution,
+  });
+}
+
+/**
+ * Update a bill item's split configuration
+ */
+export async function updateBillItem(
+  itemId: string,
+  data: {
+    item_name?: string;
+    price?: number;
+    assigned_to?: string[];
+    split_mode?: 'simple' | 'advanced';
+    split_config?: BillItemSplitConfig[] | null;
+  }
+): Promise<BillItem> {
+  return await repositories.billItems.update(itemId, data);
+}
+
+/**
+ * Delete a bill item
+ */
+export async function deleteBillItem(itemId: string): Promise<void> {
+  await repositories.billItems.delete(itemId);
+}
+
+/**
+ * Create a new bill item
+ */
+export async function createBillItem(
+  billId: string,
+  data: {
+    item_name: string;
+    price: number;
+    assigned_to: string[];
+    split_mode?: 'simple' | 'advanced';
+    split_config?: BillItemSplitConfig[] | null;
+  }
+): Promise<BillItem> {
+  return await repositories.billItems.create({
+    bill: billId,
+    item_name: data.item_name,
+    price: data.price,
+    assigned_to: data.assigned_to,
+    split_mode: data.split_mode || 'simple',
+    split_config: data.split_config || null,
   });
 }
 

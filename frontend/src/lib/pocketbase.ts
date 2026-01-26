@@ -199,11 +199,18 @@ export interface BillParticipant {
   paid_status: 'pending' | 'paid';
   paid_date?: string | null;
   payment_method?: string | null;
+  custom_tip_contribution?: number | null; // Fixed tip amount if set, otherwise proportional
   created: string;
   updated: string;
   expand?: {
     user?: User;
   };
+}
+
+export interface BillItemSplitConfig {
+  participant_id: string;
+  type: 'percentage' | 'amount';
+  value: number;
 }
 
 export interface BillItem {
@@ -212,6 +219,8 @@ export interface BillItem {
   item_name: string;
   price: number;
   assigned_to: string[]; // Array of bill_participant IDs
+  split_mode?: 'simple' | 'advanced'; // How the item is split
+  split_config?: BillItemSplitConfig[]; // Advanced split configuration
   created: string;
 }
 
