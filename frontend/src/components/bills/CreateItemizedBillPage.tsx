@@ -1468,7 +1468,7 @@ export default function CreateItemizedBillPage({
       </div>
 
       {/* Bottom Actions */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 space-y-2">
+      <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-200 p-4 space-y-2">
         <Button
           onClick={() => createBillMutation.mutate()}
           className="w-full"

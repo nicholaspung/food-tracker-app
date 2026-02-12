@@ -1,14 +1,14 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, Outlet, useMatches } from '@tanstack/react-router';
-import { pb, Feedback } from '@/lib/pocketbase';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { repositories } from '@/repositories';
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, Outlet, useMatches } from "@tanstack/react-router";
+import { pb, Feedback } from "@/lib/pocketbase";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { repositories } from "@/repositories";
 import {
   Dialog,
   DialogContent,
@@ -16,13 +16,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { MessageSquare, Plus, ChevronRight, ArrowLeft } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { useErrorHandler } from '@/hooks/ui/useErrorHandler';
-import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
-import { ERROR_MESSAGES } from '@/lib/errorMessages';
-import { FEEDBACK_STATUS_COLORS as STATUS_COLORS, FEEDBACK_STATUS_LABELS as STATUS_LABELS } from '@/constants/feedback';
+} from "@/components/ui/dialog";
+import { MessageSquare, Plus, ChevronRight, ArrowLeft } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { useErrorHandler } from "@/hooks/ui/useErrorHandler";
+import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
+import { ERROR_MESSAGES } from "@/lib/errorMessages";
+import {
+  FEEDBACK_STATUS_COLORS as STATUS_COLORS,
+  FEEDBACK_STATUS_LABELS as STATUS_LABELS,
+} from "@/constants/feedback";
 
 interface FeedbackPageProps {
   onNavigateBack?: () => void;
@@ -30,9 +33,12 @@ interface FeedbackPageProps {
 
 export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
   const [showNewFeedbackDialog, setShowNewFeedbackDialog] = useState(false);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const { error, handleError, clearError, showValidation } = useErrorHandler({ source: 'FeedbackPage', defaultSeverity: 'error' });
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const { error, handleError, clearError, showValidation } = useErrorHandler({
+    source: "FeedbackPage",
+    defaultSeverity: "error",
+  });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const matches = useMatches();
@@ -41,15 +47,17 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
   const isAdmin = currentUser?.isAdmin === true;
 
   // Check if we're rendering a child route (feedback detail page)
-  const isOnDetailPage = matches.some(match => match.routeId === '/feedback/$feedbackId');
+  const isOnDetailPage = matches.some(
+    (match) => match.routeId === "/feedback/$feedbackId",
+  );
 
   // Fetch all feedback (always call this hook, even if we don't use it)
   const { data: feedbackList = [], isLoading } = useQuery<Feedback[]>({
-    queryKey: ['feedback'],
+    queryKey: ["feedback"],
     queryFn: async () => {
       return await repositories.feedback.getFullList({
-        sort: '-last_message_at,-created',
-        expand: 'user',
+        sort: "-last_message_at,-created",
+        expand: "user",
       });
     },
     enabled: !isOnDetailPage, // Don't fetch if we're on detail page
@@ -58,27 +66,29 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
   // Create new feedback mutation
   const createFeedbackMutation = useMutation({
     mutationFn: async (data: { title: string; description: string }) => {
-      if (!currentUser) throw new Error('Not authenticated');
+      if (!currentUser) throw new Error("Not authenticated");
 
       return await repositories.feedback.create({
         user: currentUser.id,
         title: data.title,
         description: data.description,
-        status: 'open',
+        status: "open",
         admin_unread_count: 1, // New feedback means admin hasn't read it
         user_unread_count: 0,
         last_message_at: new Date().toISOString(),
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['feedback'] });
+      queryClient.invalidateQueries({ queryKey: ["feedback"] });
       setShowNewFeedbackDialog(false);
-      setTitle('');
-      setDescription('');
+      setTitle("");
+      setDescription("");
       clearError();
     },
     onError: (err: Error) => {
-      handleError(err, { customMessage: ERROR_MESSAGES.GENERIC.CREATE_FAILED('feedback') });
+      handleError(err, {
+        customMessage: ERROR_MESSAGES.GENERIC.CREATE_FAILED("feedback"),
+      });
     },
   });
 
@@ -89,11 +99,11 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
 
   const handleCreateFeedback = () => {
     if (!title.trim()) {
-      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD('Title'));
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("Title"));
       return;
     }
     if (!description.trim()) {
-      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD('Description'));
+      showValidation(ERROR_MESSAGES.VALIDATION.REQUIRED_FIELD("Description"));
       return;
     }
 
@@ -123,11 +133,11 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-4">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-4 py-4">
-          <div className="flex items-start gap-3 mb-2">
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-3">
             {onNavigateBack && (
               <button
                 onClick={onNavigateBack}
@@ -138,16 +148,11 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
               </button>
             )}
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <MessageSquare className="w-6 h-6 text-blue-600" />
+              <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-blue-600" />
                 Feedback
                 {isAdmin && <Badge variant="secondary">Admin</Badge>}
               </h1>
-              <p className="text-sm text-gray-600 mt-1">
-                {isAdmin
-                  ? 'Manage user feedback and suggestions'
-                  : 'Share your thoughts and get help'}
-              </p>
             </div>
             {!isAdmin && (
               <Button
@@ -164,19 +169,22 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
       </div>
 
       {/* Feedback List */}
-      <div className="px-4 py-4 space-y-3">
+      <div className="px-3 py-2 space-y-2">
         {feedbackList.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <MessageSquare className="w-12 h-12 mx-auto text-gray-400" />
-              <p className="mt-2 text-gray-600">
-                {isAdmin ? 'No feedback yet' : 'You haven\'t submitted any feedback yet'}
+          <Card className="pt-0">
+            <CardContent className="text-center">
+              <MessageSquare className="w-10 h-10 mx-auto text-gray-400" />
+              <p className="mt-2 text-gray-600 text-sm">
+                {isAdmin
+                  ? "No feedback yet"
+                  : "You haven't submitted any feedback yet"}
               </p>
               {!isAdmin && (
                 <Button
                   onClick={() => setShowNewFeedbackDialog(true)}
-                  className="mt-4"
+                  className="mt-3"
                   variant="outline"
+                  size="sm"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Create Feedback
@@ -194,39 +202,47 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
                 className="cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => handleFeedbackClick(feedback.id)}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
+                <CardContent className="px-3">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900 truncate">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-gray-900 truncate">
                           {feedback.title}
                         </h3>
-                        <Badge
-                          variant="secondary"
-                          className={`${STATUS_COLORS[feedback.status]} text-white text-xs`}
-                        >
-                          {STATUS_LABELS[feedback.status]}
-                        </Badge>
                         {unreadCount > 0 && (
-                          <Badge variant="destructive" className="text-xs">
+                          <Badge
+                            variant="destructive"
+                            className="text-xs px-1.5 py-0"
+                          >
                             {unreadCount}
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 line-clamp-2">
+                      <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
                         {feedback.description}
                       </p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {feedback.last_message_at
-                          ? formatDistanceToNow(new Date(feedback.last_message_at), {
-                              addSuffix: true,
-                            })
-                          : formatDistanceToNow(new Date(feedback.created), {
-                              addSuffix: true,
-                            })}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge
+                          variant="secondary"
+                          className={`${STATUS_COLORS[feedback.status]} text-white text-[10px] px-1.5 py-0`}
+                        >
+                          {STATUS_LABELS[feedback.status]}
+                        </Badge>
+                        <span className="text-[11px] text-gray-400">
+                          {feedback.last_message_at
+                            ? formatDistanceToNow(
+                                new Date(feedback.last_message_at),
+                                {
+                                  addSuffix: true,
+                                },
+                              )
+                            : formatDistanceToNow(new Date(feedback.created), {
+                                addSuffix: true,
+                              })}
+                        </span>
+                      </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0 mt-1" />
+                    <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
                   </div>
                 </CardContent>
               </Card>
@@ -236,7 +252,10 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
       </div>
 
       {/* New Feedback Dialog */}
-      <Dialog open={showNewFeedbackDialog} onOpenChange={setShowNewFeedbackDialog}>
+      <Dialog
+        open={showNewFeedbackDialog}
+        onOpenChange={setShowNewFeedbackDialog}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Feedback</DialogTitle>
@@ -262,7 +281,9 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
               <Textarea
                 id="description"
                 value={description}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setDescription(e.target.value)
+                }
                 placeholder="Provide details about your feedback..."
                 rows={5}
                 maxLength={5000}
@@ -277,8 +298,8 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
               variant="outline"
               onClick={() => {
                 setShowNewFeedbackDialog(false);
-                setTitle('');
-                setDescription('');
+                setTitle("");
+                setDescription("");
                 clearError();
               }}
               disabled={createFeedbackMutation.isPending}
@@ -289,7 +310,7 @@ export default function FeedbackPage({ onNavigateBack }: FeedbackPageProps) {
               onClick={handleCreateFeedback}
               disabled={createFeedbackMutation.isPending}
             >
-              {createFeedbackMutation.isPending ? 'Creating...' : 'Submit'}
+              {createFeedbackMutation.isPending ? "Creating..." : "Submit"}
             </Button>
           </DialogFooter>
         </DialogContent>

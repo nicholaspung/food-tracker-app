@@ -9,7 +9,14 @@
     "install:frontend": "cd frontend && npm install",
     "install:backend": "cd backend && go mod tidy",
     "install:all": "npm run install:frontend && npm run install:backend",
-    "test:e2e": "start-server-and-test dev 'http://localhost:8090|http://localhost:1420' 'cd frontend && npm run cypress:run'"
+    "test:e2e": "start-server-and-test dev 'http://localhost:8090|http://localhost:1420' 'cd frontend && npm run cypress:run'",
+    "mobile:install": "npm --prefix apps/mobile install",
+    "mobile:start": "npm --prefix apps/mobile run start",
+    "mobile:ios": "npm --prefix apps/mobile run ios",
+    "mobile:android": "npm --prefix apps/mobile run android",
+    "mobile:lint": "npm --prefix apps/mobile run lint",
+    "mobile:typecheck": "npm --prefix apps/mobile run typecheck",
+    "mobile:test": "npm --prefix apps/mobile run test"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

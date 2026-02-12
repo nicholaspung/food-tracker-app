@@ -177,8 +177,8 @@ export default function FeedbackDetailPage({
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
-        <div className="flex items-center gap-3">
+      <div className="bg-white border-b border-gray-200 px-3 py-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={onNavigateBack}
             className="p-2 -ml-2 hover:bg-gray-100 rounded-full"
@@ -186,50 +186,50 @@ export default function FeedbackDetailPage({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-gray-900 truncate">{feedback.title}</h1>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold text-gray-900 truncate">{feedback.title}</h1>
               <Badge
                 variant="secondary"
-                className={`${STATUS_COLORS[feedback.status]} text-white text-xs`}
+                className={`${STATUS_COLORS[feedback.status]} text-white text-[10px] px-1.5 py-0`}
               >
                 {STATUS_LABELS[feedback.status]}
               </Badge>
-              {isAdmin && (
-                <Select
-                  value={feedback.status}
-                  onValueChange={(value: string) =>
-                    updateStatusMutation.mutate(value as Feedback['status'])
-                  }
-                  disabled={updateStatusMutation.isPending}
-                >
-                  <SelectTrigger className="w-32 h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="open">Open</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="resolved">Resolved</SelectItem>
-                    <SelectItem value="closed">Closed</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
             </div>
+            {isAdmin && (
+              <Select
+                value={feedback.status}
+                onValueChange={(value: string) =>
+                  updateStatusMutation.mutate(value as Feedback['status'])
+                }
+                disabled={updateStatusMutation.isPending}
+              >
+                <SelectTrigger className="w-28 h-6 text-xs mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
 
         {/* Initial feedback description */}
-        <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-700">{feedback.description}</p>
-          <p className="text-xs text-gray-400 mt-2">
+        <div className="mt-2 px-3 py-2 bg-gray-50 rounded-lg">
+          <p className="text-xs text-gray-700">{feedback.description}</p>
+          <p className="text-[11px] text-gray-400 mt-1">
             {formatDistanceToNow(new Date(feedback.created), { addSuffix: true })}
           </p>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
         {messages.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm mt-8">
+          <div className="text-center text-gray-400 text-xs mt-4">
             No messages yet. Start the conversation!
           </div>
         ) : (
@@ -243,18 +243,18 @@ export default function FeedbackDetailPage({
                 className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                  className={`max-w-[80%] rounded-lg px-3 py-1.5 ${
                     isMyMessage
                       ? 'bg-blue-600 text-white'
                       : 'bg-white border border-gray-200 text-gray-900'
                   }`}
                 >
                   {isAdminMsg && !isMyMessage && (
-                    <p className="text-xs font-semibold mb-1 opacity-75">Admin</p>
+                    <p className="text-[10px] font-semibold opacity-75">Admin</p>
                   )}
                   <p className="text-sm whitespace-pre-wrap break-words">{msg.message}</p>
                   <p
-                    className={`text-xs mt-1 ${
+                    className={`text-[10px] mt-0.5 ${
                       isMyMessage ? 'text-blue-100' : 'text-gray-400'
                     }`}
                   >
@@ -269,17 +269,17 @@ export default function FeedbackDetailPage({
       </div>
 
       {/* Message Input */}
-      <div className="bg-white border-t border-gray-200 px-4 py-3">
-        <ErrorDisplay error={error} onClear={clearError} className="mb-2" />
+      <div className="bg-white border-t border-gray-200 px-3 py-2">
+        <ErrorDisplay error={error} onClear={clearError} className="mb-1" />
         <div className="flex gap-2">
           <Textarea
             value={message}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Type your message..."
-            rows={2}
+            rows={1}
             maxLength={10000}
-            className="flex-1 resize-none"
+            className="flex-1 resize-none text-sm"
             disabled={sendMessageMutation.isPending}
           />
           <Button
@@ -288,10 +288,9 @@ export default function FeedbackDetailPage({
             size="icon"
             className="h-auto"
           >
-            <Send className="w-5 h-5" />
+            <Send className="w-4 h-4" />
           </Button>
         </div>
-        <p className="text-xs text-gray-500 mt-1">Press Enter to send, Shift+Enter for new line</p>
       </div>
     </div>
   );

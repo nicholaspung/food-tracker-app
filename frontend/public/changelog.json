@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.7.1",
+    "date": "2026-02-11",
+    "title": "Tip Calculator & UI Improvements",
+    "summary": "Quickly calculate tips with the new Tip Calculator! Choose from preset percentages or enter a custom amount, with a handy slider for fine-tuning. Plus, the feedback pages are now more compact and easier to read.",
+    "features": [
+      "Tip Calculator: New standalone tool to calculate tips by percentage or custom amount",
+      "Preset tip buttons: Quick-select 15%, 18%, 20%, or 25% tip with one tap",
+      "Tip slider: Fine-tune your tip percentage from 0-50% with an easy slider",
+      "Custom tip amount: Switch to entering a specific dollar amount for your tip",
+      "Live totals: See tip amount and total with tip update in real-time as you adjust"
+    ],
+    "improvements": [
+      "Compact feedback list: Feedback page is more condensed so you can see more items at a glance",
+      "Compact feedback chat: Messages and input area use less space for a better chat experience",
+      "Better bill creation layout: Create bill button no longer overlaps with bottom navigation"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.0",
     "date": "2026-02-11",
     "title": "Group Tasting Sessions (Beta - Admin Only)",

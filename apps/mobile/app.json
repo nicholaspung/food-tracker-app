@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Food Tracker Mobile",
+    "slug": "food-tracker-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "foodtracker",
+    "userInterfaceStyle": "light",
+    "jsEngine": "hermes",
+    "ios": {
+      "bundleIdentifier": "com.anonymous.food-tracker-mobile"
+    }
+  }
+}
