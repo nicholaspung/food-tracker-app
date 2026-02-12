@@ -103,3 +103,13 @@ export const noteKeys = {
   detail: (id: string) => ["note", id] as const,
   photos: (noteId: string) => ["note_photos", noteId] as const,
 };
+
+// Tasting session query keys
+export const tastingSessionKeys = {
+  all: (userId: string) => ["tasting_sessions", userId] as const,
+  detail: (id: string) => ["tasting_session", id] as const,
+  items: (sessionId: string) => ["tasting_session_items", sessionId] as const,
+  ratings: (sessionId: string) => ["tasting_session_ratings", sessionId] as const,
+  myRatings: (sessionId: string, userId: string) => ["tasting_session_ratings", sessionId, userId] as const,
+  participants: (sessionId: string) => ["tasting_session_participants", sessionId] as const,
+};

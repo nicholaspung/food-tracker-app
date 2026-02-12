@@ -317,6 +317,70 @@ export interface NotePhoto {
   };
 }
 
+// Tasting session types
+export interface TastingSession {
+  id: string;
+  name: string;
+  restaurant: string;
+  leader: string;
+  status: 'adding_items' | 'rating' | 'completed';
+  locked: boolean;
+  created: string;
+  updated: string;
+  expand?: {
+    restaurant?: Restaurant;
+    leader?: User;
+  };
+}
+
+export interface TastingSessionParticipant {
+  id: string;
+  session: string;
+  user: string;
+  created: string;
+  expand?: {
+    user?: User;
+    session?: TastingSession;
+  };
+}
+
+export interface TastingSessionItem {
+  id: string;
+  session: string;
+  name: string;
+  description?: string;
+  added_by: string;
+  created: string;
+  expand?: {
+    added_by?: User;
+  };
+}
+
+export interface TastingSessionRating {
+  id: string;
+  session: string;
+  item: string;
+  user: string;
+  rating: number;
+  notes?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    user?: User;
+    item?: TastingSessionItem;
+  };
+}
+
+export interface TastingSessionInvite {
+  id: string;
+  session: string;
+  code: string;
+  created_by: string;
+  expires_at: string;
+  used_by?: string | null;
+  created: string;
+}
+
 // Expand type definitions for type-safe access to PocketBase expand properties
 
 export interface MenuReviewRequestExpand {

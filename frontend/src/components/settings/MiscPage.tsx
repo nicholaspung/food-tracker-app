@@ -2,32 +2,46 @@ import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { DollarSign, List, Lightbulb, ChevronRight } from 'lucide-react';
+import { DollarSign, List, Lightbulb, ChevronRight, Calculator, Users } from 'lucide-react';
+import { pb } from '@/lib/pocketbase';
 
 export default function MiscPage() {
   const navigate = useNavigate();
   const [expandedTips, setExpandedTips] = useState(false);
+  const currentUser = pb.authStore.record;
 
   const tips = [
     {
       title: 'Quick Track for Fast Logging',
-      description: 'Use Quick Track when you just want to save a dish without creating a full visit entry.',
+      description: 'Use Quick Track when you just want to save a dish without creating a full visit entry. Tap the location pin to capture your GPS coordinates on the spot.',
     },
     {
       title: 'Photo Processing Magic',
-      description: 'Take photos of your food and use the Process Photos feature to automatically create entries with location data.',
+      description: 'Take photos of your food and use the Process Photos feature to automatically create entries. You can combine multiple photos of the same dish into one entry.',
+    },
+    {
+      title: 'Save Notes for Later',
+      description: 'Use Notes to jot down food ideas, places, or recipes. When you\'re ready, tap "Use Note" to convert it into a visit or quick track entry.',
     },
     {
       title: 'Share with Friends',
-      description: 'Connect with friends to see their food recommendations and share your favorites.',
+      description: 'Connect with friends to see their food recommendations in your home feed. Save restaurants from their lists to your own with one tap.',
+    },
+    {
+      title: 'Organize with Lists',
+      description: 'Create restaurant lists to organize your favorites. Share them with friends or keep them private. Your "Saved" list is a quick way to bookmark places.',
+    },
+    {
+      title: 'Split Bills Easily',
+      description: 'Use the Bill Splitter to divide bills evenly or by item. Assign specific items to each person and set custom tip amounts.',
+    },
+    {
+      title: '"I Went There" Shortcut',
+      description: 'See a bookmarked restaurant from a friend? Tap "I went there" to quickly create a visit and rate the dishes yourself.',
     },
     {
       title: 'Rate Everything',
       description: 'Use the 5-star rating system to remember which dishes were amazing and which to skip.',
-    },
-    {
-      title: 'Add Notes',
-      description: 'Add personal notes to remember specific details about dishes or restaurants.',
     },
   ];
 
@@ -72,16 +86,50 @@ export default function MiscPage() {
           </CardContent>
         </Card>
 
-        {/* Bill Splitter Section */}
+        {/* Group Tastings Section - Admin Only Beta Feature */}
+        {currentUser?.isAdmin && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-purple-600" />
+                <CardTitle className="flex items-center gap-2">
+                  Group Tastings
+                  <span className="text-xs font-semibold px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">BETA</span>
+                </CardTitle>
+              </div>
+              <CardDescription>Organize group food tasting sessions and rate together</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <button
+                onClick={() => navigate({ to: '/tasting-sessions' })}
+                className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                data-testid="feature-group-tastings"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Users className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-medium text-gray-900">View Sessions</p>
+                    <p className="text-sm text-gray-500">Create or join a tasting session</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+              </button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bills & Tips Section */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-green-600" />
-              <CardTitle>Bill Splitter</CardTitle>
+              <CardTitle>Bills & Tips</CardTitle>
             </div>
-            <CardDescription>Split bills with friends and track payments easily</CardDescription>
+            <CardDescription>Split bills and calculate tips quickly</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <button
               onClick={() => navigate({ to: '/bills' })}
               className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
@@ -94,6 +142,22 @@ export default function MiscPage() {
                 <div className="text-left">
                   <p className="font-medium text-gray-900">Split a Bill</p>
                   <p className="text-sm text-gray-500">Create and manage bill splits</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+            </button>
+            <button
+              onClick={() => navigate({ to: '/tip-calculator' })}
+              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              data-testid="feature-tip-calculator"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 rounded-lg">
+                  <Calculator className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="text-left">
+                  <p className="font-medium text-gray-900">Tip Calculator</p>
+                  <p className="text-sm text-gray-500">Figure out how much to tip</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />

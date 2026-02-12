@@ -1,5 +1,31 @@
 [
   {
+    "version": "0.7.0",
+    "date": "2026-02-11",
+    "title": "Group Tasting Sessions (Beta - Admin Only)",
+    "summary": "Organize collaborative food tasting experiences with friends! A session leader creates a tasting, shares an invite code, everyone adds items and rates independently, then results are revealed with group averages and favorites.",
+    "features": [
+      "Create tasting sessions: Start a session at any restaurant and get a shareable 6-character invite code",
+      "Join with invite code: Anyone with the code can join and participate in the tasting",
+      "Collaborative item list: All participants can add food items they're ordering to the shared list",
+      "Independent rating: Rate all items on a 1-5 scale with optional notes - your ratings stay hidden until completion",
+      "Session phases: Adding Items → Rating → Completed, with leader controls to advance phases",
+      "Lock sessions: Leaders can lock the session to prevent new participants from joining",
+      "Results reveal: When completed, see your ratings alongside group averages and individual breakdowns",
+      "Group insights: Automatically highlights Group Favorites (avg ≥ 4 stars) and Controversial items (wide rating spread)",
+      "Save to visits: Convert session results to a personal restaurant visit with all your ratings"
+    ],
+    "improvements": [
+      "Beta feature: Currently available to admin users only, marked with purple BETA badges",
+      "Privacy-first: Ratings remain hidden from other participants until the leader completes the session",
+      "Real-time updates: Session details poll every 5 seconds to show new items and participants",
+      "Invite code management: Generate new codes anytime, codes expire after 24 hours",
+      "Participant tracking: See who's joined with participant count and avatar display",
+      "Progress tracking: Visual progress bar shows how many items you've rated during rating phase"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.6.9",
     "date": "2026-01-25",
     "title": "Bill Splitter Enhancements",

@@ -41,6 +41,14 @@ const ROUTES_WITH_TABS = [
   "/admin",
   "/misc",
   "/lists",
+  "/tip-calculator",
+  "/notes",
+  "/log-note",
+  "/edit-note",
+  "/bills",
+  "/bills-itemized",
+  "/tasting-sessions",
+  "/tasting-session",
 ];
 
 // Inner component that uses analytics (must be inside AnalyticsProvider)

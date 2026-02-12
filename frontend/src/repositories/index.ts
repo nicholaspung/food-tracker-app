@@ -38,6 +38,13 @@ import { RestaurantListRepository, ListItemRepository } from './ListRepository';
 import { UserRepository } from './UserRepository';
 import { InviteCodeRepository } from './InviteCodeRepository';
 import { NoteRepository, NotePhotoRepository } from './NoteRepository';
+import {
+  TastingSessionRepository,
+  TastingSessionParticipantRepository,
+  TastingSessionItemRepository,
+  TastingSessionRatingRepository,
+  TastingSessionInviteRepository,
+} from './TastingSessionRepository';
 
 /**
  * Singleton repositories for all PocketBase collections.
@@ -78,6 +85,13 @@ export const repositories = {
   // Notes
   notes: new NoteRepository(pb),
   notePhotos: new NotePhotoRepository(pb),
+
+  // Tasting Sessions
+  tastingSessions: new TastingSessionRepository(pb),
+  tastingSessionParticipants: new TastingSessionParticipantRepository(pb),
+  tastingSessionItems: new TastingSessionItemRepository(pb),
+  tastingSessionRatings: new TastingSessionRatingRepository(pb),
+  tastingSessionInvites: new TastingSessionInviteRepository(pb),
 } as const;
 
 // Export individual repository classes for advanced use cases
@@ -93,3 +107,10 @@ export { RestaurantListRepository, ListItemRepository } from './ListRepository';
 export { UserRepository } from './UserRepository';
 export { InviteCodeRepository } from './InviteCodeRepository';
 export { NoteRepository, NotePhotoRepository } from './NoteRepository';
+export {
+  TastingSessionRepository,
+  TastingSessionParticipantRepository,
+  TastingSessionItemRepository,
+  TastingSessionRatingRepository,
+  TastingSessionInviteRepository,
+} from './TastingSessionRepository';

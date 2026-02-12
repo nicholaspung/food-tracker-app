@@ -46,6 +46,13 @@ export const COLLECTIONS = {
   // Notes
   NOTES: 'notes',
   NOTE_PHOTOS: 'note_photos',
+
+  // Tasting Sessions
+  TASTING_SESSIONS: 'tasting_sessions',
+  TASTING_SESSION_PARTICIPANTS: 'tasting_session_participants',
+  TASTING_SESSION_ITEMS: 'tasting_session_items',
+  TASTING_SESSION_RATINGS: 'tasting_session_ratings',
+  TASTING_SESSION_INVITES: 'tasting_session_invites',
 } as const;
 
 /**
