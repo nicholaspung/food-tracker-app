@@ -24,9 +24,9 @@ This runbook is the execution format for building the React Native app in strict
 
 ## Master Tracker
 - [x] Phase 1: Foundation (`MBL-001` to `MBL-005`)
-- [ ] Phase 2: Offline Core (`MBL-006` to `MBL-010`)
+- [x] Phase 2: Offline Core (`MBL-006` to `MBL-010`)
 - [ ] Phase 3: Reusable UI + Theme (`MBL-011` to `MBL-015`)
-- [ ] Phase 4: Screen Migration (`MBL-020` to `MBL-028`)
+- [ ] Phase 4: Screen Migration (`MBL-020` to `MBL-029`)
 - [ ] Phase 5: QA + Release Prep (`MBL-030`)
 
 ---
@@ -94,16 +94,30 @@ This runbook is the execution format for building the React Native app in strict
 3. User-visible sync state and failure recovery controls.
 
 ### Gate Checklist
-- [ ] Query cache restores after cold restart.
-- [ ] Queued write survives app kill/reboot.
-- [ ] Replay triggers on reconnect and foreground.
-- [ ] Failed writes can be retried from UI.
+- [x] Query cache restores after cold restart.
+- [x] Queued write survives app kill/reboot.
+- [x] Replay triggers on reconnect and foreground.
+- [x] Failed writes can be retried from UI.
 
 ### Handoff Notes (fill at completion)
-- Date:
-- Branch:
+- Date: 2026-02-12
+- Branch: main
 - What was delivered:
+  - `MBL-006`: Added React Query AsyncStorage cache persistence and restore bootstrap in `apps/mobile/src/providers/AppProviders.tsx` using `@tanstack/query-async-storage-persister` + `@tanstack/query-persist-client-core`.
+  - `MBL-007`: Added global connectivity layer in `apps/mobile/src/providers/ConnectivityProvider.tsx` with NetInfo state exposure and React Query `onlineManager` synchronization.
+  - `MBL-008`: Implemented durable SQLite mutation queue abstraction in `apps/mobile/src/offline/SQLiteMutationQueueStore.ts` (enqueue, dequeue-ready, retry metadata, terminal failure metadata, queue stats).
+  - `MBL-009`: Implemented replay engine with reconnect/foreground/manual replay triggers, retry backoff, and conflict handling in `apps/mobile/src/offline/MutationReplayService.ts`, `apps/mobile/src/offline/fetchMutationTransport.ts`, and `apps/mobile/src/providers/SyncProvider.tsx`.
+  - `MBL-010`: Added global sync status UX with queue depth, error visibility, sync-now, and retry-all controls via `apps/mobile/src/components/SyncStatusBanner.tsx`; wired into app root.
+  - Added Phase 2 coverage tests:
+    - `apps/mobile/src/__tests__/queryPersistence.test.ts`
+    - `apps/mobile/src/__tests__/MutationReplayService.test.ts`
+    - `apps/mobile/src/__tests__/fetchMutationTransport.test.ts`
+  - Validation run (pass):
+    - `npm run mobile:lint`
+    - `npm run mobile:typecheck`
+    - `npm run mobile:test`
 - Open issues:
+  - None.
 
 ---
 
@@ -124,6 +138,7 @@ This runbook is the execution format for building the React Native app in strict
    - `EmptyState`, `ErrorState`, `Skeleton`, `LoadingOverlay`, `OfflineBanner`
 5. Build shared form and list/detail scaffolds used by all screen groups.
 6. Enforce token-only styles (lint rule or code review checklist).
+7. Enforce safe-area compliance using `react-native-safe-area-context` for global chrome and screens so content never overlaps device status bars/notches.
 
 ### Deliverables
 1. UI primitives used by early migrated screens.
@@ -135,6 +150,7 @@ This runbook is the execution format for building the React Native app in strict
 - [ ] Shared state components exist and are reused.
 - [ ] Feature screens avoid raw hex/spacing literals.
 - [ ] Token-only style-change demo provided.
+- [ ] iOS/Android safe-area checks pass (no content under notch/status/navigation bars).
 
 ### Handoff Notes (fill at completion)
 - Date:
@@ -181,7 +197,22 @@ Execute subphases in order. Do not parallelize unless dependencies are explicitl
 - [ ] Settings and feedback flows migrated.
 - [ ] Admin routes role-gated.
 
-### 4.9 Bills (`MBL-028`)
+### 4.9 Group Tastings Beta Feature (`MBL-029`)
+- [ ] Admin-only Group Tastings entry point from Misc screen migrated.
+- [ ] Admin-only route guards migrated for `/tasting-sessions` and `/tasting-session/$sessionId`.
+- [ ] Sessions list view migrated with active/completed filtering.
+- [ ] Create Session dialog migrated (session name + restaurant search/select).
+- [ ] Join Session dialog migrated (6-character invite code flow).
+- [ ] Session detail state machine migrated:
+  - adding items
+  - rating
+  - completed results
+- [ ] Lobby flow migrated (invite code display, copy/share, regenerate code, participants list).
+- [ ] Item management migrated (add item, optional description, delete permissions).
+- [ ] Rating flow migrated (per-item ratings, notes, progress).
+- [ ] Results flow migrated (group favorites, controversial items, save to visit history).
+
+### 4.10 Bills (`MBL-028`)
 - [ ] Bills list/detail/itemized flow migrated.
 - [ ] Calculation parity validated against web behavior.
 
@@ -189,6 +220,7 @@ Execute subphases in order. Do not parallelize unless dependencies are explicitl
 - [ ] Every screen group uses shared UI primitives.
 - [ ] Every write path uses offline queue abstraction.
 - [ ] All screen groups include loading/empty/error/offline UX.
+- [ ] Group Tastings beta feature is present with admin-only access parity and full create/join/rate/results coverage.
 - [ ] Feature parity confirmed for primary user journeys.
 
 ### Handoff Notes (fill at completion)
