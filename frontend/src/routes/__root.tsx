@@ -63,7 +63,7 @@ function AppContent() {
 
   // Check if current path or any parent path should show tabs
   const showTabs = ROUTES_WITH_TABS.some((route) =>
-    currentPath.startsWith(route)
+    currentPath.startsWith(route),
   );
 
   // Scroll to top when route changes
@@ -89,7 +89,7 @@ function AppContent() {
 
         {/* Persistent bottom tabs */}
         {showTabs && <BottomTabNavigation />}
-        <TanStackRouterDevtools />
+        {/*<TanStackRouterDevtools />*/}
       </div>
     </SyncProvider>
   );

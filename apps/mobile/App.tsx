@@ -8,20 +8,41 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SyncStatusBanner } from './src/components/SyncStatusBanner';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AppProviders } from './src/providers/AppProviders';
+import { ThemeProvider, useTheme } from './src/theme';
+
+function AppShell() {
+  const theme = useTheme();
+
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background.app,
+    },
+    navigatorContainer: {
+      flex: 1,
+    },
+  });
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="dark" />
+      <SyncStatusBanner />
+      <View style={styles.navigatorContainer}>
+        <RootNavigator />
+      </View>
+    </View>
+  );
+}
 
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <AppProviders>
-          <StatusBar style="dark" />
-          <View style={styles.container}>
-            <SyncStatusBanner />
-            <View style={styles.navigatorContainer}>
-              <RootNavigator />
-            </View>
-          </View>
-        </AppProviders>
+        <ThemeProvider>
+          <AppProviders>
+            <AppShell />
+          </AppProviders>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -29,12 +50,6 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  navigatorContainer: {
     flex: 1,
   },
 });
