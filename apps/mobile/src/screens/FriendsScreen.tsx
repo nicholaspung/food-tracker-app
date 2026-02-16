@@ -1,21 +1,47 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Clipboard from 'expo-clipboard';
+import QRCode from 'react-native-qrcode-svg';
 
-import { EmptyState, ErrorState, Skeleton } from '../components/shared';
+import { FriendListItemCard } from '../components/friends';
+import {
+  EmptyState,
+  ErrorState,
+  SegmentedControl,
+  Skeleton,
+  StatusPill,
+  TabRootScreenScaffold,
+  type SegmentedControlOption,
+} from '../components/shared';
 import { inviteFriend, listFriends, markFriendInviteAccepted, removeFriend } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { Button, Card, Input, Text } from '../ui';
 
 type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 
 type MainTab = 'my-code' | 'friends-list' | 'add-friend';
 type FriendsSubTab = 'friends' | 'requests' | 'sent';
+
+const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
+  {
+    label: 'My Code',
+    value: 'my-code',
+  },
+  {
+    label: 'Friends',
+    value: 'friends-list',
+  },
+  {
+    label: 'Add Friend',
+    value: 'add-friend',
+  },
+];
 
 function generateFriendCode(userId: string | undefined): string {
   if (!userId) {
@@ -63,8 +89,33 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
   }, [friendsQuery.data]);
 
   const myFriendCode = useMemo(() => generateFriendCode(user?.id), [user?.id]);
+  const myFriendQrPayload = useMemo(
+    () => `foodtracker://friends/add?friendCode=${encodeURIComponent(myFriendCode)}`,
+    [myFriendCode],
+  );
 
   const friendSummary = `${acceptedFriends.length} friend${acceptedFriends.length === 1 ? '' : 's'}`;
+  const friendsSubTabOptions = useMemo<readonly SegmentedControlOption<FriendsSubTab>[]>(
+    () => [
+      {
+        label: 'Friends',
+        value: 'friends',
+        badgeCount: acceptedFriends.length,
+      },
+      {
+        label: 'Requests',
+        value: 'requests',
+        badgeCount: pendingReceived.length,
+        badgeTone: 'alert',
+      },
+      {
+        label: 'Sent',
+        value: 'sent',
+        badgeCount: pendingSent.length,
+      },
+    ],
+    [acceptedFriends.length, pendingReceived.length, pendingSent.length],
+  );
 
   const styles = StyleSheet.create({
     screenContent: {
@@ -104,70 +155,10 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       paddingBottom: theme.spacing.md,
       paddingTop: theme.spacing.sm,
     },
-    segmentedControl: {
-      backgroundColor: theme.colors.background.app,
-      borderColor: theme.colors.border.default,
-      borderRadius: 12,
-      borderWidth: 1,
-      flexDirection: 'row',
-      padding: 2,
-    },
-    segmentButton: {
-      alignItems: 'center',
-      borderRadius: 9,
-      flex: 1,
-      flexDirection: 'row',
-      justifyContent: 'center',
-      minHeight: 36,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 7,
-    },
-    segmentButtonActive: {
-      backgroundColor: theme.colors.background.surface,
-      shadowColor: theme.colors.background.inverse,
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.08,
-      shadowRadius: 1,
-    },
-    segmentLabel: {
-      color: theme.colors.text.muted,
-      fontSize: 14,
-      fontWeight: '600',
-      lineHeight: 18,
-    },
-    segmentLabelActive: {
-      color: theme.colors.text.primary,
-    },
-    segmentBadge: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderRadius: theme.radii.pill,
-      justifyContent: 'center',
-      marginLeft: 6,
-      minWidth: 20,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    segmentBadgeAlert: {
-      backgroundColor: theme.colors.text.danger,
-    },
-    segmentBadgeLabel: {
-      color: theme.colors.text.secondary,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
-    },
-    segmentBadgeLabelAlert: {
-      color: theme.colors.text.inverse,
-    },
     cardDescription: {
       color: theme.colors.text.secondary,
     },
     codeBox: {
-      alignItems: 'center',
       backgroundColor: theme.colors.status.infoBg,
       borderColor: theme.colors.border.info,
       borderRadius: theme.radii.md,
@@ -184,12 +175,41 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       letterSpacing: 0.4,
       textTransform: 'uppercase',
     },
+    codeHeaderRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    copyButton: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.surface,
+      borderColor: theme.colors.border.info,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      height: 30,
+      justifyContent: 'center',
+      width: 30,
+    },
     codeText: {
+      alignSelf: 'center',
       color: theme.colors.text.info,
       fontSize: 26,
       fontWeight: '700',
       letterSpacing: 3,
       lineHeight: 30,
+    },
+    qrContainer: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.surface,
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      gap: theme.spacing.xs,
+      paddingVertical: theme.spacing.sm,
+    },
+    qrDescription: {
+      paddingHorizontal: theme.spacing.sm,
+      textAlign: 'center',
     },
     rowActions: {
       flexDirection: 'row',
@@ -205,53 +225,6 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     },
     cardsList: {
       gap: theme.spacing.sm,
-    },
-    friendCard: {
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    friendRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    friendIdentity: {
-      alignItems: 'center',
-      flex: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    avatar: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      height: 38,
-      justifyContent: 'center',
-      width: 38,
-    },
-    avatarFriend: {
-      backgroundColor: theme.colors.status.infoBg,
-    },
-    avatarRequest: {
-      backgroundColor: theme.colors.status.warningBg,
-    },
-    avatarSent: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    friendMetaWrap: {
-      flex: 1,
-      gap: 2,
-    },
-    friendName: {
-      color: theme.colors.text.primary,
-      fontSize: 20,
-      fontWeight: '700',
-      lineHeight: 24,
-    },
-    friendMeta: {
-      color: theme.colors.text.muted,
-      fontSize: 13,
-      lineHeight: 18,
     },
     textAction: {
       paddingHorizontal: theme.spacing.xs,
@@ -272,6 +245,10 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     requestActions: {
       flexDirection: 'row',
       gap: theme.spacing.xs,
+    },
+    sentActions: {
+      alignItems: 'flex-end',
+      gap: theme.spacing.xxs,
     },
     actionPill: {
       alignItems: 'center',
@@ -299,12 +276,6 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     },
     actionPillDangerLabel: {
       color: theme.colors.text.danger,
-    },
-    requestLabel: {
-      color: theme.colors.text.warning,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     skeletonList: {
       gap: theme.spacing.sm,
@@ -379,18 +350,15 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     }
   };
 
-  const renderBadge = (count: number, tone: 'default' | 'alert' = 'default') => {
-    if (count <= 0) {
-      return null;
-    }
+  const handleCopyFriendCode = async () => {
+    setErrorMessage(null);
 
-    return (
-      <View style={[styles.segmentBadge, tone === 'alert' && styles.segmentBadgeAlert]}>
-        <Text style={[styles.segmentBadgeLabel, tone === 'alert' && styles.segmentBadgeLabelAlert]}>
-          {count > 9 ? '9+' : count}
-        </Text>
-      </View>
-    );
+    try {
+      await Clipboard.setStringAsync(myFriendCode);
+      Alert.alert('Copied', 'Friend code copied to clipboard.');
+    } catch {
+      setErrorMessage('Could not copy friend code.');
+    }
   };
 
   const renderFriendsTabContent = () => {
@@ -429,17 +397,14 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       return (
         <View style={styles.cardsList}>
           {acceptedFriends.map((friend) => (
-            <Card key={friend.id} style={styles.friendCard}>
-              <View style={styles.friendRow}>
-                <View style={styles.friendIdentity}>
-                  <View style={[styles.avatar, styles.avatarFriend]}>
-                    <Ionicons color={theme.colors.text.info} name="people-outline" size={18} />
-                  </View>
-                  <View style={styles.friendMetaWrap}>
-                    <Text style={styles.friendName}>{friend.name}</Text>
-                    <Text style={styles.friendMeta}>Friends since {formatDate(friend.createdAt)}</Text>
-                  </View>
-                </View>
+            <FriendListItemCard
+              iconColor={theme.colors.text.info}
+              iconName="people-outline"
+              key={friend.id}
+              meta={`Friends since ${formatDate(friend.createdAt)}`}
+              name={friend.name}
+              tone="info"
+              rightContent={
                 <Pressable
                   accessibilityRole="button"
                   disabled={isMutating}
@@ -450,8 +415,8 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
                 >
                   <Text style={styles.textActionDanger}>Remove</Text>
                 </Pressable>
-              </View>
-            </Card>
+              }
+            />
           ))}
         </View>
       );
@@ -465,17 +430,14 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       return (
         <View style={styles.cardsList}>
           {pendingReceived.map((friend) => (
-            <Card key={friend.id} style={styles.friendCard}>
-              <View style={styles.friendRow}>
-                <View style={styles.friendIdentity}>
-                  <View style={[styles.avatar, styles.avatarRequest]}>
-                    <Ionicons color={theme.colors.text.warning} name="person-add-outline" size={18} />
-                  </View>
-                  <View style={styles.friendMetaWrap}>
-                    <Text style={styles.friendName}>{friend.name}</Text>
-                    <Text style={styles.friendMeta}>Sent {formatDate(friend.createdAt)}</Text>
-                  </View>
-                </View>
+            <FriendListItemCard
+              iconColor={theme.colors.text.warning}
+              iconName="person-add-outline"
+              key={friend.id}
+              meta={`Sent ${formatDate(friend.createdAt)}`}
+              name={friend.name}
+              tone="warning"
+              rightContent={
                 <View style={styles.requestActions}>
                   <Pressable
                     accessibilityRole="button"
@@ -498,8 +460,8 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
                     <Text style={[styles.actionPillLabel, styles.actionPillDangerLabel]}>Decline</Text>
                   </Pressable>
                 </View>
-              </View>
-            </Card>
+              }
+            />
           ))}
         </View>
       );
@@ -512,19 +474,16 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     return (
       <View style={styles.cardsList}>
         {pendingSent.map((friend) => (
-          <Card key={friend.id} style={styles.friendCard}>
-            <View style={styles.friendRow}>
-              <View style={styles.friendIdentity}>
-                <View style={[styles.avatar, styles.avatarSent]}>
-                  <Ionicons color={theme.colors.text.secondary} name="time-outline" size={18} />
-                </View>
-                <View style={styles.friendMetaWrap}>
-                  <Text style={styles.friendName}>{friend.name}</Text>
-                  <Text style={styles.friendMeta}>{friend.email}</Text>
-                </View>
-              </View>
-              <View>
-                <Text style={styles.requestLabel}>Pending</Text>
+          <FriendListItemCard
+            iconColor={theme.colors.text.secondary}
+            iconName="time-outline"
+            key={friend.id}
+            meta={friend.email}
+            name={friend.name}
+            tone="muted"
+            rightContent={
+              <View style={styles.sentActions}>
+                <StatusPill label="Pending" tone="warning" />
                 <Pressable
                   accessibilityRole="button"
                   disabled={isMutating}
@@ -536,64 +495,26 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
                   <Text style={styles.textActionMuted}>Cancel</Text>
                 </Pressable>
               </View>
-            </View>
-          </Card>
+            }
+          />
         ))}
       </View>
     );
   };
 
   return (
-    <Screen background="surface" contentStyle={styles.screenContent} edges={['top']} keyboardAware scroll>
+    <TabRootScreenScaffold
+      contentStyle={styles.screenContent}
+      keyboardAware
+      scrollUnderlayColor={theme.colors.background.muted}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Friends</Text>
         <Text style={styles.subtitle}>{friendSummary}</Text>
       </View>
 
       <View style={styles.mainTabsSection}>
-        <View style={styles.segmentedControl}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setMainTab('my-code');
-            }}
-            style={({ pressed }) => [
-              styles.segmentButton,
-              mainTab === 'my-code' && styles.segmentButtonActive,
-              pressed && mainTab !== 'my-code' ? { opacity: 0.75 } : null,
-            ]}
-          >
-            <Text style={[styles.segmentLabel, mainTab === 'my-code' && styles.segmentLabelActive]}>My Code</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setMainTab('friends-list');
-            }}
-            style={({ pressed }) => [
-              styles.segmentButton,
-              mainTab === 'friends-list' && styles.segmentButtonActive,
-              pressed && mainTab !== 'friends-list' ? { opacity: 0.75 } : null,
-            ]}
-          >
-            <Text style={[styles.segmentLabel, mainTab === 'friends-list' && styles.segmentLabelActive]}>
-              Friends
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setMainTab('add-friend');
-            }}
-            style={({ pressed }) => [
-              styles.segmentButton,
-              mainTab === 'add-friend' && styles.segmentButtonActive,
-              pressed && mainTab !== 'add-friend' ? { opacity: 0.75 } : null,
-            ]}
-          >
-            <Text style={[styles.segmentLabel, mainTab === 'add-friend' && styles.segmentLabelActive]}>Add Friend</Text>
-          </Pressable>
-        </View>
+        <SegmentedControl onChange={setMainTab} options={MAIN_TAB_OPTIONS} value={mainTab} />
       </View>
 
       <View style={styles.body}>
@@ -604,26 +525,32 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
             <Text style={styles.cardTitle}>My Friend Code</Text>
             <Text style={styles.cardDescription}>Share this code so friends can send you a request.</Text>
             <View style={styles.codeBox}>
-              <Text style={styles.codeLabel}>Friend Code</Text>
+              <View style={styles.codeHeaderRow}>
+                <Text style={styles.codeLabel}>Friend Code</Text>
+                <Pressable
+                  accessibilityLabel="Copy friend code"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    void handleCopyFriendCode();
+                  }}
+                  style={styles.copyButton}
+                >
+                  <Ionicons color={theme.colors.text.info} name="copy-outline" size={16} />
+                </Pressable>
+              </View>
               <Text style={styles.codeText}>{myFriendCode}</Text>
             </View>
-            <View style={styles.rowActions}>
-              <Button
-                label="Invite + QR"
-                onPress={() => {
-                  navigation.navigate('Invite');
-                }}
-                style={styles.rowAction}
-                variant="secondary"
+            <View style={styles.qrContainer}>
+              <QRCode
+                backgroundColor={theme.colors.background.surface}
+                color={theme.colors.text.primary}
+                quietZone={8}
+                size={176}
+                value={myFriendQrPayload}
               />
-              <Button
-                label="Scan QR"
-                onPress={() => {
-                  navigation.navigate('QRScanner');
-                }}
-                style={styles.rowAction}
-                variant="secondary"
-              />
+              <Text style={styles.qrDescription} tone="secondary">
+                Friends can scan this QR code to autofill your friend code.
+              </Text>
             </View>
           </Card>
         ) : null}
@@ -668,59 +595,12 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
 
         {mainTab === 'friends-list' ? (
           <>
-            <View style={styles.segmentedControl}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setFriendsSubTab('friends');
-                }}
-                style={({ pressed }) => [
-                  styles.segmentButton,
-                  friendsSubTab === 'friends' && styles.segmentButtonActive,
-                  pressed && friendsSubTab !== 'friends' ? { opacity: 0.75 } : null,
-                ]}
-              >
-                <Text style={[styles.segmentLabel, friendsSubTab === 'friends' && styles.segmentLabelActive]}>
-                  Friends
-                </Text>
-                {renderBadge(acceptedFriends.length)}
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setFriendsSubTab('requests');
-                }}
-                style={({ pressed }) => [
-                  styles.segmentButton,
-                  friendsSubTab === 'requests' && styles.segmentButtonActive,
-                  pressed && friendsSubTab !== 'requests' ? { opacity: 0.75 } : null,
-                ]}
-              >
-                <Text style={[styles.segmentLabel, friendsSubTab === 'requests' && styles.segmentLabelActive]}>
-                  Requests
-                </Text>
-                {renderBadge(pendingReceived.length, 'alert')}
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setFriendsSubTab('sent');
-                }}
-                style={({ pressed }) => [
-                  styles.segmentButton,
-                  friendsSubTab === 'sent' && styles.segmentButtonActive,
-                  pressed && friendsSubTab !== 'sent' ? { opacity: 0.75 } : null,
-                ]}
-              >
-                <Text style={[styles.segmentLabel, friendsSubTab === 'sent' && styles.segmentLabelActive]}>Sent</Text>
-                {renderBadge(pendingSent.length)}
-              </Pressable>
-            </View>
+            <SegmentedControl onChange={setFriendsSubTab} options={friendsSubTabOptions} value={friendsSubTab} />
 
             {renderFriendsTabContent()}
           </>
         ) : null}
       </View>
-    </Screen>
+    </TabRootScreenScaffold>
   );
 }

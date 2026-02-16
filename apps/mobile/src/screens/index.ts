@@ -13,7 +13,6 @@ export * from './FeedbackDetailScreen';
 export * from './ForgotPasswordScreen';
 export * from './FriendsScreen';
 export * from './HomeScreen';
-export * from './InviteScreen';
 export * from './ListDetailScreen';
 export * from './ListsScreen';
 export * from './LoginScreen';

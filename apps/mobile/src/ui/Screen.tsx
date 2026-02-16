@@ -14,6 +14,9 @@ interface ScreenProps {
   keyboardAware?: boolean;
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
+  scrollStyle?: StyleProp<ViewStyle>;
+  scrollUnderlayColor?: string;
+  scrollUnderlayTopInset?: number;
   testID?: string;
 }
 
@@ -28,6 +31,9 @@ export function Screen({
   keyboardAware = false,
   style,
   contentStyle,
+  scrollStyle,
+  scrollUnderlayColor,
+  scrollUnderlayTopInset = 0,
   testID,
 }: PropsWithChildren<ScreenProps>) {
   const theme = useTheme();
@@ -57,7 +63,7 @@ export function Screen({
     <ScrollView
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={[styles.scrollContent, styles.content, contentStyle]}
-      style={styles.keyboardContainer}
+      style={[styles.keyboardContainer, scrollStyle]}
     >
       {children}
     </ScrollView>
@@ -67,6 +73,18 @@ export function Screen({
 
   return (
     <SafeAreaView edges={edges} style={[styles.safeArea, style]} testID={testID}>
+      {scroll && scrollUnderlayColor ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              top: scrollUnderlayTopInset,
+              backgroundColor: scrollUnderlayColor,
+            },
+          ]}
+        />
+      ) : null}
       {keyboardAware ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}

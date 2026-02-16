@@ -73,6 +73,8 @@ export function BackHeaderScreenScaffold({
       edges={['top']}
       keyboardAware={keyboardAware}
       padded={false}
+      scrollUnderlayColor={backgroundColor}
+      scrollUnderlayTopInset={220}
       scroll
       testID={testID}
     >

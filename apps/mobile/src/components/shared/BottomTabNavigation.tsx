@@ -19,7 +19,7 @@ interface BottomTabNavigationProps {
 export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = {
   Home: ['Home'],
   AddVisit: ['AddVisit', 'EditVisit', 'QuickTrack', 'EditQuickTrack', 'ProcessPhotos'],
-  Friends: ['Friends', 'Invite', 'QRScanner'],
+  Friends: ['Friends', 'QRScanner'],
   Misc: [
     'Misc',
     'Lists',

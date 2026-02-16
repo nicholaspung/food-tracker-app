@@ -3,14 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, OfflineBanner, Skeleton } from '../components/shared';
+import { EmptyState, ErrorState, OfflineBanner, Skeleton, TabRootScreenScaffold } from '../components/shared';
 import { listQuickTracks, listVisits, deleteQuickTrack } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useSync } from '../providers/SyncProvider';
 import { useTheme } from '../theme';
-import { Screen, Text } from '../ui';
+import { Text } from '../ui';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type FeedMode = 'mine' | 'friends';
@@ -736,7 +736,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   });
 
   return (
-    <Screen background="surface" contentStyle={styles.screenContent} edges={['top']} padded={false} scroll>
+    <TabRootScreenScaffold contentStyle={styles.screenContent} scrollUnderlayColor={colors.screenBackground}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Ratings</Text>
@@ -1006,6 +1006,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           : null}
 
       </View>
-    </Screen>
+    </TabRootScreenScaffold>
   );
 }

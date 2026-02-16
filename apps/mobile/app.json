@@ -8,7 +8,23 @@
     "userInterfaceStyle": "light",
     "jsEngine": "hermes",
     "ios": {
-      "bundleIdentifier": "com.anonymous.food-tracker-mobile"
-    }
+      "bundleIdentifier": "com.anonymous.food-tracker-mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow Food Tracker Mobile to scan friend QR codes."
+      }
+    },
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Food Tracker Mobile to scan friend QR codes."
+        }
+      ]
+    ]
   }
 }

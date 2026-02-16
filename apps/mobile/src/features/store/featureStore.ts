@@ -173,12 +173,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function daysAgoIso(daysAgo: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - daysAgo);
-  return date.toISOString();
-}
-
 function createId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
@@ -246,36 +240,7 @@ function seedStore(): FeatureStore {
     },
     restaurantLists: [],
     notes: [],
-    friends: [
-      {
-        id: createId('friend'),
-        name: 'Taylor Lin',
-        email: 'taylor@example.com',
-        status: 'friend',
-        createdAt: daysAgoIso(38),
-      },
-      {
-        id: createId('friend'),
-        name: 'Chris Park',
-        email: 'chris@example.com',
-        status: 'friend',
-        createdAt: daysAgoIso(21),
-      },
-      {
-        id: createId('friend'),
-        name: 'Meri',
-        email: 'meri@example.com',
-        status: 'pending_received',
-        createdAt: daysAgoIso(6),
-      },
-      {
-        id: createId('friend'),
-        name: 'Madi',
-        email: 'madi@example.com',
-        status: 'pending_sent',
-        createdAt: daysAgoIso(3),
-      },
-    ],
+    friends: [],
     profile: {
       displayName: '',
       bio: '',

@@ -22,7 +22,6 @@ import {
   ForgotPasswordScreen,
   FriendsScreen,
   HomeScreen,
-  InviteScreen,
   ListDetailScreen,
   ListsScreen,
   LoginScreen,
@@ -69,7 +68,6 @@ export type RootStackParamList = {
   AdminFeatures: undefined;
   AdminMenuReviews: undefined;
   AdminMenuReviewDetail: { requestId: string };
-  Invite: undefined;
   QRScanner: undefined;
   Settings: undefined;
   Feedback: undefined;
@@ -93,7 +91,6 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'EditQuickTrack',
   'ProcessPhotos',
   'Friends',
-  'Invite',
   'QRScanner',
   'Profile',
   'AdminFeatures',
@@ -261,8 +258,7 @@ export function RootNavigator() {
                   name="AdminMenuReviewDetail"
                   options={{ headerShown: false }}
                 />
-                <Stack.Screen component={InviteScreen} name="Invite" options={{ title: 'Invite' }} />
-                <Stack.Screen component={QRScannerScreen} name="QRScanner" options={{ title: 'QR Scanner' }} />
+                <Stack.Screen component={QRScannerScreen} name="QRScanner" options={{ headerShown: false }} />
                 <Stack.Screen component={SettingsScreen} name="Settings" options={{ headerShown: false }} />
                 <Stack.Screen component={FeedbackScreen} name="Feedback" options={{ headerShown: false }} />
                 <Stack.Screen

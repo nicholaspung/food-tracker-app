@@ -4,11 +4,11 @@ import type { ComponentProps } from 'react';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { ScreenHeader } from '../components/shared';
+import { ScreenHeader, TabRootScreenScaffold } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Card, ListItem, Screen, Text } from '../ui';
+import { Card, ListItem, Text } from '../ui';
 
 type MiscScreenProps = NativeStackScreenProps<RootStackParamList, 'Misc'>;
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -254,7 +254,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   });
 
   return (
-    <Screen background="surface" contentStyle={styles.screenContent} edges={['top']} scroll testID="misc-page">
+    <TabRootScreenScaffold
+      contentStyle={styles.screenContent}
+      scrollUnderlayColor={sectionColors.background}
+      testID="misc-page"
+    >
       <ScreenHeader
         onBackPress={() => {
           navigation.navigate('Profile');
@@ -384,6 +388,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
           </View>
         </Card>
       </View>
-    </Screen>
+    </TabRootScreenScaffold>
   );
 }

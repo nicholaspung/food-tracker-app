@@ -6,7 +6,15 @@ import { ActivityIndicator, Pressable, Share, StyleSheet, View } from 'react-nat
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RecordModel } from 'pocketbase';
 
-import { ErrorState, OptionList, OptionListInlineBody, OptionListRow, Skeleton, StatusPill } from '../components/shared';
+import {
+  ErrorState,
+  OptionList,
+  OptionListInlineBody,
+  OptionListRow,
+  Skeleton,
+  StatusPill,
+  TabRootScreenScaffold,
+} from '../components/shared';
 import { getProfile, listFeedback, updateProfile } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { getErrorMessage } from '../lib/errorUtils';
@@ -497,12 +505,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   }
 
   return (
-    <Screen
-      background="surface"
+    <TabRootScreenScaffold
       contentStyle={styles.screenContent}
-      edges={['top']}
-      padded={false}
-      scroll
+      scrollUnderlayColor={theme.colors.background.app}
     >
       <View style={styles.header}>
         <View style={styles.brandRow}>
@@ -841,6 +846,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           variant="secondary"
         />
       </View>
-    </Screen>
+    </TabRootScreenScaffold>
   );
 }
