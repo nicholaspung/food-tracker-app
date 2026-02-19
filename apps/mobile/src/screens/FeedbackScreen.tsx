@@ -6,12 +6,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BackHeaderScreenScaffold,
   EmptyState,
-  ErrorState,
+  FeedbackThreadCard,
   FilterChipGroup,
   RoleBadge,
   Skeleton,
-  StatusPill,
-  type StatusPillTone,
 } from '../components/shared';
 import { createFeedback, listFeedback, type FeedbackStatusFilter } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -20,17 +18,10 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'Feedback'>;
-type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 type AdminTimeRangeFilter = 'all_time' | 'last_7_days' | 'last_30_days' | 'last_90_days';
-
-const STATUS_LABELS: Record<FeedbackStatus, string> = {
-  open: 'Open',
-  in_progress: 'In Progress',
-  resolved: 'Resolved',
-  closed: 'Closed',
-};
 
 const ADMIN_FILTERS: { label: string; value: FeedbackStatusFilter }[] = [
   { label: 'Active', value: 'active' },
@@ -106,57 +97,11 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
       paddingHorizontal: theme.spacing.md,
       paddingTop: theme.spacing.sm,
     },
+    historySection: {
+      gap: theme.spacing.md,
+    },
     filterSection: {
       gap: theme.spacing.xs,
-    },
-    feedbackCard: {
-      gap: theme.spacing.xxs,
-    },
-    feedbackHeaderRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-    },
-    feedbackTitle: {
-      color: theme.colors.text.primary,
-      flex: 1,
-      fontSize: 15,
-      fontWeight: '700',
-      lineHeight: 20,
-    },
-    feedbackDescription: {
-      color: theme.colors.text.secondary,
-      fontSize: 14,
-      lineHeight: 20,
-    },
-    feedbackMeta: {
-      color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
-    },
-    feedbackFooterRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    feedbackDate: {
-      color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
-      marginLeft: 'auto',
-    },
-    closedLabel: {
-      color: theme.colors.text.success,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
-    },
-    unreadLabel: {
-      color: theme.colors.text.brand,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     feedbackPressable: {
       borderRadius: theme.radii.lg,
@@ -204,25 +149,10 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     navigation.navigate('Profile');
   };
 
-  const resolveStatusTone = (status: FeedbackStatus): StatusPillTone => {
-    if (status === 'in_progress') {
-      return 'warning';
-    }
-
-    if (status === 'resolved') {
-      return 'success';
-    }
-
-    if (status === 'closed') {
-      return 'muted';
-    }
-
-    return 'info';
-  };
-
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
+      contentBackgroundTone="app"
       keyboardAware
       onBackPress={handleBackToProfile}
       rightAccessory={isAdmin ? <RoleBadge /> : undefined}
@@ -241,7 +171,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
             value={message}
           />
 
-          {errorMessage ? <ErrorState description={errorMessage} title="Could not submit" /> : null}
+          <PageErrorToast errorMessage={errorMessage} title="Could not submit" />
 
           <Button
             disabled={!subject.trim() || !message.trim()}
@@ -286,6 +216,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         </Text>
       ) : null}
 
+      <View style={styles.historySection}>
         {feedbackQuery.isLoading ? (
           <>
             <Skeleton height={20} />
@@ -293,15 +224,14 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
           </>
         ) : null}
 
-        {feedbackQuery.isError ? (
-          <ErrorState
-            description="Could not load feedback history."
-            onRetry={() => {
-              void feedbackQuery.refetch();
-            }}
-            title="Feedback unavailable"
-          />
-        ) : null}
+        <PageErrorToast
+          errorMessage={feedbackQuery.isError ? 'Could not load feedback history.' : null}
+          title="Feedback unavailable"
+          actionLabel="Retry"
+          onAction={() => {
+            void feedbackQuery.refetch();
+          }}
+        />
 
         {!feedbackQuery.isLoading && !feedbackQuery.isError && visibleFeedbackCount === 0 ? (
           <EmptyState
@@ -318,55 +248,48 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
           />
         ) : null}
 
-      {!feedbackQuery.isLoading && !feedbackQuery.isError
-        ? displayedFeedback.map((feedback) => {
-            const statusTone = resolveStatusTone(feedback.status);
-            const unreadCount = isAdmin ? feedback.adminUnreadCount : feedback.userUnreadCount;
+        {!feedbackQuery.isLoading && !feedbackQuery.isError
+          ? displayedFeedback.map((feedback) => {
+              const unreadCount = isAdmin ? feedback.adminUnreadCount : feedback.userUnreadCount;
+              const ownerLabel =
+                isAdmin
+                  ? `From ${feedback.userName?.trim() || feedback.userEmail?.trim() || feedback.userId}`
+                  : undefined;
+              const timestampLabel = formatDisplayDate(feedback.lastMessageAt ?? feedback.createdAt, {
+                fallback: 'Unknown',
+                options: {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                },
+              });
 
-            return (
-              <Pressable
-                accessibilityRole="button"
-                key={feedback.id}
-                onPress={() => {
-                  navigation.navigate('FeedbackDetail', { feedbackId: feedback.id });
-                }}
-                style={styles.feedbackPressable}
-              >
-                <Card style={styles.feedbackCard} tone={!isAdmin && feedback.status === 'closed' ? 'success' : 'muted'}>
-                  <View style={styles.feedbackHeaderRow}>
-                    <Text style={styles.feedbackTitle}>{feedback.title}</Text>
-                    <StatusPill
-                      label={STATUS_LABELS[feedback.status]}
-                      tone={statusTone}
-                      uppercase
-                      variant="soft"
-                    />
-                  </View>
-                  {isAdmin ? (
-                    <Text style={styles.feedbackMeta}>
-                      From {feedback.userName?.trim() || feedback.userEmail?.trim() || feedback.userId}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.feedbackDescription}>{feedback.description}</Text>
-                  <View style={styles.feedbackFooterRow}>
-                    {!isAdmin && feedback.status === 'closed' ? <Text style={styles.closedLabel}>Completed</Text> : null}
-                    <Text style={styles.feedbackDate}>
-                      {formatDisplayDate(feedback.lastMessageAt ?? feedback.createdAt, {
-                        fallback: 'Unknown',
-                        options: {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        },
-                      })}
-                    </Text>
-                  </View>
-                  {unreadCount > 0 ? <Text style={styles.unreadLabel}>{unreadCount} unread</Text> : null}
-                </Card>
-              </Pressable>
-            );
-          })
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={feedback.id}
+                  onPress={() => {
+                    navigation.navigate('FeedbackDetail', { feedbackId: feedback.id });
+                  }}
+                  style={styles.feedbackPressable}
+                >
+                  <FeedbackThreadCard
+                    compact
+                    description={feedback.description}
+                    footerLabel={!isAdmin && feedback.status === 'closed' ? 'Completed' : undefined}
+                    footerLabelTone={!isAdmin && feedback.status === 'closed' ? 'success' : 'muted'}
+                    ownerLabel={ownerLabel}
+                    status={feedback.status}
+                    timestampLabel={timestampLabel}
+                    title={feedback.title}
+                    tone={!isAdmin && feedback.status === 'closed' ? 'success' : 'muted'}
+                    unreadCount={unreadCount}
+                  />
+                </Pressable>
+              );
+            })
         : null}
+      </View>
     </BackHeaderScreenScaffold>
   );
 }

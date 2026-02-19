@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 
 import { useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -14,6 +14,8 @@ export interface ScreenHeaderProps {
   backAccessibilityLabel?: string;
   variant?: 'large' | 'compact';
   style?: StyleProp<ViewStyle>;
+  titleStyle?: StyleProp<TextStyle>;
+  subtitleStyle?: StyleProp<TextStyle>;
   testID?: string;
 }
 
@@ -25,6 +27,8 @@ export function ScreenHeader({
   backAccessibilityLabel = 'Back',
   variant = 'large',
   style,
+  titleStyle,
+  subtitleStyle,
   testID,
 }: ScreenHeaderProps) {
   const theme = useTheme();
@@ -85,10 +89,10 @@ export function ScreenHeader({
             <Ionicons color={theme.colors.text.primary} name="chevron-back" size={isCompact ? 16 : 18} />
           </Pressable>
         ) : null}
-        <Text style={styles.title}>{title}</Text>
+        <Text style={[styles.title, titleStyle]}>{title}</Text>
         {rightAccessory ? <View style={styles.rightAccessory}>{rightAccessory}</View> : null}
       </View>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}
     </View>
   );
 }

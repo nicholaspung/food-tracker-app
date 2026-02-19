@@ -38,6 +38,7 @@ export interface MutationQueueStats {
 export interface MutationQueueStore {
   initialize(): Promise<void>;
   enqueue(input: EnqueueMutationInput): Promise<QueuedMutation>;
+  getQueuedMutations(limit: number): Promise<QueuedMutation[]>;
   getReadyMutations(now: number, limit: number): Promise<QueuedMutation[]>;
   markInFlight(id: string, at: number): Promise<void>;
   remove(id: string): Promise<void>;

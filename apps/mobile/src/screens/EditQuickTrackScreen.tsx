@@ -7,6 +7,7 @@ import { getQuickTrackById, updateQuickTrack } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Input, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type EditQuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'EditQuickTrack'>;
 
@@ -120,7 +121,7 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       <Input keyboardType="decimal-pad" label="Rating (1-5)" onChangeText={setRating} value={rating} />
       <Input label="Notes" onChangeText={setNotes} value={notes} />
 
-      {errorMessage ? <ErrorState description={errorMessage} title="Could not save" /> : null}
+      <PageErrorToast errorMessage={errorMessage} title="Could not save" />
 
       <Button
         disabled={isSubmitting}

@@ -1,5 +1,30 @@
 [
   {
+    "version": "0.7.2",
+    "date": "2026-02-18",
+    "title": "Visit Creation Wizard & Photo Sharing Themes",
+    "summary": "Creating restaurant visits is now a guided step-by-step experience! Search for restaurants by name, type, or GPS location, browse and scan menu items, rate each dish with photos, then share your visit with 4 beautiful themes.",
+    "features": [
+      "Step-by-step visit wizard: Restaurant → Items → Rate & Save in three clear steps",
+      "Google Places restaurant search: Find any food place by name, type, or location",
+      "GPS nearby search: Discover restaurants close to your current location",
+      "Menu item browsing with search: Find what you ate, or scan a menu photo to auto-fill",
+      "Per-item photos during rating: Attach camera or library photos to each dish as you rate",
+      "4 photo sharing themes: Choose Modern, Rustic, Minimal, or Neon when sharing your visit",
+      "Add missing menu items manually with visibility control (private, friends, or public)",
+      "Edit your own menu items directly from the visit creation flow"
+    ],
+    "improvements": [
+      "Set visit date and visibility (friends or private) during the rating step",
+      "Rating legend shown during visit rating so you always know what each star means",
+      "Selected menu items pinned to the top of the list for easy review",
+      "Restaurant list shows your visit count and how many friends have been there",
+      "Request a menu item review if the list looks incorrect",
+      "Bill creation screen now available for logging shared meals"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.1",
     "date": "2026-02-11",
     "title": "Tip Calculator & UI Improvements",

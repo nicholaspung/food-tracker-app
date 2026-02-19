@@ -15,6 +15,11 @@ import {
   AddVisitScreen,
   BillDetailScreen,
   BillsScreen,
+  CreateBillScreen,
+  CreateVisitAddRestaurantScreen,
+  CreateVisitAddMenuItemScreen,
+  CreateVisitEditMenuItemScreen,
+  CreateVisitScreen,
   EditQuickTrackScreen,
   EditVisitScreen,
   FeedbackScreen,
@@ -37,8 +42,10 @@ import {
   SettingsScreen,
   SignUpScreen,
   SplashScreen,
+  TipCalculatorScreen,
   TastingSessionDetailScreen,
   TastingSessionsScreen,
+  VisitShareCustomizationScreen,
   VerifyEmailScreen,
   WhatsNewScreen,
 } from '../screens';
@@ -53,11 +60,51 @@ export type RootStackParamList = {
   ResetPassword: undefined;
   VerifyEmail: undefined;
   Home: undefined;
+  VisitShareCustomization: {
+    restaurantName: string;
+    visitDate: string;
+    items: {
+      itemId: string;
+      itemName: string;
+      rating: number;
+      photoId: string;
+      photoFilename: string;
+      photoCollectionId?: string;
+      photoCollectionName?: string;
+    }[];
+  };
   AddVisit: undefined;
+  CreateVisit:
+    | {
+        preselectedRestaurantId?: string;
+        preselectedRestaurantName?: string;
+        preselectedMenuItemId?: string;
+        preselectedMenuItemName?: string;
+        returnToStep?: 0 | 1 | 2;
+      }
+    | undefined;
+  CreateVisitAddRestaurant: undefined;
+  CreateVisitAddMenuItem: {
+    restaurantId: string;
+    restaurantName: string;
+  };
+  CreateVisitEditMenuItem: {
+    menuItemId: string;
+    restaurantId: string;
+    initialName: string;
+    initialVisibility?: 'private' | 'friends' | 'public';
+  };
   EditVisit: { visitId: string };
   QuickTrack: { sourceNoteId?: string } | undefined;
   EditQuickTrack: { quickTrackId: string };
-  ProcessPhotos: undefined;
+  ProcessPhotos:
+    | {
+        mode?: 'menu_scan' | 'general';
+        restaurantId?: string;
+        restaurantName?: string;
+        autoStartSourcePicker?: boolean;
+      }
+    | undefined;
   Lists: undefined;
   ListDetail: { listId: string };
   AddRestaurantToList: { listId: string };
@@ -77,7 +124,9 @@ export type RootStackParamList = {
   TastingSessions: undefined;
   TastingSessionDetail: { sessionId: string };
   Bills: undefined;
+  CreateBill: { billId?: string } | undefined;
   BillDetail: { billId: string };
+  TipCalculator: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -86,6 +135,10 @@ const TAB_BAR_BASE_HEIGHT = 56;
 const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Home',
   'AddVisit',
+  'CreateVisit',
+  'CreateVisitAddRestaurant',
+  'CreateVisitAddMenuItem',
+  'CreateVisitEditMenuItem',
   'EditVisit',
   'QuickTrack',
   'EditQuickTrack',
@@ -107,7 +160,9 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Notes',
   'NoteEditor',
   'Bills',
+  'CreateBill',
   'BillDetail',
+  'TipCalculator',
   'TastingSessions',
   'TastingSessionDetail',
 ];
@@ -219,9 +274,34 @@ export function RootNavigator() {
             {status === 'authenticated' ? (
               <>
                 <Stack.Screen component={HomeScreen} name="Home" options={{ headerShown: false }} />
-                <Stack.Screen component={AddVisitScreen} name="AddVisit" options={{ title: 'Add Visit' }} />
+                <Stack.Screen
+                  component={VisitShareCustomizationScreen}
+                  name="VisitShareCustomization"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen component={AddVisitScreen} name="AddVisit" options={{ headerShown: false }} />
+                <Stack.Screen
+                  component={CreateVisitScreen}
+                  name="CreateVisit"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  component={CreateVisitAddRestaurantScreen}
+                  name="CreateVisitAddRestaurant"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  component={CreateVisitAddMenuItemScreen}
+                  name="CreateVisitAddMenuItem"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  component={CreateVisitEditMenuItemScreen}
+                  name="CreateVisitEditMenuItem"
+                  options={{ headerShown: false }}
+                />
                 <Stack.Screen component={EditVisitScreen} name="EditVisit" options={{ title: 'Edit Visit' }} />
-                <Stack.Screen component={QuickTrackScreen} name="QuickTrack" options={{ title: 'Quick Track' }} />
+                <Stack.Screen component={QuickTrackScreen} name="QuickTrack" options={{ headerShown: false }} />
                 <Stack.Screen
                   component={EditQuickTrackScreen}
                   name="EditQuickTrack"
@@ -230,17 +310,17 @@ export function RootNavigator() {
                 <Stack.Screen
                   component={PhotoProcessingScreen}
                   name="ProcessPhotos"
-                  options={{ title: 'Process Photos' }}
+                  options={{ headerShown: false }}
                 />
-                <Stack.Screen component={ListsScreen} name="Lists" options={{ title: 'Lists' }} />
-                <Stack.Screen component={ListDetailScreen} name="ListDetail" options={{ title: 'List Detail' }} />
+                <Stack.Screen component={ListsScreen} name="Lists" options={{ headerShown: false }} />
+                <Stack.Screen component={ListDetailScreen} name="ListDetail" options={{ headerShown: false }} />
                 <Stack.Screen
                   component={AddRestaurantToListScreen}
                   name="AddRestaurantToList"
-                  options={{ title: 'Add to List' }}
+                  options={{ headerShown: false }}
                 />
-                <Stack.Screen component={NotesScreen} name="Notes" options={{ title: 'Notes' }} />
-                <Stack.Screen component={NoteEditorScreen} name="NoteEditor" options={{ title: 'Note Editor' }} />
+                <Stack.Screen component={NotesScreen} name="Notes" options={{ headerShown: false }} />
+                <Stack.Screen component={NoteEditorScreen} name="NoteEditor" options={{ headerShown: false }} />
                 <Stack.Screen component={FriendsScreen} name="Friends" options={{ headerShown: false }} />
                 <Stack.Screen component={ProfileScreen} name="Profile" options={{ headerShown: false }} />
                 <Stack.Screen
@@ -276,10 +356,12 @@ export function RootNavigator() {
                 <Stack.Screen
                   component={user?.isAdmin ? TastingSessionDetailScreen : AdminOnlyRouteGuard}
                   name="TastingSessionDetail"
-                  options={{ title: 'Session Detail' }}
+                  options={{ headerShown: false }}
                 />
-                <Stack.Screen component={BillsScreen} name="Bills" options={{ title: 'Bills' }} />
-                <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ title: 'Bill Detail' }} />
+                <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
+                <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
+                <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
+                <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />
               </>
             ) : (
               <>

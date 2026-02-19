@@ -89,6 +89,11 @@ export interface PaletteTokens {
   infoSurface: string;
   infoBorder: string;
   infoText: string;
+  ratingOne: string;
+  ratingTwo: string;
+  ratingThree: string;
+  ratingFour: string;
+  ratingFive: string;
   overlay: string;
 }
 
@@ -120,6 +125,11 @@ export const paletteTokens = {
     infoSurface: "#ECF3FF",
     infoBorder: "#9EB9F2",
     infoText: "#1E3A8A",
+    ratingOne: "#ef4444",
+    ratingTwo: "#f97316",
+    ratingThree: "#eab308",
+    ratingFour: "#84cc16",
+    ratingFive: "#22c55e",
     overlay: "rgba(15, 23, 40, 0.45)",
   },
   sunrise: {
@@ -149,6 +159,11 @@ export const paletteTokens = {
     infoSurface: "#EEF2FF",
     infoBorder: "#A3B0E5",
     infoText: "#27357A",
+    ratingOne: "#ef4444",
+    ratingTwo: "#f97316",
+    ratingThree: "#eab308",
+    ratingFour: "#84cc16",
+    ratingFive: "#22c55e",
     overlay: "rgba(43, 28, 18, 0.4)",
   },
 } as const;

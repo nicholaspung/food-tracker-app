@@ -1,10 +1,16 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, Share, StyleSheet, View } from 'react-native';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { RecordModel } from 'pocketbase';
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  Share,
+  StyleSheet,
+  View,
+} from "react-native";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { RecordModel } from "pocketbase";
 
 import {
   ErrorState,
@@ -13,20 +19,26 @@ import {
   OptionListRow,
   Skeleton,
   StatusPill,
+  TabBrandHeader,
   TabRootScreenScaffold,
-} from '../components/shared';
-import { getProfile, listFeedback, updateProfile } from '../features';
-import { formatDisplayDate } from '../lib/dateFormatting';
-import { getErrorMessage } from '../lib/errorUtils';
-import { pb } from '../lib/pocketbase';
-import { getSeenWhatsNewVersion, hasUnseenWhatsNew, WHATS_NEW_SEEN_QUERY_KEY } from '../lib/whatsNewState';
-import type { RootStackParamList } from '../navigation/RootNavigator';
-import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
-import { Button, Card, Input, Screen, Text } from '../ui';
+} from "../components/shared";
+import { getProfile, listFeedback, updateProfile } from "../features";
+import { formatDisplayDate } from "../lib/dateFormatting";
+import { getErrorMessage } from "../lib/errorUtils";
+import { pb } from "../lib/pocketbase";
+import {
+  getSeenWhatsNewVersion,
+  hasUnseenWhatsNew,
+  WHATS_NEW_SEEN_QUERY_KEY,
+} from "../lib/whatsNewState";
+import type { RootStackParamList } from "../navigation/RootNavigator";
+import { useAuth } from "../providers/AuthProvider";
+import { useTheme } from "../theme";
+import { Button, Card, Input, Screen, Text } from "../ui";
+import { PageErrorToast } from "../components/shared/PageErrorToast";
 
-type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
-type ExpandablePanel = 'account' | 'invite' | 'danger';
+type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, "Profile">;
+type ExpandablePanel = "account" | "invite" | "danger";
 
 interface InviteCode {
   id: string;
@@ -44,21 +56,23 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const isInitialUser = authRecord?.isInitialUser === true;
 
   const profileQuery = useQuery({
-    queryKey: ['feature', 'profile'],
+    queryKey: ["feature", "profile"],
     queryFn: getProfile,
   });
 
   const feedbackQuery = useQuery({
-    queryKey: ['feature', 'feedback'],
-    queryFn: () => listFeedback({ status: 'all' }),
+    queryKey: ["feature", "feedback"],
+    queryFn: () => listFeedback({ status: "all" }),
   });
   const pendingMenuReviewCountQuery = useQuery({
     enabled: isAdmin,
-    queryKey: ['feature', 'admin', 'pending-menu-review-count'],
+    queryKey: ["feature", "admin", "pending-menu-review-count"],
     queryFn: async (): Promise<number> => {
-      const response = await pb.collection('menu_review_requests').getList(1, 1, {
-        filter: 'status = "pending"',
-      });
+      const response = await pb
+        .collection("menu_review_requests")
+        .getList(1, 1, {
+          filter: 'status = "pending"',
+        });
 
       return response.totalItems;
     },
@@ -69,35 +83,50 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     staleTime: Infinity,
   });
 
-  const [expandedPanels, setExpandedPanels] = useState<Record<ExpandablePanel, boolean>>({
+  const [expandedPanels, setExpandedPanels] = useState<
+    Record<ExpandablePanel, boolean>
+  >({
     account: true,
     invite: false,
     danger: false,
   });
   const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
-  const [inviteErrorMessage, setInviteErrorMessage] = useState<string | null>(null);
+  const [inviteErrorMessage, setInviteErrorMessage] = useState<string | null>(
+    null,
+  );
   const [isInviteLoading, setIsInviteLoading] = useState(true);
   const [isGeneratingCodes, setIsGeneratingCodes] = useState(false);
-  const [activeInviteCodeId, setActiveInviteCodeId] = useState<string | null>(null);
-  const [dangerErrorMessage, setDangerErrorMessage] = useState<string | null>(null);
+  const [activeInviteCodeId, setActiveInviteCodeId] = useState<string | null>(
+    null,
+  );
+  const [dangerErrorMessage, setDangerErrorMessage] = useState<string | null>(
+    null,
+  );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isEditingAccountName, setIsEditingAccountName] = useState(false);
-  const [editedAccountName, setEditedAccountName] = useState('');
-  const [accountNameErrorMessage, setAccountNameErrorMessage] = useState<string | null>(null);
+  const [editedAccountName, setEditedAccountName] = useState("");
+  const [accountNameErrorMessage, setAccountNameErrorMessage] = useState<
+    string | null
+  >(null);
 
   const fetchInviteCodes = async () => {
     setIsInviteLoading(true);
     setInviteErrorMessage(null);
 
     try {
-      const response = await pb.send<{ codes?: InviteCode[] }>('/api/invite-codes', {
-        method: 'GET',
-      });
+      const response = await pb.send<{ codes?: InviteCode[] }>(
+        "/api/invite-codes",
+        {
+          method: "GET",
+        },
+      );
 
       setInviteCodes(response.codes ?? []);
     } catch (error) {
-      setInviteErrorMessage(getErrorMessage(error, 'Could not load invite codes.'));
+      setInviteErrorMessage(
+        getErrorMessage(error, "Could not load invite codes."),
+      );
     } finally {
       setIsInviteLoading(false);
     }
@@ -116,31 +145,31 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   );
 
   const accountName = useMemo(() => {
-    const profileName = profileQuery.data?.displayName?.trim() ?? '';
+    const profileName = profileQuery.data?.displayName?.trim() ?? "";
     if (profileName) {
       return profileName;
     }
 
-    return user?.name ?? 'Not set';
+    return user?.name ?? "Not set";
   }, [profileQuery.data?.displayName, user?.name]);
   const editableAccountName = useMemo(() => {
-    const profileName = profileQuery.data?.displayName?.trim() ?? '';
+    const profileName = profileQuery.data?.displayName?.trim() ?? "";
     if (profileName) {
       return profileName;
     }
 
-    return user?.name?.trim() ?? '';
+    return user?.name?.trim() ?? "";
   }, [profileQuery.data?.displayName, user?.name]);
 
   const unreadFeedbackCount = useMemo(() => {
     return (feedbackQuery.data ?? []).reduce((count, feedbackItem) => {
-      return count + (feedbackItem.status !== 'closed' ? 1 : 0);
+      return count + (feedbackItem.status !== "closed" ? 1 : 0);
     }, 0);
   }, [feedbackQuery.data]);
   const showWhatsNewDot = hasUnseenWhatsNew(whatsNewSeenVersionQuery.data);
 
   const accountCreated = formatDisplayDate(authRecord?.created, {
-    fallback: 'Unknown',
+    fallback: "Unknown",
   });
 
   useEffect(() => {
@@ -161,12 +190,14 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     setIsGeneratingCodes(true);
 
     try {
-      await pb.send('/api/invite-codes/generate', {
-        method: 'POST',
+      await pb.send("/api/invite-codes/generate", {
+        method: "POST",
       });
       await fetchInviteCodes();
     } catch (error) {
-      setInviteErrorMessage(getErrorMessage(error, 'Could not generate invite codes.'));
+      setInviteErrorMessage(
+        getErrorMessage(error, "Could not generate invite codes."),
+      );
     } finally {
       setIsGeneratingCodes(false);
     }
@@ -185,14 +216,16 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         return;
       }
 
-      await pb.send('/api/invite-codes/lock', {
-        method: 'POST',
+      await pb.send("/api/invite-codes/lock", {
+        method: "POST",
         body: { codeId },
       });
 
       await fetchInviteCodes();
     } catch (error) {
-      setInviteErrorMessage(getErrorMessage(error, 'Could not share invite code.'));
+      setInviteErrorMessage(
+        getErrorMessage(error, "Could not share invite code."),
+      );
     } finally {
       setActiveInviteCodeId(null);
     }
@@ -202,16 +235,18 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     mutationFn: async (nextName: string): Promise<string> => {
       const trimmedName = nextName.trim();
       if (!trimmedName) {
-        throw new Error('Name cannot be empty.');
+        throw new Error("Name cannot be empty.");
       }
 
       if (!user?.id) {
-        throw new Error('Could not find user account.');
+        throw new Error("Could not find user account.");
       }
 
-      const updatedUserRecord = await pb.collection('users').update<RecordModel>(user.id, {
-        name: trimmedName,
-      });
+      const updatedUserRecord = await pb
+        .collection("users")
+        .update<RecordModel>(user.id, {
+          name: trimmedName,
+        });
 
       await updateProfile({
         displayName: trimmedName,
@@ -228,20 +263,25 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       setIsEditingAccountName(false);
       setEditedAccountName(nextName);
 
-      queryClient.setQueryData(['feature', 'profile'], (currentProfile: unknown) => {
-        const profile =
-          currentProfile && typeof currentProfile === 'object'
-            ? (currentProfile as Record<string, unknown>)
-            : {};
+      queryClient.setQueryData(
+        ["feature", "profile"],
+        (currentProfile: unknown) => {
+          const profile =
+            currentProfile && typeof currentProfile === "object"
+              ? (currentProfile as Record<string, unknown>)
+              : {};
 
-        return {
-          ...profile,
-          displayName: nextName,
-        };
-      });
+          return {
+            ...profile,
+            displayName: nextName,
+          };
+        },
+      );
     },
     onError: (error: unknown) => {
-      setAccountNameErrorMessage(getErrorMessage(error, 'Could not update name.'));
+      setAccountNameErrorMessage(
+        getErrorMessage(error, "Could not update name."),
+      );
     },
   });
 
@@ -260,7 +300,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const handleSaveAccountName = () => {
     const trimmedName = editedAccountName.trim();
     if (!trimmedName) {
-      setAccountNameErrorMessage('Name cannot be empty.');
+      setAccountNameErrorMessage("Name cannot be empty.");
       return;
     }
 
@@ -275,7 +315,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
   const handleDeleteAccount = async () => {
     if (!user?.id) {
-      setDangerErrorMessage('Could not find user account.');
+      setDangerErrorMessage("Could not find user account.");
       return;
     }
 
@@ -283,10 +323,12 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     setIsDeletingAccount(true);
 
     try {
-      await pb.collection('users').delete(user.id);
+      await pb.collection("users").delete(user.id);
       await signOut();
     } catch (error) {
-      setDangerErrorMessage(getErrorMessage(error, 'Could not delete account.'));
+      setDangerErrorMessage(
+        getErrorMessage(error, "Could not delete account."),
+      );
     } finally {
       setIsDeletingAccount(false);
     }
@@ -298,38 +340,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       gap: 0,
       paddingHorizontal: 0,
       paddingVertical: 0,
-    },
-    header: {
-      backgroundColor: theme.colors.background.surface,
-      borderBottomColor: theme.colors.border.subtle,
-      borderBottomWidth: 1,
-      gap: theme.spacing.xs,
-      paddingBottom: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    brandRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    logoBadge: {
-      alignItems: 'center',
-      borderColor: theme.colors.text.brand,
-      borderRadius: theme.radii.pill,
-      borderWidth: 2,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
-    },
-    brandLabel: {
-      color: theme.colors.text.secondary,
-      fontSize: 28,
-      fontWeight: '700',
-      lineHeight: 32,
-    },
-    subtitle: {
-      color: theme.colors.text.muted,
     },
     body: {
       flex: 1,
@@ -345,15 +355,15 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     },
     sectionTitle: {
       fontSize: 20,
-      fontWeight: '700',
+      fontWeight: "700",
       lineHeight: 24,
       marginBottom: theme.spacing.sm,
     },
     optionBadge: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.colors.text.danger,
       borderRadius: theme.radii.pill,
-      justifyContent: 'center',
+      justifyContent: "center",
       minWidth: 22,
       paddingHorizontal: 6,
       paddingVertical: 2,
@@ -361,7 +371,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     optionBadgeText: {
       color: theme.colors.text.inverse,
       fontSize: 12,
-      fontWeight: '700',
+      fontWeight: "700",
       lineHeight: 16,
     },
     optionDot: {
@@ -383,13 +393,13 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       gap: 2,
     },
     detailHeaderRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
     },
     inlineEditRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
+      alignItems: "center",
+      flexDirection: "row",
       gap: theme.spacing.xs,
     },
     inlineEditInputContainer: {
@@ -398,42 +408,42 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     detailLabel: {
       color: theme.colors.text.muted,
       fontSize: 13,
-      fontWeight: '600',
+      fontWeight: "600",
       lineHeight: 17,
     },
     detailValue: {
       color: theme.colors.text.primary,
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: "600",
       lineHeight: 22,
     },
     detailValueMono: {
       color: theme.colors.text.secondary,
       fontSize: 13,
-      fontWeight: '600',
+      fontWeight: "600",
       lineHeight: 17,
     },
     inlineIconActionRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
+      alignItems: "center",
+      flexDirection: "row",
       gap: theme.spacing.xs,
     },
     inlineIconButton: {
-      alignItems: 'center',
+      alignItems: "center",
       borderColor: theme.colors.border.default,
       borderRadius: theme.radii.pill,
       borderWidth: 1,
       height: 36,
-      justifyContent: 'center',
+      justifyContent: "center",
       width: 36,
     },
     inlineIconButtonDisabled: {
       opacity: 0.5,
     },
     statusRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+      alignItems: "center",
+      flexDirection: "row",
+      flexWrap: "wrap",
       gap: theme.spacing.xs,
       marginTop: theme.spacing.xxs,
     },
@@ -450,7 +460,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     },
     inviteCodeText: {
       fontSize: 16,
-      fontWeight: '700',
+      fontWeight: "700",
       letterSpacing: 1.2,
       lineHeight: 20,
     },
@@ -470,7 +480,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     dangerTitle: {
       color: theme.colors.text.danger,
       fontSize: 14,
-      fontWeight: '700',
+      fontWeight: "700",
       lineHeight: 18,
     },
     dangerCopy: {
@@ -509,16 +519,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       contentStyle={styles.screenContent}
       scrollUnderlayColor={theme.colors.background.app}
     >
-      <View style={styles.header}>
-        <View style={styles.brandRow}>
-          <View style={styles.logoBadge}>
-            <Ionicons color={theme.colors.text.brand} name="restaurant-outline" size={16} />
-          </View>
-          <Text style={styles.brandLabel}>Yummy Recs</Text>
-        </View>
-        <Text variant="titleMd">Profile</Text>
-        <Text style={styles.subtitle}>Your account information</Text>
-      </View>
+      <TabBrandHeader subtitle="Your account information" title="Profile" />
 
       <View style={styles.body}>
         <Card style={styles.sectionCard}>
@@ -527,12 +528,14 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
             <OptionListRow
               iconName="chatbox-ellipses-outline"
               onPress={() => {
-                navigation.navigate('Feedback');
+                navigation.navigate("Feedback");
               }}
               rightAccessory={
                 unreadFeedbackCount > 0 ? (
                   <View style={styles.optionBadge}>
-                    <Text style={styles.optionBadgeText}>{unreadFeedbackCount}</Text>
+                    <Text style={styles.optionBadgeText}>
+                      {unreadFeedbackCount}
+                    </Text>
                   </View>
                 ) : null
               }
@@ -543,9 +546,11 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               iconName="sparkles-outline"
               isLast
               onPress={() => {
-                navigation.navigate('WhatsNew');
+                navigation.navigate("WhatsNew");
               }}
-              rightAccessory={showWhatsNewDot ? <View style={styles.optionDot} /> : null}
+              rightAccessory={
+                showWhatsNewDot ? <View style={styles.optionDot} /> : null
+              }
               subtitle="Latest updates and product improvements"
               title="What's New"
             />
@@ -556,12 +561,12 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           <Text style={styles.sectionTitle}>Account</Text>
           <OptionList>
             <OptionListRow
-              chevron={expandedPanels.account ? 'up' : 'down'}
+              chevron={expandedPanels.account ? "up" : "down"}
               connected={expandedPanels.account}
               iconName="person-circle-outline"
               isLast={!expandedPanels.account}
               onPress={() => {
-                togglePanel('account');
+                togglePanel("account");
               }}
               subtitle="Name, email, status, and user info"
               title="Account Details"
@@ -577,9 +582,16 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                         accessibilityLabel="Edit account name"
                         accessibilityRole="button"
                         onPress={handleStartEditAccountName}
-                        style={({ pressed }) => [styles.inlineIconButton, pressed ? { opacity: 0.75 } : null]}
+                        style={({ pressed }) => [
+                          styles.inlineIconButton,
+                          pressed ? { opacity: 0.75 } : null,
+                        ]}
                       >
-                        <Ionicons color={theme.colors.text.muted} name="create-outline" size={18} />
+                        <Ionicons
+                          color={theme.colors.text.muted}
+                          name="create-outline"
+                          size={18}
+                        />
                       </Pressable>
                     ) : null}
                   </View>
@@ -605,14 +617,23 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                             onPress={handleSaveAccountName}
                             style={({ pressed }) => [
                               styles.inlineIconButton,
-                              updateAccountNameMutation.isPending ? styles.inlineIconButtonDisabled : null,
+                              updateAccountNameMutation.isPending
+                                ? styles.inlineIconButtonDisabled
+                                : null,
                               pressed ? { opacity: 0.75 } : null,
                             ]}
                           >
                             {updateAccountNameMutation.isPending ? (
-                              <ActivityIndicator color={theme.colors.text.success} size="small" />
+                              <ActivityIndicator
+                                color={theme.colors.text.success}
+                                size="small"
+                              />
                             ) : (
-                              <Ionicons color={theme.colors.text.success} name="checkmark" size={18} />
+                              <Ionicons
+                                color={theme.colors.text.success}
+                                name="checkmark"
+                                size={18}
+                              />
                             )}
                           </Pressable>
                           <Pressable
@@ -622,15 +643,23 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                             onPress={handleCancelEditAccountName}
                             style={({ pressed }) => [
                               styles.inlineIconButton,
-                              updateAccountNameMutation.isPending ? styles.inlineIconButtonDisabled : null,
+                              updateAccountNameMutation.isPending
+                                ? styles.inlineIconButtonDisabled
+                                : null,
                               pressed ? { opacity: 0.75 } : null,
                             ]}
                           >
-                            <Ionicons color={theme.colors.text.danger} name="close" size={18} />
+                            <Ionicons
+                              color={theme.colors.text.danger}
+                              name="close"
+                              size={18}
+                            />
                           </Pressable>
                         </View>
                       </View>
-                      {accountNameErrorMessage ? <Text tone="danger">{accountNameErrorMessage}</Text> : null}
+                      {accountNameErrorMessage ? (
+                        <Text tone="danger">{accountNameErrorMessage}</Text>
+                      ) : null}
                     </>
                   ) : (
                     <Text style={styles.detailValue}>{accountName}</Text>
@@ -638,15 +667,15 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Email</Text>
-                  <Text style={styles.detailValue}>{user?.email ?? 'Unknown'}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>User ID</Text>
-                  <Text style={styles.detailValueMono}>{user?.id ?? 'Unknown'}</Text>
+                  <Text style={styles.detailValue}>
+                    {user?.email ?? "Unknown"}
+                  </Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Email Verified</Text>
-                  <Text style={styles.detailValue}>{user?.verified ? 'Yes' : 'No'}</Text>
+                  <Text style={styles.detailValue}>
+                    {user?.verified ? "Yes" : "No"}
+                  </Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Account Created</Text>
@@ -655,11 +684,25 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Account Status</Text>
                   <View style={styles.statusRow}>
-                    {isAdmin ? <StatusPill label="Admin" size="md" tone="brand" variant="solid" /> : null}
-                    {isSubscriber ? (
-                      <StatusPill label="Subscriber" size="md" tone="info" variant="solid" />
+                    {isAdmin ? (
+                      <StatusPill
+                        label="Admin"
+                        size="md"
+                        tone="brand"
+                        variant="solid"
+                      />
                     ) : null}
-                    {!isAdmin && !isSubscriber ? <Text tone="secondary">Free Account</Text> : null}
+                    {isSubscriber ? (
+                      <StatusPill
+                        label="Subscriber"
+                        size="md"
+                        tone="info"
+                        variant="solid"
+                      />
+                    ) : null}
+                    {!isAdmin && !isSubscriber ? (
+                      <Text tone="secondary">Free Account</Text>
+                    ) : null}
                   </View>
                 </View>
               </OptionListInlineBody>
@@ -671,11 +714,11 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           <Text style={styles.sectionTitle}>More Options</Text>
           <OptionList>
             <OptionListRow
-              chevron={expandedPanels.invite ? 'up' : 'down'}
+              chevron={expandedPanels.invite ? "up" : "down"}
               connected={expandedPanels.invite}
               iconName="ticket-outline"
               onPress={() => {
-                togglePanel('invite');
+                togglePanel("invite");
               }}
               subtitle="Share invite codes with friends"
               title="Invite Codes"
@@ -685,7 +728,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               <OptionListInlineBody withBottomDivider>
                 {isInitialUser ? (
                   <Button
-                    label={isGeneratingCodes ? 'Generating...' : 'Generate 5 More'}
+                    label={
+                      isGeneratingCodes ? "Generating..." : "Generate 5 More"
+                    }
                     loading={isGeneratingCodes}
                     onPress={() => {
                       void handleGenerateInviteCodes();
@@ -694,15 +739,14 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                   />
                 ) : null}
 
-                {inviteErrorMessage ? (
-                  <ErrorState
-                    description={inviteErrorMessage}
-                    onRetry={() => {
-                      void fetchInviteCodes();
-                    }}
-                    title="Invite codes unavailable"
-                  />
-                ) : null}
+                <PageErrorToast
+                  errorMessage={inviteErrorMessage}
+                  title="Invite codes unavailable"
+                  actionLabel="Retry"
+                  onAction={() => {
+                    void fetchInviteCodes();
+                  }}
+                />
 
                 {isInviteLoading ? (
                   <>
@@ -718,15 +762,26 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                     ) : (
                       inviteCodes.map((inviteCode) => (
                         <View key={inviteCode.id} style={styles.inviteCodeCard}>
-                          <Text style={styles.inviteCodeText}>{inviteCode.code}</Text>
+                          <Text style={styles.inviteCodeText}>
+                            {inviteCode.code}
+                          </Text>
                           <Text style={styles.inviteCodeMeta}>
-                            {inviteCode.locked ? 'Copied recently' : 'Available'}
+                            {inviteCode.locked
+                              ? "Copied recently"
+                              : "Available"}
                           </Text>
                           <Button
-                            label={activeInviteCodeId === inviteCode.id ? 'Sharing...' : 'Share Invite'}
+                            label={
+                              activeInviteCodeId === inviteCode.id
+                                ? "Sharing..."
+                                : "Share Invite"
+                            }
                             loading={activeInviteCodeId === inviteCode.id}
                             onPress={() => {
-                              void handleShareInviteCode(inviteCode.id, inviteCode.code);
+                              void handleShareInviteCode(
+                                inviteCode.id,
+                                inviteCode.code,
+                              );
                             }}
                             variant="secondary"
                           />
@@ -741,7 +796,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
             <OptionListRow
               iconName="settings-outline"
               onPress={() => {
-                navigation.navigate('Settings');
+                navigation.navigate("Settings");
               }}
               subtitle="App-level settings and controls"
               title="Settings"
@@ -752,12 +807,14 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 iconName="shield-checkmark-outline"
                 isLast
                 onPress={() => {
-                  navigation.navigate('AdminFeatures');
+                  navigation.navigate("AdminFeatures");
                 }}
                 rightAccessory={
                   (pendingMenuReviewCountQuery.data ?? 0) > 0 ? (
                     <View style={styles.optionBadge}>
-                      <Text style={styles.optionBadgeText}>{pendingMenuReviewCountQuery.data}</Text>
+                      <Text style={styles.optionBadgeText}>
+                        {pendingMenuReviewCountQuery.data}
+                      </Text>
                     </View>
                   ) : null
                 }
@@ -781,12 +838,12 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           <Text style={styles.sectionTitle}>Danger Zone</Text>
           <OptionList>
             <OptionListRow
-              chevron={expandedPanels.danger ? 'up' : 'down'}
+              chevron={expandedPanels.danger ? "up" : "down"}
               iconColor={theme.colors.text.danger}
               iconName="trash-outline"
               isLast
               onPress={() => {
-                togglePanel('danger');
+                togglePanel("danger");
               }}
               subtitle="Permanently remove your account"
               title="Delete Account"
@@ -798,13 +855,15 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               <View style={styles.dangerPanel}>
                 <Text style={styles.dangerTitle}>This action is permanent</Text>
                 <Text style={styles.dangerCopy}>
-                  Deleting your account removes all associated data and cannot be undone.
+                  Deleting your account removes all associated data and cannot
+                  be undone.
                 </Text>
               </View>
 
-              {dangerErrorMessage ? (
-                <ErrorState description={dangerErrorMessage} title="Delete account failed" />
-              ) : null}
+              <PageErrorToast
+                errorMessage={dangerErrorMessage}
+                title="Delete account failed"
+              />
 
               {!showDeleteConfirm ? (
                 <Button

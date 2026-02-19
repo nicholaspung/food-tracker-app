@@ -1,207 +1,730 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import type { ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, Skeleton } from '../components/shared';
 import {
+  BackHeaderScreenScaffold,
+  EmptyState,
+  PageErrorToast,
+  SegmentedControl,
+  Skeleton,
+  type SegmentedControlOption,
+} from '../components/shared';
+import { env } from '../config/env';
+import {
+  createDefaultRestaurantList,
   createRestaurantList,
-  deleteRestaurantList,
+  getRestaurantListItemCounts,
   listRestaurantLists,
-  updateRestaurantList,
+  type RestaurantListRecord,
 } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Screen, Text } from '../ui';
+import { Button, Card, Input, ListItem, Text } from '../ui';
 
 type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
 
+type ListTab = 'my' | 'friends' | 'public';
+type ListVisibility = RestaurantListRecord['visibility'];
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
+  { label: 'My Lists', value: 'my' },
+  { label: 'Friends', value: 'friends' },
+  { label: 'Public', value: 'public' },
+];
+
+const VISIBILITY_OPTIONS: readonly SegmentedControlOption<ListVisibility>[] = [
+  { label: 'Private', value: 'private' },
+  { label: 'Friends', value: 'friends' },
+  { label: 'Public', value: 'public' },
+];
+
+function getListCoverImageUrl(list: RestaurantListRecord): string | null {
+  if (!list.coverImage) {
+    return null;
+  }
+
+  const baseUrl = env.pocketbaseUrl.replace(/\/+$/, '');
+  const recordId = encodeURIComponent(list.id);
+  const filename = encodeURIComponent(list.coverImage);
+  return `${baseUrl}/api/files/restaurant_lists/${recordId}/${filename}?thumb=640x360`;
+}
+
+function getVisibilityIconName(visibility: ListVisibility): IoniconName {
+  if (visibility === 'friends') {
+    return 'people-outline';
+  }
+
+  if (visibility === 'public') {
+    return 'globe-outline';
+  }
+
+  return 'lock-closed-outline';
+}
+
+function resolveListUpdatedValue(list: RestaurantListRecord): unknown {
+  if (typeof list.updatedAt === 'string' && list.updatedAt.trim()) {
+    return list.updatedAt;
+  }
+
+  const legacyRecord = list as unknown as Record<string, unknown>;
+  const fallbackCandidates = [legacyRecord.updated, legacyRecord.updated_at, list.createdAt];
+
+  for (const candidate of fallbackCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate;
+    }
+
+    if (typeof candidate === 'number' || candidate instanceof Date) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function formatDateFromRawTimestamp(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) {
+    return null;
+  }
+
+  const [, yearRaw, monthRaw, dayRaw] = match;
+  if (!yearRaw || !monthRaw || !dayRaw) {
+    return null;
+  }
+
+  const year = Number.parseInt(yearRaw, 10);
+  const month = Number.parseInt(monthRaw, 10);
+  const day = Number.parseInt(dayRaw, 10);
+
+  if (
+    Number.isNaN(year) ||
+    Number.isNaN(month) ||
+    Number.isNaN(day) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return null;
+  }
+
+  const safeLocalDate = new Date(year, month - 1, day);
+  return Number.isNaN(safeLocalDate.getTime()) ? null : safeLocalDate.toLocaleDateString();
+}
+
+function getUpdatedLabel(list: RestaurantListRecord): string {
+  const primaryValue = resolveListUpdatedValue(list);
+  const fallbackValue = list.createdAt;
+  const candidates: unknown[] = [primaryValue, fallbackValue];
+
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) {
+      continue;
+    }
+
+    if (typeof candidate === 'string') {
+      const direct = formatDateFromRawTimestamp(candidate);
+      if (direct) {
+        return direct;
+      }
+    }
+
+    const parsed = formatDisplayDate(candidate, { fallback: 'Unknown' });
+    if (parsed !== 'Unknown') {
+      return parsed;
+    }
+  }
+
+  return 'recently';
+}
+
 export function ListsScreen({ navigation }: ListsScreenProps) {
   const theme = useTheme();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
 
-  const listsQuery = useQuery({
-    queryKey: ['feature', 'restaurantLists'],
-    queryFn: listRestaurantLists,
-  });
-
+  const [activeTab, setActiveTab] = useState<ListTab>('my');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<ListVisibility>('private');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
+  const hasTriedCreatingDefault = useRef(false);
+
+  const myListsQuery = useQuery({
+    queryKey: ['feature', 'restaurantLists', 'my'],
+    queryFn: () => listRestaurantLists({ scope: 'my' }),
+  });
+
+  const friendsListsQuery = useQuery({
+    queryKey: ['feature', 'restaurantLists', 'friends'],
+    queryFn: () => listRestaurantLists({ scope: 'friends' }),
+  });
+
+  const publicListsQuery = useQuery({
+    queryKey: ['feature', 'restaurantLists', 'public'],
+    queryFn: () => listRestaurantLists({ scope: 'public' }),
+  });
+
+  useEffect(() => {
+    hasTriedCreatingDefault.current = false;
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || hasTriedCreatingDefault.current || myListsQuery.isLoading || myListsQuery.isError) {
+      return;
+    }
+
+    if (isCreatingDefaultList) {
+      return;
+    }
+
+    const hasDefault = (myListsQuery.data ?? []).some((list) => list.isDefault);
+    if (hasDefault) {
+      return;
+    }
+
+    hasTriedCreatingDefault.current = true;
+    setIsCreatingDefaultList(true);
+
+    void (async () => {
+      try {
+        await queueWrite('list.default.create');
+        await createDefaultRestaurantList();
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not prepare your Saved list.';
+        setErrorMessage(message);
+        hasTriedCreatingDefault.current = false;
+      } finally {
+        setIsCreatingDefaultList(false);
+      }
+    })();
+  }, [
+    user?.id,
+    isCreatingDefaultList,
+    myListsQuery.data,
+    myListsQuery.isError,
+    myListsQuery.isLoading,
+    queryClient,
+    queueWrite,
+  ]);
+
+  const activeQuery =
+    activeTab === 'my' ? myListsQuery : activeTab === 'friends' ? friendsListsQuery : publicListsQuery;
+
+  const visibleLists = useMemo(() => {
+    if (activeTab === 'friends') {
+      return friendsListsQuery.data ?? [];
+    }
+
+    if (activeTab === 'public') {
+      return publicListsQuery.data ?? [];
+    }
+
+    return myListsQuery.data ?? [];
+  }, [activeTab, friendsListsQuery.data, myListsQuery.data, publicListsQuery.data]);
+
+  const visibleListIds = useMemo(() => visibleLists.map((list) => list.id), [visibleLists]);
+
+  const listItemCountsQuery = useQuery({
+    queryKey: ['feature', 'restaurantListItemCounts', activeTab, ...visibleListIds],
+    queryFn: () => getRestaurantListItemCounts(visibleListIds),
+    enabled: visibleListIds.length > 0 && !activeQuery.isLoading && !activeQuery.isError,
+  });
+
+  const filteredLists = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return visibleLists;
+    }
+
+    return visibleLists.filter((list) => {
+      const ownerName = list.ownerName?.toLowerCase() ?? '';
+      return (
+        list.name.toLowerCase().includes(normalizedQuery) ||
+        (list.description?.toLowerCase().includes(normalizedQuery) ?? false) ||
+        ownerName.includes(normalizedQuery)
+      );
+    });
+  }, [searchQuery, visibleLists]);
+
+  const tabOptions = useMemo<readonly SegmentedControlOption<ListTab>[]>(
+    () =>
+      TAB_DEFINITIONS.map((tab) => ({
+        label: tab.label,
+        value: tab.value,
+        badgeCount:
+          tab.value === 'my'
+            ? (myListsQuery.data ?? []).length
+            : tab.value === 'friends'
+              ? (friendsListsQuery.data ?? []).length
+              : (publicListsQuery.data ?? []).length,
+      })),
+    [friendsListsQuery.data, myListsQuery.data, publicListsQuery.data],
+  );
+
+  const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);
+  const hasSearch = searchQuery.trim().length > 0;
 
   const styles = StyleSheet.create({
-    container: {
+    body: {
       gap: theme.spacing.md,
     },
-    row: {
+    headerActionButton: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.surface,
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: theme.spacing.xxs,
+      justifyContent: 'center',
+      minHeight: 32,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: 4,
+    },
+    headerActionButtonPressed: {
+      backgroundColor: theme.colors.background.muted,
+    },
+    headerActionLabel: {
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    searchRow: {
       flexDirection: 'row',
       gap: theme.spacing.sm,
     },
-    rowAction: {
+    searchField: {
       flex: 1,
+    },
+    clearSearchButton: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.surface,
+      borderColor: theme.colors.border.default,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      justifyContent: 'center',
+      minHeight: theme.sizes.secondaryButtonHeight,
+      paddingHorizontal: theme.spacing.md,
+    },
+    clearSearchButtonPressed: {
+      backgroundColor: theme.colors.background.muted,
+    },
+    clearSearchLabel: {
+      color: theme.colors.text.secondary,
+      fontSize: 14,
+      fontWeight: '600',
+      lineHeight: 18,
+    },
+    formCard: {
+      borderColor: theme.colors.border.info,
+    },
+    formActions: {
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+      marginTop: theme.spacing.xs,
+    },
+    formAction: {
+      flex: 1,
+    },
+    listsWrap: {
+      gap: theme.spacing.sm,
+    },
+    skeletonWrap: {
+      gap: theme.spacing.sm,
+    },
+    listCard: {
+      gap: 0,
+      overflow: 'hidden',
+      padding: 0,
+    },
+    defaultListCard: {
+      borderColor: theme.colors.status.warningBorder,
+      backgroundColor: theme.colors.status.warningBg,
+    },
+    coverImageWrap: {
+      backgroundColor: theme.colors.background.surface,
+      height: 130,
+      width: '100%',
+    },
+    coverImage: {
+      height: '100%',
+      width: '100%',
+    },
+    cardListItem: {
+      backgroundColor: 'transparent',
+      borderColor: 'transparent',
+      borderRadius: 0,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+    },
+    cardMetaWrap: {
+      gap: theme.spacing.xxs,
+    },
+    cardDescription: {
+      color: theme.colors.text.secondary,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    cardMetaRow: {
+      alignItems: 'center',
+      columnGap: theme.spacing.xxs,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: 2,
+    },
+    cardMetaText: {
+      color: theme.colors.text.muted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    ownerMeta: {
+      alignItems: 'center',
+      columnGap: 4,
+      flexDirection: 'row',
+      maxWidth: '75%',
+    },
+    trailingIcons: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xxs,
+    },
+    emptyIconWrap: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.app,
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      height: 52,
+      justifyContent: 'center',
+      width: 52,
     },
   });
 
-  const submitLabel = useMemo(() => (editingListId ? 'Save List' : 'Create List'), [editingListId]);
-
-  const resetForm = () => {
+  const closeCreateForm = () => {
+    setShowCreateForm(false);
     setName('');
     setDescription('');
-    setEditingListId(null);
+    setVisibility('private');
   };
 
-  const saveList = async () => {
-    if (!name.trim()) {
+  const openCreateForm = () => {
+    setErrorMessage(null);
+    setName('');
+    setDescription('');
+    setVisibility('private');
+    setShowCreateForm(true);
+  };
+
+  const handleTabChange = (tab: ListTab) => {
+    setActiveTab(tab);
+    setSearchQuery('');
+    if (tab !== 'my') {
+      closeCreateForm();
+    }
+  };
+
+  const handleCreateList = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       setErrorMessage('List name is required.');
       return;
     }
 
     setErrorMessage(null);
+    setIsSubmitting(true);
 
     try {
-      if (editingListId) {
-        await queueWrite('list.update');
-        await updateRestaurantList(editingListId, {
-          name,
-          description,
-        });
-      } else {
-        await queueWrite('list.create');
-        await createRestaurantList({
-          name,
-          description,
-        });
-      }
-
-      resetForm();
+      await queueWrite('list.create');
+      await createRestaurantList({
+        name: trimmedName,
+        description,
+        visibility,
+      });
+      closeCreateForm();
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save list.';
+      const message = error instanceof Error ? error.message : 'Could not create list.';
       setErrorMessage(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const startEdit = (listId: string, listName: string, listDescription?: string) => {
-    setEditingListId(listId);
-    setName(listName);
-    setDescription(listDescription ?? '');
+  const renderEmptyState = () => {
+    if (activeTab === 'my') {
+      return (
+        <EmptyState
+          actionLabel="Create Your First List"
+          description="Create your first list to organize favorite restaurants."
+          icon={
+            <View style={styles.emptyIconWrap}>
+              <Ionicons color={theme.colors.text.muted} name="add-outline" size={26} />
+            </View>
+          }
+          onAction={openCreateForm}
+          title="No lists yet"
+        />
+      );
+    }
+
+    if (activeTab === 'friends') {
+      return (
+        <EmptyState
+          description="Add friends to see the lists they share."
+          icon={
+            <View style={styles.emptyIconWrap}>
+              <Ionicons color={theme.colors.text.muted} name="people-outline" size={24} />
+            </View>
+          }
+          title="No friends' lists"
+        />
+      );
+    }
+
+    return (
+      <EmptyState
+        description="Public lists from other users will appear here."
+        icon={
+          <View style={styles.emptyIconWrap}>
+            <Ionicons color={theme.colors.text.muted} name="globe-outline" size={24} />
+          </View>
+        }
+        title="No public lists"
+      />
+    );
   };
 
-  const removeList = async (listId: string) => {
-    setErrorMessage(null);
-
-    try {
-      await queueWrite('list.delete');
-      await deleteRestaurantList(listId);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
-      if (editingListId === listId) {
-        resetForm();
+  const renderNoSearchResults = () => (
+    <EmptyState
+      actionLabel="Clear Search"
+      description="Try a different search term."
+      icon={
+        <View style={styles.emptyIconWrap}>
+          <Ionicons color={theme.colors.text.muted} name="search-outline" size={24} />
+        </View>
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not delete list.';
-      setErrorMessage(message);
-    }
+      onAction={() => {
+        setSearchQuery('');
+      }}
+      title="No matching lists"
+    />
+  );
+
+  const renderListCard = (list: RestaurantListRecord) => {
+    const itemCount = listItemCountsQuery.data?.[list.id] ?? 0;
+    const coverImage = getListCoverImageUrl(list);
+    const updatedLabel = getUpdatedLabel(list);
+
+    const visibilityIconName = getVisibilityIconName(list.visibility);
+    const visibilityIconColor =
+      list.visibility === 'friends'
+        ? theme.colors.text.info
+        : list.visibility === 'public'
+          ? theme.colors.text.success
+          : theme.colors.text.muted;
+
+    return (
+      <Card key={list.id} style={[styles.listCard, list.isDefault ? styles.defaultListCard : null]}>
+        {coverImage ? (
+          <View style={styles.coverImageWrap}>
+            <Image source={{ uri: coverImage }} style={styles.coverImage} />
+          </View>
+        ) : null}
+        <ListItem
+          description={
+            <View style={styles.cardMetaWrap}>
+              {list.description ? <Text style={styles.cardDescription}>{list.description}</Text> : null}
+              <View style={styles.cardMetaRow}>
+                <Text style={styles.cardMetaText}>
+                  {itemCount} {itemCount === 1 ? 'restaurant' : 'restaurants'}
+                </Text>
+                {activeTab !== 'my' ? (
+                  <View style={styles.ownerMeta}>
+                    <Text style={styles.cardMetaText}>•</Text>
+                    <Ionicons color={theme.colors.text.muted} name="person-outline" size={13} />
+                    <Text numberOfLines={1} style={styles.cardMetaText}>
+                      {list.ownerName ?? 'Unknown'}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={styles.cardMetaText}>Updated {updatedLabel}</Text>
+            </View>
+          }
+          leading={list.isDefault ? <Ionicons color={theme.colors.text.warning} name="star" size={16} /> : undefined}
+          onPress={() => {
+            navigation.navigate('ListDetail', { listId: list.id });
+          }}
+          style={styles.cardListItem}
+          testID={`list-card-${list.id}`}
+          title={list.name}
+          trailing={
+            <View style={styles.trailingIcons}>
+              <Ionicons color={visibilityIconColor} name={visibilityIconName} size={16} />
+              <Ionicons color={theme.colors.text.muted} name="chevron-forward" size={16} />
+            </View>
+          }
+        />
+      </Card>
+    );
   };
 
   return (
-    <Screen scroll>
-      <View style={styles.container}>
-        <Text variant="titleMd">Lists</Text>
+    <BackHeaderScreenScaffold
+      bodyStyle={styles.body}
+      keyboardAware
+      onBackPress={() => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+          return;
+        }
 
-        <Card>
-          <Text variant="label">List CRUD</Text>
-          <Input label="List name" onChangeText={setName} placeholder="Favorites" value={name} />
+        navigation.navigate('Misc');
+      }}
+      rightAccessory={
+        activeTab === 'my' ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={openCreateForm}
+            style={({ pressed }) => [styles.headerActionButton, pressed && styles.headerActionButtonPressed]}
+            testID="create-list-button"
+          >
+            <Ionicons color={theme.colors.text.primary} name="add-outline" size={14} />
+            <Text style={styles.headerActionLabel} variant="label">
+              New List
+            </Text>
+          </Pressable>
+        ) : undefined
+      }
+      subtitle="Create, organize, and discover restaurant lists."
+      title="Lists"
+    >
+      <PageErrorToast errorMessage={errorMessage} title="List operation failed" />
+
+      <SegmentedControl onChange={handleTabChange} options={tabOptions} value={activeTab} />
+
+      <View style={styles.searchRow}>
+        <Input
+          containerStyle={styles.searchField}
+          onChangeText={setSearchQuery}
+          placeholder="Search lists..."
+          value={searchQuery}
+        />
+        {hasSearch ? (
+          <Pressable
+            accessibilityLabel="Clear search"
+            accessibilityRole="button"
+            onPress={() => {
+              setSearchQuery('');
+            }}
+            style={({ pressed }) => [styles.clearSearchButton, pressed && styles.clearSearchButtonPressed]}
+          >
+            <Text style={styles.clearSearchLabel}>Clear</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {showCreateForm && activeTab === 'my' ? (
+        <Card style={styles.formCard} tone="muted">
+          <Text variant="titleMd">Create New List</Text>
+          <Input
+            autoCapitalize="words"
+            label="List name"
+            onChangeText={setName}
+            placeholder="Best pizza spots"
+            value={name}
+          />
           <Input
             label="Description"
+            multiline
             onChangeText={setDescription}
             placeholder="Optional description"
             value={description}
           />
+          <Text variant="label">Visibility</Text>
+          <SegmentedControl
+            fill
+            onChange={setVisibility}
+            options={VISIBILITY_OPTIONS}
+            value={visibility}
+          />
 
-          {errorMessage ? <ErrorState description={errorMessage} title="List operation failed" /> : null}
-
-          <View style={styles.row}>
+          <View style={styles.formActions}>
             <Button
-              disabled={!name.trim()}
-              label={submitLabel}
-              onPress={() => {
-                void saveList();
-              }}
-              style={styles.rowAction}
+              label="Cancel"
+              onPress={closeCreateForm}
+              style={styles.formAction}
+              variant="secondary"
             />
-            {editingListId ? (
-              <Button
-                label="Cancel"
-                onPress={resetForm}
-                style={styles.rowAction}
-                variant="secondary"
-              />
-            ) : null}
+            <Button
+              disabled={!name.trim() || isSubmitting}
+              label={isSubmitting ? 'Creating...' : 'Create List'}
+              onPress={() => {
+                void handleCreateList();
+              }}
+              style={styles.formAction}
+            />
           </View>
         </Card>
+      ) : null}
 
-        {listsQuery.isLoading ? (
-          <View>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </View>
-        ) : null}
+      <PageErrorToast
+        actionLabel="Retry"
+        errorMessage={activeQuery.isError ? 'Could not load lists.' : null}
+        onAction={() => {
+          void activeQuery.refetch();
+        }}
+        title="Lists unavailable"
+      />
 
-        {listsQuery.isError ? (
-          <ErrorState
-            description="Could not load lists."
-            onRetry={() => {
-              void listsQuery.refetch();
-            }}
-            title="Lists unavailable"
-          />
-        ) : null}
+      <PageErrorToast
+        actionLabel="Retry"
+        errorMessage={listItemCountsQuery.isError ? 'Could not load list item counts.' : null}
+        onAction={() => {
+          void listItemCountsQuery.refetch();
+        }}
+        title="List counts unavailable"
+      />
 
-        {!listsQuery.isLoading && !listsQuery.isError && (listsQuery.data?.length ?? 0) === 0 ? (
-          <EmptyState description="Create a list to organize restaurants." title="No lists yet" />
-        ) : null}
+      {isLoading ? (
+        <View style={styles.skeletonWrap}>
+          <Skeleton height={136} />
+          <Skeleton height={136} />
+          <Skeleton height={136} />
+        </View>
+      ) : null}
 
-        {!listsQuery.isLoading && !listsQuery.isError
-          ? (listsQuery.data ?? []).map((list) => (
-              <Card key={list.id} tone="muted">
-                <ListItem
-                  description={`${list.restaurantIds.length} saved restaurant${list.restaurantIds.length === 1 ? '' : 's'}`}
-                  title={list.name}
-                  trailing={<Text tone="muted">Updated {new Date(list.updatedAt).toLocaleDateString()}</Text>}
-                />
-                <View style={styles.row}>
-                  <Button
-                    label="Open"
-                    onPress={() => {
-                      navigation.navigate('ListDetail', { listId: list.id });
-                    }}
-                    style={styles.rowAction}
-                    variant="secondary"
-                  />
-                  <Button
-                    label="Edit"
-                    onPress={() => {
-                      startEdit(list.id, list.name, list.description);
-                    }}
-                    style={styles.rowAction}
-                    variant="secondary"
-                  />
-                  <Button
-                    label="Delete"
-                    onPress={() => {
-                      void removeList(list.id);
-                    }}
-                    style={styles.rowAction}
-                    variant="secondary"
-                  />
-                </View>
-              </Card>
-            ))
-          : null}
-      </View>
-    </Screen>
+      {!isLoading && !activeQuery.isError
+        ? filteredLists.length === 0
+          ? hasSearch
+            ? renderNoSearchResults()
+            : renderEmptyState()
+          : (
+              <View style={styles.listsWrap}>
+                {filteredLists.map((list) => renderListCard(list))}
+              </View>
+            )
+        : null}
+    </BackHeaderScreenScaffold>
   );
 }

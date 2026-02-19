@@ -56,6 +56,13 @@ class InMemoryQueueStore implements MutationQueueStore {
     return readyRows.map(cloneMutation);
   }
 
+  async getQueuedMutations(limit: number): Promise<QueuedMutation[]> {
+    return [...this.sharedState.rows.values()]
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, Math.max(1, limit))
+      .map(cloneMutation);
+  }
+
   async markInFlight(id: string, at: number): Promise<void> {
     const mutation = this.sharedState.rows.get(id);
     if (!mutation) {

@@ -9,10 +9,11 @@ type ListItemTone = 'default' | 'muted';
 
 export interface ListItemProps {
   title: string;
-  description?: string;
+  description?: ReactNode;
   leading?: ReactNode;
   trailing?: ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   disabled?: boolean;
   tone?: ListItemTone;
   style?: StyleProp<ViewStyle>;
@@ -26,6 +27,7 @@ export function ListItem({
   leading,
   trailing,
   onPress,
+  onLongPress,
   disabled = false,
   tone = 'default',
   style,
@@ -63,7 +65,7 @@ export function ListItem({
       {leading ? <View>{leading}</View> : null}
       <View style={[styles.content, contentStyle]}>
         <Text variant="label">{title}</Text>
-        {description ? <Text tone="secondary">{description}</Text> : null}
+        {typeof description === 'string' ? <Text tone="secondary">{description}</Text> : description ?? null}
       </View>
       {trailing ? <View>{trailing}</View> : null}
     </>
@@ -77,6 +79,7 @@ export function ListItem({
     <Pressable
       accessibilityRole="button"
       disabled={disabled}
+      onLongPress={onLongPress}
       onPress={onPress}
       style={({ pressed }) => [
         styles.item,

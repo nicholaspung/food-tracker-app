@@ -71,6 +71,13 @@ export interface Theme {
       infoBorder: string;
       infoText: string;
     };
+    rating: {
+      one: string;
+      two: string;
+      three: string;
+      four: string;
+      five: string;
+    };
   };
 }
 
@@ -133,6 +140,13 @@ function createTheme(name: ThemeName, palette: PaletteTokens): Theme {
         infoBg: palette.infoSurface,
         infoBorder: palette.infoBorder,
         infoText: palette.infoText,
+      },
+      rating: {
+        one: palette.ratingOne,
+        two: palette.ratingTwo,
+        three: palette.ratingThree,
+        four: palette.ratingFour,
+        five: palette.ratingFive,
       },
     },
   };

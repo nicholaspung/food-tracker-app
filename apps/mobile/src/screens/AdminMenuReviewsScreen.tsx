@@ -8,7 +8,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   BackHeaderScreenScaffold,
   EmptyState,
-  ErrorState,
   FilterChipGroup,
   RoleBadge,
   Skeleton,
@@ -20,6 +19,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Card, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type AdminMenuReviewsScreenProps = NativeStackScreenProps<RootStackParamList, 'AdminMenuReviews'>;
 type MenuReviewFilter = 'pending' | 'reviewed' | 'dismissed' | 'all';
@@ -265,7 +265,7 @@ export function AdminMenuReviewsScreen({ navigation }: AdminMenuReviewsScreenPro
         />
       ) : (
         <>
-          <Card tone="muted">
+          <Card>
             <Text variant="label">Menu Review Requests</Text>
             <Text style={styles.summaryValue}>{menuReviewsQuery.data?.length ?? 0}</Text>
             <Text tone="secondary">
@@ -303,15 +303,14 @@ export function AdminMenuReviewsScreen({ navigation }: AdminMenuReviewsScreenPro
             </>
           ) : null}
 
-          {menuReviewsQuery.isError ? (
-            <ErrorState
-              description="Could not load menu review requests."
-              onRetry={() => {
-                void menuReviewsQuery.refetch();
-              }}
-              title="Menu reviews unavailable"
-            />
-          ) : null}
+          <PageErrorToast
+            errorMessage={menuReviewsQuery.isError ? 'Could not load menu review requests.' : null}
+            title="Menu reviews unavailable"
+            actionLabel="Retry"
+            onAction={() => {
+              void menuReviewsQuery.refetch();
+            }}
+          />
 
           {!menuReviewsQuery.isLoading && !menuReviewsQuery.isError && (menuReviewsQuery.data?.length ?? 0) === 0 ? (
             <EmptyState

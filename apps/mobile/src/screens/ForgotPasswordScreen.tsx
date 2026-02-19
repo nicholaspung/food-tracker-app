@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { ErrorState, FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormScaffold, LoadingOverlay } from '../components/shared';
 import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Card, Input, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
@@ -49,7 +50,7 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
           value={email}
         />
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Request failed" /> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Request failed" />
 
         {successMessage ? (
           <Card tone="success">

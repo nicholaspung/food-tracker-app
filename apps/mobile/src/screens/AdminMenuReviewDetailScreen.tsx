@@ -2,16 +2,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
-  ErrorState,
   FeatureDetailScreenScaffold,
   RoleBadge,
   Skeleton,
   StatusPill,
+  VisibilityBadge,
+  VisibilityOptionSelector,
+  type VisibilityOptionValue,
 } from '../components/shared';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { getErrorMessage } from '../lib/errorUtils';
@@ -20,6 +22,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type AdminMenuReviewDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'AdminMenuReviewDetail'>;
 type ReviewRequestStatus = 'reviewed' | 'dismissed';
@@ -50,7 +53,7 @@ interface MenuItemRecord {
   id: string;
   name: string;
   description?: string;
-  visibility?: 'private' | 'friends' | 'public';
+  visibility?: VisibilityOptionValue;
   isFromOCR?: boolean;
   created: string;
   updated: string;
@@ -60,26 +63,15 @@ interface EditingMenuItem {
   id: string;
   name: string;
   description: string;
+  visibility: VisibilityOptionValue;
 }
 
-function resolveMenuItemSourceLabel(menuItem: MenuItemRecord): string {
-  if (menuItem.isFromOCR) {
-    return 'From OCR';
+function normalizeMenuItemVisibility(value?: string): VisibilityOptionValue {
+  if (value === 'private' || value === 'public') {
+    return value;
   }
 
-  if (menuItem.visibility === 'public') {
-    return 'Public';
-  }
-
-  if (menuItem.visibility === 'friends') {
-    return 'Friends';
-  }
-
-  if (menuItem.visibility === 'private') {
-    return 'Private';
-  }
-
-  return 'Manual';
+  return 'friends';
 }
 
 function truncateHeaderText(value: string, maxLength = 36): string {
@@ -147,10 +139,16 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
   }, [reviewRequestQuery.data]);
 
   const updateMenuItemMutation = useMutation({
-    mutationFn: async (payload: { itemId: string; name: string; description: string }): Promise<MenuItemRecord> => {
+    mutationFn: async (payload: {
+      itemId: string;
+      name: string;
+      description: string;
+      visibility: VisibilityOptionValue;
+    }): Promise<MenuItemRecord> => {
       return pb.collection('menu_items').update<MenuItemRecord>(payload.itemId, {
         name: payload.name.trim(),
         description: payload.description.trim(),
+        visibility: payload.visibility,
       });
     },
     onSuccess: async () => {
@@ -232,6 +230,7 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
       itemId: editingItem.id,
       name: editingItem.name,
       description: editingItem.description,
+      visibility: editingItem.visibility,
     });
   };
 
@@ -374,15 +373,23 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
       lineHeight: 18,
     },
     menuItemMeta: {
-      alignItems: 'center',
+      alignItems: 'flex-start',
       flexDirection: 'row',
       gap: theme.spacing.xs,
       justifyContent: 'space-between',
     },
-    menuItemMetaLabel: {
-      color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
+    menuItemMetaText: {
+      flex: 1,
+      gap: theme.spacing.xxs,
+    },
+    menuItemBadgeRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xs,
+    },
+    visibilitySection: {
+      gap: theme.spacing.xxs,
     },
     rowActions: {
       flexDirection: 'row',
@@ -390,6 +397,23 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
     },
     rowActionButton: {
       flex: 1,
+    },
+    compactActions: {
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+    },
+    compactActionButton: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.surface,
+      borderColor: theme.colors.border.default,
+      borderRadius: theme.radii.sm,
+      borderWidth: 1,
+      height: 30,
+      justifyContent: 'center',
+      width: 30,
+    },
+    compactActionDanger: {
+      borderColor: theme.colors.border.danger,
     },
     destructiveButton: {
       backgroundColor: theme.colors.text.danger,
@@ -448,15 +472,14 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
         </>
       ) : null}
 
-      {isAdmin && reviewRequestQuery.isError ? (
-        <ErrorState
-          description="Could not load this review request."
-          onRetry={() => {
-            void reviewRequestQuery.refetch();
-          }}
-          title="Review unavailable"
-        />
-      ) : null}
+      <PageErrorToast
+        errorMessage={isAdmin && reviewRequestQuery.isError ? 'Could not load this review request.' : null}
+        title="Review unavailable"
+        actionLabel="Retry"
+        onAction={() => {
+          void reviewRequestQuery.refetch();
+        }}
+      />
 
       {isAdmin && !reviewRequestQuery.isLoading && !reviewRequestQuery.isError && !reviewRequestQuery.data ? (
         <EmptyState
@@ -471,7 +494,7 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
 
       {isAdmin && reviewRequestQuery.data ? (
         <>
-          <Card style={styles.reviewSummaryCard} tone="muted">
+          <Card style={styles.reviewSummaryCard}>
             <View style={styles.reviewSummaryHeader}>
               <View style={styles.reviewSummaryHeaderText}>
                 <Text style={styles.reviewSummaryLabel}>Review Details</Text>
@@ -514,12 +537,10 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
             )}
           </Card>
 
-          {actionErrorMessage ? (
-            <ErrorState
-              description={actionErrorMessage}
-              title="Admin action failed"
-            />
-          ) : null}
+          <PageErrorToast
+            errorMessage={actionErrorMessage}
+            title="Admin action failed"
+          />
 
           <Card style={styles.menuItemsSection}>
             <View style={styles.menuItemsSectionHeader}>
@@ -536,15 +557,14 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
               </>
             ) : null}
 
-            {menuItemsQuery.isError ? (
-              <ErrorState
-                description="Could not load menu items for this restaurant."
-                onRetry={() => {
-                  void menuItemsQuery.refetch();
-                }}
-                title="Menu items unavailable"
-              />
-            ) : null}
+            <PageErrorToast
+              errorMessage={menuItemsQuery.isError ? 'Could not load menu items for this restaurant.' : null}
+              title="Menu items unavailable"
+              actionLabel="Retry"
+              onAction={() => {
+                void menuItemsQuery.refetch();
+              }}
+            />
 
             {!menuItemsQuery.isLoading && !menuItemsQuery.isError && (menuItemsQuery.data?.length ?? 0) === 0 ? (
               <EmptyState
@@ -586,6 +606,19 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
                             }}
                             value={editingItem.description}
                           />
+                          <View style={styles.visibilitySection}>
+                            <Text variant="label">Visibility</Text>
+                            <VisibilityOptionSelector
+                              communityLabel="Public"
+                              onChange={(value) => {
+                                setEditingItem({
+                                  ...editingItem,
+                                  visibility: value,
+                                });
+                              }}
+                              value={editingItem.visibility}
+                            />
+                          </View>
                           <View style={styles.rowActions}>
                             <Button
                               disabled={updateMenuItemMutation.isPending}
@@ -607,41 +640,72 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
                       ) : (
                         <>
                           <View style={styles.menuItemMeta}>
-                            <Text style={styles.menuItemTitle}>{menuItem.name}</Text>
-                            <Text style={styles.menuItemMetaLabel}>{resolveMenuItemSourceLabel(menuItem)}</Text>
+                            <View style={styles.menuItemMetaText}>
+                              <Text style={styles.menuItemTitle}>{menuItem.name}</Text>
+                              <View style={styles.menuItemBadgeRow}>
+                                <VisibilityBadge
+                                  communityLabel="Public"
+                                  value={normalizeMenuItemVisibility(menuItem.visibility)}
+                                />
+                                <StatusPill
+                                  label={menuItem.isFromOCR ? 'OCR' : 'Manual'}
+                                  tone={menuItem.isFromOCR ? 'info' : 'muted'}
+                                  variant="soft"
+                                />
+                              </View>
+                            </View>
+                            <View style={styles.compactActions}>
+                              <Pressable
+                                accessibilityLabel={`Edit ${menuItem.name}`}
+                                disabled={deleteMenuItemMutation.isPending}
+                                onPress={() => {
+                                  setPendingDeleteItemId(null);
+                                  setEditingItem({
+                                    id: menuItem.id,
+                                    name: menuItem.name,
+                                    description: menuItem.description ?? '',
+                                    visibility: normalizeMenuItemVisibility(menuItem.visibility),
+                                  });
+                                }}
+                                style={({ pressed }) => [
+                                  styles.compactActionButton,
+                                  pressed && !deleteMenuItemMutation.isPending ? { opacity: 0.75 } : null,
+                                ]}
+                              >
+                                <Ionicons color={theme.colors.text.secondary} name="create-outline" size={16} />
+                              </Pressable>
+                              <Pressable
+                                accessibilityLabel={
+                                  isConfirmingDelete
+                                    ? `Cancel delete ${menuItem.name}`
+                                    : `Delete ${menuItem.name}`
+                                }
+                                disabled={deleteMenuItemMutation.isPending}
+                                onPress={() => {
+                                  setEditingItem(null);
+                                  setPendingDeleteItemId(isConfirmingDelete ? null : menuItem.id);
+                                }}
+                                style={({ pressed }) => [
+                                  styles.compactActionButton,
+                                  !isConfirmingDelete ? styles.compactActionDanger : null,
+                                  pressed && !deleteMenuItemMutation.isPending ? { opacity: 0.75 } : null,
+                                ]}
+                              >
+                                <Ionicons
+                                  color={
+                                    isConfirmingDelete
+                                      ? theme.colors.text.secondary
+                                      : theme.colors.text.danger
+                                  }
+                                  name={isConfirmingDelete ? 'close-outline' : 'trash-outline'}
+                                  size={16}
+                                />
+                              </Pressable>
+                            </View>
                           </View>
                           {menuItem.description?.trim() ? (
                             <Text style={styles.menuItemDescription}>{menuItem.description.trim()}</Text>
                           ) : null}
-                          <View style={styles.rowActions}>
-                            <Button
-                              disabled={deleteMenuItemMutation.isPending}
-                              label="Edit"
-                              onPress={() => {
-                                setPendingDeleteItemId(null);
-                                setEditingItem({
-                                  id: menuItem.id,
-                                  name: menuItem.name,
-                                  description: menuItem.description ?? '',
-                                });
-                              }}
-                              style={styles.rowActionButton}
-                              variant="secondary"
-                            />
-                            <Button
-                              disabled={deleteMenuItemMutation.isPending}
-                              label={isConfirmingDelete ? 'Cancel Delete' : 'Delete'}
-                              onPress={() => {
-                                setEditingItem(null);
-                                setPendingDeleteItemId(isConfirmingDelete ? null : menuItem.id);
-                              }}
-                              style={[
-                                styles.rowActionButton,
-                                !isConfirmingDelete && styles.destructiveButton,
-                              ]}
-                              variant={isConfirmingDelete ? 'secondary' : 'primary'}
-                            />
-                          </View>
                         </>
                       )}
 

@@ -1,29 +1,53 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, OfflineBanner, Skeleton, TabRootScreenScaffold } from '../components/shared';
-import { listQuickTracks, listVisits, deleteQuickTrack } from '../features';
+import { EmptyState, PhotoViewerModal, Skeleton, TabRootScreenScaffold } from '../components/shared';
+import { deleteQuickTrack, deleteVisit, listQuickTracks, listVisits, type QuickTrackRecord, type VisitRecord } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { pb } from '../lib/pocketbase';
+import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useSync } from '../providers/SyncProvider';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type FeedMode = 'mine' | 'friends';
 type TypeFilter = 'all' | 'visits' | 'quick-track';
 
-interface FeedItem {
+interface VisitPhotoRecord {
   id: string;
-  createdAt: string;
-  title: string;
-  description: string;
-  source: 'visit' | 'quick-track';
-  quickTrackId?: string;
+  food_item?: string;
+  photo: string;
+  collectionId?: string;
+  collectionName?: string;
+  created: string;
 }
+
+interface BaseFeedItem {
+  id: string;
+  eventAt: string;
+  searchText: string;
+  isFriend: boolean;
+  friendName?: string;
+  source: 'visit' | 'quick-track';
+}
+
+interface VisitFeedItem extends BaseFeedItem {
+  source: 'visit';
+  visit: VisitRecord;
+}
+
+interface QuickTrackFeedItem extends BaseFeedItem {
+  source: 'quick-track';
+  quickTrack: QuickTrackRecord;
+}
+
+type FeedItem = VisitFeedItem | QuickTrackFeedItem;
+type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
 
 interface GroupedDay {
   dayKey: string;
@@ -69,18 +93,23 @@ function formatCount(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function formatCategoryLabel(category: string): string {
+  return category.replace(/_/g, ' ');
+}
+
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
-  const { isOnline } = useConnectivity();
-  const { failedCount, isSyncing, queueDepth, replayNow, retryAllFailed } = useSync();
   const [feedMode, setFeedMode] = useState<FeedMode>('mine');
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
 
   const visitsQuery = useQuery({
     queryKey: ['feature', 'visits'],
@@ -92,40 +121,78 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     queryFn: listQuickTracks,
   });
 
+  const visitPhotosQuery = useQuery({
+    queryKey: ['feature', 'visitPhotos'],
+    queryFn: async () => pb.collection('visit_photos').getFullList<VisitPhotoRecord>({ sort: '-created' }),
+  });
+
   const isLoading = visitsQuery.isLoading || quickTracksQuery.isLoading;
   const hasError = visitsQuery.isError || quickTracksQuery.isError;
+  const currentUserId = pb.authStore.record?.id;
+
+  const photosByFoodItem = useMemo(() => {
+    const map = new Map<string, VisitPhotoRecord[]>();
+    for (const photo of visitPhotosQuery.data ?? []) {
+      if (!photo.food_item) {
+        continue;
+      }
+
+      const existing = map.get(photo.food_item) ?? [];
+      existing.push(photo);
+      map.set(photo.food_item, existing);
+    }
+    return map;
+  }, [visitPhotosQuery.data]);
 
   const combinedFeed = useMemo<FeedItem[]>(() => {
     const visitFeed: FeedItem[] = (visitsQuery.data ?? []).map((visit) => ({
+      isFriend: !!visit.userId && !!currentUserId && visit.userId !== currentUserId,
+      friendName: visit.userName,
       id: `visit_${visit.id}`,
-      createdAt: visit.createdAt,
-      title: visit.restaurantName,
-      description: `${visit.items.length} item${visit.items.length === 1 ? '' : 's'} tracked`,
+      eventAt: visit.visitedAt || visit.createdAt,
+      searchText: [
+        visit.restaurantName,
+        visit.restaurantLocation ?? '',
+        visit.restaurantCuisineType ?? '',
+        visit.items.map((item) => `${item.name} ${item.notes ?? ''}`).join(' '),
+      ]
+        .join(' ')
+        .toLowerCase(),
       source: 'visit',
+      visit,
     }));
 
     const quickTrackFeed: FeedItem[] = (quickTracksQuery.data ?? []).map((quickTrack) => ({
+      isFriend: !!quickTrack.userId && !!currentUserId && quickTrack.userId !== currentUserId,
+      friendName: quickTrack.userName,
       id: `quick_track_${quickTrack.id}`,
-      createdAt: quickTrack.createdAt,
-      title: `${quickTrack.itemName} (${quickTrack.rating}/5)`,
-      description: `${quickTrack.restaurantName}${quickTrack.notes ? ` - ${quickTrack.notes}` : ''}`,
+      eventAt: quickTrack.itemDate || quickTrack.createdAt,
+      searchText: [
+        quickTrack.itemName,
+        quickTrack.restaurantName,
+        quickTrack.locationText ?? '',
+        quickTrack.itemCategory ?? '',
+        quickTrack.notes ?? '',
+      ]
+        .join(' ')
+        .toLowerCase(),
       source: 'quick-track',
-      quickTrackId: quickTrack.id,
+      quickTrack,
     }));
 
     return [...visitFeed, ...quickTrackFeed].sort((left, right) =>
-      right.createdAt.localeCompare(left.createdAt),
+      right.eventAt.localeCompare(left.eventAt),
     );
-  }, [quickTracksQuery.data, visitsQuery.data]);
+  }, [currentUserId, quickTracksQuery.data, visitsQuery.data]);
+
+  const mineFeed = useMemo(() => combinedFeed.filter((item) => !item.isFriend), [combinedFeed]);
+  const friendFeed = useMemo(() => combinedFeed.filter((item) => item.isFriend), [combinedFeed]);
 
   const filteredFeed = useMemo(() => {
-    if (feedMode === 'friends') {
-      return [];
-    }
-
+    const activeFeed = feedMode === 'friends' ? friendFeed : mineFeed;
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
-    return combinedFeed.filter((item) => {
+    return activeFeed.filter((item) => {
       if (typeFilter === 'visits' && item.source !== 'visit') {
         return false;
       }
@@ -138,9 +205,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         return true;
       }
 
-      return `${item.title} ${item.description}`.toLowerCase().includes(normalizedQuery);
+      return item.searchText.includes(normalizedQuery);
     });
-  }, [combinedFeed, feedMode, searchQuery, typeFilter]);
+  }, [feedMode, friendFeed, mineFeed, searchQuery, typeFilter]);
 
   const groupedMonths = useMemo<GroupedMonth[]>(() => {
     const monthMap = new Map<
@@ -156,7 +223,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     >();
 
     filteredFeed.forEach((entry) => {
-      const date = new Date(entry.createdAt);
+      const date = new Date(entry.eventAt);
       if (Number.isNaN(date.getTime())) {
         return;
       }
@@ -243,35 +310,48 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     [filteredFeed],
   );
   const filteredQuickTrackCount = filteredFeed.length - filteredVisitCount;
+  const mineVisitCount = useMemo(() => mineFeed.filter((entry) => entry.source === 'visit').length, [mineFeed]);
+  const mineQuickTrackCount = mineFeed.length - mineVisitCount;
+  const friendVisitCount = useMemo(() => friendFeed.filter((entry) => entry.source === 'visit').length, [friendFeed]);
+  const friendQuickTrackCount = friendFeed.length - friendVisitCount;
+  const activeFeed = feedMode === 'friends' ? friendFeed : mineFeed;
 
   const summaryText = useMemo(() => {
-    if (feedMode === 'friends') {
-      return 'No friend ratings yet';
-    }
-
     if (searchQuery.trim()) {
       return `Found ${filteredFeed.length} items (${filteredVisitCount} visits, ${filteredQuickTrackCount} quick items)`;
     }
 
-    const visitCount = visitsQuery.data?.length ?? 0;
-    const quickTrackCount = quickTracksQuery.data?.length ?? 0;
+    if (feedMode === 'friends') {
+      if (friendFeed.length === 0) {
+        return 'No friend ratings yet';
+      }
 
-    if (visitCount === 0 && quickTrackCount === 0) {
+      return [
+        formatCount(friendVisitCount, 'friend visit', 'friend visits'),
+        formatCount(friendQuickTrackCount, 'friend quick item', 'friend quick items'),
+      ].join(' • ');
+    }
+
+    if (mineFeed.length === 0) {
       return 'No ratings yet';
     }
 
     return [
-      formatCount(visitCount, 'visit', 'visits'),
-      formatCount(quickTrackCount, 'quick item', 'quick items'),
+      formatCount(mineVisitCount, 'visit', 'visits'),
+      formatCount(mineQuickTrackCount, 'quick item', 'quick items'),
     ].join(' • ');
   }, [
     feedMode,
     filteredFeed.length,
     filteredQuickTrackCount,
     filteredVisitCount,
-    quickTracksQuery.data?.length,
+    friendFeed.length,
+    friendQuickTrackCount,
+    friendVisitCount,
+    mineFeed.length,
+    mineQuickTrackCount,
+    mineVisitCount,
     searchQuery,
-    visitsQuery.data?.length,
   ]);
 
   const toggleMonth = useCallback(
@@ -309,11 +389,144 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     });
   }, []);
 
-  const handleDeleteQuickTrack = async (quickTrackId: string) => {
-    await queueWrite('quick-track.delete');
-    await deleteQuickTrack(quickTrackId);
-    await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
-  };
+  const handleDeleteQuickTrack = useCallback(
+    async (quickTrackId: string) => {
+      await queueWrite('quick-track.delete');
+      await deleteQuickTrack(quickTrackId);
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+    },
+    [queryClient, queueWrite],
+  );
+
+  const promptDeleteQuickTrack = useCallback(
+    (quickTrackId: string) => {
+      Alert.alert('Delete quick track?', 'This will permanently remove the quick-track item.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void handleDeleteQuickTrack(quickTrackId);
+          },
+        },
+      ]);
+    },
+    [handleDeleteQuickTrack],
+  );
+
+  const handleDeleteVisit = useCallback(
+    async (visitId: string) => {
+      await queueWrite('visit.delete');
+      await deleteVisit(visitId);
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
+    },
+    [queryClient, queueWrite],
+  );
+
+  const promptDeleteVisit = useCallback(
+    (visitId: string) => {
+      Alert.alert('Delete visit?', 'This removes the visit and all associated items/photos.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void handleDeleteVisit(visitId);
+          },
+        },
+      ]);
+    },
+    [handleDeleteVisit],
+  );
+
+  const handleSharePhoto = useCallback(
+    ({
+      itemName,
+      photo,
+      rating,
+      restaurantName,
+      visitDate,
+    }: {
+      itemName: string;
+      photo: VisitPhotoRecord;
+      rating: number;
+      restaurantName: string;
+      visitDate: string;
+    }) => {
+      navigation.navigate('VisitShareCustomization', {
+        restaurantName,
+        visitDate,
+        items: [
+          {
+            itemId: photo.food_item ?? photo.id,
+            itemName,
+            rating,
+            photoId: photo.id,
+            photoFilename: photo.photo,
+            photoCollectionId: photo.collectionId,
+            photoCollectionName: photo.collectionName,
+          },
+        ],
+      });
+    },
+    [navigation],
+  );
+
+  const buildVisitShareItems = useCallback(
+    (visit: VisitRecord): VisitShareItem[] =>
+      visit.items.reduce<VisitShareItem[]>((records, item) => {
+        const itemPhotos = photosByFoodItem.get(item.id) ?? [];
+        const primaryPhoto = itemPhotos[0];
+        if (!primaryPhoto) {
+          return records;
+        }
+
+        records.push({
+          itemId: item.id,
+          itemName: item.name,
+          rating: item.rating,
+          photoId: primaryPhoto.id,
+          photoFilename: primaryPhoto.photo,
+          photoCollectionId: primaryPhoto.collectionId,
+          photoCollectionName: primaryPhoto.collectionName,
+        });
+        return records;
+      }, []),
+    [photosByFoodItem],
+  );
+
+  const handleShareVisit = useCallback(
+    (visit: VisitRecord) => {
+      const shareItems = buildVisitShareItems(visit);
+      if (shareItems.length <= 1) {
+        return;
+      }
+
+      navigation.navigate('VisitShareCustomization', {
+        restaurantName: visit.restaurantName,
+        visitDate: visit.visitedAt || visit.createdAt,
+        items: shareItems,
+      });
+    },
+    [buildVisitShareItems, navigation],
+  );
+
+  const openPhotoViewer = useCallback((photos: VisitPhotoRecord[], initialIndex = 0) => {
+    if (photos.length === 0) {
+      return;
+    }
+
+    const urls = photos.map((photo) => pb.files.getURL(photo, photo.photo));
+    const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
+
+    setPhotoViewerUrls(urls);
+    setPhotoViewerInitialIndex(boundedIndex);
+    setPhotoViewerVisible(true);
+  }, []);
+
+  const closePhotoViewer = useCallback(() => {
+    setPhotoViewerVisible(false);
+  }, []);
 
   const handleToggleFilters = () => {
     setFiltersExpanded((previous) => {
@@ -609,10 +822,21 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       backgroundColor: colors.screenBackground,
     },
     entryTopRow: {
-      alignItems: 'center',
+      alignItems: 'flex-start',
       flexDirection: 'row',
       justifyContent: 'space-between',
       gap: theme.spacing.sm,
+    },
+    entryTopRight: {
+      alignItems: 'flex-end',
+      gap: theme.spacing.xs,
+    },
+    badgesRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xs,
+      justifyContent: 'flex-end',
     },
     entryTitle: {
       color: colors.textPrimary,
@@ -620,6 +844,35 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       fontSize: 17,
       fontWeight: '700',
       lineHeight: 22,
+    },
+    friendBadge: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.accent,
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: 4,
+    },
+    friendBadgeLabel: {
+      color: colors.accent,
+      fontSize: 11,
+      fontWeight: '700',
+      lineHeight: 14,
+    },
+    restaurantMeta: {
+      color: colors.textMuted,
+      fontSize: 14,
+      lineHeight: 19,
+    },
+    restaurantMetaRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      justifyContent: 'space-between',
+      marginTop: theme.spacing.xxs,
+    },
+    restaurantMetaInline: {
+      flex: 1,
     },
     sourceBadge: {
       borderRadius: 999,
@@ -642,15 +895,142 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     sourceBadgeLabelQuickTrack: {
       color: colors.accentSoftText,
     },
-    entryDescription: {
-      color: colors.textSecondary,
-      fontSize: 15,
-      lineHeight: 21,
-    },
     entryMeta: {
       color: colors.textMuted,
       fontSize: 12,
       lineHeight: 16,
+    },
+    compactActions: {
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+    },
+    compactActionButton: {
+      alignItems: 'center',
+      borderColor: colors.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      height: 30,
+      justifyContent: 'center',
+      width: 30,
+    },
+    compactActionDanger: {
+      borderColor: colors.dangerBorder,
+    },
+    compactActionLabel: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+      lineHeight: 16,
+    },
+    foodItemsList: {
+      gap: theme.spacing.xs,
+    },
+    foodItemRow: {
+      alignItems: 'flex-start',
+      backgroundColor: colors.screenBackground,
+      borderRadius: 10,
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      padding: theme.spacing.xs,
+    },
+    photoWrap: {
+      position: 'relative',
+    },
+    photoThumb: {
+      backgroundColor: colors.borderSubtle,
+      borderRadius: 8,
+      height: 56,
+      width: 56,
+    },
+    photoCountBadge: {
+      alignItems: 'center',
+      backgroundColor: colors.shadow,
+      borderRadius: theme.radii.pill,
+      justifyContent: 'center',
+      minWidth: 20,
+      paddingHorizontal: 4,
+      position: 'absolute',
+      left: 2,
+      top: 2,
+    },
+    photoCountText: {
+      color: theme.colors.text.inverse,
+      fontSize: 11,
+      fontWeight: '700',
+      lineHeight: 14,
+    },
+    foodItemContent: {
+      flex: 1,
+      gap: 2,
+      minHeight: 56,
+      justifyContent: 'center',
+    },
+    foodItemName: {
+      color: colors.textPrimary,
+      fontSize: 15,
+      fontWeight: '600',
+      lineHeight: 20,
+    },
+    quickTrackMeta: {
+      color: colors.textSecondary,
+      fontSize: 15,
+      lineHeight: 20,
+    },
+    quickTrackMetaRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+    },
+    quickTrackMetaInline: {
+      flex: 1,
+    },
+    quickTrackCategoryRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: -4,
+    },
+    foodItemNotes: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontStyle: 'italic',
+      lineHeight: 18,
+    },
+    foodItemRight: {
+      alignItems: 'flex-end',
+      gap: 6,
+      minHeight: 56,
+      justifyContent: 'center',
+    },
+    ratingRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    ratingDot: {
+      borderRadius: theme.radii.pill,
+      height: 10,
+      width: 10,
+    },
+    ratingLabel: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '500',
+      lineHeight: 16,
+    },
+    categoryBadge: {
+      alignSelf: 'flex-start',
+      backgroundColor: colors.screenBackground,
+      borderRadius: 999,
+      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: 4,
+    },
+    categoryBadgeLabel: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontWeight: '600',
+      lineHeight: 14,
+      textTransform: 'capitalize',
     },
     entryActions: {
       flexDirection: 'row',
@@ -799,19 +1179,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       </View>
 
       <View style={styles.body}>
-        <OfflineBanner
-          failedWrites={failedCount}
-          isOnline={isOnline}
-          isSyncing={isSyncing}
-          onRetryFailed={() => {
-            void retryAllFailed();
-          }}
-          onSyncNow={() => {
-            void replayNow();
-          }}
-          pendingWrites={queueDepth}
-        />
-
         {isLoading ? (
           <>
             <Skeleton height={16} />
@@ -820,18 +1187,18 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </>
         ) : null}
 
-        {hasError ? (
-          <ErrorState
-            description="Could not load your ratings feed."
-            onRetry={() => {
-              void visitsQuery.refetch();
-              void quickTracksQuery.refetch();
-            }}
-            title="Feed unavailable"
-          />
-        ) : null}
+        <PageErrorToast
+          errorMessage={hasError ? 'Could not load your ratings feed.' : null}
+          title="Feed unavailable"
+          actionLabel="Retry"
+          onAction={() => {
+            void visitsQuery.refetch();
+            void quickTracksQuery.refetch();
+            void visitPhotosQuery.refetch();
+          }}
+        />
 
-        {!isLoading && !hasError && feedMode === 'friends' ? (
+        {!isLoading && !hasError && feedMode === 'friends' && friendFeed.length === 0 ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>No friend activity yet</Text>
             <Text style={styles.infoDescription}>
@@ -850,7 +1217,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasError && feedMode === 'mine' && combinedFeed.length === 0 ? (
+        {!isLoading && !hasError && feedMode === 'mine' && mineFeed.length === 0 ? (
           <EmptyState
             actionLabel="Create your first entry"
             description="Start with Add Visit or Quick Track."
@@ -862,7 +1229,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           />
         ) : null}
 
-        {!isLoading && !hasError && feedMode === 'mine' && combinedFeed.length > 0 && filteredFeed.length === 0 ? (
+        {!isLoading && !hasError && activeFeed.length > 0 && filteredFeed.length === 0 ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>No matching ratings</Text>
             <Text style={styles.infoDescription}>
@@ -882,7 +1249,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasError && feedMode === 'mine'
+        {!isLoading && !hasError && filteredFeed.length > 0
           ? groupedMonths.map((month) => {
               const isMonthExpanded = expandedMonths.has(month.monthKey);
 
@@ -928,71 +1295,305 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
                             {isDayExpanded ? (
                               <View style={styles.entries}>
-                                {day.entries.map((feedItem) => (
-                                  <View
-                                    key={feedItem.id}
-                                    style={[
-                                      styles.entryCard,
-                                      feedItem.source === 'quick-track' && styles.entryCardQuickTrack,
-                                    ]}
-                                  >
-                                    <View style={styles.entryTopRow}>
-                                      <Text numberOfLines={2} style={styles.entryTitle}>
-                                        {feedItem.title}
-                                      </Text>
-                                      <View
-                                        style={[
-                                          styles.sourceBadge,
-                                          feedItem.source === 'quick-track'
-                                            ? styles.sourceBadgeQuickTrack
-                                            : styles.sourceBadgeVisit,
-                                        ]}
-                                      >
-                                        <Text
-                                          style={[
-                                            styles.sourceBadgeLabel,
-                                            feedItem.source === 'quick-track' &&
-                                              styles.sourceBadgeLabelQuickTrack,
-                                          ]}
-                                        >
-                                          {feedItem.source === 'visit' ? 'Visit' : 'Quick'}
+                                {day.entries.map((feedItem) => {
+                                  const timeLabel = new Date(feedItem.eventAt).toLocaleTimeString([], {
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                  });
+
+                                  if (feedItem.source === 'visit') {
+                                    const { visit } = feedItem;
+                                    const restaurantMeta = [visit.restaurantLocation, visit.restaurantCuisineType]
+                                      .filter((value) => value && value.trim().length > 0)
+                                      .join(' • ');
+                                    const shareableVisitItems = buildVisitShareItems(visit);
+                                    const showVisitShare = !feedItem.isFriend && shareableVisitItems.length > 1;
+
+                                    return (
+                                      <View key={feedItem.id} style={styles.entryCard}>
+                                        <View style={styles.entryTopRow}>
+                                          <Text numberOfLines={2} style={styles.entryTitle}>
+                                            {visit.restaurantName}
+                                          </Text>
+                                          <View style={styles.entryTopRight}>
+                                            <View style={styles.badgesRow}>
+                                              {feedItem.isFriend && feedItem.friendName ? (
+                                                <View style={styles.friendBadge}>
+                                                  <Text numberOfLines={1} style={styles.friendBadgeLabel}>
+                                                    {feedItem.friendName}
+                                                  </Text>
+                                                </View>
+                                              ) : null}
+                                              <View style={[styles.sourceBadge, styles.sourceBadgeVisit]}>
+                                                <Text style={styles.sourceBadgeLabel}>Visit</Text>
+                                              </View>
+                                            </View>
+                                          </View>
+                                        </View>
+
+                                        {restaurantMeta || !feedItem.isFriend ? (
+                                          <View style={styles.restaurantMetaRow}>
+                                            {restaurantMeta ? (
+                                              <Text numberOfLines={1} style={[styles.restaurantMeta, styles.restaurantMetaInline]}>
+                                                {restaurantMeta}
+                                              </Text>
+                                            ) : (
+                                              <View style={styles.restaurantMetaInline} />
+                                            )}
+                                            {!feedItem.isFriend ? (
+                                              <View style={styles.compactActions}>
+                                                {showVisitShare ? (
+                                                  <Pressable
+                                                    accessibilityLabel="Share visit"
+                                                    onPress={() => {
+                                                      handleShareVisit(visit);
+                                                    }}
+                                                    style={styles.compactActionButton}
+                                                  >
+                                                    <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
+                                                  </Pressable>
+                                                ) : null}
+                                                <Pressable
+                                                  accessibilityLabel="Edit visit"
+                                                  onPress={() => {
+                                                    navigation.navigate('EditVisit', { visitId: visit.id });
+                                                  }}
+                                                  style={styles.compactActionButton}
+                                                >
+                                                  <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
+                                                </Pressable>
+                                                <Pressable
+                                                  accessibilityLabel="Delete visit"
+                                                  onPress={() => {
+                                                    promptDeleteVisit(visit.id);
+                                                  }}
+                                                  style={[styles.compactActionButton, styles.compactActionDanger]}
+                                                >
+                                                  <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
+                                                </Pressable>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                        ) : null}
+
+                                        {visit.items.length > 0 ? (
+                                          <View style={styles.foodItemsList}>
+                                            {visit.items.map((item) => {
+                                              const itemPhotos = photosByFoodItem.get(item.id) ?? [];
+                                              const primaryPhoto = itemPhotos[0];
+                                              const thumbnailUrl = primaryPhoto
+                                                ? pb.files.getURL(primaryPhoto, primaryPhoto.photo, { thumb: '100x100' })
+                                                : null;
+
+                                              return (
+                                                <View key={item.id} style={styles.foodItemRow}>
+                                                  {thumbnailUrl ? (
+                                                    <Pressable
+                                                      accessibilityLabel={`View photos for ${item.name}`}
+                                                      onPress={() => {
+                                                        openPhotoViewer(itemPhotos);
+                                                      }}
+                                                      style={styles.photoWrap}
+                                                    >
+                                                      <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
+                                                      {itemPhotos.length > 1 ? (
+                                                        <View style={styles.photoCountBadge}>
+                                                          <Text style={styles.photoCountText}>+{itemPhotos.length - 1}</Text>
+                                                        </View>
+                                                      ) : null}
+                                                    </Pressable>
+                                                  ) : null}
+
+                                                  <View style={styles.foodItemContent}>
+                                                    <Text numberOfLines={2} style={styles.foodItemName}>
+                                                      {item.name}
+                                                    </Text>
+                                                    {item.notes ? (
+                                                      <Text numberOfLines={2} style={styles.foodItemNotes}>
+                                                        "{item.notes}"
+                                                      </Text>
+                                                    ) : null}
+                                                  </View>
+
+                                                  <View style={styles.foodItemRight}>
+                                                    <View style={styles.ratingRow}>
+                                                      <View
+                                                        style={[
+                                                          styles.ratingDot,
+                                                          { backgroundColor: getRatingColor(theme, item.rating) },
+                                                        ]}
+                                                      />
+                                                      <Text style={styles.ratingLabel}>{getRatingLabel(item.rating)}</Text>
+                                                    </View>
+                                                    {primaryPhoto ? (
+                                                      <Pressable
+                                                        accessibilityLabel={`Share ${item.name}`}
+                                                        onPress={() => {
+                                                          handleSharePhoto({
+                                                            itemName: item.name,
+                                                            photo: primaryPhoto,
+                                                            rating: item.rating,
+                                                            restaurantName: visit.restaurantName,
+                                                            visitDate: visit.visitedAt || visit.createdAt,
+                                                          });
+                                                        }}
+                                                        style={styles.compactActionButton}
+                                                      >
+                                                        <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
+                                                      </Pressable>
+                                                    ) : null}
+                                                  </View>
+                                                </View>
+                                              );
+                                            })}
+                                          </View>
+                                        ) : (
+                                          <Text style={styles.entryMeta}>No items recorded</Text>
+                                        )}
+
+                                        <Text style={styles.entryMeta}>
+                                          {timeLabel}
                                         </Text>
                                       </View>
-                                    </View>
-                                    <Text style={styles.entryDescription}>{feedItem.description}</Text>
-                                    <Text style={styles.entryMeta}>
-                                      {new Date(feedItem.createdAt).toLocaleTimeString([], {
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                      })}
-                                    </Text>
+                                    );
+                                  }
 
-                                    {feedItem.source === 'quick-track' && feedItem.quickTrackId ? (
-                                      <View style={styles.entryActions}>
-                                        <Pressable
-                                          onPress={() => {
-                                            navigation.navigate('EditQuickTrack', {
-                                              quickTrackId: feedItem.quickTrackId as string,
-                                            });
-                                          }}
-                                          style={styles.entryActionButton}
-                                        >
-                                          <Text style={styles.entryActionLabel}>Edit</Text>
-                                        </Pressable>
-                                        <Pressable
-                                          onPress={() => {
-                                            void handleDeleteQuickTrack(feedItem.quickTrackId as string);
-                                          }}
-                                          style={[styles.entryActionButton, styles.entryActionDanger]}
-                                        >
-                                          <Text style={[styles.entryActionLabel, styles.entryActionDangerLabel]}>
-                                            Delete
-                                          </Text>
-                                        </Pressable>
+                                  const quickTrack = feedItem.quickTrack;
+                                  const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
+                                  const quickTrackPhoto = quickTrackPhotos[0];
+                                  const quickTrackThumb = quickTrackPhoto
+                                    ? pb.files.getURL(quickTrackPhoto, quickTrackPhoto.photo, { thumb: '100x100' })
+                                    : null;
+                                  const quickTrackMeta =
+                                    quickTrack.locationText || quickTrack.restaurantName || 'Quick Track';
+
+                                  return (
+                                    <View key={feedItem.id} style={[styles.entryCard, styles.entryCardQuickTrack]}>
+                                      <View style={styles.entryTopRow}>
+                                        <Text numberOfLines={2} style={styles.entryTitle}>
+                                          {quickTrack.itemName}
+                                        </Text>
+                                        <View style={styles.entryTopRight}>
+                                          <View style={styles.badgesRow}>
+                                            {feedItem.isFriend && feedItem.friendName ? (
+                                              <View style={styles.friendBadge}>
+                                                <Text numberOfLines={1} style={styles.friendBadgeLabel}>
+                                                  {feedItem.friendName}
+                                                </Text>
+                                              </View>
+                                            ) : null}
+                                            <View style={[styles.sourceBadge, styles.sourceBadgeQuickTrack]}>
+                                              <Text style={[styles.sourceBadgeLabel, styles.sourceBadgeLabelQuickTrack]}>
+                                                Quick
+                                              </Text>
+                                            </View>
+                                          </View>
+                                        </View>
                                       </View>
-                                    ) : null}
-                                  </View>
-                                ))}
+
+                                      {quickTrack.itemCategory || !feedItem.isFriend ? (
+                                        <View style={styles.quickTrackCategoryRow}>
+                                          {quickTrack.itemCategory ? (
+                                            <View style={styles.categoryBadge}>
+                                              <Text style={styles.categoryBadgeLabel}>
+                                                {formatCategoryLabel(quickTrack.itemCategory)}
+                                              </Text>
+                                            </View>
+                                          ) : (
+                                            <View />
+                                          )}
+                                          {!feedItem.isFriend ? (
+                                            <View style={styles.compactActions}>
+                                              <Pressable
+                                                accessibilityLabel="Edit quick track"
+                                                onPress={() => {
+                                                  navigation.navigate('EditQuickTrack', { quickTrackId: quickTrack.id });
+                                                }}
+                                                style={styles.compactActionButton}
+                                              >
+                                                <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
+                                              </Pressable>
+                                              <Pressable
+                                                accessibilityLabel="Delete quick track"
+                                                onPress={() => {
+                                                  promptDeleteQuickTrack(quickTrack.id);
+                                                }}
+                                                style={[styles.compactActionButton, styles.compactActionDanger]}
+                                              >
+                                                <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
+                                              </Pressable>
+                                            </View>
+                                          ) : null}
+                                        </View>
+                                      ) : null}
+
+                                      <View style={styles.foodItemRow}>
+                                        {quickTrackThumb ? (
+                                          <Pressable
+                                            accessibilityLabel={`View photos for ${quickTrack.itemName}`}
+                                            onPress={() => {
+                                              openPhotoViewer(quickTrackPhotos);
+                                            }}
+                                            style={styles.photoWrap}
+                                          >
+                                            <Image source={{ uri: quickTrackThumb }} style={styles.photoThumb} />
+                                            {quickTrackPhotos.length > 1 ? (
+                                              <View style={styles.photoCountBadge}>
+                                                <Text style={styles.photoCountText}>+{quickTrackPhotos.length - 1}</Text>
+                                              </View>
+                                            ) : null}
+                                          </Pressable>
+                                        ) : null}
+
+                                        <View style={styles.foodItemContent}>
+                                          <View style={styles.quickTrackMetaRow}>
+                                            <Text numberOfLines={1} style={[styles.quickTrackMeta, styles.quickTrackMetaInline]}>
+                                              {quickTrackMeta}
+                                            </Text>
+                                          </View>
+                                          {quickTrack.notes ? (
+                                            <Text numberOfLines={2} style={styles.foodItemNotes}>
+                                              "{quickTrack.notes}"
+                                            </Text>
+                                          ) : null}
+                                        </View>
+
+                                        <View style={styles.foodItemRight}>
+                                          <View style={styles.ratingRow}>
+                                            <View
+                                              style={[
+                                                styles.ratingDot,
+                                                { backgroundColor: getRatingColor(theme, quickTrack.rating) },
+                                              ]}
+                                            />
+                                            <Text style={styles.ratingLabel}>{getRatingLabel(quickTrack.rating)}</Text>
+                                          </View>
+                                          {quickTrackPhoto ? (
+                                            <Pressable
+                                              accessibilityLabel={`Share ${quickTrack.itemName}`}
+                                              onPress={() => {
+                                                handleSharePhoto({
+                                                  itemName: quickTrack.itemName,
+                                                  photo: quickTrackPhoto,
+                                                  rating: quickTrack.rating,
+                                                  restaurantName: quickTrackMeta,
+                                                  visitDate: quickTrack.itemDate || quickTrack.createdAt,
+                                                });
+                                              }}
+                                              style={styles.compactActionButton}
+                                            >
+                                              <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
+                                            </Pressable>
+                                          ) : null}
+                                        </View>
+                                      </View>
+
+                                      <Text style={styles.entryMeta}>
+                                        {timeLabel}
+                                      </Text>
+                                    </View>
+                                  );
+                                })}
                               </View>
                             ) : null}
                           </View>
@@ -1006,6 +1607,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           : null}
 
       </View>
+
+      <PhotoViewerModal
+        initialIndex={photoViewerInitialIndex}
+        onRequestClose={closePhotoViewer}
+        urls={photoViewerUrls}
+        visible={photoViewerVisible}
+      />
     </TabRootScreenScaffold>
   );
 }

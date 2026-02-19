@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ClientResponseError } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
 import type {
@@ -15,6 +16,7 @@ import type {
   PhotoProcessingDraft,
   ProfileRecord,
   QuickTrackRecord,
+  RestaurantListItemRecord,
   RestaurantListRecord,
   RestaurantRecord,
   TastingSessionParticipant,
@@ -48,9 +50,12 @@ export interface CreateVisitInput {
   items: {
     name: string;
     rating: number;
+    description?: string;
     notes?: string;
+    photos?: VisitPhotoUploadInput[];
   }[];
   visitedAt?: string;
+  visibility?: 'friends' | 'private';
   source?: VisitRecord['source'];
 }
 
@@ -61,40 +66,80 @@ export interface UpdateVisitInput {
 }
 
 export interface CreateQuickTrackInput {
-  restaurantName: string;
   itemName: string;
   rating: number;
+  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
   notes?: string;
+  locationText?: string;
+  restaurantName?: string; // Legacy alias for locationText.
+  visibility?: 'friends' | 'private';
+  itemDate?: string;
+  latitude?: number;
+  longitude?: number;
+  photo?: VisitPhotoUploadInput;
   sourceNoteId?: string;
 }
 
 export interface UpdateQuickTrackInput {
-  restaurantName?: string;
   itemName?: string;
   rating?: number;
+  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | null;
   notes?: string;
+  locationText?: string;
+  restaurantName?: string; // Legacy alias for locationText.
+  visibility?: 'friends' | 'private';
+  itemDate?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface CreateRestaurantListInput {
   name: string;
   description?: string;
+  visibility?: 'private' | 'friends' | 'public';
 }
 
 export interface UpdateRestaurantListInput {
   name?: string;
   description?: string;
+  visibility?: 'private' | 'friends' | 'public';
+}
+
+export interface ListRestaurantListsInput {
+  scope?: 'my' | 'friends' | 'public';
+}
+
+export interface NotePhotoUploadInput {
+  uri: string;
+  name: string;
+  mimeType: string;
+}
+
+export interface VisitPhotoUploadInput {
+  uri: string;
+  name: string;
+  mimeType: string;
 }
 
 export interface CreateNoteInput {
   title: string;
   content: string;
   rating?: number;
+  locationText?: string;
+  latitude?: number;
+  longitude?: number;
+  photos?: NotePhotoUploadInput[];
 }
 
 export interface UpdateNoteInput {
   title?: string;
   content?: string;
   rating?: number;
+  locationText?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  newPhotos?: NotePhotoUploadInput[];
+  deletePhotoIds?: string[];
 }
 
 export interface InviteFriendInput {
@@ -167,6 +212,7 @@ export interface UpdateBillInput {
   tip?: number;
   fees?: number;
   extrasSplitMode?: BillRecord['extrasSplitMode'];
+  status?: BillRecord['status'];
 }
 
 function nowIso(): string {
@@ -208,10 +254,15 @@ function normalizeFriendStatus(status: string | undefined): FriendStatus {
 
 function normalizeFriendRecord(friend: Partial<FriendRecord> & { status?: string }): FriendRecord {
   const id = typeof friend.id === 'string' && friend.id.length > 0 ? friend.id : createId('friend');
-  const fallbackEmail = `${id}@invite.local`;
+  const userId =
+    typeof friend.userId === 'string' && friend.userId.length > 0
+      ? friend.userId
+      : id;
+  const fallbackEmail = 'unknown@invite.local';
 
   return {
     id,
+    userId,
     name: typeof friend.name === 'string' && friend.name.trim() ? friend.name.trim() : 'Unknown Friend',
     email:
       typeof friend.email === 'string' && friend.email.trim()
@@ -361,6 +412,114 @@ interface FriendCodeLookupResponse {
   user?: FriendshipUser;
 }
 
+interface CollectionUserExpand {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
+interface RestaurantCollectionRecord {
+  id: string;
+  name: string;
+  location?: string;
+  cuisineType?: string;
+  visibility?: 'private' | 'friends' | 'public';
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
+  isGooglePlace?: boolean;
+  created: string;
+  updated: string;
+}
+
+interface VisitCollectionRecord {
+  id: string;
+  restaurant: string;
+  user: string;
+  visitDate: string;
+  visibility?: 'friends' | 'private';
+  notes?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    restaurant?: RestaurantCollectionRecord;
+    user?: CollectionUserExpand;
+  };
+}
+
+interface FoodItemCollectionRecord {
+  id: string;
+  name: string;
+  rating: number;
+  description?: string;
+  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | 'restaurant';
+  notes?: string;
+  visit?: string;
+  user: string;
+  isQuickTrack?: boolean;
+  visibility?: 'friends' | 'private';
+  location_text?: string;
+  latitude?: number;
+  longitude?: number;
+  itemDate?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    user?: CollectionUserExpand;
+    visit?: VisitCollectionRecord;
+  };
+}
+
+interface RestaurantListCollectionRecord {
+  id: string;
+  name: string;
+  description?: string;
+  visibility?: 'private' | 'friends' | 'public';
+  user: string;
+  coverImage?: string;
+  isCollaborative?: boolean;
+  isDefault?: boolean;
+  created: string;
+  updated: string;
+  expand?: {
+    user?: CollectionUserExpand;
+  };
+}
+
+interface ListItemCollectionRecord {
+  id: string;
+  list: string;
+  restaurant: string;
+  addedBy: string;
+  sourceUser?: string;
+  foodItem?: string;
+  userFoodItem?: string;
+  position: number;
+  note?: string;
+  created: string;
+  expand?: {
+    restaurant?: RestaurantCollectionRecord;
+  };
+}
+
+interface NoteCollectionRecord {
+  id: string;
+  user: string;
+  content: string;
+  restaurant?: string;
+  location_text?: string;
+  latitude?: number;
+  longitude?: number;
+  status?: 'draft' | 'used';
+  usedInVisit?: string;
+  usedInFoodItem?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    restaurant?: RestaurantCollectionRecord;
+  };
+}
+
 interface FeedbackCollectionUserExpand {
   id: string;
   name?: string;
@@ -395,6 +554,59 @@ interface FeedbackMessageCollectionRecord {
   };
 }
 
+interface BillParticipantCollectionUserExpand {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
+interface BillCollectionRecord {
+  id: string;
+  creator_user: string;
+  bill_name: string;
+  total_amount: number;
+  tax?: number;
+  tip?: number;
+  fees?: number;
+  split_mode: 'even' | 'itemized' | 'custom';
+  extras_split_mode: BillRecord['extrasSplitMode'];
+  status: 'active' | 'settled' | 'cancelled';
+  created: string;
+  updated: string;
+}
+
+interface BillParticipantCollectionRecord {
+  id: string;
+  bill: string;
+  user?: string | null;
+  participant_name?: string;
+  amount_owed: number;
+  paid_status: BillParticipantRecord['paidStatus'];
+  paid_date?: string | null;
+  payment_method?: string | null;
+  custom_tip_contribution?: number | null;
+  created: string;
+  updated: string;
+  expand?: {
+    user?: BillParticipantCollectionUserExpand;
+  };
+}
+
+interface BillItemCollectionRecord {
+  id: string;
+  bill: string;
+  item_name: string;
+  price: number;
+  assigned_to: string[];
+  split_mode?: 'simple' | 'advanced';
+  split_config?: {
+    participant_id: string;
+    type: 'percentage' | 'amount';
+    value: number;
+  }[] | null;
+  created: string;
+}
+
 function normalizeFeedbackStatus(status: unknown): FeedbackRecord['status'] {
   if (status === 'open' || status === 'in_progress' || status === 'resolved' || status === 'closed') {
     return status;
@@ -409,6 +621,150 @@ function parseCount(value: unknown): number {
   }
 
   return Math.max(0, Math.floor(value));
+}
+
+function sanitizeCurrency(value: number | null | undefined): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 0;
+  }
+
+  return Math.round(value * 100) / 100;
+}
+
+function normalizeBillRecordStatus(status: BillCollectionRecord['status']): BillRecord['status'] {
+  return status === 'settled' ? 'settled' : 'open';
+}
+
+function toBillCollectionStatus(participants: BillParticipantRecord[]): BillCollectionRecord['status'] {
+  return participants.every((participant) => participant.paidStatus === 'paid') ? 'settled' : 'active';
+}
+
+function toBillCollectionStatusFromRecord(status: BillRecord['status']): BillCollectionRecord['status'] {
+  return status === 'settled' ? 'settled' : 'active';
+}
+
+function resolveBillParticipantName(record: BillParticipantCollectionRecord): string {
+  const explicitName = record.participant_name?.trim();
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const expandedName = record.expand?.user?.name?.trim();
+  if (expandedName) {
+    return expandedName;
+  }
+
+  const expandedEmail = record.expand?.user?.email?.trim();
+  if (expandedEmail) {
+    return expandedEmail.split('@')[0];
+  }
+
+  return 'Unknown';
+}
+
+function mapBillParticipantRecord(record: BillParticipantCollectionRecord): BillParticipantRecord {
+  const customTipContribution =
+    typeof record.custom_tip_contribution === 'number'
+      ? sanitizeCurrency(record.custom_tip_contribution)
+      : undefined;
+
+  return {
+    id: record.id,
+    name: resolveBillParticipantName(record),
+    userId: record.user ?? undefined,
+    amountOwed: sanitizeCurrency(record.amount_owed),
+    customTipContribution,
+    paidStatus: record.paid_status === 'paid' ? 'paid' : 'pending',
+  };
+}
+
+function mapBillItemRecord(record: BillItemCollectionRecord): BillItemRecord {
+  const normalizedSplitConfig = Array.isArray(record.split_config)
+    ? record.split_config
+        .filter((entry) => {
+          if (!entry || typeof entry !== 'object') {
+            return false;
+          }
+
+          if (typeof entry.participant_id !== 'string' || !entry.participant_id) {
+            return false;
+          }
+
+          const isSupportedType = entry.type === 'percentage' || entry.type === 'amount';
+          const isValidValue = typeof entry.value === 'number' && Number.isFinite(entry.value);
+          return isSupportedType && isValidValue;
+        })
+        .map((entry) => ({
+          participantId: entry.participant_id,
+          type: entry.type,
+          value: sanitizeCurrency(entry.value),
+        }))
+    : null;
+
+  return {
+    id: record.id,
+    itemName: record.item_name,
+    price: sanitizeCurrency(record.price),
+    assignedToParticipantIds: Array.isArray(record.assigned_to) ? record.assigned_to : [],
+    splitMode: record.split_mode === 'advanced' ? 'advanced' : 'simple',
+    splitConfig: normalizedSplitConfig,
+  };
+}
+
+function mapBillRecord(
+  bill: BillCollectionRecord,
+  participants: BillParticipantCollectionRecord[],
+  items: BillItemCollectionRecord[],
+): BillRecord {
+  const billTax = sanitizeCurrency(bill.tax);
+  const billTip = sanitizeCurrency(bill.tip);
+  const billFees = sanitizeCurrency(bill.fees);
+
+  return {
+    id: bill.id,
+    title: bill.bill_name,
+    restaurantName: bill.bill_name,
+    createdByUserId: bill.creator_user,
+    totalAmount: sanitizeCurrency(bill.total_amount),
+    items: items.map(mapBillItemRecord),
+    participants: participants.map(mapBillParticipantRecord),
+    tax: billTax,
+    tip: billTip,
+    fees: billFees,
+    splitMode: bill.split_mode,
+    extrasSplitMode: bill.extras_split_mode,
+    status: normalizeBillRecordStatus(bill.status),
+    createdAt: bill.created,
+    updatedAt: bill.updated,
+  };
+}
+
+async function listBillParticipantsForBillId(
+  billId: string,
+): Promise<BillParticipantCollectionRecord[]> {
+  return pb.collection('bill_participants').getFullList<BillParticipantCollectionRecord>({
+    filter: `bill = "${escapeFilterValue(billId)}"`,
+    sort: 'created',
+    expand: 'user',
+  });
+}
+
+async function listBillItemsForBillId(
+  billId: string,
+): Promise<BillItemCollectionRecord[]> {
+  return pb.collection('bill_items').getFullList<BillItemCollectionRecord>({
+    filter: `bill = "${escapeFilterValue(billId)}"`,
+    sort: 'created',
+  });
+}
+
+async function mapBillWithRelations(bill: BillCollectionRecord): Promise<BillRecord> {
+  const [participants, items] = await Promise.all([
+    listBillParticipantsForBillId(bill.id),
+    listBillItemsForBillId(bill.id),
+  ]);
+
+  return mapBillRecord(bill, participants, items);
 }
 
 function mapFeedbackRecord(record: FeedbackCollectionRecord): FeedbackRecord {
@@ -468,9 +824,9 @@ function resolveFriendName(user: FriendshipUser | undefined): string {
   return 'Unknown';
 }
 
-function resolveFriendEmail(user: FriendshipUser | undefined, fallbackId: string): string {
+function resolveFriendEmail(user: FriendshipUser | undefined): string {
   const trimmedEmail = user?.email?.trim().toLowerCase();
-  return trimmedEmail || `${fallbackId}@friend.local`;
+  return trimmedEmail || 'unknown@friend.local';
 }
 
 function mapFriendshipRecord(friendship: FriendshipRecord, currentUserId: string): FriendRecord | null {
@@ -479,8 +835,8 @@ function mapFriendshipRecord(friendship: FriendshipRecord, currentUserId: string
   }
 
   const isSender = friendship.user === currentUserId;
-  const otherUserId = isSender ? friendship.friend : friendship.user;
   const otherUser = isSender ? friendship.expand?.friend : friendship.expand?.user;
+  const otherUserId = isSender ? friendship.friend : friendship.user;
 
   const status: FriendStatus =
     friendship.status === 'accepted'
@@ -491,129 +847,695 @@ function mapFriendshipRecord(friendship: FriendshipRecord, currentUserId: string
 
   return {
     id: friendship.id,
+    userId: otherUser?.id ?? otherUserId,
     name: resolveFriendName(otherUser),
-    email: resolveFriendEmail(otherUser, otherUserId),
+    email: resolveFriendEmail(otherUser),
     status,
     createdAt: friendship.created,
   };
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof ClientResponseError && error.status === 404;
+}
+
+function escapeFilterValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function normalizeQuickTrackVisibility(value: unknown): 'friends' | 'private' {
+  return value === 'private' ? 'private' : 'friends';
+}
+
+function getDefaultVisitVisibility(): 'friends' | 'private' {
+  return normalizeQuickTrackVisibility(pb.authStore.record?.defaultVisitVisibility);
+}
+
+function getDefaultRestaurantVisibility(): 'private' | 'friends' | 'public' {
+  const value = pb.authStore.record?.defaultRestaurantVisibility;
+  if (value === 'private' || value === 'public') {
+    return value;
+  }
+  return 'friends';
+}
+
+function resolveExpandedUserName(user: CollectionUserExpand | undefined): string | undefined {
+  const trimmedName = user?.name?.trim();
+  if (trimmedName) {
+    return trimmedName;
+  }
+
+  const trimmedEmail = user?.email?.trim();
+  if (trimmedEmail) {
+    return trimmedEmail.split('@')[0];
+  }
+
+  return undefined;
+}
+
+function mapRestaurantCollectionRecord(record: RestaurantCollectionRecord): RestaurantRecord {
+  return {
+    id: record.id,
+    name: record.name.trim(),
+    location: record.location?.trim() || undefined,
+    city: record.location?.trim() || undefined,
+    cuisineType: record.cuisineType?.trim() || undefined,
+    visibility: record.visibility,
+    latitude: typeof record.latitude === 'number' ? record.latitude : undefined,
+    longitude: typeof record.longitude === 'number' ? record.longitude : undefined,
+    placeId: record.placeId?.trim() || undefined,
+    isGooglePlace: record.isGooglePlace === true,
+  };
+}
+
+function normalizeListVisibility(value: unknown): 'private' | 'friends' | 'public' {
+  if (value === 'friends' || value === 'public') {
+    return value;
+  }
+  return 'private';
+}
+
+function mapRestaurantListCollectionRecord(record: RestaurantListCollectionRecord): RestaurantListRecord {
+  return {
+    id: record.id,
+    name: record.name.trim(),
+    description: record.description?.trim() || undefined,
+    visibility: normalizeListVisibility(record.visibility),
+    userId: record.user,
+    ownerName: resolveExpandedUserName(record.expand?.user),
+    isDefault: record.isDefault === true,
+    coverImage: record.coverImage,
+    createdAt: record.created,
+    updatedAt: record.updated || record.created,
+  };
+}
+
+function mapListItemCollectionRecord(record: ListItemCollectionRecord): RestaurantListItemRecord {
+  return {
+    id: record.id,
+    listId: record.list,
+    restaurantId: record.restaurant,
+    restaurantName: record.expand?.restaurant?.name?.trim() || 'Unknown restaurant',
+    restaurantCity: record.expand?.restaurant?.location?.trim() || undefined,
+    note: record.note?.trim() || undefined,
+    createdAt: record.created,
+  };
+}
+
+function mapVisitItemRecord(record: FoodItemCollectionRecord): VisitItem {
+  return {
+    id: record.id,
+    name: record.name,
+    rating: record.rating,
+    description: record.description?.trim() || undefined,
+    notes: record.notes,
+  };
+}
+
+function mapVisitCollectionRecord(visit: VisitCollectionRecord, visitItems: FoodItemCollectionRecord[]): VisitRecord {
+  return {
+    id: visit.id,
+    restaurantId: visit.restaurant,
+    restaurantName: visit.expand?.restaurant?.name?.trim() || 'Unknown Restaurant',
+    restaurantLocation: visit.expand?.restaurant?.location?.trim() || undefined,
+    restaurantCuisineType: visit.expand?.restaurant?.cuisineType?.trim() || undefined,
+    visitedAt: visit.visitDate || visit.created,
+    items: visitItems.map(mapVisitItemRecord),
+    source: 'visit',
+    userId: visit.user,
+    userName: resolveExpandedUserName(visit.expand?.user),
+    visibility: normalizeQuickTrackVisibility(visit.visibility),
+    createdAt: visit.created,
+    updatedAt: visit.updated,
+  };
+}
+
+function mapQuickTrackCollectionRecord(record: FoodItemCollectionRecord): QuickTrackRecord {
+  const restaurantName =
+    record.location_text?.trim() || record.expand?.visit?.expand?.restaurant?.name?.trim() || 'Quick Track';
+
+  return {
+    id: record.id,
+    restaurantName,
+    locationText: record.location_text?.trim() || undefined,
+    itemCategory: record.itemCategory,
+    itemName: record.name,
+    rating: record.rating,
+    notes: record.notes,
+    userId: record.user,
+    userName: resolveExpandedUserName(record.expand?.user),
+    visibility: normalizeQuickTrackVisibility(record.visibility),
+    itemDate: record.itemDate,
+    createdAt: record.created,
+    updatedAt: record.updated,
+  };
+}
+
+function normalizeNoteStatus(status: unknown): NoteRecord['status'] {
+  return status === 'used' ? 'used' : 'draft';
+}
+
+function buildNoteTitle(content: string): string {
+  const firstLine = content
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  if (!firstLine) {
+    return 'Note';
+  }
+
+  if (firstLine.length <= 48) {
+    return firstLine;
+  }
+
+  return `${firstLine.slice(0, 45).trimEnd()}...`;
+}
+
+function buildNoteContent(title: string | undefined, content: string | undefined): string {
+  const trimmedTitle = title?.trim() ?? '';
+  const trimmedContent = content?.trim() ?? '';
+
+  if (trimmedTitle && trimmedContent) {
+    if (trimmedContent.toLowerCase().startsWith(trimmedTitle.toLowerCase())) {
+      return trimmedContent;
+    }
+
+    return `${trimmedTitle}\n\n${trimmedContent}`;
+  }
+
+  return trimmedContent || trimmedTitle;
+}
+
+function mapNoteCollectionRecord(record: NoteCollectionRecord): NoteRecord {
+  const normalizedContent = record.content?.trim() ?? '';
+
+  return {
+    id: record.id,
+    title: buildNoteTitle(normalizedContent),
+    content: normalizedContent,
+    status: normalizeNoteStatus(record.status),
+    locationText: record.location_text?.trim() || undefined,
+    latitude: typeof record.latitude === 'number' ? record.latitude : undefined,
+    longitude: typeof record.longitude === 'number' ? record.longitude : undefined,
+    restaurantId: record.restaurant,
+    restaurantName: record.expand?.restaurant?.name?.trim() || undefined,
+    usedInVisitId: record.usedInVisit,
+    usedInFoodItemId: record.usedInFoodItem,
+    createdAt: record.created,
+    updatedAt: record.updated,
+  };
+}
+
+function buildNotePhotoFormData(
+  noteId: string,
+  userId: string,
+  photo: NotePhotoUploadInput,
+): FormData {
+  const formData = new FormData();
+  formData.append('note', noteId);
+  formData.append('user', userId);
+  formData.append('photo', {
+    uri: photo.uri,
+    name: photo.name,
+    type: photo.mimeType,
+  } as unknown as Blob);
+  return formData;
+}
+
+async function uploadNotePhotos(
+  noteId: string,
+  userId: string,
+  photos: NotePhotoUploadInput[],
+): Promise<void> {
+  if (photos.length === 0) {
+    return;
+  }
+
+  for (const photo of photos) {
+    const formData = buildNotePhotoFormData(noteId, userId, photo);
+    await pb.collection('note_photos').create(formData);
+  }
+}
+
+function buildVisitPhotoFormData(
+  visitId: string | undefined,
+  foodItemId: string,
+  userId: string,
+  photo: VisitPhotoUploadInput,
+  caption?: string,
+): FormData {
+  const formData = new FormData();
+  if (visitId) {
+    formData.append('visit', visitId);
+  }
+  formData.append('food_item', foodItemId);
+  formData.append('user', userId);
+  formData.append('photo', {
+    uri: photo.uri,
+    name: photo.name,
+    type: photo.mimeType,
+  } as unknown as Blob);
+
+  const trimmedCaption = caption?.trim();
+  if (trimmedCaption) {
+    formData.append('caption', trimmedCaption);
+  }
+
+  return formData;
+}
+
+async function uploadVisitPhotos(
+  visitId: string | undefined,
+  foodItemId: string,
+  userId: string,
+  photos: VisitPhotoUploadInput[],
+  caption?: string,
+): Promise<void> {
+  if (photos.length === 0) {
+    return;
+  }
+
+  for (const photo of photos) {
+    const formData = buildVisitPhotoFormData(visitId, foodItemId, userId, photo, caption);
+    await pb.collection('visit_photos').create(formData);
+  }
+}
+
+async function listFoodItemsForVisitIds(visitIds: string[]): Promise<FoodItemCollectionRecord[]> {
+  if (visitIds.length === 0) {
+    return [];
+  }
+
+  const records: FoodItemCollectionRecord[] = [];
+  const chunkSize = 20;
+
+  for (let index = 0; index < visitIds.length; index += chunkSize) {
+    const chunk = visitIds.slice(index, index + chunkSize);
+    const visitFilter = chunk.map((visitId) => `visit = "${escapeFilterValue(visitId)}"`).join(' || ');
+    const filter = chunk.length > 1 ? `(${visitFilter})` : visitFilter;
+
+    const chunkRecords = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
+      filter,
+      sort: '-created',
+    });
+    records.push(...chunkRecords);
+  }
+
+  return records;
+}
+
+async function findRestaurantByName(name: string): Promise<RestaurantCollectionRecord | null> {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return null;
+  }
+
+  const escapedName = escapeFilterValue(trimmedName);
+  const records = await pb.collection('restaurants').getFullList<RestaurantCollectionRecord>({
+    filter: `name ~ "${escapedName}"`,
+    sort: '-updated',
+  });
+
+  const normalizedName = trimmedName.toLowerCase();
+  return records.find((record) => record.name.trim().toLowerCase() === normalizedName) ?? null;
+}
+
+async function findOrCreateRestaurantByName(
+  restaurantName: string,
+  currentUserId: string,
+  locationText?: string,
+): Promise<RestaurantCollectionRecord> {
+  const trimmedName = restaurantName.trim();
+  if (!trimmedName) {
+    throw new Error('Restaurant name is required.');
+  }
+
+  const existingRestaurant = await findRestaurantByName(trimmedName);
+  if (existingRestaurant) {
+    return existingRestaurant;
+  }
+
+  return pb.collection('restaurants').create<RestaurantCollectionRecord>({
+    name: trimmedName,
+    location: locationText?.trim() || trimmedName,
+    createdBy: currentUserId,
+    visibility: getDefaultRestaurantVisibility(),
+  });
+}
+
 export async function listVisits(): Promise<VisitRecord[]> {
-  const store = await getStore();
-  return mapAndSortByDateDescending(store.visits);
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const visits = await pb.collection('visits').getFullList<VisitCollectionRecord>({
+    expand: 'restaurant,user',
+    sort: '-visitDate',
+  });
+
+  if (visits.length === 0) {
+    return [];
+  }
+
+  const visitItems = await listFoodItemsForVisitIds(visits.map((visit) => visit.id));
+  const itemsByVisitId = new Map<string, FoodItemCollectionRecord[]>();
+  for (const item of visitItems) {
+    if (!item.visit) {
+      continue;
+    }
+    const existingItems = itemsByVisitId.get(item.visit) ?? [];
+    existingItems.push(item);
+    itemsByVisitId.set(item.visit, existingItems);
+  }
+
+  return visits.map((visit) => mapVisitCollectionRecord(visit, itemsByVisitId.get(visit.id) ?? []));
 }
 
 export async function getVisitById(visitId: string): Promise<VisitRecord | null> {
-  const store = await getStore();
-  return store.visits.find((visit) => visit.id === visitId) ?? null;
+  if (!pb.authStore.record?.id) {
+    return null;
+  }
+
+  try {
+    const visit = await pb.collection('visits').getOne<VisitCollectionRecord>(visitId, {
+      expand: 'restaurant,user',
+    });
+    const visitItems = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
+      filter: `visit = "${escapeFilterValue(visitId)}"`,
+      sort: '-created',
+    });
+
+    return mapVisitCollectionRecord(visit, visitItems);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createVisit(input: CreateVisitInput): Promise<VisitRecord> {
-  return mutateStore((store) => {
-    const timestamp = nowIso();
-    const visit: VisitRecord = {
-      id: createId('visit'),
-      restaurantName: input.restaurantName.trim(),
-      visitedAt: input.visitedAt ?? timestamp,
-      source: input.source ?? 'visit',
-      items: input.items.map((item) => ({
-        id: createId('visit_item'),
-        name: item.name,
-        rating: item.rating,
-        notes: item.notes,
-      })),
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+  const currentUserId = getAuthenticatedUserId();
+  const trimmedRestaurantName = input.restaurantName.trim();
 
-    upsertRestaurant(store, visit.restaurantName);
-    store.visits.unshift(visit);
-    return visit;
-  });
+  if (!trimmedRestaurantName) {
+    throw new Error('Restaurant name is required.');
+  }
+
+  if (input.items.length === 0) {
+    throw new Error('At least one item is required.');
+  }
+
+  const restaurant = await findOrCreateRestaurantByName(trimmedRestaurantName, currentUserId);
+  const visit = await pb.collection('visits').create<VisitCollectionRecord>(
+    {
+      restaurant: restaurant.id,
+      user: currentUserId,
+      visitDate: input.visitedAt ?? nowIso(),
+      visibility: input.visibility ?? getDefaultVisitVisibility(),
+    },
+    {
+      expand: 'restaurant,user',
+    },
+  );
+
+  const createdItems: FoodItemCollectionRecord[] = [];
+  for (const item of input.items) {
+    const createdItem = await pb.collection('food_items').create<FoodItemCollectionRecord>({
+      name: item.name.trim(),
+      rating: item.rating,
+      description: item.description?.trim() || undefined,
+      notes: item.notes?.trim() || undefined,
+      visit: visit.id,
+      user: currentUserId,
+    });
+
+    createdItems.push(createdItem);
+
+    await uploadVisitPhotos(
+      visit.id,
+      createdItem.id,
+      currentUserId,
+      item.photos ?? [],
+      item.description || item.name,
+    );
+  }
+
+  return mapVisitCollectionRecord(visit, createdItems);
 }
 
 export async function updateVisit(visitId: string, updates: UpdateVisitInput): Promise<VisitRecord> {
-  return mutateStore((store) => {
-    const index = store.visits.findIndex((visit) => visit.id === visitId);
-    if (index < 0) {
-      throw new Error('Visit not found.');
+  const currentUserId = getAuthenticatedUserId();
+  const currentVisit = await pb.collection('visits').getOne<VisitCollectionRecord>(visitId, {
+    expand: 'restaurant,user',
+  });
+
+  const updatePayload: Record<string, unknown> = {};
+  const nextRestaurantName = updates.restaurantName?.trim();
+  if (nextRestaurantName && nextRestaurantName !== (currentVisit.expand?.restaurant?.name ?? '')) {
+    const restaurant = await findOrCreateRestaurantByName(nextRestaurantName, currentUserId);
+    updatePayload.restaurant = restaurant.id;
+  }
+
+  if (updates.visitedAt) {
+    updatePayload.visitDate = updates.visitedAt;
+  }
+
+  const updatedVisit =
+    Object.keys(updatePayload).length > 0
+      ? await pb.collection('visits').update<VisitCollectionRecord>(visitId, updatePayload, {
+          expand: 'restaurant,user',
+        })
+      : currentVisit;
+
+  if (updates.items) {
+    const existingItems = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
+      filter: `visit = "${escapeFilterValue(visitId)}"`,
+    });
+    const existingItemsById = new Map(existingItems.map((item) => [item.id, item]));
+    const requestedIds = new Set<string>();
+
+    for (const item of updates.items) {
+      const trimmedName = item.name.trim();
+      if (!trimmedName) {
+        continue;
+      }
+
+      requestedIds.add(item.id);
+      if (existingItemsById.has(item.id)) {
+        await pb.collection('food_items').update(item.id, {
+          name: trimmedName,
+          rating: item.rating,
+          description: item.description?.trim() || '',
+          notes: item.notes?.trim() || '',
+        });
+      } else {
+        await pb.collection('food_items').create({
+          name: trimmedName,
+          rating: item.rating,
+          description: item.description?.trim() || undefined,
+          notes: item.notes?.trim() || undefined,
+          visit: visitId,
+          user: currentUserId,
+        });
+      }
     }
 
-    const currentVisit = store.visits[index];
-    const nextVisit: VisitRecord = {
-      ...currentVisit,
-      restaurantName: updates.restaurantName?.trim() ?? currentVisit.restaurantName,
-      visitedAt: updates.visitedAt ?? currentVisit.visitedAt,
-      items: updates.items ?? currentVisit.items,
-      updatedAt: nowIso(),
-    };
+    const deletedItems = existingItems.filter((item) => !requestedIds.has(item.id));
+    await Promise.all(deletedItems.map((item) => pb.collection('food_items').delete(item.id)));
+  }
 
-    upsertRestaurant(store, nextVisit.restaurantName);
-    store.visits[index] = nextVisit;
-    return nextVisit;
+  const nextItems = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
+    filter: `visit = "${escapeFilterValue(visitId)}"`,
+    sort: '-created',
   });
+
+  return mapVisitCollectionRecord(updatedVisit, nextItems);
 }
 
 export async function listQuickTracks(): Promise<QuickTrackRecord[]> {
-  const store = await getStore();
-  return mapAndSortByDateDescending(store.quickTracks);
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const records = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
+    filter: 'isQuickTrack = true',
+    expand: 'user,visit,visit.restaurant',
+    sort: '-itemDate,-created',
+  });
+
+  return records.map(mapQuickTrackCollectionRecord);
 }
 
 export async function getQuickTrackById(quickTrackId: string): Promise<QuickTrackRecord | null> {
-  const store = await getStore();
-  return store.quickTracks.find((quickTrack) => quickTrack.id === quickTrackId) ?? null;
+  if (!pb.authStore.record?.id) {
+    return null;
+  }
+
+  try {
+    const record = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId, {
+      expand: 'user,visit,visit.restaurant',
+    });
+    if (record.isQuickTrack !== true) {
+      return null;
+    }
+    return mapQuickTrackCollectionRecord(record);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createQuickTrack(input: CreateQuickTrackInput): Promise<QuickTrackRecord> {
-  return mutateStore((store) => {
-    const timestamp = nowIso();
-    const quickTrack: QuickTrackRecord = {
-      id: createId('quick_track'),
-      restaurantName: input.restaurantName.trim(),
-      itemName: input.itemName.trim(),
-      rating: input.rating,
-      notes: input.notes,
-      sourceNoteId: input.sourceNoteId,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+  const currentUserId = getAuthenticatedUserId();
+  const itemName = input.itemName.trim();
+  if (!itemName) {
+    throw new Error('Item name is required.');
+  }
+  const locationText = (input.locationText ?? input.restaurantName ?? '').trim();
+  const payload: Record<string, unknown> = {
+    name: itemName,
+    rating: input.rating,
+    user: currentUserId,
+    isQuickTrack: true,
+    visibility: input.visibility ?? getDefaultVisitVisibility(),
+    itemDate: input.itemDate ?? nowIso(),
+  };
 
-    upsertRestaurant(store, quickTrack.restaurantName);
-    store.quickTracks.unshift(quickTrack);
-    return quickTrack;
-  });
+  if (input.notes !== undefined) {
+    payload.notes = input.notes.trim() || '';
+  }
+
+  if (locationText) {
+    payload.location_text = locationText;
+  }
+
+  if (input.itemCategory !== undefined) {
+    payload.itemCategory = input.itemCategory;
+  }
+
+  if (input.latitude !== undefined) {
+    payload.latitude = input.latitude;
+  }
+
+  if (input.longitude !== undefined) {
+    payload.longitude = input.longitude;
+  }
+
+  const record = await pb.collection('food_items').create<FoodItemCollectionRecord>(
+    payload,
+    {
+      expand: 'user,visit,visit.restaurant',
+    },
+  );
+
+  if (input.photo) {
+    await uploadVisitPhotos(undefined, record.id, currentUserId, [input.photo]);
+  }
+
+  if (input.sourceNoteId) {
+    try {
+      await pb.collection('notes').update(input.sourceNoteId, {
+        status: 'used',
+        usedInFoodItem: record.id,
+      });
+    } catch {
+      // Best effort only: quick-track create should still succeed if note linking fails.
+    }
+  }
+
+  return {
+    ...mapQuickTrackCollectionRecord(record),
+    sourceNoteId: input.sourceNoteId,
+  };
 }
 
 export async function updateQuickTrack(
   quickTrackId: string,
   updates: UpdateQuickTrackInput,
 ): Promise<QuickTrackRecord> {
-  return mutateStore((store) => {
-    const index = store.quickTracks.findIndex((quickTrack) => quickTrack.id === quickTrackId);
-    if (index < 0) {
-      throw new Error('Quick track record not found.');
+  const currentRecord = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId);
+  if (currentRecord.isQuickTrack !== true) {
+    throw new Error('Quick track record not found.');
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (updates.itemName !== undefined) {
+    const trimmedName = updates.itemName.trim();
+    if (!trimmedName) {
+      throw new Error('Item name is required.');
     }
+    payload.name = trimmedName;
+  }
 
-    const currentQuickTrack = store.quickTracks[index];
-    const nextQuickTrack: QuickTrackRecord = {
-      ...currentQuickTrack,
-      restaurantName: updates.restaurantName?.trim() ?? currentQuickTrack.restaurantName,
-      itemName: updates.itemName?.trim() ?? currentQuickTrack.itemName,
-      rating: updates.rating ?? currentQuickTrack.rating,
-      notes: updates.notes,
-      updatedAt: nowIso(),
-    };
+  if (updates.rating !== undefined) {
+    payload.rating = updates.rating;
+  }
 
-    upsertRestaurant(store, nextQuickTrack.restaurantName);
-    store.quickTracks[index] = nextQuickTrack;
-    return nextQuickTrack;
-  });
+  if (updates.notes !== undefined) {
+    payload.notes = updates.notes.trim() || '';
+  }
+
+  const nextLocationText = updates.locationText ?? updates.restaurantName;
+  if (nextLocationText !== undefined) {
+    payload.location_text = nextLocationText.trim() || '';
+  }
+
+  if (updates.itemCategory !== undefined) {
+    payload.itemCategory = updates.itemCategory ?? '';
+  }
+
+  if (updates.visibility !== undefined) {
+    payload.visibility = updates.visibility;
+  }
+
+  if (updates.itemDate !== undefined) {
+    payload.itemDate = updates.itemDate;
+  }
+
+  if (updates.latitude !== undefined) {
+    payload.latitude = updates.latitude;
+  }
+
+  if (updates.longitude !== undefined) {
+    payload.longitude = updates.longitude;
+  }
+
+  const updatedRecord =
+    Object.keys(payload).length > 0
+      ? await pb.collection('food_items').update<FoodItemCollectionRecord>(quickTrackId, payload, {
+          expand: 'user,visit,visit.restaurant',
+        })
+      : await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId, {
+          expand: 'user,visit,visit.restaurant',
+        });
+
+  return mapQuickTrackCollectionRecord(updatedRecord);
 }
 
 export async function deleteQuickTrack(quickTrackId: string): Promise<void> {
-  await mutateStore((store) => {
-    store.quickTracks = store.quickTracks.filter((quickTrack) => quickTrack.id !== quickTrackId);
-  });
+  try {
+    await pb.collection('food_items').delete(quickTrackId);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function deleteVisit(visitId: string): Promise<void> {
+  try {
+    await pb.collection('visits').delete(visitId);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function getPhotoDraft(): Promise<PhotoProcessingDraft> {
@@ -641,182 +1563,438 @@ export async function clearPhotoDraft(): Promise<void> {
 }
 
 export async function listRestaurants(): Promise<RestaurantRecord[]> {
-  const store = await getStore();
-  return [...store.restaurants].sort((left, right) => left.name.localeCompare(right.name));
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const records = await pb.collection('restaurants').getFullList<RestaurantCollectionRecord>({
+    sort: 'name',
+  });
+
+  return records.map(mapRestaurantCollectionRecord);
 }
 
-export async function listRestaurantLists(): Promise<RestaurantListRecord[]> {
-  const store = await getStore();
-  return mapAndSortByDateDescending(store.restaurantLists);
+export async function listRestaurantLists(input?: ListRestaurantListsInput): Promise<RestaurantListRecord[]> {
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const currentUserId = getAuthenticatedUserId();
+  const escapedCurrentUserId = escapeFilterValue(currentUserId);
+  const scope = input?.scope ?? 'my';
+
+  let filter: string | undefined;
+  let expand: string | undefined;
+
+  if (scope === 'my') {
+    filter = `user = "${escapedCurrentUserId}"`;
+  } else if (scope === 'public') {
+    filter = `visibility = "public" && user != "${escapedCurrentUserId}"`;
+    expand = 'user';
+  } else {
+    const friendships = await pb.collection('friendships').getFullList<FriendshipRecord>({
+      filter: `(user = "${escapedCurrentUserId}" || friend = "${escapedCurrentUserId}") && status = "accepted"`,
+    });
+
+    const friendIds = Array.from(
+      new Set(
+        friendships.map((friendship) => (friendship.user === currentUserId ? friendship.friend : friendship.user)),
+      ),
+    );
+
+    if (friendIds.length === 0) {
+      return [];
+    }
+
+    const friendFilter = friendIds.map((friendId) => `user = "${escapeFilterValue(friendId)}"`).join(' || ');
+    filter = `(${friendFilter}) && (visibility = "friends" || visibility = "public")`;
+    expand = 'user';
+  }
+
+  const records = await pb.collection('restaurant_lists').getFullList<RestaurantListCollectionRecord>({
+    filter,
+    expand,
+    sort: '-updated',
+  });
+
+  const mappedRecords = records.map(mapRestaurantListCollectionRecord);
+  if (scope !== 'my') {
+    return mappedRecords;
+  }
+
+  return mappedRecords.sort((left, right) => {
+    if (left.isDefault && !right.isDefault) {
+      return -1;
+    }
+
+    if (!left.isDefault && right.isDefault) {
+      return 1;
+    }
+
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
 }
 
 export async function getRestaurantListById(listId: string): Promise<RestaurantListRecord | null> {
-  const store = await getStore();
-  return store.restaurantLists.find((list) => list.id === listId) ?? null;
+  if (!pb.authStore.record?.id) {
+    return null;
+  }
+
+  try {
+    const record = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+      expand: 'user',
+    });
+    return mapRestaurantListCollectionRecord(record);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function createDefaultRestaurantList(): Promise<RestaurantListRecord> {
+  const currentUserId = getAuthenticatedUserId();
+  const escapedCurrentUserId = escapeFilterValue(currentUserId);
+
+  const existingDefault = await pb.collection('restaurant_lists').getList<RestaurantListCollectionRecord>(1, 1, {
+    filter: `user = "${escapedCurrentUserId}" && isDefault = true`,
+    sort: '-updated',
+    expand: 'user',
+  });
+
+  const existingRecord = existingDefault.items[0];
+  if (existingRecord) {
+    return mapRestaurantListCollectionRecord(existingRecord);
+  }
+
+  const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
+    {
+      name: 'Saved',
+      description: 'Items saved from other lists',
+      visibility: 'private',
+      user: currentUserId,
+      isDefault: true,
+    },
+    {
+      expand: 'user',
+    },
+  );
+
+  return mapRestaurantListCollectionRecord(createdRecord);
 }
 
 export async function createRestaurantList(input: CreateRestaurantListInput): Promise<RestaurantListRecord> {
-  return mutateStore((store) => {
-    const timestamp = nowIso();
-    const list: RestaurantListRecord = {
-      id: createId('restaurant_list'),
-      name: input.name.trim(),
-      description: input.description?.trim(),
-      restaurantIds: [],
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+  const currentUserId = getAuthenticatedUserId();
+  const trimmedName = input.name.trim();
+  if (!trimmedName) {
+    throw new Error('List name is required.');
+  }
 
-    store.restaurantLists.unshift(list);
-    return list;
-  });
+  const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
+    {
+      name: trimmedName,
+      description: input.description?.trim() || '',
+      visibility: input.visibility ?? 'private',
+      user: currentUserId,
+    },
+    {
+      expand: 'user',
+    },
+  );
+
+  return mapRestaurantListCollectionRecord(createdRecord);
 }
 
 export async function updateRestaurantList(
   listId: string,
   updates: UpdateRestaurantListInput,
 ): Promise<RestaurantListRecord> {
-  return mutateStore((store) => {
-    const index = store.restaurantLists.findIndex((list) => list.id === listId);
-    if (index < 0) {
-      throw new Error('List not found.');
+  getAuthenticatedUserId();
+
+  const payload: Record<string, unknown> = {};
+  if (updates.name !== undefined) {
+    const trimmedName = updates.name.trim();
+    if (!trimmedName) {
+      throw new Error('List name is required.');
     }
+    payload.name = trimmedName;
+  }
 
-    const currentList = store.restaurantLists[index];
-    const nextList: RestaurantListRecord = {
-      ...currentList,
-      name: updates.name?.trim() ?? currentList.name,
-      description: updates.description?.trim() ?? currentList.description,
-      updatedAt: nowIso(),
-    };
+  if (updates.description !== undefined) {
+    payload.description = updates.description.trim();
+  }
 
-    store.restaurantLists[index] = nextList;
-    return nextList;
-  });
+  if (updates.visibility !== undefined) {
+    payload.visibility = updates.visibility;
+  }
+
+  const updatedRecord =
+    Object.keys(payload).length > 0
+      ? await pb.collection('restaurant_lists').update<RestaurantListCollectionRecord>(listId, payload, {
+          expand: 'user',
+        })
+      : await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+          expand: 'user',
+        });
+
+  return mapRestaurantListCollectionRecord(updatedRecord);
 }
 
 export async function deleteRestaurantList(listId: string): Promise<void> {
-  await mutateStore((store) => {
-    store.restaurantLists = store.restaurantLists.filter((list) => list.id !== listId);
+  getAuthenticatedUserId();
+
+  try {
+    await pb.collection('restaurant_lists').delete(listId);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function listRestaurantListItems(listId: string): Promise<RestaurantListItemRecord[]> {
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const escapedListId = escapeFilterValue(listId);
+  const records = await pb.collection('list_items').getFullList<ListItemCollectionRecord>({
+    filter: `list = "${escapedListId}"`,
+    expand: 'restaurant',
+    sort: 'position,-created',
   });
+
+  return records.map(mapListItemCollectionRecord);
+}
+
+export async function getRestaurantListItemCounts(listIds: string[]): Promise<Record<string, number>> {
+  const counts = Object.fromEntries(listIds.map((listId) => [listId, 0]));
+  if (!pb.authStore.record?.id || listIds.length === 0) {
+    return counts;
+  }
+
+  const chunkSize = 20;
+  for (let index = 0; index < listIds.length; index += chunkSize) {
+    const chunk = listIds.slice(index, index + chunkSize);
+    const listFilter = chunk.map((listId) => `list = "${escapeFilterValue(listId)}"`).join(' || ');
+    const filter = chunk.length > 1 ? `(${listFilter})` : listFilter;
+
+    const chunkItems = await pb.collection('list_items').getFullList<Pick<ListItemCollectionRecord, 'list'>>({
+      filter,
+      fields: 'list',
+    });
+
+    for (const item of chunkItems) {
+      if (counts[item.list] !== undefined) {
+        counts[item.list] += 1;
+      }
+    }
+  }
+
+  return counts;
 }
 
 export async function addRestaurantToList(
   listId: string,
   restaurantName: string,
   city?: string,
-): Promise<RestaurantListRecord> {
-  return mutateStore((store) => {
-    const listIndex = store.restaurantLists.findIndex((list) => list.id === listId);
-    if (listIndex < 0) {
-      throw new Error('List not found.');
-    }
+): Promise<RestaurantListItemRecord> {
+  const currentUserId = getAuthenticatedUserId();
+  const trimmedName = restaurantName.trim();
+  if (!trimmedName) {
+    throw new Error('Restaurant name is required.');
+  }
 
-    const trimmedName = restaurantName.trim();
-    const existingRestaurant = store.restaurants.find(
-      (restaurant) => restaurant.name.toLowerCase() === trimmedName.toLowerCase(),
-    );
+  const escapedListId = escapeFilterValue(listId);
 
-    const restaurant: RestaurantRecord =
-      existingRestaurant ?? {
-        id: createId('restaurant'),
-        name: trimmedName,
-        city: city?.trim() || undefined,
-      };
+  // Ensure the list exists and is accessible to the current user.
+  await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId);
 
-    if (!existingRestaurant) {
-      store.restaurants.unshift(restaurant);
-    }
+  const restaurant = await findOrCreateRestaurantByName(trimmedName, currentUserId, city);
+  const escapedRestaurantId = escapeFilterValue(restaurant.id);
 
-    const currentList = store.restaurantLists[listIndex];
-    if (!currentList.restaurantIds.includes(restaurant.id)) {
-      currentList.restaurantIds.unshift(restaurant.id);
-    }
-
-    const updatedList: RestaurantListRecord = {
-      ...currentList,
-      updatedAt: nowIso(),
-    };
-
-    store.restaurantLists[listIndex] = updatedList;
-    return updatedList;
+  const existingItems = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
+    filter: `list = "${escapedListId}" && restaurant = "${escapedRestaurantId}"`,
+    expand: 'restaurant',
   });
+  if (existingItems.totalItems > 0 && existingItems.items[0]) {
+    return mapListItemCollectionRecord(existingItems.items[0]);
+  }
+
+  const itemsWithHighestPosition = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
+    filter: `list = "${escapedListId}"`,
+    sort: '-position',
+  });
+  const nextPosition = (itemsWithHighestPosition.items[0]?.position ?? 0) + 1;
+
+  const createdItem = await pb.collection('list_items').create<ListItemCollectionRecord>(
+    {
+      list: listId,
+      restaurant: restaurant.id,
+      addedBy: currentUserId,
+      position: nextPosition,
+    },
+    {
+      expand: 'restaurant',
+    },
+  );
+
+  return mapListItemCollectionRecord(createdItem);
 }
 
 export async function removeRestaurantFromList(
   listId: string,
-  restaurantId: string,
-): Promise<RestaurantListRecord> {
-  return mutateStore((store) => {
-    const listIndex = store.restaurantLists.findIndex((list) => list.id === listId);
-    if (listIndex < 0) {
-      throw new Error('List not found.');
+  listItemId: string,
+): Promise<void> {
+  getAuthenticatedUserId();
+
+  try {
+    const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId);
+    if (listItem.list !== listId) {
+      throw new Error('List item not found.');
     }
 
-    const currentList = store.restaurantLists[listIndex];
-    const updatedList: RestaurantListRecord = {
-      ...currentList,
-      restaurantIds: currentList.restaurantIds.filter((id) => id !== restaurantId),
-      updatedAt: nowIso(),
-    };
-
-    store.restaurantLists[listIndex] = updatedList;
-    return updatedList;
-  });
+    await pb.collection('list_items').delete(listItemId);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function listNotes(): Promise<NoteRecord[]> {
-  const store = await getStore();
-  return mapAndSortByDateDescending(store.notes);
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const currentUserId = getAuthenticatedUserId();
+  const records = await pb.collection('notes').getFullList<NoteCollectionRecord>({
+    filter: `user = "${escapeFilterValue(currentUserId)}"`,
+    expand: 'restaurant',
+    sort: '-updated,-created',
+  });
+
+  return records.map(mapNoteCollectionRecord);
 }
 
 export async function getNoteById(noteId: string): Promise<NoteRecord | null> {
-  const store = await getStore();
-  return store.notes.find((note) => note.id === noteId) ?? null;
+  if (!pb.authStore.record?.id) {
+    return null;
+  }
+
+  try {
+    const record = await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
+      expand: 'restaurant',
+    });
+    return mapNoteCollectionRecord(record);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
-  return mutateStore((store) => {
-    const timestamp = nowIso();
-    const note: NoteRecord = {
-      id: createId('note'),
-      title: input.title.trim(),
-      content: input.content.trim(),
-      rating: input.rating,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+  const currentUserId = getAuthenticatedUserId();
+  const content = buildNoteContent(input.title, input.content);
+  if (!content) {
+    throw new Error('Note content is required.');
+  }
 
-    store.notes.unshift(note);
-    return note;
-  });
+  const payload: Record<string, unknown> = {
+    user: currentUserId,
+    content,
+    status: 'draft',
+  };
+
+  if (input.locationText !== undefined) {
+    payload.location_text = input.locationText.trim() || '';
+  }
+
+  if (input.latitude !== undefined) {
+    payload.latitude = input.latitude;
+  }
+
+  if (input.longitude !== undefined) {
+    payload.longitude = input.longitude;
+  }
+
+  const record = await pb.collection('notes').create<NoteCollectionRecord>(
+    payload,
+    {
+      expand: 'restaurant',
+    },
+  );
+
+  await uploadNotePhotos(record.id, currentUserId, input.photos ?? []);
+
+  return mapNoteCollectionRecord(record);
 }
 
 export async function updateNote(noteId: string, updates: UpdateNoteInput): Promise<NoteRecord> {
-  return mutateStore((store) => {
-    const index = store.notes.findIndex((note) => note.id === noteId);
-    if (index < 0) {
-      throw new Error('Note not found.');
+  const currentUserId = getAuthenticatedUserId();
+  const payload: Record<string, unknown> = {};
+
+  if (updates.title !== undefined || updates.content !== undefined) {
+    const content = buildNoteContent(updates.title, updates.content);
+    if (!content) {
+      throw new Error('Note content is required.');
     }
 
-    const currentNote = store.notes[index];
-    const nextNote: NoteRecord = {
-      ...currentNote,
-      title: updates.title?.trim() ?? currentNote.title,
-      content: updates.content?.trim() ?? currentNote.content,
-      rating: updates.rating,
-      updatedAt: nowIso(),
-    };
+    payload.content = content;
+  }
 
-    store.notes[index] = nextNote;
-    return nextNote;
-  });
+  if (updates.locationText !== undefined) {
+    payload.location_text = updates.locationText.trim() || '';
+  }
+
+  if (updates.latitude !== undefined) {
+    payload.latitude = updates.latitude;
+  }
+
+  if (updates.longitude !== undefined) {
+    payload.longitude = updates.longitude;
+  }
+
+  if (updates.deletePhotoIds && updates.deletePhotoIds.length > 0) {
+    for (const photoId of updates.deletePhotoIds) {
+      try {
+        await pb.collection('note_photos').delete(photoId);
+      } catch (error) {
+        if (!isNotFoundError(error)) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  const record =
+    Object.keys(payload).length > 0
+      ? await pb.collection('notes').update<NoteCollectionRecord>(noteId, payload, {
+          expand: 'restaurant',
+        })
+      : await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
+          expand: 'restaurant',
+        });
+
+  await uploadNotePhotos(noteId, currentUserId, updates.newPhotos ?? []);
+
+  return mapNoteCollectionRecord(record);
 }
 
 export async function deleteNote(noteId: string): Promise<void> {
-  await mutateStore((store) => {
-    store.notes = store.notes.filter((note) => note.id !== noteId);
-  });
+  try {
+    await pb.collection('notes').delete(noteId);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function listFriends(): Promise<FriendRecord[]> {
@@ -883,8 +2061,9 @@ export async function inviteFriend(input: InviteFriendInput): Promise<FriendReco
 
   return {
     id: createdFriendship.id,
+    userId: response.user.id,
     name: resolveFriendName(response.user),
-    email: resolveFriendEmail(response.user, response.user.id),
+    email: resolveFriendEmail(response.user),
     status: 'pending_sent',
     createdAt: createdFriendship.created,
   };
@@ -1351,73 +2530,376 @@ export async function saveTastingResultsToVisitHistory(
   });
 }
 
-function toBillStatus(participants: BillParticipantRecord[]): BillRecord['status'] {
-  return participants.every((participant) => participant.paidStatus === 'paid') ? 'settled' : 'open';
-}
-
 export async function listBills(): Promise<BillRecord[]> {
-  const store = await getStore();
-  return mapAndSortByDateDescending(store.bills);
+  const currentUserId = pb.authStore.record?.id;
+  if (!currentUserId) {
+    return [];
+  }
+
+  const escapedCurrentUserId = escapeFilterValue(currentUserId);
+  const participantRecords = await pb.collection('bill_participants').getFullList<BillParticipantCollectionRecord>({
+    filter: `user = "${escapedCurrentUserId}"`,
+  });
+
+  const participantBillIds = Array.from(
+    new Set(
+      participantRecords
+        .map((participantRecord) => participantRecord.bill)
+        .filter((billId): billId is string => typeof billId === 'string' && billId.length > 0),
+    ),
+  );
+
+  const creatorFilter = `creator_user = "${escapedCurrentUserId}"`;
+  const participantFilter =
+    participantBillIds.length > 0
+      ? participantBillIds.map((billId) => `id = "${escapeFilterValue(billId)}"`).join(' || ')
+      : '';
+  const filterQuery = participantFilter ? `(${creatorFilter}) || (${participantFilter})` : creatorFilter;
+
+  const bills = await pb.collection('bills').getFullList<BillCollectionRecord>({
+    filter: filterQuery,
+    sort: '-created',
+  });
+
+  return Promise.all(bills.map((bill) => mapBillWithRelations(bill)));
 }
 
 export async function getBillById(billId: string): Promise<BillRecord | null> {
-  const store = await getStore();
-  return store.bills.find((bill) => bill.id === billId) ?? null;
+  if (!pb.authStore.record?.id) {
+    return null;
+  }
+
+  try {
+    const bill = await pb.collection('bills').getOne<BillCollectionRecord>(billId);
+    return mapBillWithRelations(bill);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export async function createBill(input: CreateBillInput): Promise<BillRecord> {
-  return mutateStore((store) => {
-    const timestamp = nowIso();
-    const bill: BillRecord = {
-      id: createId('bill'),
-      title: input.title.trim(),
-      restaurantName: input.restaurantName.trim(),
-      createdByUserId: input.createdByUserId,
-      items: input.items,
-      participants: input.participants,
-      tax: input.tax,
-      tip: input.tip,
-      fees: input.fees,
-      extrasSplitMode: input.extrasSplitMode,
-      status: toBillStatus(input.participants),
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+  const currentUserId = getAuthenticatedUserId();
+  const trimmedTitle = input.title.trim();
 
-    upsertRestaurant(store, bill.restaurantName);
-    store.bills.unshift(bill);
-    return bill;
+  if (!trimmedTitle) {
+    throw new Error('Bill title is required.');
+  }
+
+  const normalizedTax = sanitizeCurrency(input.tax);
+  const normalizedTip = sanitizeCurrency(input.tip);
+  const normalizedFees = sanitizeCurrency(input.fees);
+  const subtotal = input.items.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
+  const totalAmount = sanitizeCurrency(subtotal + normalizedTax + normalizedTip + normalizedFees);
+
+  const createdBill = await pb.collection('bills').create<BillCollectionRecord>({
+    creator_user: currentUserId,
+    bill_name: trimmedTitle,
+    total_amount: totalAmount,
+    tax: normalizedTax,
+    tip: normalizedTip,
+    fees: normalizedFees,
+    split_mode: input.extrasSplitMode === 'equal' ? 'even' : 'itemized',
+    extras_split_mode: input.extrasSplitMode,
+    status: toBillCollectionStatus(input.participants),
   });
+
+  const participantIdLookup = new Map<string, string>();
+  const createdParticipants = await Promise.all(
+    input.participants.map(async (participant) => {
+      const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>({
+        bill: createdBill.id,
+        user: participant.userId?.trim() ? participant.userId : null,
+        participant_name: participant.name.trim() || undefined,
+        amount_owed: sanitizeCurrency(participant.amountOwed),
+        paid_status: participant.paidStatus,
+        paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
+        custom_tip_contribution:
+          typeof participant.customTipContribution === 'number'
+            ? sanitizeCurrency(participant.customTipContribution)
+            : null,
+      });
+      participantIdLookup.set(participant.id, createdParticipant.id);
+      return createdParticipant;
+    }),
+  );
+
+  for (const item of input.items) {
+    const mappedParticipantIds = item.assignedToParticipantIds
+      .map((participantId) => participantIdLookup.get(participantId))
+      .filter((candidate): candidate is string => Boolean(candidate));
+    const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
+    const mappedSplitConfig =
+      normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
+        ? item.splitConfig
+            .map((splitConfig) => {
+              const mappedParticipantId = participantIdLookup.get(splitConfig.participantId);
+              if (!mappedParticipantId) {
+                return null;
+              }
+
+              if (splitConfig.type !== 'percentage' && splitConfig.type !== 'amount') {
+                return null;
+              }
+
+              return {
+                participant_id: mappedParticipantId,
+                type: splitConfig.type,
+                value: sanitizeCurrency(splitConfig.value),
+              };
+            })
+            .filter(
+              (candidate): candidate is { participant_id: string; type: 'percentage' | 'amount'; value: number } =>
+                candidate !== null,
+            )
+        : null;
+
+    const assignedToParticipantIds =
+      mappedParticipantIds.length > 0 ? mappedParticipantIds : createdParticipants.map((participant) => participant.id);
+
+    await pb.collection('bill_items').create<BillItemCollectionRecord>({
+      bill: createdBill.id,
+      item_name: item.itemName.trim(),
+      price: sanitizeCurrency(item.price),
+      assigned_to: assignedToParticipantIds,
+      split_mode: normalizedSplitMode,
+      split_config: normalizedSplitMode === 'advanced' ? mappedSplitConfig : null,
+    });
+  }
+
+  const hydratedBill = await getBillById(createdBill.id);
+  if (!hydratedBill) {
+    throw new Error('Bill was created but could not be loaded.');
+  }
+
+  return hydratedBill;
 }
 
 export async function updateBill(billId: string, updates: UpdateBillInput): Promise<BillRecord> {
-  return mutateStore((store) => {
-    const billIndex = store.bills.findIndex((bill) => bill.id === billId);
-    if (billIndex < 0) {
-      throw new Error('Bill not found.');
+  const currentBill = await getBillById(billId);
+  if (!currentBill) {
+    throw new Error('Bill not found.');
+  }
+
+  const nextTitle = updates.title?.trim() ?? currentBill.title;
+  const nextItems = updates.items ?? currentBill.items;
+  const nextParticipants = updates.participants ?? currentBill.participants;
+  const nextTax = sanitizeCurrency(updates.tax ?? currentBill.tax);
+  const nextTip = sanitizeCurrency(updates.tip ?? currentBill.tip);
+  const nextFees = sanitizeCurrency(updates.fees ?? currentBill.fees);
+  const nextSubtotal = nextItems.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
+  const nextTotalAmount = sanitizeCurrency(nextSubtotal + nextTax + nextTip + nextFees);
+  const nextStatus: BillCollectionRecord['status'] =
+    updates.status !== undefined
+      ? toBillCollectionStatusFromRecord(updates.status)
+      : updates.participants
+        ? toBillCollectionStatus(nextParticipants)
+        : toBillCollectionStatusFromRecord(currentBill.status);
+
+  await pb.collection('bills').update<BillCollectionRecord>(billId, {
+    bill_name: nextTitle,
+    total_amount: nextTotalAmount,
+    tax: nextTax,
+    tip: nextTip,
+    fees: nextFees,
+    extras_split_mode: updates.extrasSplitMode ?? currentBill.extrasSplitMode,
+    status: nextStatus,
+  });
+
+  const participantIdRemap = new Map<string, string>();
+  const participantIdsToDelete: string[] = [];
+
+  if (updates.participants) {
+    const existingParticipants = await listBillParticipantsForBillId(billId);
+    const existingParticipantIds = new Set(existingParticipants.map((participant) => participant.id));
+    const retainedParticipantIds = new Set<string>();
+
+    for (const participant of updates.participants) {
+      const participantPayload = {
+        bill: billId,
+        user: participant.userId?.trim() ? participant.userId : null,
+        participant_name: participant.name.trim() || undefined,
+        amount_owed: sanitizeCurrency(participant.amountOwed),
+        paid_status: participant.paidStatus,
+        paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
+        custom_tip_contribution:
+          typeof participant.customTipContribution === 'number'
+            ? sanitizeCurrency(participant.customTipContribution)
+            : null,
+      };
+
+      if (existingParticipantIds.has(participant.id)) {
+        retainedParticipantIds.add(participant.id);
+        participantIdRemap.set(participant.id, participant.id);
+        await pb.collection('bill_participants').update<BillParticipantCollectionRecord>(participant.id, participantPayload);
+        continue;
+      }
+
+      const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>(
+        participantPayload,
+      );
+      retainedParticipantIds.add(createdParticipant.id);
+      participantIdRemap.set(participant.id, createdParticipant.id);
     }
 
-    const currentBill = store.bills[billIndex];
-    const participants = updates.participants ?? currentBill.participants;
+    existingParticipants.forEach((existingParticipant) => {
+      if (retainedParticipantIds.has(existingParticipant.id)) {
+        return;
+      }
 
-    const nextBill: BillRecord = {
-      ...currentBill,
-      title: updates.title?.trim() ?? currentBill.title,
-      restaurantName: updates.restaurantName?.trim() ?? currentBill.restaurantName,
-      items: updates.items ?? currentBill.items,
-      participants,
-      tax: updates.tax ?? currentBill.tax,
-      tip: updates.tip ?? currentBill.tip,
-      fees: updates.fees ?? currentBill.fees,
-      extrasSplitMode: updates.extrasSplitMode ?? currentBill.extrasSplitMode,
-      status: toBillStatus(participants),
-      updatedAt: nowIso(),
-    };
+      participantIdsToDelete.push(existingParticipant.id);
+    });
+  }
 
-    upsertRestaurant(store, nextBill.restaurantName);
-    store.bills[billIndex] = nextBill;
-    return nextBill;
-  });
+  if (updates.items) {
+    const existingItems = await listBillItemsForBillId(billId);
+    const existingItemIds = new Set(existingItems.map((item) => item.id));
+    const retainedItemIds = new Set<string>();
+    const mapParticipantId = (participantId: string): string => participantIdRemap.get(participantId) ?? participantId;
+
+    for (const item of updates.items) {
+      const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
+      const normalizedSplitConfig =
+        normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
+          ? item.splitConfig
+              .filter(
+                (entry): entry is { participantId: string; type: 'percentage' | 'amount'; value: number } =>
+                  Boolean(entry.participantId) &&
+                  (entry.type === 'percentage' || entry.type === 'amount') &&
+                  Number.isFinite(entry.value),
+              )
+              .map((entry) => {
+                const mappedParticipantId = mapParticipantId(entry.participantId);
+                return {
+                  participant_id: mappedParticipantId,
+                  type: entry.type,
+                  value: sanitizeCurrency(entry.value),
+                };
+              })
+              .filter((entry) => Boolean(entry.participant_id))
+          : null;
+      const normalizedAssignedToIds = item.assignedToParticipantIds
+        .map((participantId) => mapParticipantId(participantId))
+        .filter((participantId, index, collection) => Boolean(participantId) && collection.indexOf(participantId) === index);
+
+      const itemPayload = {
+        bill: billId,
+        item_name: item.itemName.trim(),
+        price: sanitizeCurrency(item.price),
+        assigned_to: normalizedAssignedToIds,
+        split_mode: normalizedSplitMode,
+        split_config: normalizedSplitMode === 'advanced' ? normalizedSplitConfig : null,
+      };
+
+      if (existingItemIds.has(item.id)) {
+        retainedItemIds.add(item.id);
+        await pb.collection('bill_items').update<BillItemCollectionRecord>(item.id, itemPayload);
+        continue;
+      }
+
+      const createdItem = await pb.collection('bill_items').create<BillItemCollectionRecord>(itemPayload);
+      retainedItemIds.add(createdItem.id);
+    }
+
+    await Promise.all(
+      existingItems.map(async (existingItem) => {
+        if (retainedItemIds.has(existingItem.id)) {
+          return;
+        }
+        await pb.collection('bill_items').delete(existingItem.id);
+      }),
+    );
+  }
+
+  if (!updates.items && participantIdsToDelete.length > 0) {
+    const removedParticipantIdSet = new Set(participantIdsToDelete);
+    const existingItems = await listBillItemsForBillId(billId);
+
+    await Promise.all(
+      existingItems.map(async (existingItem) => {
+        const nextAssignedTo = Array.isArray(existingItem.assigned_to)
+          ? existingItem.assigned_to.filter((participantId) => !removedParticipantIdSet.has(participantId))
+          : [];
+        const nextSplitConfig =
+          existingItem.split_mode === 'advanced' && Array.isArray(existingItem.split_config)
+            ? existingItem.split_config.filter((splitEntry) => !removedParticipantIdSet.has(splitEntry.participant_id))
+            : null;
+
+        await pb.collection('bill_items').update<BillItemCollectionRecord>(existingItem.id, {
+          assigned_to: nextAssignedTo,
+          split_config: existingItem.split_mode === 'advanced' ? nextSplitConfig : null,
+        });
+      }),
+    );
+  }
+
+  if (participantIdsToDelete.length > 0) {
+    await Promise.all(
+      participantIdsToDelete.map(async (participantId) => {
+        try {
+          await pb.collection('bill_participants').delete(participantId);
+        } catch (error) {
+          if (isNotFoundError(error)) {
+            return;
+          }
+
+          throw error;
+        }
+      }),
+    );
+  }
+
+  const hydratedBill = await getBillById(billId);
+  if (!hydratedBill) {
+    throw new Error('Updated bill could not be loaded.');
+  }
+
+  return hydratedBill;
+}
+
+export async function deleteBill(billId: string): Promise<void> {
+  const [participants, items] = await Promise.all([
+    listBillParticipantsForBillId(billId),
+    listBillItemsForBillId(billId),
+  ]);
+
+  await Promise.all(
+    items.map(async (item) => {
+      try {
+        await pb.collection('bill_items').delete(item.id);
+      } catch (error) {
+        if (isNotFoundError(error)) {
+          return;
+        }
+        throw error;
+      }
+    }),
+  );
+
+  await Promise.all(
+    participants.map(async (participant) => {
+      try {
+        await pb.collection('bill_participants').delete(participant.id);
+      } catch (error) {
+        if (isNotFoundError(error)) {
+          return;
+        }
+        throw error;
+      }
+    }),
+  );
+
+  try {
+    await pb.collection('bills').delete(billId);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function markBillParticipantPaid(
@@ -1425,32 +2907,25 @@ export async function markBillParticipantPaid(
   participantId: string,
   paidStatus: BillParticipantRecord['paidStatus'],
 ): Promise<BillRecord> {
-  return mutateStore((store) => {
-    const billIndex = store.bills.findIndex((bill) => bill.id === billId);
-    if (billIndex < 0) {
-      throw new Error('Bill not found.');
-    }
-
-    const currentBill = store.bills[billIndex];
-    const updatedParticipants = currentBill.participants.map((participant) =>
-      participant.id === participantId
-        ? {
-            ...participant,
-            paidStatus,
-          }
-        : participant,
-    );
-
-    const updatedBill: BillRecord = {
-      ...currentBill,
-      participants: updatedParticipants,
-      status: toBillStatus(updatedParticipants),
-      updatedAt: nowIso(),
-    };
-
-    store.bills[billIndex] = updatedBill;
-    return updatedBill;
+  await pb.collection('bill_participants').update<BillParticipantCollectionRecord>(participantId, {
+    paid_status: paidStatus,
+    paid_date: paidStatus === 'paid' ? nowIso() : null,
   });
+
+  const participants = await listBillParticipantsForBillId(billId);
+  const nextStatus: BillCollectionRecord['status'] =
+    participants.every((participant) => participant.paid_status === 'paid') ? 'settled' : 'active';
+
+  await pb.collection('bills').update<BillCollectionRecord>(billId, {
+    status: nextStatus,
+  });
+
+  const hydratedBill = await getBillById(billId);
+  if (!hydratedBill) {
+    throw new Error('Updated bill could not be loaded.');
+  }
+
+  return hydratedBill;
 }
 
 export function createEntityId(prefix: string): string {

@@ -127,6 +127,24 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
     return mutation;
   }
 
+  async getQueuedMutations(limit: number): Promise<QueuedMutation[]> {
+    const database = await this.getDatabase();
+    const rows = await database.getAllAsync<QueueRow>(
+      `
+      SELECT
+        id, method, url, body, headers, status, idempotency_key,
+        attempt_count, max_attempts, next_retry_at, last_error,
+        created_at, updated_at, last_attempt_at
+      FROM ${TABLE_NAME}
+      ORDER BY created_at DESC
+      LIMIT ?;
+      `,
+      Math.max(1, limit),
+    );
+
+    return rows.map(deserializeRow);
+  }
+
   async getReadyMutations(now: number, limit: number): Promise<QueuedMutation[]> {
     const database = await this.getDatabase();
     const rows = await database.getAllAsync<QueueRow>(

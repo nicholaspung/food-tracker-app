@@ -4,11 +4,18 @@ import type { ComponentProps } from 'react';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { ScreenHeader, TabRootScreenScaffold } from '../components/shared';
+import {
+  OptionList,
+  OptionListRow,
+  ScreenHeader,
+  StatusPill,
+  TabRootScreenScaffold,
+  TabSectionCard,
+} from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Card, ListItem, Text } from '../ui';
+import { Text } from '../ui';
 
 type MiscScreenProps = NativeStackScreenProps<RootStackParamList, 'Misc'>;
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -81,7 +88,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     background: theme.colors.background.muted,
     cardBorder: theme.colors.border.subtle,
     rowBackground: theme.colors.background.app,
-    rowChevron: theme.colors.text.muted,
     title: theme.colors.text.primary,
     subtitle: theme.colors.text.muted,
     blue: theme.colors.text.info,
@@ -90,13 +96,9 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     purpleSoft: theme.colors.background.muted,
     green: theme.colors.text.success,
     greenSoft: theme.colors.status.successBg,
-    emerald: theme.colors.text.success,
-    emeraldSoft: theme.colors.status.successBg,
     yellow: theme.colors.text.warning,
     yellowSoft: theme.colors.status.warningBg,
     yellowBorder: theme.colors.border.warning,
-    betaSoft: theme.colors.status.infoBg,
-    betaText: theme.colors.text.brand,
     tipTitle: theme.colors.text.primary,
     tipBody: theme.colors.text.secondary,
     tipsTogglePressed: theme.colors.status.infoBg,
@@ -130,7 +132,7 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     },
   ];
 
-  const billsActions: ActionItem[] = [
+  const billsAndTipsActions: ActionItem[] = [
     {
       title: 'Split a Bill',
       description: 'Create and manage bill splits',
@@ -146,10 +148,10 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       title: 'Tip Calculator',
       description: 'Figure out how much to tip',
       icon: 'calculator-outline',
-      iconColor: sectionColors.emerald,
-      iconBackground: sectionColors.emeraldSoft,
+      iconColor: sectionColors.green,
+      iconBackground: sectionColors.greenSoft,
       onPress: () => {
-        navigation.navigate('Bills');
+        navigation.navigate('TipCalculator');
       },
       testID: 'feature-tip-calculator',
     },
@@ -164,6 +166,17 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       paddingHorizontal: 0,
       paddingVertical: 0,
     },
+    header: {
+      gap: theme.spacing.xxs,
+      paddingBottom: theme.spacing.md,
+      paddingTop: theme.spacing.sm,
+    },
+    headerTitle: {
+      color: sectionColors.title,
+      fontSize: 30,
+      fontWeight: '700',
+      lineHeight: 36,
+    },
     body: {
       gap: theme.spacing.md,
       paddingBottom: theme.spacing.xl,
@@ -172,29 +185,21 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     },
     sectionCard: {
       borderColor: sectionColors.cardBorder,
-      gap: theme.spacing.sm,
-    },
-    sectionTitleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    sectionTitle: {
-      color: sectionColors.title,
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24,
     },
     sectionDescription: {
       color: sectionColors.subtitle,
-      marginBottom: theme.spacing.xxs,
     },
-    sectionActions: {
-      gap: theme.spacing.sm,
+    optionList: {
+      borderColor: sectionColors.cardBorder,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      overflow: 'hidden',
     },
     featureRow: {
       backgroundColor: sectionColors.rowBackground,
-      borderColor: 'transparent',
+    },
+    sectionActions: {
+      gap: theme.spacing.sm,
     },
     featureIconWrap: {
       alignItems: 'center',
@@ -202,20 +207,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       height: 36,
       justifyContent: 'center',
       width: 36,
-    },
-    betaBadge: {
-      backgroundColor: sectionColors.betaSoft,
-      borderRadius: theme.radii.pill,
-      marginLeft: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 2,
-    },
-    betaLabel: {
-      color: sectionColors.betaText,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
-      textTransform: 'uppercase',
     },
     tipCard: {
       backgroundColor: sectionColors.yellowSoft,
@@ -260,26 +251,25 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       testID="misc-page"
     >
       <ScreenHeader
-        onBackPress={() => {
-          navigation.navigate('Profile');
-        }}
+        style={styles.header}
         subtitle="Additional features and helpful tips"
         title="More"
+        titleStyle={styles.headerTitle}
       />
 
       <View style={styles.body}>
-        <Card style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons color={sectionColors.blue} name="list-outline" size={20} />
-            <Text style={styles.sectionTitle}>Restaurant Lists</Text>
-          </View>
-          <Text style={styles.sectionDescription}>Create and organize lists of your favorite restaurants</Text>
-
-          <View style={styles.sectionActions}>
-            {restaurantListActions.map((action) => (
-              <ListItem
+        <TabSectionCard
+          description="Create and organize lists of your favorite restaurants"
+          descriptionStyle={styles.sectionDescription}
+          style={styles.sectionCard}
+          title="Restaurant Lists"
+          titleLeading={<Ionicons color={sectionColors.blue} name="list-outline" size={20} />}
+        >
+          <OptionList style={styles.optionList}>
+            {restaurantListActions.map((action, index) => (
+              <OptionListRow
+                isLast={index === restaurantListActions.length - 1}
                 key={action.title}
-                description={action.description}
                 leading={
                   <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
                     <Ionicons color={action.iconColor} name={action.icon} size={18} />
@@ -287,31 +277,28 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
                 }
                 onPress={action.onPress}
                 style={styles.featureRow}
+                subtitle={action.description}
                 testID={action.testID}
                 title={action.title}
-                tone="muted"
-                trailing={<Ionicons color={sectionColors.rowChevron} name="chevron-forward" size={18} />}
               />
             ))}
-          </View>
-        </Card>
+          </OptionList>
+        </TabSectionCard>
 
         {isAdmin ? (
-          <Card style={styles.sectionCard}>
-            <View style={styles.sectionTitleRow}>
-              <Ionicons color={sectionColors.purple} name="people-outline" size={20} />
-              <Text style={styles.sectionTitle}>Group Tastings</Text>
-              <View style={styles.betaBadge}>
-                <Text style={styles.betaLabel}>BETA</Text>
-              </View>
-            </View>
-            <Text style={styles.sectionDescription}>Organize group food tasting sessions and rate together</Text>
-
-            <View style={styles.sectionActions}>
-              {groupTastingsActions.map((action) => (
-                <ListItem
+          <TabSectionCard
+            description="Organize group food tasting sessions and rate together"
+            descriptionStyle={styles.sectionDescription}
+            style={styles.sectionCard}
+            title="Group Tastings"
+            titleAccessory={<StatusPill label="Beta" tone="brand" uppercase />}
+            titleLeading={<Ionicons color={sectionColors.purple} name="people-outline" size={20} />}
+          >
+            <OptionList style={styles.optionList}>
+              {groupTastingsActions.map((action, index) => (
+                <OptionListRow
+                  isLast={index === groupTastingsActions.length - 1}
                   key={action.title}
-                  description={action.description}
                   leading={
                     <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
                       <Ionicons color={action.iconColor} name={action.icon} size={18} />
@@ -319,28 +306,27 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
                   }
                   onPress={action.onPress}
                   style={styles.featureRow}
+                  subtitle={action.description}
                   testID={action.testID}
                   title={action.title}
-                  tone="muted"
-                  trailing={<Ionicons color={sectionColors.rowChevron} name="chevron-forward" size={18} />}
                 />
               ))}
-            </View>
-          </Card>
+            </OptionList>
+          </TabSectionCard>
         ) : null}
 
-        <Card style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons color={sectionColors.green} name="cash-outline" size={20} />
-            <Text style={styles.sectionTitle}>Bills & Tips</Text>
-          </View>
-          <Text style={styles.sectionDescription}>Split bills and calculate tips quickly</Text>
-
-          <View style={styles.sectionActions}>
-            {billsActions.map((action) => (
-              <ListItem
+        <TabSectionCard
+          description="Split bills and calculate tips quickly"
+          descriptionStyle={styles.sectionDescription}
+          style={styles.sectionCard}
+          title="Bills & Tips"
+          titleLeading={<Ionicons color={sectionColors.green} name="cash-outline" size={20} />}
+        >
+          <OptionList style={styles.optionList}>
+            {billsAndTipsActions.map((action, index) => (
+              <OptionListRow
+                isLast={index === billsAndTipsActions.length - 1}
                 key={action.title}
-                description={action.description}
                 leading={
                   <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
                     <Ionicons color={action.iconColor} name={action.icon} size={18} />
@@ -348,22 +334,21 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
                 }
                 onPress={action.onPress}
                 style={styles.featureRow}
+                subtitle={action.description}
                 testID={action.testID}
                 title={action.title}
-                tone="muted"
-                trailing={<Ionicons color={sectionColors.rowChevron} name="chevron-forward" size={18} />}
               />
             ))}
-          </View>
-        </Card>
+          </OptionList>
+        </TabSectionCard>
 
-        <Card style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons color={sectionColors.yellow} name="bulb-outline" size={20} />
-            <Text style={styles.sectionTitle}>Tips & Tricks</Text>
-          </View>
-          <Text style={styles.sectionDescription}>Get the most out of Yummy Recs</Text>
-
+        <TabSectionCard
+          description="Get the most out of Yummy Recs"
+          descriptionStyle={styles.sectionDescription}
+          style={styles.sectionCard}
+          title="Tips & Tricks"
+          titleLeading={<Ionicons color={sectionColors.yellow} name="bulb-outline" size={20} />}
+        >
           <View style={styles.sectionActions}>
             {visibleTips.map((tip) => (
               <View key={tip.title} style={styles.tipCard}>
@@ -386,7 +371,7 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
               </Pressable>
             ) : null}
           </View>
-        </Card>
+        </TabSectionCard>
       </View>
     </TabRootScreenScaffold>
   );

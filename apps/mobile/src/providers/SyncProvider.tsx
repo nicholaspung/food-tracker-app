@@ -8,6 +8,7 @@ import { useConnectivity } from './ConnectivityProvider';
 
 interface SyncContextValue extends SyncSnapshot {
   enqueueMutation: (input: EnqueueMutationInput) => Promise<QueuedMutation>;
+  getQueuedMutations: (limit?: number) => Promise<QueuedMutation[]>;
   retryAllFailed: () => Promise<number>;
   replayNow: () => Promise<void>;
 }
@@ -106,6 +107,11 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     return resetCount;
   }, [isOnline]);
 
+  const getQueuedMutations = useCallback(async (limit?: number): Promise<QueuedMutation[]> => {
+    const safeLimit = typeof limit === 'number' && Number.isInteger(limit) && limit > 0 ? limit : 25;
+    return syncEngine.getQueuedMutations(safeLimit);
+  }, []);
+
   const replayNow = useCallback(async (): Promise<void> => {
     if (!isOnline) {
       return;
@@ -118,10 +124,11 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     () => ({
       ...snapshot,
       enqueueMutation,
+      getQueuedMutations,
       retryAllFailed,
       replayNow,
     }),
-    [enqueueMutation, replayNow, retryAllFailed, snapshot],
+    [enqueueMutation, getQueuedMutations, replayNow, retryAllFailed, snapshot],
   );
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

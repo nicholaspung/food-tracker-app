@@ -5,13 +5,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { BackHeaderScreenScaffold, ErrorState, Skeleton, StatusPill } from '../components/shared';
+import { BackHeaderScreenScaffold, EmptyState, Skeleton, StatusPill } from '../components/shared';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -284,7 +285,11 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         title="Settings"
       >
         <View style={styles.body}>
-          <ErrorState description="Please sign in again to view settings." title="Settings unavailable" />
+          <PageErrorToast
+            errorMessage="Please sign in again to view settings."
+            title="Settings unavailable"
+          />
+          <EmptyState description="Please sign in again to view settings." title="Settings unavailable" />
         </View>
       </BackHeaderScreenScaffold>
     );
@@ -307,10 +312,20 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
           </>
         ) : null}
 
+        <PageErrorToast
+          errorMessage={settingsQuery.isError ? 'Could not load settings.' : null}
+          title="Settings unavailable"
+          actionLabel="Retry"
+          onAction={() => {
+            void settingsQuery.refetch();
+          }}
+        />
+
         {settingsQuery.isError ? (
-          <ErrorState
+          <EmptyState
             description="Could not load settings."
-            onRetry={() => {
+            actionLabel="Retry"
+            onAction={() => {
               void settingsQuery.refetch();
             }}
             title="Settings unavailable"
@@ -392,7 +407,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
               </View>
             </Card>
 
-            {errorMessage ? <ErrorState description={errorMessage} title="Settings update failed" /> : null}
+            <PageErrorToast errorMessage={errorMessage} title="Settings update failed" />
             {successMessage ? (
               <Card tone="success">
                 <Text tone="success" variant="label">

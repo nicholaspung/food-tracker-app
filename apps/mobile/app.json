@@ -10,12 +10,19 @@
     "ios": {
       "bundleIdentifier": "com.anonymous.food-tracker-mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "Allow Food Tracker Mobile to scan friend QR codes."
+        "NSCameraUsageDescription": "Allow Food Tracker Mobile to scan friend QR codes.",
+        "NSLocationWhenInUseUsageDescription": "Allow Food Tracker Mobile to use your GPS location for notes.",
+        "NSPhotoLibraryUsageDescription": "Allow Food Tracker Mobile to select menu photos from your library.",
+        "NSPhotoLibraryAddUsageDescription": "Allow Food Tracker Mobile to save processed menu photos when needed."
       }
     },
     "android": {
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ]
     },
     "plugins": [
@@ -23,6 +30,19 @@
         "expo-camera",
         {
           "cameraPermission": "Allow Food Tracker Mobile to scan friend QR codes."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Food Tracker Mobile to use your GPS location for notes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Food Tracker Mobile to select menu photos from your library.",
+          "cameraPermission": "Allow Food Tracker Mobile to capture menu photos."
         }
       ]
     ]

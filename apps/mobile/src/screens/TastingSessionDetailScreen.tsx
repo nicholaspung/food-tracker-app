@@ -19,6 +19,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type TastingSessionDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionDetail'>;
 
@@ -306,7 +307,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
         <Text variant="titleMd">{session.name}</Text>
         <Text tone="secondary">{session.restaurantName}</Text>
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Session update failed" /> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Session update failed" />
 
         <Card>
           <Text variant="label">Lobby</Text>

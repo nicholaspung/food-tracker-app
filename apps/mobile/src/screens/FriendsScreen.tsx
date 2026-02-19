@@ -9,7 +9,6 @@ import QRCode from 'react-native-qrcode-svg';
 import { FriendListItemCard } from '../components/friends';
 import {
   EmptyState,
-  ErrorState,
   SegmentedControl,
   Skeleton,
   StatusPill,
@@ -22,6 +21,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 
@@ -374,13 +374,17 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
 
     if (friendsQuery.isError) {
       return (
-        <ErrorState
-          description="Could not load friendship data."
-          onRetry={() => {
-            void friendsQuery.refetch();
-          }}
-          title="Friends unavailable"
-        />
+        <>
+          <PageErrorToast
+            errorMessage="Could not load friendship data."
+            title="Friends unavailable"
+            actionLabel="Retry"
+            onAction={() => {
+              void friendsQuery.refetch();
+            }}
+          />
+          <EmptyState description="Could not load friendship data." title="Friends unavailable" />
+        </>
       );
     }
 
@@ -518,7 +522,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       </View>
 
       <View style={styles.body}>
-        {errorMessage ? <ErrorState description={errorMessage} title="Friend operation failed" /> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Friend operation failed" />
 
         {mainTab === 'my-code' ? (
           <Card>

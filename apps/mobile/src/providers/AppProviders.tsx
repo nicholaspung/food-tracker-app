@@ -9,6 +9,7 @@ import { initializeObservability } from '../observability';
 import { SplashScreen } from '../screens/SplashScreen';
 import { AuthProvider } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
+import { ErrorToastProvider } from './ErrorToastProvider';
 import { SyncProvider } from './SyncProvider';
 
 const QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v1';
@@ -63,7 +64,13 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <ConnectivityProvider>
       <QueryClientProvider client={queryClient}>
         <SyncProvider>
-          {isQueryPersistenceReady ? <AuthProvider>{children}</AuthProvider> : <SplashScreen />}
+          {isQueryPersistenceReady ? (
+            <AuthProvider>
+              <ErrorToastProvider>{children}</ErrorToastProvider>
+            </AuthProvider>
+          ) : (
+            <SplashScreen />
+          )}
         </SyncProvider>
       </QueryClientProvider>
     </ConnectivityProvider>

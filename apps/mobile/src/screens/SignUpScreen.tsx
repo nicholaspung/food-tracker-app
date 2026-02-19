@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { ErrorState, FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormScaffold, LoadingOverlay } from '../components/shared';
 import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Card, Input, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 
@@ -85,7 +86,7 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
           value={passwordConfirm}
         />
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Could not create account" /> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Could not create account" />
 
         {successMessage ? (
           <Card tone="success">

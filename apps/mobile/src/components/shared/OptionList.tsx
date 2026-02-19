@@ -20,6 +20,7 @@ export interface OptionListRowProps {
   iconName?: IoniconName;
   iconColor?: string;
   leading?: ReactNode;
+  titleAccessory?: ReactNode;
   rightAccessory?: ReactNode;
   chevron?: OptionChevronDirection | false;
   onPress?: () => void;
@@ -59,6 +60,7 @@ export function OptionListRow({
   iconName,
   iconColor,
   leading,
+  titleAccessory,
   rightAccessory,
   chevron,
   onPress,
@@ -109,6 +111,14 @@ export function OptionListRow({
       flex: 1,
       gap: 2,
     },
+    titleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xxs,
+    },
+    titleTextWrap: {
+      flexShrink: 1,
+    },
     title: {
       color: theme.colors.text.primary,
       fontSize: 15,
@@ -136,7 +146,12 @@ export function OptionListRow({
           <Ionicons color={iconColor ?? theme.colors.text.brand} name={iconName} size={18} />
         ) : null}
         <View style={styles.textWrap}>
-          <Text style={[styles.title, titleStyle]}>{title}</Text>
+          <View style={styles.titleRow}>
+            <View style={styles.titleTextWrap}>
+              <Text style={[styles.title, titleStyle]}>{title}</Text>
+            </View>
+            {titleAccessory}
+          </View>
           {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}
         </View>
       </View>

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, ScreenHeader, Skeleton } from '../components/shared';
+import { EmptyState, ScreenHeader, Skeleton } from '../components/shared';
 import {
   createTastingSession,
   joinTastingSession,
@@ -15,6 +15,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type TastingSessionsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessions'>;
 
@@ -237,7 +238,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           />
         </Card>
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Session action failed" /> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Session action failed" />
 
         {sessionsQuery.isLoading || restaurantsQuery.isLoading ? (
           <>
@@ -246,15 +247,14 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           </>
         ) : null}
 
-        {sessionsQuery.isError ? (
-          <ErrorState
-            description="Could not load tasting sessions."
-            onRetry={() => {
-              void sessionsQuery.refetch();
-            }}
-            title="Sessions unavailable"
-          />
-        ) : null}
+        <PageErrorToast
+          errorMessage={sessionsQuery.isError ? 'Could not load tasting sessions.' : null}
+          title="Sessions unavailable"
+          actionLabel="Retry"
+          onAction={() => {
+            void sessionsQuery.refetch();
+          }}
+        />
 
         {!sessionsQuery.isLoading && !sessionsQuery.isError && filteredSessions.length === 0 ? (
           <EmptyState description="No sessions found for the current filter." title="No sessions" />

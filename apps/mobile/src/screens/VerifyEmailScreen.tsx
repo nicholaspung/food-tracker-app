@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { ErrorState, FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormScaffold, LoadingOverlay } from '../components/shared';
 import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Card, Input, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type VerifyEmailScreenProps = NativeStackScreenProps<RootStackParamList, 'VerifyEmail'>;
 
@@ -48,7 +49,7 @@ export function VerifyEmailScreen({ navigation }: VerifyEmailScreenProps) {
           value={token}
         />
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Verification failed" /> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Verification failed" />
 
         {successMessage ? (
           <Card tone="success">

@@ -4,12 +4,13 @@ import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
-import { ErrorState, FeatureDetailScreenScaffold } from '../components/shared';
+import { FeatureDetailScreenScaffold } from '../components/shared';
 import { inviteFriend } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type QRScannerScreenProps = NativeStackScreenProps<RootStackParamList, 'QRScanner'>;
 
@@ -215,7 +216,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
         value={scannedCode}
       />
 
-      {errorMessage ? <ErrorState description={errorMessage} title="Scan failed" /> : null}
+      <PageErrorToast errorMessage={errorMessage} title="Scan failed" />
 
       <Button
         disabled={scannedCode.length !== 8 || isSubmitting}

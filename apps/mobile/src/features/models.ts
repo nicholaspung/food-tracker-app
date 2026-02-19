@@ -2,15 +2,22 @@ export interface VisitItem {
   id: string;
   name: string;
   rating: number;
+  description?: string;
   notes?: string;
 }
 
 export interface VisitRecord {
   id: string;
+  restaurantId?: string;
   restaurantName: string;
+  restaurantLocation?: string;
+  restaurantCuisineType?: string;
   visitedAt: string;
   items: VisitItem[];
   source: 'visit' | 'quick-track' | 'tasting-result';
+  userId?: string;
+  userName?: string;
+  visibility?: 'friends' | 'private';
   createdAt: string;
   updatedAt: string;
 }
@@ -18,10 +25,16 @@ export interface VisitRecord {
 export interface QuickTrackRecord {
   id: string;
   restaurantName: string;
+  locationText?: string;
+  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | 'restaurant';
   itemName: string;
   rating: number;
   notes?: string;
   sourceNoteId?: string;
+  userId?: string;
+  userName?: string;
+  visibility?: 'friends' | 'private';
+  itemDate?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,15 +56,36 @@ export interface RestaurantRecord {
   id: string;
   name: string;
   city?: string;
+  location?: string;
+  cuisineType?: string;
+  visibility?: 'private' | 'friends' | 'public';
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
+  isGooglePlace?: boolean;
 }
 
 export interface RestaurantListRecord {
   id: string;
   name: string;
   description?: string;
-  restaurantIds: string[];
+  visibility: 'private' | 'friends' | 'public';
+  userId: string;
+  ownerName?: string;
+  isDefault?: boolean;
+  coverImage?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RestaurantListItemRecord {
+  id: string;
+  listId: string;
+  restaurantId: string;
+  restaurantName: string;
+  restaurantCity?: string;
+  note?: string;
+  createdAt: string;
 }
 
 export interface NoteRecord {
@@ -59,6 +93,14 @@ export interface NoteRecord {
   title: string;
   content: string;
   rating?: number;
+  status: 'draft' | 'used';
+  locationText?: string;
+  latitude?: number;
+  longitude?: number;
+  restaurantId?: string;
+  restaurantName?: string;
+  usedInVisitId?: string;
+  usedInFoodItemId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +109,7 @@ export type FriendStatus = 'friend' | 'pending_received' | 'pending_sent';
 
 export interface FriendRecord {
   id: string;
+  userId: string;
   name: string;
   email: string;
   status: FriendStatus;
@@ -149,6 +192,14 @@ export interface BillItemRecord {
   itemName: string;
   price: number;
   assignedToParticipantIds: string[];
+  splitMode?: 'simple' | 'advanced';
+  splitConfig?: BillItemSplitConfig[] | null;
+}
+
+export interface BillItemSplitConfig {
+  participantId: string;
+  type: 'percentage' | 'amount';
+  value: number;
 }
 
 export interface BillParticipantRecord {
@@ -156,21 +207,25 @@ export interface BillParticipantRecord {
   name: string;
   userId?: string;
   amountOwed: number;
+  customTipContribution?: number;
   paidStatus: 'pending' | 'paid';
 }
 
 export type BillExtrasSplitMode = 'proportional' | 'equal';
+export type BillSplitMode = 'even' | 'itemized' | 'custom';
 
 export interface BillRecord {
   id: string;
   title: string;
   restaurantName: string;
   createdByUserId: string;
+  totalAmount?: number;
   items: BillItemRecord[];
   participants: BillParticipantRecord[];
   tax: number;
   tip: number;
   fees: number;
+  splitMode?: BillSplitMode;
   extrasSplitMode: BillExtrasSplitMode;
   status: 'open' | 'settled';
   createdAt: string;

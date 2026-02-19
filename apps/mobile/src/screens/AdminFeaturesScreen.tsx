@@ -7,7 +7,6 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   BackHeaderScreenScaffold,
   EmptyState,
-  ErrorState,
   OptionList,
   OptionListInlineBody,
   OptionListRow,
@@ -21,6 +20,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type AdminFeaturesScreenProps = NativeStackScreenProps<RootStackParamList, 'AdminFeatures'>;
 type ExpandablePanel = 'subscriberManagement';
@@ -211,12 +211,10 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
                   </View>
                 ) : null}
 
-                {subscriberErrorMessage ? (
-                  <ErrorState
-                    description={subscriberErrorMessage}
-                    title="Subscriber update failed"
-                  />
-                ) : null}
+                <PageErrorToast
+                  errorMessage={subscriberErrorMessage}
+                  title="Subscriber update failed"
+                />
 
                 <Input
                   autoCapitalize="none"

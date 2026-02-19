@@ -76,6 +76,10 @@ export class MutationReplayService {
     return resetCount;
   }
 
+  async getQueuedMutations(limit = 25): Promise<QueuedMutation[]> {
+    return this.queueStore.getQueuedMutations(limit);
+  }
+
   async replay(trigger: ReplayTrigger): Promise<void> {
     if (this.replayPromise) {
       return this.replayPromise;

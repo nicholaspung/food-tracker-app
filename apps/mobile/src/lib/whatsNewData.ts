@@ -10,6 +10,28 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.2',
+    date: '2026-02-18',
+    title: 'Visit Creation Wizard & Photo Sharing Themes',
+    summary:
+      'A guided step-by-step flow for creating visits, GPS restaurant search, per-dish photos, and four new photo sharing themes.',
+    features: [
+      'Step-by-step visit wizard: Restaurant → Items → Rate & Save.',
+      'Google Places search: Find restaurants by name, type, or location.',
+      'GPS nearby search: Discover food places near you.',
+      'Attach photos to individual dishes during the rating step.',
+      'Four sharing themes: Modern, Rustic, Minimal, and Neon.',
+      'Add or edit menu items directly from the visit creation flow.',
+    ],
+    improvements: [
+      'Set visit date and visibility during the rating step.',
+      'Rating legend shown while rating dishes.',
+      'Selected menu items pinned to the top of the list.',
+      'Restaurant list shows your visit count and friends who have been there.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.1',
     date: '2026-02-11',
     title: 'Tip Calculator and UI Improvements',

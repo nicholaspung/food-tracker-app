@@ -2,11 +2,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { ErrorState } from '../components/shared';
+import { FeatureFormScreenScaffold } from '../components/shared';
 import { addRestaurantToList } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { Button, Input, Screen, Text } from '../ui';
+import { Input } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type AddRestaurantToListScreenProps = NativeStackScreenProps<RootStackParamList, 'AddRestaurantToList'>;
 
@@ -48,8 +49,28 @@ export function AddRestaurantToListScreen({ navigation, route }: AddRestaurantTo
   };
 
   return (
-    <Screen keyboardAware>
-      <Text variant="titleMd">Add Restaurant</Text>
+    <FeatureFormScreenScaffold
+      onBackPress={() => {
+        navigation.navigate('ListDetail', { listId });
+      }}
+      primaryAction={{
+        disabled: !restaurantName.trim() || isSubmitting,
+        label: isSubmitting ? 'Saving...' : 'Save',
+        onPress: () => {
+          void handleSave();
+        },
+      }}
+      secondaryAction={{
+        disabled: isSubmitting,
+        label: 'Cancel',
+        onPress: () => {
+          navigation.navigate('ListDetail', { listId });
+        },
+        variant: 'secondary',
+      }}
+      subtitle="Add a restaurant to this list."
+      title="Add Restaurant"
+    >
       <Input
         label="Restaurant name"
         onChangeText={setRestaurantName}
@@ -58,15 +79,7 @@ export function AddRestaurantToListScreen({ navigation, route }: AddRestaurantTo
       />
       <Input label="City" onChangeText={setCity} placeholder="Optional city" value={city} />
 
-      {errorMessage ? <ErrorState description={errorMessage} title="Could not add restaurant" /> : null}
-
-      <Button
-        disabled={!restaurantName.trim() || isSubmitting}
-        label={isSubmitting ? 'Saving...' : 'Save'}
-        onPress={() => {
-          void handleSave();
-        }}
-      />
-    </Screen>
+      <PageErrorToast errorMessage={errorMessage} title="Could not add restaurant" />
+    </FeatureFormScreenScaffold>
   );
 }

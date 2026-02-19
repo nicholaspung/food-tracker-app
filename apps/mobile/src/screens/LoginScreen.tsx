@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { ErrorState, FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormScaffold, LoadingOverlay } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { Button, Input, Screen } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -44,7 +45,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
           value={password}
         />
 
-        {authError ? <ErrorState description={authError} title="Sign in failed" /> : null}
+        <PageErrorToast errorMessage={authError} title="Sign in failed" />
 
         <Button
           disabled={!email.trim() || !password}

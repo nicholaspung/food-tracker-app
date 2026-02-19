@@ -9,6 +9,7 @@ import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type EditVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'EditVisit'>;
 
@@ -146,7 +147,7 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
         <Text variant="titleMd">Edit Visit</Text>
         <Input label="Restaurant" onChangeText={setRestaurantName} value={restaurantName} />
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Update failed" /> : null}
+        <PageErrorToast errorMessage={errorMessage} title="Update failed" />
 
         {items.map((item) => (
           <Card key={item.id} style={styles.itemCard} tone="muted">
