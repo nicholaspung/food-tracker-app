@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Image,
   Linking,
   Pressable,
@@ -38,6 +39,7 @@ import {
   resolveDefaultVisitVisibilityFromAuth,
   type RestaurantRecord,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import {
   calculateDistance,
@@ -340,6 +342,7 @@ export function CreateVisitScreen({
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
 
   const restaurantsQuery = useQuery({
@@ -1594,18 +1597,29 @@ export function CreateVisitScreen({
       return;
     }
 
+    const visitInput = {
+      restaurantName: trimmedRestaurant,
+      items: parsedItems,
+      visitedAt: localDateStringToUTC(trimmedVisitDate),
+      visibility: visitVisibility,
+      source: "visit" as const,
+    };
+
     setErrorMessage(null);
     setIsSubmitting(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox("visit.create", visitInput);
+        setSourceListItemId(null);
+        await queryClient.invalidateQueries({ queryKey: ["feature", "visits"] });
+        Alert.alert("Saved Offline", "Visit queued and will sync when you reconnect.");
+        navigation.navigate("Home");
+        return;
+      }
+
       await queueWrite("visit.create");
-      const createdVisit = await createVisit({
-        restaurantName: trimmedRestaurant,
-        items: parsedItems,
-        visitedAt: localDateStringToUTC(trimmedVisitDate),
-        visibility: visitVisibility,
-        source: "visit",
-      });
+      const createdVisit = await createVisit(visitInput);
 
       if (sourceListItemId && createdVisit.items.length > 0) {
         const createdItemId = createdVisit.items[0]?.id;

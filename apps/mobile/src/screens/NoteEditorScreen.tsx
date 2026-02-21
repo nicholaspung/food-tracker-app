@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { CurrentLocationButton, EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
@@ -15,8 +15,10 @@ import {
   updateNote,
   type NotePhotoUploadInput,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
@@ -113,6 +115,8 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const noteId = route.params?.noteId;
   const isEditing = Boolean(noteId);
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const cameraRef = useRef<CameraView | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -339,31 +343,49 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       name: photo.name,
       mimeType: photo.mimeType,
     }));
+    const noteCreateInput = {
+      title: '',
+      content,
+      locationText: trimmedLocationText || undefined,
+      latitude: parsedCoordinates?.latitude,
+      longitude: parsedCoordinates?.longitude,
+      photos: uploadPhotos,
+    };
+    const noteUpdateInput = {
+      content,
+      locationText: trimmedLocationText,
+      latitude: parsedCoordinates?.latitude ?? null,
+      longitude: parsedCoordinates?.longitude ?? null,
+      newPhotos: uploadPhotos,
+      deletePhotoIds: photosToDelete,
+    };
 
     setErrorMessage(null);
     setIsSubmitting(true);
 
     try {
+      if (!isOnline) {
+        if (isEditing && noteId) {
+          await queueFeatureOutbox('note.update', {
+            noteId,
+            updates: noteUpdateInput,
+          });
+        } else {
+          await queueFeatureOutbox('note.create', noteCreateInput);
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] });
+        Alert.alert('Saved Offline', 'Note queued and will sync when you reconnect.');
+        navigation.navigate('Notes');
+        return;
+      }
+
       if (isEditing && noteId) {
         await queueWrite('note.update');
-        await updateNote(noteId, {
-          content,
-          locationText: trimmedLocationText,
-          latitude: parsedCoordinates?.latitude ?? null,
-          longitude: parsedCoordinates?.longitude ?? null,
-          newPhotos: uploadPhotos,
-          deletePhotoIds: photosToDelete,
-        });
+        await updateNote(noteId, noteUpdateInput);
       } else {
         await queueWrite('note.create');
-        await createNote({
-          title: '',
-          content,
-          locationText: trimmedLocationText || undefined,
-          latitude: parsedCoordinates?.latitude,
-          longitude: parsedCoordinates?.longitude,
-          photos: uploadPhotos,
-        });
+        await createNote(noteCreateInput);
       }
 
       await Promise.all([
@@ -387,8 +409,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     navigation,
     newPhotos,
     noteId,
+    isOnline,
     photosToDelete,
     queryClient,
+    queueFeatureOutbox,
     queueWrite,
   ]);
 

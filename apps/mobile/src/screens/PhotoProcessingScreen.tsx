@@ -28,6 +28,7 @@ import {
   type RestaurantRecord,
   type VisitPhotoUploadInput,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -701,6 +702,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
 
   const [step, setStep] = useState<GeneralPhotoStep>('choice');
@@ -1118,8 +1120,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     }
 
     for (const visitGroup of groupedVisits.values()) {
-      await queueWrite('visit.create');
-      await createVisit({
+      const visitInput = {
         restaurantName: visitGroup.restaurantName,
         visitedAt: localDateStringToUTC(visitGroup.date),
         visibility: visitVisibility,
@@ -1130,7 +1131,15 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           notes: entry.form.notes.trim() || undefined,
           photos: [buildPhotoUploadInput(entry.photo)],
         })),
-      });
+      } as const;
+
+      if (!isOnline) {
+        await queueFeatureOutbox('visit.create', visitInput);
+        continue;
+      }
+
+      await queueWrite('visit.create');
+      await createVisit(visitInput);
     }
 
     trackObservabilityEvent('Photo Processing Completed', {
@@ -1153,8 +1162,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         throw new Error(`Photo ${index + 1}: ${validationMessage}`);
       }
 
-      await queueWrite('quick-track.create');
-      await createQuickTrack({
+      const quickTrackInput = {
         itemName: form.itemName.trim(),
         rating: form.rating,
         itemCategory: form.category || undefined,
@@ -1163,7 +1171,15 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         visibility: form.visibility,
         itemDate: localDateStringToUTC(form.date),
         photo: buildPhotoUploadInput(photo),
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('quick-track.create', quickTrackInput);
+        continue;
+      }
+
+      await queueWrite('quick-track.create');
+      await createQuickTrack(quickTrackInput);
     }
 
     trackObservabilityEvent('Photo Processing Completed', {
@@ -1193,6 +1209,10 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
       ]);
+
+      if (!isOnline) {
+        Alert.alert('Saved Offline', 'Photo entries queued and will sync when you reconnect.');
+      }
 
       navigation.navigate('Home');
     } catch (error) {

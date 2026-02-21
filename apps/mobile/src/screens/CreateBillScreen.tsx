@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FeatureFormScreenScaffold,
@@ -29,9 +29,11 @@ import {
   formatCurrency,
   validateBillTotal,
 } from '../features/bills/billCalculations';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
@@ -279,6 +281,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const editBillId = route.params?.billId;
   const isEditMode = Boolean(editBillId);
@@ -1973,7 +1977,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setIsCreating(true);
 
     try {
-      await queueWrite(isEditMode ? 'bill.update' : 'bill.create');
       const billPayload = {
         title: billTitle.trim(),
         restaurantName: billTitle.trim(),
@@ -1984,6 +1987,27 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         fees: isCustomSplitMode ? roundToCurrency(parsedFees) : 0,
         extrasSplitMode,
       };
+
+      if (!isOnline) {
+        if (isEditMode && editBillId) {
+          await queueFeatureOutbox('bill.update', {
+            billId: editBillId,
+            updates: billPayload,
+          });
+        } else {
+          await queueFeatureOutbox('bill.create', {
+            ...billPayload,
+            createdByUserId: user?.id ?? 'unknown_user',
+          });
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
+        Alert.alert('Saved Offline', 'Bill queued and will sync when you reconnect.');
+        navigation.navigate('Bills');
+        return;
+      }
+
+      await queueWrite(isEditMode ? 'bill.update' : 'bill.create');
 
       const savedBill = isEditMode
         ? await updateBill(editBillId as string, billPayload)

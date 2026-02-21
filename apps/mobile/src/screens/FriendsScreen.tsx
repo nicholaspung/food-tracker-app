@@ -16,9 +16,11 @@ import {
   type SegmentedControlOption,
 } from '../components/shared';
 import { inviteFriend, listFriends, markFriendInviteAccepted, removeFriend } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -27,6 +29,7 @@ type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 
 type MainTab = 'my-code' | 'friends-list' | 'add-friend';
 type FriendsSubTab = 'friends' | 'requests' | 'sent';
+type FriendRemoveOperationName = 'friend.remove' | 'friend.request.reject' | 'friend.request.cancel';
 
 const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
   {
@@ -66,11 +69,15 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
 
   const friendsQuery = useQuery({
     queryKey: ['feature', 'friends'],
     queryFn: listFriends,
   });
+  const hasBlockingFriendsError = friendsQuery.isError && !friendsQuery.data;
+  const hasFriendsRefreshError = !hasBlockingFriendsError && friendsQuery.isError;
 
   const [mainTab, setMainTab] = useState<MainTab>('friends-list');
   const [friendsSubTab, setFriendsSubTab] = useState<FriendsSubTab>('friends');
@@ -291,6 +298,13 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     setIsMutating(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('friend.accept', { friendId });
+        await invalidateFriends();
+        Alert.alert('Saved Offline', 'Friend action queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('friend.accept');
       await markFriendInviteAccepted(friendId);
       await invalidateFriends();
@@ -302,11 +316,18 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     }
   };
 
-  const handleRemove = async (friendId: string, operationName: string) => {
+  const handleRemove = async (friendId: string, operationName: FriendRemoveOperationName) => {
     setErrorMessage(null);
     setIsMutating(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox(operationName, { friendId });
+        await invalidateFriends();
+        Alert.alert('Saved Offline', 'Friend action queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite(operationName);
       await removeFriend(friendId);
       await invalidateFriends();
@@ -334,6 +355,16 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     setIsMutating(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('friend.request.send', { code: normalizedCode });
+        setFriendCode('');
+        setMainTab('friends-list');
+        setFriendsSubTab('sent');
+        await invalidateFriends();
+        Alert.alert('Saved Offline', 'Friend request queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('friend.request.send');
       await inviteFriend({
         code: normalizedCode,
@@ -372,7 +403,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       );
     }
 
-    if (friendsQuery.isError) {
+    if (hasBlockingFriendsError) {
       return (
         <>
           <PageErrorToast
@@ -523,6 +554,14 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
 
       <View style={styles.body}>
         <PageErrorToast errorMessage={errorMessage} title="Friend operation failed" />
+        <PageErrorToast
+          errorMessage={hasFriendsRefreshError ? 'Could not refresh friendship data. Showing saved data.' : null}
+          title="Friends unavailable"
+          actionLabel="Retry"
+          onAction={() => {
+            void friendsQuery.refetch();
+          }}
+        />
 
         {mainTab === 'my-code' ? (
           <Card>

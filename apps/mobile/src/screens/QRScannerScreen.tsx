@@ -1,13 +1,15 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { FeatureDetailScreenScaffold } from '../components/shared';
 import { inviteFriend } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -44,7 +46,9 @@ function extractFriendCodeFromPayload(payload: string): string | null {
 export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   const theme = useTheme();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
   const queryClient = useQueryClient();
+  const { isOnline } = useConnectivity();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const [scannedCode, setScannedCode] = useState('');
@@ -126,6 +130,16 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
     setIsSubmitting(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('friend.request.send', {
+          code: normalizedCode,
+        });
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+        Alert.alert('Saved Offline', 'Friend request queued and will sync when you reconnect.');
+        navigation.navigate('Friends');
+        return;
+      }
+
       await queueWrite('friend.qr.scan');
       await inviteFriend({
         code: normalizedCode,

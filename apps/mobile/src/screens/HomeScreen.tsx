@@ -16,9 +16,11 @@ import {
   type QuickTrackRecord,
   type VisitRecord,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -110,6 +112,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const [feedMode, setFeedMode] = useState<FeedMode>('mine');
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -136,7 +140,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   });
 
   const isLoading = visitsQuery.isLoading || quickTracksQuery.isLoading;
-  const hasError = visitsQuery.isError || quickTracksQuery.isError;
+  const hasBlockingFeedError =
+    (visitsQuery.isError && !visitsQuery.data) || (quickTracksQuery.isError && !quickTracksQuery.data);
+  const hasFeedRefreshError =
+    !hasBlockingFeedError &&
+    (visitsQuery.isError || quickTracksQuery.isError || visitPhotosQuery.isError);
   const currentUserId = getAuthenticatedUserIdOrNull();
 
   const photosByFoodItem = useMemo(() => {
@@ -400,11 +408,18 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
   const handleDeleteQuickTrack = useCallback(
     async (quickTrackId: string) => {
+      if (!isOnline) {
+        await queueFeatureOutbox('quick-track.delete', { quickTrackId });
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+        Alert.alert('Saved Offline', 'Quick track delete queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('quick-track.delete');
       await deleteQuickTrack(quickTrackId);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
     },
-    [queryClient, queueWrite],
+    [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
 
   const promptDeleteQuickTrack = useCallback(
@@ -425,11 +440,18 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
   const handleDeleteVisit = useCallback(
     async (visitId: string) => {
+      if (!isOnline) {
+        await queueFeatureOutbox('visit.delete', { visitId });
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
+        Alert.alert('Saved Offline', 'Visit delete queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('visit.delete');
       await deleteVisit(visitId);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
     },
-    [queryClient, queueWrite],
+    [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
 
   const promptDeleteVisit = useCallback(
@@ -1204,7 +1226,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         ) : null}
 
         <PageErrorToast
-          errorMessage={hasError ? 'Could not load your ratings feed.' : null}
+          errorMessage={
+            hasBlockingFeedError
+              ? 'Could not load your ratings feed.'
+              : hasFeedRefreshError
+                ? 'Could not refresh your feed. Showing saved data.'
+                : null
+          }
           title="Feed unavailable"
           actionLabel="Retry"
           onAction={() => {
@@ -1214,7 +1242,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           }}
         />
 
-        {!isLoading && !hasError && feedMode === 'friends' && friendFeed.length === 0 ? (
+        {!isLoading && !hasBlockingFeedError && feedMode === 'friends' && friendFeed.length === 0 ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>No friend activity yet</Text>
             <Text style={styles.infoDescription}>
@@ -1233,7 +1261,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasError && feedMode === 'mine' && mineFeed.length === 0 ? (
+        {!isLoading && !hasBlockingFeedError && feedMode === 'mine' && mineFeed.length === 0 ? (
           <EmptyState
             actionLabel="Create your first entry"
             description="Start with Add Visit or Quick Track."
@@ -1245,7 +1273,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           />
         ) : null}
 
-        {!isLoading && !hasError && activeFeed.length > 0 && filteredFeed.length === 0 ? (
+        {!isLoading && !hasBlockingFeedError && activeFeed.length > 0 && filteredFeed.length === 0 ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>No matching ratings</Text>
             <Text style={styles.infoDescription}>
@@ -1265,7 +1293,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasError && filteredFeed.length > 0
+        {!isLoading && !hasBlockingFeedError && filteredFeed.length > 0
           ? groupedMonths.map((month) => {
               const isMonthExpanded = expandedMonths.has(month.monthKey);
 

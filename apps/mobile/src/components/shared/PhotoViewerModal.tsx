@@ -9,6 +9,7 @@ import { Text } from '../../ui';
 export interface PhotoViewerModalProps {
   visible: boolean;
   urls: string[];
+  ownerLabels?: string[];
   initialIndex?: number;
   onRequestClose: () => void;
 }
@@ -16,6 +17,7 @@ export interface PhotoViewerModalProps {
 export function PhotoViewerModal({
   visible,
   urls,
+  ownerLabels,
   initialIndex = 0,
   onRequestClose,
 }: PhotoViewerModalProps) {
@@ -28,6 +30,7 @@ export function PhotoViewerModal({
   const boundedInitialIndex = Math.max(0, Math.min(initialIndex, Math.max(0, urls.length - 1)));
   const hasPreviousPhoto = currentIndex > 0;
   const hasNextPhoto = currentIndex < urls.length - 1;
+  const currentOwnerLabel = ownerLabels?.[currentIndex]?.trim() || null;
 
   useEffect(() => {
     if (!visible) {
@@ -121,6 +124,18 @@ export function PhotoViewerModal({
       fontWeight: '600',
       lineHeight: 18,
     },
+    centerMeta: {
+      alignItems: 'center',
+      flex: 1,
+      gap: 2,
+    },
+    ownerLabel: {
+      color: theme.colors.text.inverse,
+      fontSize: 12,
+      fontWeight: '600',
+      lineHeight: 16,
+      opacity: 0.9,
+    },
   });
 
   return (
@@ -180,9 +195,12 @@ export function PhotoViewerModal({
             <Ionicons color={theme.colors.text.inverse} name="chevron-back" size={24} />
           </Pressable>
 
-          <Text style={styles.count}>
-            {urls.length === 0 ? '0 / 0' : `${currentIndex + 1} / ${urls.length}`}
-          </Text>
+          <View style={styles.centerMeta}>
+            {currentOwnerLabel ? <Text style={styles.ownerLabel}>{currentOwnerLabel}</Text> : null}
+            <Text style={styles.count}>
+              {urls.length === 0 ? '0 / 0' : `${currentIndex + 1} / ${urls.length}`}
+            </Text>
+          </View>
 
           <Pressable
             accessibilityLabel="Next photo"

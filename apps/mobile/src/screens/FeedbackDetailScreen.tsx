@@ -21,8 +21,11 @@ import {
   sendFeedbackMessage,
   updateFeedbackStatus,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
+import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -52,7 +55,10 @@ function formatTimestamp(value: string): string {
 export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const queueWrite = useQueuedWrite();
   const { user } = useAuth();
+  const { isOnline } = useConnectivity();
   const messagesScrollRef = useRef<ScrollView>(null);
   const feedbackId = route.params.feedbackId;
   const isAdmin = user?.isAdmin === true;
@@ -237,6 +243,17 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     setIsSending(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('feedback.message.send', {
+          feedbackId,
+          message: draftMessage,
+        });
+        setDraftMessage('');
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback-messages', feedbackId] });
+        return;
+      }
+
+      await queueWrite('feedback.message.send');
       await sendFeedbackMessage({
         feedbackId,
         message: draftMessage,
@@ -258,11 +275,16 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     if (!isAdmin || !feedbackQuery.data || feedbackQuery.data.status === nextStatus || isUpdatingStatus) {
       return;
     }
+    if (!isOnline) {
+      setStatusError('Status updates require internet connection.');
+      return;
+    }
 
     setStatusError(null);
     setIsUpdatingStatus(true);
 
     try {
+      await queueWrite('feedback.status.update');
       await updateFeedbackStatus(feedbackId, nextStatus);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback', feedbackId] });
@@ -338,6 +360,11 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
             {isAdmin ? (
               <Card style={styles.statusControlCard}>
                 <Text variant="label">Update status</Text>
+                {!isOnline ? (
+                  <Text tone="warning" variant="bodySm">
+                    You are offline. Admin status updates require internet connection.
+                  </Text>
+                ) : null}
                 <FilterChipGroup
                   contentContainerStyle={styles.statusOptionsContent}
                   onChange={(nextStatus) => {

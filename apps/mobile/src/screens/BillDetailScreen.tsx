@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -23,9 +23,11 @@ import {
   type BillRecord,
 } from '../features';
 import { formatCurrency, validateBillTotal } from '../features/bills/billCalculations';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 
@@ -131,6 +133,8 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
   const billQuery = useQuery({
@@ -375,6 +379,16 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setIsUpdatingBillStatus(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('bill.status.toggle', {
+          billId,
+          status: nextStatus,
+        });
+        await refreshBill();
+        Alert.alert('Saved Offline', 'Bill status update queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('bill.status.toggle');
       await updateBill(billId, {
         status: nextStatus,
@@ -400,6 +414,17 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setUpdatingParticipantId(participantId);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('bill.participant.toggle-paid', {
+          billId,
+          participantId,
+          paidStatus: nextPaidStatus,
+        });
+        await refreshBill();
+        Alert.alert('Saved Offline', 'Payment status update queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('bill.participant.toggle-paid');
       await markBillParticipantPaid(billId, participantId, nextPaidStatus);
       await refreshBill();
@@ -420,6 +445,15 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setIsDeletingBill(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('bill.delete', { billId: bill.id });
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
+        queryClient.removeQueries({ queryKey: ['feature', 'bill', bill.id] });
+        Alert.alert('Saved Offline', 'Bill delete queued and will sync when you reconnect.');
+        navigation.navigate('Bills');
+        return;
+      }
+
       await queueWrite('bill.delete');
       await deleteBill(bill.id);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });

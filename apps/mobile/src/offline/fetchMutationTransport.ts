@@ -1,3 +1,6 @@
+import { ClientResponseError } from 'pocketbase';
+
+import { replayFeatureOutboxMutation } from '../features/store/featureOutboxOperations';
 import { logger } from '../lib/logger';
 import { isConflictStatus, isRetryableStatus } from './retryPolicy';
 import type { MutationSendResult, MutationTransport, QueuedMutation } from './types';
@@ -40,6 +43,11 @@ export function createFetchMutationTransport(
       }
 
       try {
+        const localResult = await trySendLocalFeatureMutation(mutation);
+        if (localResult) {
+          return localResult;
+        }
+
         const response = await fetchImplementation(mutation.url, {
           method: mutation.method,
           headers,
@@ -109,5 +117,50 @@ async function safeReadText(response: Response): Promise<string> {
     return await response.text();
   } catch {
     return '';
+  }
+}
+
+async function trySendLocalFeatureMutation(
+  mutation: QueuedMutation,
+): Promise<MutationSendResult | null> {
+  const isLocalFeatureMutation = mutation.url.startsWith('local://feature/');
+  if (!isLocalFeatureMutation) {
+    return null;
+  }
+
+  try {
+    const wasHandled = await replayFeatureOutboxMutation(mutation);
+    if (!wasHandled) {
+      return {
+        ok: false,
+        retryable: false,
+        statusCode: null,
+        errorMessage: 'Unknown local feature mutation.',
+      };
+    }
+
+    return {
+      ok: true,
+      retryable: false,
+      statusCode: 200,
+      errorMessage: null,
+    };
+  } catch (error) {
+    if (error instanceof ClientResponseError) {
+      const statusCode = Number.isFinite(error.status) && error.status > 0 ? error.status : null;
+      return {
+        ok: false,
+        retryable: statusCode === null ? true : isRetryableStatus(statusCode),
+        statusCode,
+        errorMessage: error.message,
+      };
+    }
+
+    return {
+      ok: false,
+      retryable: true,
+      statusCode: null,
+      errorMessage: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
+    };
   }
 }

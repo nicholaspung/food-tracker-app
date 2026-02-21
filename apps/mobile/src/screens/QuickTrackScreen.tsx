@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Image, Linking, StyleSheet, View } from 'react-native';
+import { Alert, Image, Linking, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -21,8 +21,10 @@ import {
   type VisibilityOptionValue,
 } from '../components/shared';
 import { createQuickTrack, getNoteById, resolveDefaultVisitVisibilityFromAuth, type VisitPhotoUploadInput } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
@@ -104,6 +106,8 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const sourceNoteId = route.params?.sourceNoteId;
 
   const linkedNoteQuery = useQuery({
@@ -352,8 +356,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     setIsSubmitting(true);
 
     try {
-      await queueWrite('quick-track.create');
-      await createQuickTrack({
+      const quickTrackInput = {
         itemName,
         rating,
         notes: notes.trim() || undefined,
@@ -365,7 +368,18 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         longitude,
         photo: photo ?? undefined,
         sourceNoteId,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('quick-track.create', quickTrackInput);
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+        Alert.alert('Saved Offline', 'Quick track queued and will sync when you reconnect.');
+        navigation.navigate('Home');
+        return;
+      }
+
+      await queueWrite('quick-track.create');
+      await createQuickTrack(quickTrackInput);
 
       const invalidations: Promise<unknown>[] = [
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),

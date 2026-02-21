@@ -1,20 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
+  PhotoViewerModal,
   RatingPill,
   Skeleton,
 } from '../components/shared';
 import {
+  buildPocketBaseFileUrl,
   createDefaultRestaurantList,
   deleteRestaurantList,
   getRestaurantListById,
+  listCollectionRecords,
   listMyBookmarkedListItemLinks,
   listRestaurantLists,
   listRestaurantListItems,
@@ -23,15 +26,34 @@ import {
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
+
+interface VisitPhotoRecord {
+  id: string;
+  food_item?: string;
+  user?: string;
+  photo: string;
+  collectionId?: string;
+  collectionName?: string;
+  created: string;
+  expand?: {
+    user?: {
+      id?: string;
+      name?: string;
+      email?: string;
+    };
+  };
+}
 
 interface GroupedBookmarkedItem {
   key: string;
@@ -46,6 +68,44 @@ interface GroupedBookmarkedItem {
   userFoodItemId?: string;
   userFoodItemRating?: number;
   userFoodItemVisitedAt?: string;
+}
+
+interface OwnerSourceRating {
+  listItemId: string;
+  foodItemId: string;
+  sourceUserName: string;
+  rating: number;
+  visitedAt?: string;
+}
+
+type OwnerUserRating =
+  | {
+      kind: 'linked';
+      listItemId: string;
+      userFoodItemId: string;
+      rating: number;
+      visitedAt?: string;
+    }
+  | {
+      kind: 'standalone';
+      listItemId: string;
+      foodItemId: string;
+      rating: number;
+      visitedAt?: string;
+    };
+
+interface OwnerDisplayItem {
+  key: string;
+  name: string;
+  orderIndex: number;
+  source?: OwnerSourceRating;
+  user?: OwnerUserRating;
+}
+
+interface OwnerItemPhotoEntry {
+  id: string;
+  url: string;
+  ownerLabel: string;
 }
 
 interface GroupedRestaurant {
@@ -92,12 +152,33 @@ function formatFullDateLabel(value: string | undefined): string | null {
   return label || null;
 }
 
+function normalizeMenuItemKey(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed || value;
+}
+
+function resolveExpandedPhotoOwnerName(photo: VisitPhotoRecord): string | null {
+  const displayName = photo.expand?.user?.name?.trim();
+  if (displayName) {
+    return displayName;
+  }
+
+  const email = photo.expand?.user?.email?.trim();
+  if (email) {
+    return email.split('@')[0] || null;
+  }
+
+  return null;
+}
+
 export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { listId } = route.params;
   const theme = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
   const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
@@ -105,6 +186,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [saveModalError, setSaveModalError] = useState<string | null>(null);
   const [movingRestaurantId, setMovingRestaurantId] = useState<string | null>(null);
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
+  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
 
   const listQuery = useQuery({
     queryKey: ['feature', 'restaurantList', listId],
@@ -127,6 +212,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     queryKey: ['feature', 'myBookmarkedListItemLinks'],
     queryFn: listMyBookmarkedListItemLinks,
     enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
+  });
+
+  const visitPhotosQuery = useQuery({
+    queryKey: ['feature', 'visitPhotos'],
+    queryFn: () => listCollectionRecords<VisitPhotoRecord>('visit_photos', { sort: '-created', expand: 'user' }),
+    enabled: Boolean(listQuery.data),
   });
 
   const list = listQuery.data;
@@ -216,6 +307,144 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
     return Array.from(groups.values()).sort((left, right) => left.firstPosition - right.firstPosition);
   }, [listItems]);
+
+  const photosByFoodItemId = useMemo(() => {
+    const map = new Map<string, VisitPhotoRecord[]>();
+
+    for (const photo of visitPhotosQuery.data ?? []) {
+      if (!photo.food_item) {
+        continue;
+      }
+
+      const existing = map.get(photo.food_item) ?? [];
+      existing.push(photo);
+      map.set(photo.food_item, existing);
+    }
+
+    return map;
+  }, [visitPhotosQuery.data]);
+
+  const buildOwnerDisplayItems = (items: GroupedBookmarkedItem[]): OwnerDisplayItem[] => {
+    const rows = new Map<string, OwnerDisplayItem>();
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      if (!item) {
+        continue;
+      }
+
+      const normalizedKey = normalizeMenuItemKey(item.name);
+      const existing = rows.get(normalizedKey);
+      const nextRow: OwnerDisplayItem =
+        existing ??
+        {
+          key: normalizedKey || `${item.listItemId}:${item.foodItemId}`,
+          name: item.name,
+          orderIndex: index,
+        };
+
+      const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
+      if (hasSourceBookmark && !nextRow.source) {
+        nextRow.source = {
+          listItemId: item.listItemId,
+          foodItemId: item.foodItemId,
+          sourceUserName: item.sourceUserName?.trim() || 'Friend',
+          rating: item.rating,
+          visitedAt: item.visitedAt,
+        };
+      }
+
+      const linkedUserRating =
+        item.userFoodItemId && item.userFoodItemRating
+          ? {
+              kind: 'linked' as const,
+              listItemId: item.listItemId,
+              userFoodItemId: item.userFoodItemId,
+              rating: item.userFoodItemRating,
+              visitedAt: item.userFoodItemVisitedAt,
+            }
+          : null;
+
+      const standaloneUserRating =
+        !hasSourceBookmark && item.rating > 0
+          ? {
+              kind: 'standalone' as const,
+              listItemId: item.listItemId,
+              foodItemId: item.foodItemId,
+              rating: item.rating,
+              visitedAt: item.visitedAt,
+            }
+          : null;
+
+      const nextUserRating = linkedUserRating ?? standaloneUserRating;
+      if (nextUserRating) {
+        const shouldReplaceExisting =
+          !nextRow.user || (nextRow.user.kind === 'standalone' && nextUserRating.kind === 'linked');
+
+        if (shouldReplaceExisting) {
+          nextRow.user = nextUserRating;
+        }
+      }
+
+      rows.set(normalizedKey, nextRow);
+    }
+
+    return Array.from(rows.values()).sort((left, right) => left.orderIndex - right.orderIndex);
+  };
+
+  const getUserPhotoFoodItemId = (userRating: OwnerUserRating): string =>
+    userRating.kind === 'linked' ? userRating.userFoodItemId : userRating.foodItemId;
+
+  const buildOwnerItemPhotoEntries = (item: OwnerDisplayItem): OwnerItemPhotoEntry[] => {
+    const entriesById = new Map<string, OwnerItemPhotoEntry>();
+
+    const appendPhotos = (foodItemId: string | undefined, fallbackOwnerLabel: string) => {
+      if (!foodItemId) {
+        return;
+      }
+
+      const photos = photosByFoodItemId.get(foodItemId) ?? [];
+      for (const photo of photos) {
+        const ownerLabel = resolveExpandedPhotoOwnerName(photo) || fallbackOwnerLabel;
+        entriesById.set(photo.id, {
+          id: photo.id,
+          url: buildPocketBaseFileUrl({
+            collectionId: photo.collectionId,
+            collectionName: photo.collectionName ?? 'visit_photos',
+            recordId: photo.id,
+            filename: photo.photo,
+          }),
+          ownerLabel,
+        });
+      }
+    };
+
+    if (item.source) {
+      appendPhotos(item.source.foodItemId, item.source.sourceUserName);
+    }
+
+    if (item.user) {
+      appendPhotos(getUserPhotoFoodItemId(item.user), 'You');
+    }
+
+    return Array.from(entriesById.values());
+  };
+
+  const openPhotoViewer = useCallback((entries: OwnerItemPhotoEntry[], initialIndex = 0) => {
+    if (entries.length === 0) {
+      return;
+    }
+
+    const boundedIndex = Math.max(0, Math.min(initialIndex, entries.length - 1));
+    setPhotoViewerUrls(entries.map((entry) => entry.url));
+    setPhotoViewerOwnerLabels(entries.map((entry) => entry.ownerLabel));
+    setPhotoViewerInitialIndex(boundedIndex);
+    setPhotoViewerVisible(true);
+  }, []);
+
+  const closePhotoViewer = useCallback(() => {
+    setPhotoViewerVisible(false);
+  }, []);
 
   const styles = StyleSheet.create({
     container: {
@@ -329,6 +558,32 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       flexDirection: 'row',
       gap: theme.spacing.xs,
       justifyContent: 'space-between',
+    },
+    itemPhotoWrap: {
+      position: 'relative',
+    },
+    itemPhotoThumb: {
+      backgroundColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.sm,
+      height: 52,
+      width: 52,
+    },
+    itemPhotoCountBadge: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.inverse,
+      borderRadius: theme.radii.pill,
+      justifyContent: 'center',
+      minWidth: 18,
+      paddingHorizontal: 4,
+      position: 'absolute',
+      left: 2,
+      top: 2,
+    },
+    itemPhotoCountText: {
+      color: theme.colors.text.inverse,
+      fontSize: 10,
+      fontWeight: '700',
+      lineHeight: 13,
     },
     ownerItemName: {
       color: theme.colors.text.primary,
@@ -637,6 +892,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setIsDeletingList(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('list.delete', { listId: list.id });
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+        queryClient.removeQueries({ queryKey: ['feature', 'restaurantList', list.id] });
+        queryClient.removeQueries({ queryKey: ['feature', 'restaurantListItems', list.id] });
+        Alert.alert('Saved Offline', 'List delete queued and will sync when you reconnect.');
+        navigation.navigate('Lists');
+        return;
+      }
+
       await queueWrite('list.delete');
       await deleteRestaurantList(list.id);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
@@ -689,6 +954,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setMovingRestaurantId(restaurantId);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('list.restaurant.reorder', { listId, restaurantId, direction });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
+        ]);
+        Alert.alert('Saved Offline', 'List reorder queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('list.restaurant.reorder');
       await moveRestaurantListRestaurant({ listId, restaurantId, direction });
       await Promise.all([
@@ -703,7 +978,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
   };
 
-  const handleRemoveSourceRating = async (item: GroupedBookmarkedItem) => {
+  const handleRemoveSourceRating = async (input: { listItemId: string; foodItemId: string }) => {
     if (!isOwner) {
       return;
     }
@@ -711,11 +986,27 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setErrorMessage(null);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('list.restaurant.remove.source', {
+          listId,
+          listItemId: input.listItemId,
+          foodItemId: input.foodItemId,
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+        ]);
+        Alert.alert('Saved Offline', 'List update queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('list.restaurant.remove.source');
       await removeRestaurantListSourceRating({
         listId,
-        listItemId: item.listItemId,
-        foodItemId: item.foodItemId,
+        listItemId: input.listItemId,
+        foodItemId: input.foodItemId,
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
@@ -737,6 +1028,18 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setErrorMessage(null);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('list.restaurant.remove.user', { listId, listItemId });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+        ]);
+        Alert.alert('Saved Offline', 'List update queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('list.restaurant.remove.user');
       await removeRestaurantListUserRating(listId, listItemId);
       await Promise.all([
@@ -751,7 +1054,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
   };
 
-  const handleIWentThere = (group: GroupedRestaurant, item: GroupedBookmarkedItem) => {
+  const handleIWentThere = (
+    group: GroupedRestaurant,
+    item: { listItemId: string; name: string },
+  ) => {
     navigation.navigate('CreateVisit', {
       preselectedRestaurantId: group.restaurantId,
       preselectedRestaurantName: group.restaurantName,
@@ -811,6 +1117,30 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setIsSavingBookmark(true);
 
     try {
+      if (!isOnline) {
+        for (const targetListId of targetListIds) {
+          await queueFeatureOutbox('list.bookmark.save', {
+            listId: targetListId,
+            restaurantId: saveBookmarkTarget.restaurantId,
+            foodItemId: saveBookmarkTarget.foodItemId,
+            note: saveBookmarkTarget.sourceNote,
+            sourceUserId: list.userId,
+          });
+        }
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'myBookmarkedListItemLinks'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+        ]);
+
+        setSaveBookmarkTarget(null);
+        setSelectedSaveListIds(new Set());
+        setSaveModalError(null);
+        Alert.alert('Saved Offline', 'Bookmark save queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('list.bookmark.save');
 
       for (const targetListId of targetListIds) {
@@ -848,6 +1178,26 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     let targetDefaultListId = defaultList?.id;
     if (!targetDefaultListId) {
       try {
+        if (!isOnline) {
+          await queueFeatureOutbox('list.default.bookmark.save', {
+            restaurantId: saveBookmarkTarget.restaurantId,
+            foodItemId: saveBookmarkTarget.foodItemId,
+            note: saveBookmarkTarget.sourceNote,
+            sourceUserId: list?.userId,
+          });
+
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['feature', 'myBookmarkedListItemLinks'] }),
+            queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
+            queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+          ]);
+          setSaveBookmarkTarget(null);
+          setSelectedSaveListIds(new Set());
+          setSaveModalError(null);
+          Alert.alert('Saved Offline', 'Saved list + bookmark queued and will sync when you reconnect.');
+          return;
+        }
+
         await queueWrite('list.default.create');
         const createdDefaultList = await createDefaultRestaurantList();
         targetDefaultListId = createdDefaultList.id;
@@ -968,6 +1318,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           }}
           title="Bookmark status unavailable"
         />
+        <PageErrorToast
+          actionLabel="Retry"
+          errorMessage={visitPhotosQuery.isError ? 'Could not load menu item photos.' : null}
+          onAction={() => {
+            void visitPhotosQuery.refetch();
+          }}
+          title="Photos unavailable"
+        />
 
         {isOwner ? (
           <Pressable
@@ -997,6 +1355,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           groupedRestaurants.map((group, groupIndex) => {
             const locationLabel =
               [group.restaurantCity, group.restaurantCuisineType].filter(Boolean).join(' • ') || 'Location not set';
+            const ownerDisplayItems = isOwner ? buildOwnerDisplayItems(group.items) : [];
 
             return (
               <Card key={group.restaurantId} style={styles.listCard} tone="default">
@@ -1048,113 +1407,132 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                   <Text style={styles.sectionTitle}>{isOwner ? 'Bookmarked Items:' : 'Recommended Items:'}</Text>
                   {group.items.length === 0 ? (
                     <Text style={styles.emptyItemsText}>No items added yet.</Text>
+                  ) : isOwner ? (
+                    ownerDisplayItems.map((item) => {
+                      const sourceRating = item.source;
+                      const userRating = item.user;
+                      const itemPhotoEntries = buildOwnerItemPhotoEntries(item);
+                      const itemPrimaryPhotoUrl = itemPhotoEntries[0]?.url;
+                      const sourceMonthYearLabel = formatMonthYearLabel(sourceRating?.visitedAt);
+                      const userDisplayDateLabel =
+                        formatFullDateLabel(userRating?.visitedAt) ?? formatMonthYearLabel(userRating?.visitedAt);
+                      const canShowIWent = Boolean(sourceRating && !userRating);
+
+                      return (
+                        <View key={item.key} style={styles.ownerItemCard}>
+                          <View style={styles.ownerItemHeaderRow}>
+                            <Text numberOfLines={1} style={styles.ownerItemName}>
+                              {item.name}
+                            </Text>
+                            {itemPrimaryPhotoUrl ? (
+                              <Pressable
+                                accessibilityLabel={`View photos for ${item.name}`}
+                                accessibilityRole="button"
+                                onPress={() => {
+                                  openPhotoViewer(itemPhotoEntries);
+                                }}
+                                style={styles.itemPhotoWrap}
+                              >
+                                <Image source={{ uri: itemPrimaryPhotoUrl }} style={styles.itemPhotoThumb} />
+                                {itemPhotoEntries.length > 1 ? (
+                                  <View style={styles.itemPhotoCountBadge}>
+                                    <Text style={styles.itemPhotoCountText}>+{itemPhotoEntries.length - 1}</Text>
+                                  </View>
+                                ) : null}
+                              </Pressable>
+                            ) : null}
+                          </View>
+
+                          {sourceRating ? (
+                            <View style={styles.ownerBookmarkRow}>
+                              <View style={styles.ownerBookmarkMeta}>
+                                <View style={styles.sourceUserRow}>
+                                  <Ionicons color={theme.colors.text.info} name="people-outline" size={11} />
+                                  <Text style={styles.sourceUserText}>{sourceRating.sourceUserName}</Text>
+                                </View>
+                                {sourceRating.rating > 0 ? <RatingPill rating={sourceRating.rating} /> : null}
+                                {sourceMonthYearLabel ? (
+                                  <Text style={styles.ownerItemMetaDate}>{sourceMonthYearLabel}</Text>
+                                ) : null}
+                              </View>
+
+                              <View style={styles.ownerItemActions}>
+                                {canShowIWent ? (
+                                  <Pressable
+                                    accessibilityLabel={`I went for ${item.name}`}
+                                    accessibilityRole="button"
+                                    onPress={() => {
+                                      handleIWentThere(group, {
+                                        listItemId: sourceRating.listItemId,
+                                        name: item.name,
+                                      });
+                                    }}
+                                    style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}
+                                    testID={`i-went-list-item-${sourceRating.listItemId}`}
+                                  >
+                                    <Ionicons color={theme.colors.text.success} name="location-outline" size={12} />
+                                    <Text style={styles.iWentButtonLabel}>I went</Text>
+                                  </Pressable>
+                                ) : null}
+                                <Pressable
+                                  accessibilityLabel={`Remove bookmarked rating for ${item.name}`}
+                                  accessibilityRole="button"
+                                  onPress={() => {
+                                    void handleRemoveSourceRating({
+                                      listItemId: sourceRating.listItemId,
+                                      foodItemId: sourceRating.foodItemId,
+                                    });
+                                  }}
+                                  style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
+                                  testID={`remove-source-rating-${sourceRating.listItemId}-${sourceRating.foodItemId}`}
+                                >
+                                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
+                                </Pressable>
+                              </View>
+                            </View>
+                          ) : null}
+
+                          {userRating ? (
+                            <View style={styles.ownerYouRow}>
+                              <View style={styles.ownerReviewRow}>
+                                <Text style={styles.ownerReviewArrow}>↳</Text>
+                                <Text style={styles.ownerReviewText}>You</Text>
+                                <RatingPill rating={userRating.rating} />
+                                {userDisplayDateLabel ? <Text style={styles.ownerReviewDate}>{userDisplayDateLabel}</Text> : null}
+                              </View>
+                              <Pressable
+                                accessibilityLabel={`Remove your rating for ${item.name}`}
+                                accessibilityRole="button"
+                                onPress={() => {
+                                  if (userRating.kind === 'linked') {
+                                    void handleRemoveUserRating(userRating.listItemId);
+                                    return;
+                                  }
+
+                                  void handleRemoveSourceRating({
+                                    listItemId: userRating.listItemId,
+                                    foodItemId: userRating.foodItemId,
+                                  });
+                                }}
+                                style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
+                                testID={
+                                  userRating.kind === 'linked'
+                                    ? `remove-user-rating-${userRating.listItemId}-${userRating.userFoodItemId}`
+                                    : `remove-list-item-${userRating.listItemId}-${userRating.foodItemId}`
+                                }
+                              >
+                                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
+                              </Pressable>
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })
                   ) : (
                     group.items.map((item) => {
                       const monthYearLabel = formatMonthYearLabel(item.visitedAt);
-                      const userReviewDateLabel = formatFullDateLabel(item.userFoodItemVisitedAt);
-                      const standaloneUserDateLabel = formatFullDateLabel(item.visitedAt) ?? monthYearLabel;
-                      const hasLinkedUserRating = Boolean(item.userFoodItemId && item.userFoodItemRating);
                       const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
                       const sourceUserDisplayName = item.sourceUserName?.trim() || 'Friend';
-
-                      if (isOwner) {
-                        return (
-                          <View key={item.key} style={styles.ownerItemCard}>
-                            <View style={styles.ownerItemHeaderRow}>
-                              <Text numberOfLines={1} style={styles.ownerItemName}>
-                                {item.name}
-                              </Text>
-                            </View>
-
-                            {hasSourceBookmark ? (
-                              <View style={styles.ownerBookmarkRow}>
-                                <View style={styles.ownerBookmarkMeta}>
-                                  <View style={styles.sourceUserRow}>
-                                    <Ionicons color={theme.colors.text.info} name="people-outline" size={11} />
-                                    <Text style={styles.sourceUserText}>{sourceUserDisplayName}</Text>
-                                  </View>
-                                  {item.rating > 0 ? <RatingPill rating={item.rating} /> : null}
-                                  {monthYearLabel ? <Text style={styles.ownerItemMetaDate}>{monthYearLabel}</Text> : null}
-                                </View>
-
-                                <View style={styles.ownerItemActions}>
-                                  {!item.userFoodItemId ? (
-                                    <Pressable
-                                      accessibilityLabel={`I went for ${item.name}`}
-                                      accessibilityRole="button"
-                                      onPress={() => {
-                                        handleIWentThere(group, item);
-                                      }}
-                                      style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}
-                                      testID={`i-went-list-item-${item.listItemId}`}
-                                    >
-                                      <Ionicons color={theme.colors.text.success} name="location-outline" size={12} />
-                                      <Text style={styles.iWentButtonLabel}>I went</Text>
-                                    </Pressable>
-                                  ) : null}
-                                  <Pressable
-                                    accessibilityLabel={`Remove bookmarked rating for ${item.name}`}
-                                    accessibilityRole="button"
-                                    onPress={() => {
-                                      void handleRemoveSourceRating(item);
-                                    }}
-                                    style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
-                                    testID={`remove-source-rating-${item.listItemId}-${item.foodItemId}`}
-                                  >
-                                    <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
-                                  </Pressable>
-                                </View>
-                              </View>
-                            ) : null}
-
-                            {hasLinkedUserRating ? (
-                              <View style={styles.ownerYouRow}>
-                                <View style={styles.ownerReviewRow}>
-                                  <Text style={styles.ownerReviewArrow}>↳</Text>
-                                  <Text style={styles.ownerReviewText}>You</Text>
-                                  <RatingPill rating={item.userFoodItemRating ?? 0} />
-                                  {userReviewDateLabel ? <Text style={styles.ownerReviewDate}>{userReviewDateLabel}</Text> : null}
-                                </View>
-                                <Pressable
-                                  accessibilityLabel={`Remove your rating for ${item.name}`}
-                                  accessibilityRole="button"
-                                  onPress={() => {
-                                    void handleRemoveUserRating(item.listItemId);
-                                  }}
-                                  style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
-                                  testID={`remove-user-rating-${item.listItemId}-${item.userFoodItemId}`}
-                                >
-                                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
-                                </Pressable>
-                              </View>
-                            ) : null}
-
-                            {!hasSourceBookmark && item.rating > 0 ? (
-                              <View style={styles.ownerYouRow}>
-                                <View style={styles.ownerReviewRow}>
-                                  <Text style={styles.ownerReviewArrow}>↳</Text>
-                                  <Text style={styles.ownerReviewText}>You</Text>
-                                  <RatingPill rating={item.rating} />
-                                  {standaloneUserDateLabel ? (
-                                    <Text style={styles.ownerReviewDate}>{standaloneUserDateLabel}</Text>
-                                  ) : null}
-                                </View>
-                                <Pressable
-                                  accessibilityLabel={`Remove your rating for ${item.name}`}
-                                  accessibilityRole="button"
-                                  onPress={() => {
-                                    void handleRemoveSourceRating(item);
-                                  }}
-                                  style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
-                                  testID={`remove-list-item-${item.listItemId}-${item.foodItemId}`}
-                                >
-                                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
-                                </Pressable>
-                              </View>
-                            ) : null}
-                          </View>
-                        );
-                      }
 
                       return (
                         <View key={item.key} style={styles.bookmarkedItemBlock}>
@@ -1219,6 +1597,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           })
         )}
       </View>
+
+      <PhotoViewerModal
+        initialIndex={photoViewerInitialIndex}
+        onRequestClose={closePhotoViewer}
+        ownerLabels={photoViewerOwnerLabels}
+        urls={photoViewerUrls}
+        visible={photoViewerVisible}
+      />
 
       <Modal
         description="Choose where to save this bookmarked item."

@@ -20,10 +20,12 @@ import {
   listRestaurantLists,
   type RestaurantListRecord,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, ListItem, Text } from '../ui';
 
@@ -203,6 +205,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
 
   const [activeTab, setActiveTab] = useState<ListTab>('my');
   const [searchQuery, setSearchQuery] = useState('');
@@ -230,7 +234,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user?.id || hasTriedCreatingDefault.current || myListsQuery.isLoading || myListsQuery.isError) {
+    if (
+      !user?.id ||
+      hasTriedCreatingDefault.current ||
+      myListsQuery.isLoading ||
+      (myListsQuery.isError && !myListsQuery.data)
+    ) {
       return;
     }
 
@@ -248,6 +257,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
     void (async () => {
       try {
+        if (!isOnline) {
+          await queueFeatureOutbox('list.default.create', {});
+          await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+          return;
+        }
+
         await queueWrite('list.default.create');
         await createDefaultRestaurantList();
         await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
@@ -265,12 +280,16 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     myListsQuery.data,
     myListsQuery.isError,
     myListsQuery.isLoading,
+    isOnline,
     queryClient,
+    queueFeatureOutbox,
     queueWrite,
   ]);
 
   const activeQuery =
     activeTab === 'my' ? myListsQuery : activeTab === 'friends' ? friendsListsQuery : publicListsQuery;
+  const hasBlockingActiveQueryError = activeQuery.isError && !activeQuery.data;
+  const hasActiveQueryRefreshError = !hasBlockingActiveQueryError && activeQuery.isError;
 
   const visibleLists = useMemo(() => {
     if (activeTab === 'friends') {
@@ -289,7 +308,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const listItemCountsQuery = useQuery({
     queryKey: ['feature', 'restaurantListItemCounts.v2', activeTab, ...visibleListIds],
     queryFn: () => getRestaurantListItemCounts(visibleListIds),
-    enabled: visibleListIds.length > 0 && !activeQuery.isLoading && !activeQuery.isError,
+    enabled: visibleListIds.length > 0 && !activeQuery.isLoading && !hasBlockingActiveQueryError,
   });
 
   const filteredLists = useMemo(() => {
@@ -635,7 +654,13 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
       <PageErrorToast
         actionLabel="Retry"
-        errorMessage={activeQuery.isError ? 'Could not load lists.' : null}
+        errorMessage={
+          hasBlockingActiveQueryError
+            ? 'Could not load lists.'
+            : hasActiveQueryRefreshError
+              ? 'Could not refresh lists. Showing saved data.'
+              : null
+        }
         onAction={() => {
           void activeQuery.refetch();
         }}
@@ -659,7 +684,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         </View>
       ) : null}
 
-      {!isLoading && !activeQuery.isError
+      {!isLoading && !hasBlockingActiveQueryError
         ? filteredLists.length === 0
           ? hasSearch
             ? renderNoSearchResults()

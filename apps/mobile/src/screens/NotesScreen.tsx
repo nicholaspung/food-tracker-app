@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -15,10 +15,13 @@ import {
   type SegmentedControlOption,
 } from '../components/shared';
 import { buildPocketBaseFileUrl, deleteNote, listCollectionRecords, listNotes, type NoteRecord } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Modal, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
 type NotesFilter = 'unused' | 'used' | 'all';
@@ -90,6 +93,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingDeleteNote, setPendingDeleteNote] = useState<NoteRecord | null>(null);
@@ -107,6 +112,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     queryKey: ['feature', 'notePhotos'],
     queryFn: async () => listCollectionRecords<NotePhotoRecord>('note_photos', { sort: 'created' }),
   });
+  const hasBlockingNotesError = notesQuery.isError && !notesQuery.data;
+  const hasNotesRefreshError = !hasBlockingNotesError && (notesQuery.isError || notePhotosQuery.isError);
 
   const notes = useMemo(() => notesQuery.data ?? [], [notesQuery.data]);
   const unusedCount = notes.filter((note) => note.status === 'draft').length;
@@ -273,6 +280,17 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     setIsDeletingNote(true);
 
     try {
+      if (!isOnline) {
+        await queueFeatureOutbox('note.delete', { noteId: pendingDeleteNote.id });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
+        ]);
+        setPendingDeleteNote(null);
+        Alert.alert('Saved Offline', 'Note delete queued and will sync when you reconnect.');
+        return;
+      }
+
       await queueWrite('note.delete');
       await deleteNote(pendingDeleteNote.id);
       await Promise.all([
@@ -286,7 +304,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     } finally {
       setIsDeletingNote(false);
     }
-  }, [pendingDeleteNote, queryClient, queueWrite]);
+  }, [isOnline, pendingDeleteNote, queryClient, queueFeatureOutbox, queueWrite]);
 
   return (
     <FeatureDetailScreenScaffold
@@ -317,6 +335,24 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
         {errorMessage ? <ErrorState description={errorMessage} title="Notes update failed" /> : null}
 
+        <PageErrorToast
+          errorMessage={
+            hasBlockingNotesError
+              ? 'Could not load notes.'
+              : hasNotesRefreshError
+                ? notePhotosQuery.isError
+                  ? 'Could not refresh note photos. Showing saved notes.'
+                  : 'Could not refresh notes. Showing saved data.'
+                : null
+          }
+          title="Notes unavailable"
+          actionLabel="Retry"
+          onAction={() => {
+            void notesQuery.refetch();
+            void notePhotosQuery.refetch();
+          }}
+        />
+
         {notesQuery.isLoading ? (
           <>
             <Skeleton height={20} />
@@ -325,7 +361,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           </>
         ) : null}
 
-        {notesQuery.isError ? (
+        {hasBlockingNotesError ? (
           <ErrorState
             description="Could not load notes."
             onRetry={() => {
@@ -336,7 +372,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           />
         ) : null}
 
-        {!notesQuery.isLoading && !notesQuery.isError && filteredNotes.length === 0 ? (
+        {!notesQuery.isLoading && !hasBlockingNotesError && filteredNotes.length === 0 ? (
           <EmptyState
             actionLabel="Log a Note"
             description={
@@ -353,7 +389,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           />
         ) : null}
 
-        {!notesQuery.isLoading && !notesQuery.isError
+        {!notesQuery.isLoading && !hasBlockingNotesError
           ? filteredNotes.map((note) => {
               const location = buildNoteLocation(note);
               const notePhotos = notePhotosByNoteId.get(note.id) ?? [];

@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -12,10 +12,12 @@ import {
   Skeleton,
 } from '../components/shared';
 import { createFeedback, listFeedback, type FeedbackStatusFilter } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -43,7 +45,9 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
   const queryClient = useQueryClient();
+  const { isOnline } = useConnectivity();
   const isAdmin = user?.isAdmin === true;
   const [adminStatusFilter, setAdminStatusFilter] = useState<FeedbackStatusFilter>('active');
   const [adminTimeRangeFilter, setAdminTimeRangeFilter] = useState<AdminTimeRangeFilter>('all_time');
@@ -52,6 +56,8 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     queryKey: ['feature', 'feedback', isAdmin ? adminStatusFilter : 'all'],
     queryFn: () => listFeedback({ status: isAdmin ? adminStatusFilter : 'all' }),
   });
+  const hasBlockingFeedbackError = feedbackQuery.isError && !feedbackQuery.data;
+  const hasFeedbackRefreshError = !hasBlockingFeedbackError && feedbackQuery.isError;
 
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -130,11 +136,22 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     setErrorMessage(null);
 
     try {
-      await queueWrite('feedback.create');
-      await createFeedback({
+      const feedbackInput = {
         title: subject,
         description: message,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('feedback.create', feedbackInput);
+        setSubject('');
+        setMessage('');
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
+        Alert.alert('Saved Offline', 'Feedback queued and will sync when you reconnect.');
+        return;
+      }
+
+      await queueWrite('feedback.create');
+      await createFeedback(feedbackInput);
 
       setSubject('');
       setMessage('');
@@ -201,7 +218,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
               />
             </>
           ) : null}
-          {!feedbackQuery.isLoading && !feedbackQuery.isError ? (
+          {!feedbackQuery.isLoading && !hasBlockingFeedbackError ? (
             <Text style={styles.countSummaryText}>
               {visibleFeedbackCount} {visibleFeedbackCount === 1 ? 'thread' : 'threads'} in {selectedAdminFilterLabel}
               {adminStatusFilter === 'all' ? ` (${selectedAdminTimeRangeLabel})` : ''}
@@ -210,7 +227,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         </Card>
       )}
 
-      {!isAdmin && !feedbackQuery.isLoading && !feedbackQuery.isError ? (
+      {!isAdmin && !feedbackQuery.isLoading && !hasBlockingFeedbackError ? (
         <Text style={styles.countSummaryText}>
           {visibleFeedbackCount} {visibleFeedbackCount === 1 ? 'feedback thread' : 'feedback threads'} total
         </Text>
@@ -225,7 +242,13 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         ) : null}
 
         <PageErrorToast
-          errorMessage={feedbackQuery.isError ? 'Could not load feedback history.' : null}
+          errorMessage={
+            hasBlockingFeedbackError
+              ? 'Could not load feedback history.'
+              : hasFeedbackRefreshError
+                ? 'Could not refresh feedback history. Showing saved data.'
+                : null
+          }
           title="Feedback unavailable"
           actionLabel="Retry"
           onAction={() => {
@@ -233,7 +256,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
           }}
         />
 
-        {!feedbackQuery.isLoading && !feedbackQuery.isError && visibleFeedbackCount === 0 ? (
+        {!feedbackQuery.isLoading && !hasBlockingFeedbackError && visibleFeedbackCount === 0 ? (
           <EmptyState
             description={
               isAdmin
@@ -248,7 +271,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
           />
         ) : null}
 
-        {!feedbackQuery.isLoading && !feedbackQuery.isError
+        {!feedbackQuery.isLoading && !hasBlockingFeedbackError
           ? displayedFeedback.map((feedback) => {
               const unreadCount = isAdmin ? feedback.adminUnreadCount : feedback.userUnreadCount;
               const ownerLabel =

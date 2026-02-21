@@ -32,6 +32,8 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     queryKey: ['feature', 'bills'],
     queryFn: listBills,
   });
+  const hasBlockingBillsError = billsQuery.isError && !billsQuery.data;
+  const hasBillsRefreshError = !hasBlockingBillsError && billsQuery.isError;
 
   const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
 
@@ -151,7 +153,13 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
         ) : null}
 
         <PageErrorToast
-          errorMessage={billsQuery.isError ? 'Could not load bills.' : null}
+          errorMessage={
+            hasBlockingBillsError
+              ? 'Could not load bills.'
+              : hasBillsRefreshError
+                ? 'Could not refresh bills. Showing saved data.'
+                : null
+          }
           title="Bills unavailable"
           actionLabel="Retry"
           onAction={() => {
@@ -159,7 +167,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           }}
         />
 
-        {!billsQuery.isLoading && !billsQuery.isError && filteredBills.length === 0 ? (
+        {!billsQuery.isLoading && !hasBlockingBillsError && filteredBills.length === 0 ? (
           <EmptyState
             description={
               activeFilter === 'all'
@@ -172,7 +180,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           />
         ) : null}
 
-        {!billsQuery.isLoading && !billsQuery.isError && filteredBills.length > 0 ? (
+        {!billsQuery.isLoading && !hasBlockingBillsError && filteredBills.length > 0 ? (
           <Card style={styles.listCard}>
             <OptionList style={styles.list}>
               {filteredBills.map((bill, index) => {

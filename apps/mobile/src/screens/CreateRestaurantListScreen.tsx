@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -10,8 +10,10 @@ import {
   type VisibilityOptionValue,
 } from '../components/shared';
 import { createRestaurantList, type RestaurantListRecord } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
@@ -22,6 +24,8 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -65,12 +69,22 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
     setIsSubmitting(true);
 
     try {
-      await queueWrite('list.create');
-      const createdList = await createRestaurantList({
+      const listInput = {
         name: trimmedName,
         description,
         visibility,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('list.create', listInput);
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+        Alert.alert('Saved Offline', 'List queued and will sync when you reconnect.');
+        navigation.navigate('Lists');
+        return;
+      }
+
+      await queueWrite('list.create');
+      const createdList = await createRestaurantList(listInput);
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
       navigation.replace('ListDetail', { listId: createdList.id });

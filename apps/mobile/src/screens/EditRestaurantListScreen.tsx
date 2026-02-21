@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -13,8 +13,10 @@ import {
   Skeleton,
 } from '../components/shared';
 import { getRestaurantListById, updateRestaurantList, type RestaurantListRecord } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
@@ -26,6 +28,8 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -85,12 +89,29 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
     setIsSubmitting(true);
 
     try {
-      await queueWrite('list.update');
-      await updateRestaurantList(listId, {
+      const listUpdateInput = {
         name: trimmedName,
         description,
         visibility,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('list.update', {
+          listId,
+          updates: listUpdateInput,
+        });
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+        ]);
+        Alert.alert('Saved Offline', 'List update queued and will sync when you reconnect.');
+        handleBack();
+        return;
+      }
+
+      await queueWrite('list.update');
+      await updateRestaurantList(listId, listUpdateInput);
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),

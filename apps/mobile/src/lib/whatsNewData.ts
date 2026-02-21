@@ -10,6 +10,27 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.4',
+    date: '2026-02-21',
+    title: 'Full Offline Support & Smarter Error Recovery',
+    summary:
+      'All key actions now work offline — visits, quick tracks, notes, bills, lists, and friend requests are queued and sync automatically when you reconnect. Core screens also keep showing your saved data when a refresh fails.',
+    features: [
+      'Create and edit visits, quick tracks, and notes while offline.',
+      'Create, edit, and manage bills offline.',
+      'Create and update restaurant lists offline.',
+      'Send friend requests via QR code or friend code without internet.',
+      'Submit feedback messages offline.',
+    ],
+    improvements: [
+      'Home, Notes, Lists, Bills, Friends, and Feedback screens now show cached data on refresh failure.',
+      'Food item photos visible in list detail view with owner attribution in the photo viewer.',
+      'Menu item editing shows an offline notice and is disabled until reconnected.',
+      'Online-only actions are clearly labeled and disabled when offline.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.3',
     date: '2026-02-20',
     title: 'Richer Restaurant Lists & Admin Role Preview',

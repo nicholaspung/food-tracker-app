@@ -65,9 +65,18 @@
 
 ## Offline Write Pattern
 
-- For user write actions that should be visible in sync/offline status, enqueue a write marker through `/Users/developer/programming/food-tracker-app/apps/mobile/src/features/store/useQueuedWrite.ts`.
+- Required queue coverage for user-authored create/update/delete flows: visits, quick tracks, notes, lists/list items, bills, feedback messages, and friend actions.
+- For new or touched offline-capable flows, queue the actual replayable mutation payload (method/url/headers/body) through `SyncProvider`/offline queue primitives; do not rely on marker-only queue entries as the primary offline behavior.
+- If a touched flow still cannot be moved to true outbox replay in the same task, preserve existing behavior but document the gap in the task summary and avoid introducing new non-queued writes in those domains.
 - Keep queued writes idempotent and retry-safe; sync replay uses retry/backoff from `/Users/developer/programming/food-tracker-app/apps/mobile/src/offline`.
 - Preserve `SyncStatusBanner` behavior and avoid bypassing `SyncProvider` for offline-aware flows.
+
+## Offline UX Contract
+
+- Cold offline open must show previously cached data for core browse surfaces: Home feed, Notes, Lists, Bills, Friends, Feedback inbox, and Profile summaries.
+- On those browse screens, treat query failure as blocking only when no cached data exists; if cached data exists, keep rendering it and show a non-blocking refresh error.
+- Keep React Query persistence wired through `/Users/developer/programming/food-tracker-app/apps/mobile/src/providers/AppProviders.tsx`; do not bypass restore gating.
+- Clearly label and disable online-only actions when offline. Online-only categories include auth/account security, admin moderation, and menu-item management flows.
 
 ## Async Screen State Pattern
 
@@ -96,7 +105,9 @@
 - No new raw color literals were introduced outside theme tokens.
 - Query keys follow `['feature', ...]` and invalidation targets are present after mutations.
 - No new direct `pb.collection(...)` calls were introduced in `apps/mobile/src/screens`.
-- Offline-sensitive writes enqueue through `useQueuedWrite` when applicable.
+- Offline-sensitive writes use outbox queueing patterns (or existing queue fallback with documented gap) for user-authored mutation domains.
+- Core browse screens preserve cached-data rendering on offline/refetch failure (blocking errors only when no cached data exists).
+- Online-only flows show explicit offline messaging and disabled controls.
 - Loading, empty, and error states are covered on async screens.
 - Rating UI still uses `getRatingColor`, `getRatingLabel`, and `RatingPill` conventions.
 - Run relevant checks for touched mobile code: `npm run mobile:lint` and `npm run mobile:typecheck`.

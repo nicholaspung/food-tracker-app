@@ -1,11 +1,14 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
 import { getQuickTrackById, updateQuickTrack } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { Input } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -15,6 +18,8 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
   const { quickTrackId } = route.params;
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
 
   const quickTrackQuery = useQuery({
     queryKey: ['feature', 'quickTrack', quickTrackId],
@@ -55,13 +60,30 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
     setIsSubmitting(true);
 
     try {
-      await queueWrite('quick-track.update');
-      await updateQuickTrack(quickTrackId, {
+      const quickTrackUpdateInput = {
         restaurantName,
         itemName,
         rating: parsedRating,
         notes: notes.trim() || undefined,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('quick-track.update', {
+          quickTrackId,
+          updates: quickTrackUpdateInput,
+        });
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'quickTrack', quickTrackId] }),
+        ]);
+        Alert.alert('Saved Offline', 'Quick track update queued and will sync when you reconnect.');
+        navigation.navigate('Home');
+        return;
+      }
+
+      await queueWrite('quick-track.update');
+      await updateQuickTrack(quickTrackId, quickTrackUpdateInput);
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),

@@ -1,12 +1,14 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
 import { getVisitById, updateVisit, type VisitItem } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -22,6 +24,8 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
 
   const visitQuery = useQuery({
     queryKey: ['feature', 'visit', visitId],
@@ -84,11 +88,28 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
     setIsSubmitting(true);
 
     try {
-      await queueWrite('visit.update');
-      await updateVisit(visitId, {
+      const visitUpdateInput = {
         restaurantName,
         items: parsedItems,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('visit.update', {
+          visitId,
+          updates: visitUpdateInput,
+        });
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'visit', visitId] }),
+        ]);
+        Alert.alert('Saved Offline', 'Visit update queued and will sync when you reconnect.');
+        navigation.navigate('Home');
+        return;
+      }
+
+      await queueWrite('visit.update');
+      await updateVisit(visitId, visitUpdateInput);
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),

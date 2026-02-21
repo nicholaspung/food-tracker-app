@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.7.4",
+    "date": "2026-02-21",
+    "title": "Full Offline Support & Smarter Error Recovery",
+    "summary": "The app now works fully offline! Create visits, quick tracks, notes, bills, lists, and send friend requests or feedback without internet — everything queues automatically and syncs when you reconnect. Plus, screens now show your saved data when a refresh fails instead of going blank.",
+    "features": [
+      "Offline visits: Create and edit restaurant visits while offline — they sync automatically when you reconnect",
+      "Offline quick track: Create and edit quick track items without an internet connection",
+      "Offline notes: Create, edit, and delete notes offline with automatic sync on reconnect",
+      "Offline bills: Create, edit, update payment status, and delete bills while offline",
+      "Offline restaurant lists: Create, edit, and add restaurants to lists offline",
+      "Offline friend requests: Send friend requests via QR code or friend code without internet",
+      "Offline feedback: Submit feedback messages even without an internet connection"
+    ],
+    "improvements": [
+      "Smarter error recovery: All core browse screens (Home, Notes, Lists, Bills, Friends, Feedback) now show cached data when a refresh fails, with a non-blocking toast instead of a blank error state",
+      "Food item photos in list detail: View dish photos directly within a restaurant list, with owner name shown in the photo viewer",
+      "Photo viewer now shows who took each photo when viewing multiple photos",
+      "Menu item editing shows a clear offline notice and disables saving until reconnected",
+      "Online-only actions (admin status updates, menu item edits) are clearly labeled and disabled when offline"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.3",
     "date": "2026-02-20",
     "title": "Richer Restaurant Lists & Admin Role Preview",

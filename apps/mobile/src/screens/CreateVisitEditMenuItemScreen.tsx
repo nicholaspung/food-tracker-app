@@ -11,6 +11,7 @@ import {
 } from '../components/shared';
 import { updateCollectionRecord } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
@@ -39,6 +40,7 @@ export function CreateVisitEditMenuItemScreen({
 }: CreateVisitEditMenuItemScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
+  const { isOnline } = useConnectivity();
 
   const {
     menuItemId,
@@ -67,6 +69,11 @@ export function CreateVisitEditMenuItemScreen({
   });
 
   const handleSaveMenuItem = async () => {
+    if (!isOnline) {
+      setErrorMessage('Editing menu items requires internet connection.');
+      return;
+    }
+
     const trimmedName = menuItemName.trim();
     if (!trimmedName) {
       setErrorMessage('Menu item name is required.');
@@ -110,7 +117,7 @@ export function CreateVisitEditMenuItemScreen({
       }}
       primaryAction={{
         label: 'Save',
-        disabled: !menuItemName.trim() || isSubmitting,
+        disabled: !menuItemName.trim() || isSubmitting || !isOnline,
         loading: isSubmitting,
         onPress: () => {
           void handleSaveMenuItem();
@@ -126,6 +133,12 @@ export function CreateVisitEditMenuItemScreen({
     >
       <View style={styles.body}>
         <PageErrorToast errorMessage={errorMessage} title="Could not update menu item" />
+
+        {!isOnline ? (
+          <Card tone="muted">
+            <Text tone="warning">You are offline. Connect to edit this menu item.</Text>
+          </Card>
+        ) : null}
 
         <Card style={styles.formCard}>
           <Text tone="secondary">Update item details and visibility for this restaurant.</Text>

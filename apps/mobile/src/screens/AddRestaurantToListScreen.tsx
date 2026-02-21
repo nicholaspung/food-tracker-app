@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -18,10 +18,12 @@ import {
   listVisits,
   type VisitRecord,
 } from '../features';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -181,6 +183,8 @@ export function AddRestaurantToListScreen({
   const theme = useTheme();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -500,13 +504,36 @@ export function AddRestaurantToListScreen({
     setIsSubmitting(true);
 
     try {
-      await queueWrite("list.restaurant.add");
-      await addRestaurantVisitRatingsToList({
+      const addInput = {
         listId,
         restaurantId: selectedRestaurant.id,
         foodItemIds: selectedNewFoodItemIds,
         note: noteDirty ? note : undefined,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox("list.restaurant.add", addInput);
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurantList", listId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurantListItems", listId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurantListItemLinks", listId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurantLists"],
+          }),
+        ]);
+        Alert.alert("Saved Offline", "List updates queued and will sync when you reconnect.");
+        handleBackToListDetail();
+        return;
+      }
+
+      await queueWrite("list.restaurant.add");
+      await addRestaurantVisitRatingsToList(addInput);
 
       await Promise.all([
         queryClient.invalidateQueries({
