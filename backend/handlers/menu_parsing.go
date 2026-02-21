@@ -24,7 +24,7 @@ import (
 )
 
 // RegisterMenuParsingHandlers registers all menu parsing and AI-powered image analysis endpoints
-func RegisterMenuParsingHandlers(se *core.ServeEvent, app core.App) {
+func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 	// Custom API endpoint: Convert HEIC to JPEG
 	se.Router.POST("/api/convert-heic", func(e *core.RequestEvent) error {
 		// Authentication required
@@ -83,6 +83,14 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, app core.App) {
 		authRecord := e.Auth
 		if authRecord == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricMenuScans, 1); err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to consume menu scan usage for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
 		// Check if user is admin for debug mode

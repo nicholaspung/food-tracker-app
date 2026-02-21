@@ -18,13 +18,17 @@ import {
   VisibilityOptionSelector,
 } from '../components/shared';
 import {
+  consumeUsage,
   createCollectionRecord,
   createQuickTrack,
   createVisit,
+  formatLimitExceededMessage,
   getAuthenticatedUserIdOrNull,
   listCollectionRecords,
   listRestaurants,
+  parseLimitExceededError,
   resolveDefaultVisitVisibilityFromAuth,
+  useMonthlyUsage,
   type RestaurantRecord,
   type VisitPhotoUploadInput,
 } from '../features';
@@ -32,7 +36,9 @@ import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { shouldShowOfflineUsageWarning } from './usageUiRules';
 import { useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Screen, Text } from '../ui';
 
@@ -90,6 +96,7 @@ const QUICK_TRACK_CATEGORIES: { value: QuickTrackCategory; label: string }[] = [
   { value: 'recipe', label: 'Recipe' },
   { value: 'other', label: 'Other' },
 ];
+const FREE_MONTHLY_PHOTO_LIMIT = 5;
 
 function buildScannedItemNames(seedLabel: string): string[] {
   const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
@@ -409,6 +416,21 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
   }, [queryClient, restaurantId]);
 
   const processSelectedImage = useCallback(async (imageName: string) => {
+    try {
+      await consumeUsage('menu_scans');
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
+    } catch (error) {
+      const limitPayload = parseLimitExceededError(error);
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
+          ? error.message
+          : 'Could not process this photo.';
+      setErrorMessage(message);
+      setPhase('error');
+      return;
+    }
+
     setPhase('processing');
     setProgressValue(0);
     setErrorMessage(null);
@@ -441,7 +463,7 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
     } finally {
       clearInterval(progressInterval);
     }
-  }, [createScannedMenuItems, startCountdown]);
+  }, [createScannedMenuItems, queryClient, startCountdown]);
 
   const pickImage = useCallback(async (source: ScanSource) => {
     setIsSelectingSource(true);
@@ -704,6 +726,18 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
+  const { actualUser, user } = useAuth();
+  const isActualAdmin = actualUser?.isAdmin === true;
+  const isDisplayAdminUser = user?.isAdmin === true;
+  const isDisplaySubscriberUser = user?.isSubscriber === true;
+  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
+  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
+    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
+    : null;
+  const monthlyUsage = useMonthlyUsage({
+    viewAsTier: usagePreviewTier,
+  });
+  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
 
   const [step, setStep] = useState<GeneralPhotoStep>('choice');
   const [processType, setProcessType] = useState<ProcessType | null>(null);
@@ -883,6 +917,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       })
       .filter((entry): entry is { photo: DraftPhotoAsset; form: QuickTrackPhotoForm } => Boolean(entry));
   }, [photos, quickTrackForms]);
+
+  const estimatedFreeMonthlyPhotoTotal = (monthlyUsage.snapshot?.usage.photoUploads ?? 0) + photos.length;
+  const estimatedFreeMonthlyPhotoRemaining = Math.max(
+    FREE_MONTHLY_PHOTO_LIMIT - estimatedFreeMonthlyPhotoTotal,
+    0,
+  );
 
   const updateCurrentRestaurantForm = (updates: Partial<RestaurantPhotoForm>) => {
     if (!currentPhoto) {
@@ -1194,6 +1234,20 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       return;
     }
 
+    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot) {
+      const estimatedTotalAfterSubmit = monthlyUsage.snapshot.usage.photoUploads + photos.length;
+      if (estimatedTotalAfterSubmit > FREE_MONTHLY_PHOTO_LIMIT) {
+        const remaining = Math.max(
+          FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
+          0,
+        );
+        setErrorMessage(
+          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
+        );
+        return;
+      }
+    }
+
     setErrorMessage(null);
     setIsSubmitting(true);
 
@@ -1208,6 +1262,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
       ]);
 
       if (!isOnline) {
@@ -1216,7 +1271,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
       navigation.navigate('Home');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not process photos.';
+      const limitPayload = parseLimitExceededError(error);
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
+          ? error.message
+          : 'Could not process photos.';
       setErrorMessage(message);
       trackObservabilityEvent('Photo Processing Failed', {
         errorMessage: message,
@@ -1586,6 +1646,25 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           onAction={errorAction}
           title="Photo upload issue"
         />
+
+        {shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="warning">
+              Offline estimate may be stale. Backend limits are enforced when sync runs.
+            </Text>
+          </Card>
+        ) : null}
+
+        {isDisplayFreeUser ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="secondary">
+              Monthly photo estimate:{' '}
+              {monthlyUsage.snapshot
+                ? `${estimatedFreeMonthlyPhotoRemaining} left`
+                : 'unknown'}.
+            </Text>
+          </Card>
+        ) : null}
 
         <Card style={styles.uploadCard}>
           <Text variant="label">Choose Photo Source</Text>
@@ -1996,6 +2075,25 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         title={processType === 'restaurant' ? 'Review Your Visits' : 'Review Quick Track Items'}
       >
         <PageErrorToast errorMessage={errorMessage} title="Review issue" />
+
+        {shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="warning">
+              Offline estimate may be stale. Backend limits are enforced when sync runs.
+            </Text>
+          </Card>
+        ) : null}
+
+        {isDisplayFreeUser ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="secondary">
+              Monthly photo estimate:{' '}
+              {monthlyUsage.snapshot
+                ? `${estimatedFreeMonthlyPhotoRemaining} left`
+                : 'unknown'}.
+            </Text>
+          </Card>
+        ) : null}
 
         {processType === 'restaurant' ? (
           <>

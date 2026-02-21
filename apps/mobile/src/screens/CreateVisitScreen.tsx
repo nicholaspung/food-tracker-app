@@ -31,12 +31,15 @@ import {
 import {
   createCollectionRecord,
   createVisit,
+  formatLimitExceededMessage,
   getAuthenticatedUserIdOrNull,
   linkVisitToListBookmark,
   listCollectionRecords,
   listRestaurants,
   listVisits,
+  parseLimitExceededError,
   resolveDefaultVisitVisibilityFromAuth,
+  useMonthlyUsage,
   type RestaurantRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
@@ -50,7 +53,9 @@ import {
 } from '../lib/googlePlaces';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from './usageUiRules';
 import { useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 
@@ -335,6 +340,8 @@ const WIZARD_STEPS = [
   { label: "Rate & Save" },
 ];
 
+const FREE_MONTHLY_PHOTO_LIMIT = 5;
+
 export function CreateVisitScreen({
   navigation,
   route,
@@ -344,6 +351,23 @@ export function CreateVisitScreen({
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
+  const { actualUser, user } = useAuth();
+  const isActualAdmin = actualUser?.isAdmin === true;
+  const isDisplayAdminUser = user?.isAdmin === true;
+  const isDisplaySubscriberUser = user?.isSubscriber === true;
+  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
+  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
+    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
+    : null;
+  const monthlyUsage = useMonthlyUsage({
+    viewAsTier: usagePreviewTier,
+  });
+
+  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
+  const perRecordPhotoLimit = isActualAdmin ? null : isDisplaySubscriberUser ? 20 : 1;
+  const placesQueriesRemaining = isDisplayFreeUser
+    ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
+    : null;
 
   const restaurantsQuery = useQuery({
     queryKey: ["feature", "restaurants"],
@@ -410,6 +434,16 @@ export function CreateVisitScreen({
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
+  const createVisitSearchUi = resolveCreateVisitSearchUi({
+    isFreeTier: isDisplayFreeUser,
+    enforceQuota: shouldEnforceUsageLimitsClientSide,
+    placesQueriesRemaining,
+    isOnline,
+    isSearching,
+  });
+  const isPlacesQuotaReached = createVisitSearchUi.isQuotaReached;
+  const compactSearchLabel = createVisitSearchUi.compactLabel;
+  const expandedSearchLabel = createVisitSearchUi.expandedLabel;
   const scrollViewRef = useRef<ScrollView | null>(null);
   const menuItemsQuery = useQuery({
     queryKey: ["feature", "menuItems", selectedRestaurantId ?? ""],
@@ -620,6 +654,11 @@ export function CreateVisitScreen({
     return [...selected, ...unselected];
   }, [draftItems, filteredMenuItems, menuItemsQuery.data]);
   const selectedMenuItemCount = draftItems.length;
+  const draftPhotoCount = useMemo(
+    () =>
+      draftItems.reduce((totalCount, item) => totalCount + item.photos.length, 0),
+    [draftItems],
+  );
   const hasPendingMenuReview = pendingMenuReviewQuery.data === true;
 
   useEffect(() => {
@@ -1362,6 +1401,11 @@ export function CreateVisitScreen({
       return;
     }
 
+    if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+      setSearchErrorMessage("Monthly food place search limit reached.");
+      return;
+    }
+
     const trimmedQuery = restaurantSearchQuery.trim();
     const trimmedLocation = manualLocation.trim();
     if (!trimmedQuery && !trimmedLocation) {
@@ -1376,6 +1420,7 @@ export function CreateVisitScreen({
     setIsSearching(true);
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
+    let didAttemptPlacesQuery = false;
 
     try {
       let nextReferenceCoords: { lat: number; lng: number } | null =
@@ -1385,6 +1430,7 @@ export function CreateVisitScreen({
       }
 
       setReferenceCoords(nextReferenceCoords);
+      didAttemptPlacesQuery = true;
       const results = await searchAndCacheRestaurantsByText({
         query: trimmedQuery || "food",
         location: trimmedLocation || undefined,
@@ -1399,13 +1445,20 @@ export function CreateVisitScreen({
         }, 60);
       }
     } catch (error) {
-      const message =
-        error instanceof Error
+      const limitPayload = parseLimitExceededError(error);
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
           ? error.message
           : "Could not search restaurants.";
       setSearchErrorMessage(message);
     } finally {
       setIsSearching(false);
+      if (didAttemptPlacesQuery) {
+        await queryClient.invalidateQueries({
+          queryKey: ["feature", "usage", "monthly"],
+        });
+      }
     }
   };
 
@@ -1415,9 +1468,15 @@ export function CreateVisitScreen({
       return;
     }
 
+    if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+      setSearchErrorMessage("Monthly food place search limit reached.");
+      return;
+    }
+
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
     setIsGettingLocation(true);
+    let didAttemptPlacesQuery = false;
 
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
@@ -1440,6 +1499,7 @@ export function CreateVisitScreen({
       setReferenceCoords(coords);
 
       setIsSearchingNearby(true);
+      didAttemptPlacesQuery = true;
       const results = await searchAndCacheNearbyRestaurants({
         latitude: coords.lat,
         longitude: coords.lng,
@@ -1449,14 +1509,21 @@ export function CreateVisitScreen({
       setNearbyResults(results);
       await restaurantsQuery.refetch();
     } catch (error) {
-      const message =
-        error instanceof Error
+      const limitPayload = parseLimitExceededError(error);
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
           ? error.message
           : "Could not load nearby restaurants.";
       setSearchErrorMessage(message);
     } finally {
       setIsGettingLocation(false);
       setIsSearchingNearby(false);
+      if (didAttemptPlacesQuery) {
+        await queryClient.invalidateQueries({
+          queryKey: ["feature", "usage", "monthly"],
+        });
+      }
     }
   };
 
@@ -1484,6 +1551,21 @@ export function CreateVisitScreen({
     source: "camera" | "gallery",
   ) => {
     setPhotoPermissionNeedsSettings(false);
+
+    const targetItem = draftItems.find((item) => item.id === itemId);
+    if (!targetItem) {
+      return;
+    }
+
+    if (
+      perRecordPhotoLimit !== null &&
+      targetItem.photos.length >= perRecordPhotoLimit
+    ) {
+      setErrorMessage(
+        `You can upload up to ${perRecordPhotoLimit} photo${perRecordPhotoLimit === 1 ? "" : "s"} per item.`,
+      );
+      return;
+    }
 
     const permission =
       source === "camera"
@@ -1597,6 +1679,25 @@ export function CreateVisitScreen({
       return;
     }
 
+    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot) {
+      const photosInSubmission = parsedItems.reduce(
+        (totalCount, item) => totalCount + item.photos.length,
+        0,
+      );
+      const estimatedTotalAfterSubmit =
+        monthlyUsage.snapshot.usage.photoUploads + photosInSubmission;
+      if (estimatedTotalAfterSubmit > FREE_MONTHLY_PHOTO_LIMIT) {
+        const remaining = Math.max(
+          FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
+          0,
+        );
+        setErrorMessage(
+          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
+        );
+        return;
+      }
+    }
+
     const visitInput = {
       restaurantName: trimmedRestaurant,
       items: parsedItems,
@@ -1650,10 +1751,17 @@ export function CreateVisitScreen({
       });
 
       await queryClient.invalidateQueries({ queryKey: ["feature", "visits"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["feature", "usage", "monthly"],
+      });
       navigation.navigate("Home");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Could not save visit.";
+      const limitPayload = parseLimitExceededError(error);
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
+          ? error.message
+          : "Could not save visit.";
       setErrorMessage(message);
       trackObservabilityEvent("Visit Creation Failed", {
         errorMessage: message,
@@ -1754,6 +1862,12 @@ export function CreateVisitScreen({
   const firstUnselectedMenuItemIndex = displayedMenuItems.findIndex(
     (item) => !selectedMenuItemIds.has(item.id),
   );
+  const estimatedMonthlyPhotoTotal =
+    (monthlyUsage.snapshot?.usage.photoUploads ?? 0) + draftPhotoCount;
+  const estimatedFreeMonthlyPhotosRemaining = Math.max(
+    FREE_MONTHLY_PHOTO_LIMIT - estimatedMonthlyPhotoTotal,
+    0,
+  );
 
   return (
     <FeatureFormScreenScaffold
@@ -1835,8 +1949,8 @@ export function CreateVisitScreen({
                   value={restaurantSearchQuery}
                 />
                 <Button
-                  disabled={!isOnline || isSearching}
-                  label={isSearching ? "Searching..." : "Search"}
+                  disabled={createVisitSearchUi.isSearchDisabled}
+                  label={isSearching ? "Searching..." : compactSearchLabel}
                   onPress={() => {
                     void handleSearchByText(true);
                   }}
@@ -1866,7 +1980,10 @@ export function CreateVisitScreen({
                   <CurrentLocationButton
                     accessibilityLabel="Use current location"
                     disabled={
-                      !isOnline || isGettingLocation || isSearchingNearby
+                      !isOnline ||
+                      isGettingLocation ||
+                      isSearchingNearby ||
+                      (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
                     }
                     loading={isGettingLocation || isSearchingNearby}
                     onPress={() => {
@@ -1878,8 +1995,8 @@ export function CreateVisitScreen({
                 </View>
 
                 <Button
-                  disabled={!isOnline || isSearching}
-                  label={isSearching ? "Searching..." : "Search Food Places"}
+                  disabled={createVisitSearchUi.isSearchDisabled}
+                  label={isSearching ? "Searching..." : expandedSearchLabel}
                   onPress={() => {
                     void handleSearchByText(true);
                   }}
@@ -1900,6 +2017,12 @@ export function CreateVisitScreen({
             {!isOnline ? (
               <Text tone="warning">
                 Google Places search requires internet connection.
+              </Text>
+            ) : isPlacesQuotaReached ? (
+              <Text tone="warning">
+                {shouldEnforceUsageLimitsClientSide
+                  ? "Monthly food place search limit reached."
+                  : "Monthly food place search limit reached in preview mode. Admin access is still allowed."}
               </Text>
             ) : null}
           </Card>
@@ -2205,6 +2328,22 @@ export function CreateVisitScreen({
 
       {step === 2 ? (
         <>
+          {shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
+            <Card style={styles.statusCard}>
+              <Text tone="warning">
+                Offline estimate may be stale. Backend limits are enforced when sync runs.
+              </Text>
+            </Card>
+          ) : null}
+
+          {isDisplayFreeUser && draftPhotoCount > 0 ? (
+            <Card style={styles.statusCard} tone="muted">
+              <Text tone="secondary">
+                Monthly photo estimate: {estimatedFreeMonthlyPhotosRemaining} left.
+              </Text>
+            </Card>
+          ) : null}
+
           <Card style={styles.metadataCard}>
             <LocalDatePickerField
               label="Visit Date"

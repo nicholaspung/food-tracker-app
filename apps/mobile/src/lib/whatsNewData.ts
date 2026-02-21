@@ -10,6 +10,29 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.5',
+    date: '2026-02-21',
+    title: 'Usage Limits for Free Users',
+    summary:
+      'Free users now have monthly limits on photo uploads, restaurant searches, and menu scans, with live estimates and clear warnings before you reach a limit. Subscribers and admins are unaffected.',
+    features: [
+      'Free users can upload up to 5 photos per month across visits, quick tracks, and photo processing.',
+      'Free users have monthly caps on Google Places restaurant searches (text and GPS nearby).',
+      'Free users have a monthly cap on AI menu photo scans.',
+      'Live photo estimate shown on Visit, Quick Track, and Photo Processing screens.',
+      'Search buttons show remaining searches when running low (e.g. "Search (3 left)").',
+      'Clear error messages when a limit is reached, including your remaining allowance.',
+    ],
+    improvements: [
+      'All limits are enforced server-side — they apply even if the app is bypassed.',
+      'Admin role preview includes usage data for free and subscriber tiers.',
+      'Usage cache loads immediately on launch so estimates are available offline.',
+      'Usage counters refresh automatically after each search, scan, or photo submission.',
+      'Offline notice shown when usage estimate may be stale.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.4',
     date: '2026-02-21',
     title: 'Full Offline Support & Smarter Error Recovery',

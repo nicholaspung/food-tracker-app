@@ -21,7 +21,7 @@ import (
 )
 
 // RegisterPlacesHandlers registers all Google Places API endpoints
-func RegisterPlacesHandlers(se *core.ServeEvent, app core.App) {
+func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 	// Custom API endpoint: Search nearby restaurants using Google Places (New API)
 	se.Router.POST("/api/places/nearby", func(e *core.RequestEvent) error {
 		// Authentication required
@@ -51,6 +51,14 @@ func RegisterPlacesHandlers(se *core.ServeEvent, app core.App) {
 		// Default radius if not provided
 		if requestData.Radius == 0 {
 			requestData.Radius = 1500
+		}
+
+		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricPlacesQueries, 1); err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to consume places query usage (nearby) for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
 		log.Printf("Searching nearby places: lat=%f, lng=%f, radius=%d",
@@ -193,6 +201,14 @@ func RegisterPlacesHandlers(se *core.ServeEvent, app core.App) {
 		// Default radius if not provided
 		if requestData.Radius == 0 {
 			requestData.Radius = 5000
+		}
+
+		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricPlacesQueries, 1); err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to consume places query usage (search) for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
 		log.Printf("Text search: query=%s, location=%s, radius=%d",

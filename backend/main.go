@@ -16,9 +16,10 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 
-	_ "myapp/migrations"
 	"myapp/handlers"
+	"myapp/hooks"
 	"myapp/lib"
+	_ "myapp/migrations"
 )
 
 func main() {
@@ -65,6 +66,7 @@ func main() {
 		// Register all API handlers
 		handlers.RegisterInviteCodeHandlers(se, app)
 		handlers.RegisterUserHandlers(se, app)
+		handlers.RegisterUsageLimitHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)
 		handlers.RegisterPostHogProxyHandlers(se)
@@ -259,6 +261,8 @@ func main() {
 
 		return e.Next()
 	})
+
+	hooks.RegisterUsageLimitHooks(app)
 
 	// Hook to delete unused invite codes before user deletion
 	app.OnRecordDelete("users").BindFunc(func(e *core.RecordEvent) error {

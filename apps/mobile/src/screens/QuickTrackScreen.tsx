@@ -20,10 +20,19 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { createQuickTrack, getNoteById, resolveDefaultVisitVisibilityFromAuth, type VisitPhotoUploadInput } from '../features';
+import {
+  createQuickTrack,
+  formatLimitExceededMessage,
+  getNoteById,
+  parseLimitExceededError,
+  resolveDefaultVisitVisibilityFromAuth,
+  useMonthlyUsage,
+  type VisitPhotoUploadInput,
+} from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -31,6 +40,7 @@ import { Button, Card, Input, Text } from '../ui';
 type QuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'QuickTrack'>;
 
 const QUICK_TRACK_RATED_BEFORE_KEY = 'ui.quickTrack.hasRatedBefore';
+const FREE_MONTHLY_PHOTO_LIMIT = 5;
 
 const ITEM_CATEGORIES = [
   { value: 'convenience_store', label: 'Convenience Store' },
@@ -108,7 +118,23 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
+  const { actualUser, user } = useAuth();
+  const isActualAdmin = actualUser?.isAdmin === true;
+  const isDisplayAdminUser = user?.isAdmin === true;
+  const isDisplaySubscriberUser = user?.isSubscriber === true;
+  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
+  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
+    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
+    : null;
+  const monthlyUsage = useMonthlyUsage({
+    viewAsTier: usagePreviewTier,
+  });
   const sourceNoteId = route.params?.sourceNoteId;
+
+  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
+  const estimatedFreePhotoRemaining = isDisplayFreeUser
+    ? monthlyUsage.snapshot?.remaining.photoUploadsMonthly ?? null
+    : null;
 
   const linkedNoteQuery = useQuery({
     queryKey: ['feature', 'note', sourceNoteId],
@@ -293,6 +319,12 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const handlePhotoPick = async (source: PhotoSource) => {
     setErrorMessage(null);
     setPhotoPermissionNeedsSettings(false);
+
+    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && estimatedFreePhotoRemaining === 0) {
+      setErrorMessage('Free users can upload up to 5 photos per month.');
+      return;
+    }
+
     setIsSelectingPhoto(true);
 
     try {
@@ -352,6 +384,20 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       return;
     }
 
+    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && photo && monthlyUsage.snapshot) {
+      const estimatedTotalAfterSubmit = monthlyUsage.snapshot.usage.photoUploads + 1;
+      if (estimatedTotalAfterSubmit > FREE_MONTHLY_PHOTO_LIMIT) {
+        const remaining = Math.max(
+          FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
+          0,
+        );
+        setErrorMessage(
+          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
+        );
+        return;
+      }
+    }
+
     setErrorMessage(null);
     setIsSubmitting(true);
 
@@ -384,6 +430,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       const invalidations: Promise<unknown>[] = [
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
       ];
 
       if (sourceNoteId) {
@@ -395,7 +442,12 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       await AsyncStorage.setItem(QUICK_TRACK_RATED_BEFORE_KEY, '1');
       navigation.navigate('Home');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save quick track.';
+      const limitPayload = parseLimitExceededError(error);
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
+          ? error.message
+          : 'Could not save quick track.';
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
@@ -439,6 +491,23 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     >
       <View style={styles.body}>
         <PageErrorToast errorMessage={errorMessage} title="Quick track failed" />
+
+        {!isOnline && isDisplayFreeUser ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="warning">
+              Offline estimate may be stale. Backend limits are enforced when sync runs.
+            </Text>
+          </Card>
+        ) : null}
+
+        {isDisplayFreeUser ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="secondary">
+              Monthly photo estimate:{' '}
+              {estimatedFreePhotoRemaining === null ? 'unknown' : `${estimatedFreePhotoRemaining} left`}.
+            </Text>
+          </Card>
+        ) : null}
 
         {sourceNoteId ? (
           <Card style={styles.linkedNoteCard} tone="muted">

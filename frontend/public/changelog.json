@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.7.5",
+    "date": "2026-02-21",
+    "title": "Usage Limits for Free Users",
+    "summary": "Free users now have monthly limits on photo uploads, restaurant searches, and menu scans — with clear on-screen estimates and friendly warnings before you hit a limit. Subscribers and admins are unaffected.",
+    "features": [
+      "Monthly photo upload limit: Free users can upload up to 5 photos per month across visits, quick tracks, and photo processing",
+      "Monthly restaurant search limit: Free users have a monthly cap on Google Places searches (text and GPS nearby)",
+      "Monthly menu scan limit: Free users have a monthly cap on AI menu photo scans",
+      "Live usage estimates: See how many photos you have left this month directly on the Visit, Quick Track, and Photo Processing screens",
+      "Search quota counter: Search buttons show remaining Places searches (e.g. 'Search (3 left)') when running low",
+      "Friendly limit errors: Clear messages explain what limit was reached and what your remaining allowance is",
+      "Offline usage warning: When offline, a notice reminds you that estimates may be stale and limits are enforced on sync"
+    ],
+    "improvements": [
+      "Backend enforces all limits server-side — limits apply even if the app is bypassed",
+      "Admin role preview now includes usage data: admins previewing as free or subscriber see the correct limits",
+      "Monthly usage cache persists across app sessions so the estimate is available immediately on launch",
+      "Usage counters refresh automatically after each search, scan, or photo submission"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.4",
     "date": "2026-02-21",
     "title": "Full Offline Support & Smarter Error Recovery",
