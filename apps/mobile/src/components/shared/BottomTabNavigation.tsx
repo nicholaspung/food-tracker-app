@@ -33,7 +33,9 @@ export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList
   Misc: [
     'Misc',
     'Lists',
+    'CreateRestaurantList',
     'ListDetail',
+    'EditRestaurantList',
     'AddRestaurantToList',
     'Notes',
     'NoteEditor',

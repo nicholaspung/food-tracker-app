@@ -2,7 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
 import { FormScaffold, LoadingOverlay } from '../components/shared';
-import { pb } from '../lib/pocketbase';
+import { requestUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -27,7 +27,7 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
     setIsSubmitting(true);
 
     try {
-      await pb.collection('users').requestPasswordReset(trimmedEmail);
+      await requestUserPasswordReset(trimmedEmail);
       setSuccessMessage('Reset instructions sent. Enter the token on the reset password screen.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not request reset.';

@@ -1,0 +1,227 @@
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+import {
+  EmptyState,
+  ErrorState,
+  FeatureFormScreenScaffold,
+  PageErrorToast,
+  VisibilityOptionSelector,
+  type VisibilityOptionValue,
+  Skeleton,
+} from '../components/shared';
+import { getRestaurantListById, updateRestaurantList, type RestaurantListRecord } from '../features';
+import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useTheme } from '../theme';
+import { Card, Input, Text } from '../ui';
+
+type EditRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'EditRestaurantList'>;
+type ListVisibility = RestaurantListRecord['visibility'];
+
+export function EditRestaurantListScreen({ navigation, route }: EditRestaurantListScreenProps) {
+  const { listId } = route.params;
+  const theme = useTheme();
+  const queryClient = useQueryClient();
+  const queueWrite = useQueuedWrite();
+
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [visibility, setVisibility] = useState<ListVisibility>('private');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const listQuery = useQuery({
+    queryKey: ['feature', 'restaurantList', listId],
+    queryFn: () => getRestaurantListById(listId),
+  });
+
+  useEffect(() => {
+    const list = listQuery.data;
+    if (!list) {
+      return;
+    }
+
+    setName(list.name);
+    setDescription(list.description ?? '');
+    setVisibility(list.visibility);
+  }, [listQuery.data]);
+
+  const styles = StyleSheet.create({
+    body: {
+      gap: theme.spacing.md,
+    },
+    formCard: {
+      borderColor: theme.colors.border.info,
+      gap: theme.spacing.sm,
+    },
+    descriptionInput: {
+      minHeight: 110,
+      textAlignVertical: 'top',
+    },
+  });
+
+  const canSubmit = useMemo(() => name.trim().length > 0 && !isSubmitting, [isSubmitting, name]);
+
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('ListDetail', { listId });
+  };
+
+  const handleSaveList = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setErrorMessage('List name is required.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      await queueWrite('list.update');
+      await updateRestaurantList(listId, {
+        name: trimmedName,
+        description,
+        visibility,
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+      ]);
+      handleBack();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update list.';
+      setErrorMessage(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (listQuery.isLoading) {
+    return (
+      <FeatureFormScreenScaffold
+        onBackPress={handleBack}
+        primaryAction={{
+          label: 'Save List',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBack,
+        }}
+        title="Edit List"
+      >
+        <Skeleton height={20} />
+        <Skeleton height={20} />
+        <Skeleton height={20} />
+      </FeatureFormScreenScaffold>
+    );
+  }
+
+  if (listQuery.isError) {
+    return (
+      <FeatureFormScreenScaffold
+        onBackPress={handleBack}
+        primaryAction={{
+          label: 'Save List',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBack,
+        }}
+        title="Edit List"
+      >
+        <ErrorState
+          description="Could not load list details."
+          onRetry={() => {
+            void listQuery.refetch();
+          }}
+          title="List unavailable"
+        />
+      </FeatureFormScreenScaffold>
+    );
+  }
+
+  if (!listQuery.data) {
+    return (
+      <FeatureFormScreenScaffold
+        onBackPress={handleBack}
+        primaryAction={{
+          label: 'Save List',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBack,
+        }}
+        title="Edit List"
+      >
+        <EmptyState
+          actionLabel="Back to List"
+          onAction={handleBack}
+          title="List not found"
+        />
+      </FeatureFormScreenScaffold>
+    );
+  }
+
+  return (
+    <FeatureFormScreenScaffold
+      keyboardAware
+      onBackPress={handleBack}
+      primaryAction={{
+        label: 'Save List',
+        disabled: !canSubmit,
+        loading: isSubmitting,
+        onPress: () => {
+          void handleSaveList();
+        },
+      }}
+      secondaryAction={{
+        label: 'Cancel',
+        onPress: handleBack,
+      }}
+      subtitle="Update your list name, description, and visibility."
+      title="Edit List"
+    >
+      <View style={styles.body}>
+        <PageErrorToast errorMessage={errorMessage} title="Could not save list" />
+
+        <Card style={styles.formCard} tone="muted">
+          <Input
+            autoCapitalize="words"
+            label="List name"
+            onChangeText={setName}
+            placeholder="List name"
+            value={name}
+          />
+          <Input
+            label="Description"
+            inputStyle={styles.descriptionInput}
+            multiline
+            onChangeText={setDescription}
+            placeholder="Optional description"
+            value={description}
+          />
+          <Text variant="label">Visibility</Text>
+          <VisibilityOptionSelector
+            onChange={setVisibility}
+            value={visibility as VisibilityOptionValue}
+          />
+        </Card>
+      </View>
+    </FeatureFormScreenScaffold>
+  );
+}

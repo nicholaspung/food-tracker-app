@@ -2,7 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
 import { FormScaffold, LoadingOverlay } from '../components/shared';
-import { pb } from '../lib/pocketbase';
+import { confirmUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -33,7 +33,7 @@ export function ResetPasswordScreen({ navigation }: ResetPasswordScreenProps) {
     setIsSubmitting(true);
 
     try {
-      await pb.collection('users').confirmPasswordReset(token.trim(), password, passwordConfirm);
+      await confirmUserPasswordReset(token.trim(), password, passwordConfirm);
       setSuccessMessage('Password reset completed. You can now sign in.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Reset failed.';

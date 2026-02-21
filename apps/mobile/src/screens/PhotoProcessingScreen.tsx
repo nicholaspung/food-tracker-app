@@ -18,14 +18,17 @@ import {
   VisibilityOptionSelector,
 } from '../components/shared';
 import {
+  createCollectionRecord,
   createQuickTrack,
   createVisit,
+  getAuthenticatedUserIdOrNull,
+  listCollectionRecords,
   listRestaurants,
+  resolveDefaultVisitVisibilityFromAuth,
   type RestaurantRecord,
   type VisitPhotoUploadInput,
 } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -78,18 +81,7 @@ interface CreatedMenuItemRecord {
   name: string;
 }
 
-const PROCESS_FLOW_STEPS: { label: string }[] = [
-  { label: 'Restaurant Visit' },
-  { label: 'Upload' },
-  { label: 'Process' },
-  { label: 'Review' },
-];
-const QUICK_TRACK_FLOW_STEPS: { label: string }[] = [
-  { label: 'Quick Track' },
-  { label: 'Upload' },
-  { label: 'Process' },
-  { label: 'Review' },
-];
+const PROGRESS_FLOW_TAIL: { label: string }[] = [{ label: 'Upload' }, { label: 'Process' }, { label: 'Review' }];
 const QUICK_TRACK_CATEGORIES: { value: QuickTrackCategory; label: string }[] = [
   { value: 'convenience_store', label: 'Convenience Store' },
   { value: 'packaged_food', label: 'Packaged Food' },
@@ -209,7 +201,7 @@ function extractCaptureDate(asset: ImagePicker.ImagePickerAsset): Date | null {
 }
 
 function resolveDefaultQuickTrackVisibility(): 'friends' | 'private' {
-  return pb.authStore.record?.defaultVisitVisibility === 'private' ? 'private' : 'friends';
+  return resolveDefaultVisitVisibilityFromAuth();
 }
 
 function buildDefaultRestaurantForm(
@@ -249,7 +241,10 @@ function buildPhotoUploadInput(asset: DraftPhotoAsset): VisitPhotoUploadInput {
   };
 }
 
-function resolveGeneralStepIndex(step: GeneralPhotoStep): number {
+function resolveWizardStepIndex(step: GeneralPhotoStep): number {
+  if (step === 'choice') {
+    return 0;
+  }
   if (step === 'upload') {
     return 1;
   }
@@ -259,8 +254,11 @@ function resolveGeneralStepIndex(step: GeneralPhotoStep): number {
   return 3;
 }
 
-function resolveGeneralFlowSteps(processType: ProcessType): { label: string }[] {
-  return processType === 'restaurant' ? PROCESS_FLOW_STEPS : QUICK_TRACK_FLOW_STEPS;
+function resolveProgressSteps(processType: ProcessType | null): { label: string }[] {
+  const firstLabel =
+    processType === null ? 'Choose Method' : processType === 'restaurant' ? 'Restaurant Visit' : 'Quick Track';
+
+  return [{ label: firstLabel }, ...PROGRESS_FLOW_TAIL];
 }
 
 export function PhotoProcessingScreen(screenProps: PhotoProcessingScreenProps) {
@@ -379,7 +377,7 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
       throw new Error('Restaurant context is missing.');
     }
 
-    const currentUserId = pb.authStore.record?.id;
+    const currentUserId = getAuthenticatedUserIdOrNull();
     if (!currentUserId) {
       throw new Error('Please sign in again to continue.');
     }
@@ -388,7 +386,7 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
     const createdRecords: CreatedMenuItemRecord[] = [];
 
     for (const itemName of names) {
-      const createdItem = await pb.collection('menu_items').create<CreatedMenuItemRecord>({
+      const createdItem = await createCollectionRecord<CreatedMenuItemRecord>('menu_items', {
         restaurant: restaurantId,
         name: itemName,
         createdBy: currentUserId,
@@ -745,7 +743,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         return queryClient.getQueryData<MenuItemRecord[]>(['feature', 'menuItems', currentRestaurantId]) ?? [];
       }
 
-      return pb.collection('menu_items').getFullList<MenuItemRecord>({
+      return listCollectionRecords<MenuItemRecord>('menu_items', {
         filter: `restaurant = "${currentRestaurantId}"`,
         sort: '-created',
       });
@@ -1221,7 +1219,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       return;
     }
 
-    const currentUserId = pb.authStore.record?.id;
+    const currentUserId = getAuthenticatedUserIdOrNull();
     if (!currentUserId) {
       setErrorMessage('Please sign in again to continue.');
       return;
@@ -1236,7 +1234,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     setErrorMessage(null);
     setIsCreatingMenuItem(true);
     try {
-      const createdItem = await pb.collection('menu_items').create<MenuItemRecord>({
+      const createdItem = await createCollectionRecord<MenuItemRecord>('menu_items', {
         restaurant: currentRestaurantForm.restaurantId,
         name: menuItemName,
         createdBy: currentUserId,
@@ -1429,12 +1427,13 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         void Linking.openSettings();
       }
     : undefined;
+  const progressSteps = resolveProgressSteps(processType);
   const progressHeaderContent = processType ? (
     <StepProgressBar
       compact
-      currentStep={resolveGeneralStepIndex(step)}
+      currentStep={resolveWizardStepIndex(step)}
       showCompletedCheckmark={false}
-      steps={resolveGeneralFlowSteps(processType)}
+      steps={progressSteps}
     />
   ) : null;
 
@@ -1458,6 +1457,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         />
         <View style={styles.choiceBody}>
           <PageErrorToast actionLabel={errorActionLabel} errorMessage={errorMessage} onAction={errorAction} />
+          <StepProgressBar
+            compact
+            currentStep={resolveWizardStepIndex('choice')}
+            showCompletedCheckmark={false}
+            steps={resolveProgressSteps(null)}
+          />
 
           <Pressable
             accessibilityRole="button"

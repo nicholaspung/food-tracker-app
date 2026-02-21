@@ -16,7 +16,6 @@ import {
 import { env } from '../config/env';
 import {
   createDefaultRestaurantList,
-  createRestaurantList,
   getRestaurantListItemCounts,
   listRestaurantLists,
   type RestaurantListRecord,
@@ -26,13 +25,16 @@ import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Text } from '../ui';
+import { Card, Input, ListItem, Text } from '../ui';
 
 type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
 
 type ListTab = 'my' | 'friends' | 'public';
-type ListVisibility = RestaurantListRecord['visibility'];
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+type ListCountSummary = {
+  restaurantCount: number;
+  menuItemCount: number;
+};
 
 const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
   { label: 'My Lists', value: 'my' },
@@ -40,11 +42,55 @@ const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
   { label: 'Public', value: 'public' },
 ];
 
-const VISIBILITY_OPTIONS: readonly SegmentedControlOption<ListVisibility>[] = [
-  { label: 'Private', value: 'private' },
-  { label: 'Friends', value: 'friends' },
-  { label: 'Public', value: 'public' },
-];
+function toSafeNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+
+  if (value <= 0) {
+    return 0;
+  }
+
+  return Math.floor(value);
+}
+
+function normalizeListCountSummary(value: unknown): ListCountSummary {
+  if (typeof value === 'number') {
+    const legacyCount = toSafeNonNegativeInteger(value);
+    if (legacyCount !== null) {
+      return {
+        restaurantCount: legacyCount,
+        menuItemCount: legacyCount,
+      };
+    }
+  }
+
+  if (!value || typeof value !== 'object') {
+    return {
+      restaurantCount: 0,
+      menuItemCount: 0,
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  const restaurantCount = toSafeNonNegativeInteger(record.restaurantCount);
+  const menuItemCount = toSafeNonNegativeInteger(record.menuItemCount);
+
+  if (restaurantCount === null && menuItemCount === null) {
+    return {
+      restaurantCount: 0,
+      menuItemCount: 0,
+    };
+  }
+
+  const resolvedRestaurantCount = restaurantCount ?? menuItemCount ?? 0;
+  const resolvedMenuItemCount = menuItemCount ?? resolvedRestaurantCount;
+
+  return {
+    restaurantCount: resolvedRestaurantCount,
+    menuItemCount: resolvedMenuItemCount,
+  };
+}
 
 function getListCoverImageUrl(list: RestaurantListRecord): string | null {
   if (!list.coverImage) {
@@ -57,7 +103,7 @@ function getListCoverImageUrl(list: RestaurantListRecord): string | null {
   return `${baseUrl}/api/files/restaurant_lists/${recordId}/${filename}?thumb=640x360`;
 }
 
-function getVisibilityIconName(visibility: ListVisibility): IoniconName {
+function getVisibilityIconName(visibility: RestaurantListRecord['visibility']): IoniconName {
   if (visibility === 'friends') {
     return 'people-outline';
   }
@@ -160,11 +206,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
   const [activeTab, setActiveTab] = useState<ListTab>('my');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [visibility, setVisibility] = useState<ListVisibility>('private');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
   const hasTriedCreatingDefault = useRef(false);
@@ -246,7 +287,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const visibleListIds = useMemo(() => visibleLists.map((list) => list.id), [visibleLists]);
 
   const listItemCountsQuery = useQuery({
-    queryKey: ['feature', 'restaurantListItemCounts', activeTab, ...visibleListIds],
+    queryKey: ['feature', 'restaurantListItemCounts.v2', activeTab, ...visibleListIds],
     queryFn: () => getRestaurantListItemCounts(visibleListIds),
     enabled: visibleListIds.length > 0 && !activeQuery.isLoading && !activeQuery.isError,
   });
@@ -335,17 +376,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       fontWeight: '600',
       lineHeight: 18,
     },
-    formCard: {
-      borderColor: theme.colors.border.info,
-    },
-    formActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      marginTop: theme.spacing.xs,
-    },
-    formAction: {
-      flex: 1,
-    },
     listsWrap: {
       gap: theme.spacing.sm,
     },
@@ -420,54 +450,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     },
   });
 
-  const closeCreateForm = () => {
-    setShowCreateForm(false);
-    setName('');
-    setDescription('');
-    setVisibility('private');
-  };
-
-  const openCreateForm = () => {
-    setErrorMessage(null);
-    setName('');
-    setDescription('');
-    setVisibility('private');
-    setShowCreateForm(true);
-  };
-
   const handleTabChange = (tab: ListTab) => {
     setActiveTab(tab);
     setSearchQuery('');
-    if (tab !== 'my') {
-      closeCreateForm();
-    }
-  };
-
-  const handleCreateList = async () => {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setErrorMessage('List name is required.');
-      return;
-    }
-
-    setErrorMessage(null);
-    setIsSubmitting(true);
-
-    try {
-      await queueWrite('list.create');
-      await createRestaurantList({
-        name: trimmedName,
-        description,
-        visibility,
-      });
-      closeCreateForm();
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not create list.';
-      setErrorMessage(message);
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const renderEmptyState = () => {
@@ -481,7 +466,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
               <Ionicons color={theme.colors.text.muted} name="add-outline" size={26} />
             </View>
           }
-          onAction={openCreateForm}
+          onAction={() => {
+            navigation.navigate('CreateRestaurantList');
+          }}
           title="No lists yet"
         />
       );
@@ -531,7 +518,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   );
 
   const renderListCard = (list: RestaurantListRecord) => {
-    const itemCount = listItemCountsQuery.data?.[list.id] ?? 0;
+    const counts = normalizeListCountSummary(listItemCountsQuery.data?.[list.id]);
+    const restaurantCount = counts.restaurantCount;
+    const menuItemCount = counts.menuItemCount;
     const coverImage = getListCoverImageUrl(list);
     const updatedLabel = getUpdatedLabel(list);
 
@@ -556,8 +545,11 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
               {list.description ? <Text style={styles.cardDescription}>{list.description}</Text> : null}
               <View style={styles.cardMetaRow}>
                 <Text style={styles.cardMetaText}>
-                  {itemCount} {itemCount === 1 ? 'restaurant' : 'restaurants'}
+                  {restaurantCount} {restaurantCount === 1 ? 'restaurant' : 'restaurants'}
                 </Text>
+                {menuItemCount > restaurantCount ? (
+                  <Text style={styles.cardMetaText}>• {menuItemCount} menu items</Text>
+                ) : null}
                 {activeTab !== 'my' ? (
                   <View style={styles.ownerMeta}>
                     <Text style={styles.cardMetaText}>•</Text>
@@ -594,18 +586,15 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       bodyStyle={styles.body}
       keyboardAware
       onBackPress={() => {
-        if (navigation.canGoBack()) {
-          navigation.goBack();
-          return;
-        }
-
         navigation.navigate('Misc');
       }}
       rightAccessory={
         activeTab === 'my' ? (
           <Pressable
             accessibilityRole="button"
-            onPress={openCreateForm}
+            onPress={() => {
+              navigation.navigate('CreateRestaurantList');
+            }}
             style={({ pressed }) => [styles.headerActionButton, pressed && styles.headerActionButtonPressed]}
             testID="create-list-button"
           >
@@ -643,50 +632,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           </Pressable>
         ) : null}
       </View>
-
-      {showCreateForm && activeTab === 'my' ? (
-        <Card style={styles.formCard} tone="muted">
-          <Text variant="titleMd">Create New List</Text>
-          <Input
-            autoCapitalize="words"
-            label="List name"
-            onChangeText={setName}
-            placeholder="Best pizza spots"
-            value={name}
-          />
-          <Input
-            label="Description"
-            multiline
-            onChangeText={setDescription}
-            placeholder="Optional description"
-            value={description}
-          />
-          <Text variant="label">Visibility</Text>
-          <SegmentedControl
-            fill
-            onChange={setVisibility}
-            options={VISIBILITY_OPTIONS}
-            value={visibility}
-          />
-
-          <View style={styles.formActions}>
-            <Button
-              label="Cancel"
-              onPress={closeCreateForm}
-              style={styles.formAction}
-              variant="secondary"
-            />
-            <Button
-              disabled={!name.trim() || isSubmitting}
-              label={isSubmitting ? 'Creating...' : 'Create List'}
-              onPress={() => {
-                void handleCreateList();
-              }}
-              style={styles.formAction}
-            />
-          </View>
-        </Card>
-      ) : null}
 
       <PageErrorToast
         actionLabel="Retry"

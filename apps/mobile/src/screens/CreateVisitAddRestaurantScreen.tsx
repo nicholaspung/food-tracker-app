@@ -9,8 +9,9 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { pb } from '../lib/pocketbase';
+import { createCollectionRecord, resolveDefaultRestaurantVisibilityFromAuth } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
@@ -19,23 +20,14 @@ type CreateVisitAddRestaurantScreenProps = NativeStackScreenProps<RootStackParam
 type RestaurantVisibility = VisibilityOptionValue;
 
 function resolveDefaultRestaurantVisibility(isAdmin: boolean): RestaurantVisibility {
-  const value = pb.authStore.record?.defaultRestaurantVisibility;
-
-  if (value === 'private') {
-    return 'private';
-  }
-
-  if (value === 'public' && isAdmin) {
-    return 'public';
-  }
-
-  return 'friends';
+  return resolveDefaultRestaurantVisibilityFromAuth(isAdmin);
 }
 
 export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRestaurantScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const isAdmin = Boolean(pb.authStore.record?.isAdmin);
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === true;
 
   const [restaurantName, setRestaurantName] = useState('');
   const [restaurantLocation, setRestaurantLocation] = useState('');
@@ -62,7 +54,7 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
   });
 
   const handleAddRestaurant = async () => {
-    const currentUserId = pb.authStore.record?.id;
+    const currentUserId = user?.id;
     if (!currentUserId) {
       setErrorMessage('Please sign in again to add a restaurant.');
       return;
@@ -87,10 +79,10 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
     try {
       const resolvedVisibility = !isAdmin && visibility === 'public' ? 'friends' : visibility;
 
-      const createdRestaurant = await pb.collection('restaurants').create<{
+      const createdRestaurant = await createCollectionRecord<{
         id: string;
         name: string;
-      }>({
+      }>('restaurants', {
         name: trimmedName,
         location: trimmedLocation,
         cuisineType: restaurantCuisine.trim() || '',

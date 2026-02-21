@@ -78,12 +78,31 @@ export interface RestaurantListRecord {
   updatedAt: string;
 }
 
+export interface RestaurantListBookmarkedItemRecord {
+  id: string;
+  listItemId: string;
+  name: string;
+  rating: number;
+  visitedAt?: string;
+  sourceUserId?: string;
+  sourceUserName?: string;
+  userFoodItemId?: string;
+  userFoodItemName?: string;
+  userFoodItemRating?: number;
+  userFoodItemVisitedAt?: string;
+}
+
 export interface RestaurantListItemRecord {
   id: string;
   listId: string;
   restaurantId: string;
   restaurantName: string;
   restaurantCity?: string;
+  restaurantCuisineType?: string;
+  sourceUserId?: string;
+  sourceUserName?: string;
+  position: number;
+  bookmarkedItems: RestaurantListBookmarkedItemRecord[];
   note?: string;
   createdAt: string;
 }

@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
-import { pb } from '../lib/pocketbase';
+import { buildPocketBaseFileUrl } from '../features';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
@@ -40,17 +40,13 @@ function formatVisitDate(value: string): string {
 }
 
 function buildPhotoUrl(item: VisitShareItem, thumb?: string): string {
-  const record = {
+  return buildPocketBaseFileUrl({
     collectionId: item.photoCollectionId,
     collectionName: item.photoCollectionName ?? 'visit_photos',
-    id: item.photoId,
-  };
-
-  if (thumb) {
-    return pb.files.getURL(record, item.photoFilename, { thumb });
-  }
-
-  return pb.files.getURL(record, item.photoFilename);
+    recordId: item.photoId,
+    filename: item.photoFilename,
+    thumb,
+  });
 }
 
 export function VisitShareCustomizationScreen({ navigation, route }: VisitShareCustomizationScreenProps) {

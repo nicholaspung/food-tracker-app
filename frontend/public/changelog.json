@@ -1,5 +1,30 @@
 [
   {
+    "version": "0.7.3",
+    "date": "2026-02-20",
+    "title": "Richer Restaurant Lists & Admin Role Preview",
+    "summary": "Restaurant lists are now much more powerful: create and edit lists on dedicated screens, see food items grouped by restaurant with ratings, reorder restaurants, and save dishes from friends' lists to your own. Admins can also preview the app as a regular or non-subscriber user.",
+    "features": [
+      "Dedicated Create List screen: New full-screen form for creating restaurant lists with name, description, and visibility",
+      "Dedicated Edit List screen: Edit list name, description, and visibility from a clean dedicated screen",
+      "Grouped restaurant view: Restaurants in a list now group their bookmarked food items together with ratings",
+      "Reorder restaurants: Move restaurants up or down within your list to set a custom order",
+      "Save food items to your lists: Tap a dish in a friend's list to save it to one or more of your own lists",
+      "Quick-save to default list: One-tap save of a dish to your default Saved list",
+      "Cuisine type display: Restaurant cuisine type now shown in list detail view",
+      "Admin role preview: Admins can toggle 'view as non-admin' or 'view as non-subscriber' to preview the app with reduced access"
+    ],
+    "improvements": [
+      "List item counts now show separate restaurant and menu item totals",
+      "Source user attribution shown when a food item was bookmarked from a friend's list",
+      "Visit date shown alongside bookmarked food items for context",
+      "Rating pill component provides a consistent colored display for ratings throughout lists",
+      "GPS location button is now a reusable component used consistently across screens",
+      "Internal PocketBase calls abstracted behind a gateway layer for better reliability"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.2",
     "date": "2026-02-18",
     "title": "Visit Creation Wizard & Photo Sharing Themes",

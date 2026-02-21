@@ -13,8 +13,8 @@ import {
   Skeleton,
   StatusPill,
 } from '../components/shared';
+import { getCollectionCount, listCollectionRecords } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
@@ -118,7 +118,7 @@ export function AdminMenuReviewsScreen({ navigation }: AdminMenuReviewsScreenPro
         queryOptions.filter = filters.join(' && ');
       }
 
-      return pb.collection('menu_review_requests').getFullList<MenuReviewRequestRecord>(queryOptions);
+      return listCollectionRecords<MenuReviewRequestRecord>('menu_review_requests', queryOptions);
     },
   });
 
@@ -126,11 +126,7 @@ export function AdminMenuReviewsScreen({ navigation }: AdminMenuReviewsScreenPro
     enabled: isAdmin,
     queryKey: ['feature', 'admin', 'pending-menu-review-count'],
     queryFn: async (): Promise<number> => {
-      const response = await pb.collection('menu_review_requests').getList(1, 1, {
-        filter: 'status = "pending"',
-      });
-
-      return response.totalItems;
+      return getCollectionCount('menu_review_requests', 'status = "pending"');
     },
   });
 

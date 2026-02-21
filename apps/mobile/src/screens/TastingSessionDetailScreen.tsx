@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Share, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, Skeleton } from '../components/shared';
+import { EmptyState, ErrorState, FeatureDetailScreenScaffold, Skeleton } from '../components/shared';
 import {
   addTastingItem,
   deleteTastingItem,
@@ -18,7 +18,7 @@ import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Screen, Text } from '../ui';
+import { Button, Card, Input, ListItem, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type TastingSessionDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionDetail'>;
@@ -121,6 +121,15 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       flex: 1,
     },
   });
+
+  const handleBackPress = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('TastingSessions');
+  };
 
   const refreshSession = async () => {
     await Promise.all([
@@ -264,16 +273,22 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
   if (sessionQuery.isLoading) {
     return (
-      <Screen>
+      <FeatureDetailScreenScaffold
+        onBackPress={handleBackPress}
+        title="Tasting Session"
+      >
         <Skeleton height={20} />
         <Skeleton height={20} />
-      </Screen>
+      </FeatureDetailScreenScaffold>
     );
   }
 
   if (sessionQuery.isError) {
     return (
-      <Screen>
+      <FeatureDetailScreenScaffold
+        onBackPress={handleBackPress}
+        title="Tasting Session"
+      >
         <ErrorState
           description="Could not load the tasting session."
           onRetry={() => {
@@ -281,13 +296,16 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
           }}
           title="Session unavailable"
         />
-      </Screen>
+      </FeatureDetailScreenScaffold>
     );
   }
 
   if (!sessionQuery.data) {
     return (
-      <Screen>
+      <FeatureDetailScreenScaffold
+        onBackPress={handleBackPress}
+        title="Tasting Session"
+      >
         <EmptyState
           actionLabel="Back to Sessions"
           onAction={() => {
@@ -295,200 +313,200 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
           }}
           title="Session not found"
         />
-      </Screen>
+      </FeatureDetailScreenScaffold>
     );
   }
 
   const session = sessionQuery.data;
 
   return (
-    <Screen scroll>
-      <View style={styles.container}>
-        <Text variant="titleMd">{session.name}</Text>
-        <Text tone="secondary">{session.restaurantName}</Text>
+    <FeatureDetailScreenScaffold
+      bodyStyle={styles.container}
+      onBackPress={handleBackPress}
+      subtitle={session.restaurantName}
+      title={session.name}
+    >
+      <PageErrorToast errorMessage={errorMessage} title="Session update failed" />
 
-        <PageErrorToast errorMessage={errorMessage} title="Session update failed" />
+      <Card>
+        <Text variant="label">Lobby</Text>
+        <Text tone="secondary">Status: {session.status}</Text>
+        <Text variant="titleMd">Invite code: {session.inviteCode}</Text>
+        {copyStatus ? <Text tone="muted">{copyStatus}</Text> : null}
 
-        <Card>
-          <Text variant="label">Lobby</Text>
-          <Text tone="secondary">Status: {session.status}</Text>
-          <Text variant="titleMd">Invite code: {session.inviteCode}</Text>
-          {copyStatus ? <Text tone="muted">{copyStatus}</Text> : null}
-
-          <View style={styles.row}>
-            <Button
-              label="Copy Code"
-              onPress={() => {
-                setCopyStatus('Invite code copied to clipboard-ready state.');
-              }}
-              style={styles.rowAction}
-              variant="secondary"
-            />
-            <Button
-              label="Share"
-              onPress={() => {
-                void shareInviteCode();
-              }}
-              style={styles.rowAction}
-              variant="secondary"
-            />
-          </View>
-
+        <View style={styles.row}>
           <Button
-            label="Regenerate Code"
+            label="Copy Code"
             onPress={() => {
-              void handleRegenerateCode();
+              setCopyStatus('Invite code copied to clipboard-ready state.');
             }}
+            style={styles.rowAction}
             variant="secondary"
           />
-
-          <Text variant="label">Participants</Text>
-          {session.participants.map((participant) => (
-            <ListItem
-              key={participant.id}
-              description={participant.userId ?? 'guest'}
-              title={participant.name}
-              trailing={<Text tone="muted">Joined</Text>}
-            />
-          ))}
-
           <Button
-            label={session.status === 'lobby' ? 'Start Rating' : 'Complete Session'}
+            label="Share"
             onPress={() => {
-              void handleAdvanceStatus();
+              void shareInviteCode();
             }}
-          />
-        </Card>
-
-        <Card>
-          <Text variant="label">Item Management</Text>
-          <Input label="Item name" onChangeText={setNewItemName} placeholder="Add tasting item" value={newItemName} />
-          <Input
-            label="Description"
-            onChangeText={setNewItemDescription}
-            placeholder="Optional notes"
-            value={newItemDescription}
-          />
-          <Button
-            disabled={!newItemName.trim()}
-            label="Add Item"
-            onPress={() => {
-              void handleAddItem();
-            }}
+            style={styles.rowAction}
             variant="secondary"
           />
+        </View>
 
-          {session.items.length === 0 ? (
-            <EmptyState description="Add at least one item to begin." title="No tasting items" />
-          ) : (
-            session.items.map((item) => {
-              const canDelete = currentParticipant?.id === item.createdByParticipantId;
-              const avgRating = getAverageRating(item);
-              return (
-                <Card key={item.id} tone="muted">
-                  <ListItem
-                    description={item.description ?? 'No description'}
-                    title={item.name}
-                    trailing={<Text tone="muted">Avg {avgRating.toFixed(1)}</Text>}
+        <Button
+          label="Regenerate Code"
+          onPress={() => {
+            void handleRegenerateCode();
+          }}
+          variant="secondary"
+        />
+
+        <Text variant="label">Participants</Text>
+        {session.participants.map((participant) => (
+          <ListItem
+            key={participant.id}
+            description={participant.userId ?? 'guest'}
+            title={participant.name}
+            trailing={<Text tone="muted">Joined</Text>}
+          />
+        ))}
+
+        <Button
+          label={session.status === 'lobby' ? 'Start Rating' : 'Complete Session'}
+          onPress={() => {
+            void handleAdvanceStatus();
+          }}
+        />
+      </Card>
+
+      <Card>
+        <Text variant="label">Item Management</Text>
+        <Input label="Item name" onChangeText={setNewItemName} placeholder="Add tasting item" value={newItemName} />
+        <Input
+          label="Description"
+          onChangeText={setNewItemDescription}
+          placeholder="Optional notes"
+          value={newItemDescription}
+        />
+        <Button
+          disabled={!newItemName.trim()}
+          label="Add Item"
+          onPress={() => {
+            void handleAddItem();
+          }}
+          variant="secondary"
+        />
+
+        {session.items.length === 0 ? (
+          <EmptyState description="Add at least one item to begin." title="No tasting items" />
+        ) : (
+          session.items.map((item) => {
+            const canDelete = currentParticipant?.id === item.createdByParticipantId;
+            const avgRating = getAverageRating(item);
+            return (
+              <Card key={item.id} tone="muted">
+                <ListItem
+                  description={item.description ?? 'No description'}
+                  title={item.name}
+                  trailing={<Text tone="muted">Avg {avgRating.toFixed(1)}</Text>}
+                />
+                {canDelete ? (
+                  <Button
+                    label="Delete Item"
+                    onPress={() => {
+                      void handleDeleteItem(item.id);
+                    }}
+                    variant="secondary"
                   />
-                  {canDelete ? (
-                    <Button
-                      label="Delete Item"
-                      onPress={() => {
-                        void handleDeleteItem(item.id);
-                      }}
-                      variant="secondary"
-                    />
-                  ) : null}
-                </Card>
-              );
-            })
-          )}
-        </Card>
+                ) : null}
+              </Card>
+            );
+          })
+        )}
+      </Card>
 
-        <Card>
-          <Text variant="label">Rating Flow</Text>
-          <Text tone="secondary">
-            Progress: {ratingProgress.rated}/{ratingProgress.total} items rated
-          </Text>
+      <Card>
+        <Text variant="label">Rating Flow</Text>
+        <Text tone="secondary">
+          Progress: {ratingProgress.rated}/{ratingProgress.total} items rated
+        </Text>
 
-          {session.items.map((item) => (
-            <Card key={`rating_${item.id}`} tone="muted">
-              <Text variant="label">{item.name}</Text>
-              <Input
-                keyboardType="decimal-pad"
-                label="Rating"
-                onChangeText={(value) => {
-                  setRatingDrafts((currentDrafts) => ({
-                    ...currentDrafts,
-                    [item.id]: value,
-                  }));
-                }}
-                placeholder="1-5"
-                value={ratingDrafts[item.id] ?? ''}
-              />
-              <Input
-                label="Notes"
-                onChangeText={(value) => {
-                  setRatingNoteDrafts((currentDrafts) => ({
-                    ...currentDrafts,
-                    [item.id]: value,
-                  }));
-                }}
-                placeholder="Optional tasting notes"
-                value={ratingNoteDrafts[item.id] ?? ''}
-              />
-              <Button
-                label="Save Rating"
-                onPress={() => {
-                  void handleSubmitRating(item.id);
-                }}
-                variant="secondary"
-              />
-            </Card>
-          ))}
-        </Card>
+        {session.items.map((item) => (
+          <Card key={`rating_${item.id}`} tone="muted">
+            <Text variant="label">{item.name}</Text>
+            <Input
+              keyboardType="decimal-pad"
+              label="Rating"
+              onChangeText={(value) => {
+                setRatingDrafts((currentDrafts) => ({
+                  ...currentDrafts,
+                  [item.id]: value,
+                }));
+              }}
+              placeholder="1-5"
+              value={ratingDrafts[item.id] ?? ''}
+            />
+            <Input
+              label="Notes"
+              onChangeText={(value) => {
+                setRatingNoteDrafts((currentDrafts) => ({
+                  ...currentDrafts,
+                  [item.id]: value,
+                }));
+              }}
+              placeholder="Optional tasting notes"
+              value={ratingNoteDrafts[item.id] ?? ''}
+            />
+            <Button
+              label="Save Rating"
+              onPress={() => {
+                void handleSubmitRating(item.id);
+              }}
+              variant="secondary"
+            />
+          </Card>
+        ))}
+      </Card>
 
-        <Card>
-          <Text variant="label">Results</Text>
+      <Card>
+        <Text variant="label">Results</Text>
 
-          <Text tone="secondary">Favorites</Text>
-          {resultsSummary.favorites.length === 0 ? (
-            <Text tone="muted">No ratings yet.</Text>
-          ) : (
-            resultsSummary.favorites.map((item) => (
-              <ListItem
-                key={`favorite_${item.id}`}
-                description={item.description}
-                title={item.name}
-                trailing={<Text tone="success">Avg {getAverageRating(item).toFixed(1)}</Text>}
-              />
-            ))
-          )}
+        <Text tone="secondary">Favorites</Text>
+        {resultsSummary.favorites.length === 0 ? (
+          <Text tone="muted">No ratings yet.</Text>
+        ) : (
+          resultsSummary.favorites.map((item) => (
+            <ListItem
+              key={`favorite_${item.id}`}
+              description={item.description}
+              title={item.name}
+              trailing={<Text tone="success">Avg {getAverageRating(item).toFixed(1)}</Text>}
+            />
+          ))
+        )}
 
-          <Text tone="secondary">Controversial Items</Text>
-          {resultsSummary.controversial.length === 0 ? (
-            <Text tone="muted">Need at least two ratings per item.</Text>
-          ) : (
-            resultsSummary.controversial.map((item) => (
-              <ListItem
-                key={`controversial_${item.id}`}
-                description={item.description}
-                title={item.name}
-                trailing={<Text tone="warning">Spread {getControversyScore(item).toFixed(1)}</Text>}
-              />
-            ))
-          )}
+        <Text tone="secondary">Controversial Items</Text>
+        {resultsSummary.controversial.length === 0 ? (
+          <Text tone="muted">Need at least two ratings per item.</Text>
+        ) : (
+          resultsSummary.controversial.map((item) => (
+            <ListItem
+              key={`controversial_${item.id}`}
+              description={item.description}
+              title={item.name}
+              trailing={<Text tone="warning">Spread {getControversyScore(item).toFixed(1)}</Text>}
+            />
+          ))
+        )}
 
-          <Button
-            disabled={session.status !== 'completed'}
-            label="Save to Visit History"
-            onPress={() => {
-              void handleSaveResultsToVisitHistory();
-            }}
-          />
-        </Card>
-      </View>
-    </Screen>
+        <Button
+          disabled={session.status !== 'completed'}
+          label="Save to Visit History"
+          onPress={() => {
+            void handleSaveResultsToVisitHistory();
+          }}
+        />
+      </Card>
+    </FeatureDetailScreenScaffold>
   );
 }

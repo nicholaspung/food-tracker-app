@@ -1,4 +1,5 @@
 export * from './BackHeaderScreenScaffold';
+export * from './CurrentLocationButton';
 export * from './DetailListScaffold';
 export * from './EmptyState';
 export * from './ErrorState';
@@ -17,6 +18,7 @@ export * from './PhotoViewerModal';
 export * from './PageErrorToast';
 export * from './PhotoSourceActionCards';
 export * from './RatingLegend';
+export * from './RatingPill';
 export * from './RatingSelector';
 export * from './RoleBadge';
 export * from './ScreenHeader';

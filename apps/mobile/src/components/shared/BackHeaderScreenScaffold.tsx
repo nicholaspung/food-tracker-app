@@ -20,6 +20,7 @@ export interface BackHeaderScreenScaffoldProps {
   rightAccessory?: ReactNode;
   backAccessibilityLabel?: string;
   headerVariant?: 'large' | 'compact';
+  scroll?: boolean;
   keyboardAware?: boolean;
   contentBackgroundTone?: ContentBackgroundTone;
   contentStyle?: StyleProp<ViewStyle>;
@@ -35,6 +36,7 @@ export function BackHeaderScreenScaffold({
   rightAccessory,
   backAccessibilityLabel,
   headerVariant = 'large',
+  scroll = true,
   keyboardAware = false,
   contentBackgroundTone = 'muted',
   contentStyle,
@@ -73,9 +75,9 @@ export function BackHeaderScreenScaffold({
       edges={['top']}
       keyboardAware={keyboardAware}
       padded={false}
-      scrollUnderlayColor={backgroundColor}
-      scrollUnderlayTopInset={220}
-      scroll
+      scroll={scroll}
+      scrollUnderlayColor={scroll ? backgroundColor : undefined}
+      scrollUnderlayTopInset={scroll ? 220 : undefined}
       testID={testID}
     >
       <ScreenHeader

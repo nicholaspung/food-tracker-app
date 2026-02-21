@@ -9,7 +9,7 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { pb } from '../lib/pocketbase';
+import { updateCollectionRecord } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -77,7 +77,7 @@ export function CreateVisitEditMenuItemScreen({
     setIsSubmitting(true);
 
     try {
-      await pb.collection('menu_items').update(menuItemId, {
+      await updateCollectionRecord('menu_items', menuItemId, {
         name: trimmedName,
         visibility,
       });

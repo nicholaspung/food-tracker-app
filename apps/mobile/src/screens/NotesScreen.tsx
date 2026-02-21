@@ -14,9 +14,8 @@ import {
   StatusPill,
   type SegmentedControlOption,
 } from '../components/shared';
-import { deleteNote, listNotes, type NoteRecord } from '../features';
+import { buildPocketBaseFileUrl, deleteNote, listCollectionRecords, listNotes, type NoteRecord } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
 import { Card, Modal, Text } from '../ui';
@@ -106,10 +105,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
   const notePhotosQuery = useQuery({
     queryKey: ['feature', 'notePhotos'],
-    queryFn: async () => pb.collection('note_photos').getFullList<NotePhotoRecord>({ sort: 'created' }),
+    queryFn: async () => listCollectionRecords<NotePhotoRecord>('note_photos', { sort: 'created' }),
   });
 
-  const notes = notesQuery.data ?? [];
+  const notes = useMemo(() => notesQuery.data ?? [], [notesQuery.data]);
   const unusedCount = notes.filter((note) => note.status === 'draft').length;
   const usedCount = notes.filter((note) => note.status === 'used').length;
 
@@ -239,7 +238,13 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       return;
     }
 
-    const urls = photos.map((photo) => pb.files.getURL(photo, photo.photo));
+    const urls = photos.map((photo) =>
+      buildPocketBaseFileUrl({
+        collectionName: 'note_photos',
+        recordId: photo.id,
+        filename: photo.photo,
+      }),
+    );
     const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
 
     setPhotoViewerUrls(urls);
@@ -354,7 +359,12 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
               const notePhotos = notePhotosByNoteId.get(note.id) ?? [];
               const primaryPhoto = notePhotos[0];
               const thumbnailUrl = primaryPhoto
-                ? pb.files.getURL(primaryPhoto, primaryPhoto.photo, { thumb: '100x100' })
+                ? buildPocketBaseFileUrl({
+                    collectionName: 'note_photos',
+                    recordId: primaryPhoto.id,
+                    filename: primaryPhoto.photo,
+                    thumb: '100x100',
+                  })
                 : null;
 
               return (

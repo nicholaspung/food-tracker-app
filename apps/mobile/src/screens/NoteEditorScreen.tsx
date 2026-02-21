@@ -3,13 +3,19 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
-import { createNote, getNoteById, updateNote, type NotePhotoUploadInput } from '../features';
+import { CurrentLocationButton, EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
+import {
+  buildPocketBaseFileUrl,
+  createNote,
+  getNoteById,
+  listCollectionRecords,
+  updateNote,
+  type NotePhotoUploadInput,
+} from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -94,10 +100,9 @@ function buildPhotoFileName(uri: string, mimeType?: string): string {
   return `note_photo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
 }
 
-function loadImagePickerModule(): ImagePickerModule | null {
+async function loadImagePickerModule(): Promise<ImagePickerModule | null> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require('expo-image-picker') as ImagePickerModule;
+    return (await import('expo-image-picker')) as unknown as ImagePickerModule;
   } catch {
     return null;
   }
@@ -121,7 +126,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const notePhotosQuery = useQuery({
     queryKey: ['feature', 'notePhotos', noteId],
     queryFn: async () =>
-      pb.collection('note_photos').getFullList<NotePhotoRecord>({
+      listCollectionRecords<NotePhotoRecord>('note_photos', {
         filter: noteId ? `note = "${noteId}"` : undefined,
         sort: 'created',
       }),
@@ -234,7 +239,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       return;
     }
 
-    const imagePicker = loadImagePickerModule();
+    const imagePicker = await loadImagePickerModule();
     if (!imagePicker) {
       setErrorMessage('Photo library picker is not available in this build.');
       return;
@@ -477,13 +482,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       flex: 1,
     },
     locationAction: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      height: theme.sizes.inputMinHeight,
-      justifyContent: 'center',
-      width: theme.sizes.inputMinHeight,
+      alignSelf: 'flex-end',
     },
     modalBackdrop: {
       alignItems: 'center',
@@ -692,7 +691,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
               {existingPhotos.map((photo) => (
                 <View key={photo.id} style={styles.photoPreviewWrap}>
                   <Image
-                    source={{ uri: pb.files.getURL(photo, photo.photo, { thumb: '100x100' }) }}
+                    source={{
+                      uri: buildPocketBaseFileUrl({
+                        collectionName: 'note_photos',
+                        recordId: photo.id,
+                        filename: photo.photo,
+                        thumb: '100x100',
+                      }),
+                    }}
                     style={styles.photoPreview}
                   />
                   <Pressable
@@ -766,19 +772,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
               testID="note-location-input"
               value={locationText}
             />
-            <Pressable
+            <CurrentLocationButton
               accessibilityLabel="Use current location"
+              captured={Boolean(parseCoordinateString(locationText))}
+              loading={isGettingLocation}
               onPress={() => {
                 void handleUseCurrentLocation();
               }}
               style={styles.locationAction}
-            >
-              {isGettingLocation ? (
-                <ActivityIndicator color={theme.colors.text.secondary} />
-              ) : (
-                <Ionicons color={theme.colors.text.secondary} name="locate-outline" size={18} />
-              )}
-            </Pressable>
+              variant="icon"
+            />
           </View>
           <Text tone="muted" variant="bodySm">
             Enter a place name or use GPS to capture coordinates.

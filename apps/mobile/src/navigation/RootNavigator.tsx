@@ -16,10 +16,12 @@ import {
   BillDetailScreen,
   BillsScreen,
   CreateBillScreen,
+  CreateRestaurantListScreen,
   CreateVisitAddRestaurantScreen,
   CreateVisitAddMenuItemScreen,
   CreateVisitEditMenuItemScreen,
   CreateVisitScreen,
+  EditRestaurantListScreen,
   EditQuickTrackScreen,
   EditVisitScreen,
   FeedbackScreen,
@@ -80,6 +82,7 @@ export type RootStackParamList = {
         preselectedRestaurantName?: string;
         preselectedMenuItemId?: string;
         preselectedMenuItemName?: string;
+        sourceListItemId?: string;
         returnToStep?: 0 | 1 | 2;
       }
     | undefined;
@@ -106,7 +109,9 @@ export type RootStackParamList = {
       }
     | undefined;
   Lists: undefined;
+  CreateRestaurantList: undefined;
   ListDetail: { listId: string };
+  EditRestaurantList: { listId: string };
   AddRestaurantToList: { listId: string };
   Notes: undefined;
   NoteEditor: { noteId?: string } | undefined;
@@ -155,7 +160,9 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'WhatsNew',
   'Misc',
   'Lists',
+  'CreateRestaurantList',
   'ListDetail',
+  'EditRestaurantList',
   'AddRestaurantToList',
   'Notes',
   'NoteEditor',
@@ -179,7 +186,7 @@ function AdminOnlyRouteGuard() {
 }
 
 export function RootNavigator() {
-  const { status, user } = useAuth();
+  const { actualUser, status, user } = useAuth();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
@@ -313,7 +320,17 @@ export function RootNavigator() {
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen component={ListsScreen} name="Lists" options={{ headerShown: false }} />
+                <Stack.Screen
+                  component={CreateRestaurantListScreen}
+                  name="CreateRestaurantList"
+                  options={{ headerShown: false }}
+                />
                 <Stack.Screen component={ListDetailScreen} name="ListDetail" options={{ headerShown: false }} />
+                <Stack.Screen
+                  component={EditRestaurantListScreen}
+                  name="EditRestaurantList"
+                  options={{ headerShown: false }}
+                />
                 <Stack.Screen
                   component={AddRestaurantToListScreen}
                   name="AddRestaurantToList"
@@ -324,7 +341,7 @@ export function RootNavigator() {
                 <Stack.Screen component={FriendsScreen} name="Friends" options={{ headerShown: false }} />
                 <Stack.Screen component={ProfileScreen} name="Profile" options={{ headerShown: false }} />
                 <Stack.Screen
-                  component={user?.isAdmin ? AdminFeaturesScreen : AdminOnlyRouteGuard}
+                  component={actualUser?.isAdmin ? AdminFeaturesScreen : AdminOnlyRouteGuard}
                   name="AdminFeatures"
                   options={{ headerShown: false }}
                 />

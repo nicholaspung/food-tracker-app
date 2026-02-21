@@ -8,32 +8,89 @@ import {
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
-  SegmentedControl,
+  RatingPill,
   Skeleton,
-  type SegmentedControlOption,
 } from '../components/shared';
 import {
+  createDefaultRestaurantList,
   deleteRestaurantList,
   getRestaurantListById,
+  listMyBookmarkedListItemLinks,
+  listRestaurantLists,
   listRestaurantListItems,
-  removeRestaurantFromList,
-  updateRestaurantList,
+  moveRestaurantListRestaurant,
+  removeRestaurantListSourceRating,
+  removeRestaurantListUserRating,
+  saveRestaurantFoodItemToList,
 } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Text } from '../ui';
+import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
-type ListVisibility = 'private' | 'friends' | 'public';
 
-const VISIBILITY_OPTIONS: readonly SegmentedControlOption<ListVisibility>[] = [
-  { label: 'Private', value: 'private' },
-  { label: 'Friends', value: 'friends' },
-  { label: 'Public', value: 'public' },
-];
+interface GroupedBookmarkedItem {
+  key: string;
+  foodItemId: string;
+  listItemId: string;
+  name: string;
+  rating: number;
+  visitedAt?: string;
+  sourceUserId?: string;
+  sourceUserName?: string;
+  sourceNote?: string;
+  userFoodItemId?: string;
+  userFoodItemRating?: number;
+  userFoodItemVisitedAt?: string;
+}
+
+interface GroupedRestaurant {
+  restaurantId: string;
+  restaurantName: string;
+  restaurantCity?: string;
+  restaurantCuisineType?: string;
+  notes: string[];
+  firstPosition: number;
+  items: GroupedBookmarkedItem[];
+}
+
+interface SaveBookmarkTarget {
+  restaurantId: string;
+  restaurantName: string;
+  foodItemId: string;
+  foodItemName: string;
+  foodItemRating: number;
+  visitedAt?: string;
+  sourceNote?: string;
+}
+
+function formatMonthYearLabel(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const label = formatDisplayDate(value, {
+    fallback: '',
+    options: { month: 'short', year: 'numeric' },
+  });
+  return label || null;
+}
+
+function formatFullDateLabel(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const label = formatDisplayDate(value, {
+    fallback: '',
+    options: { month: 'short', day: 'numeric', year: 'numeric' },
+  });
+  return label || null;
+}
 
 export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { listId } = route.params;
@@ -42,12 +99,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isEditingList, setIsEditingList] = useState(false);
-  const [isSavingList, setIsSavingList] = useState(false);
   const [isDeletingList, setIsDeletingList] = useState(false);
-  const [listNameDraft, setListNameDraft] = useState('');
-  const [listDescriptionDraft, setListDescriptionDraft] = useState('');
-  const [listVisibilityDraft, setListVisibilityDraft] = useState<ListVisibility>('private');
+  const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
+  const [selectedSaveListIds, setSelectedSaveListIds] = useState<Set<string>>(new Set());
+  const [isSavingBookmark, setIsSavingBookmark] = useState(false);
+  const [saveModalError, setSaveModalError] = useState<string | null>(null);
+  const [movingRestaurantId, setMovingRestaurantId] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: ['feature', 'restaurantList', listId],
@@ -60,9 +117,105 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     enabled: !!listQuery.data,
   });
 
+  const myListsQuery = useQuery({
+    queryKey: ['feature', 'restaurantLists', 'my'],
+    queryFn: () => listRestaurantLists({ scope: 'my' }),
+    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
+  });
+
+  const myBookmarkedLinksQuery = useQuery({
+    queryKey: ['feature', 'myBookmarkedListItemLinks'],
+    queryFn: listMyBookmarkedListItemLinks,
+    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
+  });
+
   const list = listQuery.data;
   const isOwner = Boolean(list && user?.id && list.userId === user.id);
-  const listItems = listItemsQuery.data ?? [];
+  const myLists = useMemo(() => myListsQuery.data ?? [], [myListsQuery.data]);
+  const listItems = listItemsQuery.data;
+  const savedListIdsByFoodItemId = useMemo(() => {
+    const mapping = new Map<string, Set<string>>();
+    for (const link of myBookmarkedLinksQuery.data ?? []) {
+      if (!link.foodItemId) {
+        continue;
+      }
+
+      const listIds = mapping.get(link.foodItemId) ?? new Set<string>();
+      listIds.add(link.listId);
+      mapping.set(link.foodItemId, listIds);
+    }
+    return mapping;
+  }, [myBookmarkedLinksQuery.data]);
+
+  const savedFoodItemIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const foodItemId of savedListIdsByFoodItemId.keys()) {
+      ids.add(foodItemId);
+    }
+    return ids;
+  }, [savedListIdsByFoodItemId]);
+
+  const defaultList = useMemo(() => myLists.find((candidate) => candidate.isDefault), [myLists]);
+  const nonDefaultLists = useMemo(() => myLists.filter((candidate) => !candidate.isDefault), [myLists]);
+  const alreadySavedListIdsForTarget = useMemo(() => {
+    if (!saveBookmarkTarget) {
+      return new Set<string>();
+    }
+
+    return savedListIdsByFoodItemId.get(saveBookmarkTarget.foodItemId) ?? new Set<string>();
+  }, [saveBookmarkTarget, savedListIdsByFoodItemId]);
+
+  const groupedRestaurants = useMemo<GroupedRestaurant[]>(() => {
+    const groups = new Map<string, GroupedRestaurant>();
+
+    for (const listItem of listItems ?? []) {
+      const normalizedBookmarkedItems = Array.isArray(listItem.bookmarkedItems)
+        ? listItem.bookmarkedItems
+        : [];
+      const existingGroup = groups.get(listItem.restaurantId);
+      const group =
+        existingGroup ??
+        {
+          restaurantId: listItem.restaurantId,
+          restaurantName: listItem.restaurantName,
+          restaurantCity: listItem.restaurantCity,
+          restaurantCuisineType: listItem.restaurantCuisineType,
+          notes: [],
+          firstPosition: listItem.position,
+          items: [],
+        };
+
+      group.firstPosition = Math.min(group.firstPosition, listItem.position);
+      group.restaurantName = listItem.restaurantName;
+      group.restaurantCity = listItem.restaurantCity;
+      group.restaurantCuisineType = listItem.restaurantCuisineType;
+
+      if (listItem.note && !group.notes.includes(listItem.note)) {
+        group.notes.push(listItem.note);
+      }
+
+      for (const item of normalizedBookmarkedItems) {
+        group.items.push({
+          key: `${listItem.id}:${item.id}`,
+          foodItemId: item.id,
+          listItemId: listItem.id,
+          name: item.name,
+          rating: item.rating,
+          visitedAt: item.visitedAt,
+          sourceUserId: item.sourceUserId ?? listItem.sourceUserId,
+          sourceUserName: item.sourceUserName ?? listItem.sourceUserName,
+          sourceNote: listItem.note,
+          userFoodItemId: item.userFoodItemId,
+          userFoodItemRating: item.userFoodItemRating,
+          userFoodItemVisitedAt: item.userFoodItemVisitedAt,
+        });
+      }
+
+      groups.set(listItem.restaurantId, group);
+    }
+
+    return Array.from(groups.values()).sort((left, right) => left.firstPosition - right.firstPosition);
+  }, [listItems]);
 
   const styles = StyleSheet.create({
     container: {
@@ -78,23 +231,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       flexDirection: 'row',
       gap: theme.spacing.xs,
     },
-    headerActionButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      justifyContent: 'center',
-      minHeight: 32,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 4,
-    },
-    headerActionLabel: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
     headerIconButton: {
       alignItems: 'center',
       backgroundColor: theme.colors.background.surface,
@@ -105,89 +241,391 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       justifyContent: 'center',
       width: 32,
     },
-    editCard: {
-      borderColor: theme.colors.border.info,
+    addBannerButton: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.button.primaryBg,
+      borderColor: theme.colors.button.primaryBg,
+      borderRadius: theme.radii.lg,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      justifyContent: 'center',
+      minHeight: 44,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.xs,
     },
-    editActions: {
+    addBannerButtonPressed: {
+      backgroundColor: theme.colors.button.primaryPressed,
+      borderColor: theme.colors.button.primaryPressed,
+    },
+    addBannerLabel: {
+      color: theme.colors.button.primaryText,
+      fontSize: 18,
+      fontWeight: '700',
+      lineHeight: 24,
+    },
+    listCard: {
+      gap: theme.spacing.sm,
+    },
+    restaurantHeaderRow: {
+      alignItems: 'flex-start',
       flexDirection: 'row',
       gap: theme.spacing.sm,
+      justifyContent: 'space-between',
+    },
+    restaurantTitleRow: {
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      flex: 1,
+    },
+    restaurantIndex: {
+      color: theme.colors.text.muted,
+      fontSize: 18,
+      fontWeight: '500',
+      lineHeight: 24,
+    },
+    restaurantTitle: {
+      color: theme.colors.text.primary,
+      fontSize: 20,
+      fontWeight: '700',
+      lineHeight: 24,
+    },
+    locationRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xxs,
+    },
+    locationText: {
+      color: theme.colors.text.secondary,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    section: {
+      borderTopColor: theme.colors.border.subtle,
+      borderTopWidth: 1,
+      gap: theme.spacing.xs,
+      paddingTop: theme.spacing.sm,
+    },
+    sectionTitle: {
+      color: theme.colors.text.secondary,
+      fontSize: 13,
+      fontWeight: '700',
+      lineHeight: 18,
+    },
+    ownerItemCard: {
+      backgroundColor: theme.colors.background.surface,
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      gap: theme.spacing.xxs,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+    },
+    ownerItemHeaderRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      justifyContent: 'space-between',
+    },
+    ownerItemName: {
+      color: theme.colors.text.primary,
+      flex: 1,
+      fontSize: 17,
+      fontWeight: '700',
+      lineHeight: 22,
+    },
+    ownerItemMetaRow: {
+      alignItems: 'center',
+      columnGap: theme.spacing.xxs,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: 4,
+    },
+    ownerItemMetaDate: {
+      color: theme.colors.text.muted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    ownerBookmarkRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      justifyContent: 'space-between',
+    },
+    ownerBookmarkMeta: {
+      alignItems: 'center',
+      columnGap: theme.spacing.xxs,
+      flex: 1,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: 4,
+    },
+    bookmarkedItemBlock: {
+      gap: 2,
+    },
+    bookmarkedItemRow: {
+      alignItems: 'flex-start',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: theme.spacing.xs,
+    },
+    bookmarkedItemLeft: {
+      alignItems: 'center',
+      columnGap: theme.spacing.xxs,
+      flex: 1,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      rowGap: 4,
+    },
+    sourceUserRow: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.status.infoBg,
+      borderColor: theme.colors.border.info,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 4,
+      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: 1,
+    },
+    sourceUserText: {
+      color: theme.colors.text.info,
+      fontSize: 11,
+      fontWeight: '700',
+      lineHeight: 14,
+    },
+    bookmarkedItemName: {
+      color: theme.colors.text.primary,
+      fontSize: 16,
+      fontWeight: '500',
+      lineHeight: 20,
+      flexShrink: 1,
+    },
+    metaDot: {
+      color: theme.colors.text.muted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    bookmarkedDate: {
+      color: theme.colors.text.muted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    ownerItemActions: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 4,
+    },
+    ownerYouRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      justifyContent: 'space-between',
+    },
+    iWentButton: {
+      alignItems: 'center',
+      borderRadius: theme.radii.sm,
+      flexDirection: 'row',
+      gap: 2,
+      minHeight: 22,
+      paddingHorizontal: theme.spacing.xs,
+    },
+    iWentButtonPressed: {
+      backgroundColor: theme.colors.status.successBg,
+    },
+    iWentButtonLabel: {
+      color: theme.colors.text.success,
+      fontSize: 11,
+      fontWeight: '600',
+      lineHeight: 14,
+    },
+    reorderControls: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 2,
+    },
+    reorderButton: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.surface,
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.sm,
+      borderWidth: 1,
+      height: 24,
+      justifyContent: 'center',
+      width: 24,
+    },
+    reorderButtonPressed: {
+      backgroundColor: theme.colors.background.muted,
+    },
+    itemDeleteButton: {
+      alignItems: 'center',
+      borderRadius: theme.radii.pill,
+      height: 24,
+      justifyContent: 'center',
+      width: 24,
+    },
+    itemDeleteButtonPressed: {
+      backgroundColor: theme.colors.status.dangerBg,
+    },
+    itemBookmarkButton: {
+      alignItems: 'center',
+      borderRadius: theme.radii.sm,
+      height: 26,
+      justifyContent: 'center',
+      width: 26,
+    },
+    itemBookmarkButtonPressed: {
+      backgroundColor: theme.colors.status.infoBg,
+    },
+    noteText: {
+      color: theme.colors.text.secondary,
+      fontSize: 14,
+      fontStyle: 'italic',
+      lineHeight: 20,
+    },
+    ownerReviewRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xxs,
+      marginTop: 1,
+    },
+    ownerReviewArrow: {
+      color: theme.colors.text.info,
+      fontSize: 11,
+      lineHeight: 14,
+    },
+    ownerReviewText: {
+      color: theme.colors.text.info,
+      fontSize: 11,
+      fontWeight: '600',
+      lineHeight: 14,
+    },
+    ownerReviewDate: {
+      color: theme.colors.text.info,
+      fontSize: 11,
+      lineHeight: 14,
+    },
+    emptyItemsText: {
+      color: theme.colors.text.muted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    saveModalItemCard: {
+      borderColor: theme.colors.border.info,
+      gap: theme.spacing.xs,
+    },
+    saveModalItemRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xxs,
+    },
+    saveModalItemName: {
+      color: theme.colors.text.primary,
+      fontSize: 16,
+      fontWeight: '700',
+      lineHeight: 20,
+    },
+    saveModalCaption: {
+      color: theme.colors.text.secondary,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    saveListSectionTitle: {
+      color: theme.colors.text.secondary,
+      fontSize: 13,
+      fontWeight: '700',
+      lineHeight: 18,
       marginTop: theme.spacing.xs,
     },
-    editAction: {
+    saveListRows: {
+      gap: theme.spacing.xs,
+      marginTop: theme.spacing.xs,
+    },
+    saveListRow: {
+      alignItems: 'center',
+      borderColor: theme.colors.border.default,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+      minHeight: 46,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+    },
+    saveListRowSelected: {
+      backgroundColor: theme.colors.status.infoBg,
+      borderColor: theme.colors.border.info,
+    },
+    saveListRowDisabled: {
+      backgroundColor: theme.colors.background.muted,
+      opacity: 0.7,
+    },
+    saveListLabelWrap: {
       flex: 1,
+      gap: 2,
+    },
+    saveListLabelTop: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+    },
+    saveListName: {
+      color: theme.colors.text.primary,
+      fontSize: 14,
+      fontWeight: '700',
+      lineHeight: 18,
+    },
+    saveListDescription: {
+      color: theme.colors.text.muted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    saveListAlreadyLabel: {
+      color: theme.colors.text.success,
+      fontSize: 11,
+      fontWeight: '600',
+      lineHeight: 14,
+    },
+    saveModalFooter: {
+      marginTop: theme.spacing.sm,
+    },
+    saveModalError: {
+      color: theme.colors.text.danger,
+      fontSize: 12,
+      lineHeight: 16,
     },
   });
 
   const subtitle = useMemo(() => {
-    const itemCount = listItems.length;
-    const itemLabel = `${itemCount} ${itemCount === 1 ? 'restaurant' : 'restaurants'}`;
+    const restaurantCount = groupedRestaurants.length;
+    const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
     if (!list) {
-      return itemLabel;
+      return countLabel;
     }
 
+    const descriptionLabel = list.description?.trim();
+
     if (isOwner) {
-      return itemLabel;
+      return descriptionLabel ? `${countLabel}\n${descriptionLabel}` : countLabel;
     }
 
     const ownerName = list.ownerName ?? 'Unknown user';
-    return `${ownerName}'s list · ${itemLabel}`;
-  }, [isOwner, list, listItems.length]);
+    const baseLabel = `${ownerName}'s list · ${countLabel}`;
+    return descriptionLabel ? `${baseLabel}\n${descriptionLabel}` : baseLabel;
+  }, [groupedRestaurants.length, isOwner, list]);
 
   const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
     navigation.navigate('Lists');
-  };
-
-  const startEditList = () => {
-    if (!list || !isOwner) {
-      return;
-    }
-
-    setErrorMessage(null);
-    setListNameDraft(list.name);
-    setListDescriptionDraft(list.description ?? '');
-    setListVisibilityDraft(list.visibility);
-    setIsEditingList(true);
-  };
-
-  const cancelEditList = () => {
-    setIsEditingList(false);
-    setListNameDraft('');
-    setListDescriptionDraft('');
-    setListVisibilityDraft('private');
-  };
-
-  const saveListEdits = async () => {
-    if (!list || !isOwner) {
-      return;
-    }
-
-    const trimmedName = listNameDraft.trim();
-    if (!trimmedName) {
-      setErrorMessage('List name is required.');
-      return;
-    }
-
-    setErrorMessage(null);
-    setIsSavingList(true);
-
-    try {
-      await queueWrite('list.update');
-      await updateRestaurantList(list.id, {
-        name: trimmedName,
-        description: listDescriptionDraft,
-        visibility: listVisibilityDraft,
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-      ]);
-      setIsEditingList(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not update list.';
-      setErrorMessage(message);
-    } finally {
-      setIsSavingList(false);
-    }
   };
 
   const deleteList = async () => {
@@ -242,7 +680,30 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     );
   };
 
-  const handleRemove = async (listItemId: string) => {
+  const handleMoveRestaurant = async (restaurantId: string, direction: 'up' | 'down') => {
+    if (!isOwner || movingRestaurantId) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setMovingRestaurantId(restaurantId);
+
+    try {
+      await queueWrite('list.restaurant.reorder');
+      await moveRestaurantListRestaurant({ listId, restaurantId, direction });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not reorder restaurant.';
+      setErrorMessage(message);
+    } finally {
+      setMovingRestaurantId(null);
+    }
+  };
+
+  const handleRemoveSourceRating = async (item: GroupedBookmarkedItem) => {
     if (!isOwner) {
       return;
     }
@@ -250,17 +711,174 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setErrorMessage(null);
 
     try {
-      await queueWrite('list.restaurant.remove');
-      await removeRestaurantFromList(listId, listItemId);
+      await queueWrite('list.restaurant.remove.source');
+      await removeRestaurantListSourceRating({
+        listId,
+        listItemId: item.listItemId,
+        foodItemId: item.foodItemId,
+      });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
       ]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not remove restaurant.';
+      const message = error instanceof Error ? error.message : 'Could not remove rating.';
       setErrorMessage(message);
     }
+  };
+
+  const handleRemoveUserRating = async (listItemId: string) => {
+    if (!isOwner) {
+      return;
+    }
+
+    setErrorMessage(null);
+
+    try {
+      await queueWrite('list.restaurant.remove.user');
+      await removeRestaurantListUserRating(listId, listItemId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not remove rating.';
+      setErrorMessage(message);
+    }
+  };
+
+  const handleIWentThere = (group: GroupedRestaurant, item: GroupedBookmarkedItem) => {
+    navigation.navigate('CreateVisit', {
+      preselectedRestaurantId: group.restaurantId,
+      preselectedRestaurantName: group.restaurantName,
+      preselectedMenuItemId: `bookmark-${item.listItemId}`,
+      preselectedMenuItemName: item.name,
+      sourceListItemId: item.listItemId,
+      returnToStep: 2,
+    });
+  };
+
+  const openSaveModal = (group: GroupedRestaurant, item: GroupedBookmarkedItem) => {
+    setSaveModalError(null);
+    setSelectedSaveListIds(new Set());
+    setSaveBookmarkTarget({
+      restaurantId: group.restaurantId,
+      restaurantName: group.restaurantName,
+      foodItemId: item.foodItemId,
+      foodItemName: item.name,
+      foodItemRating: item.rating,
+      visitedAt: item.visitedAt,
+      sourceNote: item.sourceNote,
+    });
+  };
+
+  const closeSaveModal = () => {
+    if (isSavingBookmark) {
+      return;
+    }
+
+    setSaveBookmarkTarget(null);
+    setSelectedSaveListIds(new Set());
+    setSaveModalError(null);
+  };
+
+  const toggleSaveListSelection = (selectedListId: string) => {
+    if (alreadySavedListIdsForTarget.has(selectedListId)) {
+      return;
+    }
+
+    setSelectedSaveListIds((previousValue) => {
+      const nextValue = new Set(previousValue);
+      if (nextValue.has(selectedListId)) {
+        nextValue.delete(selectedListId);
+      } else {
+        nextValue.add(selectedListId);
+      }
+      return nextValue;
+    });
+  };
+
+  const saveBookmarkToLists = async (targetListIds: string[]) => {
+    if (!saveBookmarkTarget || !list || targetListIds.length === 0) {
+      return;
+    }
+
+    setSaveModalError(null);
+    setIsSavingBookmark(true);
+
+    try {
+      await queueWrite('list.bookmark.save');
+
+      for (const targetListId of targetListIds) {
+        await saveRestaurantFoodItemToList({
+          listId: targetListId,
+          restaurantId: saveBookmarkTarget.restaurantId,
+          foodItemId: saveBookmarkTarget.foodItemId,
+          note: saveBookmarkTarget.sourceNote,
+          sourceUserId: list.userId,
+        });
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feature', 'myBookmarkedListItemLinks'] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+      ]);
+
+      setSaveBookmarkTarget(null);
+      setSelectedSaveListIds(new Set());
+      setSaveModalError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save this bookmark.';
+      setSaveModalError(message);
+    } finally {
+      setIsSavingBookmark(false);
+    }
+  };
+
+  const handleQuickSaveToDefaultList = async () => {
+    if (!saveBookmarkTarget) {
+      return;
+    }
+
+    let targetDefaultListId = defaultList?.id;
+    if (!targetDefaultListId) {
+      try {
+        await queueWrite('list.default.create');
+        const createdDefaultList = await createDefaultRestaurantList();
+        targetDefaultListId = createdDefaultList.id;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not create your Saved list.';
+        setSaveModalError(message);
+        return;
+      }
+    }
+
+    if (!targetDefaultListId) {
+      setSaveModalError('Saved list is not available.');
+      return;
+    }
+
+    if (alreadySavedListIdsForTarget.has(targetDefaultListId)) {
+      setSaveModalError('This item is already in your Saved list.');
+      return;
+    }
+
+    await saveBookmarkToLists([targetDefaultListId]);
+  };
+
+  const handleSaveToSelectedLists = async () => {
+    const targetListIds = Array.from(selectedSaveListIds).filter((targetListId) => !alreadySavedListIdsForTarget.has(targetListId));
+    if (targetListIds.length === 0) {
+      setSaveModalError('Select at least one list.');
+      return;
+    }
+
+    await saveBookmarkToLists(targetListIds);
   };
 
   if (listQuery.isLoading || listItemsQuery.isLoading) {
@@ -306,22 +924,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         isOwner ? (
           <View style={styles.headerRightRow}>
             <Pressable
-              accessibilityLabel="Add restaurant"
-              accessibilityRole="button"
-              onPress={() => {
-                navigation.navigate('AddRestaurantToList', { listId });
-              }}
-              style={styles.headerActionButton}
-            >
-              <Ionicons color={theme.colors.text.primary} name="add-outline" size={14} />
-              <Text style={styles.headerActionLabel} variant="label">
-                Add Restaurant
-              </Text>
-            </Pressable>
-            <Pressable
               accessibilityLabel="Edit list"
               accessibilityRole="button"
-              onPress={startEditList}
+              onPress={() => {
+                navigation.navigate('EditRestaurantList', { listId });
+              }}
               style={styles.headerIconButton}
             >
               <Ionicons color={theme.colors.text.primary} name="create-outline" size={16} />
@@ -345,83 +952,388 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     >
       <View style={styles.container}>
         <PageErrorToast errorMessage={errorMessage} title="List update failed" />
+        <PageErrorToast
+          actionLabel="Retry"
+          errorMessage={!isOwner && myListsQuery.isError ? 'Could not load your lists.' : null}
+          onAction={() => {
+            void myListsQuery.refetch();
+          }}
+          title="Lists unavailable"
+        />
+        <PageErrorToast
+          actionLabel="Retry"
+          errorMessage={!isOwner && myBookmarkedLinksQuery.isError ? 'Could not load bookmark status.' : null}
+          onAction={() => {
+            void myBookmarkedLinksQuery.refetch();
+          }}
+          title="Bookmark status unavailable"
+        />
 
-        {list.description ? <Text style={styles.subtitleText}>{list.description}</Text> : null}
-
-        {isOwner && isEditingList ? (
-          <Card style={styles.editCard} tone="muted">
-            <Text variant="label">Edit List</Text>
-            <Input
-              autoCapitalize="words"
-              label="List name"
-              onChangeText={setListNameDraft}
-              placeholder="List name"
-              value={listNameDraft}
-            />
-            <Input
-              label="Description"
-              multiline
-              onChangeText={setListDescriptionDraft}
-              placeholder="Optional description"
-              value={listDescriptionDraft}
-            />
-            <Text variant="label">Visibility</Text>
-            <SegmentedControl
-              fill
-              onChange={setListVisibilityDraft}
-              options={VISIBILITY_OPTIONS}
-              value={listVisibilityDraft}
-            />
-            <View style={styles.editActions}>
-              <Button
-                label="Cancel"
-                onPress={cancelEditList}
-                style={styles.editAction}
-                variant="secondary"
-              />
-              <Button
-                disabled={!listNameDraft.trim() || isSavingList}
-                label={isSavingList ? 'Saving...' : 'Save List'}
-                onPress={() => {
-                  void saveListEdits();
-                }}
-                style={styles.editAction}
-              />
-            </View>
-          </Card>
+        {isOwner ? (
+          <Pressable
+            accessibilityLabel="Add restaurant to list"
+            accessibilityRole="button"
+            onPress={() => {
+              navigation.navigate('AddRestaurantToList', { listId });
+            }}
+            style={({ pressed }) => [styles.addBannerButton, pressed && styles.addBannerButtonPressed]}
+            testID="add-restaurant-banner"
+          >
+            <Ionicons color={theme.colors.button.primaryText} name="add-outline" size={20} />
+            <Text style={styles.addBannerLabel}>Add Visit Ratings to List</Text>
+          </Pressable>
         ) : null}
 
-        {listItems.length === 0 ? (
+        {groupedRestaurants.length === 0 ? (
           <EmptyState
             description={
               isOwner
-                ? 'Use Add in the header to save your first restaurant.'
+                ? 'Use Add Visit Ratings to List to save your first restaurant.'
                 : 'No restaurants have been added to this list yet.'
             }
             title="No restaurants yet"
           />
         ) : (
-          listItems.map((listItem) => (
-            <Card key={listItem.id} tone="muted">
-              <ListItem
-                description={listItem.restaurantCity ?? 'City not set'}
-                title={listItem.restaurantName}
-                trailing={
-                  isOwner ? (
-                    <Button
-                      label="Remove"
-                      onPress={() => {
-                        void handleRemove(listItem.id);
-                      }}
-                      variant="secondary"
-                    />
-                  ) : undefined
-                }
-              />
-            </Card>
-          ))
+          groupedRestaurants.map((group, groupIndex) => {
+            const locationLabel =
+              [group.restaurantCity, group.restaurantCuisineType].filter(Boolean).join(' • ') || 'Location not set';
+
+            return (
+              <Card key={group.restaurantId} style={styles.listCard} tone="default">
+                <View style={styles.restaurantHeaderRow}>
+                  <View style={styles.restaurantTitleRow}>
+                    <Text style={styles.restaurantIndex}>{`${groupIndex + 1}.`}</Text>
+                    <Text style={styles.restaurantTitle}>{group.restaurantName}</Text>
+                  </View>
+                  {isOwner ? (
+                    <View style={styles.reorderControls}>
+                      {groupIndex > 0 ? (
+                        <Pressable
+                          accessibilityLabel={`Move ${group.restaurantName} up`}
+                          accessibilityRole="button"
+                          disabled={Boolean(movingRestaurantId)}
+                          onPress={() => {
+                            void handleMoveRestaurant(group.restaurantId, 'up');
+                          }}
+                          style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                          testID={`move-restaurant-up-${group.restaurantId}`}
+                        >
+                          <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
+                        </Pressable>
+                      ) : null}
+                      {groupIndex < groupedRestaurants.length - 1 ? (
+                        <Pressable
+                          accessibilityLabel={`Move ${group.restaurantName} down`}
+                          accessibilityRole="button"
+                          disabled={Boolean(movingRestaurantId)}
+                          onPress={() => {
+                            void handleMoveRestaurant(group.restaurantId, 'down');
+                          }}
+                          style={({ pressed }) => [styles.reorderButton, pressed && styles.reorderButtonPressed]}
+                          testID={`move-restaurant-down-${group.restaurantId}`}
+                        >
+                          <Ionicons color={theme.colors.text.primary} name="chevron-down" size={14} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+
+                <View style={styles.locationRow}>
+                  <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />
+                  <Text style={styles.locationText}>{locationLabel}</Text>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>{isOwner ? 'Bookmarked Items:' : 'Recommended Items:'}</Text>
+                  {group.items.length === 0 ? (
+                    <Text style={styles.emptyItemsText}>No items added yet.</Text>
+                  ) : (
+                    group.items.map((item) => {
+                      const monthYearLabel = formatMonthYearLabel(item.visitedAt);
+                      const userReviewDateLabel = formatFullDateLabel(item.userFoodItemVisitedAt);
+                      const standaloneUserDateLabel = formatFullDateLabel(item.visitedAt) ?? monthYearLabel;
+                      const hasLinkedUserRating = Boolean(item.userFoodItemId && item.userFoodItemRating);
+                      const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
+                      const sourceUserDisplayName = item.sourceUserName?.trim() || 'Friend';
+
+                      if (isOwner) {
+                        return (
+                          <View key={item.key} style={styles.ownerItemCard}>
+                            <View style={styles.ownerItemHeaderRow}>
+                              <Text numberOfLines={1} style={styles.ownerItemName}>
+                                {item.name}
+                              </Text>
+                            </View>
+
+                            {hasSourceBookmark ? (
+                              <View style={styles.ownerBookmarkRow}>
+                                <View style={styles.ownerBookmarkMeta}>
+                                  <View style={styles.sourceUserRow}>
+                                    <Ionicons color={theme.colors.text.info} name="people-outline" size={11} />
+                                    <Text style={styles.sourceUserText}>{sourceUserDisplayName}</Text>
+                                  </View>
+                                  {item.rating > 0 ? <RatingPill rating={item.rating} /> : null}
+                                  {monthYearLabel ? <Text style={styles.ownerItemMetaDate}>{monthYearLabel}</Text> : null}
+                                </View>
+
+                                <View style={styles.ownerItemActions}>
+                                  {!item.userFoodItemId ? (
+                                    <Pressable
+                                      accessibilityLabel={`I went for ${item.name}`}
+                                      accessibilityRole="button"
+                                      onPress={() => {
+                                        handleIWentThere(group, item);
+                                      }}
+                                      style={({ pressed }) => [styles.iWentButton, pressed && styles.iWentButtonPressed]}
+                                      testID={`i-went-list-item-${item.listItemId}`}
+                                    >
+                                      <Ionicons color={theme.colors.text.success} name="location-outline" size={12} />
+                                      <Text style={styles.iWentButtonLabel}>I went</Text>
+                                    </Pressable>
+                                  ) : null}
+                                  <Pressable
+                                    accessibilityLabel={`Remove bookmarked rating for ${item.name}`}
+                                    accessibilityRole="button"
+                                    onPress={() => {
+                                      void handleRemoveSourceRating(item);
+                                    }}
+                                    style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
+                                    testID={`remove-source-rating-${item.listItemId}-${item.foodItemId}`}
+                                  >
+                                    <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
+                                  </Pressable>
+                                </View>
+                              </View>
+                            ) : null}
+
+                            {hasLinkedUserRating ? (
+                              <View style={styles.ownerYouRow}>
+                                <View style={styles.ownerReviewRow}>
+                                  <Text style={styles.ownerReviewArrow}>↳</Text>
+                                  <Text style={styles.ownerReviewText}>You</Text>
+                                  <RatingPill rating={item.userFoodItemRating ?? 0} />
+                                  {userReviewDateLabel ? <Text style={styles.ownerReviewDate}>{userReviewDateLabel}</Text> : null}
+                                </View>
+                                <Pressable
+                                  accessibilityLabel={`Remove your rating for ${item.name}`}
+                                  accessibilityRole="button"
+                                  onPress={() => {
+                                    void handleRemoveUserRating(item.listItemId);
+                                  }}
+                                  style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
+                                  testID={`remove-user-rating-${item.listItemId}-${item.userFoodItemId}`}
+                                >
+                                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
+                                </Pressable>
+                              </View>
+                            ) : null}
+
+                            {!hasSourceBookmark && item.rating > 0 ? (
+                              <View style={styles.ownerYouRow}>
+                                <View style={styles.ownerReviewRow}>
+                                  <Text style={styles.ownerReviewArrow}>↳</Text>
+                                  <Text style={styles.ownerReviewText}>You</Text>
+                                  <RatingPill rating={item.rating} />
+                                  {standaloneUserDateLabel ? (
+                                    <Text style={styles.ownerReviewDate}>{standaloneUserDateLabel}</Text>
+                                  ) : null}
+                                </View>
+                                <Pressable
+                                  accessibilityLabel={`Remove your rating for ${item.name}`}
+                                  accessibilityRole="button"
+                                  onPress={() => {
+                                    void handleRemoveSourceRating(item);
+                                  }}
+                                  style={({ pressed }) => [styles.itemDeleteButton, pressed && styles.itemDeleteButtonPressed]}
+                                  testID={`remove-list-item-${item.listItemId}-${item.foodItemId}`}
+                                >
+                                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={15} />
+                                </Pressable>
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      }
+
+                      return (
+                        <View key={item.key} style={styles.bookmarkedItemBlock}>
+                          <View style={styles.bookmarkedItemRow}>
+                            <View style={styles.bookmarkedItemLeft}>
+                              {hasSourceBookmark ? (
+                                <View style={styles.sourceUserRow}>
+                                  <Ionicons color={theme.colors.text.info} name="people-outline" size={11} />
+                                  <Text style={styles.sourceUserText}>{sourceUserDisplayName}</Text>
+                                </View>
+                              ) : null}
+                              <Text numberOfLines={1} style={styles.bookmarkedItemName}>
+                                {item.name}
+                              </Text>
+                              {item.rating > 0 ? (
+                                <>
+                                  <Text style={styles.metaDot}>•</Text>
+                                  <RatingPill rating={item.rating} />
+                                </>
+                              ) : null}
+                              {monthYearLabel ? (
+                                <>
+                                  <Text style={styles.metaDot}>•</Text>
+                                  <Text style={styles.bookmarkedDate}>{monthYearLabel}</Text>
+                                </>
+                              ) : null}
+                            </View>
+                            <Pressable
+                              accessibilityLabel={`Save ${item.name} to my lists`}
+                              accessibilityRole="button"
+                              onPress={() => {
+                                openSaveModal(group, item);
+                              }}
+                              style={({ pressed }) => [styles.itemBookmarkButton, pressed && styles.itemBookmarkButtonPressed]}
+                              testID={`save-list-item-${item.listItemId}`}
+                            >
+                              <Ionicons
+                                color={savedFoodItemIds.has(item.foodItemId) ? theme.colors.text.info : theme.colors.text.muted}
+                                name={savedFoodItemIds.has(item.foodItemId) ? 'bookmark' : 'bookmark-outline'}
+                                size={18}
+                              />
+                            </Pressable>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+
+                {group.notes.length > 0 ? (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Notes:</Text>
+                    {group.notes.map((note, noteIndex) => (
+                      <Text key={`${group.restaurantId}-note-${noteIndex}`} style={styles.noteText}>
+                        "{note}"
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </Card>
+            );
+          })
         )}
       </View>
+
+      <Modal
+        description="Choose where to save this bookmarked item."
+        onRequestClose={closeSaveModal}
+        primaryAction={{
+          disabled: isSavingBookmark || selectedSaveListIds.size === 0,
+          label:
+            selectedSaveListIds.size === 1
+              ? 'Save to 1 list'
+              : `Save to ${selectedSaveListIds.size} lists`,
+          loading: isSavingBookmark,
+          onPress: () => {
+            void handleSaveToSelectedLists();
+          },
+        }}
+        secondaryAction={{
+          disabled: isSavingBookmark,
+          label: 'Cancel',
+          onPress: closeSaveModal,
+        }}
+        title={saveBookmarkTarget ? `Save from "${saveBookmarkTarget.restaurantName}"` : undefined}
+        visible={Boolean(saveBookmarkTarget)}
+      >
+        {saveBookmarkTarget ? (
+          <Card style={styles.saveModalItemCard} tone="info">
+            <Text style={styles.saveModalCaption}>Selected item</Text>
+            <View style={styles.saveModalItemRow}>
+              <Text style={styles.saveModalItemName}>{saveBookmarkTarget.foodItemName}</Text>
+              <Text style={styles.metaDot}>•</Text>
+              <RatingPill rating={saveBookmarkTarget.foodItemRating} />
+              {formatMonthYearLabel(saveBookmarkTarget.visitedAt) ? (
+                <>
+                  <Text style={styles.metaDot}>•</Text>
+                  <Text style={styles.bookmarkedDate}>{formatMonthYearLabel(saveBookmarkTarget.visitedAt)}</Text>
+                </>
+              ) : null}
+            </View>
+          </Card>
+        ) : null}
+
+        <Button
+          disabled={
+            isSavingBookmark ||
+            !saveBookmarkTarget ||
+            Boolean(defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id))
+          }
+          label={
+            defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id)
+              ? 'Already in "Saved" list'
+              : defaultList
+                ? 'Quick Save to "Saved" list'
+                : 'Create & Save to "Saved" list'
+          }
+          onPress={() => {
+            void handleQuickSaveToDefaultList();
+          }}
+          variant="secondary"
+        />
+
+        {nonDefaultLists.length > 0 ? (
+          <>
+            <Text style={styles.saveListSectionTitle}>Or choose lists</Text>
+            <View style={styles.saveListRows}>
+              {nonDefaultLists.map((targetList) => {
+                const alreadySavedInList = alreadySavedListIdsForTarget.has(targetList.id);
+                const isSelected = selectedSaveListIds.has(targetList.id);
+                const visibilityIconName =
+                  targetList.visibility === 'friends'
+                    ? 'people-outline'
+                    : targetList.visibility === 'public'
+                      ? 'globe-outline'
+                      : 'lock-closed-outline';
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={alreadySavedInList}
+                    key={targetList.id}
+                    onPress={() => {
+                      toggleSaveListSelection(targetList.id);
+                    }}
+                    style={[
+                      styles.saveListRow,
+                      isSelected ? styles.saveListRowSelected : null,
+                      alreadySavedInList ? styles.saveListRowDisabled : null,
+                    ]}
+                  >
+                    <Ionicons
+                      color={alreadySavedInList ? theme.colors.text.success : theme.colors.text.muted}
+                      name={alreadySavedInList || isSelected ? 'checkbox' : 'square-outline'}
+                      size={20}
+                    />
+                    <View style={styles.saveListLabelWrap}>
+                      <View style={styles.saveListLabelTop}>
+                        <Text style={styles.saveListName}>{targetList.name}</Text>
+                        <Ionicons color={theme.colors.text.muted} name={visibilityIconName} size={13} />
+                      </View>
+                      {targetList.description ? (
+                        <Text numberOfLines={1} style={styles.saveListDescription}>
+                          {targetList.description}
+                        </Text>
+                      ) : null}
+                      {alreadySavedInList ? <Text style={styles.saveListAlreadyLabel}>Already saved in this list</Text> : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <Text style={styles.saveListSectionTitle}>No additional lists yet. Use quick save or create a list.</Text>
+        )}
+
+        {saveModalError ? <Text style={styles.saveModalError}>{saveModalError}</Text> : null}
+      </Modal>
     </FeatureDetailScreenScaffold>
   );
 }

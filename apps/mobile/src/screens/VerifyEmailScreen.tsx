@@ -2,7 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
 import { FormScaffold, LoadingOverlay } from '../components/shared';
-import { pb } from '../lib/pocketbase';
+import { confirmUserEmailVerification } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -27,7 +27,7 @@ export function VerifyEmailScreen({ navigation }: VerifyEmailScreenProps) {
     setIsSubmitting(true);
 
     try {
-      await pb.collection('users').confirmVerification(trimmedToken);
+      await confirmUserEmailVerification(trimmedToken);
       setSuccessMessage('Email verified successfully.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Verification failed.';

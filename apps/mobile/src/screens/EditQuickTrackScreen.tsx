@@ -2,11 +2,11 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, Skeleton } from '../components/shared';
+import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
 import { getQuickTrackById, updateQuickTrack } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { Button, Input, Screen, Text } from '../ui';
+import { Input } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type EditQuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'EditQuickTrack'>;
@@ -76,18 +76,51 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
     }
   };
 
+  const handleBackPress = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('Home');
+  };
+
   if (quickTrackQuery.isLoading) {
     return (
-      <Screen>
+      <FeatureFormScreenScaffold
+        onBackPress={handleBackPress}
+        primaryAction={{
+          label: 'Save Changes',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBackPress,
+        }}
+        title="Edit Quick Track"
+      >
         <Skeleton height={20} />
         <Skeleton height={20} />
-      </Screen>
+      </FeatureFormScreenScaffold>
     );
   }
 
   if (quickTrackQuery.isError) {
     return (
-      <Screen>
+      <FeatureFormScreenScaffold
+        onBackPress={handleBackPress}
+        primaryAction={{
+          label: 'Save Changes',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBackPress,
+        }}
+        title="Edit Quick Track"
+      >
         <ErrorState
           description="Could not load quick-track item."
           onRetry={() => {
@@ -95,13 +128,25 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
           }}
           title="Quick track unavailable"
         />
-      </Screen>
+      </FeatureFormScreenScaffold>
     );
   }
 
   if (!quickTrackQuery.data) {
     return (
-      <Screen>
+      <FeatureFormScreenScaffold
+        onBackPress={handleBackPress}
+        primaryAction={{
+          label: 'Save Changes',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBackPress,
+        }}
+        title="Edit Quick Track"
+      >
         <EmptyState
           actionLabel="Back to Home"
           onAction={() => {
@@ -109,27 +154,34 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
           }}
           title="Quick-track item not found"
         />
-      </Screen>
+      </FeatureFormScreenScaffold>
     );
   }
 
   return (
-    <Screen scroll keyboardAware>
-      <Text variant="titleMd">Edit Quick Track</Text>
+    <FeatureFormScreenScaffold
+      keyboardAware
+      onBackPress={handleBackPress}
+      primaryAction={{
+        label: 'Save Changes',
+        disabled: isSubmitting,
+        loading: isSubmitting,
+        onPress: () => {
+          void handleSave();
+        },
+      }}
+      secondaryAction={{
+        label: 'Cancel',
+        onPress: handleBackPress,
+      }}
+      title="Edit Quick Track"
+    >
       <Input label="Restaurant" onChangeText={setRestaurantName} value={restaurantName} />
       <Input label="Item" onChangeText={setItemName} value={itemName} />
       <Input keyboardType="decimal-pad" label="Rating (1-5)" onChangeText={setRating} value={rating} />
       <Input label="Notes" onChangeText={setNotes} value={notes} />
 
       <PageErrorToast errorMessage={errorMessage} title="Could not save" />
-
-      <Button
-        disabled={isSubmitting}
-        label={isSubmitting ? 'Saving...' : 'Save Changes'}
-        onPress={() => {
-          void handleSave();
-        }}
-      />
-    </Screen>
+    </FeatureFormScreenScaffold>
   );
 }

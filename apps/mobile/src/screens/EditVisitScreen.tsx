@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, Skeleton } from '../components/shared';
+import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
 import { getVisitById, updateVisit, type VisitItem } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type EditVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'EditVisit'>;
@@ -103,19 +103,52 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
     }
   };
 
+  const handleBackPress = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('Home');
+  };
+
   if (visitQuery.isLoading) {
     return (
-      <Screen>
+      <FeatureFormScreenScaffold
+        onBackPress={handleBackPress}
+        primaryAction={{
+          label: 'Save Changes',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBackPress,
+        }}
+        title="Edit Visit"
+      >
         <Skeleton height={20} />
         <Skeleton height={20} />
         <Skeleton height={20} />
-      </Screen>
+      </FeatureFormScreenScaffold>
     );
   }
 
   if (visitQuery.isError) {
     return (
-      <Screen>
+      <FeatureFormScreenScaffold
+        onBackPress={handleBackPress}
+        primaryAction={{
+          label: 'Save Changes',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBackPress,
+        }}
+        title="Edit Visit"
+      >
         <ErrorState
           description="Could not load visit details."
           onRetry={() => {
@@ -123,13 +156,25 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
           }}
           title="Visit unavailable"
         />
-      </Screen>
+      </FeatureFormScreenScaffold>
     );
   }
 
   if (!visitQuery.data) {
     return (
-      <Screen>
+      <FeatureFormScreenScaffold
+        onBackPress={handleBackPress}
+        primaryAction={{
+          label: 'Save Changes',
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: handleBackPress,
+        }}
+        title="Edit Visit"
+      >
         <EmptyState
           actionLabel="Back to Home"
           onAction={() => {
@@ -137,14 +182,28 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
           }}
           title="Visit not found"
         />
-      </Screen>
+      </FeatureFormScreenScaffold>
     );
   }
 
   return (
-    <Screen scroll>
+    <FeatureFormScreenScaffold
+      onBackPress={handleBackPress}
+      primaryAction={{
+        label: 'Save Changes',
+        disabled: isSubmitting,
+        loading: isSubmitting,
+        onPress: () => {
+          void handleSave();
+        },
+      }}
+      secondaryAction={{
+        label: 'Cancel',
+        onPress: handleBackPress,
+      }}
+      title="Edit Visit"
+    >
       <View style={styles.container}>
-        <Text variant="titleMd">Edit Visit</Text>
         <Input label="Restaurant" onChangeText={setRestaurantName} value={restaurantName} />
 
         <PageErrorToast errorMessage={errorMessage} title="Update failed" />
@@ -169,15 +228,7 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
             />
           </Card>
         ))}
-
-        <Button
-          disabled={isSubmitting}
-          label={isSubmitting ? 'Saving...' : 'Save Changes'}
-          onPress={() => {
-            void handleSave();
-          }}
-        />
       </View>
-    </Screen>
+    </FeatureFormScreenScaffold>
   );
 }

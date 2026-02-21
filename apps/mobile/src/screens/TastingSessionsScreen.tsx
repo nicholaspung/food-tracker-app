@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ScreenHeader, Skeleton } from '../components/shared';
+import { BackHeaderScreenScaffold, EmptyState, Skeleton } from '../components/shared';
 import {
   createTastingSession,
   joinTastingSession,
@@ -14,7 +14,7 @@ import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Screen, Text } from '../ui';
+import { Button, Card, Input, ListItem, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type TastingSessionsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessions'>;
@@ -144,18 +144,20 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   };
 
   return (
-    <Screen background="surface" contentStyle={styles.screenContent} edges={['top']} padded={false} scroll>
-      <ScreenHeader
-        onBackPress={() => {
-          if (navigation.canGoBack()) {
-            navigation.goBack();
-            return;
-          }
-          navigation.navigate('Profile');
-        }}
-        subtitle="Create or join a tasting session with your group."
-        title="Group Tastings"
-      />
+    <BackHeaderScreenScaffold
+      bodyStyle={styles.body}
+      contentBackgroundTone="muted"
+      onBackPress={() => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+          return;
+        }
+
+        navigation.navigate('Profile');
+      }}
+      subtitle="Create or join a tasting session with your group."
+      title="Group Tastings"
+    >
       <View style={styles.body}>
         <View style={styles.row}>
           <Button
@@ -279,6 +281,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
             ))
           : null}
       </View>
-    </Screen>
+    </BackHeaderScreenScaffold>
   );
 }

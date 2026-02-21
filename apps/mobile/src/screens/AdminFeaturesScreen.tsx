@@ -13,8 +13,8 @@ import {
   RoleBadge,
   StatusPill,
 } from '../components/shared';
+import { getCollectionCount, sendApiRequest } from '../features';
 import { getErrorMessage } from '../lib/errorUtils';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -29,9 +29,13 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
   const theme = useTheme();
-  const { user } = useAuth();
+  const { actualUser, rolePreviewSettings, setRolePreviewSetting, user } = useAuth();
   const { isOnline } = useConnectivity();
+  const isActualAdmin = actualUser?.isAdmin === true;
   const isAdmin = user?.isAdmin === true;
+  const isActualSubscriber = actualUser?.isSubscriber === true;
+  const isRolePreviewActive =
+    rolePreviewSettings.viewAsNonAdmin || rolePreviewSettings.viewAsNonSubscriber;
   const [expandedPanels, setExpandedPanels] = useState<Record<ExpandablePanel, boolean>>({
     subscriberManagement: true,
   });
@@ -43,11 +47,7 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
     enabled: isAdmin,
     queryKey: ['feature', 'admin', 'pending-menu-review-count'],
     queryFn: async (): Promise<number> => {
-      const response = await pb.collection('menu_review_requests').getList(1, 1, {
-        filter: 'status = "pending"',
-      });
-
-      return response.totalItems;
+      return getCollectionCount('menu_review_requests', 'status = "pending"');
     },
   });
 
@@ -61,7 +61,7 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
 
   const elevateSubscriberMutation = useMutation({
     mutationFn: async (email: string) => {
-      return pb.send('/api/users/elevate-subscriber', {
+      return sendApiRequest('/api/users/elevate-subscriber', {
         method: 'POST',
         body: { email },
       });
@@ -117,6 +117,18 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
     elevateSubscriberMutation.mutate(trimmedEmail);
   };
 
+  const handleToggleAdminPreview = () => {
+    setRolePreviewSetting('viewAsNonAdmin', !rolePreviewSettings.viewAsNonAdmin);
+  };
+
+  const handleToggleSubscriberPreview = () => {
+    if (!isActualSubscriber) {
+      return;
+    }
+
+    setRolePreviewSetting('viewAsNonSubscriber', !rolePreviewSettings.viewAsNonSubscriber);
+  };
+
   const styles = StyleSheet.create({
     body: {
       gap: theme.spacing.md,
@@ -159,6 +171,24 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
       fontSize: 13,
       lineHeight: 18,
     },
+    hiddenToolsPanel: {
+      backgroundColor: theme.colors.background.muted,
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.sm,
+    },
+    hiddenToolsText: {
+      color: theme.colors.text.secondary,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    previewHint: {
+      color: theme.colors.text.muted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
   });
 
   return (
@@ -169,7 +199,7 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
       subtitle="Administrative tools and controls."
       title="Admin Features"
     >
-      {!isAdmin ? (
+      {!isActualAdmin ? (
         <EmptyState
           actionLabel="Back to Profile"
           description="This route is restricted to admin users."
@@ -179,88 +209,155 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
           title="Access denied"
         />
       ) : (
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Admin Tools</Text>
-          <Text style={styles.sectionDescription}>Manage subscribers and review flagged menus.</Text>
+        <>
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Admin Tools</Text>
+            <Text style={styles.sectionDescription}>Manage subscribers and review flagged menus.</Text>
 
-          <OptionList>
-            <OptionListRow
-              chevron={expandedPanels.subscriberManagement ? 'up' : 'down'}
-              connected={expandedPanels.subscriberManagement}
-              iconName="star-outline"
-              onPress={() => {
-                togglePanel('subscriberManagement');
-              }}
-              subtitle="Elevate users for unlimited photo parsing"
-              title="Subscriber Management"
-            />
-
-            {expandedPanels.subscriberManagement ? (
-              <OptionListInlineBody>
-                {!isOnline ? (
-                  <View style={styles.warningPanel}>
-                    <Text style={styles.warningText}>
-                      You are offline. Admin operations require internet connection.
-                    </Text>
-                  </View>
-                ) : null}
-
-                {subscriberSuccessMessage ? (
-                  <View style={styles.successPanel}>
-                    <Text style={styles.successText}>{subscriberSuccessMessage}</Text>
-                  </View>
-                ) : null}
-
-                <PageErrorToast
-                  errorMessage={subscriberErrorMessage}
-                  title="Subscriber update failed"
+            {isAdmin ? (
+              <OptionList>
+                <OptionListRow
+                  chevron={expandedPanels.subscriberManagement ? 'up' : 'down'}
+                  connected={expandedPanels.subscriberManagement}
+                  iconName="star-outline"
+                  onPress={() => {
+                    togglePanel('subscriberManagement');
+                  }}
+                  subtitle="Elevate users for unlimited photo parsing"
+                  title="Subscriber Management"
                 />
 
-                <Input
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  label="User Email"
-                  onChangeText={setSubscriberEmail}
-                  placeholder="user@example.com"
-                  value={subscriberEmail}
-                />
+                {expandedPanels.subscriberManagement ? (
+                  <OptionListInlineBody>
+                    {!isOnline ? (
+                      <View style={styles.warningPanel}>
+                        <Text style={styles.warningText}>
+                          You are offline. Admin operations require internet connection.
+                        </Text>
+                      </View>
+                    ) : null}
 
-                <Button
-                  disabled={!isOnline || elevateSubscriberMutation.isPending}
-                  label={
-                    !isOnline
-                      ? 'Elevate (Offline)'
-                      : elevateSubscriberMutation.isPending
-                        ? 'Elevating...'
-                        : 'Elevate to Subscriber'
+                    {subscriberSuccessMessage ? (
+                      <View style={styles.successPanel}>
+                        <Text style={styles.successText}>{subscriberSuccessMessage}</Text>
+                      </View>
+                    ) : null}
+
+                    <PageErrorToast
+                      errorMessage={subscriberErrorMessage}
+                      title="Subscriber update failed"
+                    />
+
+                    <Input
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      label="User Email"
+                      onChangeText={setSubscriberEmail}
+                      placeholder="user@example.com"
+                      value={subscriberEmail}
+                    />
+
+                    <Button
+                      disabled={!isOnline || elevateSubscriberMutation.isPending}
+                      label={
+                        !isOnline
+                          ? 'Elevate (Offline)'
+                          : elevateSubscriberMutation.isPending
+                            ? 'Elevating...'
+                            : 'Elevate to Subscriber'
+                      }
+                      onPress={handleElevateSubscriber}
+                    />
+                  </OptionListInlineBody>
+                ) : null}
+
+                <OptionListRow
+                  iconName="flag-outline"
+                  isLast
+                  onPress={() => {
+                    navigation.navigate('AdminMenuReviews');
+                  }}
+                  rightAccessory={
+                    (pendingReviewCountQuery.data ?? 0) > 0 ? (
+                      <StatusPill
+                        label={pendingReviewCountQuery.data ?? 0}
+                        size="md"
+                        tone="brand"
+                        variant="solid"
+                      />
+                    ) : null
                   }
-                  onPress={handleElevateSubscriber}
+                  subtitle="Review menus flagged by users"
+                  title="Menu Reviews"
                 />
-              </OptionListInlineBody>
-            ) : null}
+              </OptionList>
+            ) : (
+              <View style={styles.hiddenToolsPanel}>
+                <Text style={styles.hiddenToolsText}>
+                  Admin tools are hidden while "View as non-admin" is enabled.
+                </Text>
+              </View>
+            )}
+          </Card>
 
-            <OptionListRow
-              iconName="flag-outline"
-              isLast
-              onPress={() => {
-                navigation.navigate('AdminMenuReviews');
-              }}
-              rightAccessory={
-                (pendingReviewCountQuery.data ?? 0) > 0 ? (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>View Mode</Text>
+            <Text style={styles.sectionDescription}>Preview the app with reduced permissions.</Text>
+
+            <OptionList>
+              <OptionListRow
+                iconName="eye-outline"
+                onPress={handleToggleAdminPreview}
+                rightAccessory={
                   <StatusPill
-                    label={pendingReviewCountQuery.data ?? 0}
-                    size="md"
-                    tone="brand"
-                    variant="solid"
+                    label={rolePreviewSettings.viewAsNonAdmin ? 'On' : 'Off'}
+                    tone={rolePreviewSettings.viewAsNonAdmin ? 'warning' : 'muted'}
+                    variant="soft"
                   />
-                ) : null
-              }
-              subtitle="Review menus flagged by users"
-              title="Menu Reviews"
-            />
-          </OptionList>
-        </Card>
+                }
+                subtitle="Hide admin-only routes and controls"
+                title="View as non-admin"
+              />
+              <OptionListRow
+                chevron={isActualSubscriber ? undefined : false}
+                iconColor={isActualSubscriber ? undefined : theme.colors.text.muted}
+                iconName="sparkles-outline"
+                isLast
+                onPress={isActualSubscriber ? handleToggleSubscriberPreview : undefined}
+                rightAccessory={
+                  <StatusPill
+                    label={
+                      isActualSubscriber
+                        ? rolePreviewSettings.viewAsNonSubscriber
+                          ? 'On'
+                          : 'Off'
+                        : 'N/A'
+                    }
+                    tone={
+                      isActualSubscriber && rolePreviewSettings.viewAsNonSubscriber
+                        ? 'warning'
+                        : 'muted'
+                    }
+                    variant="soft"
+                  />
+                }
+                subtitle={
+                  isActualSubscriber
+                    ? 'Hide subscriber-only access and badges'
+                    : 'Your account is already non-subscriber'
+                }
+                title="View as non-subscriber"
+              />
+            </OptionList>
+
+            <Text style={styles.previewHint}>
+              {isRolePreviewActive
+                ? 'Preview mode is active across the app until these toggles are disabled.'
+                : 'Enable a toggle to preview the app with reduced access.'}
+            </Text>
+          </Card>
+        </>
       )}
     </BackHeaderScreenScaffold>
   );

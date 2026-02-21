@@ -1,16 +1,16 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   Share,
   StyleSheet,
   View,
-} from "react-native";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { RecordModel } from "pocketbase";
+} from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { RecordModel } from 'pocketbase';
 
 import {
   ErrorState,
@@ -21,24 +21,33 @@ import {
   StatusPill,
   TabBrandHeader,
   TabRootScreenScaffold,
-} from "../components/shared";
-import { getProfile, listFeedback, updateProfile } from "../features";
-import { formatDisplayDate } from "../lib/dateFormatting";
-import { getErrorMessage } from "../lib/errorUtils";
-import { pb } from "../lib/pocketbase";
+} from '../components/shared';
+import {
+  deleteCollectionRecord,
+  getAuthRecord,
+  getCollectionCount,
+  getProfile,
+  listFeedback,
+  saveAuthRecord,
+  sendApiRequest,
+  updateCollectionRecord,
+  updateProfile,
+} from '../features';
+import { formatDisplayDate } from '../lib/dateFormatting';
+import { getErrorMessage } from '../lib/errorUtils';
 import {
   getSeenWhatsNewVersion,
   hasUnseenWhatsNew,
   WHATS_NEW_SEEN_QUERY_KEY,
-} from "../lib/whatsNewState";
-import type { RootStackParamList } from "../navigation/RootNavigator";
-import { useAuth } from "../providers/AuthProvider";
-import { useTheme } from "../theme";
-import { Button, Card, Input, Screen, Text } from "../ui";
-import { PageErrorToast } from "../components/shared/PageErrorToast";
+} from '../lib/whatsNewState';
+import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useAuth } from '../providers/AuthProvider';
+import { useTheme } from '../theme';
+import { Button, Card, Input, Screen, Text } from '../ui';
+import { PageErrorToast } from '../components/shared/PageErrorToast';
 
-type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, "Profile">;
-type ExpandablePanel = "account" | "invite" | "danger";
+type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
+type ExpandablePanel = 'account' | 'invite' | 'danger';
 
 interface InviteCode {
   id: string;
@@ -49,8 +58,9 @@ interface InviteCode {
 export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const { user, signOut } = useAuth();
-  const authRecord = pb.authStore.record as Record<string, unknown> | null;
+  const { actualUser, user, signOut } = useAuth();
+  const authRecord = getAuthRecord();
+  const isActualAdmin = actualUser?.isAdmin === true;
   const isAdmin = user?.isAdmin === true;
   const isSubscriber = user?.isSubscriber === true;
   const isInitialUser = authRecord?.isInitialUser === true;
@@ -68,13 +78,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     enabled: isAdmin,
     queryKey: ["feature", "admin", "pending-menu-review-count"],
     queryFn: async (): Promise<number> => {
-      const response = await pb
-        .collection("menu_review_requests")
-        .getList(1, 1, {
-          filter: 'status = "pending"',
-        });
-
-      return response.totalItems;
+      return getCollectionCount("menu_review_requests", 'status = "pending"');
     },
   });
   const whatsNewSeenVersionQuery = useQuery({
@@ -115,7 +119,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     setInviteErrorMessage(null);
 
     try {
-      const response = await pb.send<{ codes?: InviteCode[] }>(
+      const response = await sendApiRequest<{ codes?: InviteCode[] }>(
         "/api/invite-codes",
         {
           method: "GET",
@@ -190,7 +194,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     setIsGeneratingCodes(true);
 
     try {
-      await pb.send("/api/invite-codes/generate", {
+      await sendApiRequest("/api/invite-codes/generate", {
         method: "POST",
       });
       await fetchInviteCodes();
@@ -216,7 +220,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         return;
       }
 
-      await pb.send("/api/invite-codes/lock", {
+      await sendApiRequest("/api/invite-codes/lock", {
         method: "POST",
         body: { codeId },
       });
@@ -242,19 +246,19 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         throw new Error("Could not find user account.");
       }
 
-      const updatedUserRecord = await pb
-        .collection("users")
-        .update<RecordModel>(user.id, {
+      const updatedUserRecord = await updateCollectionRecord<RecordModel>(
+        "users",
+        user.id,
+        {
           name: trimmedName,
-        });
+        },
+      );
 
       await updateProfile({
         displayName: trimmedName,
       });
 
-      if (pb.authStore.token) {
-        pb.authStore.save(pb.authStore.token, updatedUserRecord);
-      }
+      saveAuthRecord(updatedUserRecord);
 
       return trimmedName;
     },
@@ -323,7 +327,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     setIsDeletingAccount(true);
 
     try {
-      await pb.collection("users").delete(user.id);
+      await deleteCollectionRecord("users", user.id);
       await signOut();
     } catch (error) {
       setDangerErrorMessage(
@@ -802,7 +806,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               title="Settings"
             />
 
-            {isAdmin ? (
+            {isActualAdmin ? (
               <OptionListRow
                 iconName="shield-checkmark-outline"
                 isLast
@@ -810,7 +814,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                   navigation.navigate("AdminFeatures");
                 }}
                 rightAccessory={
-                  (pendingMenuReviewCountQuery.data ?? 0) > 0 ? (
+                  isAdmin && (pendingMenuReviewCountQuery.data ?? 0) > 0 ? (
                     <View style={styles.optionBadge}>
                       <Text style={styles.optionBadgeText}>
                         {pendingMenuReviewCountQuery.data}
@@ -818,7 +822,11 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                     </View>
                   ) : null
                 }
-                subtitle="Open admin-only tools"
+                subtitle={
+                  isAdmin
+                    ? "Open admin-only tools"
+                    : "Preview mode is enabled. Open to manage preview settings"
+                }
                 title="Admin Features"
               />
             ) : (

@@ -8,9 +8,9 @@ import {
   FEEDBACK_STATUS_LABELS,
   FEEDBACK_STATUS_OPTIONS,
   FeedbackThreadCard,
+  FeatureDetailScreenScaffold,
   FilterChipGroup,
   RoleBadge,
-  ScreenHeader,
   Skeleton,
   type FeedbackStatus,
 } from '../components/shared';
@@ -24,10 +24,11 @@ import {
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FeedbackDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'FeedbackDetail'>;
+
 const STATUS_FILTER_OPTIONS: { label: string; value: FeedbackStatus }[] = FEEDBACK_STATUS_OPTIONS.map((status) => ({
   label: FEEDBACK_STATUS_LABELS[status],
   value: status,
@@ -110,11 +111,12 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   }, [messagesQuery.data]);
 
   const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: theme.colors.background.app,
+    bodyRoot: {
+      flex: 1,
       gap: 0,
+      paddingBottom: 0,
       paddingHorizontal: 0,
-      paddingVertical: 0,
+      paddingTop: 0,
     },
     body: {
       flex: 1,
@@ -272,18 +274,26 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     }
   };
 
-  return (
-    <Screen background="surface" contentStyle={styles.screenContent} edges={['top']} keyboardAware padded={false}>
-      <ScreenHeader
-        backAccessibilityLabel="Back to feedback"
-        onBackPress={() => {
-          navigation.navigate('Feedback');
-        }}
-        rightAccessory={isAdmin ? <RoleBadge /> : undefined}
-        title="Feedback"
-        variant="compact"
-      />
+  const handleBackPress = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
 
+    navigation.navigate('Feedback');
+  };
+
+  return (
+    <FeatureDetailScreenScaffold
+      backAccessibilityLabel="Back to feedback"
+      bodyStyle={styles.bodyRoot}
+      contentBackgroundTone="app"
+      keyboardAware
+      onBackPress={handleBackPress}
+      rightAccessory={isAdmin ? <RoleBadge /> : undefined}
+      scroll={false}
+      title="Feedback"
+    >
       <View style={styles.body}>
         {feedbackQuery.isLoading ? (
           <>
@@ -294,12 +304,12 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
         ) : null}
 
         <PageErrorToast
-          errorMessage={feedbackQuery.isError ? 'Could not load this feedback thread.' : null}
-          title="Thread unavailable"
           actionLabel="Retry"
+          errorMessage={feedbackQuery.isError ? 'Could not load this feedback thread.' : null}
           onAction={() => {
             void feedbackQuery.refetch();
           }}
+          title="Thread unavailable"
         />
 
         {!feedbackQuery.isLoading && !feedbackQuery.isError && !feedbackQuery.data ? (
@@ -354,12 +364,12 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
               ) : null}
 
               <PageErrorToast
-                errorMessage={messagesQuery.isError ? 'Could not load messages for this feedback.' : null}
-                title="Messages unavailable"
                 actionLabel="Retry"
+                errorMessage={messagesQuery.isError ? 'Could not load messages for this feedback.' : null}
                 onAction={() => {
                   void messagesQuery.refetch();
                 }}
+                title="Messages unavailable"
               />
 
               {!messagesQuery.isLoading && !messagesQuery.isError && (messagesQuery.data?.length ?? 0) === 0 ? (
@@ -421,6 +431,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
           </>
         ) : null}
       </View>
-    </Screen>
+    </FeatureDetailScreenScaffold>
   );
 }

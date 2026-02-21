@@ -6,8 +6,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { BackHeaderScreenScaffold, EmptyState, Skeleton, StatusPill } from '../components/shared';
+import { getCollectionRecord, updateCollectionRecord } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
@@ -85,7 +85,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         throw new Error('Authentication required.');
       }
 
-      const record = await pb.collection('users').getOne<UserSettingsRecord>(user.id);
+      const record = await getCollectionRecord<UserSettingsRecord>('users', user.id);
       return mapUserSettings(record, isAdmin);
     },
   });
@@ -208,7 +208,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     try {
       await queueWrite('settings.visibility.save');
 
-      const updatedRecord = await pb.collection('users').update<UserSettingsRecord>(user.id, {
+      const updatedRecord = await updateCollectionRecord<UserSettingsRecord>('users', user.id, {
         defaultRestaurantVisibility: restaurantVisibility,
         defaultVisitVisibility: visitVisibility,
       });

@@ -10,6 +10,29 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.3',
+    date: '2026-02-20',
+    title: 'Richer Restaurant Lists & Admin Role Preview',
+    summary:
+      'Restaurant lists now group food items by restaurant with ratings, support custom ordering, and let you save dishes from friends\u2019 lists. Admins can preview the app as a regular or non-subscriber user.',
+    features: [
+      'Dedicated screens for creating and editing restaurant lists.',
+      'Food items grouped by restaurant with ratings and visit dates.',
+      'Reorder restaurants in your list with up/down controls.',
+      'Save a dish from a friend\u2019s list to one or more of your own lists.',
+      'Quick-save to your default Saved list with one tap.',
+      'Admin role preview: toggle \u2018view as non-admin\u2019 or \u2018view as non-subscriber\u2019.',
+    ],
+    improvements: [
+      'List item counts now show separate restaurant and menu item totals.',
+      'Source user attribution shown for dishes bookmarked from friends\u2019 lists.',
+      'Cuisine type displayed in list detail view.',
+      'Rating pill provides consistent colored rating display across lists.',
+      'GPS location button reused consistently across screens.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.2',
     date: '2026-02-18',
     title: 'Visit Creation Wizard & Photo Sharing Themes',

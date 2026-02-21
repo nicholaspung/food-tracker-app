@@ -2,7 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
 import { FormScaffold, LoadingOverlay } from '../components/shared';
-import { pb } from '../lib/pocketbase';
+import { createCollectionRecord } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -37,7 +37,7 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
     setIsSubmitting(true);
 
     try {
-      await pb.collection('users').create({
+      await createCollectionRecord('users', {
         name: trimmedName,
         email: trimmedEmail,
         password,

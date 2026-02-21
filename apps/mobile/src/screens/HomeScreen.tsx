@@ -5,9 +5,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, PhotoViewerModal, Skeleton, TabRootScreenScaffold } from '../components/shared';
-import { deleteQuickTrack, deleteVisit, listQuickTracks, listVisits, type QuickTrackRecord, type VisitRecord } from '../features';
+import {
+  buildPocketBaseFileUrl,
+  deleteQuickTrack,
+  deleteVisit,
+  getAuthenticatedUserIdOrNull,
+  listCollectionRecords,
+  listQuickTracks,
+  listVisits,
+  type QuickTrackRecord,
+  type VisitRecord,
+} from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { pb } from '../lib/pocketbase';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
@@ -123,12 +132,12 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
   const visitPhotosQuery = useQuery({
     queryKey: ['feature', 'visitPhotos'],
-    queryFn: async () => pb.collection('visit_photos').getFullList<VisitPhotoRecord>({ sort: '-created' }),
+    queryFn: async () => listCollectionRecords<VisitPhotoRecord>('visit_photos', { sort: '-created' }),
   });
 
   const isLoading = visitsQuery.isLoading || quickTracksQuery.isLoading;
   const hasError = visitsQuery.isError || quickTracksQuery.isError;
-  const currentUserId = pb.authStore.record?.id;
+  const currentUserId = getAuthenticatedUserIdOrNull();
 
   const photosByFoodItem = useMemo(() => {
     const map = new Map<string, VisitPhotoRecord[]>();
@@ -516,7 +525,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       return;
     }
 
-    const urls = photos.map((photo) => pb.files.getURL(photo, photo.photo));
+    const urls = photos.map((photo) =>
+      buildPocketBaseFileUrl({
+        collectionId: photo.collectionId,
+        collectionName: photo.collectionName ?? 'visit_photos',
+        recordId: photo.id,
+        filename: photo.photo,
+      }),
+    );
     const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
 
     setPhotoViewerUrls(urls);
@@ -1382,7 +1398,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                               const itemPhotos = photosByFoodItem.get(item.id) ?? [];
                                               const primaryPhoto = itemPhotos[0];
                                               const thumbnailUrl = primaryPhoto
-                                                ? pb.files.getURL(primaryPhoto, primaryPhoto.photo, { thumb: '100x100' })
+                                                ? buildPocketBaseFileUrl({
+                                                    collectionId: primaryPhoto.collectionId,
+                                                    collectionName: primaryPhoto.collectionName ?? 'visit_photos',
+                                                    recordId: primaryPhoto.id,
+                                                    filename: primaryPhoto.photo,
+                                                    thumb: '100x100',
+                                                  })
                                                 : null;
 
                                               return (
@@ -1462,7 +1484,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                   const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
                                   const quickTrackPhoto = quickTrackPhotos[0];
                                   const quickTrackThumb = quickTrackPhoto
-                                    ? pb.files.getURL(quickTrackPhoto, quickTrackPhoto.photo, { thumb: '100x100' })
+                                    ? buildPocketBaseFileUrl({
+                                        collectionId: quickTrackPhoto.collectionId,
+                                        collectionName: quickTrackPhoto.collectionName ?? 'visit_photos',
+                                        recordId: quickTrackPhoto.id,
+                                        filename: quickTrackPhoto.photo,
+                                        thumb: '100x100',
+                                      })
                                     : null;
                                   const quickTrackMeta =
                                     quickTrack.locationText || quickTrack.restaurantName || 'Quick Track';

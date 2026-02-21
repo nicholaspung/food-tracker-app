@@ -1,8 +1,8 @@
-import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
-import * as Location from "expo-location";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -10,10 +10,11 @@ import {
   ScrollView,
   StyleSheet,
   View,
-} from "react-native";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+} from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  CurrentLocationButton,
   EmptyState,
   FeatureFormScreenScaffold,
   LocalDatePickerField,
@@ -25,35 +26,39 @@ import {
   VisibilityBadge,
   VisibilityOptionSelector,
   type VisibilityOptionValue,
-} from "../components/shared";
+} from '../components/shared';
 import {
+  createCollectionRecord,
   createVisit,
+  getAuthenticatedUserIdOrNull,
+  linkVisitToListBookmark,
+  listCollectionRecords,
   listRestaurants,
   listVisits,
+  resolveDefaultVisitVisibilityFromAuth,
   type RestaurantRecord,
-} from "../features";
-import { useQueuedWrite } from "../features/store/useQueuedWrite";
+} from '../features';
+import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import {
   calculateDistance,
   formatDistance,
   geocodeLocation,
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
-} from "../lib/googlePlaces";
-import { pb } from "../lib/pocketbase";
-import type { RootStackParamList } from "../navigation/RootNavigator";
-import { trackObservabilityEvent } from "../observability";
-import { useConnectivity } from "../providers/ConnectivityProvider";
-import { useTheme } from "../theme";
-import { Button, Card, Input, ListItem, Text } from "../ui";
+} from '../lib/googlePlaces';
+import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
+import { useConnectivity } from '../providers/ConnectivityProvider';
+import { useTheme } from '../theme';
+import { Button, Card, Input, ListItem, Text } from '../ui';
 
 type CreateVisitScreenProps = NativeStackScreenProps<
   RootStackParamList,
-  "CreateVisit"
+  'CreateVisit'
 >;
 
 type VisitWizardStep = 0 | 1 | 2; // 0-indexed to match StepProgressBar
-type VisitVisibility = "friends" | "private";
+type VisitVisibility = 'friends' | 'private';
 
 interface DraftVisitItem {
   id: string;
@@ -147,9 +152,7 @@ function isValidLocalDate(localDateString: string): boolean {
 }
 
 function resolveDefaultVisitVisibility(): VisitVisibility {
-  return pb.authStore.record?.defaultVisitVisibility === "private"
-    ? "private"
-    : "friends";
+  return resolveDefaultVisitVisibilityFromAuth();
 }
 
 function inferImageMimeType(uri: string): string {
@@ -352,20 +355,20 @@ export function CreateVisitScreen({
       "feature",
       "friendships",
       "accepted",
-      pb.authStore.record?.id ?? "",
+      getAuthenticatedUserIdOrNull() ?? "",
     ],
     queryFn: async () => {
-      const currentUserId = pb.authStore.record?.id;
+      const currentUserId = getAuthenticatedUserIdOrNull();
       if (!currentUserId) {
         return [] as FriendshipRecord[];
       }
 
-      return pb.collection("friendships").getFullList<FriendshipRecord>({
+      return listCollectionRecords<FriendshipRecord>("friendships", {
         filter: `(user = "${currentUserId}" || friend = "${currentUserId}") && status = "accepted"`,
         fields: "id,user,friend,status",
       });
     },
-    enabled: Boolean(pb.authStore.record?.id),
+    enabled: Boolean(getAuthenticatedUserIdOrNull()),
   });
 
   const [step, setStep] = useState<VisitWizardStep>(0);
@@ -401,8 +404,9 @@ export function CreateVisitScreen({
   const [photoPermissionNeedsSettings, setPhotoPermissionNeedsSettings] =
     useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
-  const currentUserId = pb.authStore.record?.id ?? "";
+  const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
   const scrollViewRef = useRef<ScrollView | null>(null);
   const menuItemsQuery = useQuery({
     queryKey: ["feature", "menuItems", selectedRestaurantId ?? ""],
@@ -421,7 +425,7 @@ export function CreateVisitScreen({
         );
       }
 
-      return pb.collection("menu_items").getFullList<MenuItemRecord>({
+      return listCollectionRecords<MenuItemRecord>("menu_items", {
         filter: `restaurant = "${selectedRestaurantId}"`,
         sort: "-created",
       });
@@ -435,12 +439,13 @@ export function CreateVisitScreen({
         return false;
       }
 
-      const records = await pb
-        .collection("menu_review_requests")
-        .getFullList<MenuReviewRequestRecord>({
+      const records = await listCollectionRecords<MenuReviewRequestRecord>(
+        "menu_review_requests",
+        {
           filter: `restaurant = "${selectedRestaurantId}" && status = "pending"`,
           fields: "id,restaurant,status",
-        });
+        },
+      );
 
       return records.length > 0;
     },
@@ -452,11 +457,13 @@ export function CreateVisitScreen({
     const preselectedRestaurantName = route.params?.preselectedRestaurantName;
     const preselectedMenuItemId = route.params?.preselectedMenuItemId;
     const preselectedMenuItemName = route.params?.preselectedMenuItemName;
+    const sourceListItemIdParam = route.params?.sourceListItemId;
     const returnToStep = route.params?.returnToStep;
 
     if (
       !preselectedRestaurantId &&
       !preselectedMenuItemId &&
+      !sourceListItemIdParam &&
       returnToStep === undefined
     ) {
       return;
@@ -494,6 +501,16 @@ export function CreateVisitScreen({
       });
     }
 
+    if (sourceListItemIdParam) {
+      setSourceListItemId(sourceListItemIdParam);
+    } else if (
+      preselectedRestaurantId ||
+      preselectedMenuItemId ||
+      returnToStep !== undefined
+    ) {
+      setSourceListItemId(null);
+    }
+
     setErrorMessage(null);
     setSearchErrorMessage(null);
     if (returnToStep !== undefined) {
@@ -507,6 +524,7 @@ export function CreateVisitScreen({
       preselectedRestaurantName: undefined,
       preselectedMenuItemId: undefined,
       preselectedMenuItemName: undefined,
+      sourceListItemId: undefined,
       returnToStep: undefined,
     });
   }, [
@@ -515,6 +533,7 @@ export function CreateVisitScreen({
     route.params?.preselectedRestaurantName,
     route.params?.preselectedMenuItemId,
     route.params?.preselectedMenuItemName,
+    route.params?.sourceListItemId,
     route.params?.returnToStep,
     selectedRestaurantId,
   ]);
@@ -1035,25 +1054,6 @@ export function CreateVisitScreen({
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.xs,
     },
-    gpsButton: {
-      alignItems: "center",
-      alignSelf: "flex-end",
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-      justifyContent: "center",
-      height: theme.sizes.inputMinHeight,
-      minHeight: theme.sizes.inputMinHeight,
-      minWidth: 108,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 0,
-    },
-    gpsButtonDisabled: {
-      opacity: 0.55,
-    },
     listTrailing: {
       alignItems: "center",
       flexDirection: "row",
@@ -1266,7 +1266,7 @@ export function CreateVisitScreen({
     }
 
     try {
-      await pb.collection("menu_review_requests").create({
+      await createCollectionRecord("menu_review_requests", {
         restaurant: selectedRestaurantId,
         requestedBy: currentUserId,
         reason: "User reported incorrect menu items",
@@ -1599,13 +1599,32 @@ export function CreateVisitScreen({
 
     try {
       await queueWrite("visit.create");
-      await createVisit({
+      const createdVisit = await createVisit({
         restaurantName: trimmedRestaurant,
         items: parsedItems,
         visitedAt: localDateStringToUTC(trimmedVisitDate),
         visibility: visitVisibility,
         source: "visit",
       });
+
+      if (sourceListItemId && createdVisit.items.length > 0) {
+        const createdItemId = createdVisit.items[0]?.id;
+        if (createdItemId) {
+          try {
+            await queueWrite("list.bookmark.link-visit");
+            await linkVisitToListBookmark({
+              listItemId: sourceListItemId,
+              userFoodItemId: createdItemId,
+            });
+            await queryClient.invalidateQueries({
+              queryKey: ["feature", "restaurantListItems"],
+            });
+          } catch {
+            // Keep visit creation successful even when link-back fails.
+          }
+        }
+      }
+      setSourceListItemId(null);
 
       trackObservabilityEvent("Visit Creation Completed", {
         creationMethod: "manual",
@@ -1639,7 +1658,8 @@ export function CreateVisitScreen({
       return;
     }
 
-    navigation.goBack();
+    setSourceListItemId(null);
+    navigation.navigate("AddVisit");
   };
 
   const primaryAction =
@@ -1672,11 +1692,18 @@ export function CreateVisitScreen({
 
   const secondaryAction =
     step === 0
-      ? undefined
+      ? {
+          label: "Cancel",
+          onPress: () => {
+            setSourceListItemId(null);
+            navigation.navigate("AddVisit");
+          },
+        }
       : step === 1
         ? {
             label: "Cancel",
             onPress: () => {
+              setSourceListItemId(null);
               setStep(0);
               setErrorMessage(null);
             },
@@ -1822,33 +1849,18 @@ export function CreateVisitScreen({
                     placeholder="e.g., 90210, Los Angeles"
                     value={manualLocation}
                   />
-                  <Pressable
+                  <CurrentLocationButton
                     accessibilityLabel="Use current location"
-                    accessibilityRole="button"
                     disabled={
                       !isOnline || isGettingLocation || isSearchingNearby
                     }
+                    loading={isGettingLocation || isSearchingNearby}
                     onPress={() => {
                       void handleSearchNearby();
                     }}
-                    style={[
-                      styles.gpsButton,
-                      styles.locationAction,
-                      (!isOnline || isGettingLocation || isSearchingNearby) &&
-                        styles.gpsButtonDisabled,
-                    ]}
-                  >
-                    <Ionicons
-                      color={theme.colors.text.secondary}
-                      name="locate-outline"
-                      size={16}
-                    />
-                    <Text tone="secondary">
-                      {isGettingLocation || isSearchingNearby
-                        ? "Locating..."
-                        : "Use GPS"}
-                    </Text>
-                  </Pressable>
+                    style={styles.locationAction}
+                    variant="inline"
+                  />
                 </View>
 
                 <Button

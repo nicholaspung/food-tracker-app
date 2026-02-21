@@ -4,14 +4,14 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Linking, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  CurrentLocationButton,
   FeatureFormScreenScaffold,
   LocalDatePickerField,
   OptionList,
-  OptionListInlineBody,
   OptionListRow,
   PageErrorToast,
   PhotoSourceActionCards,
@@ -20,9 +20,8 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { createQuickTrack, getNoteById, type VisitPhotoUploadInput } from '../features';
+import { createQuickTrack, getNoteById, resolveDefaultVisitVisibilityFromAuth, type VisitPhotoUploadInput } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -98,7 +97,7 @@ function buildDraftPhotoName(uri: string): string {
 }
 
 function resolveDefaultQuickTrackVisibility(): QuickTrackVisibility {
-  return pb.authStore.record?.defaultVisitVisibility === 'private' ? 'private' : 'friends';
+  return resolveDefaultVisitVisibilityFromAuth();
 }
 
 export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
@@ -208,38 +207,36 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     locationInput: {
       flex: 1,
     },
-    locationCaptureButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      height: 50,
-      justifyContent: 'center',
-      width: 50,
-    },
     notesInput: {
       minHeight: 100,
       textAlignVertical: 'top',
     },
-    categoryOptions: {
-      gap: theme.spacing.xs,
+    categorySelectorRow: {
+      backgroundColor: theme.colors.background.muted,
+      borderBottomColor: theme.colors.border.default,
     },
-    categoryOption: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      minHeight: 42,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
+    categorySelectorRowExpanded: {
+      backgroundColor: theme.colors.status.warningBg,
+      borderBottomColor: theme.colors.status.warningBorder,
     },
-    categoryOptionSelected: {
-      borderColor: theme.colors.border.info,
-      backgroundColor: theme.colors.status.infoBg,
+    categorySelectorTitle: {
+      color: theme.colors.text.primary,
+      fontWeight: '700',
+    },
+    categorySelectorSubtitle: {
+      color: theme.colors.text.muted,
+    },
+    categorySelectorSubtitleSelected: {
+      color: theme.colors.text.warning,
+    },
+    categoryOptionSelectedRow: {
+      backgroundColor: theme.colors.status.warningBg,
+    },
+    categoryOptionSelectedLabel: {
+      color: theme.colors.text.warning,
+    },
+    categoryClearLabel: {
+      color: theme.colors.text.muted,
     },
     categoryPlaceholder: {
       color: theme.colors.text.muted,
@@ -275,8 +272,13 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setLatitude(position.coords.latitude);
-      setLongitude(position.coords.longitude);
+      const capturedLatitude = position.coords.latitude;
+      const capturedLongitude = position.coords.longitude;
+      const coordinateText = `${capturedLatitude.toFixed(6)}, ${capturedLongitude.toFixed(6)}`;
+
+      setLatitude(capturedLatitude);
+      setLongitude(capturedLongitude);
+      setLocationText(coordinateText);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not capture your location.');
     } finally {
@@ -398,7 +400,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const hasCapturedCoordinates =
     typeof latitude === 'number' && typeof longitude === 'number';
   const coordinateLabel = hasCapturedCoordinates
-    ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+    ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
     : null;
 
   return (
@@ -533,48 +535,53 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           <OptionList>
             <OptionListRow
               chevron={isCategoryExpanded ? 'up' : 'down'}
-              connected={isCategoryExpanded}
+              iconName="pricetag-outline"
               isLast={!isCategoryExpanded}
               onPress={() => {
                 setIsCategoryExpanded((currentValue) => !currentValue);
               }}
+              style={[styles.categorySelectorRow, isCategoryExpanded ? styles.categorySelectorRowExpanded : undefined]}
+              subtitle={itemCategory ? 'Selected category' : 'Tap to choose a category'}
+              subtitleStyle={itemCategory ? styles.categorySelectorSubtitleSelected : styles.categorySelectorSubtitle}
               title={selectedCategoryLabel}
-              titleStyle={!itemCategory ? styles.categoryPlaceholder : undefined}
+              titleStyle={!itemCategory ? styles.categoryPlaceholder : styles.categorySelectorTitle}
             />
 
             {isCategoryExpanded ? (
-              <OptionListInlineBody>
-                <View style={styles.categoryOptions}>
-                  {ITEM_CATEGORIES.map((category) => {
-                    const isSelected = itemCategory === category.value;
-                    return (
-                      <Pressable
-                        key={category.value}
-                        onPress={() => {
-                          setItemCategory(category.value);
-                          setIsCategoryExpanded(false);
-                        }}
-                        style={[styles.categoryOption, isSelected ? styles.categoryOptionSelected : null]}
-                      >
-                        <Text>{category.label}</Text>
-                        {isSelected ? (
-                          <Ionicons color={theme.colors.text.success} name="checkmark-circle" size={18} />
-                        ) : null}
-                      </Pressable>
-                    );
-                  })}
-                  {itemCategory ? (
-                    <Button
-                      label="Clear Category"
-                      onPress={() => {
-                        setItemCategory(null);
-                        setIsCategoryExpanded(false);
-                      }}
-                      variant="secondary"
-                    />
-                  ) : null}
-                </View>
-              </OptionListInlineBody>
+              ITEM_CATEGORIES.map((category, index) => {
+                const isSelected = itemCategory === category.value;
+                const isLastOption = index === ITEM_CATEGORIES.length - 1;
+
+                return (
+                  <OptionListRow
+                    chevron={false}
+                    isLast={isLastOption && !itemCategory}
+                    key={category.value}
+                    onPress={() => {
+                      setItemCategory(category.value);
+                      setIsCategoryExpanded(false);
+                    }}
+                    rightAccessory={
+                      isSelected ? <Ionicons color={theme.colors.text.warning} name="checkmark-circle" size={16} /> : undefined
+                    }
+                    style={isSelected ? styles.categoryOptionSelectedRow : undefined}
+                    title={category.label}
+                    titleStyle={isSelected ? styles.categoryOptionSelectedLabel : undefined}
+                  />
+                );
+              })
+            ) : null}
+            {isCategoryExpanded && itemCategory ? (
+              <OptionListRow
+                chevron={false}
+                isLast
+                onPress={() => {
+                  setItemCategory(null);
+                  setIsCategoryExpanded(false);
+                }}
+                title="Clear Category"
+                titleStyle={styles.categoryClearLabel}
+              />
             ) : null}
           </OptionList>
 
@@ -586,24 +593,19 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
               placeholder="e.g., Trader Joe's, Home Kitchen"
               value={locationText}
             />
-            <Pressable
+            <CurrentLocationButton
               accessibilityLabel="Capture current location"
-              accessibilityRole="button"
+              captured={hasCapturedCoordinates}
+              loading={isCapturingLocation}
               onPress={() => {
                 void handleCaptureLocation();
               }}
-              style={styles.locationCaptureButton}
-            >
-              <Ionicons
-                color={hasCapturedCoordinates ? theme.colors.text.success : theme.colors.text.secondary}
-                name={isCapturingLocation ? 'sync-outline' : 'location-outline'}
-                size={18}
-              />
-            </Pressable>
+              variant="icon"
+            />
           </View>
           {coordinateLabel ? (
             <Text tone="success" variant="bodySm">
-              GPS coordinates captured: {coordinateLabel}
+              Location updated from GPS: {coordinateLabel}
             </Text>
           ) : null}
           {locationPermissionNeedsSettings ? (

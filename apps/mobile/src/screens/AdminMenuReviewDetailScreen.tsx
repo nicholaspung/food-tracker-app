@@ -15,9 +15,14 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
+import {
+  deleteCollectionRecord,
+  getCollectionRecord,
+  listCollectionRecords,
+  updateCollectionRecord,
+} from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { getErrorMessage } from '../lib/errorUtils';
-import { pb } from '../lib/pocketbase';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
@@ -98,7 +103,7 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
     enabled: isAdmin,
     queryKey: ['feature', 'admin', 'menu-review-request', requestId],
     queryFn: async (): Promise<MenuReviewRequestRecord> => {
-      return pb.collection('menu_review_requests').getOne<MenuReviewRequestRecord>(requestId, {
+      return getCollectionRecord<MenuReviewRequestRecord>('menu_review_requests', requestId, {
         expand: 'restaurant,requestedBy',
       });
     },
@@ -114,7 +119,7 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
         return [];
       }
 
-      return pb.collection('menu_items').getFullList<MenuItemRecord>({
+      return listCollectionRecords<MenuItemRecord>('menu_items', {
         filter: `restaurant = "${restaurantId}"`,
         sort: 'name',
       });
@@ -145,7 +150,7 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
       description: string;
       visibility: VisibilityOptionValue;
     }): Promise<MenuItemRecord> => {
-      return pb.collection('menu_items').update<MenuItemRecord>(payload.itemId, {
+      return updateCollectionRecord<MenuItemRecord>('menu_items', payload.itemId, {
         name: payload.name.trim(),
         description: payload.description.trim(),
         visibility: payload.visibility,
@@ -167,7 +172,7 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
 
   const deleteMenuItemMutation = useMutation({
     mutationFn: async (itemId: string): Promise<void> => {
-      await pb.collection('menu_items').delete(itemId);
+      await deleteCollectionRecord('menu_items', itemId);
     },
     onSuccess: async () => {
       setActionErrorMessage(null);
@@ -188,7 +193,7 @@ export function AdminMenuReviewDetailScreen({ navigation, route }: AdminMenuRevi
       status: ReviewRequestStatus;
       notes: string;
     }): Promise<MenuReviewRequestRecord> => {
-      return pb.collection('menu_review_requests').update<MenuReviewRequestRecord>(requestId, {
+      return updateCollectionRecord<MenuReviewRequestRecord>('menu_review_requests', requestId, {
         status: payload.status,
         adminNotes: payload.notes.trim(),
       });

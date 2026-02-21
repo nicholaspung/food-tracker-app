@@ -9,7 +9,7 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { pb } from '../lib/pocketbase';
+import { createCollectionRecord, getAuthenticatedUserIdOrNull } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -58,7 +58,7 @@ export function CreateVisitAddMenuItemScreen({
       return;
     }
 
-    const currentUserId = pb.authStore.record?.id;
+    const currentUserId = getAuthenticatedUserIdOrNull();
     if (!currentUserId) {
       setErrorMessage('Please sign in again to add items.');
       return;
@@ -74,7 +74,7 @@ export function CreateVisitAddMenuItemScreen({
     setIsSubmitting(true);
 
     try {
-      const createdItem = await pb.collection('menu_items').create<MenuItemRecord>({
+      const createdItem = await createCollectionRecord<MenuItemRecord>('menu_items', {
         restaurant: restaurantId,
         name: trimmedName,
         createdBy: currentUserId,
