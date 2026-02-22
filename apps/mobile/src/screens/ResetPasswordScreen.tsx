@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { confirmUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { trackObservabilityEvent } from '../observability';
+import { Button, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ResetPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ResetPassword'>;
@@ -19,11 +20,19 @@ export function ResetPasswordScreen({ navigation }: ResetPasswordScreenProps) {
 
   const handleSubmit = async () => {
     if (!token.trim() || !password) {
+      trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_VALIDATION_FAILED', {
+        source: 'ResetPasswordScreen',
+        reason: 'missing_token_or_password',
+      });
       setErrorMessage('Token and password are required.');
       return;
     }
 
     if (password !== passwordConfirm) {
+      trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_VALIDATION_FAILED', {
+        source: 'ResetPasswordScreen',
+        reason: 'password_mismatch',
+      });
       setErrorMessage('Passwords do not match.');
       return;
     }
@@ -31,11 +40,22 @@ export function ResetPasswordScreen({ navigation }: ResetPasswordScreenProps) {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsSubmitting(true);
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_SUBMIT_STARTED', {
+      source: 'ResetPasswordScreen',
+      tokenLength: token.trim().length,
+    });
 
     try {
       await confirmUserPasswordReset(token.trim(), password, passwordConfirm);
+      trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_SUBMIT_SUCCEEDED', {
+        source: 'ResetPasswordScreen',
+      });
       setSuccessMessage('Password reset completed. You can now sign in.');
     } catch (error) {
+      trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_SUBMIT_FAILED', {
+        source: 'ResetPasswordScreen',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       const message = error instanceof Error ? error.message : 'Reset failed.';
       setErrorMessage(message);
     } finally {
@@ -75,11 +95,7 @@ export function ResetPasswordScreen({ navigation }: ResetPasswordScreenProps) {
 
         <PageErrorToast errorMessage={errorMessage} title="Reset failed" />
 
-        {successMessage ? (
-          <Card tone="success">
-            <Text tone="success">{successMessage}</Text>
-          </Card>
-        ) : null}
+        {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
 
         <Button
           disabled={!token.trim() || !password || !passwordConfirm}
@@ -93,6 +109,10 @@ export function ResetPasswordScreen({ navigation }: ResetPasswordScreenProps) {
         <Button
           label="Back to Login"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'ResetPasswordScreen',
+              destination: 'Login',
+            });
             navigation.navigate('Login');
           }}
           variant="secondary"

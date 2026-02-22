@@ -1,13 +1,14 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
 import { getQuickTrackById, updateQuickTrack } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { Input } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -46,17 +47,33 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
 
   const handleSave = async () => {
     if (!restaurantName.trim() || !itemName.trim()) {
+      trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_VALIDATION_FAILED', {
+        source: 'EditQuickTrackScreen',
+        quickTrackId,
+        reason: 'missing_restaurant_or_item',
+      });
       setErrorMessage('Restaurant and item are required.');
       return;
     }
 
     const parsedRating = Number(rating);
     if (Number.isNaN(parsedRating) || parsedRating <= 0 || parsedRating > 5) {
+      trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_VALIDATION_FAILED', {
+        source: 'EditQuickTrackScreen',
+        quickTrackId,
+        reason: 'invalid_rating',
+      });
       setErrorMessage('Rating must be between 1 and 5.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_STARTED', {
+      source: 'EditQuickTrackScreen',
+      quickTrackId,
+      isOnline,
+      hasNotes: notes.trim().length > 0,
+    });
     setIsSubmitting(true);
 
     try {
@@ -77,7 +94,12 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
           queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'quickTrack', quickTrackId] }),
         ]);
-        Alert.alert('Saved Offline', 'Quick track update queued and will sync when you reconnect.');
+        trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
+          source: 'EditQuickTrackScreen',
+          quickTrackId,
+          queued: true,
+        });
+        showQueuedOfflineAlert('Quick track update');
         navigation.navigate('Home');
         return;
       }
@@ -89,10 +111,20 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTrack', quickTrackId] }),
       ]);
+      trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
+        source: 'EditQuickTrackScreen',
+        quickTrackId,
+        queued: false,
+      });
       navigation.navigate('Home');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update quick track.';
       setErrorMessage(message);
+      trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_FAILED', {
+        source: 'EditQuickTrackScreen',
+        quickTrackId,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }

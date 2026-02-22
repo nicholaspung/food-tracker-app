@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -15,7 +15,9 @@ import {
 import { getRestaurantListById, updateRestaurantList, type RestaurantListRecord } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -81,11 +83,24 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
   const handleSaveList = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
+      trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_VALIDATION_FAILED', {
+        source: 'EditRestaurantListScreen',
+        reason: 'missing_name',
+        listId,
+        visibility,
+      });
       setErrorMessage('List name is required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_STARTED', {
+      source: 'EditRestaurantListScreen',
+      listId,
+      visibility,
+      isOnline,
+      hasDescription: description.trim().length > 0,
+    });
     setIsSubmitting(true);
 
     try {
@@ -105,7 +120,13 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
         ]);
-        Alert.alert('Saved Offline', 'List update queued and will sync when you reconnect.');
+        trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
+          source: 'EditRestaurantListScreen',
+          listId,
+          queued: true,
+          visibility,
+        });
+        showQueuedOfflineAlert('List update');
         handleBack();
         return;
       }
@@ -117,10 +138,23 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
       ]);
+      trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
+        source: 'EditRestaurantListScreen',
+        listId,
+        queued: false,
+        visibility,
+      });
       handleBack();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update list.';
       setErrorMessage(message);
+      trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_FAILED', {
+        source: 'EditRestaurantListScreen',
+        listId,
+        visibility,
+        isOnline,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -238,7 +272,15 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           />
           <Text variant="label">Visibility</Text>
           <VisibilityOptionSelector
-            onChange={setVisibility}
+            onChange={(nextVisibility) => {
+              trackObservabilityEvent('EDIT_RESTAURANT_LIST_VISIBILITY_CHANGED', {
+                source: 'EditRestaurantListScreen',
+                listId,
+                previousVisibility: visibility,
+                nextVisibility,
+              });
+              setVisibility(nextVisibility);
+            }}
             value={visibility as VisibilityOptionValue}
           />
         </Card>

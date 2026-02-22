@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { requestUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { trackObservabilityEvent } from '../observability';
+import { Button, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
@@ -18,6 +19,10 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
   const handleSubmit = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail) {
+      trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_VALIDATION_FAILED', {
+        source: 'ForgotPasswordScreen',
+        reason: 'missing_email',
+      });
       setErrorMessage('Email is required.');
       return;
     }
@@ -25,11 +30,22 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsSubmitting(true);
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUBMIT_STARTED', {
+      source: 'ForgotPasswordScreen',
+      hasEmail: Boolean(trimmedEmail),
+    });
 
     try {
       await requestUserPasswordReset(trimmedEmail);
+      trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUBMIT_SUCCEEDED', {
+        source: 'ForgotPasswordScreen',
+      });
       setSuccessMessage('Reset instructions sent. Enter the token on the reset password screen.');
     } catch (error) {
+      trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUBMIT_FAILED', {
+        source: 'ForgotPasswordScreen',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       const message = error instanceof Error ? error.message : 'Could not request reset.';
       setErrorMessage(message);
     } finally {
@@ -52,11 +68,7 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
 
         <PageErrorToast errorMessage={errorMessage} title="Request failed" />
 
-        {successMessage ? (
-          <Card tone="success">
-            <Text tone="success">{successMessage}</Text>
-          </Card>
-        ) : null}
+        {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
 
         <Button
           disabled={!email.trim()}
@@ -70,6 +82,10 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
         <Button
           label="I have a reset token"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'ForgotPasswordScreen',
+              destination: 'ResetPassword',
+            });
             navigation.navigate('ResetPassword');
           }}
           variant="secondary"

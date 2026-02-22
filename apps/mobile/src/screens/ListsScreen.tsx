@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BackHeaderScreenScaffold,
   EmptyState,
+  HeaderAccessoryButton,
   PageErrorToast,
   SegmentedControl,
   Skeleton,
@@ -24,6 +25,7 @@ import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -349,26 +351,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     body: {
       gap: theme.spacing.md,
     },
-    headerActionButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      justifyContent: 'center',
-      minHeight: 32,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 4,
-    },
-    headerActionButtonPressed: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    headerActionLabel: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
     searchRow: {
       flexDirection: 'row',
       gap: theme.spacing.sm,
@@ -470,6 +452,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   });
 
   const handleTabChange = (tab: ListTab) => {
+    trackObservabilityEvent('LISTS_TAB_CHANGED', {
+      source: 'ListsScreen',
+      tab,
+    });
     setActiveTab(tab);
     setSearchQuery('');
   };
@@ -486,6 +472,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
             </View>
           }
           onAction={() => {
+            trackObservabilityEvent('LISTS_CREATE_CTA_TAPPED', {
+              source: 'ListsScreen',
+              placement: 'empty_state',
+            });
             navigation.navigate('CreateRestaurantList');
           }}
           title="No lists yet"
@@ -530,6 +520,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         </View>
       }
       onAction={() => {
+        trackObservabilityEvent('LISTS_SEARCH_CLEARED', {
+          source: 'ListsScreen',
+          placement: 'empty_state',
+        });
         setSearchQuery('');
       }}
       title="No matching lists"
@@ -584,6 +578,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           }
           leading={list.isDefault ? <Ionicons color={theme.colors.text.warning} name="star" size={16} /> : undefined}
           onPress={() => {
+            trackObservabilityEvent('LISTS_LIST_OPENED', {
+              source: 'ListsScreen',
+              tab: activeTab,
+              visibility: list.visibility,
+              isDefault: Boolean(list.isDefault),
+            });
             navigation.navigate('ListDetail', { listId: list.id });
           }}
           style={styles.cardListItem}
@@ -609,19 +609,17 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       }}
       rightAccessory={
         activeTab === 'my' ? (
-          <Pressable
-            accessibilityRole="button"
+          <HeaderAccessoryButton
+            label="New List"
             onPress={() => {
+              trackObservabilityEvent('LISTS_CREATE_CTA_TAPPED', {
+                source: 'ListsScreen',
+                placement: 'header',
+              });
               navigation.navigate('CreateRestaurantList');
             }}
-            style={({ pressed }) => [styles.headerActionButton, pressed && styles.headerActionButtonPressed]}
             testID="create-list-button"
-          >
-            <Ionicons color={theme.colors.text.primary} name="add-outline" size={14} />
-            <Text style={styles.headerActionLabel} variant="label">
-              New List
-            </Text>
-          </Pressable>
+          />
         ) : undefined
       }
       subtitle="Create, organize, and discover restaurant lists."
@@ -643,6 +641,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
             accessibilityLabel="Clear search"
             accessibilityRole="button"
             onPress={() => {
+              trackObservabilityEvent('LISTS_SEARCH_CLEARED', {
+                source: 'ListsScreen',
+                placement: 'clear_button',
+              });
               setSearchQuery('');
             }}
             style={({ pressed }) => [styles.clearSearchButton, pressed && styles.clearSearchButtonPressed]}

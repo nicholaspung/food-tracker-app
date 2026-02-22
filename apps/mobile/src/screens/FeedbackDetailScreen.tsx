@@ -24,6 +24,7 @@ import {
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -235,11 +236,22 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
   const handleSendMessage = async () => {
     if (!draftMessage.trim()) {
+      trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_VALIDATION_FAILED', {
+        source: 'FeedbackDetailScreen',
+        feedbackId,
+        reason: 'missing_message',
+      });
       setSendError('Message is required.');
       return;
     }
 
     setSendError(null);
+    trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_STARTED', {
+      source: 'FeedbackDetailScreen',
+      feedbackId,
+      isOnline,
+      messageLength: draftMessage.trim().length,
+    });
     setIsSending(true);
 
     try {
@@ -250,6 +262,11 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
         });
         setDraftMessage('');
         await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback-messages', feedbackId] });
+        trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
+          source: 'FeedbackDetailScreen',
+          feedbackId,
+          queued: true,
+        });
         return;
       }
 
@@ -263,9 +280,19 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback-messages', feedbackId] });
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback', feedbackId] });
+      trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
+        source: 'FeedbackDetailScreen',
+        feedbackId,
+        queued: false,
+      });
     } catch (error) {
       const nextMessage = error instanceof Error ? error.message : 'Could not send message.';
       setSendError(nextMessage);
+      trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_FAILED', {
+        source: 'FeedbackDetailScreen',
+        feedbackId,
+        error: nextMessage,
+      });
     } finally {
       setIsSending(false);
     }
@@ -275,8 +302,21 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     if (!isAdmin || !feedbackQuery.data || feedbackQuery.data.status === nextStatus || isUpdatingStatus) {
       return;
     }
+    trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_TAPPED', {
+      source: 'FeedbackDetailScreen',
+      feedbackId,
+      previousStatus: feedbackQuery.data.status,
+      nextStatus,
+      isOnline,
+    });
     if (!isOnline) {
       setStatusError('Status updates require internet connection.');
+      trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_FAILED', {
+        source: 'FeedbackDetailScreen',
+        feedbackId,
+        nextStatus,
+        error: 'offline',
+      });
       return;
     }
 
@@ -288,9 +328,20 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       await updateFeedbackStatus(feedbackId, nextStatus);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback', feedbackId] });
+      trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_SUCCEEDED', {
+        source: 'FeedbackDetailScreen',
+        feedbackId,
+        nextStatus,
+      });
     } catch (error) {
       const nextMessage = error instanceof Error ? error.message : 'Could not update status.';
       setStatusError(nextMessage);
+      trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_FAILED', {
+        source: 'FeedbackDetailScreen',
+        feedbackId,
+        nextStatus,
+        error: nextMessage,
+      });
     } finally {
       setIsUpdatingStatus(false);
     }

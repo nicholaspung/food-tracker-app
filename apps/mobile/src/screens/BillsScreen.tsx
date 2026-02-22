@@ -1,12 +1,12 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
   EmptyState,
+  HeaderAccessoryButton,
   OptionList,
   OptionListRow,
   SegmentedControl,
@@ -16,9 +16,10 @@ import {
 import { listBills } from '../features';
 import { formatCurrency } from '../features/bills/billCalculations';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Card, Text } from '../ui';
+import { Card } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
@@ -77,22 +78,6 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     filterCard: {
       padding: theme.spacing.xs,
     },
-    headerActionButton: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      justifyContent: 'center',
-      minHeight: 32,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 4,
-    },
-    headerActionLabel: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
     listCard: {
       borderColor: theme.colors.border.subtle,
     },
@@ -111,22 +96,16 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
         navigation.navigate('Misc');
       }}
       rightAccessory={
-        <Pressable
-          accessibilityRole="button"
+        <HeaderAccessoryButton
+          label="Create Bill"
           onPress={() => {
+            trackObservabilityEvent('BILLS_CREATE_CTA_TAPPED', {
+              source: 'BillsScreen',
+              placement: 'header',
+            });
             navigation.navigate('CreateBill');
           }}
-          style={styles.headerActionButton}
-        >
-          <Ionicons
-            color={theme.colors.text.primary}
-            name="add-outline"
-            size={14}
-          />
-          <Text style={styles.headerActionLabel} variant="label">
-            Create Bill
-          </Text>
-        </Pressable>
+        />
       }
       subtitle="Split bills with your group and track payment status."
       title="Bills"
@@ -134,7 +113,13 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
       <View style={styles.body}>
         <Card style={styles.filterCard}>
           <SegmentedControl
-            onChange={setActiveFilter}
+            onChange={(nextFilter) => {
+              trackObservabilityEvent('BILLS_FILTER_CHANGED', {
+                source: 'BillsScreen',
+                filter: nextFilter,
+              });
+              setActiveFilter(nextFilter);
+            }}
             options={[
               { label: 'All', value: 'all' },
               { label: 'You Owe', value: 'you_owe' },
@@ -211,6 +196,12 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
                     key={bill.id}
                     isLast={index === filteredBills.length - 1}
                     onPress={() => {
+                      trackObservabilityEvent('BILL_OPENED', {
+                        source: 'BillsScreen',
+                        filter: activeFilter,
+                        status: bill.status,
+                        isCreator,
+                      });
                       navigation.navigate('BillDetail', { billId: bill.id });
                     }}
                     rightAccessory={<StatusPill label={statusLabel} tone={statusTone} />}

@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Alert, Image, Linking, StyleSheet, View } from 'react-native';
+import { Image, Linking, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -31,7 +31,9 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -283,6 +285,9 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   };
 
   const handleCaptureLocation = async () => {
+    trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURE_STARTED', {
+      source: 'QuickTrackScreen',
+    });
     setErrorMessage(null);
     setLocationPermissionNeedsSettings(false);
     setIsCapturingLocation(true);
@@ -290,6 +295,10 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) {
+        trackObservabilityEvent('QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
+          canAskAgain: permission.canAskAgain,
+          source: 'QuickTrackScreen',
+        });
         setLocationPermissionNeedsSettings(permission.canAskAgain === false);
         setErrorMessage(
           permission.canAskAgain === false
@@ -309,7 +318,15 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       setLatitude(capturedLatitude);
       setLongitude(capturedLongitude);
       setLocationText(coordinateText);
+      trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURED', {
+        source: 'QuickTrackScreen',
+      });
     } catch (error) {
+      trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURE_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'QuickTrackScreen',
+      });
       setErrorMessage(error instanceof Error ? error.message : 'Could not capture your location.');
     } finally {
       setIsCapturingLocation(false);
@@ -317,10 +334,22 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   };
 
   const handlePhotoPick = async (source: PhotoSource) => {
+    trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_STARTED', {
+      photoSource: source,
+      source: 'QuickTrackScreen',
+    });
     setErrorMessage(null);
     setPhotoPermissionNeedsSettings(false);
 
     if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && estimatedFreePhotoRemaining === 0) {
+      trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'client_estimate',
+        limit: FREE_MONTHLY_PHOTO_LIMIT,
+        metric: 'photo_uploads',
+        remaining: estimatedFreePhotoRemaining,
+        source: 'QuickTrackScreen',
+        used: monthlyUsage.snapshot?.usage.photoUploads ?? null,
+      });
       setErrorMessage('Free users can upload up to 5 photos per month.');
       return;
     }
@@ -334,6 +363,11 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
+        trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
+          canAskAgain: permission.canAskAgain,
+          photoSource: source,
+          source: 'QuickTrackScreen',
+        });
         setPhotoPermissionNeedsSettings(permission.canAskAgain === false);
         throw new Error(
           source === 'camera'
@@ -356,6 +390,10 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
             });
 
       if (pickerResult.canceled || pickerResult.assets.length === 0) {
+        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_CANCELED', {
+          photoSource: source,
+          source: 'QuickTrackScreen',
+        });
         return;
       }
 
@@ -366,7 +404,17 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         name: selectedAsset.fileName?.trim() || buildDraftPhotoName(selectedUri),
         mimeType: selectedAsset.mimeType?.trim() || inferImageMimeType(selectedUri),
       });
+      trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
+        photoSource: source,
+        source: 'QuickTrackScreen',
+      });
     } catch (error) {
+      trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        photoSource: source,
+        source: 'QuickTrackScreen',
+      });
       setErrorMessage(error instanceof Error ? error.message : 'Could not select a photo.');
     } finally {
       setIsSelectingPhoto(false);
@@ -391,6 +439,14 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
           0,
         );
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'QuickTrackScreen',
+          used: monthlyUsage.snapshot.usage.photoUploads,
+        });
         setErrorMessage(
           `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
         );
@@ -419,7 +475,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       if (!isOnline) {
         await queueFeatureOutbox('quick-track.create', quickTrackInput);
         await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
-        Alert.alert('Saved Offline', 'Quick track queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Quick track');
         navigation.navigate('Home');
         return;
       }
@@ -443,6 +499,18 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       navigation.navigate('Home');
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'QuickTrackScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
         : error instanceof Error

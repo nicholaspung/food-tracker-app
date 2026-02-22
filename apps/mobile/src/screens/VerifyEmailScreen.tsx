@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { confirmUserEmailVerification } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { trackObservabilityEvent } from '../observability';
+import { Button, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type VerifyEmailScreenProps = NativeStackScreenProps<RootStackParamList, 'VerifyEmail'>;
@@ -18,6 +19,10 @@ export function VerifyEmailScreen({ navigation }: VerifyEmailScreenProps) {
   const handleVerify = async () => {
     const trimmedToken = token.trim();
     if (!trimmedToken) {
+      trackObservabilityEvent('AUTH_EMAIL_VERIFY_VALIDATION_FAILED', {
+        source: 'VerifyEmailScreen',
+        reason: 'missing_token',
+      });
       setErrorMessage('Verification token is required.');
       return;
     }
@@ -25,11 +30,22 @@ export function VerifyEmailScreen({ navigation }: VerifyEmailScreenProps) {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsSubmitting(true);
+    trackObservabilityEvent('AUTH_EMAIL_VERIFY_SUBMIT_STARTED', {
+      source: 'VerifyEmailScreen',
+      tokenLength: trimmedToken.length,
+    });
 
     try {
       await confirmUserEmailVerification(trimmedToken);
+      trackObservabilityEvent('AUTH_EMAIL_VERIFY_SUBMIT_SUCCEEDED', {
+        source: 'VerifyEmailScreen',
+      });
       setSuccessMessage('Email verified successfully.');
     } catch (error) {
+      trackObservabilityEvent('AUTH_EMAIL_VERIFY_SUBMIT_FAILED', {
+        source: 'VerifyEmailScreen',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       const message = error instanceof Error ? error.message : 'Verification failed.';
       setErrorMessage(message);
     } finally {
@@ -51,11 +67,7 @@ export function VerifyEmailScreen({ navigation }: VerifyEmailScreenProps) {
 
         <PageErrorToast errorMessage={errorMessage} title="Verification failed" />
 
-        {successMessage ? (
-          <Card tone="success">
-            <Text tone="success">{successMessage}</Text>
-          </Card>
-        ) : null}
+        {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
 
         <Button
           disabled={!token.trim()}
@@ -69,6 +81,10 @@ export function VerifyEmailScreen({ navigation }: VerifyEmailScreenProps) {
         <Button
           label="Go to Login"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'VerifyEmailScreen',
+              destination: 'Login',
+            });
             navigation.navigate('Login');
           }}
           variant="secondary"

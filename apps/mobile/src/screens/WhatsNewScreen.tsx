@@ -15,6 +15,7 @@ import {
 } from '../lib/whatsNewState';
 import { LATEST_WHATS_NEW_VERSION, WHATS_NEW_ENTRIES, type WhatsNewEntry } from '../lib/whatsNewData';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
 import { Card, Text } from '../ui';
 
@@ -39,6 +40,7 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
   });
   const [isFirstViewOfLatest, setIsFirstViewOfLatest] = useState(false);
   const [hasCapturedFirstViewState, setHasCapturedFirstViewState] = useState(false);
+  const [hasTrackedViewEvent, setHasTrackedViewEvent] = useState(false);
 
   useEffect(() => {
     if (hasCapturedFirstViewState || seenVersionQuery.isLoading) {
@@ -74,6 +76,21 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
       isCancelled = true;
     };
   }, [hasCapturedFirstViewState, queryClient, seenVersionQuery.data, seenVersionQuery.isLoading]);
+
+  useEffect(() => {
+    if (!hasCapturedFirstViewState || hasTrackedViewEvent) {
+      return;
+    }
+
+    trackObservabilityEvent('WHATS_NEW_VIEWED', {
+      source: 'WhatsNewScreen',
+      isFirstViewOfLatest,
+      latestVersion: LATEST_WHATS_NEW_VERSION,
+      seenVersionBeforeOpen: seenVersionQuery.data ?? 'none',
+      releaseCount: WHATS_NEW_ENTRIES.length,
+    });
+    setHasTrackedViewEvent(true);
+  }, [hasCapturedFirstViewState, hasTrackedViewEvent, isFirstViewOfLatest, seenVersionQuery.data]);
 
   const sectionDefinitions: SectionDefinition[] = [
     {

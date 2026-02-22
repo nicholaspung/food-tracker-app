@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { QueuedMutation } from '../offline';
 import { logger } from '../lib/logger';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useSync } from '../providers/SyncProvider';
 import { useTheme } from '../theme';
@@ -96,23 +97,42 @@ export function SyncStatusBanner() {
   }, [failedCount, isModalVisible, isOnline, isSyncing, loadQueuedMutations, queueDepth]);
 
   const openModal = useCallback(() => {
+    trackObservabilityEvent('SYNC_STATUS_MODAL_OPENED', {
+      source: 'SyncStatusBanner',
+      isOnline,
+      queueDepth,
+      failedCount,
+      isSyncing,
+    });
     setIsModalVisible(true);
     void loadQueuedMutations();
-  }, [loadQueuedMutations]);
+  }, [failedCount, isOnline, isSyncing, loadQueuedMutations, queueDepth]);
 
   const closeModal = useCallback(() => {
     setIsModalVisible(false);
   }, []);
 
   const runSyncNow = useCallback(async () => {
+    trackObservabilityEvent('SYNC_NOW_TAPPED', {
+      source: 'SyncStatusBanner',
+      queueDepth,
+      failedCount,
+      isOnline,
+    });
     await replayNow();
     await loadQueuedMutations();
-  }, [loadQueuedMutations, replayNow]);
+  }, [failedCount, isOnline, loadQueuedMutations, queueDepth, replayNow]);
 
   const runRetryFailed = useCallback(async () => {
+    trackObservabilityEvent('SYNC_RETRY_FAILED_TAPPED', {
+      source: 'SyncStatusBanner',
+      failedCount,
+      queueDepth,
+      isOnline,
+    });
     await retryAllFailed();
     await loadQueuedMutations();
-  }, [loadQueuedMutations, retryAllFailed]);
+  }, [failedCount, isOnline, loadQueuedMutations, queueDepth, retryAllFailed]);
 
   const styles = StyleSheet.create({
     safeAreaContainer: {

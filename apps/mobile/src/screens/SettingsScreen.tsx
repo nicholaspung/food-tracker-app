@@ -1,21 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { BackHeaderScreenScaffold, EmptyState, Skeleton, StatusPill } from '../components/shared';
+import { BackHeaderScreenScaffold, EmptyState, Skeleton, VisibilityOptionSelector } from '../components/shared';
 import { getCollectionRecord, updateCollectionRecord } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type VisitVisibility = 'friends' | 'private';
 type RestaurantVisibility = 'private' | 'friends' | 'public';
 
@@ -53,16 +51,6 @@ function mapUserSettings(record: UserSettingsRecord, isAdmin: boolean): UserSett
     visitVisibility: normalizeVisitVisibility(record.defaultVisitVisibility),
     restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility, isAdmin),
   };
-}
-
-interface VisibilityOptionProps {
-  iconName: IoniconName;
-  iconColor: string;
-  label: string;
-  description: string;
-  selected: boolean;
-  onPress: () => void;
-  badgeLabel?: string;
 }
 
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
@@ -111,68 +99,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     optionList: {
       gap: theme.spacing.xs,
     },
-    optionCard: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 2,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    optionCardSelected: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-    },
-    optionCardPressed: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    optionRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    optionContent: {
-      flex: 1,
-      gap: theme.spacing.xxs,
-    },
-    optionTitleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    optionLabel: {
-      color: theme.colors.text.primary,
-      fontSize: 15,
-      fontWeight: '700',
-      lineHeight: 20,
-    },
-    optionDescription: {
-      color: theme.colors.text.secondary,
-      fontSize: 13,
-      lineHeight: 18,
-    },
-    radioOuter: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 2,
-      height: 20,
-      justifyContent: 'center',
-      marginTop: 2,
-      width: 20,
-    },
-    radioOuterSelected: {
-      backgroundColor: theme.colors.text.brand,
-      borderColor: theme.colors.text.brand,
-    },
-    radioInner: {
-      backgroundColor: theme.colors.text.inverse,
-      borderRadius: theme.radii.pill,
-      height: 8,
-      width: 8,
-    },
   });
 
   useEffect(() => {
@@ -197,12 +123,23 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   const handleSaveSettings = async () => {
     if (!user?.id) {
+      trackObservabilityEvent('SETTINGS_SAVE_FAILED', {
+        source: 'SettingsScreen',
+        error: 'missing_user',
+      });
       setErrorMessage('Authentication required.');
       return;
     }
 
     setErrorMessage(null);
     setSuccessMessage(null);
+    trackObservabilityEvent('SETTINGS_SAVE_STARTED', {
+      source: 'SettingsScreen',
+      userId: user.id,
+      visitVisibility,
+      restaurantVisibility,
+      hasPendingChanges,
+    });
     setIsSaving(true);
 
     try {
@@ -216,10 +153,21 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       const nextSettings = mapUserSettings(updatedRecord, isAdmin);
       queryClient.setQueryData(['feature', 'settings', user.id], nextSettings);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'settings', user.id] });
+      trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
+        source: 'SettingsScreen',
+        userId: user.id,
+        visitVisibility,
+        restaurantVisibility,
+      });
       setSuccessMessage('Settings saved successfully.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update settings.';
       setErrorMessage(message);
+      trackObservabilityEvent('SETTINGS_SAVE_FAILED', {
+        source: 'SettingsScreen',
+        userId: user.id,
+        error: message,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -228,52 +176,53 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const handleSelectVisitVisibility = (value: VisitVisibility) => {
     setErrorMessage(null);
     setSuccessMessage(null);
+    trackObservabilityEvent('SETTINGS_VISIT_VISIBILITY_CHANGED', {
+      source: 'SettingsScreen',
+      previousValue: visitVisibility,
+      nextValue: value,
+      isAdmin,
+    });
     setVisitVisibility(value);
   };
 
   const handleSelectRestaurantVisibility = (value: RestaurantVisibility) => {
     setErrorMessage(null);
     setSuccessMessage(null);
+    trackObservabilityEvent('SETTINGS_RESTAURANT_VISIBILITY_CHANGED', {
+      source: 'SettingsScreen',
+      previousValue: restaurantVisibility,
+      nextValue: value,
+      isAdmin,
+    });
     setRestaurantVisibility(value);
   };
 
-  const renderVisibilityOption = ({
-    iconName,
-    iconColor,
-    label,
-    description,
-    selected,
-    onPress,
-    badgeLabel,
-  }: VisibilityOptionProps) => {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        onPress={onPress}
-        style={({ pressed }) => [
-          styles.optionCard,
-          selected && styles.optionCardSelected,
-          pressed && styles.optionCardPressed,
-        ]}
-      >
-        <View style={styles.optionRow}>
-          <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
-            {selected ? <View style={styles.radioInner} /> : null}
-          </View>
-          <View style={styles.optionContent}>
-            <View style={styles.optionTitleRow}>
-              <Ionicons color={iconColor} name={iconName} size={16} />
-              <Text style={styles.optionLabel}>{label}</Text>
-              {badgeLabel ? (
-                <StatusPill label={badgeLabel} tone="info" uppercase variant="soft" />
-              ) : null}
-            </View>
-            <Text style={styles.optionDescription}>{description}</Text>
-          </View>
-        </View>
-      </Pressable>
-    );
-  };
+  const visitVisibilityDescriptions = useMemo(
+    () =>
+      ({
+        friends: 'Friends can see your visits and the dishes you rated.',
+        private: 'Only you can see your visits and ratings.',
+      }) as const,
+    [],
+  );
+
+  const restaurantVisibilityDescriptions = useMemo(
+    () =>
+      ({
+        private: 'Only you can see restaurants you add.',
+        friends: 'Friends can see restaurants you add.',
+        public: 'Everyone can see restaurants you add.',
+      }) as const,
+    [],
+  );
+
+  const restaurantVisibilityBadgeLabels = useMemo(
+    () =>
+      ({
+        public: isAdmin ? 'Admin' : undefined,
+      }) as const,
+    [isAdmin],
+  );
 
   if (!user?.id) {
     return (
@@ -341,26 +290,17 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
               </Text>
 
               <View style={styles.optionList}>
-                {renderVisibilityOption({
-                  description: 'Friends can see your visits and the dishes you rated.',
-                  iconColor: theme.colors.text.info,
-                  iconName: 'people-outline',
-                  label: 'Friends',
-                  onPress: () => {
-                    handleSelectVisitVisibility('friends');
-                  },
-                  selected: visitVisibility === 'friends',
-                })}
-                {renderVisibilityOption({
-                  description: 'Only you can see your visits and ratings.',
-                  iconColor: theme.colors.text.secondary,
-                  iconName: 'lock-closed-outline',
-                  label: 'Private',
-                  onPress: () => {
-                    handleSelectVisitVisibility('private');
-                  },
-                  selected: visitVisibility === 'private',
-                })}
+                <VisibilityOptionSelector
+                  onChange={(selectedValue) => {
+                    if (selectedValue === 'friends' || selectedValue === 'private') {
+                      handleSelectVisitVisibility(selectedValue);
+                    }
+                  }}
+                  optionDescriptions={visitVisibilityDescriptions}
+                  options={['friends', 'private']}
+                  value={visitVisibility}
+                  variant="cards"
+                />
               </View>
             </Card>
 
@@ -371,39 +311,22 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
               </Text>
 
               <View style={styles.optionList}>
-                {renderVisibilityOption({
-                  description: 'Only you can see restaurants you add.',
-                  iconColor: theme.colors.text.secondary,
-                  iconName: 'lock-closed-outline',
-                  label: 'Private',
-                  onPress: () => {
-                    handleSelectRestaurantVisibility('private');
-                  },
-                  selected: restaurantVisibility === 'private',
-                })}
-                {renderVisibilityOption({
-                  description: 'Friends can see restaurants you add.',
-                  iconColor: theme.colors.text.info,
-                  iconName: 'people-outline',
-                  label: 'Friends',
-                  onPress: () => {
-                    handleSelectRestaurantVisibility('friends');
-                  },
-                  selected: restaurantVisibility === 'friends',
-                })}
-                {isAdmin
-                  ? renderVisibilityOption({
-                      badgeLabel: 'Admin',
-                      description: 'Everyone can see restaurants you add.',
-                      iconColor: theme.colors.text.success,
-                      iconName: 'earth-outline',
-                      label: 'Public',
-                      onPress: () => {
-                        handleSelectRestaurantVisibility('public');
-                      },
-                      selected: restaurantVisibility === 'public',
-                    })
-                  : null}
+                <VisibilityOptionSelector
+                  onChange={(selectedValue) => {
+                    if (
+                      selectedValue === 'private' ||
+                      selectedValue === 'friends' ||
+                      (selectedValue === 'public' && isAdmin)
+                    ) {
+                      handleSelectRestaurantVisibility(selectedValue);
+                    }
+                  }}
+                  optionBadgeLabels={restaurantVisibilityBadgeLabels}
+                  optionDescriptions={restaurantVisibilityDescriptions}
+                  options={isAdmin ? ['private', 'friends', 'public'] : ['private', 'friends']}
+                  value={restaurantVisibility}
+                  variant="cards"
+                />
               </View>
             </Card>
 

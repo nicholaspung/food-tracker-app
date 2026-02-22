@@ -13,6 +13,7 @@ import {
   TabSectionCard,
 } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
@@ -112,6 +113,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       iconColor: sectionColors.blue,
       iconBackground: sectionColors.blueSoft,
       onPress: () => {
+        trackObservabilityEvent('MISC_FEATURE_TAPPED', {
+          source: 'MiscScreen',
+          feature: 'restaurant_lists',
+          destination: 'Lists',
+        });
         navigation.navigate('Lists');
       },
       testID: 'feature-restaurant-lists',
@@ -126,6 +132,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       iconColor: sectionColors.purple,
       iconBackground: sectionColors.purpleSoft,
       onPress: () => {
+        trackObservabilityEvent('MISC_FEATURE_TAPPED', {
+          source: 'MiscScreen',
+          feature: 'group_tastings',
+          destination: 'TastingSessions',
+        });
         navigation.navigate('TastingSessions');
       },
       testID: 'feature-group-tastings',
@@ -140,6 +151,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       iconColor: sectionColors.green,
       iconBackground: sectionColors.greenSoft,
       onPress: () => {
+        trackObservabilityEvent('MISC_FEATURE_TAPPED', {
+          source: 'MiscScreen',
+          feature: 'bills',
+          destination: 'Bills',
+        });
         navigation.navigate('Bills');
       },
       testID: 'feature-bill-splitter',
@@ -151,6 +167,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       iconColor: sectionColors.green,
       iconBackground: sectionColors.greenSoft,
       onPress: () => {
+        trackObservabilityEvent('MISC_FEATURE_TAPPED', {
+          source: 'MiscScreen',
+          feature: 'tip_calculator',
+          destination: 'TipCalculator',
+        });
         navigation.navigate('TipCalculator');
       },
       testID: 'feature-tip-calculator',
@@ -361,7 +382,12 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
-                  setExpandedTips((current) => !current);
+                  const nextExpanded = !expandedTips;
+                  trackObservabilityEvent('MISC_TIPS_TOGGLED', {
+                    source: 'MiscScreen',
+                    expanded: nextExpanded,
+                  });
+                  setExpandedTips(nextExpanded);
                 }}
                 style={({ pressed }) => [styles.tipsToggle, pressed ? styles.tipsTogglePressed : null]}
               >

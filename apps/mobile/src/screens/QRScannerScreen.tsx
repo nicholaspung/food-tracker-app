@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
@@ -8,7 +8,9 @@ import { FeatureDetailScreenScaffold } from '../components/shared';
 import { inviteFriend } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -109,11 +111,17 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   const handleBarcodeScanned = ({ data }: { data: string }) => {
     const normalizedCode = extractFriendCodeFromPayload(data);
     if (!normalizedCode) {
+      trackObservabilityEvent('QR_SCAN_INVALID_CODE', {
+        source: 'QRScannerScreen',
+      });
       setErrorMessage('QR code did not contain a valid 8-character friend code.');
       setHasScanned(true);
       return;
     }
 
+    trackObservabilityEvent('QR_SCAN_CODE_DETECTED', {
+      source: 'QRScannerScreen',
+    });
     setScannedCode(normalizedCode);
     setErrorMessage(null);
     setHasScanned(true);
@@ -121,6 +129,9 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
 
   const handleScanResult = async () => {
     const normalizedCode = sanitizeFriendCode(scannedCode);
+    trackObservabilityEvent('QR_SCAN_SUBMIT_STARTED', {
+      source: 'QRScannerScreen',
+    });
     if (normalizedCode.length !== 8) {
       setErrorMessage('Friend code must be 8 characters.');
       return;
@@ -135,7 +146,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
           code: normalizedCode,
         });
         await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
-        Alert.alert('Saved Offline', 'Friend request queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Friend request');
         navigation.navigate('Friends');
         return;
       }
@@ -146,9 +157,17 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
       });
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+      trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
+        source: 'QRScannerScreen',
+      });
       navigation.navigate('Friends');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not process QR invite.';
+      trackObservabilityEvent('QR_SCAN_SUBMIT_FAILED', {
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'QRScannerScreen',
+      });
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);

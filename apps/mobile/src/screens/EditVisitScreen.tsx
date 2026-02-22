@@ -1,13 +1,15 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
 import { getVisitById, updateVisit, type VisitItem } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -68,6 +70,12 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
 
   const handleSave = async () => {
     if (!restaurantName.trim()) {
+      trackObservabilityEvent('EDIT_VISIT_SUBMIT_VALIDATION_FAILED', {
+        source: 'EditVisitScreen',
+        visitId,
+        reason: 'missing_restaurant_name',
+        itemCount: items.length,
+      });
       setErrorMessage('Restaurant name is required.');
       return;
     }
@@ -80,11 +88,23 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
     }));
 
     if (parsedItems.some((item) => Number.isNaN(item.rating) || item.rating <= 0 || item.rating > 5)) {
+      trackObservabilityEvent('EDIT_VISIT_SUBMIT_VALIDATION_FAILED', {
+        source: 'EditVisitScreen',
+        visitId,
+        reason: 'invalid_rating',
+        itemCount: parsedItems.length,
+      });
       setErrorMessage('Ratings must be between 1 and 5.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('EDIT_VISIT_SUBMIT_STARTED', {
+      source: 'EditVisitScreen',
+      visitId,
+      itemCount: parsedItems.length,
+      isOnline,
+    });
     setIsSubmitting(true);
 
     try {
@@ -103,7 +123,13 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'visit', visitId] }),
         ]);
-        Alert.alert('Saved Offline', 'Visit update queued and will sync when you reconnect.');
+        trackObservabilityEvent('EDIT_VISIT_SUBMIT_SUCCEEDED', {
+          source: 'EditVisitScreen',
+          visitId,
+          queued: true,
+          itemCount: parsedItems.length,
+        });
+        showQueuedOfflineAlert('Visit update');
         navigation.navigate('Home');
         return;
       }
@@ -115,10 +141,22 @@ export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visit', visitId] }),
       ]);
+      trackObservabilityEvent('EDIT_VISIT_SUBMIT_SUCCEEDED', {
+        source: 'EditVisitScreen',
+        visitId,
+        queued: false,
+        itemCount: parsedItems.length,
+      });
       navigation.navigate('Home');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update visit.';
       setErrorMessage(message);
+      trackObservabilityEvent('EDIT_VISIT_SUBMIT_FAILED', {
+        source: 'EditVisitScreen',
+        visitId,
+        itemCount: parsedItems.length,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }

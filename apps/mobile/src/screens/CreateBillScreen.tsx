@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FeatureFormScreenScaffold,
@@ -31,7 +31,9 @@ import {
 } from '../features/bills/billCalculations';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -1069,13 +1071,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     sectionTitle: {
       color: theme.colors.text.primary,
-      fontSize: 16,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 22,
     },
     sectionHint: {
       color: theme.colors.text.muted,
-      fontSize: 12,
+      ...theme.typography.bodySm,
       lineHeight: 17,
     },
     itemComposerRow: {
@@ -1102,7 +1104,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     addItemButtonLabel: {
       color: theme.colors.text.inverse,
-      fontSize: 13,
+      ...theme.typography.label,
       fontWeight: '700',
       lineHeight: 18,
     },
@@ -1116,7 +1118,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     itemPrice: {
       color: theme.colors.text.primary,
-      fontSize: 13,
+      ...theme.typography.label,
       fontWeight: '700',
       lineHeight: 18,
     },
@@ -1157,7 +1159,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     assignmentChipLabel: {
       color: theme.colors.text.secondary,
-      fontSize: 12,
+      ...theme.typography.bodySm,
       fontWeight: '600',
       lineHeight: 16,
     },
@@ -1173,7 +1175,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     advancedSplitLabel: {
       color: theme.colors.text.primary,
       flex: 1,
-      fontSize: 13,
+      ...theme.typography.label,
       fontWeight: '600',
       lineHeight: 18,
     },
@@ -1213,7 +1215,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     customTipToggleLabel: {
       color: theme.colors.text.info,
-      fontSize: 13,
+      ...theme.typography.label,
       fontWeight: '600',
       lineHeight: 18,
     },
@@ -1231,7 +1233,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     selectedFriendsSummary: {
       color: theme.colors.text.secondary,
-      fontSize: 12,
+      ...theme.typography.bodySm,
       lineHeight: 17,
     },
     friendRowSelected: {
@@ -1250,7 +1252,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     subsectionTitle: {
       color: theme.colors.text.primary,
-      fontSize: 14,
+      ...theme.typography.bodyMd,
       fontWeight: '700',
       lineHeight: 20,
     },
@@ -1279,7 +1281,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     payerDropdownLabel: {
       color: theme.colors.text.primary,
       flex: 1,
-      fontSize: 16,
+      ...theme.typography.bodyLg,
       lineHeight: 22,
     },
     payerOptionsList: {
@@ -1314,7 +1316,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     owedAmountValue: {
       color: theme.colors.text.primary,
-      fontSize: 15,
+      ...theme.typography.button,
       fontWeight: '700',
       lineHeight: 20,
       textAlign: 'right',
@@ -1332,24 +1334,23 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     totalsLabel: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
-      lineHeight: 18,
+      ...theme.typography.label,
     },
     totalsLabelStrong: {
       color: theme.colors.text.primary,
-      fontSize: 14,
+      ...theme.typography.bodyMd,
       fontWeight: '700',
       lineHeight: 20,
     },
     totalsValue: {
       color: theme.colors.text.primary,
-      fontSize: 13,
+      ...theme.typography.label,
       fontWeight: '700',
       lineHeight: 18,
     },
     totalsValueStrong: {
       color: theme.colors.text.primary,
-      fontSize: 18,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 24,
     },
@@ -1384,13 +1385,31 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const selectedPayer = participants.find((participant) => participant.id === payerParticipantId);
   const selectedPayerLabel = selectedPayer?.name ?? 'Select payer';
+  const trackSubmitValidationFailed = (reason: string) => {
+    trackObservabilityEvent('CREATE_BILL_SUBMIT_VALIDATION_FAILED', {
+      source: 'CreateBillScreen',
+      reason,
+      isEditMode,
+      splitMode,
+      selectedFriendCount: selectedFriendIds.length,
+      itemCount: items.length,
+    });
+  };
 
   const toggleFriend = (friendId: string) => {
-    setSelectedFriendIds((currentIds) =>
-      currentIds.includes(friendId)
+    setSelectedFriendIds((currentIds) => {
+      const wasSelected = currentIds.includes(friendId);
+      const nextIds = wasSelected
         ? currentIds.filter((currentId) => currentId !== friendId)
-        : [...currentIds, friendId],
-    );
+        : [...currentIds, friendId];
+      trackObservabilityEvent('CREATE_BILL_FRIEND_TOGGLED', {
+        source: 'CreateBillScreen',
+        friendId,
+        selected: !wasSelected,
+        selectedFriendCount: nextIds.length,
+      });
+      return nextIds;
+    });
   };
 
   const toggleItemExpanded = (itemId: string) => {
@@ -1430,11 +1449,21 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setDraftItemName('');
     setDraftItemPrice('');
     setErrorMessage(null);
+    trackObservabilityEvent('CREATE_BILL_ITEM_ADDED', {
+      source: 'CreateBillScreen',
+      splitMode,
+      itemCount: items.length + 1,
+    });
   };
 
   const removeItem = (itemId: string) => {
     setItems((currentItems) => currentItems.filter((item) => item.id !== itemId));
     setExpandedItemIds((currentIds) => currentIds.filter((currentId) => currentId !== itemId));
+    trackObservabilityEvent('CREATE_BILL_ITEM_REMOVED', {
+      source: 'CreateBillScreen',
+      splitMode,
+      itemCount: Math.max(0, items.length - 1),
+    });
   };
 
   const updateItemSplitMode = (itemId: string, nextSplitMode: 'simple' | 'advanced') => {
@@ -1613,6 +1642,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   };
 
   const enableCustomTipSplit = () => {
+    trackObservabilityEvent('CREATE_BILL_CUSTOM_TIP_TOGGLED', {
+      source: 'CreateBillScreen',
+      enabled: true,
+      splitMode,
+    });
     setIsCustomTipEnabled(true);
     setCustomTipSplits((currentSplits) => {
       const currentByParticipant = new Map(currentSplits.map((split) => [split.participantId, split]));
@@ -1633,6 +1667,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   };
 
   const disableCustomTipSplit = () => {
+    trackObservabilityEvent('CREATE_BILL_CUSTOM_TIP_TOGGLED', {
+      source: 'CreateBillScreen',
+      enabled: false,
+      splitMode,
+    });
     setIsCustomTipEnabled(false);
     setCustomTipSplits([]);
     setCustomTipSplitType('amount');
@@ -1738,32 +1777,38 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const handleCreateBill = async () => {
     if (!billTitle.trim()) {
+      trackSubmitValidationFailed('missing_bill_name');
       setErrorMessage('Bill name is required.');
       return;
     }
 
     if (selectedFriendIds.length === 0) {
+      trackSubmitValidationFailed('missing_friends');
       setErrorMessage('Select at least one friend to split with.');
       return;
     }
 
     if (participants.length !== selectedFriendIds.length + 1) {
+      trackSubmitValidationFailed('friend_resolution_failed');
       setErrorMessage('Could not resolve one or more selected friends. Refresh and try again.');
       return;
     }
 
     if (isEditMode && !isEditHydrated) {
+      trackSubmitValidationFailed('edit_bill_not_hydrated');
       setErrorMessage('Bill details are still loading. Please wait a moment and try again.');
       return;
     }
 
     if (isEqualSplitMode || isManualSplitMode) {
       if (!Number.isFinite(parsedEqualTotal) || parsedEqualTotal <= 0) {
+        trackSubmitValidationFailed('invalid_equal_total');
         setErrorMessage('Enter a valid total bill price.');
         return;
       }
     } else {
       if (items.length === 0) {
+        trackSubmitValidationFailed('missing_items');
         setErrorMessage('Add at least one item.');
         return;
       }
@@ -1776,32 +1821,38 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         !Number.isFinite(parsedFees) ||
         parsedFees < 0
       ) {
+        trackSubmitValidationFailed('invalid_tax_tip_fees');
         setErrorMessage('Tax, tip, and fees must be valid non-negative values.');
         return;
       }
 
       if (isCustomTipEnabled && !isCustomTipSplitBalanced) {
+        trackSubmitValidationFailed('custom_tip_unbalanced');
         setErrorMessage('Custom tip split must match the tip total.');
         return;
       }
     }
 
     if (!Number.isFinite(previewTotal) || previewTotal <= 0) {
+      trackSubmitValidationFailed('invalid_total_amount');
       setErrorMessage('Total bill amount must be greater than zero.');
       return;
     }
 
     if (!payerParticipantId) {
+      trackSubmitValidationFailed('missing_payer');
       setErrorMessage('Select who paid the bill.');
       return;
     }
 
     if (isEditMode && !editBillId) {
+      trackSubmitValidationFailed('missing_edit_bill_id');
       setErrorMessage('Bill could not be loaded for editing.');
       return;
     }
 
     if (isEditMode && !billQuery.data) {
+      trackSubmitValidationFailed('missing_edit_bill');
       setErrorMessage('Bill could not be loaded for editing.');
       return;
     }
@@ -1825,6 +1876,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         .map((participantId) => resolveMappedParticipantId(participantId))
         .filter((participantId): participantId is string => Boolean(participantId));
       if (mappedAssignedParticipantIds.length === 0) {
+        trackSubmitValidationFailed('missing_mapped_participants');
         setErrorMessage('Could not resolve bill participants.');
         return;
       }
@@ -1841,6 +1893,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       for (const [itemIndex, item] of items.entries()) {
         const parsedPrice = Number(item.price);
         if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+          trackSubmitValidationFailed('invalid_item_price');
           setErrorMessage(`Item price is invalid for ${item.name}.`);
           return;
         }
@@ -1848,12 +1901,14 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         const normalizedItemName = item.name.trim() || `Item ${itemIndex + 1}`;
 
         if (!normalizedItemName) {
+          trackSubmitValidationFailed('missing_item_name');
           setErrorMessage('Each item needs a name.');
           return;
         }
 
         if (item.splitMode === 'advanced') {
           if (item.advancedSplits.length === 0) {
+            trackSubmitValidationFailed('missing_advanced_split_participants');
             setErrorMessage(`Add participants for complex split on ${normalizedItemName}.`);
             return;
           }
@@ -1867,6 +1922,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
             const splitValue = Number(getAdvancedSplitRawValue(split, item.advancedSplitType));
             if (!Number.isFinite(splitValue) || splitValue <= 0) {
+              trackSubmitValidationFailed('invalid_advanced_split_value');
               setErrorMessage(`Split value is invalid for ${normalizedItemName}.`);
               return;
             }
@@ -1879,6 +1935,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           }
 
           if (parsedSplitConfig.length === 0) {
+            trackSubmitValidationFailed('missing_advanced_split_config');
             setErrorMessage(`Add participants for complex split on ${normalizedItemName}.`);
             return;
           }
@@ -1887,11 +1944,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             parsedSplitConfig.reduce((sum, split) => sum + split.value, 0),
           );
           if (item.advancedSplitType === 'percentage' && Math.abs(splitTotal - 100) > 0.01) {
+            trackSubmitValidationFailed('advanced_percentage_mismatch');
             setErrorMessage(`${normalizedItemName} percentages must total 100%.`);
             return;
           }
 
           if (item.advancedSplitType === 'amount' && Math.abs(splitTotal - roundToCurrency(parsedPrice)) > 0.01) {
+            trackSubmitValidationFailed('advanced_amount_mismatch');
             setErrorMessage(`${normalizedItemName} amount splits must equal item price.`);
             return;
           }
@@ -1912,9 +1971,10 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           .filter(
             (participantId, index, collection): participantId is string =>
               Boolean(participantId) && collection.indexOf(participantId) === index,
-          );
+        );
 
         if (normalizedAssignedParticipantIds.length === 0) {
+          trackSubmitValidationFailed('missing_simple_split_participants');
           setErrorMessage(`Assign at least one participant for ${normalizedItemName}.`);
           return;
         }
@@ -1964,16 +2024,26 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     });
 
     if (invalidAmounts.length > 0) {
+      trackSubmitValidationFailed('invalid_participant_amount');
       setErrorMessage(`Amount owed is invalid for ${invalidAmounts[0]}.`);
       return;
     }
 
     if (!validateBillTotal(participantRecords, previewTotal)) {
+      trackSubmitValidationFailed('bill_total_mismatch');
       setErrorMessage('Amounts owed must match the total bill amount.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('CREATE_BILL_SUBMIT_STARTED', {
+      source: 'CreateBillScreen',
+      isEditMode,
+      splitMode,
+      itemCount: itemRecords.length,
+      participantCount: participantRecords.length,
+      isOnline,
+    });
     setIsCreating(true);
 
     try {
@@ -2002,7 +2072,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         }
 
         await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
-        Alert.alert('Saved Offline', 'Bill queued and will sync when you reconnect.');
+        trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
+          source: 'CreateBillScreen',
+          isEditMode,
+          splitMode,
+          queued: true,
+        });
+        showQueuedOfflineAlert('Bill');
         navigation.navigate('Bills');
         return;
       }
@@ -2018,6 +2094,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
       await queryClient.invalidateQueries({ queryKey: ['feature', 'bill', savedBill.id] });
+      trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
+        source: 'CreateBillScreen',
+        isEditMode,
+        splitMode,
+        queued: false,
+        billId: savedBill.id,
+      });
       navigation.reset({
         index: 1,
         routes: [
@@ -2031,6 +2114,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     } catch (error) {
       const message = error instanceof Error ? error.message : (isEditMode ? 'Could not save bill.' : 'Could not create bill.');
       setErrorMessage(message);
+      trackObservabilityEvent('CREATE_BILL_SUBMIT_FAILED', {
+        source: 'CreateBillScreen',
+        isEditMode,
+        splitMode,
+        isOnline,
+        error: message,
+      });
     } finally {
       setIsCreating(false);
     }
@@ -2073,6 +2163,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           </View>
           <SegmentedControl
             onChange={(value: CreateBillSplitMode) => {
+              trackObservabilityEvent('CREATE_BILL_SPLIT_MODE_CHANGED', {
+                source: 'CreateBillScreen',
+                previousSplitMode: splitMode,
+                nextSplitMode: value,
+              });
               setSplitMode(value);
             }}
             options={[

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
 
@@ -11,12 +12,14 @@ interface ErrorToastState {
   message: string;
   actionLabel?: string;
   onAction?: () => void;
+  source?: string;
 }
 
 interface ShowErrorOptions {
   title?: string;
   actionLabel?: string;
   onAction?: () => void;
+  source?: string;
 }
 
 interface ErrorToastContextValue {
@@ -35,6 +38,7 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
   const theme = useTheme();
   const [toast, setToast] = useState<ErrorToastState | null>(null);
   const nextToastIdRef = useRef(0);
+  const lastTrackedToastIdRef = useRef<number | null>(null);
   const translateY = useRef(new Animated.Value(HIDDEN_Y_OFFSET)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -54,6 +58,15 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
   }, [opacity, translateY]);
 
   const dismissError = useCallback(() => {
+    if (toast) {
+      trackObservabilityEvent('ERROR_TOAST_DISMISSED', {
+        hasAction: Boolean(toast.actionLabel && toast.onAction),
+        source: 'ErrorToastProvider',
+        title: toast.title,
+        toastSource: toast.source ?? 'unknown',
+      });
+    }
+
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: HIDDEN_Y_OFFSET,
@@ -70,7 +83,7 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
         setToast(null);
       }
     });
-  }, [opacity, translateY]);
+  }, [opacity, toast, translateY]);
 
   const showError = useCallback((messageValue: string, options?: ShowErrorOptions) => {
     const message = messageValue.trim();
@@ -85,6 +98,7 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
       message,
       actionLabel: options?.actionLabel?.trim() || undefined,
       onAction: options?.onAction,
+      source: options?.source?.trim() || 'unknown',
     });
   }, []);
 
@@ -93,10 +107,35 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
+    if (lastTrackedToastIdRef.current !== toast.id) {
+      lastTrackedToastIdRef.current = toast.id;
+      trackObservabilityEvent('ERROR_TOAST_SHOWN', {
+        hasAction: Boolean(toast.actionLabel && toast.onAction),
+        messageLength: toast.message.length,
+        source: 'ErrorToastProvider',
+        title: toast.title,
+        toastSource: toast.source ?? 'unknown',
+      });
+    }
+
     translateY.setValue(HIDDEN_Y_OFFSET);
     opacity.setValue(0);
     animateIn();
   }, [animateIn, opacity, toast, translateY]);
+
+  const handleActionPress = useCallback(() => {
+    if (!toast?.onAction) {
+      return;
+    }
+
+    trackObservabilityEvent('ERROR_TOAST_ACTION_TAPPED', {
+      actionLabel: toast.actionLabel ?? null,
+      source: 'ErrorToastProvider',
+      title: toast.title,
+      toastSource: toast.source ?? 'unknown',
+    });
+    toast.onAction();
+  }, [toast]);
 
   const contextValue = useMemo<ErrorToastContextValue>(
     () => ({
@@ -188,7 +227,7 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
                       <Pressable
                         accessibilityLabel={toast.actionLabel}
                         accessibilityRole="button"
-                        onPress={toast.onAction}
+                        onPress={handleActionPress}
                         style={({ pressed }) => [styles.actionButton, pressed ? { opacity: 0.75 } : null]}
                       >
                         <Text tone="danger" variant="label">

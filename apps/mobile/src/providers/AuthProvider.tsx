@@ -15,6 +15,7 @@ import {
   captureObservabilityError,
   clearObservabilityUser,
   identifyObservabilityUser,
+  setObservabilityContext,
   trackObservabilityEvent,
 } from '../observability';
 import { normalizeAuthUser, type AuthUser } from '../types/auth';
@@ -40,6 +41,22 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function getCurrentUser(): AuthUser | null {
   return normalizeAuthUser(pb.authStore.record as Record<string, unknown> | null);
+}
+
+function resolveAuthUserTier(user: AuthUser | null): 'admin' | 'subscriber' | 'free' | 'anonymous' {
+  if (!user) {
+    return 'anonymous';
+  }
+
+  if (user.isAdmin) {
+    return 'admin';
+  }
+
+  if (user.isSubscriber) {
+    return 'subscriber';
+  }
+
+  return 'free';
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -80,6 +97,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true;
 
     const bootstrap = async () => {
+      const restoreStartedAt = Date.now();
+      const hadPersistedToken = Boolean(pb.authStore.token);
+      let refreshFailed = false;
+      trackObservabilityEvent('AUTH_SESSION_RESTORE_STARTED', {
+        hadPersistedToken,
+        source: 'AuthProvider',
+      });
+
       try {
         await authStore.waitUntilReady();
         const loadedRolePreviewSettings = await loadRolePreviewSettings();
@@ -96,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             await pb.collection('users').authRefresh();
           } catch (refreshError) {
+            refreshFailed = true;
             logger.warn('[AuthProvider] authRefresh failed, using cached session:', refreshError);
           }
         }
@@ -103,7 +129,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (isMounted) {
           syncAuthSnapshot();
         }
+
+        trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
+          durationMs: Date.now() - restoreStartedAt,
+          hadPersistedToken,
+          hasValidSession: Boolean(pb.authStore.isValid && getCurrentUser()),
+          refreshFailed,
+          source: 'AuthProvider',
+        });
       } catch (error) {
+        trackObservabilityEvent('AUTH_SESSION_RESTORE_FAILED', {
+          durationMs: Date.now() - restoreStartedAt,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          hadPersistedToken,
+          source: 'AuthProvider',
+        });
         if (isMounted) {
           setStatus('unauthenticated');
           setActualUser(null);
@@ -126,6 +167,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe();
     };
   }, [syncAuthSnapshot]);
+
+  useEffect(() => {
+    const isRolePreviewActive =
+      canUseRolePreview &&
+      (rolePreviewSettings.viewAsNonAdmin || rolePreviewSettings.viewAsNonSubscriber);
+
+    setObservabilityContext({
+      actualUserTier: resolveAuthUserTier(actualUser),
+      authStatus: status,
+      isRolePreviewActive,
+      userTier: resolveAuthUserTier(user),
+    });
+  }, [
+    actualUser,
+    canUseRolePreview,
+    rolePreviewSettings.viewAsNonAdmin,
+    rolePreviewSettings.viewAsNonSubscriber,
+    status,
+    user,
+  ]);
 
   useEffect(() => {
     if (status === 'bootstrapping') {

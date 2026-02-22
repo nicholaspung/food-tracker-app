@@ -122,10 +122,12 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     }
 
     if (optionId === 'log-note') {
+      trackObservabilityEvent('Note Creation Started', { source: 'AddVisitScreen' });
       navigation.navigate('NoteEditor');
       return;
     }
 
+    trackObservabilityEvent('Notes Opened', { source: 'AddVisitScreen' });
     navigation.navigate('Notes');
   };
 

@@ -15,7 +15,8 @@ docs/
 │
 ├── features/                           # ✨ Feature Documentation
 │   ├── EMAIL_SETUP.md                  # Email configuration
-│   └── INVITE_CODES.md                 # Invite code system
+│   ├── INVITE_CODES.md                 # Invite code system
+│   └── MOBILE_POSTHOG_RETENTION_DASHBOARD.md # Mobile analytics dashboard setup
 │
 ├── operations/                         # 🔧 Operations & Maintenance
 │   └── DISASTER_RECOVERY.md            # Emergency procedures
@@ -60,9 +61,15 @@ docs/
    - Creating and managing invite codes
    - Testing the invite code flow
 
+6. **[MOBILE_POSTHOG_RETENTION_DASHBOARD.md](features/MOBILE_POSTHOG_RETENTION_DASHBOARD.md)** - Mobile growth/retention dashboard schema
+   - Activation funnel
+   - Weekly retention and stickiness
+   - Feature adoption mix
+   - Friction and limit-pressure monitoring
+
 ### 🔧 Operations (`operations/`)
 
-6. **[DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md)** - Emergency procedures
+7. **[DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md)** - Emergency procedures
    - Recovery scenarios (VPS lost, DB corruption, etc.)
    - Step-by-step recovery procedures
    - Recovery testing schedule
@@ -70,7 +77,7 @@ docs/
 
 ### 📋 Planning (`planning/`)
 
-7. **[FUTURE_IMPROVEMENTS.md](planning/FUTURE_IMPROVEMENTS.md)** - Architecture enhancements
+8. **[FUTURE_IMPROVEMENTS.md](planning/FUTURE_IMPROVEMENTS.md)** - Architecture enhancements
    - Notification system (Apprise + Ntfy.sh)
    - Centralized logging (Loki + Grafana)
    - Metrics monitoring (Prometheus)
@@ -98,6 +105,9 @@ docs/
 **Implement invite codes:**
 → Read [features/INVITE_CODES.md](features/INVITE_CODES.md)
 
+**Set up mobile retention dashboards in PostHog:**
+→ Read [features/MOBILE_POSTHOG_RETENTION_DASHBOARD.md](features/MOBILE_POSTHOG_RETENTION_DASHBOARD.md)
+
 **Handle an emergency:**
 → Read [operations/DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md)
 
@@ -116,10 +126,11 @@ docs/
 ### Implementing Features:
 4. [features/EMAIL_SETUP.md](features/EMAIL_SETUP.md) - Configure email sending
 5. [features/INVITE_CODES.md](features/INVITE_CODES.md) - Set up invite code system
+6. [features/MOBILE_POSTHOG_RETENTION_DASHBOARD.md](features/MOBILE_POSTHOG_RETENTION_DASHBOARD.md) - Configure mobile retention dashboards
 
 ### After Deployment:
-6. [operations/DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md) - Prepare for emergencies
-7. [planning/FUTURE_IMPROVEMENTS.md](planning/FUTURE_IMPROVEMENTS.md) - Plan enhancements
+7. [operations/DISASTER_RECOVERY.md](operations/DISASTER_RECOVERY.md) - Prepare for emergencies
+8. [planning/FUTURE_IMPROVEMENTS.md](planning/FUTURE_IMPROVEMENTS.md) - Plan enhancements
 
 ---
 

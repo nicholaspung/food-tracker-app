@@ -1,3 +1,4 @@
+import { trackObservabilityEvent } from '../observability';
 import { computeRetryDelayMs } from './retryPolicy';
 import type {
   EnqueueMutationInput,
@@ -65,14 +66,38 @@ export class MutationReplayService {
   }
 
   async enqueue(input: EnqueueMutationInput): Promise<QueuedMutation> {
-    const mutation = await this.queueStore.enqueue(input);
-    await this.refreshSnapshot();
-    return mutation;
+    const operationName = resolveOperationNameFromInput(input);
+
+    try {
+      const mutation = await this.queueStore.enqueue(input);
+      await this.refreshSnapshot();
+      trackObservabilityEvent('MUTATION_ENQUEUED', {
+        mutationId: mutation.id,
+        method: mutation.method,
+        mutationTarget: resolveMutationTarget(mutation.url),
+        operationName,
+        queueDepth: this.snapshot.queueDepth,
+      });
+      return mutation;
+    } catch (error) {
+      trackObservabilityEvent('MUTATION_ENQUEUE_FAILED', {
+        method: input.method,
+        mutationTarget: resolveMutationTarget(input.url),
+        operationName,
+        ...resolveErrorProperties(error),
+      });
+      throw error;
+    }
   }
 
   async retryAllFailed(): Promise<number> {
     const resetCount = await this.queueStore.retryFailedMutations(this.now());
     await this.refreshSnapshot();
+    trackObservabilityEvent('SYNC_FAILED_MUTATIONS_RESET', {
+      failedCount: this.snapshot.failedCount,
+      queueDepth: this.snapshot.queueDepth,
+      resetCount,
+    });
     return resetCount;
   }
 
@@ -93,9 +118,16 @@ export class MutationReplayService {
   }
 
   private async runReplay(trigger: ReplayTrigger): Promise<void> {
+    let replayError: unknown = null;
+
     await this.refreshSnapshot({
       isSyncing: true,
       lastTrigger: trigger,
+    });
+    trackObservabilityEvent('SYNC_REPLAY_STARTED', {
+      failedCount: this.snapshot.failedCount,
+      queueDepth: this.snapshot.queueDepth,
+      trigger,
     });
 
     try {
@@ -125,6 +157,16 @@ export class MutationReplayService {
             lastSyncedAt: resolvedAt,
             lastTrigger: trigger,
           });
+          trackObservabilityEvent('SYNC_MUTATION_SUCCEEDED', {
+            attempt: nextAttempt,
+            maxAttempts: nextMutation.maxAttempts,
+            mutationId: nextMutation.id,
+            mutationTarget: resolveMutationTarget(nextMutation.url),
+            operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+            queueDepth: this.snapshot.queueDepth,
+            statusCode: sendResult.statusCode,
+            trigger,
+          });
           continue;
         }
 
@@ -148,11 +190,36 @@ export class MutationReplayService {
           isSyncing: true,
           lastTrigger: trigger,
         });
+        trackObservabilityEvent(
+          shouldStopRetrying ? 'SYNC_MUTATION_FAILED_TERMINAL' : 'SYNC_MUTATION_FAILED_RETRYABLE',
+          {
+            attempt: nextAttempt,
+            errorMessage,
+            maxAttempts: nextMutation.maxAttempts,
+            mutationId: nextMutation.id,
+            mutationTarget: resolveMutationTarget(nextMutation.url),
+            operationName: resolveOperationNameFromQueuedMutation(nextMutation),
+            queueDepth: this.snapshot.queueDepth,
+            retryable: sendResult.retryable,
+            statusCode: sendResult.statusCode,
+            trigger,
+          },
+        );
       }
+    } catch (error) {
+      replayError = error;
+      throw error;
     } finally {
       await this.refreshSnapshot({
         isSyncing: false,
         lastTrigger: trigger,
+      });
+      trackObservabilityEvent('SYNC_REPLAY_COMPLETED', {
+        failedCount: this.snapshot.failedCount,
+        hadError: replayError !== null,
+        ...resolveErrorProperties(replayError),
+        queueDepth: this.snapshot.queueDepth,
+        trigger,
       });
     }
   }
@@ -177,4 +244,91 @@ export class MutationReplayService {
       listener(this.snapshot);
     }
   }
+}
+
+function resolveOperationNameFromInput(input: EnqueueMutationInput): string {
+  const headerOperationName = getHeaderValue(input.headers, 'X-Mobile-Write-Operation');
+  if (headerOperationName) {
+    return headerOperationName;
+  }
+
+  if (input.url.startsWith('local://feature/')) {
+    return input.url.slice('local://feature/'.length);
+  }
+
+  try {
+    const parsedUrl = new URL(input.url);
+    return `${input.method} ${parsedUrl.pathname}`;
+  } catch {
+    return input.url;
+  }
+}
+
+function resolveOperationNameFromQueuedMutation(mutation: QueuedMutation): string {
+  const headerOperationName = getHeaderValue(mutation.headers, 'X-Mobile-Write-Operation');
+  if (headerOperationName) {
+    return headerOperationName;
+  }
+
+  if (mutation.url.startsWith('local://feature/')) {
+    return mutation.url.slice('local://feature/'.length);
+  }
+
+  try {
+    const parsedUrl = new URL(mutation.url);
+    return `${mutation.method} ${parsedUrl.pathname}`;
+  } catch {
+    return mutation.url;
+  }
+}
+
+function resolveMutationTarget(url: string): string {
+  if (url.startsWith('local://feature/')) {
+    return 'local_feature_outbox';
+  }
+
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+}
+
+function getHeaderValue(
+  headers: Record<string, string> | undefined,
+  expectedHeaderName: string,
+): string | null {
+  if (!headers) {
+    return null;
+  }
+
+  const loweredExpectedName = expectedHeaderName.toLowerCase();
+  for (const [headerName, headerValue] of Object.entries(headers)) {
+    if (headerName.toLowerCase() === loweredExpectedName) {
+      return headerValue;
+    }
+  }
+
+  return null;
+}
+
+function resolveErrorProperties(error: unknown): { errorMessage: string | null; errorType: string | null } {
+  if (!error) {
+    return {
+      errorMessage: null,
+      errorType: null,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      errorMessage: error.message,
+      errorType: error.name,
+    };
+  }
+
+  return {
+    errorMessage: String(error),
+    errorType: 'unknown_error',
+  };
 }

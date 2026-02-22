@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
+import { trackObservabilityEvent } from '../../observability';
 import { useErrorToast } from '../../providers/ErrorToastProvider';
 
 export interface PageErrorToastProps {
@@ -19,6 +20,14 @@ export function PageErrorToast({
 }: PageErrorToastProps) {
   const { showError } = useErrorToast();
   const lastShownKeyRef = useRef<string | null>(null);
+  const handleAction = useCallback(() => {
+    trackObservabilityEvent('PAGE_ERROR_TOAST_ACTION_TAPPED', {
+      actionLabel: actionLabel ?? null,
+      source: 'PageErrorToast',
+      title,
+    });
+    onAction?.();
+  }, [actionLabel, onAction, title]);
 
   useEffect(() => {
     if (!errorMessage) {
@@ -37,8 +46,19 @@ export function PageErrorToast({
     }
 
     lastShownKeyRef.current = dedupeKey;
-    showError(normalizedMessage, { title, actionLabel, onAction });
-  }, [actionLabel, errorMessage, onAction, showError, title]);
+    trackObservabilityEvent('PAGE_ERROR_TOAST_SHOWN', {
+      hasAction: Boolean(actionLabel && onAction),
+      messageLength: normalizedMessage.length,
+      source: 'PageErrorToast',
+      title,
+    });
+    showError(normalizedMessage, {
+      actionLabel,
+      onAction: actionLabel && onAction ? handleAction : undefined,
+      source: 'PageErrorToast',
+      title,
+    });
+  }, [actionLabel, errorMessage, handleAction, onAction, showError, title]);
 
   return null;
 }

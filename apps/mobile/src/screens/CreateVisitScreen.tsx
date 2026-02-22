@@ -4,7 +4,6 @@ import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Image,
   Linking,
   Pressable,
@@ -51,6 +50,7 @@ import {
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -1402,12 +1402,25 @@ export function CreateVisitScreen({
     }
 
     if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+      trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+        enforcement: "client_estimate",
+        limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
+        metric: "places_queries",
+        remaining: placesQueriesRemaining,
+        source: "CreateVisitScreen",
+        used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
+      });
       setSearchErrorMessage("Monthly food place search limit reached.");
       return;
     }
 
     const trimmedQuery = restaurantSearchQuery.trim();
     const trimmedLocation = manualLocation.trim();
+    trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_STARTED", {
+      hasLocation: Boolean(trimmedLocation),
+      hasQuery: Boolean(trimmedQuery),
+      source: "CreateVisitScreen",
+    });
     if (!trimmedQuery && !trimmedLocation) {
       setSearchErrorMessage("Enter a place name/type or a location to search.");
       return;
@@ -1438,6 +1451,10 @@ export function CreateVisitScreen({
       });
 
       setSearchResults(results);
+      trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_COMPLETED", {
+        resultCount: results.length,
+        source: "CreateVisitScreen",
+      });
       await restaurantsQuery.refetch();
       if (collapseAfterSearch) {
         setTimeout(() => {
@@ -1446,11 +1463,28 @@ export function CreateVisitScreen({
       }
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+          enforcement: "server",
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: "CreateVisitScreen",
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
         : error instanceof Error
           ? error.message
           : "Could not search restaurants.";
+      trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_FAILED", {
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : "unknown_error",
+        source: "CreateVisitScreen",
+      });
       setSearchErrorMessage(message);
     } finally {
       setIsSearching(false);
@@ -1469,10 +1503,21 @@ export function CreateVisitScreen({
     }
 
     if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+      trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+        enforcement: "client_estimate",
+        limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
+        metric: "places_queries",
+        remaining: placesQueriesRemaining,
+        source: "CreateVisitScreen",
+        used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
+      });
       setSearchErrorMessage("Monthly food place search limit reached.");
       return;
     }
 
+    trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_STARTED", {
+      source: "CreateVisitScreen",
+    });
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
     setIsGettingLocation(true);
@@ -1481,6 +1526,10 @@ export function CreateVisitScreen({
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) {
+        trackObservabilityEvent("CREATE_VISIT_LOCATION_PERMISSION_DENIED", {
+          canAskAgain: permission.canAskAgain,
+          source: "CreateVisitScreen",
+        });
         setSearchErrorMessage(
           permission.canAskAgain === false
             ? "Location permission is blocked. Enable it in device settings."
@@ -1507,14 +1556,35 @@ export function CreateVisitScreen({
       });
 
       setNearbyResults(results);
+      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_COMPLETED", {
+        resultCount: results.length,
+        source: "CreateVisitScreen",
+      });
       await restaurantsQuery.refetch();
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+          enforcement: "server",
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: "CreateVisitScreen",
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
         : error instanceof Error
           ? error.message
           : "Could not load nearby restaurants.";
+      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_FAILED", {
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : "unknown_error",
+        source: "CreateVisitScreen",
+      });
       setSearchErrorMessage(message);
     } finally {
       setIsGettingLocation(false);
@@ -1550,6 +1620,10 @@ export function CreateVisitScreen({
     itemId: string,
     source: "camera" | "gallery",
   ) => {
+    trackObservabilityEvent("CREATE_VISIT_PHOTO_PICK_STARTED", {
+      photoSource: source,
+      source: "CreateVisitScreen",
+    });
     setPhotoPermissionNeedsSettings(false);
 
     const targetItem = draftItems.find((item) => item.id === itemId);
@@ -1561,6 +1635,14 @@ export function CreateVisitScreen({
       perRecordPhotoLimit !== null &&
       targetItem.photos.length >= perRecordPhotoLimit
     ) {
+      trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+        enforcement: "client_estimate",
+        limit: perRecordPhotoLimit,
+        metric: "photo_uploads_per_record",
+        remaining: Math.max(perRecordPhotoLimit - targetItem.photos.length, 0),
+        source: "CreateVisitScreen",
+        used: targetItem.photos.length,
+      });
       setErrorMessage(
         `You can upload up to ${perRecordPhotoLimit} photo${perRecordPhotoLimit === 1 ? "" : "s"} per item.`,
       );
@@ -1574,6 +1656,11 @@ export function CreateVisitScreen({
 
     if (!permission.granted) {
       const needsSettings = permission.canAskAgain === false;
+      trackObservabilityEvent("CREATE_VISIT_PHOTO_PERMISSION_DENIED", {
+        canAskAgain: permission.canAskAgain,
+        photoSource: source,
+        source: "CreateVisitScreen",
+      });
       setPhotoPermissionNeedsSettings(needsSettings);
       setErrorMessage(
         needsSettings
@@ -1602,6 +1689,10 @@ export function CreateVisitScreen({
           });
 
     if (result.canceled || result.assets.length === 0) {
+      trackObservabilityEvent("CREATE_VISIT_PHOTO_PICK_CANCELED", {
+        photoSource: source,
+        source: "CreateVisitScreen",
+      });
       return;
     }
 
@@ -1630,6 +1721,10 @@ export function CreateVisitScreen({
         };
       }),
     );
+    trackObservabilityEvent("CREATE_VISIT_PHOTO_PICKED", {
+      photoSource: source,
+      source: "CreateVisitScreen",
+    });
     setPhotoPermissionNeedsSettings(false);
     setErrorMessage(null);
   };
@@ -1691,6 +1786,14 @@ export function CreateVisitScreen({
           FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
           0,
         );
+        trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+          enforcement: "client_estimate",
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: "photo_uploads",
+          remaining,
+          source: "CreateVisitScreen",
+          used: monthlyUsage.snapshot.usage.photoUploads,
+        });
         setErrorMessage(
           `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
         );
@@ -1714,7 +1817,7 @@ export function CreateVisitScreen({
         await queueFeatureOutbox("visit.create", visitInput);
         setSourceListItemId(null);
         await queryClient.invalidateQueries({ queryKey: ["feature", "visits"] });
-        Alert.alert("Saved Offline", "Visit queued and will sync when you reconnect.");
+        showQueuedOfflineAlert('Visit');
         navigation.navigate("Home");
         return;
       }
@@ -1757,6 +1860,18 @@ export function CreateVisitScreen({
       navigation.navigate("Home");
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent("USAGE_LIMIT_REACHED", {
+          enforcement: "server",
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: "CreateVisitScreen",
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
         : error instanceof Error

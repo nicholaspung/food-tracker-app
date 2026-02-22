@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.7.6",
+    "date": "2026-02-21",
+    "title": "Analytics & Code Quality Improvements",
+    "summary": "Behind-the-scenes improvements to help us understand how the app is used and catch issues faster. No user-facing changes — just a more reliable and maintainable app.",
+    "features": [],
+    "improvements": [
+      "Comprehensive usage analytics added throughout the app to understand feature adoption and improve future releases",
+      "App lifecycle events (foreground, background, cold start) now tracked for session-level insights",
+      "All offline sync operations now tracked so we can monitor queue health and failure rates",
+      "Feature mutations (visit create/update, quick track, etc.) now include success/failure telemetry",
+      "Reusable ConfirmDestructiveModal component introduced for consistent delete confirmation dialogs",
+      "Offline alert messages are now consistent across all screens using a shared helper",
+      "Typography tokens applied consistently across the Home screen for visual uniformity",
+      "Visibility option selector now supports a card layout with descriptions and badges for richer settings UI"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.5",
     "date": "2026-02-21",
     "title": "Usage Limits for Free Users",

@@ -1,9 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { BackHeaderScreenScaffold, SegmentedControl } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
@@ -23,6 +24,7 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
   const [tipMode, setTipMode] = useState<TipMode>('percentage');
   const [tipPercent, setTipPercent] = useState('18');
   const [customTipAmount, setCustomTipAmount] = useState('');
+  const [hasTrackedCalculationEvent, setHasTrackedCalculationEvent] = useState(false);
 
   const parsedSubtotal = parseMoney(subtotal);
   const parsedTaxes = parseMoney(taxes);
@@ -39,6 +41,29 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
   }, [parsedCustomTip, parsedSubtotal, parsedTipPercent, tipMode]);
 
   const finalTotal = pretipTotal + tipAmount;
+
+  useEffect(() => {
+    if (pretipTotal <= 0) {
+      if (hasTrackedCalculationEvent) {
+        setHasTrackedCalculationEvent(false);
+      }
+      return;
+    }
+
+    if (hasTrackedCalculationEvent) {
+      return;
+    }
+
+    trackObservabilityEvent('TIP_CALCULATOR_CALCULATION_COMPLETED', {
+      source: 'TipCalculatorScreen',
+      tipMode,
+      subtotal: parsedSubtotal,
+      taxes: parsedTaxes,
+      tipAmount,
+      totalAmount: finalTotal,
+    });
+    setHasTrackedCalculationEvent(true);
+  }, [finalTotal, hasTrackedCalculationEvent, parsedSubtotal, parsedTaxes, pretipTotal, tipAmount, tipMode]);
 
   const styles = StyleSheet.create({
     body: {
@@ -127,7 +152,14 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
         <Card>
           <Text variant="label">Tip Mode</Text>
           <SegmentedControl
-            onChange={setTipMode}
+            onChange={(nextTipMode: TipMode) => {
+              trackObservabilityEvent('TIP_CALCULATOR_TIP_MODE_CHANGED', {
+                source: 'TipCalculatorScreen',
+                previousTipMode: tipMode,
+                nextTipMode,
+              });
+              setTipMode(nextTipMode);
+            }}
             options={[
               { label: 'Percentage', value: 'percentage' },
               { label: 'Specific Amount', value: 'custom' },
@@ -143,6 +175,11 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
                     key={preset}
                     label={`${preset}%`}
                     onPress={() => {
+                      trackObservabilityEvent('TIP_CALCULATOR_PRESET_SELECTED', {
+                        source: 'TipCalculatorScreen',
+                        presetPercentage: preset,
+                        previousTipPercent: Number.parseFloat(tipPercent) || 0,
+                      });
                       setTipPercent(String(preset));
                     }}
                     style={styles.rowAction}

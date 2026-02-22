@@ -11,6 +11,7 @@ import {
 } from '../components/shared';
 import { createCollectionRecord, getAuthenticatedUserIdOrNull } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -54,23 +55,45 @@ export function CreateVisitAddMenuItemScreen({
 
   const handleAddMenuItem = async () => {
     if (!isOnline) {
+      trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitAddMenuItemScreen',
+        reason: 'offline',
+        restaurantId,
+      });
       setErrorMessage('Adding menu items requires internet connection.');
       return;
     }
 
     const currentUserId = getAuthenticatedUserIdOrNull();
     if (!currentUserId) {
+      trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitAddMenuItemScreen',
+        reason: 'missing_user',
+        restaurantId,
+      });
       setErrorMessage('Please sign in again to add items.');
       return;
     }
 
     const trimmedName = menuItemName.trim();
     if (!trimmedName) {
+      trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitAddMenuItemScreen',
+        reason: 'missing_name',
+        restaurantId,
+        visibility,
+      });
       setErrorMessage('Item name is required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_STARTED', {
+      source: 'CreateVisitAddMenuItemScreen',
+      restaurantId,
+      visibility,
+      isOnline,
+    });
     setIsSubmitting(true);
 
     try {
@@ -96,6 +119,12 @@ export function CreateVisitAddMenuItemScreen({
       await queryClient.invalidateQueries({
         queryKey: ['feature', 'menuItems', restaurantId],
       });
+      trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_SUCCEEDED', {
+        source: 'CreateVisitAddMenuItemScreen',
+        restaurantId,
+        menuItemId: createdItem.id,
+        visibility,
+      });
 
       navigation.navigate('CreateVisit', {
         preselectedRestaurantId: restaurantId,
@@ -107,6 +136,12 @@ export function CreateVisitAddMenuItemScreen({
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not add menu item.';
       setErrorMessage(message);
+      trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_SUBMIT_FAILED', {
+        source: 'CreateVisitAddMenuItemScreen',
+        restaurantId,
+        visibility,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -156,7 +191,15 @@ export function CreateVisitAddMenuItemScreen({
           <View style={styles.visibilitySection}>
             <Text variant="label">Visibility</Text>
             <VisibilityOptionSelector
-              onChange={setVisibility}
+              onChange={(nextVisibility) => {
+                trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_VISIBILITY_CHANGED', {
+                  source: 'CreateVisitAddMenuItemScreen',
+                  restaurantId,
+                  previousVisibility: visibility,
+                  nextVisibility,
+                });
+                setVisibility(nextVisibility);
+              }}
               value={visibility}
             />
           </View>

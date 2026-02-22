@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { FormScaffold } from '../components/shared';
 import { Button, Screen, Text } from '../ui';
 
@@ -16,12 +17,20 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
         <Button
           label="Create Account"
           onPress={() => {
+            trackObservabilityEvent('AUTH_ONBOARDING_CTA_TAPPED', {
+              source: 'OnboardingScreen',
+              destination: 'SignUp',
+            });
             navigation.navigate('SignUp');
           }}
         />
         <Button
           label="Sign In"
           onPress={() => {
+            trackObservabilityEvent('AUTH_ONBOARDING_CTA_TAPPED', {
+              source: 'OnboardingScreen',
+              destination: 'Login',
+            });
             navigation.navigate('Login');
           }}
           variant="secondary"
@@ -29,6 +38,10 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
         <Button
           label="Verify Email"
           onPress={() => {
+            trackObservabilityEvent('AUTH_ONBOARDING_CTA_TAPPED', {
+              source: 'OnboardingScreen',
+              destination: 'VerifyEmail',
+            });
             navigation.navigate('VerifyEmail');
           }}
           variant="secondary"
@@ -39,6 +52,10 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
         <Button
           label="Reset Password"
           onPress={() => {
+            trackObservabilityEvent('AUTH_ONBOARDING_CTA_TAPPED', {
+              source: 'OnboardingScreen',
+              destination: 'ResetPassword',
+            });
             navigation.navigate('ResetPassword');
           }}
           variant="secondary"

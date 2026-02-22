@@ -3,9 +3,10 @@ import NetInfo, {
   type NetInfoState,
 } from '@react-native-community/netinfo';
 import { onlineManager } from '@tanstack/react-query';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { logger } from '../lib/logger';
+import { setObservabilityContext, trackObservabilityEvent } from '../observability';
 
 interface ConnectivitySnapshot {
   isConnected: boolean;
@@ -29,6 +30,7 @@ const ConnectivityContext = createContext<ConnectivitySnapshot | null>(null);
 
 export function ConnectivityProvider({ children }: { children: React.ReactNode }) {
   const [snapshot, setSnapshot] = useState<ConnectivitySnapshot>(DEFAULT_CONNECTIVITY_SNAPSHOT);
+  const lastTrackedSnapshotRef = useRef<ConnectivitySnapshot>(DEFAULT_CONNECTIVITY_SNAPSHOT);
 
   useEffect(() => {
     let isMounted = true;
@@ -36,6 +38,28 @@ export function ConnectivityProvider({ children }: { children: React.ReactNode }
     const syncSnapshot = (state: NetInfoState) => {
       const nextSnapshot = resolveSnapshot(state);
       onlineManager.setOnline(nextSnapshot.isOnline);
+      setObservabilityContext({
+        connectionType: nextSnapshot.connectionType,
+        isConnectionExpensive: nextSnapshot.isConnectionExpensive,
+        isOnline: nextSnapshot.isOnline,
+      });
+      const previousSnapshot = lastTrackedSnapshotRef.current;
+
+      if (
+        nextSnapshot.isOnline !== previousSnapshot.isOnline ||
+        nextSnapshot.connectionType !== previousSnapshot.connectionType ||
+        nextSnapshot.isConnectionExpensive !== previousSnapshot.isConnectionExpensive
+      ) {
+        trackObservabilityEvent('NETWORK_STATUS_CHANGED', {
+          connectionType: nextSnapshot.connectionType,
+          isConnectionExpensive: nextSnapshot.isConnectionExpensive,
+          isOnline: nextSnapshot.isOnline,
+          previousConnectionType: previousSnapshot.connectionType,
+          previousIsOnline: previousSnapshot.isOnline,
+        });
+      }
+
+      lastTrackedSnapshotRef.current = nextSnapshot;
 
       if (isMounted) {
         setSnapshot(nextSnapshot);

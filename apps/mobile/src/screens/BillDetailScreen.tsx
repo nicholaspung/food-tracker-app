@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  ConfirmDestructiveModal,
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
@@ -25,11 +26,13 @@ import {
 import { formatCurrency, validateBillTotal } from '../features/bills/billCalculations';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Modal, Text } from '../ui';
+import { Button, Card, Text } from '../ui';
 
 type BillDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'BillDetail'>;
 
@@ -376,6 +379,12 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_STARTED', {
+      source: 'BillDetailScreen',
+      billId,
+      nextStatus,
+      isOnline,
+    });
     setIsUpdatingBillStatus(true);
 
     try {
@@ -385,7 +394,13 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
           status: nextStatus,
         });
         await refreshBill();
-        Alert.alert('Saved Offline', 'Bill status update queued and will sync when you reconnect.');
+        trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
+          source: 'BillDetailScreen',
+          billId,
+          nextStatus,
+          queued: true,
+        });
+        showQueuedOfflineAlert('Bill status update');
         return;
       }
 
@@ -394,9 +409,21 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         status: nextStatus,
       });
       await refreshBill();
+      trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
+        source: 'BillDetailScreen',
+        billId,
+        nextStatus,
+        queued: false,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update bill status.';
       setErrorMessage(message);
+      trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_FAILED', {
+        source: 'BillDetailScreen',
+        billId,
+        nextStatus,
+        error: message,
+      });
     } finally {
       setIsUpdatingBillStatus(false);
     }
@@ -411,6 +438,13 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_STARTED', {
+      source: 'BillDetailScreen',
+      billId,
+      participantId,
+      nextPaidStatus,
+      isOnline,
+    });
     setUpdatingParticipantId(participantId);
 
     try {
@@ -421,16 +455,37 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
           paidStatus: nextPaidStatus,
         });
         await refreshBill();
-        Alert.alert('Saved Offline', 'Payment status update queued and will sync when you reconnect.');
+        trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
+          source: 'BillDetailScreen',
+          billId,
+          participantId,
+          nextPaidStatus,
+          queued: true,
+        });
+        showQueuedOfflineAlert('Payment status update');
         return;
       }
 
       await queueWrite('bill.participant.toggle-paid');
       await markBillParticipantPaid(billId, participantId, nextPaidStatus);
       await refreshBill();
+      trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
+        source: 'BillDetailScreen',
+        billId,
+        participantId,
+        nextPaidStatus,
+        queued: false,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update paid status.';
       setErrorMessage(message);
+      trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_FAILED', {
+        source: 'BillDetailScreen',
+        billId,
+        participantId,
+        nextPaidStatus,
+        error: message,
+      });
     } finally {
       setUpdatingParticipantId(null);
     }
@@ -442,6 +497,11 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('BILL_DETAIL_DELETE_CONFIRMED', {
+      source: 'BillDetailScreen',
+      billId: bill.id,
+      isOnline,
+    });
     setIsDeletingBill(true);
 
     try {
@@ -449,7 +509,12 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         await queueFeatureOutbox('bill.delete', { billId: bill.id });
         await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
         queryClient.removeQueries({ queryKey: ['feature', 'bill', bill.id] });
-        Alert.alert('Saved Offline', 'Bill delete queued and will sync when you reconnect.');
+        trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {
+          source: 'BillDetailScreen',
+          billId: bill.id,
+          queued: true,
+        });
+        showQueuedOfflineAlert('Bill delete');
         navigation.navigate('Bills');
         return;
       }
@@ -458,10 +523,20 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       await deleteBill(bill.id);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
       queryClient.removeQueries({ queryKey: ['feature', 'bill', bill.id] });
+      trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {
+        source: 'BillDetailScreen',
+        billId: bill.id,
+        queued: false,
+      });
       navigation.navigate('Bills');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete bill.';
       setErrorMessage(message);
+      trackObservabilityEvent('BILL_DETAIL_DELETE_FAILED', {
+        source: 'BillDetailScreen',
+        billId: bill.id,
+        error: message,
+      });
     } finally {
       setIsDeletingBill(false);
     }
@@ -485,6 +560,11 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                 accessibilityLabel="Edit bill"
                 accessibilityRole="button"
                 onPress={() => {
+                  trackObservabilityEvent('BILL_DETAIL_EDIT_TAPPED', {
+                    source: 'BillDetailScreen',
+                    billId: bill.id,
+                    status: bill.status,
+                  });
                   navigation.navigate('CreateBill', { billId: bill.id });
                 }}
                 style={styles.headerEditButton}
@@ -778,6 +858,11 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
               <Button
                 label="Delete Bill"
                 onPress={() => {
+                  trackObservabilityEvent('BILL_DETAIL_DELETE_TAPPED', {
+                    source: 'BillDetailScreen',
+                    billId: bill.id,
+                    status: bill.status,
+                  });
                   setIsDeleteConfirmVisible(true);
                 }}
                 style={[styles.deleteTriggerButton, styles.destructiveButton]}
@@ -787,28 +872,20 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         ) : null}
       </View>
 
-      <Modal
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Bill"
+        confirmLabel="Delete Bill"
+        confirmLoadingLabel="Deleting..."
         description="Delete this bill permanently? This action cannot be undone."
-        onRequestClose={() => {
+        loading={isDeletingBill}
+        onCancel={() => {
           if (isDeletingBill) {
             return;
           }
           setIsDeleteConfirmVisible(false);
         }}
-        primaryAction={{
-          label: isDeletingBill ? 'Deleting...' : 'Delete Bill',
-          onPress: () => {
-            void handleDeleteBill();
-          },
-          disabled: isDeletingBill,
-          loading: isDeletingBill,
-        }}
-        secondaryAction={{
-          label: 'Keep Bill',
-          onPress: () => {
-            setIsDeleteConfirmVisible(false);
-          },
-          disabled: isDeletingBill,
+        onConfirm={() => {
+          void handleDeleteBill();
         }}
         title="Delete Bill?"
         visible={isDeleteConfirmVisible}

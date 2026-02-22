@@ -18,8 +18,10 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
@@ -411,7 +413,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       if (!isOnline) {
         await queueFeatureOutbox('quick-track.delete', { quickTrackId });
         await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
-        Alert.alert('Saved Offline', 'Quick track delete queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Quick track delete');
         return;
       }
 
@@ -443,7 +445,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       if (!isOnline) {
         await queueFeatureOutbox('visit.delete', { visitId });
         await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
-        Alert.alert('Saved Offline', 'Visit delete queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Visit delete');
         return;
       }
 
@@ -484,6 +486,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       restaurantName: string;
       visitDate: string;
     }) => {
+      trackObservabilityEvent('VISIT_SHARE_STARTED', {
+        itemCount: 1,
+        source: 'HomeScreen',
+      });
       navigation.navigate('VisitShareCustomization', {
         restaurantName,
         visitDate,
@@ -533,6 +539,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         return;
       }
 
+      trackObservabilityEvent('VISIT_SHARE_STARTED', {
+        itemCount: shareItems.length,
+        source: 'HomeScreen',
+      });
       navigation.navigate('VisitShareCustomization', {
         restaurantName: visit.restaurantName,
         visitDate: visit.visitedAt || visit.createdAt,
@@ -569,6 +579,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const handleToggleFilters = () => {
     setFiltersExpanded((previous) => {
       const next = !previous;
+      trackObservabilityEvent('HOME_FILTERS_TOGGLED', {
+        expanded: next,
+        source: 'HomeScreen',
+      });
       if (!next) {
         setTypeFilter('all');
       }
@@ -580,6 +594,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     <Pressable
       key={filter}
       onPress={() => {
+        trackObservabilityEvent('HOME_TYPE_FILTER_SELECTED', {
+          filter,
+          source: 'HomeScreen',
+        });
         setTypeFilter(filter);
       }}
       style={[styles.filterChip, typeFilter === filter && styles.filterChipActive]}
@@ -628,14 +646,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     title: {
       color: colors.textPrimary,
-      fontSize: 38,
-      fontWeight: '700',
-      lineHeight: 44,
+      ...theme.typography.titleLg,
     },
     subTitle: {
       color: colors.textMuted,
-      fontSize: 14,
-      lineHeight: 20,
+      ...theme.typography.bodyMd,
     },
     segmentedControl: {
       backgroundColor: colors.screenBackground,
@@ -663,9 +678,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     segmentLabel: {
       color: colors.textMuted,
-      fontSize: 14,
-      fontWeight: '600',
-      lineHeight: 18,
+      ...theme.typography.label,
       textAlign: 'center',
     },
     segmentLabelActive: {
@@ -690,8 +703,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     searchInput: {
       color: colors.textPrimary,
       flex: 1,
-      fontSize: 16,
-      lineHeight: 20,
+      ...theme.typography.bodyLg,
       paddingVertical: theme.spacing.xs,
     },
     clearSearchButton: {
@@ -700,7 +712,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     clearSearchLabel: {
       color: colors.textMuted,
-      fontSize: 12,
+      ...theme.typography.bodySm,
       fontWeight: '600',
       lineHeight: 16,
     },
@@ -722,9 +734,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     filtersToggleLabel: {
       color: colors.textPrimary,
-      fontSize: 16,
-      fontWeight: '600',
-      lineHeight: 20,
+      ...theme.typography.button,
     },
     filtersToggleLabelActive: {
       color: theme.colors.text.inverse,
@@ -748,8 +758,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     filterChipLabel: {
       color: colors.textSecondary,
-      fontSize: 13,
-      fontWeight: '600',
+      ...theme.typography.label,
       lineHeight: 16,
       textAlign: 'center',
     },
@@ -790,7 +799,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     monthLabel: {
       color: colors.textPrimary,
-      fontSize: 16,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 22,
     },
@@ -834,7 +843,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     dayLabel: {
       color: colors.textSecondary,
       flex: 1,
-      fontSize: 14,
+      ...theme.typography.bodyMd,
       fontWeight: '600',
       lineHeight: 18,
     },
@@ -879,7 +888,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     entryTitle: {
       color: colors.textPrimary,
       flex: 1,
-      fontSize: 17,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 22,
     },
@@ -893,13 +902,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     friendBadgeLabel: {
       color: colors.accent,
-      fontSize: 11,
+      ...theme.typography.bodySm,
       fontWeight: '700',
       lineHeight: 14,
     },
     restaurantMeta: {
       color: colors.textMuted,
-      fontSize: 14,
+      ...theme.typography.bodyMd,
       lineHeight: 19,
     },
     restaurantMetaRow: {
@@ -925,7 +934,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     sourceBadgeLabel: {
       color: colors.textSecondary,
-      fontSize: 11,
+      ...theme.typography.bodySm,
       fontWeight: '700',
       lineHeight: 14,
       textTransform: 'uppercase',
@@ -935,7 +944,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     entryMeta: {
       color: colors.textMuted,
-      fontSize: 12,
+      ...theme.typography.bodySm,
       lineHeight: 16,
     },
     compactActions: {
@@ -956,7 +965,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     compactActionLabel: {
       color: colors.textSecondary,
-      fontSize: 12,
+      ...theme.typography.bodySm,
       fontWeight: '600',
       lineHeight: 16,
     },
@@ -1005,14 +1014,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     foodItemName: {
       color: colors.textPrimary,
-      fontSize: 15,
-      fontWeight: '600',
-      lineHeight: 20,
+      ...theme.typography.button,
     },
     quickTrackMeta: {
       color: colors.textSecondary,
-      fontSize: 15,
-      lineHeight: 20,
+      ...theme.typography.button,
     },
     quickTrackMetaRow: {
       alignItems: 'center',
@@ -1030,7 +1036,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     foodItemNotes: {
       color: colors.textMuted,
-      fontSize: 13,
+      ...theme.typography.label,
       fontStyle: 'italic',
       lineHeight: 18,
     },
@@ -1052,7 +1058,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     ratingLabel: {
       color: colors.textSecondary,
-      fontSize: 12,
+      ...theme.typography.bodySm,
       fontWeight: '500',
       lineHeight: 16,
     },
@@ -1065,7 +1071,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     categoryBadgeLabel: {
       color: colors.textSecondary,
-      fontSize: 11,
+      ...theme.typography.bodySm,
       fontWeight: '600',
       lineHeight: 14,
       textTransform: 'capitalize',
@@ -1089,7 +1095,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     entryActionLabel: {
       color: colors.textSecondary,
-      fontSize: 14,
+      ...theme.typography.bodyMd,
       fontWeight: '600',
       lineHeight: 18,
     },
@@ -1106,13 +1112,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     infoTitle: {
       color: colors.textPrimary,
-      fontSize: 18,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 24,
     },
     infoDescription: {
       color: colors.textSecondary,
-      fontSize: 15,
+      ...theme.typography.bodyLg,
       lineHeight: 21,
     },
     infoActionRow: {
@@ -1140,7 +1146,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     quickActionLabel: {
       color: colors.textPrimary,
-      fontSize: 14,
+      ...theme.typography.bodyMd,
       fontWeight: '600',
       lineHeight: 18,
       textAlign: 'center',
@@ -1161,6 +1167,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           <View style={styles.segmentedControl}>
             <Pressable
               onPress={() => {
+                trackObservabilityEvent('HOME_FEED_MODE_SELECTED', {
+                  feedMode: 'mine',
+                  source: 'HomeScreen',
+                });
                 setFeedMode('mine');
               }}
               style={[styles.segmentButton, feedMode === 'mine' && styles.segmentButtonActive]}
@@ -1169,6 +1179,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             </Pressable>
             <Pressable
               onPress={() => {
+                trackObservabilityEvent('HOME_FEED_MODE_SELECTED', {
+                  feedMode: 'friends',
+                  source: 'HomeScreen',
+                });
                 setFeedMode('friends');
               }}
               style={[styles.segmentButton, feedMode === 'friends' && styles.segmentButtonActive]}

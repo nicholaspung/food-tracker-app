@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  ConfirmDestructiveModal,
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
@@ -29,7 +30,9 @@ import {
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -181,6 +184,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { isOnline } = useConnectivity();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
+  const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
   const [selectedSaveListIds, setSelectedSaveListIds] = useState<Set<string>>(new Set());
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
@@ -435,6 +439,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_PHOTO_VIEWER_OPENED', {
+      source: 'ListDetailScreen',
+      photoCount: entries.length,
+      initialIndex,
+    });
+
     const boundedIndex = Math.max(0, Math.min(initialIndex, entries.length - 1));
     setPhotoViewerUrls(entries.map((entry) => entry.url));
     setPhotoViewerOwnerLabels(entries.map((entry) => entry.ownerLabel));
@@ -452,8 +462,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     subtitleText: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
-      lineHeight: 20,
+      ...theme.typography.bodyMd,
     },
     headerRightRow: {
       alignItems: 'center',
@@ -489,7 +498,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     addBannerLabel: {
       color: theme.colors.button.primaryText,
-      fontSize: 18,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 24,
     },
@@ -511,13 +520,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     restaurantIndex: {
       color: theme.colors.text.muted,
-      fontSize: 18,
+      ...theme.typography.bodyLg,
       fontWeight: '500',
       lineHeight: 24,
     },
     restaurantTitle: {
       color: theme.colors.text.primary,
-      fontSize: 20,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 24,
     },
@@ -529,8 +538,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     locationText: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
-      lineHeight: 20,
+      ...theme.typography.bodyMd,
     },
     section: {
       borderTopColor: theme.colors.border.subtle,
@@ -581,14 +589,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     itemPhotoCountText: {
       color: theme.colors.text.inverse,
-      fontSize: 10,
+      ...theme.typography.bodySm,
       fontWeight: '700',
       lineHeight: 13,
     },
     ownerItemName: {
       color: theme.colors.text.primary,
       flex: 1,
-      fontSize: 17,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 22,
     },
@@ -601,8 +609,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     ownerItemMetaDate: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
+      ...theme.typography.bodySm,
     },
     ownerBookmarkRow: {
       alignItems: 'center',
@@ -648,26 +655,24 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     sourceUserText: {
       color: theme.colors.text.info,
-      fontSize: 11,
+      ...theme.typography.bodySm,
       fontWeight: '700',
       lineHeight: 14,
     },
     bookmarkedItemName: {
       color: theme.colors.text.primary,
-      fontSize: 16,
+      ...theme.typography.bodyLg,
       fontWeight: '500',
       lineHeight: 20,
       flexShrink: 1,
     },
     metaDot: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
+      ...theme.typography.bodySm,
     },
     bookmarkedDate: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
+      ...theme.typography.bodySm,
     },
     ownerItemActions: {
       alignItems: 'center',
@@ -693,7 +698,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     iWentButtonLabel: {
       color: theme.colors.text.success,
-      fontSize: 11,
+      ...theme.typography.bodySm,
       fontWeight: '600',
       lineHeight: 14,
     },
@@ -750,24 +755,21 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     ownerReviewArrow: {
       color: theme.colors.text.info,
-      fontSize: 11,
-      lineHeight: 14,
+      ...theme.typography.bodySm,
     },
     ownerReviewText: {
       color: theme.colors.text.info,
-      fontSize: 11,
+      ...theme.typography.bodySm,
       fontWeight: '600',
       lineHeight: 14,
     },
     ownerReviewDate: {
       color: theme.colors.text.info,
-      fontSize: 11,
-      lineHeight: 14,
+      ...theme.typography.bodySm,
     },
     emptyItemsText: {
       color: theme.colors.text.muted,
-      fontSize: 13,
-      lineHeight: 18,
+      ...theme.typography.label,
     },
     saveModalItemCard: {
       borderColor: theme.colors.border.info,
@@ -781,18 +783,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     saveModalItemName: {
       color: theme.colors.text.primary,
-      fontSize: 16,
+      ...theme.typography.bodyLg,
       fontWeight: '700',
       lineHeight: 20,
     },
     saveModalCaption: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
-      lineHeight: 18,
+      ...theme.typography.label,
     },
     saveListSectionTitle: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
+      ...theme.typography.label,
       fontWeight: '700',
       lineHeight: 18,
       marginTop: theme.spacing.xs,
@@ -831,18 +832,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     saveListName: {
       color: theme.colors.text.primary,
-      fontSize: 14,
+      ...theme.typography.bodyMd,
       fontWeight: '700',
       lineHeight: 18,
     },
     saveListDescription: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
+      ...theme.typography.bodySm,
     },
     saveListAlreadyLabel: {
       color: theme.colors.text.success,
-      fontSize: 11,
+      ...theme.typography.bodySm,
       fontWeight: '600',
       lineHeight: 14,
     },
@@ -851,8 +851,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     saveModalError: {
       color: theme.colors.text.danger,
-      fontSize: 12,
-      lineHeight: 16,
+      ...theme.typography.bodySm,
     },
   });
 
@@ -888,6 +887,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_DELETE_CONFIRMED', {
+      source: 'ListDetailScreen',
+      isOnline,
+      isDefaultList: Boolean(list.isDefault),
+    });
     setErrorMessage(null);
     setIsDeletingList(true);
 
@@ -897,7 +901,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
         queryClient.removeQueries({ queryKey: ['feature', 'restaurantList', list.id] });
         queryClient.removeQueries({ queryKey: ['feature', 'restaurantListItems', list.id] });
-        Alert.alert('Saved Offline', 'List delete queued and will sync when you reconnect.');
+        setIsDeleteConfirmVisible(false);
+        showQueuedOfflineAlert('List delete');
         navigation.navigate('Lists');
         return;
       }
@@ -907,6 +912,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
       queryClient.removeQueries({ queryKey: ['feature', 'restaurantList', list.id] });
       queryClient.removeQueries({ queryKey: ['feature', 'restaurantListItems', list.id] });
+      setIsDeleteConfirmVisible(false);
       navigation.navigate('Lists');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete list.';
@@ -921,28 +927,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_DELETE_TAPPED', {
+      source: 'ListDetailScreen',
+      isDefaultList: Boolean(list.isDefault),
+    });
     if (list.isDefault) {
       setErrorMessage('The Saved list cannot be deleted.');
       return;
     }
 
-    Alert.alert(
-      'Delete list?',
-      `Delete "${list.name}" and all of its saved restaurants?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void deleteList();
-          },
-        },
-      ],
-    );
+    setIsDeleteConfirmVisible(true);
   };
 
   const handleMoveRestaurant = async (restaurantId: string, direction: 'up' | 'down') => {
@@ -950,6 +944,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_REORDER_TAPPED', {
+      source: 'ListDetailScreen',
+      direction,
+      isOnline,
+    });
     setErrorMessage(null);
     setMovingRestaurantId(restaurantId);
 
@@ -960,7 +959,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
         ]);
-        Alert.alert('Saved Offline', 'List reorder queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('List reorder');
         return;
       }
 
@@ -983,6 +982,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_SOURCE_RATING_REMOVE_TAPPED', {
+      source: 'ListDetailScreen',
+      isOnline,
+    });
     setErrorMessage(null);
 
     try {
@@ -998,7 +1001,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
         ]);
-        Alert.alert('Saved Offline', 'List update queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('List update');
         return;
       }
 
@@ -1025,6 +1028,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_USER_RATING_REMOVE_TAPPED', {
+      source: 'ListDetailScreen',
+      isOnline,
+    });
     setErrorMessage(null);
 
     try {
@@ -1036,7 +1043,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
         ]);
-        Alert.alert('Saved Offline', 'List update queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('List update');
         return;
       }
 
@@ -1058,6 +1065,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     group: GroupedRestaurant,
     item: { listItemId: string; name: string },
   ) => {
+    trackObservabilityEvent('LIST_DETAIL_I_WENT_TAPPED', {
+      source: 'ListDetailScreen',
+      restaurantId: group.restaurantId,
+    });
     navigation.navigate('CreateVisit', {
       preselectedRestaurantId: group.restaurantId,
       preselectedRestaurantName: group.restaurantName,
@@ -1069,6 +1080,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   };
 
   const openSaveModal = (group: GroupedRestaurant, item: GroupedBookmarkedItem) => {
+    trackObservabilityEvent('LIST_DETAIL_SAVE_MODAL_OPENED', {
+      source: 'ListDetailScreen',
+      restaurantId: group.restaurantId,
+      hasSourceUser: Boolean(item.sourceUserId || item.sourceUserName),
+    });
     setSaveModalError(null);
     setSelectedSaveListIds(new Set());
     setSaveBookmarkTarget({
@@ -1113,6 +1129,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_STARTED', {
+      source: 'ListDetailScreen',
+      targetListCount: targetListIds.length,
+      isOnline,
+    });
     setSaveModalError(null);
     setIsSavingBookmark(true);
 
@@ -1137,7 +1158,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         setSaveBookmarkTarget(null);
         setSelectedSaveListIds(new Set());
         setSaveModalError(null);
-        Alert.alert('Saved Offline', 'Bookmark save queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Bookmark save');
         return;
       }
 
@@ -1175,6 +1196,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('LIST_DETAIL_SAVE_QUICK_DEFAULT_TAPPED', {
+      source: 'ListDetailScreen',
+      isOnline,
+      hasDefaultList: Boolean(defaultList?.id),
+    });
     let targetDefaultListId = defaultList?.id;
     if (!targetDefaultListId) {
       try {
@@ -1194,7 +1220,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           setSaveBookmarkTarget(null);
           setSelectedSaveListIds(new Set());
           setSaveModalError(null);
-          Alert.alert('Saved Offline', 'Saved list + bookmark queued and will sync when you reconnect.');
+          showQueuedOfflineAlert('Saved list + bookmark');
           return;
         }
 
@@ -1223,6 +1249,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const handleSaveToSelectedLists = async () => {
     const targetListIds = Array.from(selectedSaveListIds).filter((targetListId) => !alreadySavedListIdsForTarget.has(targetListId));
+    trackObservabilityEvent('LIST_DETAIL_SAVE_SELECTED_TAPPED', {
+      source: 'ListDetailScreen',
+      selectedListCount: targetListIds.length,
+    });
     if (targetListIds.length === 0) {
       setSaveModalError('Select at least one list.');
       return;
@@ -1277,6 +1307,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
               accessibilityLabel="Edit list"
               accessibilityRole="button"
               onPress={() => {
+                trackObservabilityEvent('LIST_DETAIL_EDIT_TAPPED', {
+                  source: 'ListDetailScreen',
+                });
                 navigation.navigate('EditRestaurantList', { listId });
               }}
               style={styles.headerIconButton}
@@ -1332,6 +1365,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             accessibilityLabel="Add restaurant to list"
             accessibilityRole="button"
             onPress={() => {
+              trackObservabilityEvent('LIST_DETAIL_ADD_RESTAURANT_TAPPED', {
+                source: 'ListDetailScreen',
+              });
               navigation.navigate('AddRestaurantToList', { listId });
             }}
             style={({ pressed }) => [styles.addBannerButton, pressed && styles.addBannerButtonPressed]}
@@ -1604,6 +1640,24 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         ownerLabels={photoViewerOwnerLabels}
         urls={photoViewerUrls}
         visible={photoViewerVisible}
+      />
+
+      <ConfirmDestructiveModal
+        cancelLabel="Keep List"
+        confirmLabel="Delete List"
+        description={list ? `Delete "${list.name}" and all of its saved restaurants?` : 'Delete this list?'}
+        loading={isDeletingList}
+        onCancel={() => {
+          if (isDeletingList) {
+            return;
+          }
+          setIsDeleteConfirmVisible(false);
+        }}
+        onConfirm={() => {
+          void deleteList();
+        }}
+        title="Delete List?"
+        visible={isDeleteConfirmVisible}
       />
 
       <Modal

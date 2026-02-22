@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -12,7 +12,9 @@ import {
 import { createRestaurantList, type RestaurantListRecord } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -61,11 +63,22 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
   const handleCreateList = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
+      trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateRestaurantListScreen',
+        reason: 'missing_name',
+        visibility,
+      });
       setErrorMessage('List name is required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_STARTED', {
+      source: 'CreateRestaurantListScreen',
+      visibility,
+      isOnline,
+      hasDescription: description.trim().length > 0,
+    });
     setIsSubmitting(true);
 
     try {
@@ -78,7 +91,12 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
       if (!isOnline) {
         await queueFeatureOutbox('list.create', listInput);
         await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
-        Alert.alert('Saved Offline', 'List queued and will sync when you reconnect.');
+        trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
+          source: 'CreateRestaurantListScreen',
+          queued: true,
+          visibility,
+        });
+        showQueuedOfflineAlert('List');
         navigation.navigate('Lists');
         return;
       }
@@ -87,10 +105,22 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
       const createdList = await createRestaurantList(listInput);
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+      trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
+        source: 'CreateRestaurantListScreen',
+        queued: false,
+        visibility,
+        listId: createdList.id,
+      });
       navigation.replace('ListDetail', { listId: createdList.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not create list.';
       setErrorMessage(message);
+      trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_FAILED', {
+        source: 'CreateRestaurantListScreen',
+        visibility,
+        isOnline,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -136,7 +166,14 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
           />
           <Text variant="label">Visibility</Text>
           <VisibilityOptionSelector
-            onChange={setVisibility}
+            onChange={(nextVisibility) => {
+              trackObservabilityEvent('CREATE_RESTAURANT_LIST_VISIBILITY_CHANGED', {
+                source: 'CreateRestaurantListScreen',
+                previousVisibility: visibility,
+                nextVisibility,
+              });
+              setVisibility(nextVisibility);
+            }}
             value={visibility as VisibilityOptionValue}
           />
         </Card>

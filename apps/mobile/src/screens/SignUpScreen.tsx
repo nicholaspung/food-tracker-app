@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 
-import { FormScaffold, LoadingOverlay } from '../components/shared';
+import { FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { createCollectionRecord } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { trackObservabilityEvent } from '../observability';
+import { Button, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
@@ -23,11 +24,19 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
     const trimmedName = name.trim();
 
     if (!trimmedName || !trimmedEmail || !password) {
+      trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
+        source: 'SignUpScreen',
+        reason: 'missing_required_fields',
+      });
       setErrorMessage('Name, email, and password are required.');
       return;
     }
 
     if (password !== passwordConfirm) {
+      trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
+        source: 'SignUpScreen',
+        reason: 'password_mismatch',
+      });
       setErrorMessage('Passwords do not match.');
       return;
     }
@@ -35,6 +44,11 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsSubmitting(true);
+    trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_STARTED', {
+      source: 'SignUpScreen',
+      hasName: Boolean(trimmedName),
+      hasEmail: Boolean(trimmedEmail),
+    });
 
     try {
       await createCollectionRecord('users', {
@@ -45,8 +59,15 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
         username: `${trimmedEmail.split('@')[0]}_${Date.now().toString(36)}`,
       });
 
+      trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_SUCCEEDED', {
+        source: 'SignUpScreen',
+      });
       setSuccessMessage('Account created. Check your email for a verification link or token.');
     } catch (error) {
+      trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_FAILED', {
+        source: 'SignUpScreen',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       const message = error instanceof Error ? error.message : 'Sign up failed.';
       setErrorMessage(message);
     } finally {
@@ -88,11 +109,7 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
 
         <PageErrorToast errorMessage={errorMessage} title="Could not create account" />
 
-        {successMessage ? (
-          <Card tone="success">
-            <Text tone="success">{successMessage}</Text>
-          </Card>
-        ) : null}
+        {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
 
         <Button
           disabled={!name.trim() || !email.trim() || !password || !passwordConfirm}
@@ -106,6 +123,10 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
         <Button
           label="I already verified"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'SignUpScreen',
+              destination: 'Login',
+            });
             navigation.navigate('Login');
           }}
           variant="secondary"
@@ -114,6 +135,10 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
         <Button
           label="Enter verification token"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'SignUpScreen',
+              destination: 'VerifyEmail',
+            });
             navigation.navigate('VerifyEmail');
           }}
           variant="secondary"

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -21,7 +21,9 @@ import {
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -458,6 +460,16 @@ export function AddRestaurantToListScreen({
   };
 
   const handleSelectRestaurant = (restaurant: VisitedRestaurantOption) => {
+    const availableItemCount = restaurant.foodItems.filter(
+      (item) => !existingFoodItemIds.has(item.id),
+    ).length;
+    trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_RESTAURANT_SELECTED', {
+      source: 'AddRestaurantToListScreen',
+      listId,
+      restaurantId: restaurant.id,
+      alreadyInList: existingRestaurantIds.has(restaurant.id),
+      availableItemCount,
+    });
     setErrorMessage(null);
     setSelectedRestaurantId(restaurant.id);
     setSelectedFoodItemIds([]);
@@ -478,15 +490,29 @@ export function AddRestaurantToListScreen({
       return;
     }
 
-    setSelectedFoodItemIds((previous) =>
-      previous.includes(foodItemId)
+    setSelectedFoodItemIds((previous) => {
+      const isSelected = previous.includes(foodItemId);
+      const nextIds = isSelected
         ? previous.filter((id) => id !== foodItemId)
-        : [...previous, foodItemId],
-    );
+        : [...previous, foodItemId];
+      trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_FOOD_ITEM_TOGGLED', {
+        source: 'AddRestaurantToListScreen',
+        listId,
+        foodItemId,
+        selected: !isSelected,
+        selectedFoodItemCount: nextIds.length,
+      });
+      return nextIds;
+    });
   };
 
   const handleSubmit = async () => {
     if (!selectedRestaurant) {
+      trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_VALIDATION_FAILED', {
+        source: 'AddRestaurantToListScreen',
+        listId,
+        reason: 'missing_restaurant',
+      });
       setErrorMessage("Please choose a restaurant.");
       return;
     }
@@ -496,11 +522,25 @@ export function AddRestaurantToListScreen({
       selectedNewFoodItemIds.length === 0 &&
       !note.trim()
     ) {
+      trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_VALIDATION_FAILED', {
+        source: 'AddRestaurantToListScreen',
+        listId,
+        restaurantId: selectedRestaurant.id,
+        reason: 'missing_items_or_note',
+      });
       setErrorMessage("Select at least one new item or add a note.");
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_STARTED', {
+      source: 'AddRestaurantToListScreen',
+      listId,
+      restaurantId: selectedRestaurant.id,
+      selectedFoodItemCount: selectedNewFoodItemIds.length,
+      includesNote: note.trim().length > 0,
+      isOnline,
+    });
     setIsSubmitting(true);
 
     try {
@@ -527,7 +567,14 @@ export function AddRestaurantToListScreen({
             queryKey: ["feature", "restaurantLists"],
           }),
         ]);
-        Alert.alert("Saved Offline", "List updates queued and will sync when you reconnect.");
+        trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
+          source: 'AddRestaurantToListScreen',
+          listId,
+          restaurantId: selectedRestaurant.id,
+          selectedFoodItemCount: selectedNewFoodItemIds.length,
+          queued: true,
+        });
+        showQueuedOfflineAlert("List updates");
         handleBackToListDetail();
         return;
       }
@@ -550,6 +597,13 @@ export function AddRestaurantToListScreen({
         }),
       ]);
 
+      trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
+        source: 'AddRestaurantToListScreen',
+        listId,
+        restaurantId: selectedRestaurant.id,
+        selectedFoodItemCount: selectedNewFoodItemIds.length,
+        queued: false,
+      });
       handleBackToListDetail();
     } catch (error) {
       const message =
@@ -557,6 +611,12 @@ export function AddRestaurantToListScreen({
           ? error.message
           : "Could not add items to this list.";
       setErrorMessage(message);
+      trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_FAILED', {
+        source: 'AddRestaurantToListScreen',
+        listId,
+        restaurantId: selectedRestaurant.id,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }

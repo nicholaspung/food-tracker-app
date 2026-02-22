@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -15,7 +15,9 @@ import { createFeedback, listFeedback, type FeedbackStatusFilter } from '../feat
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -129,11 +131,23 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
 
   const handleSubmit = async () => {
     if (!subject.trim() || !message.trim()) {
+      trackObservabilityEvent('FEEDBACK_SUBMIT_VALIDATION_FAILED', {
+        source: 'FeedbackScreen',
+        reason: 'missing_subject_or_message',
+        subjectLength: subject.trim().length,
+        messageLength: message.trim().length,
+      });
       setErrorMessage('Subject and message are required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('FEEDBACK_SUBMIT_STARTED', {
+      source: 'FeedbackScreen',
+      subjectLength: subject.trim().length,
+      messageLength: message.trim().length,
+      isOnline,
+    });
 
     try {
       const feedbackInput = {
@@ -146,7 +160,11 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         setSubject('');
         setMessage('');
         await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
-        Alert.alert('Saved Offline', 'Feedback queued and will sync when you reconnect.');
+        trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
+          source: 'FeedbackScreen',
+          queued: true,
+        });
+        showQueuedOfflineAlert('Feedback');
         return;
       }
 
@@ -156,9 +174,17 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
       setSubject('');
       setMessage('');
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
+      trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
+        source: 'FeedbackScreen',
+        queued: false,
+      });
     } catch (error) {
       const messageValue = error instanceof Error ? error.message : 'Could not submit feedback.';
       setErrorMessage(messageValue);
+      trackObservabilityEvent('FEEDBACK_SUBMIT_FAILED', {
+        source: 'FeedbackScreen',
+        error: messageValue,
+      });
     }
   };
 
@@ -202,7 +228,14 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         <Card style={styles.filterSection}>
           <Text variant="label">Filter feedback</Text>
           <FilterChipGroup
-            onChange={setAdminStatusFilter}
+            onChange={(nextStatusFilter) => {
+              trackObservabilityEvent('FEEDBACK_ADMIN_STATUS_FILTER_CHANGED', {
+                source: 'FeedbackScreen',
+                previousStatusFilter: adminStatusFilter,
+                nextStatusFilter,
+              });
+              setAdminStatusFilter(nextStatusFilter);
+            }}
             options={ADMIN_FILTERS}
             scrollable
             value={adminStatusFilter}
@@ -211,7 +244,14 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
             <>
               <Text style={styles.filterSubsectionTitle}>Time range</Text>
               <FilterChipGroup
-                onChange={setAdminTimeRangeFilter}
+                onChange={(nextTimeRangeFilter) => {
+                  trackObservabilityEvent('FEEDBACK_ADMIN_TIME_RANGE_FILTER_CHANGED', {
+                    source: 'FeedbackScreen',
+                    previousTimeRangeFilter: adminTimeRangeFilter,
+                    nextTimeRangeFilter,
+                  });
+                  setAdminTimeRangeFilter(nextTimeRangeFilter);
+                }}
                 options={ADMIN_TIME_RANGE_FILTERS}
                 scrollable
                 value={adminTimeRangeFilter}
@@ -292,6 +332,13 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
                   accessibilityRole="button"
                   key={feedback.id}
                   onPress={() => {
+                    trackObservabilityEvent('FEEDBACK_THREAD_OPENED', {
+                      source: 'FeedbackScreen',
+                      feedbackId: feedback.id,
+                      status: feedback.status,
+                      unreadCount,
+                      isAdmin,
+                    });
                     navigation.navigate('FeedbackDetail', { feedbackId: feedback.id });
                   }}
                   style={styles.feedbackPressable}

@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { FormScaffold, LoadingOverlay } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { Button, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -15,6 +16,11 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
   const { signInWithPassword, isSubmitting, authError } = useAuth();
 
   const handleSignIn = async () => {
+    trackObservabilityEvent('AUTH_LOGIN_SUBMIT_STARTED', {
+      source: 'LoginScreen',
+      hasEmail: Boolean(email.trim()),
+    });
+
     try {
       await signInWithPassword(email, password);
     } catch {
@@ -59,6 +65,10 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         <Button
           label="Forgot Password"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'LoginScreen',
+              destination: 'ForgotPassword',
+            });
             navigation.navigate('ForgotPassword');
           }}
           variant="secondary"
@@ -67,6 +77,10 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         <Button
           label="Create Account"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'LoginScreen',
+              destination: 'SignUp',
+            });
             navigation.navigate('SignUp');
           }}
           variant="secondary"
@@ -75,6 +89,10 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
         <Button
           label="Back to Onboarding"
           onPress={() => {
+            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
+              source: 'LoginScreen',
+              destination: 'Onboarding',
+            });
             navigation.navigate('Onboarding');
           }}
           variant="secondary"

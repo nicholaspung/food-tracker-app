@@ -41,6 +41,7 @@ import {
   WHATS_NEW_SEEN_QUERY_KEY,
 } from '../lib/whatsNewState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
@@ -190,6 +191,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   };
 
   const handleGenerateInviteCodes = async () => {
+    trackObservabilityEvent("PROFILE_INVITE_CODES_GENERATE_STARTED", {
+      source: "ProfileScreen",
+    });
     setInviteErrorMessage(null);
     setIsGeneratingCodes(true);
 
@@ -198,7 +202,15 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         method: "POST",
       });
       await fetchInviteCodes();
+      trackObservabilityEvent("PROFILE_INVITE_CODES_GENERATE_COMPLETED", {
+        source: "ProfileScreen",
+      });
     } catch (error) {
+      trackObservabilityEvent("PROFILE_INVITE_CODES_GENERATE_FAILED", {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : "unknown_error",
+        source: "ProfileScreen",
+      });
       setInviteErrorMessage(
         getErrorMessage(error, "Could not generate invite codes."),
       );
@@ -208,6 +220,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   };
 
   const handleShareInviteCode = async (codeId: string, code: string) => {
+    trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_STARTED", {
+      codeId,
+      source: "ProfileScreen",
+    });
     setInviteErrorMessage(null);
     setActiveInviteCodeId(codeId);
 
@@ -217,6 +233,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       });
 
       if (shareResult.action !== Share.sharedAction) {
+        trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_CANCELED", {
+          codeId,
+          source: "ProfileScreen",
+        });
         return;
       }
 
@@ -226,7 +246,17 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       });
 
       await fetchInviteCodes();
+      trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_COMPLETED", {
+        codeId,
+        source: "ProfileScreen",
+      });
     } catch (error) {
+      trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_FAILED", {
+        codeId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : "unknown_error",
+        source: "ProfileScreen",
+      });
       setInviteErrorMessage(
         getErrorMessage(error, "Could not share invite code."),
       );

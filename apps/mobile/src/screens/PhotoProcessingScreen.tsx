@@ -34,6 +34,7 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -421,6 +422,18 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
       await queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'PhotoProcessingScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
         : error instanceof Error
@@ -466,6 +479,10 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
   }, [createScannedMenuItems, queryClient, startCountdown]);
 
   const pickImage = useCallback(async (source: ScanSource) => {
+    trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_STARTED', {
+      photoSource: source,
+      source: 'PhotoProcessingScreen',
+    });
     setIsSelectingSource(true);
     setErrorMessage(null);
     setLastRequestedSource(source);
@@ -478,6 +495,11 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permissionResult.granted) {
+        trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PERMISSION_DENIED', {
+          canAskAgain: permissionResult.canAskAgain,
+          photoSource: source,
+          source: 'PhotoProcessingScreen',
+        });
         setPermissionNeedsSettings(permissionResult.canAskAgain === false);
         throw new Error(
           source === 'camera'
@@ -500,6 +522,10 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
             });
 
       if (pickerResult.canceled || pickerResult.assets.length === 0) {
+        trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_CANCELED', {
+          photoSource: source,
+          source: 'PhotoProcessingScreen',
+        });
         return;
       }
 
@@ -510,9 +536,19 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
         (source === 'camera' ? 'camera-image' : 'library-image');
 
       setSelectedImageName(imageLabel);
+      trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICKED', {
+        photoSource: source,
+        source: 'PhotoProcessingScreen',
+      });
       await processSelectedImage(imageLabel);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not select an image.';
+      trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_FAILED', {
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        photoSource: source,
+        source: 'PhotoProcessingScreen',
+      });
       setErrorMessage(message);
       setPhase('error');
     } finally {
@@ -989,6 +1025,10 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
   const pickPhotos = useCallback(
     async (source: ScanSource) => {
+      trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_STARTED', {
+        photoSource: source,
+        source: 'PhotoProcessingScreen',
+      });
       setIsSelectingSource(true);
       setErrorMessage(null);
       setPermissionNeedsSettings(false);
@@ -1001,6 +1041,11 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
         if (!permission.granted) {
+          trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PERMISSION_DENIED', {
+            canAskAgain: permission.canAskAgain,
+            photoSource: source,
+            source: 'PhotoProcessingScreen',
+          });
           setPermissionNeedsSettings(permission.canAskAgain === false);
           throw new Error(
             source === 'camera'
@@ -1027,12 +1072,27 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               });
 
         if (pickerResult.canceled || pickerResult.assets.length === 0) {
+          trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_CANCELED', {
+            photoSource: source,
+            source: 'PhotoProcessingScreen',
+          });
           return;
         }
 
+        trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICKED', {
+          photoCount: pickerResult.assets.length,
+          photoSource: source,
+          source: 'PhotoProcessingScreen',
+        });
         appendAssets(pickerResult.assets);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not select images.';
+        trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_FAILED', {
+          errorMessage: message,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          photoSource: source,
+          source: 'PhotoProcessingScreen',
+        });
         setErrorMessage(message);
       } finally {
         setIsSelectingSource(false);
@@ -1241,6 +1301,14 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
           0,
         );
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'PhotoProcessingScreen',
+          used: monthlyUsage.snapshot.usage.photoUploads,
+        });
         setErrorMessage(
           `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
         );
@@ -1266,12 +1334,24 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       ]);
 
       if (!isOnline) {
-        Alert.alert('Saved Offline', 'Photo entries queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Photo entries');
       }
 
       navigation.navigate('Home');
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'PhotoProcessingScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
       const message = limitPayload
         ? formatLimitExceededMessage(limitPayload)
         : error instanceof Error

@@ -10,6 +10,23 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.6',
+    date: '2026-02-21',
+    title: 'Analytics & Code Quality Improvements',
+    summary:
+      'Behind-the-scenes improvements to help us understand how the app is used and catch issues faster. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Usage analytics added throughout the app to guide future improvements.',
+      'App lifecycle and session events tracked for better reliability insights.',
+      'Offline sync operations now monitored for queue health and failure rates.',
+      'Consistent confirmation dialogs for destructive actions across the app.',
+      'Offline alert messages unified across all screens.',
+      'Typography and spacing made more consistent on the Home screen.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.5',
     date: '2026-02-21',
     title: 'Usage Limits for Free Users',

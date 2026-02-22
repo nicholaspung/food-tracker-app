@@ -1,6 +1,7 @@
 import type { RecordModel } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
+import { trackObservabilityEvent } from '../../observability';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -40,7 +41,21 @@ export async function createCollectionRecord<T>(
   collectionName: string,
   payload: Record<string, unknown>,
 ): Promise<T> {
-  return pb.collection(collectionName).create<T>(payload);
+  try {
+    const record = await pb.collection(collectionName).create<T>(payload);
+    trackObservabilityEvent('DIRECT_WRITE_SUCCEEDED', {
+      collectionName,
+      operation: 'createCollectionRecord',
+    });
+    return record;
+  } catch (error) {
+    trackObservabilityEvent('DIRECT_WRITE_FAILED', {
+      collectionName,
+      operation: 'createCollectionRecord',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
 }
 
 export async function updateCollectionRecord<T>(
@@ -49,11 +64,42 @@ export async function updateCollectionRecord<T>(
   payload: Record<string, unknown>,
   options?: CollectionUpdateOptions,
 ): Promise<T> {
-  return pb.collection(collectionName).update<T>(recordId, payload, options);
+  try {
+    const record = await pb.collection(collectionName).update<T>(recordId, payload, options);
+    trackObservabilityEvent('DIRECT_WRITE_SUCCEEDED', {
+      collectionName,
+      operation: 'updateCollectionRecord',
+      recordId,
+    });
+    return record;
+  } catch (error) {
+    trackObservabilityEvent('DIRECT_WRITE_FAILED', {
+      collectionName,
+      operation: 'updateCollectionRecord',
+      recordId,
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
 }
 
 export async function deleteCollectionRecord(collectionName: string, recordId: string): Promise<void> {
-  await pb.collection(collectionName).delete(recordId);
+  try {
+    await pb.collection(collectionName).delete(recordId);
+    trackObservabilityEvent('DIRECT_WRITE_SUCCEEDED', {
+      collectionName,
+      operation: 'deleteCollectionRecord',
+      recordId,
+    });
+  } catch (error) {
+    trackObservabilityEvent('DIRECT_WRITE_FAILED', {
+      collectionName,
+      operation: 'deleteCollectionRecord',
+      recordId,
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
 }
 
 export async function getCollectionCount(collectionName: string, filter?: string): Promise<number> {
@@ -79,7 +125,21 @@ export async function sendApiRequest<T = unknown>(
     options.body = init.body;
   }
 
-  return pb.send<T>(path, options);
+  try {
+    const response = await pb.send<T>(path, options);
+    trackObservabilityEvent('DIRECT_API_REQUEST_SUCCEEDED', {
+      method: init.method,
+      path,
+    });
+    return response;
+  } catch (error) {
+    trackObservabilityEvent('DIRECT_API_REQUEST_FAILED', {
+      method: init.method,
+      path,
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
 }
 
 export function getAuthenticatedUserIdOrNull(): string | null {
@@ -139,7 +199,18 @@ export function buildPocketBaseFileUrl(input: {
 }
 
 export async function requestUserPasswordReset(email: string): Promise<void> {
-  await pb.collection('users').requestPasswordReset(email);
+  try {
+    await pb.collection('users').requestPasswordReset(email);
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUCCEEDED', {
+      source: 'pocketbaseGateway',
+    });
+  } catch (error) {
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_FAILED', {
+      source: 'pocketbaseGateway',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
 }
 
 export async function confirmUserPasswordReset(
@@ -147,9 +218,45 @@ export async function confirmUserPasswordReset(
   password: string,
   passwordConfirm: string,
 ): Promise<void> {
-  await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm);
+  try {
+    await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm);
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_SUCCEEDED', {
+      source: 'pocketbaseGateway',
+    });
+  } catch (error) {
+    trackObservabilityEvent('AUTH_PASSWORD_RESET_CONFIRM_FAILED', {
+      source: 'pocketbaseGateway',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
 }
 
 export async function confirmUserEmailVerification(token: string): Promise<void> {
-  await pb.collection('users').confirmVerification(token);
+  try {
+    await pb.collection('users').confirmVerification(token);
+    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_SUCCEEDED', {
+      source: 'pocketbaseGateway',
+    });
+  } catch (error) {
+    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_FAILED', {
+      source: 'pocketbaseGateway',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
+}
+
+function resolveErrorProperties(error: unknown): { errorMessage: string; errorType: string } {
+  if (error instanceof Error) {
+    return {
+      errorMessage: error.message,
+      errorType: error.name,
+    };
+  }
+
+  return {
+    errorMessage: String(error),
+    errorType: 'unknown_error',
+  };
 }

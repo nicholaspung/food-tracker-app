@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  ConfirmDestructiveModal,
   EmptyState,
   ErrorState,
   FeatureDetailScreenScaffold,
+  HeaderAccessoryButton,
   PhotoViewerModal,
   SegmentedControl,
   Skeleton,
@@ -17,10 +19,12 @@ import {
 import { buildPocketBaseFileUrl, deleteNote, listCollectionRecords, listNotes, type NoteRecord } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Card, Modal, Text } from '../ui';
+import { Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
@@ -151,22 +155,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     body: {
       gap: theme.spacing.md,
     },
-    accessoryButton: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      justifyContent: 'center',
-      minHeight: 32,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 4,
-    },
-    accessoryLabel: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
     noteTopRow: {
       alignItems: 'center',
       flexDirection: 'row',
@@ -245,6 +233,12 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('NOTE_PHOTO_VIEWER_OPENED', {
+      source: 'NotesScreen',
+      photoCount: photos.length,
+      initialIndex,
+    });
+
     const urls = photos.map((photo) =>
       buildPocketBaseFileUrl({
         collectionName: 'note_photos',
@@ -276,6 +270,11 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('NOTE_DELETE_CONFIRMED', {
+      source: 'NotesScreen',
+      wasUsed: pendingDeleteNote.status === 'used',
+    });
+
     setErrorMessage(null);
     setIsDeletingNote(true);
 
@@ -287,7 +286,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
         ]);
         setPendingDeleteNote(null);
-        Alert.alert('Saved Offline', 'Note delete queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Note delete');
         return;
       }
 
@@ -312,26 +311,34 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         navigation.navigate('AddVisit');
       }}
       rightAccessory={
-        <Pressable
+        <HeaderAccessoryButton
           accessibilityLabel="Create note"
-          accessibilityRole="button"
+          label="Add note"
           onPress={() => {
+            trackObservabilityEvent('NOTES_CREATE_CTA_TAPPED', {
+              source: 'NotesScreen',
+              placement: 'header',
+            });
             navigation.navigate('NoteEditor');
           }}
-          style={styles.accessoryButton}
           testID="notes-create-button"
-        >
-          <Ionicons color={theme.colors.text.primary} name="add-outline" size={14} />
-          <Text style={styles.accessoryLabel} variant="label">
-            Add note
-          </Text>
-        </Pressable>
+        />
       }
       subtitle="View, edit, or delete your saved notes."
       title="My Notes"
     >
       <View style={styles.body}>
-        <SegmentedControl onChange={setActiveFilter} options={filterOptions} value={activeFilter} />
+        <SegmentedControl
+          onChange={(nextFilter) => {
+            trackObservabilityEvent('NOTES_FILTER_CHANGED', {
+              source: 'NotesScreen',
+              filter: nextFilter,
+            });
+            setActiveFilter(nextFilter);
+          }}
+          options={filterOptions}
+          value={activeFilter}
+        />
 
         {errorMessage ? <ErrorState description={errorMessage} title="Notes update failed" /> : null}
 
@@ -383,6 +390,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                   : 'No notes yet.'
             }
             onAction={() => {
+              trackObservabilityEvent('NOTES_CREATE_CTA_TAPPED', {
+                source: 'NotesScreen',
+                placement: 'empty_state',
+              });
               navigation.navigate('NoteEditor');
             }}
             title="Nothing to show"
@@ -420,6 +431,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                           accessibilityLabel="Use note to track item"
                           accessibilityRole="button"
                           onPress={() => {
+                            trackObservabilityEvent('NOTE_USE_TAPPED', {
+                              source: 'NotesScreen',
+                              noteStatus: note.status,
+                            });
                             navigation.navigate('QuickTrack', { sourceNoteId: note.id });
                           }}
                           testID={`note-use-button-${note.id}`}
@@ -432,6 +447,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                         accessibilityLabel="Edit note"
                         accessibilityRole="button"
                         onPress={() => {
+                          trackObservabilityEvent('NOTE_EDIT_TAPPED', {
+                            source: 'NotesScreen',
+                            noteStatus: note.status,
+                          });
                           navigation.navigate('NoteEditor', { noteId: note.id });
                         }}
                         style={styles.iconAction}
@@ -444,6 +463,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                         accessibilityLabel="Delete note"
                         accessibilityRole="button"
                         onPress={() => {
+                          trackObservabilityEvent('NOTE_DELETE_TAPPED', {
+                            source: 'NotesScreen',
+                            noteStatus: note.status,
+                          });
                           setErrorMessage(null);
                           setPendingDeleteNote(note);
                         }}
@@ -496,28 +519,18 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         visible={photoViewerVisible}
       />
 
-      <Modal
-        description={
-          pendingDeleteNote
-            ? 'Delete this note permanently? This action cannot be undone.'
-            : undefined
-        }
-        onRequestClose={closeDeleteModal}
-        primaryAction={{
-          label: 'Delete Note',
-          loading: isDeletingNote,
-          onPress: () => {
-            void handleDelete();
-          },
-          disabled: isDeletingNote || !pendingDeleteNote,
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Note"
+        confirmLabel="Delete Note"
+        description="Delete this note permanently? This action cannot be undone."
+        disabled={!pendingDeleteNote}
+        loading={isDeletingNote}
+        onCancel={closeDeleteModal}
+        onConfirm={() => {
+          void handleDelete();
         }}
-        secondaryAction={{
-          label: 'Keep Note',
-          onPress: closeDeleteModal,
-          disabled: isDeletingNote,
-        }}
-        title="Delete Note?"
         visible={pendingDeleteNote !== null}
+        title="Delete Note?"
       />
     </FeatureDetailScreenScaffold>
   );

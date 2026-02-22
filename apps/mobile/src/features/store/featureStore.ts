@@ -3,6 +3,7 @@ import { ClientResponseError } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
 import { resolveEffectiveAdminFlag } from '../../lib/rolePreview';
+import { trackObservabilityEvent } from '../../observability';
 import { createLocalDomainStore } from './localDomainStore';
 import type {
   BillItemRecord,
@@ -265,6 +266,70 @@ export interface UpdateBillInput {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+type MutationPropertyValue = string | number | boolean | null | undefined;
+type MutationProperties = Record<string, MutationPropertyValue>;
+
+function compactMutationProperties(
+  properties: MutationProperties | undefined,
+): Record<string, string | number | boolean | null> {
+  if (!properties) {
+    return {};
+  }
+
+  const compacted: Record<string, string | number | boolean | null> = {};
+  Object.entries(properties).forEach(([key, value]) => {
+    if (value !== undefined) {
+      compacted[key] = value;
+    }
+  });
+  return compacted;
+}
+
+function normalizeMutationError(error: unknown): { errorName: string; errorMessage: string } {
+  if (error instanceof Error) {
+    return {
+      errorName: error.name || 'Error',
+      errorMessage: error.message || 'Unknown error',
+    };
+  }
+
+  return {
+    errorName: 'UnknownError',
+    errorMessage: String(error),
+  };
+}
+
+async function trackFeatureMutation<T>(
+  action: string,
+  operation: () => Promise<T>,
+  properties?: MutationProperties,
+): Promise<T> {
+  const startedAtMs = Date.now();
+  const baseProperties = {
+    action,
+    ...compactMutationProperties(properties),
+  };
+
+  trackObservabilityEvent('FEATURE_MUTATION_STARTED', baseProperties);
+
+  try {
+    const result = await operation();
+    trackObservabilityEvent('FEATURE_MUTATION_SUCCEEDED', {
+      ...baseProperties,
+      durationMs: Date.now() - startedAtMs,
+    });
+    return result;
+  } catch (error) {
+    const normalizedError = normalizeMutationError(error);
+    trackObservabilityEvent('FEATURE_MUTATION_FAILED', {
+      ...baseProperties,
+      durationMs: Date.now() - startedAtMs,
+      ...normalizedError,
+    });
+    throw error;
+  }
 }
 
 function createId(prefix: string): string {
@@ -1365,122 +1430,144 @@ export async function getVisitById(visitId: string): Promise<VisitRecord | null>
 }
 
 export async function createVisit(input: CreateVisitInput): Promise<VisitRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const trimmedRestaurantName = input.restaurantName.trim();
+  return trackFeatureMutation(
+    'visit.create',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const trimmedRestaurantName = input.restaurantName.trim();
 
-  if (!trimmedRestaurantName) {
-    throw new Error('Restaurant name is required.');
-  }
-
-  if (input.items.length === 0) {
-    throw new Error('At least one item is required.');
-  }
-
-  const restaurant = await findOrCreateRestaurantByName(trimmedRestaurantName, currentUserId);
-  const visit = await pb.collection('visits').create<VisitCollectionRecord>(
-    {
-      restaurant: restaurant.id,
-      user: currentUserId,
-      visitDate: input.visitedAt ?? nowIso(),
-      visibility: input.visibility ?? getDefaultVisitVisibility(),
-    },
-    {
-      expand: 'restaurant,user',
-    },
-  );
-
-  const createdItems: FoodItemCollectionRecord[] = [];
-  for (const item of input.items) {
-    const createdItem = await pb.collection('food_items').create<FoodItemCollectionRecord>({
-      name: item.name.trim(),
-      rating: item.rating,
-      description: item.description?.trim() || undefined,
-      notes: item.notes?.trim() || undefined,
-      visit: visit.id,
-      user: currentUserId,
-    });
-
-    createdItems.push(createdItem);
-
-    await uploadVisitPhotos(
-      visit.id,
-      createdItem.id,
-      currentUserId,
-      item.photos ?? [],
-      item.description || item.name,
-    );
-  }
-
-  return mapVisitCollectionRecord(visit, createdItems);
-}
-
-export async function updateVisit(visitId: string, updates: UpdateVisitInput): Promise<VisitRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const currentVisit = await pb.collection('visits').getOne<VisitCollectionRecord>(visitId, {
-    expand: 'restaurant,user',
-  });
-
-  const updatePayload: Record<string, unknown> = {};
-  const nextRestaurantName = updates.restaurantName?.trim();
-  if (nextRestaurantName && nextRestaurantName !== (currentVisit.expand?.restaurant?.name ?? '')) {
-    const restaurant = await findOrCreateRestaurantByName(nextRestaurantName, currentUserId);
-    updatePayload.restaurant = restaurant.id;
-  }
-
-  if (updates.visitedAt) {
-    updatePayload.visitDate = updates.visitedAt;
-  }
-
-  const updatedVisit =
-    Object.keys(updatePayload).length > 0
-      ? await pb.collection('visits').update<VisitCollectionRecord>(visitId, updatePayload, {
-          expand: 'restaurant,user',
-        })
-      : currentVisit;
-
-  if (updates.items) {
-    const existingItems = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
-      filter: `visit = "${escapeFilterValue(visitId)}"`,
-    });
-    const existingItemsById = new Map(existingItems.map((item) => [item.id, item]));
-    const requestedIds = new Set<string>();
-
-    for (const item of updates.items) {
-      const trimmedName = item.name.trim();
-      if (!trimmedName) {
-        continue;
+      if (!trimmedRestaurantName) {
+        throw new Error('Restaurant name is required.');
       }
 
-      requestedIds.add(item.id);
-      if (existingItemsById.has(item.id)) {
-        await pb.collection('food_items').update(item.id, {
-          name: trimmedName,
-          rating: item.rating,
-          description: item.description?.trim() || '',
-          notes: item.notes?.trim() || '',
-        });
-      } else {
-        await pb.collection('food_items').create({
-          name: trimmedName,
+      if (input.items.length === 0) {
+        throw new Error('At least one item is required.');
+      }
+
+      const restaurant = await findOrCreateRestaurantByName(trimmedRestaurantName, currentUserId);
+      const visit = await pb.collection('visits').create<VisitCollectionRecord>(
+        {
+          restaurant: restaurant.id,
+          user: currentUserId,
+          visitDate: input.visitedAt ?? nowIso(),
+          visibility: input.visibility ?? getDefaultVisitVisibility(),
+        },
+        {
+          expand: 'restaurant,user',
+        },
+      );
+
+      const createdItems: FoodItemCollectionRecord[] = [];
+      for (const item of input.items) {
+        const createdItem = await pb.collection('food_items').create<FoodItemCollectionRecord>({
+          name: item.name.trim(),
           rating: item.rating,
           description: item.description?.trim() || undefined,
           notes: item.notes?.trim() || undefined,
-          visit: visitId,
+          visit: visit.id,
           user: currentUserId,
         });
+
+        createdItems.push(createdItem);
+
+        await uploadVisitPhotos(
+          visit.id,
+          createdItem.id,
+          currentUserId,
+          item.photos ?? [],
+          item.description || item.name,
+        );
       }
-    }
 
-    const deletedItems = existingItems.filter((item) => !requestedIds.has(item.id));
-    await Promise.all(deletedItems.map((item) => pb.collection('food_items').delete(item.id)));
-  }
+      return mapVisitCollectionRecord(visit, createdItems);
+    },
+    {
+      itemCount: input.items.length,
+      hasVisitedAt: Boolean(input.visitedAt),
+      visibility: input.visibility ?? getDefaultVisitVisibility(),
+      source: input.source ?? 'unknown',
+    },
+  );
+}
 
-  const nextItems = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
-    filter: `visit = "${escapeFilterValue(visitId)}"`,
-    sort: '-created',
-  });
+export async function updateVisit(visitId: string, updates: UpdateVisitInput): Promise<VisitRecord> {
+  return trackFeatureMutation(
+    'visit.update',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const currentVisit = await pb.collection('visits').getOne<VisitCollectionRecord>(visitId, {
+        expand: 'restaurant,user',
+      });
 
-  return mapVisitCollectionRecord(updatedVisit, nextItems);
+      const updatePayload: Record<string, unknown> = {};
+      const nextRestaurantName = updates.restaurantName?.trim();
+      if (nextRestaurantName && nextRestaurantName !== (currentVisit.expand?.restaurant?.name ?? '')) {
+        const restaurant = await findOrCreateRestaurantByName(nextRestaurantName, currentUserId);
+        updatePayload.restaurant = restaurant.id;
+      }
+
+      if (updates.visitedAt) {
+        updatePayload.visitDate = updates.visitedAt;
+      }
+
+      const updatedVisit =
+        Object.keys(updatePayload).length > 0
+          ? await pb.collection('visits').update<VisitCollectionRecord>(visitId, updatePayload, {
+              expand: 'restaurant,user',
+            })
+          : currentVisit;
+
+      if (updates.items) {
+        const existingItems = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
+          filter: `visit = "${escapeFilterValue(visitId)}"`,
+        });
+        const existingItemsById = new Map(existingItems.map((item) => [item.id, item]));
+        const requestedIds = new Set<string>();
+
+        for (const item of updates.items) {
+          const trimmedName = item.name.trim();
+          if (!trimmedName) {
+            continue;
+          }
+
+          requestedIds.add(item.id);
+          if (existingItemsById.has(item.id)) {
+            await pb.collection('food_items').update(item.id, {
+              name: trimmedName,
+              rating: item.rating,
+              description: item.description?.trim() || '',
+              notes: item.notes?.trim() || '',
+            });
+          } else {
+            await pb.collection('food_items').create({
+              name: trimmedName,
+              rating: item.rating,
+              description: item.description?.trim() || undefined,
+              notes: item.notes?.trim() || undefined,
+              visit: visitId,
+              user: currentUserId,
+            });
+          }
+        }
+
+        const deletedItems = existingItems.filter((item) => !requestedIds.has(item.id));
+        await Promise.all(deletedItems.map((item) => pb.collection('food_items').delete(item.id)));
+      }
+
+      const nextItems = await pb.collection('food_items').getFullList<FoodItemCollectionRecord>({
+        filter: `visit = "${escapeFilterValue(visitId)}"`,
+        sort: '-created',
+      });
+
+      return mapVisitCollectionRecord(updatedVisit, nextItems);
+    },
+    {
+      hasRestaurantNameUpdate: updates.restaurantName !== undefined,
+      hasVisitedAtUpdate: updates.visitedAt !== undefined,
+      hasItemsUpdate: updates.items !== undefined,
+      itemCount: updates.items?.length,
+    },
+  );
 }
 
 export async function listQuickTracks(): Promise<QuickTrackRecord[]> {
@@ -1519,152 +1606,183 @@ export async function getQuickTrackById(quickTrackId: string): Promise<QuickTrac
 }
 
 export async function createQuickTrack(input: CreateQuickTrackInput): Promise<QuickTrackRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const itemName = input.itemName.trim();
-  if (!itemName) {
-    throw new Error('Item name is required.');
-  }
-  const locationText = (input.locationText ?? input.restaurantName ?? '').trim();
-  const payload: Record<string, unknown> = {
-    name: itemName,
-    rating: input.rating,
-    user: currentUserId,
-    isQuickTrack: true,
-    visibility: input.visibility ?? getDefaultVisitVisibility(),
-    itemDate: input.itemDate ?? nowIso(),
-  };
+  return trackFeatureMutation(
+    'quick_track.create',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const itemName = input.itemName.trim();
+      if (!itemName) {
+        throw new Error('Item name is required.');
+      }
+      const locationText = (input.locationText ?? input.restaurantName ?? '').trim();
+      const payload: Record<string, unknown> = {
+        name: itemName,
+        rating: input.rating,
+        user: currentUserId,
+        isQuickTrack: true,
+        visibility: input.visibility ?? getDefaultVisitVisibility(),
+        itemDate: input.itemDate ?? nowIso(),
+      };
 
-  if (input.notes !== undefined) {
-    payload.notes = input.notes.trim() || '';
-  }
+      if (input.notes !== undefined) {
+        payload.notes = input.notes.trim() || '';
+      }
 
-  if (locationText) {
-    payload.location_text = locationText;
-  }
+      if (locationText) {
+        payload.location_text = locationText;
+      }
 
-  if (input.itemCategory !== undefined) {
-    payload.itemCategory = input.itemCategory;
-  }
+      if (input.itemCategory !== undefined) {
+        payload.itemCategory = input.itemCategory;
+      }
 
-  if (input.latitude !== undefined) {
-    payload.latitude = input.latitude;
-  }
+      if (input.latitude !== undefined) {
+        payload.latitude = input.latitude;
+      }
 
-  if (input.longitude !== undefined) {
-    payload.longitude = input.longitude;
-  }
+      if (input.longitude !== undefined) {
+        payload.longitude = input.longitude;
+      }
 
-  const record = await pb.collection('food_items').create<FoodItemCollectionRecord>(
-    payload,
+      const record = await pb.collection('food_items').create<FoodItemCollectionRecord>(
+        payload,
+        {
+          expand: 'user,visit,visit.restaurant',
+        },
+      );
+
+      if (input.photo) {
+        await uploadVisitPhotos(undefined, record.id, currentUserId, [input.photo]);
+      }
+
+      if (input.sourceNoteId) {
+        try {
+          await pb.collection('notes').update(input.sourceNoteId, {
+            status: 'used',
+            usedInFoodItem: record.id,
+          });
+        } catch {
+          // Best effort only: quick-track create should still succeed if note linking fails.
+        }
+      }
+
+      return {
+        ...mapQuickTrackCollectionRecord(record),
+        sourceNoteId: input.sourceNoteId,
+      };
+    },
     {
-      expand: 'user,visit,visit.restaurant',
+      rating: input.rating,
+      visibility: input.visibility ?? getDefaultVisitVisibility(),
+      hasPhoto: Boolean(input.photo),
+      hasLocation: Boolean((input.locationText ?? input.restaurantName)?.trim()),
+      hasSourceNote: Boolean(input.sourceNoteId),
+      hasItemCategory: Boolean(input.itemCategory),
     },
   );
-
-  if (input.photo) {
-    await uploadVisitPhotos(undefined, record.id, currentUserId, [input.photo]);
-  }
-
-  if (input.sourceNoteId) {
-    try {
-      await pb.collection('notes').update(input.sourceNoteId, {
-        status: 'used',
-        usedInFoodItem: record.id,
-      });
-    } catch {
-      // Best effort only: quick-track create should still succeed if note linking fails.
-    }
-  }
-
-  return {
-    ...mapQuickTrackCollectionRecord(record),
-    sourceNoteId: input.sourceNoteId,
-  };
 }
 
 export async function updateQuickTrack(
   quickTrackId: string,
   updates: UpdateQuickTrackInput,
 ): Promise<QuickTrackRecord> {
-  const currentRecord = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId);
-  if (currentRecord.isQuickTrack !== true) {
-    throw new Error('Quick track record not found.');
-  }
+  return trackFeatureMutation(
+    'quick_track.update',
+    async () => {
+      const currentRecord = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId);
+      if (currentRecord.isQuickTrack !== true) {
+        throw new Error('Quick track record not found.');
+      }
 
-  const payload: Record<string, unknown> = {};
-  if (updates.itemName !== undefined) {
-    const trimmedName = updates.itemName.trim();
-    if (!trimmedName) {
-      throw new Error('Item name is required.');
-    }
-    payload.name = trimmedName;
-  }
+      const payload: Record<string, unknown> = {};
+      if (updates.itemName !== undefined) {
+        const trimmedName = updates.itemName.trim();
+        if (!trimmedName) {
+          throw new Error('Item name is required.');
+        }
+        payload.name = trimmedName;
+      }
 
-  if (updates.rating !== undefined) {
-    payload.rating = updates.rating;
-  }
+      if (updates.rating !== undefined) {
+        payload.rating = updates.rating;
+      }
 
-  if (updates.notes !== undefined) {
-    payload.notes = updates.notes.trim() || '';
-  }
+      if (updates.notes !== undefined) {
+        payload.notes = updates.notes.trim() || '';
+      }
 
-  const nextLocationText = updates.locationText ?? updates.restaurantName;
-  if (nextLocationText !== undefined) {
-    payload.location_text = nextLocationText.trim() || '';
-  }
+      const nextLocationText = updates.locationText ?? updates.restaurantName;
+      if (nextLocationText !== undefined) {
+        payload.location_text = nextLocationText.trim() || '';
+      }
 
-  if (updates.itemCategory !== undefined) {
-    payload.itemCategory = updates.itemCategory ?? '';
-  }
+      if (updates.itemCategory !== undefined) {
+        payload.itemCategory = updates.itemCategory ?? '';
+      }
 
-  if (updates.visibility !== undefined) {
-    payload.visibility = updates.visibility;
-  }
+      if (updates.visibility !== undefined) {
+        payload.visibility = updates.visibility;
+      }
 
-  if (updates.itemDate !== undefined) {
-    payload.itemDate = updates.itemDate;
-  }
+      if (updates.itemDate !== undefined) {
+        payload.itemDate = updates.itemDate;
+      }
 
-  if (updates.latitude !== undefined) {
-    payload.latitude = updates.latitude;
-  }
+      if (updates.latitude !== undefined) {
+        payload.latitude = updates.latitude;
+      }
 
-  if (updates.longitude !== undefined) {
-    payload.longitude = updates.longitude;
-  }
+      if (updates.longitude !== undefined) {
+        payload.longitude = updates.longitude;
+      }
 
-  const updatedRecord =
-    Object.keys(payload).length > 0
-      ? await pb.collection('food_items').update<FoodItemCollectionRecord>(quickTrackId, payload, {
-          expand: 'user,visit,visit.restaurant',
-        })
-      : await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId, {
-          expand: 'user,visit,visit.restaurant',
-        });
+      const updatedRecord =
+        Object.keys(payload).length > 0
+          ? await pb.collection('food_items').update<FoodItemCollectionRecord>(quickTrackId, payload, {
+              expand: 'user,visit,visit.restaurant',
+            })
+          : await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId, {
+              expand: 'user,visit,visit.restaurant',
+            });
 
-  return mapQuickTrackCollectionRecord(updatedRecord);
+      return mapQuickTrackCollectionRecord(updatedRecord);
+    },
+    {
+      hasItemNameUpdate: updates.itemName !== undefined,
+      hasRatingUpdate: updates.rating !== undefined,
+      hasNotesUpdate: updates.notes !== undefined,
+      hasLocationUpdate: updates.locationText !== undefined || updates.restaurantName !== undefined,
+      hasVisibilityUpdate: updates.visibility !== undefined,
+      hasItemDateUpdate: updates.itemDate !== undefined,
+      hasCoordinatesUpdate: updates.latitude !== undefined || updates.longitude !== undefined,
+    },
+  );
 }
 
 export async function deleteQuickTrack(quickTrackId: string): Promise<void> {
-  try {
-    await pb.collection('food_items').delete(quickTrackId);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+  return trackFeatureMutation('quick_track.delete', async () => {
+    try {
+      await pb.collection('food_items').delete(quickTrackId);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function deleteVisit(visitId: string): Promise<void> {
-  try {
-    await pb.collection('visits').delete(visitId);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+  return trackFeatureMutation('visit.delete', async () => {
+    try {
+      await pb.collection('visits').delete(visitId);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function getPhotoDraft(): Promise<PhotoProcessingDraft> {
@@ -1783,104 +1901,127 @@ export async function getRestaurantListById(listId: string): Promise<RestaurantL
 }
 
 export async function createDefaultRestaurantList(): Promise<RestaurantListRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
+  return trackFeatureMutation('restaurant_list.default.create', async () => {
+    const currentUserId = getAuthenticatedUserId();
+    const escapedCurrentUserId = escapeFilterValue(currentUserId);
 
-  const existingDefault = await pb.collection('restaurant_lists').getList<RestaurantListCollectionRecord>(1, 1, {
-    filter: `user = "${escapedCurrentUserId}" && isDefault = true`,
-    sort: '-updated',
-    expand: 'user',
-  });
-
-  const existingRecord = existingDefault.items[0];
-  if (existingRecord) {
-    return mapRestaurantListCollectionRecord(existingRecord);
-  }
-
-  const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
-    {
-      name: 'Saved',
-      description: 'Items saved from other lists',
-      visibility: 'private',
-      user: currentUserId,
-      isDefault: true,
-    },
-    {
+    const existingDefault = await pb.collection('restaurant_lists').getList<RestaurantListCollectionRecord>(1, 1, {
+      filter: `user = "${escapedCurrentUserId}" && isDefault = true`,
+      sort: '-updated',
       expand: 'user',
-    },
-  );
+    });
 
-  return mapRestaurantListCollectionRecord(createdRecord);
+    const existingRecord = existingDefault.items[0];
+    if (existingRecord) {
+      return mapRestaurantListCollectionRecord(existingRecord);
+    }
+
+    const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
+      {
+        name: 'Saved',
+        description: 'Items saved from other lists',
+        visibility: 'private',
+        user: currentUserId,
+        isDefault: true,
+      },
+      {
+        expand: 'user',
+      },
+    );
+
+    return mapRestaurantListCollectionRecord(createdRecord);
+  });
 }
 
 export async function createRestaurantList(input: CreateRestaurantListInput): Promise<RestaurantListRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const trimmedName = input.name.trim();
-  if (!trimmedName) {
-    throw new Error('List name is required.');
-  }
+  return trackFeatureMutation(
+    'restaurant_list.create',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const trimmedName = input.name.trim();
+      if (!trimmedName) {
+        throw new Error('List name is required.');
+      }
 
-  const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
-    {
-      name: trimmedName,
-      description: input.description?.trim() || '',
-      visibility: input.visibility ?? 'private',
-      user: currentUserId,
+      const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
+        {
+          name: trimmedName,
+          description: input.description?.trim() || '',
+          visibility: input.visibility ?? 'private',
+          user: currentUserId,
+        },
+        {
+          expand: 'user',
+        },
+      );
+
+      return mapRestaurantListCollectionRecord(createdRecord);
     },
     {
-      expand: 'user',
+      visibility: input.visibility ?? 'private',
+      hasDescription: Boolean(input.description?.trim()),
     },
   );
-
-  return mapRestaurantListCollectionRecord(createdRecord);
 }
 
 export async function updateRestaurantList(
   listId: string,
   updates: UpdateRestaurantListInput,
 ): Promise<RestaurantListRecord> {
-  getAuthenticatedUserId();
+  return trackFeatureMutation(
+    'restaurant_list.update',
+    async () => {
+      getAuthenticatedUserId();
 
-  const payload: Record<string, unknown> = {};
-  if (updates.name !== undefined) {
-    const trimmedName = updates.name.trim();
-    if (!trimmedName) {
-      throw new Error('List name is required.');
-    }
-    payload.name = trimmedName;
-  }
+      const payload: Record<string, unknown> = {};
+      if (updates.name !== undefined) {
+        const trimmedName = updates.name.trim();
+        if (!trimmedName) {
+          throw new Error('List name is required.');
+        }
+        payload.name = trimmedName;
+      }
 
-  if (updates.description !== undefined) {
-    payload.description = updates.description.trim();
-  }
+      if (updates.description !== undefined) {
+        payload.description = updates.description.trim();
+      }
 
-  if (updates.visibility !== undefined) {
-    payload.visibility = updates.visibility;
-  }
+      if (updates.visibility !== undefined) {
+        payload.visibility = updates.visibility;
+      }
 
-  const updatedRecord =
-    Object.keys(payload).length > 0
-      ? await pb.collection('restaurant_lists').update<RestaurantListCollectionRecord>(listId, payload, {
-          expand: 'user',
-        })
-      : await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
-          expand: 'user',
-        });
+      const updatedRecord =
+        Object.keys(payload).length > 0
+          ? await pb.collection('restaurant_lists').update<RestaurantListCollectionRecord>(listId, payload, {
+              expand: 'user',
+            })
+          : await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+              expand: 'user',
+            });
 
-  return mapRestaurantListCollectionRecord(updatedRecord);
+      return mapRestaurantListCollectionRecord(updatedRecord);
+    },
+    {
+      hasNameUpdate: updates.name !== undefined,
+      hasDescriptionUpdate: updates.description !== undefined,
+      hasVisibilityUpdate: updates.visibility !== undefined,
+    },
+  );
 }
 
 export async function deleteRestaurantList(listId: string): Promise<void> {
-  getAuthenticatedUserId();
+  return trackFeatureMutation('restaurant_list.delete', async () => {
+    getAuthenticatedUserId();
 
-  try {
-    await pb.collection('restaurant_lists').delete(listId);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+    try {
+      await pb.collection('restaurant_lists').delete(listId);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function listRestaurantListItems(listId: string): Promise<RestaurantListItemRecord[]> {
@@ -1998,100 +2139,111 @@ export async function getRestaurantListItemCounts(
 }
 
 export async function saveRestaurantFoodItemToList(input: SaveRestaurantFoodItemToListInput): Promise<void> {
-  const currentUserId = getAuthenticatedUserId();
-  const listId = input.listId.trim();
-  const restaurantId = input.restaurantId.trim();
-  const foodItemId = input.foodItemId.trim();
-  const sourceUserId = input.sourceUserId?.trim() || undefined;
-  const trimmedNote = input.note?.trim() || undefined;
+  return trackFeatureMutation(
+    'restaurant_list.food_item.save',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const listId = input.listId.trim();
+      const restaurantId = input.restaurantId.trim();
+      const foodItemId = input.foodItemId.trim();
+      const sourceUserId = input.sourceUserId?.trim() || undefined;
+      const trimmedNote = input.note?.trim() || undefined;
 
-  if (!listId) {
-    throw new Error('List is required.');
-  }
+      if (!listId) {
+        throw new Error('List is required.');
+      }
 
-  if (!restaurantId) {
-    throw new Error('Restaurant is required.');
-  }
+      if (!restaurantId) {
+        throw new Error('Restaurant is required.');
+      }
 
-  if (!foodItemId) {
-    throw new Error('Food item is required.');
-  }
+      if (!foodItemId) {
+        throw new Error('Food item is required.');
+      }
 
-  const list = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
-    fields: 'id,user',
-  });
-  if (list.user !== currentUserId) {
-    throw new Error('You can only save items to your own lists.');
-  }
+      const list = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+        fields: 'id,user',
+      });
+      if (list.user !== currentUserId) {
+        throw new Error('You can only save items to your own lists.');
+      }
 
-  await pb.collection('restaurants').getOne<RestaurantCollectionRecord>(restaurantId, { fields: 'id' });
-  await pb.collection('food_items').getOne<FoodItemCollectionRecord>(foodItemId, { fields: 'id' });
+      await pb.collection('restaurants').getOne<RestaurantCollectionRecord>(restaurantId, { fields: 'id' });
+      await pb.collection('food_items').getOne<FoodItemCollectionRecord>(foodItemId, { fields: 'id' });
 
-  const escapedListId = escapeFilterValue(listId);
-  const escapedRestaurantId = escapeFilterValue(restaurantId);
-  const escapedFoodItemId = escapeFilterValue(foodItemId);
-  const existingItem = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
-    filter: `list = "${escapedListId}" && restaurant = "${escapedRestaurantId}" && foodItem = "${escapedFoodItemId}"`,
-    fields: 'id',
-  });
-  if (existingItem.totalItems > 0) {
-    return;
-  }
+      const escapedListId = escapeFilterValue(listId);
+      const escapedRestaurantId = escapeFilterValue(restaurantId);
+      const escapedFoodItemId = escapeFilterValue(foodItemId);
+      const existingItem = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
+        filter: `list = "${escapedListId}" && restaurant = "${escapedRestaurantId}" && foodItem = "${escapedFoodItemId}"`,
+        fields: 'id',
+      });
+      if (existingItem.totalItems > 0) {
+        return;
+      }
 
-  const itemsWithHighestPosition = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
-    filter: `list = "${escapedListId}"`,
-    sort: '-position',
-    fields: 'position',
-  });
-  const nextPosition = (itemsWithHighestPosition.items[0]?.position ?? 0) + 1;
+      const itemsWithHighestPosition = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
+        filter: `list = "${escapedListId}"`,
+        sort: '-position',
+        fields: 'position',
+      });
+      const nextPosition = (itemsWithHighestPosition.items[0]?.position ?? 0) + 1;
 
-  await pb.collection('list_items').create<ListItemCollectionRecord>({
-    list: listId,
-    restaurant: restaurantId,
-    addedBy: currentUserId,
-    sourceUser: sourceUserId,
-    foodItem: foodItemId,
-    position: nextPosition,
-    note: trimmedNote,
-  });
+      await pb.collection('list_items').create<ListItemCollectionRecord>({
+        list: listId,
+        restaurant: restaurantId,
+        addedBy: currentUserId,
+        sourceUser: sourceUserId,
+        foodItem: foodItemId,
+        position: nextPosition,
+        note: trimmedNote,
+      });
+    },
+    {
+      hasSourceUser: Boolean(input.sourceUserId?.trim()),
+      hasNote: Boolean(input.note?.trim()),
+    },
+  );
 }
 
 export async function linkVisitToListBookmark(input: LinkVisitToListBookmarkInput): Promise<void> {
-  const currentUserId = getAuthenticatedUserId();
-  const listItemId = input.listItemId.trim();
-  const userFoodItemId = input.userFoodItemId.trim();
+  return trackFeatureMutation('restaurant_list.bookmark.link', async () => {
+    const currentUserId = getAuthenticatedUserId();
+    const listItemId = input.listItemId.trim();
+    const userFoodItemId = input.userFoodItemId.trim();
 
-  if (!listItemId) {
-    throw new Error('List item is required.');
-  }
+    if (!listItemId) {
+      throw new Error('List item is required.');
+    }
 
-  if (!userFoodItemId) {
-    throw new Error('Food item is required.');
-  }
+    if (!userFoodItemId) {
+      throw new Error('Food item is required.');
+    }
 
-  const [listItem, userFoodItem] = await Promise.all([
-    pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId, {
-      fields: 'id,list,addedBy',
-    }),
-    pb.collection('food_items').getOne<FoodItemCollectionRecord>(userFoodItemId, {
+    const [listItem, userFoodItem] = await Promise.all([
+      pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId, {
+        fields: 'id,list,addedBy',
+      }),
+      pb.collection('food_items').getOne<FoodItemCollectionRecord>(userFoodItemId, {
+        fields: 'id,user',
+      }),
+    ]);
+
+    if (userFoodItem.user !== currentUserId) {
+      throw new Error('You can only link your own rated items.');
+    }
+
+    const list = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listItem.list, {
       fields: 'id,user',
-    }),
-  ]);
+    });
+    const canUpdateListItem = list.user === currentUserId || listItem.addedBy === currentUserId;
+    if (!canUpdateListItem) {
+      throw new Error('You can only link bookmarks in your own lists.');
+    }
 
-  if (userFoodItem.user !== currentUserId) {
-    throw new Error('You can only link your own rated items.');
-  }
-
-  const list = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listItem.list, {
-    fields: 'id,user',
-  });
-  const canUpdateListItem = list.user === currentUserId || listItem.addedBy === currentUserId;
-  if (!canUpdateListItem) {
-    throw new Error('You can only link bookmarks in your own lists.');
-  }
-
-  await pb.collection('list_items').update<ListItemCollectionRecord>(listItemId, {
-    userFoodItem: userFoodItemId,
+    await pb.collection('list_items').update<ListItemCollectionRecord>(listItemId, {
+      userFoodItem: userFoodItemId,
+    });
   });
 }
 
@@ -2100,367 +2252,398 @@ export async function addRestaurantToList(
   restaurantName: string,
   city?: string,
 ): Promise<RestaurantListItemRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const trimmedName = restaurantName.trim();
-  if (!trimmedName) {
-    throw new Error('Restaurant name is required.');
-  }
+  return trackFeatureMutation(
+    'restaurant_list.restaurant.add',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const trimmedName = restaurantName.trim();
+      if (!trimmedName) {
+        throw new Error('Restaurant name is required.');
+      }
 
-  const escapedListId = escapeFilterValue(listId);
+      const escapedListId = escapeFilterValue(listId);
 
-  // Ensure the list exists and is accessible to the current user.
-  await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId);
+      // Ensure the list exists and is accessible to the current user.
+      await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId);
 
-  const restaurant = await findOrCreateRestaurantByName(trimmedName, currentUserId, city);
-  const escapedRestaurantId = escapeFilterValue(restaurant.id);
+      const restaurant = await findOrCreateRestaurantByName(trimmedName, currentUserId, city);
+      const escapedRestaurantId = escapeFilterValue(restaurant.id);
 
-  const existingItems = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
-    filter: `list = "${escapedListId}" && restaurant = "${escapedRestaurantId}"`,
-    expand: 'restaurant',
-  });
-  if (existingItems.totalItems > 0 && existingItems.items[0]) {
-    return mapListItemCollectionRecord(existingItems.items[0]);
-  }
+      const existingItems = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
+        filter: `list = "${escapedListId}" && restaurant = "${escapedRestaurantId}"`,
+        expand: 'restaurant',
+      });
+      if (existingItems.totalItems > 0 && existingItems.items[0]) {
+        return mapListItemCollectionRecord(existingItems.items[0]);
+      }
 
-  const itemsWithHighestPosition = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
-    filter: `list = "${escapedListId}"`,
-    sort: '-position',
-  });
-  const nextPosition = (itemsWithHighestPosition.items[0]?.position ?? 0) + 1;
+      const itemsWithHighestPosition = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
+        filter: `list = "${escapedListId}"`,
+        sort: '-position',
+      });
+      const nextPosition = (itemsWithHighestPosition.items[0]?.position ?? 0) + 1;
 
-  const createdItem = await pb.collection('list_items').create<ListItemCollectionRecord>(
-    {
-      list: listId,
-      restaurant: restaurant.id,
-      addedBy: currentUserId,
-      position: nextPosition,
+      const createdItem = await pb.collection('list_items').create<ListItemCollectionRecord>(
+        {
+          list: listId,
+          restaurant: restaurant.id,
+          addedBy: currentUserId,
+          position: nextPosition,
+        },
+        {
+          expand: 'restaurant',
+        },
+      );
+
+      return mapListItemCollectionRecord(createdItem);
     },
     {
-      expand: 'restaurant',
+      hasCity: Boolean(city?.trim()),
     },
   );
-
-  return mapListItemCollectionRecord(createdItem);
 }
 
 export async function addRestaurantVisitRatingsToList(
   input: AddRestaurantVisitRatingsToListInput,
 ): Promise<void> {
-  const currentUserId = getAuthenticatedUserId();
-  const listId = input.listId.trim();
-  const restaurantId = input.restaurantId.trim();
+  return trackFeatureMutation(
+    'restaurant_list.visit_ratings.add',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const listId = input.listId.trim();
+      const restaurantId = input.restaurantId.trim();
 
-  if (!listId) {
-    throw new Error('List is required.');
-  }
-
-  if (!restaurantId) {
-    throw new Error('Restaurant is required.');
-  }
-
-  await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId);
-  await pb.collection('restaurants').getOne<RestaurantCollectionRecord>(restaurantId);
-
-  const escapedListId = escapeFilterValue(listId);
-  const escapedRestaurantId = escapeFilterValue(restaurantId);
-
-  const existingItems = await pb.collection('list_items').getFullList<ListItemCollectionRecord>({
-    filter: `list = "${escapedListId}" && restaurant = "${escapedRestaurantId}"`,
-  });
-
-  const existingFoodItemIds = new Set<string>();
-  for (const item of existingItems) {
-    if (item.foodItem?.trim()) {
-      existingFoodItemIds.add(item.foodItem.trim());
-    }
-
-    if (item.userFoodItem?.trim()) {
-      existingFoodItemIds.add(item.userFoodItem.trim());
-    }
-
-    for (const recommendedItemId of item.recommendedItems ?? []) {
-      if (recommendedItemId?.trim()) {
-        existingFoodItemIds.add(recommendedItemId.trim());
+      if (!listId) {
+        throw new Error('List is required.');
       }
-    }
-  }
 
-  const uniqueRequestedFoodItemIds = Array.from(
-    new Set((input.foodItemIds ?? []).map((itemId) => itemId.trim()).filter((itemId) => itemId.length > 0)),
+      if (!restaurantId) {
+        throw new Error('Restaurant is required.');
+      }
+
+      await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId);
+      await pb.collection('restaurants').getOne<RestaurantCollectionRecord>(restaurantId);
+
+      const escapedListId = escapeFilterValue(listId);
+      const escapedRestaurantId = escapeFilterValue(restaurantId);
+
+      const existingItems = await pb.collection('list_items').getFullList<ListItemCollectionRecord>({
+        filter: `list = "${escapedListId}" && restaurant = "${escapedRestaurantId}"`,
+      });
+
+      const existingFoodItemIds = new Set<string>();
+      for (const item of existingItems) {
+        if (item.foodItem?.trim()) {
+          existingFoodItemIds.add(item.foodItem.trim());
+        }
+
+        if (item.userFoodItem?.trim()) {
+          existingFoodItemIds.add(item.userFoodItem.trim());
+        }
+
+        for (const recommendedItemId of item.recommendedItems ?? []) {
+          if (recommendedItemId?.trim()) {
+            existingFoodItemIds.add(recommendedItemId.trim());
+          }
+        }
+      }
+
+      const uniqueRequestedFoodItemIds = Array.from(
+        new Set((input.foodItemIds ?? []).map((itemId) => itemId.trim()).filter((itemId) => itemId.length > 0)),
+      );
+      const newFoodItemIds = uniqueRequestedFoodItemIds.filter((itemId) => !existingFoodItemIds.has(itemId));
+      const noteProvided = input.note !== undefined;
+      const trimmedNote = input.note?.trim() ?? '';
+      const firstExistingItemId = existingItems[0]?.id;
+
+      if (noteProvided && firstExistingItemId) {
+        await pb.collection('list_items').update(firstExistingItemId, {
+          note: trimmedNote,
+        });
+
+        if (newFoodItemIds.length === 0) {
+          return;
+        }
+      }
+
+      if (newFoodItemIds.length === 0 && existingItems.length > 0) {
+        return;
+      }
+
+      const highestPositionItem = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
+        filter: `list = "${escapedListId}"`,
+        sort: '-position',
+        fields: 'position',
+      });
+      let nextPosition = (highestPositionItem.items[0]?.position ?? 0) + 1;
+
+      if (newFoodItemIds.length === 0) {
+        await pb.collection('list_items').create<ListItemCollectionRecord>({
+          list: listId,
+          restaurant: restaurantId,
+          addedBy: currentUserId,
+          position: nextPosition,
+          note: noteProvided ? trimmedNote : undefined,
+        });
+        return;
+      }
+
+      for (let index = 0; index < newFoodItemIds.length; index += 1) {
+        const foodItemId = newFoodItemIds[index];
+        const shouldAttachNote = !firstExistingItemId && index === 0 && noteProvided;
+        await pb.collection('list_items').create<ListItemCollectionRecord>({
+          list: listId,
+          restaurant: restaurantId,
+          addedBy: currentUserId,
+          position: nextPosition,
+          foodItem: foodItemId,
+          note: shouldAttachNote ? trimmedNote : undefined,
+        });
+        nextPosition += 1;
+      }
+    },
+    {
+      requestedFoodItemCount: input.foodItemIds?.length ?? 0,
+      hasNote: Boolean(input.note?.trim()),
+    },
   );
-  const newFoodItemIds = uniqueRequestedFoodItemIds.filter((itemId) => !existingFoodItemIds.has(itemId));
-  const noteProvided = input.note !== undefined;
-  const trimmedNote = input.note?.trim() ?? '';
-  const firstExistingItemId = existingItems[0]?.id;
-
-  if (noteProvided && firstExistingItemId) {
-    await pb.collection('list_items').update(firstExistingItemId, {
-      note: trimmedNote,
-    });
-
-    if (newFoodItemIds.length === 0) {
-      return;
-    }
-  }
-
-  if (newFoodItemIds.length === 0 && existingItems.length > 0) {
-    return;
-  }
-
-  const highestPositionItem = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
-    filter: `list = "${escapedListId}"`,
-    sort: '-position',
-    fields: 'position',
-  });
-  let nextPosition = (highestPositionItem.items[0]?.position ?? 0) + 1;
-
-  if (newFoodItemIds.length === 0) {
-    await pb.collection('list_items').create<ListItemCollectionRecord>({
-      list: listId,
-      restaurant: restaurantId,
-      addedBy: currentUserId,
-      position: nextPosition,
-      note: noteProvided ? trimmedNote : undefined,
-    });
-    return;
-  }
-
-  for (let index = 0; index < newFoodItemIds.length; index += 1) {
-    const foodItemId = newFoodItemIds[index];
-    const shouldAttachNote = !firstExistingItemId && index === 0 && noteProvided;
-    await pb.collection('list_items').create<ListItemCollectionRecord>({
-      list: listId,
-      restaurant: restaurantId,
-      addedBy: currentUserId,
-      position: nextPosition,
-      foodItem: foodItemId,
-      note: shouldAttachNote ? trimmedNote : undefined,
-    });
-    nextPosition += 1;
-  }
 }
 
 export async function moveRestaurantListRestaurant(
   input: MoveRestaurantListRestaurantInput,
 ): Promise<void> {
-  const currentUserId = getAuthenticatedUserId();
-  const listId = input.listId.trim();
-  const restaurantId = input.restaurantId.trim();
-  const direction = input.direction;
+  return trackFeatureMutation(
+    'restaurant_list.restaurant.move',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const listId = input.listId.trim();
+      const restaurantId = input.restaurantId.trim();
+      const direction = input.direction;
 
-  if (!listId) {
-    throw new Error('List is required.');
-  }
+      if (!listId) {
+        throw new Error('List is required.');
+      }
 
-  if (!restaurantId) {
-    throw new Error('Restaurant is required.');
-  }
+      if (!restaurantId) {
+        throw new Error('Restaurant is required.');
+      }
 
-  if (direction !== 'up' && direction !== 'down') {
-    throw new Error('Direction must be up or down.');
-  }
+      if (direction !== 'up' && direction !== 'down') {
+        throw new Error('Direction must be up or down.');
+      }
 
-  const list = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
-    fields: 'id,user',
-  });
-  if (list.user !== currentUserId) {
-    throw new Error('You can only reorder restaurants in your own lists.');
-  }
+      const list = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+        fields: 'id,user',
+      });
+      if (list.user !== currentUserId) {
+        throw new Error('You can only reorder restaurants in your own lists.');
+      }
 
-  const listItems = await pb.collection('list_items').getFullList<ListItemCollectionRecord>({
-    filter: `list = "${escapeFilterValue(listId)}"`,
-    sort: 'position,created',
-    fields: 'id,restaurant,position,created',
-  });
+      const listItems = await pb.collection('list_items').getFullList<ListItemCollectionRecord>({
+        filter: `list = "${escapeFilterValue(listId)}"`,
+        sort: 'position,created',
+        fields: 'id,restaurant,position,created',
+      });
 
-  if (listItems.length < 2) {
-    return;
-  }
+      if (listItems.length < 2) {
+        return;
+      }
 
-  const listItemIdsByRestaurant = new Map<string, ListItemCollectionRecord[]>();
-  const restaurantOrder: string[] = [];
-  for (const item of listItems) {
-    const existingItems = listItemIdsByRestaurant.get(item.restaurant);
-    if (existingItems) {
-      existingItems.push(item);
-      continue;
-    }
+      const listItemIdsByRestaurant = new Map<string, ListItemCollectionRecord[]>();
+      const restaurantOrder: string[] = [];
+      for (const item of listItems) {
+        const existingItems = listItemIdsByRestaurant.get(item.restaurant);
+        if (existingItems) {
+          existingItems.push(item);
+          continue;
+        }
 
-    listItemIdsByRestaurant.set(item.restaurant, [item]);
-    restaurantOrder.push(item.restaurant);
-  }
+        listItemIdsByRestaurant.set(item.restaurant, [item]);
+        restaurantOrder.push(item.restaurant);
+      }
 
-  const currentIndex = restaurantOrder.indexOf(restaurantId);
-  if (currentIndex === -1) {
-    return;
-  }
+      const currentIndex = restaurantOrder.indexOf(restaurantId);
+      if (currentIndex === -1) {
+        return;
+      }
 
-  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-  if (targetIndex < 0 || targetIndex >= restaurantOrder.length) {
-    return;
-  }
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= restaurantOrder.length) {
+        return;
+      }
 
-  const [movedRestaurantId] = restaurantOrder.splice(currentIndex, 1);
-  if (!movedRestaurantId) {
-    return;
-  }
-  restaurantOrder.splice(targetIndex, 0, movedRestaurantId);
+      const [movedRestaurantId] = restaurantOrder.splice(currentIndex, 1);
+      if (!movedRestaurantId) {
+        return;
+      }
+      restaurantOrder.splice(targetIndex, 0, movedRestaurantId);
 
-  const reorderedItems: ListItemCollectionRecord[] = [];
-  for (const orderedRestaurantId of restaurantOrder) {
-    const itemsForRestaurant = listItemIdsByRestaurant.get(orderedRestaurantId);
-    if (!itemsForRestaurant) {
-      continue;
-    }
-    reorderedItems.push(...itemsForRestaurant);
-  }
+      const reorderedItems: ListItemCollectionRecord[] = [];
+      for (const orderedRestaurantId of restaurantOrder) {
+        const itemsForRestaurant = listItemIdsByRestaurant.get(orderedRestaurantId);
+        if (!itemsForRestaurant) {
+          continue;
+        }
+        reorderedItems.push(...itemsForRestaurant);
+      }
 
-  for (let index = 0; index < reorderedItems.length; index += 1) {
-    const listItem = reorderedItems[index];
-    if (!listItem) {
-      continue;
-    }
+      for (let index = 0; index < reorderedItems.length; index += 1) {
+        const listItem = reorderedItems[index];
+        if (!listItem) {
+          continue;
+        }
 
-    const nextPosition = index + 1;
-    if (listItem.position === nextPosition) {
-      continue;
-    }
+        const nextPosition = index + 1;
+        if (listItem.position === nextPosition) {
+          continue;
+        }
 
-    await pb.collection('list_items').update<ListItemCollectionRecord>(listItem.id, {
-      position: nextPosition,
-    });
-  }
+        await pb.collection('list_items').update<ListItemCollectionRecord>(listItem.id, {
+          position: nextPosition,
+        });
+      }
+    },
+    {
+      direction: input.direction,
+    },
+  );
 }
 
 export async function removeRestaurantFromList(
   listId: string,
   listItemId: string,
 ): Promise<void> {
-  getAuthenticatedUserId();
+  return trackFeatureMutation('restaurant_list.restaurant.remove', async () => {
+    getAuthenticatedUserId();
 
-  try {
-    const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId);
-    if (listItem.list !== listId) {
-      throw new Error('List item not found.');
-    }
+    try {
+      const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId);
+      if (listItem.list !== listId) {
+        throw new Error('List item not found.');
+      }
 
-    await pb.collection('list_items').delete(listItemId);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+      await pb.collection('list_items').delete(listItemId);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function removeRestaurantListSourceRating(
   input: RemoveRestaurantListSourceRatingInput,
 ): Promise<void> {
-  getAuthenticatedUserId();
+  return trackFeatureMutation('restaurant_list.source_rating.remove', async () => {
+    getAuthenticatedUserId();
 
-  const listId = input.listId.trim();
-  const listItemId = input.listItemId.trim();
-  const foodItemId = input.foodItemId.trim();
-  if (!listId || !listItemId || !foodItemId) {
-    throw new Error('List item and food item are required.');
-  }
-
-  try {
-    const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId, {
-      fields: 'id,list,foodItem,recommendedItems,userFoodItem,sourceUser',
-    });
-
-    if (listItem.list !== listId) {
-      throw new Error('List item not found.');
+    const listId = input.listId.trim();
+    const listItemId = input.listItemId.trim();
+    const foodItemId = input.foodItemId.trim();
+    if (!listId || !listItemId || !foodItemId) {
+      throw new Error('List item and food item are required.');
     }
 
-    let nextFoodItem = listItem.foodItem?.trim() || '';
-    let nextUserFoodItem = listItem.userFoodItem?.trim() || '';
-    let nextSourceUser = listItem.sourceUser?.trim() || '';
-    let nextRecommendedItems = (listItem.recommendedItems ?? [])
-      .map((itemId) => itemId?.trim())
-      .filter((itemId): itemId is string => Boolean(itemId));
+    try {
+      const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId, {
+        fields: 'id,list,foodItem,recommendedItems,userFoodItem,sourceUser',
+      });
 
-    const isPrimaryFoodItem = nextFoodItem === foodItemId;
-    const hasLegacyFoodItem = nextRecommendedItems.includes(foodItemId);
+      if (listItem.list !== listId) {
+        throw new Error('List item not found.');
+      }
 
-    if (!isPrimaryFoodItem && !hasLegacyFoodItem) {
-      return;
-    }
+      let nextFoodItem = listItem.foodItem?.trim() || '';
+      let nextUserFoodItem = listItem.userFoodItem?.trim() || '';
+      let nextSourceUser = listItem.sourceUser?.trim() || '';
+      let nextRecommendedItems = (listItem.recommendedItems ?? [])
+        .map((itemId) => itemId?.trim())
+        .filter((itemId): itemId is string => Boolean(itemId));
 
-    if (isPrimaryFoodItem) {
-      nextFoodItem = '';
-    } else {
-      nextRecommendedItems = nextRecommendedItems.filter((itemId) => itemId !== foodItemId);
-    }
+      const isPrimaryFoodItem = nextFoodItem === foodItemId;
+      const hasLegacyFoodItem = nextRecommendedItems.includes(foodItemId);
 
-    const hasSourceItems = Boolean(nextFoodItem) || nextRecommendedItems.length > 0;
-    if (!hasSourceItems) {
-      if (nextUserFoodItem) {
-        // Keep the row by promoting the linked user rating to primary foodItem.
-        nextFoodItem = nextUserFoodItem;
-        nextUserFoodItem = '';
-        nextSourceUser = '';
-      } else {
-        await pb.collection('list_items').delete(listItemId);
+      if (!isPrimaryFoodItem && !hasLegacyFoodItem) {
         return;
       }
-    }
 
-    await pb.collection('list_items').update<ListItemCollectionRecord>(listItemId, {
-      foodItem: nextFoodItem || null,
-      recommendedItems: nextRecommendedItems,
-      sourceUser: nextSourceUser || null,
-      userFoodItem: nextUserFoodItem || null,
-    });
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+      if (isPrimaryFoodItem) {
+        nextFoodItem = '';
+      } else {
+        nextRecommendedItems = nextRecommendedItems.filter((itemId) => itemId !== foodItemId);
+      }
+
+      const hasSourceItems = Boolean(nextFoodItem) || nextRecommendedItems.length > 0;
+      if (!hasSourceItems) {
+        if (nextUserFoodItem) {
+          // Keep the row by promoting the linked user rating to primary foodItem.
+          nextFoodItem = nextUserFoodItem;
+          nextUserFoodItem = '';
+          nextSourceUser = '';
+        } else {
+          await pb.collection('list_items').delete(listItemId);
+          return;
+        }
+      }
+
+      await pb.collection('list_items').update<ListItemCollectionRecord>(listItemId, {
+        foodItem: nextFoodItem || null,
+        recommendedItems: nextRecommendedItems,
+        sourceUser: nextSourceUser || null,
+        userFoodItem: nextUserFoodItem || null,
+      });
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function removeRestaurantListUserRating(listId: string, listItemId: string): Promise<void> {
-  getAuthenticatedUserId();
+  return trackFeatureMutation('restaurant_list.user_rating.remove', async () => {
+    getAuthenticatedUserId();
 
-  const trimmedListId = listId.trim();
-  const trimmedListItemId = listItemId.trim();
-  if (!trimmedListId || !trimmedListItemId) {
-    throw new Error('List item is required.');
-  }
-
-  try {
-    const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(trimmedListItemId, {
-      fields: 'id,list,foodItem,recommendedItems,userFoodItem',
-    });
-
-    if (listItem.list !== trimmedListId) {
-      throw new Error('List item not found.');
+    const trimmedListId = listId.trim();
+    const trimmedListItemId = listItemId.trim();
+    if (!trimmedListId || !trimmedListItemId) {
+      throw new Error('List item is required.');
     }
 
-    if (!listItem.userFoodItem?.trim()) {
-      return;
-    }
+    try {
+      const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(trimmedListItemId, {
+        fields: 'id,list,foodItem,recommendedItems,userFoodItem',
+      });
 
-    const hasSourceItems =
-      Boolean(listItem.foodItem?.trim()) ||
-      (listItem.recommendedItems ?? []).some((itemId) => Boolean(itemId?.trim()));
+      if (listItem.list !== trimmedListId) {
+        throw new Error('List item not found.');
+      }
 
-    if (!hasSourceItems) {
-      await pb.collection('list_items').delete(trimmedListItemId);
-      return;
-    }
+      if (!listItem.userFoodItem?.trim()) {
+        return;
+      }
 
-    await pb.collection('list_items').update<ListItemCollectionRecord>(trimmedListItemId, {
-      userFoodItem: null,
-    });
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+      const hasSourceItems =
+        Boolean(listItem.foodItem?.trim()) ||
+        (listItem.recommendedItems ?? []).some((itemId) => Boolean(itemId?.trim()));
+
+      if (!hasSourceItems) {
+        await pb.collection('list_items').delete(trimmedListItemId);
+        return;
+      }
+
+      await pb.collection('list_items').update<ListItemCollectionRecord>(trimmedListItemId, {
+        userFoodItem: null,
+      });
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function listNotes(): Promise<NoteRecord[]> {
@@ -2497,102 +2680,127 @@ export async function getNoteById(noteId: string): Promise<NoteRecord | null> {
 }
 
 export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const content = buildNoteContent(input.title, input.content);
-  if (!content) {
-    throw new Error('Note content is required.');
-  }
+  return trackFeatureMutation(
+    'note.create',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const content = buildNoteContent(input.title, input.content);
+      if (!content) {
+        throw new Error('Note content is required.');
+      }
 
-  const payload: Record<string, unknown> = {
-    user: currentUserId,
-    content,
-    status: 'draft',
-  };
+      const payload: Record<string, unknown> = {
+        user: currentUserId,
+        content,
+        status: 'draft',
+      };
 
-  if (input.locationText !== undefined) {
-    payload.location_text = input.locationText.trim() || '';
-  }
+      if (input.locationText !== undefined) {
+        payload.location_text = input.locationText.trim() || '';
+      }
 
-  if (input.latitude !== undefined) {
-    payload.latitude = input.latitude;
-  }
+      if (input.latitude !== undefined) {
+        payload.latitude = input.latitude;
+      }
 
-  if (input.longitude !== undefined) {
-    payload.longitude = input.longitude;
-  }
+      if (input.longitude !== undefined) {
+        payload.longitude = input.longitude;
+      }
 
-  const record = await pb.collection('notes').create<NoteCollectionRecord>(
-    payload,
+      const record = await pb.collection('notes').create<NoteCollectionRecord>(
+        payload,
+        {
+          expand: 'restaurant',
+        },
+      );
+
+      await uploadNotePhotos(record.id, currentUserId, input.photos ?? []);
+
+      return mapNoteCollectionRecord(record);
+    },
     {
-      expand: 'restaurant',
+      hasLocationText: Boolean(input.locationText?.trim()),
+      hasCoordinates: input.latitude !== undefined || input.longitude !== undefined,
+      photoCount: input.photos?.length ?? 0,
+      hasRating: input.rating !== undefined,
     },
   );
-
-  await uploadNotePhotos(record.id, currentUserId, input.photos ?? []);
-
-  return mapNoteCollectionRecord(record);
 }
 
 export async function updateNote(noteId: string, updates: UpdateNoteInput): Promise<NoteRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const payload: Record<string, unknown> = {};
+  return trackFeatureMutation(
+    'note.update',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const payload: Record<string, unknown> = {};
 
-  if (updates.title !== undefined || updates.content !== undefined) {
-    const content = buildNoteContent(updates.title, updates.content);
-    if (!content) {
-      throw new Error('Note content is required.');
-    }
+      if (updates.title !== undefined || updates.content !== undefined) {
+        const content = buildNoteContent(updates.title, updates.content);
+        if (!content) {
+          throw new Error('Note content is required.');
+        }
 
-    payload.content = content;
-  }
+        payload.content = content;
+      }
 
-  if (updates.locationText !== undefined) {
-    payload.location_text = updates.locationText.trim() || '';
-  }
+      if (updates.locationText !== undefined) {
+        payload.location_text = updates.locationText.trim() || '';
+      }
 
-  if (updates.latitude !== undefined) {
-    payload.latitude = updates.latitude;
-  }
+      if (updates.latitude !== undefined) {
+        payload.latitude = updates.latitude;
+      }
 
-  if (updates.longitude !== undefined) {
-    payload.longitude = updates.longitude;
-  }
+      if (updates.longitude !== undefined) {
+        payload.longitude = updates.longitude;
+      }
 
-  if (updates.deletePhotoIds && updates.deletePhotoIds.length > 0) {
-    for (const photoId of updates.deletePhotoIds) {
-      try {
-        await pb.collection('note_photos').delete(photoId);
-      } catch (error) {
-        if (!isNotFoundError(error)) {
-          throw error;
+      if (updates.deletePhotoIds && updates.deletePhotoIds.length > 0) {
+        for (const photoId of updates.deletePhotoIds) {
+          try {
+            await pb.collection('note_photos').delete(photoId);
+          } catch (error) {
+            if (!isNotFoundError(error)) {
+              throw error;
+            }
+          }
         }
       }
-    }
-  }
 
-  const record =
-    Object.keys(payload).length > 0
-      ? await pb.collection('notes').update<NoteCollectionRecord>(noteId, payload, {
-          expand: 'restaurant',
-        })
-      : await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
-          expand: 'restaurant',
-        });
+      const record =
+        Object.keys(payload).length > 0
+          ? await pb.collection('notes').update<NoteCollectionRecord>(noteId, payload, {
+              expand: 'restaurant',
+            })
+          : await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
+              expand: 'restaurant',
+            });
 
-  await uploadNotePhotos(noteId, currentUserId, updates.newPhotos ?? []);
+      await uploadNotePhotos(noteId, currentUserId, updates.newPhotos ?? []);
 
-  return mapNoteCollectionRecord(record);
+      return mapNoteCollectionRecord(record);
+    },
+    {
+      hasContentUpdate: updates.title !== undefined || updates.content !== undefined,
+      hasLocationUpdate: updates.locationText !== undefined,
+      hasCoordinatesUpdate: updates.latitude !== undefined || updates.longitude !== undefined,
+      newPhotoCount: updates.newPhotos?.length ?? 0,
+      deletePhotoCount: updates.deletePhotoIds?.length ?? 0,
+    },
+  );
 }
 
 export async function deleteNote(noteId: string): Promise<void> {
-  try {
-    await pb.collection('notes').delete(noteId);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+  return trackFeatureMutation('note.delete', async () => {
+    try {
+      await pb.collection('notes').delete(noteId);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function listFriends(): Promise<FriendRecord[]> {
@@ -2613,83 +2821,89 @@ export async function listFriends(): Promise<FriendRecord[]> {
 }
 
 export async function inviteFriend(input: InviteFriendInput): Promise<FriendRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const normalizedCode = input.code.trim().toUpperCase();
+  return trackFeatureMutation('friend.invite', async () => {
+    const currentUserId = getAuthenticatedUserId();
+    const normalizedCode = input.code.trim().toUpperCase();
 
-  if (!normalizedCode) {
-    throw new Error('Friend code is required.');
-  }
+    if (!normalizedCode) {
+      throw new Error('Friend code is required.');
+    }
 
-  const response = await pb.send<FriendCodeLookupResponse>(
-    `/api/users/by-friend-code/${encodeURIComponent(normalizedCode)}`,
-    { method: 'GET' },
-  );
+    const response = await pb.send<FriendCodeLookupResponse>(
+      `/api/users/by-friend-code/${encodeURIComponent(normalizedCode)}`,
+      { method: 'GET' },
+    );
 
-  if (!response?.found || !response.user?.id) {
-    throw new Error('Friend code not found.');
-  }
+    if (!response?.found || !response.user?.id) {
+      throw new Error('Friend code not found.');
+    }
 
-  if (response.user.id === currentUserId) {
-    throw new Error('Cannot add yourself as a friend.');
-  }
+    if (response.user.id === currentUserId) {
+      throw new Error('Cannot add yourself as a friend.');
+    }
 
-  const existing = await pb.collection('friendships').getList<FriendshipRecord>(1, 1, {
-    filter: `(user = "${currentUserId}" && friend = "${response.user.id}") || (user = "${response.user.id}" && friend = "${currentUserId}")`,
+    const existing = await pb.collection('friendships').getList<FriendshipRecord>(1, 1, {
+      filter: `(user = "${currentUserId}" && friend = "${response.user.id}") || (user = "${response.user.id}" && friend = "${currentUserId}")`,
+    });
+
+    if (existing.totalItems > 0) {
+      throw new Error('Friend request already exists.');
+    }
+
+    const createdFriendship = await pb.collection('friendships').create<FriendshipRecord>(
+      {
+        user: currentUserId,
+        friend: response.user.id,
+        status: 'pending',
+      },
+      {
+        expand: 'user,friend',
+      },
+    );
+
+    const mapped = mapFriendshipRecord(createdFriendship, currentUserId);
+    if (mapped) {
+      return mapped;
+    }
+
+    return {
+      id: createdFriendship.id,
+      userId: response.user.id,
+      name: resolveFriendName(response.user),
+      email: resolveFriendEmail(response.user),
+      status: 'pending_sent',
+      createdAt: createdFriendship.created,
+    };
   });
-
-  if (existing.totalItems > 0) {
-    throw new Error('Friend request already exists.');
-  }
-
-  const createdFriendship = await pb.collection('friendships').create<FriendshipRecord>(
-    {
-      user: currentUserId,
-      friend: response.user.id,
-      status: 'pending',
-    },
-    {
-      expand: 'user,friend',
-    },
-  );
-
-  const mapped = mapFriendshipRecord(createdFriendship, currentUserId);
-  if (mapped) {
-    return mapped;
-  }
-
-  return {
-    id: createdFriendship.id,
-    userId: response.user.id,
-    name: resolveFriendName(response.user),
-    email: resolveFriendEmail(response.user),
-    status: 'pending_sent',
-    createdAt: createdFriendship.created,
-  };
 }
 
 export async function markFriendInviteAccepted(friendId: string): Promise<FriendRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const updatedFriendship = await pb.collection('friendships').update<FriendshipRecord>(
-    friendId,
-    {
-      status: 'accepted',
-    },
-    {
-      expand: 'user,friend',
-    },
-  );
+  return trackFeatureMutation('friend.accept', async () => {
+    const currentUserId = getAuthenticatedUserId();
+    const updatedFriendship = await pb.collection('friendships').update<FriendshipRecord>(
+      friendId,
+      {
+        status: 'accepted',
+      },
+      {
+        expand: 'user,friend',
+      },
+    );
 
-  const mapped = mapFriendshipRecord(updatedFriendship, currentUserId);
-  if (!mapped) {
-    throw new Error('Could not accept friend request.');
-  }
+    const mapped = mapFriendshipRecord(updatedFriendship, currentUserId);
+    if (!mapped) {
+      throw new Error('Could not accept friend request.');
+    }
 
-  return mapped;
+    return mapped;
+  });
 }
 
 export async function removeFriend(friendId: string): Promise<void> {
-  getAuthenticatedUserId();
-  await pb.collection('friendships').delete(friendId);
+  return trackFeatureMutation('friend.remove', async () => {
+    getAuthenticatedUserId();
+    await pb.collection('friendships').delete(friendId);
+  });
 }
 
 export async function getProfile(): Promise<ProfileRecord> {
@@ -2697,7 +2911,17 @@ export async function getProfile(): Promise<ProfileRecord> {
 }
 
 export async function updateProfile(updates: UpdateProfileInput): Promise<ProfileRecord> {
-  return localDomainStore.updateProfile(updates);
+  return trackFeatureMutation(
+    'profile.update',
+    () => localDomainStore.updateProfile(updates),
+    {
+      hasDisplayNameUpdate: updates.displayName !== undefined,
+      hasBioUpdate: updates.bio !== undefined,
+      hasLocationUpdate: updates.location !== undefined,
+      hasFavoriteCuisineUpdate: updates.favoriteCuisine !== undefined,
+      hasMarketingPreferenceUpdate: updates.receiveMarketingEmails !== undefined,
+    },
+  );
 }
 
 export async function listFeedback(options?: {
@@ -2742,45 +2966,62 @@ export async function getFeedbackById(feedbackId: string): Promise<FeedbackRecor
 }
 
 export async function createFeedback(input: CreateFeedbackInput): Promise<FeedbackRecord> {
-  const userId = getAuthenticatedUserId();
+  return trackFeatureMutation(
+    'feedback.create',
+    async () => {
+      const userId = getAuthenticatedUserId();
 
-  const createdRecord = await pb.collection('feedback').create<FeedbackCollectionRecord>(
-    {
-      user: userId,
-      title: input.title.trim(),
-      description: input.description.trim(),
-      status: 'open',
-      admin_unread_count: 1,
-      user_unread_count: 0,
-      last_message_at: nowIso(),
+      const createdRecord = await pb.collection('feedback').create<FeedbackCollectionRecord>(
+        {
+          user: userId,
+          title: input.title.trim(),
+          description: input.description.trim(),
+          status: 'open',
+          admin_unread_count: 1,
+          user_unread_count: 0,
+          last_message_at: nowIso(),
+        },
+        {
+          expand: 'user',
+        },
+      );
+
+      return mapFeedbackRecord(createdRecord);
     },
     {
-      expand: 'user',
+      hasTitle: Boolean(input.title.trim()),
+      descriptionLength: input.description.trim().length,
     },
   );
-
-  return mapFeedbackRecord(createdRecord);
 }
 
 export async function updateFeedbackStatus(
   feedbackId: string,
   status: FeedbackRecord['status'],
 ): Promise<FeedbackRecord> {
-  if (!isCurrentUserAdmin()) {
-    throw new Error('Only admins can update feedback status.');
-  }
+  return trackFeatureMutation(
+    'feedback.status.update',
+    async () => {
+      if (!isCurrentUserAdmin()) {
+        throw new Error('Only admins can update feedback status.');
+      }
 
-  const updated = await pb.collection('feedback').update<FeedbackCollectionRecord>(
-    feedbackId,
+      const updated = await pb.collection('feedback').update<FeedbackCollectionRecord>(
+        feedbackId,
+        {
+          status,
+        },
+        {
+          expand: 'user',
+        },
+      );
+
+      return mapFeedbackRecord(updated);
+    },
     {
       status,
     },
-    {
-      expand: 'user',
-    },
   );
-
-  return mapFeedbackRecord(updated);
 }
 
 export async function listFeedbackMessages(feedbackId: string): Promise<FeedbackMessageRecord[]> {
@@ -2796,56 +3037,66 @@ export async function listFeedbackMessages(feedbackId: string): Promise<Feedback
 }
 
 export async function markFeedbackAsRead(feedbackId: string): Promise<boolean> {
-  const feedback = await getFeedbackById(feedbackId);
-  const isAdmin = isCurrentUserAdmin();
+  return trackFeatureMutation('feedback.mark_read', async () => {
+    const feedback = await getFeedbackById(feedbackId);
+    const isAdmin = isCurrentUserAdmin();
 
-  if (isAdmin && feedback.adminUnreadCount > 0) {
-    await pb.collection('feedback').update(feedbackId, {
-      admin_unread_count: 0,
-    });
-    return true;
-  }
+    if (isAdmin && feedback.adminUnreadCount > 0) {
+      await pb.collection('feedback').update(feedbackId, {
+        admin_unread_count: 0,
+      });
+      return true;
+    }
 
-  if (!isAdmin && feedback.userUnreadCount > 0) {
-    await pb.collection('feedback').update(feedbackId, {
-      user_unread_count: 0,
-    });
-    return true;
-  }
+    if (!isAdmin && feedback.userUnreadCount > 0) {
+      await pb.collection('feedback').update(feedbackId, {
+        user_unread_count: 0,
+      });
+      return true;
+    }
 
-  return false;
+    return false;
+  });
 }
 
 export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Promise<void> {
-  const userId = getAuthenticatedUserId();
-  const isAdmin = isCurrentUserAdmin();
-  const trimmedMessage = input.message.trim();
+  return trackFeatureMutation(
+    'feedback.message.send',
+    async () => {
+      const userId = getAuthenticatedUserId();
+      const isAdmin = isCurrentUserAdmin();
+      const trimmedMessage = input.message.trim();
 
-  if (!trimmedMessage) {
-    throw new Error('Message is required.');
-  }
+      if (!trimmedMessage) {
+        throw new Error('Message is required.');
+      }
 
-  const feedback = await getFeedbackById(input.feedbackId);
+      const feedback = await getFeedbackById(input.feedbackId);
 
-  await pb.collection('feedback_messages').create({
-    feedback: input.feedbackId,
-    user: userId,
-    message: trimmedMessage,
-    is_admin_message: isAdmin,
-  });
+      await pb.collection('feedback_messages').create({
+        feedback: input.feedbackId,
+        user: userId,
+        message: trimmedMessage,
+        is_admin_message: isAdmin,
+      });
 
-  if (isAdmin) {
-    await pb.collection('feedback').update(input.feedbackId, {
-      last_message_at: nowIso(),
-      user_unread_count: feedback.userUnreadCount + 1,
-    });
-    return;
-  }
+      if (isAdmin) {
+        await pb.collection('feedback').update(input.feedbackId, {
+          last_message_at: nowIso(),
+          user_unread_count: feedback.userUnreadCount + 1,
+        });
+        return;
+      }
 
-  await pb.collection('feedback').update(input.feedbackId, {
-    last_message_at: nowIso(),
-    admin_unread_count: feedback.adminUnreadCount + 1,
-  });
+      await pb.collection('feedback').update(input.feedbackId, {
+        last_message_at: nowIso(),
+        admin_unread_count: feedback.adminUnreadCount + 1,
+      });
+    },
+    {
+      messageLength: input.message.trim().length,
+    },
+  );
 }
 
 export async function listTastingSessions(): Promise<TastingSessionRecord[]> {
@@ -2859,22 +3110,43 @@ export async function getTastingSessionById(sessionId: string): Promise<TastingS
 export async function createTastingSession(
   input: CreateTastingSessionInput,
 ): Promise<TastingSessionRecord> {
-  return localDomainStore.createTastingSession(input);
+  return trackFeatureMutation(
+    'tasting_session.create',
+    () => localDomainStore.createTastingSession(input),
+    {
+      hasRestaurantName: Boolean(input.restaurantName.trim()),
+      hasSessionName: Boolean(input.name.trim()),
+    },
+  );
 }
 
 export async function joinTastingSession(input: JoinTastingSessionInput): Promise<TastingSessionRecord> {
-  return localDomainStore.joinTastingSession(input);
+  return trackFeatureMutation(
+    'tasting_session.join',
+    () => localDomainStore.joinTastingSession(input),
+    {
+      inviteCodeLength: input.inviteCode.trim().length,
+    },
+  );
 }
 
 export async function regenerateTastingInviteCode(sessionId: string): Promise<TastingSessionRecord> {
-  return localDomainStore.regenerateTastingInviteCode(sessionId);
+  return trackFeatureMutation('tasting_session.invite_code.regenerate', () =>
+    localDomainStore.regenerateTastingInviteCode(sessionId),
+  );
 }
 
 export async function addTastingItem(
   sessionId: string,
   input: AddTastingItemInput,
 ): Promise<TastingSessionRecord> {
-  return localDomainStore.addTastingItem(sessionId, input);
+  return trackFeatureMutation(
+    'tasting_session.item.add',
+    () => localDomainStore.addTastingItem(sessionId, input),
+    {
+      hasDescription: Boolean(input.description?.trim()),
+    },
+  );
 }
 
 export async function deleteTastingItem(
@@ -2882,7 +3154,9 @@ export async function deleteTastingItem(
   itemId: string,
   requesterParticipantId: string,
 ): Promise<TastingSessionRecord> {
-  return localDomainStore.deleteTastingItem(sessionId, itemId, requesterParticipantId);
+  return trackFeatureMutation('tasting_session.item.delete', () =>
+    localDomainStore.deleteTastingItem(sessionId, itemId, requesterParticipantId),
+  );
 }
 
 export async function submitTastingRating(
@@ -2890,20 +3164,35 @@ export async function submitTastingRating(
   itemId: string,
   input: SubmitTastingRatingInput,
 ): Promise<TastingSessionRecord> {
-  return localDomainStore.submitTastingRating(sessionId, itemId, input);
+  return trackFeatureMutation(
+    'tasting_session.rating.submit',
+    () => localDomainStore.submitTastingRating(sessionId, itemId, input),
+    {
+      rating: input.rating,
+      hasNote: Boolean(input.note?.trim()),
+    },
+  );
 }
 
 export async function setTastingSessionStatus(
   sessionId: string,
   status: TastingSessionStatus,
 ): Promise<TastingSessionRecord> {
-  return localDomainStore.setTastingSessionStatus(sessionId, status);
+  return trackFeatureMutation(
+    'tasting_session.status.update',
+    () => localDomainStore.setTastingSessionStatus(sessionId, status),
+    {
+      status,
+    },
+  );
 }
 
 export async function saveTastingResultsToVisitHistory(
   sessionId: string,
 ): Promise<VisitRecord> {
-  return localDomainStore.saveTastingResultsToVisitHistory(sessionId);
+  return trackFeatureMutation('tasting_session.results.save_to_visit', () =>
+    localDomainStore.saveTastingResultsToVisitHistory(sessionId),
+  );
 }
 
 export async function listBills(): Promise<BillRecord[]> {
@@ -2958,324 +3247,362 @@ export async function getBillById(billId: string): Promise<BillRecord | null> {
 }
 
 export async function createBill(input: CreateBillInput): Promise<BillRecord> {
-  const currentUserId = getAuthenticatedUserId();
-  const trimmedTitle = input.title.trim();
+  return trackFeatureMutation(
+    'bill.create',
+    async () => {
+      const currentUserId = getAuthenticatedUserId();
+      const trimmedTitle = input.title.trim();
 
-  if (!trimmedTitle) {
-    throw new Error('Bill title is required.');
-  }
+      if (!trimmedTitle) {
+        throw new Error('Bill title is required.');
+      }
 
-  const normalizedTax = sanitizeCurrency(input.tax);
-  const normalizedTip = sanitizeCurrency(input.tip);
-  const normalizedFees = sanitizeCurrency(input.fees);
-  const subtotal = input.items.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
-  const totalAmount = sanitizeCurrency(subtotal + normalizedTax + normalizedTip + normalizedFees);
+      const normalizedTax = sanitizeCurrency(input.tax);
+      const normalizedTip = sanitizeCurrency(input.tip);
+      const normalizedFees = sanitizeCurrency(input.fees);
+      const subtotal = input.items.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
+      const totalAmount = sanitizeCurrency(subtotal + normalizedTax + normalizedTip + normalizedFees);
 
-  const createdBill = await pb.collection('bills').create<BillCollectionRecord>({
-    creator_user: currentUserId,
-    bill_name: trimmedTitle,
-    total_amount: totalAmount,
-    tax: normalizedTax,
-    tip: normalizedTip,
-    fees: normalizedFees,
-    split_mode: input.extrasSplitMode === 'equal' ? 'even' : 'itemized',
-    extras_split_mode: input.extrasSplitMode,
-    status: toBillCollectionStatus(input.participants),
-  });
-
-  const participantIdLookup = new Map<string, string>();
-  const createdParticipants = await Promise.all(
-    input.participants.map(async (participant) => {
-      const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>({
-        bill: createdBill.id,
-        user: participant.userId?.trim() ? participant.userId : null,
-        participant_name: participant.name.trim() || undefined,
-        amount_owed: sanitizeCurrency(participant.amountOwed),
-        paid_status: participant.paidStatus,
-        paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
-        custom_tip_contribution:
-          typeof participant.customTipContribution === 'number'
-            ? sanitizeCurrency(participant.customTipContribution)
-            : null,
+      const createdBill = await pb.collection('bills').create<BillCollectionRecord>({
+        creator_user: currentUserId,
+        bill_name: trimmedTitle,
+        total_amount: totalAmount,
+        tax: normalizedTax,
+        tip: normalizedTip,
+        fees: normalizedFees,
+        split_mode: input.extrasSplitMode === 'equal' ? 'even' : 'itemized',
+        extras_split_mode: input.extrasSplitMode,
+        status: toBillCollectionStatus(input.participants),
       });
-      participantIdLookup.set(participant.id, createdParticipant.id);
-      return createdParticipant;
-    }),
+
+      const participantIdLookup = new Map<string, string>();
+      const createdParticipants = await Promise.all(
+        input.participants.map(async (participant) => {
+          const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>({
+            bill: createdBill.id,
+            user: participant.userId?.trim() ? participant.userId : null,
+            participant_name: participant.name.trim() || undefined,
+            amount_owed: sanitizeCurrency(participant.amountOwed),
+            paid_status: participant.paidStatus,
+            paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
+            custom_tip_contribution:
+              typeof participant.customTipContribution === 'number'
+                ? sanitizeCurrency(participant.customTipContribution)
+                : null,
+          });
+          participantIdLookup.set(participant.id, createdParticipant.id);
+          return createdParticipant;
+        }),
+      );
+
+      for (const item of input.items) {
+        const mappedParticipantIds = item.assignedToParticipantIds
+          .map((participantId) => participantIdLookup.get(participantId))
+          .filter((candidate): candidate is string => Boolean(candidate));
+        const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
+        const mappedSplitConfig =
+          normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
+            ? item.splitConfig
+                .map((splitConfig) => {
+                  const mappedParticipantId = participantIdLookup.get(splitConfig.participantId);
+                  if (!mappedParticipantId) {
+                    return null;
+                  }
+
+                  if (splitConfig.type !== 'percentage' && splitConfig.type !== 'amount') {
+                    return null;
+                  }
+
+                  return {
+                    participant_id: mappedParticipantId,
+                    type: splitConfig.type,
+                    value: sanitizeCurrency(splitConfig.value),
+                  };
+                })
+                .filter(
+                  (candidate): candidate is { participant_id: string; type: 'percentage' | 'amount'; value: number } =>
+                    candidate !== null,
+                )
+            : null;
+
+        const assignedToParticipantIds =
+          mappedParticipantIds.length > 0
+            ? mappedParticipantIds
+            : createdParticipants.map((participant) => participant.id);
+
+        await pb.collection('bill_items').create<BillItemCollectionRecord>({
+          bill: createdBill.id,
+          item_name: item.itemName.trim(),
+          price: sanitizeCurrency(item.price),
+          assigned_to: assignedToParticipantIds,
+          split_mode: normalizedSplitMode,
+          split_config: normalizedSplitMode === 'advanced' ? mappedSplitConfig : null,
+        });
+      }
+
+      const hydratedBill = await getBillById(createdBill.id);
+      if (!hydratedBill) {
+        throw new Error('Bill was created but could not be loaded.');
+      }
+
+      return hydratedBill;
+    },
+    {
+      itemCount: input.items.length,
+      participantCount: input.participants.length,
+      extrasSplitMode: input.extrasSplitMode,
+    },
   );
-
-  for (const item of input.items) {
-    const mappedParticipantIds = item.assignedToParticipantIds
-      .map((participantId) => participantIdLookup.get(participantId))
-      .filter((candidate): candidate is string => Boolean(candidate));
-    const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
-    const mappedSplitConfig =
-      normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
-        ? item.splitConfig
-            .map((splitConfig) => {
-              const mappedParticipantId = participantIdLookup.get(splitConfig.participantId);
-              if (!mappedParticipantId) {
-                return null;
-              }
-
-              if (splitConfig.type !== 'percentage' && splitConfig.type !== 'amount') {
-                return null;
-              }
-
-              return {
-                participant_id: mappedParticipantId,
-                type: splitConfig.type,
-                value: sanitizeCurrency(splitConfig.value),
-              };
-            })
-            .filter(
-              (candidate): candidate is { participant_id: string; type: 'percentage' | 'amount'; value: number } =>
-                candidate !== null,
-            )
-        : null;
-
-    const assignedToParticipantIds =
-      mappedParticipantIds.length > 0 ? mappedParticipantIds : createdParticipants.map((participant) => participant.id);
-
-    await pb.collection('bill_items').create<BillItemCollectionRecord>({
-      bill: createdBill.id,
-      item_name: item.itemName.trim(),
-      price: sanitizeCurrency(item.price),
-      assigned_to: assignedToParticipantIds,
-      split_mode: normalizedSplitMode,
-      split_config: normalizedSplitMode === 'advanced' ? mappedSplitConfig : null,
-    });
-  }
-
-  const hydratedBill = await getBillById(createdBill.id);
-  if (!hydratedBill) {
-    throw new Error('Bill was created but could not be loaded.');
-  }
-
-  return hydratedBill;
 }
 
 export async function updateBill(billId: string, updates: UpdateBillInput): Promise<BillRecord> {
-  const currentBill = await getBillById(billId);
-  if (!currentBill) {
-    throw new Error('Bill not found.');
-  }
-
-  const nextTitle = updates.title?.trim() ?? currentBill.title;
-  const nextItems = updates.items ?? currentBill.items;
-  const nextParticipants = updates.participants ?? currentBill.participants;
-  const nextTax = sanitizeCurrency(updates.tax ?? currentBill.tax);
-  const nextTip = sanitizeCurrency(updates.tip ?? currentBill.tip);
-  const nextFees = sanitizeCurrency(updates.fees ?? currentBill.fees);
-  const nextSubtotal = nextItems.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
-  const nextTotalAmount = sanitizeCurrency(nextSubtotal + nextTax + nextTip + nextFees);
-  const nextStatus: BillCollectionRecord['status'] =
-    updates.status !== undefined
-      ? toBillCollectionStatusFromRecord(updates.status)
-      : updates.participants
-        ? toBillCollectionStatus(nextParticipants)
-        : toBillCollectionStatusFromRecord(currentBill.status);
-
-  await pb.collection('bills').update<BillCollectionRecord>(billId, {
-    bill_name: nextTitle,
-    total_amount: nextTotalAmount,
-    tax: nextTax,
-    tip: nextTip,
-    fees: nextFees,
-    extras_split_mode: updates.extrasSplitMode ?? currentBill.extrasSplitMode,
-    status: nextStatus,
-  });
-
-  const participantIdRemap = new Map<string, string>();
-  const participantIdsToDelete: string[] = [];
-
-  if (updates.participants) {
-    const existingParticipants = await listBillParticipantsForBillId(billId);
-    const existingParticipantIds = new Set(existingParticipants.map((participant) => participant.id));
-    const retainedParticipantIds = new Set<string>();
-
-    for (const participant of updates.participants) {
-      const participantPayload = {
-        bill: billId,
-        user: participant.userId?.trim() ? participant.userId : null,
-        participant_name: participant.name.trim() || undefined,
-        amount_owed: sanitizeCurrency(participant.amountOwed),
-        paid_status: participant.paidStatus,
-        paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
-        custom_tip_contribution:
-          typeof participant.customTipContribution === 'number'
-            ? sanitizeCurrency(participant.customTipContribution)
-            : null,
-      };
-
-      if (existingParticipantIds.has(participant.id)) {
-        retainedParticipantIds.add(participant.id);
-        participantIdRemap.set(participant.id, participant.id);
-        await pb.collection('bill_participants').update<BillParticipantCollectionRecord>(participant.id, participantPayload);
-        continue;
+  return trackFeatureMutation(
+    'bill.update',
+    async () => {
+      const currentBill = await getBillById(billId);
+      if (!currentBill) {
+        throw new Error('Bill not found.');
       }
 
-      const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>(
-        participantPayload,
-      );
-      retainedParticipantIds.add(createdParticipant.id);
-      participantIdRemap.set(participant.id, createdParticipant.id);
-    }
+      const nextTitle = updates.title?.trim() ?? currentBill.title;
+      const nextItems = updates.items ?? currentBill.items;
+      const nextParticipants = updates.participants ?? currentBill.participants;
+      const nextTax = sanitizeCurrency(updates.tax ?? currentBill.tax);
+      const nextTip = sanitizeCurrency(updates.tip ?? currentBill.tip);
+      const nextFees = sanitizeCurrency(updates.fees ?? currentBill.fees);
+      const nextSubtotal = nextItems.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
+      const nextTotalAmount = sanitizeCurrency(nextSubtotal + nextTax + nextTip + nextFees);
+      const nextStatus: BillCollectionRecord['status'] =
+        updates.status !== undefined
+          ? toBillCollectionStatusFromRecord(updates.status)
+          : updates.participants
+            ? toBillCollectionStatus(nextParticipants)
+            : toBillCollectionStatusFromRecord(currentBill.status);
 
-    existingParticipants.forEach((existingParticipant) => {
-      if (retainedParticipantIds.has(existingParticipant.id)) {
-        return;
-      }
+      await pb.collection('bills').update<BillCollectionRecord>(billId, {
+        bill_name: nextTitle,
+        total_amount: nextTotalAmount,
+        tax: nextTax,
+        tip: nextTip,
+        fees: nextFees,
+        extras_split_mode: updates.extrasSplitMode ?? currentBill.extrasSplitMode,
+        status: nextStatus,
+      });
 
-      participantIdsToDelete.push(existingParticipant.id);
-    });
-  }
+      const participantIdRemap = new Map<string, string>();
+      const participantIdsToDelete: string[] = [];
 
-  if (updates.items) {
-    const existingItems = await listBillItemsForBillId(billId);
-    const existingItemIds = new Set(existingItems.map((item) => item.id));
-    const retainedItemIds = new Set<string>();
-    const mapParticipantId = (participantId: string): string => participantIdRemap.get(participantId) ?? participantId;
+      if (updates.participants) {
+        const existingParticipants = await listBillParticipantsForBillId(billId);
+        const existingParticipantIds = new Set(existingParticipants.map((participant) => participant.id));
+        const retainedParticipantIds = new Set<string>();
 
-    for (const item of updates.items) {
-      const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
-      const normalizedSplitConfig =
-        normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
-          ? item.splitConfig
-              .filter(
-                (entry): entry is { participantId: string; type: 'percentage' | 'amount'; value: number } =>
-                  Boolean(entry.participantId) &&
-                  (entry.type === 'percentage' || entry.type === 'amount') &&
-                  Number.isFinite(entry.value),
-              )
-              .map((entry) => {
-                const mappedParticipantId = mapParticipantId(entry.participantId);
-                return {
-                  participant_id: mappedParticipantId,
-                  type: entry.type,
-                  value: sanitizeCurrency(entry.value),
-                };
-              })
-              .filter((entry) => Boolean(entry.participant_id))
-          : null;
-      const normalizedAssignedToIds = item.assignedToParticipantIds
-        .map((participantId) => mapParticipantId(participantId))
-        .filter((participantId, index, collection) => Boolean(participantId) && collection.indexOf(participantId) === index);
+        for (const participant of updates.participants) {
+          const participantPayload = {
+            bill: billId,
+            user: participant.userId?.trim() ? participant.userId : null,
+            participant_name: participant.name.trim() || undefined,
+            amount_owed: sanitizeCurrency(participant.amountOwed),
+            paid_status: participant.paidStatus,
+            paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
+            custom_tip_contribution:
+              typeof participant.customTipContribution === 'number'
+                ? sanitizeCurrency(participant.customTipContribution)
+                : null,
+          };
 
-      const itemPayload = {
-        bill: billId,
-        item_name: item.itemName.trim(),
-        price: sanitizeCurrency(item.price),
-        assigned_to: normalizedAssignedToIds,
-        split_mode: normalizedSplitMode,
-        split_config: normalizedSplitMode === 'advanced' ? normalizedSplitConfig : null,
-      };
+          if (existingParticipantIds.has(participant.id)) {
+            retainedParticipantIds.add(participant.id);
+            participantIdRemap.set(participant.id, participant.id);
+            await pb
+              .collection('bill_participants')
+              .update<BillParticipantCollectionRecord>(participant.id, participantPayload);
+            continue;
+          }
 
-      if (existingItemIds.has(item.id)) {
-        retainedItemIds.add(item.id);
-        await pb.collection('bill_items').update<BillItemCollectionRecord>(item.id, itemPayload);
-        continue;
-      }
-
-      const createdItem = await pb.collection('bill_items').create<BillItemCollectionRecord>(itemPayload);
-      retainedItemIds.add(createdItem.id);
-    }
-
-    await Promise.all(
-      existingItems.map(async (existingItem) => {
-        if (retainedItemIds.has(existingItem.id)) {
-          return;
+          const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>(
+            participantPayload,
+          );
+          retainedParticipantIds.add(createdParticipant.id);
+          participantIdRemap.set(participant.id, createdParticipant.id);
         }
-        await pb.collection('bill_items').delete(existingItem.id);
-      }),
-    );
-  }
 
-  if (!updates.items && participantIdsToDelete.length > 0) {
-    const removedParticipantIdSet = new Set(participantIdsToDelete);
-    const existingItems = await listBillItemsForBillId(billId);
+        existingParticipants.forEach((existingParticipant) => {
+          if (retainedParticipantIds.has(existingParticipant.id)) {
+            return;
+          }
 
-    await Promise.all(
-      existingItems.map(async (existingItem) => {
-        const nextAssignedTo = Array.isArray(existingItem.assigned_to)
-          ? existingItem.assigned_to.filter((participantId) => !removedParticipantIdSet.has(participantId))
-          : [];
-        const nextSplitConfig =
-          existingItem.split_mode === 'advanced' && Array.isArray(existingItem.split_config)
-            ? existingItem.split_config.filter((splitEntry) => !removedParticipantIdSet.has(splitEntry.participant_id))
-            : null;
-
-        await pb.collection('bill_items').update<BillItemCollectionRecord>(existingItem.id, {
-          assigned_to: nextAssignedTo,
-          split_config: existingItem.split_mode === 'advanced' ? nextSplitConfig : null,
+          participantIdsToDelete.push(existingParticipant.id);
         });
-      }),
-    );
-  }
+      }
 
-  if (participantIdsToDelete.length > 0) {
+      if (updates.items) {
+        const existingItems = await listBillItemsForBillId(billId);
+        const existingItemIds = new Set(existingItems.map((item) => item.id));
+        const retainedItemIds = new Set<string>();
+        const mapParticipantId = (participantId: string): string => participantIdRemap.get(participantId) ?? participantId;
+
+        for (const item of updates.items) {
+          const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
+          const normalizedSplitConfig =
+            normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
+              ? item.splitConfig
+                  .filter(
+                    (entry): entry is { participantId: string; type: 'percentage' | 'amount'; value: number } =>
+                      Boolean(entry.participantId) &&
+                      (entry.type === 'percentage' || entry.type === 'amount') &&
+                      Number.isFinite(entry.value),
+                  )
+                  .map((entry) => {
+                    const mappedParticipantId = mapParticipantId(entry.participantId);
+                    return {
+                      participant_id: mappedParticipantId,
+                      type: entry.type,
+                      value: sanitizeCurrency(entry.value),
+                    };
+                  })
+                  .filter((entry) => Boolean(entry.participant_id))
+              : null;
+          const normalizedAssignedToIds = item.assignedToParticipantIds
+            .map((participantId) => mapParticipantId(participantId))
+            .filter(
+              (participantId, index, collection) =>
+                Boolean(participantId) && collection.indexOf(participantId) === index,
+            );
+
+          const itemPayload = {
+            bill: billId,
+            item_name: item.itemName.trim(),
+            price: sanitizeCurrency(item.price),
+            assigned_to: normalizedAssignedToIds,
+            split_mode: normalizedSplitMode,
+            split_config: normalizedSplitMode === 'advanced' ? normalizedSplitConfig : null,
+          };
+
+          if (existingItemIds.has(item.id)) {
+            retainedItemIds.add(item.id);
+            await pb.collection('bill_items').update<BillItemCollectionRecord>(item.id, itemPayload);
+            continue;
+          }
+
+          const createdItem = await pb.collection('bill_items').create<BillItemCollectionRecord>(itemPayload);
+          retainedItemIds.add(createdItem.id);
+        }
+
+        await Promise.all(
+          existingItems.map(async (existingItem) => {
+            if (retainedItemIds.has(existingItem.id)) {
+              return;
+            }
+            await pb.collection('bill_items').delete(existingItem.id);
+          }),
+        );
+      }
+
+      if (!updates.items && participantIdsToDelete.length > 0) {
+        const removedParticipantIdSet = new Set(participantIdsToDelete);
+        const existingItems = await listBillItemsForBillId(billId);
+
+        await Promise.all(
+          existingItems.map(async (existingItem) => {
+            const nextAssignedTo = Array.isArray(existingItem.assigned_to)
+              ? existingItem.assigned_to.filter((participantId) => !removedParticipantIdSet.has(participantId))
+              : [];
+            const nextSplitConfig =
+              existingItem.split_mode === 'advanced' && Array.isArray(existingItem.split_config)
+                ? existingItem.split_config.filter(
+                    (splitEntry) => !removedParticipantIdSet.has(splitEntry.participant_id),
+                  )
+                : null;
+
+            await pb.collection('bill_items').update<BillItemCollectionRecord>(existingItem.id, {
+              assigned_to: nextAssignedTo,
+              split_config: existingItem.split_mode === 'advanced' ? nextSplitConfig : null,
+            });
+          }),
+        );
+      }
+
+      if (participantIdsToDelete.length > 0) {
+        await Promise.all(
+          participantIdsToDelete.map(async (participantId) => {
+            try {
+              await pb.collection('bill_participants').delete(participantId);
+            } catch (error) {
+              if (isNotFoundError(error)) {
+                return;
+              }
+
+              throw error;
+            }
+          }),
+        );
+      }
+
+      const hydratedBill = await getBillById(billId);
+      if (!hydratedBill) {
+        throw new Error('Updated bill could not be loaded.');
+      }
+
+      return hydratedBill;
+    },
+    {
+      hasTitleUpdate: updates.title !== undefined,
+      hasItemsUpdate: updates.items !== undefined,
+      hasParticipantsUpdate: updates.participants !== undefined,
+      hasTaxUpdate: updates.tax !== undefined,
+      hasTipUpdate: updates.tip !== undefined,
+      hasFeesUpdate: updates.fees !== undefined,
+      hasExtrasSplitModeUpdate: updates.extrasSplitMode !== undefined,
+      hasStatusUpdate: updates.status !== undefined,
+      itemCount: updates.items?.length,
+      participantCount: updates.participants?.length,
+    },
+  );
+}
+
+export async function deleteBill(billId: string): Promise<void> {
+  return trackFeatureMutation('bill.delete', async () => {
+    const [participants, items] = await Promise.all([
+      listBillParticipantsForBillId(billId),
+      listBillItemsForBillId(billId),
+    ]);
+
     await Promise.all(
-      participantIdsToDelete.map(async (participantId) => {
+      items.map(async (item) => {
         try {
-          await pb.collection('bill_participants').delete(participantId);
+          await pb.collection('bill_items').delete(item.id);
         } catch (error) {
           if (isNotFoundError(error)) {
             return;
           }
-
           throw error;
         }
       }),
     );
-  }
 
-  const hydratedBill = await getBillById(billId);
-  if (!hydratedBill) {
-    throw new Error('Updated bill could not be loaded.');
-  }
-
-  return hydratedBill;
-}
-
-export async function deleteBill(billId: string): Promise<void> {
-  const [participants, items] = await Promise.all([
-    listBillParticipantsForBillId(billId),
-    listBillItemsForBillId(billId),
-  ]);
-
-  await Promise.all(
-    items.map(async (item) => {
-      try {
-        await pb.collection('bill_items').delete(item.id);
-      } catch (error) {
-        if (isNotFoundError(error)) {
-          return;
+    await Promise.all(
+      participants.map(async (participant) => {
+        try {
+          await pb.collection('bill_participants').delete(participant.id);
+        } catch (error) {
+          if (isNotFoundError(error)) {
+            return;
+          }
+          throw error;
         }
-        throw error;
-      }
-    }),
-  );
+      }),
+    );
 
-  await Promise.all(
-    participants.map(async (participant) => {
-      try {
-        await pb.collection('bill_participants').delete(participant.id);
-      } catch (error) {
-        if (isNotFoundError(error)) {
-          return;
-        }
-        throw error;
+    try {
+      await pb.collection('bills').delete(billId);
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return;
       }
-    }),
-  );
-
-  try {
-    await pb.collection('bills').delete(billId);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return;
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function markBillParticipantPaid(
@@ -3283,25 +3610,33 @@ export async function markBillParticipantPaid(
   participantId: string,
   paidStatus: BillParticipantRecord['paidStatus'],
 ): Promise<BillRecord> {
-  await pb.collection('bill_participants').update<BillParticipantCollectionRecord>(participantId, {
-    paid_status: paidStatus,
-    paid_date: paidStatus === 'paid' ? nowIso() : null,
-  });
+  return trackFeatureMutation(
+    'bill.participant.mark_paid',
+    async () => {
+      await pb.collection('bill_participants').update<BillParticipantCollectionRecord>(participantId, {
+        paid_status: paidStatus,
+        paid_date: paidStatus === 'paid' ? nowIso() : null,
+      });
 
-  const participants = await listBillParticipantsForBillId(billId);
-  const nextStatus: BillCollectionRecord['status'] =
-    participants.every((participant) => participant.paid_status === 'paid') ? 'settled' : 'active';
+      const participants = await listBillParticipantsForBillId(billId);
+      const nextStatus: BillCollectionRecord['status'] =
+        participants.every((participant) => participant.paid_status === 'paid') ? 'settled' : 'active';
 
-  await pb.collection('bills').update<BillCollectionRecord>(billId, {
-    status: nextStatus,
-  });
+      await pb.collection('bills').update<BillCollectionRecord>(billId, {
+        status: nextStatus,
+      });
 
-  const hydratedBill = await getBillById(billId);
-  if (!hydratedBill) {
-    throw new Error('Updated bill could not be loaded.');
-  }
+      const hydratedBill = await getBillById(billId);
+      if (!hydratedBill) {
+        throw new Error('Updated bill could not be loaded.');
+      }
 
-  return hydratedBill;
+      return hydratedBill;
+    },
+    {
+      paidStatus,
+    },
+  );
 }
 
 export function createEntityId(prefix: string): string {

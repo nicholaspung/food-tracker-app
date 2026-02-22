@@ -11,6 +11,7 @@ import {
 } from '../components/shared';
 import { updateCollectionRecord } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -70,17 +71,37 @@ export function CreateVisitEditMenuItemScreen({
 
   const handleSaveMenuItem = async () => {
     if (!isOnline) {
+      trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitEditMenuItemScreen',
+        reason: 'offline',
+        restaurantId,
+        menuItemId,
+      });
       setErrorMessage('Editing menu items requires internet connection.');
       return;
     }
 
     const trimmedName = menuItemName.trim();
     if (!trimmedName) {
+      trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitEditMenuItemScreen',
+        reason: 'missing_name',
+        restaurantId,
+        menuItemId,
+        visibility,
+      });
       setErrorMessage('Menu item name is required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_STARTED', {
+      source: 'CreateVisitEditMenuItemScreen',
+      restaurantId,
+      menuItemId,
+      visibility,
+      isOnline,
+    });
     setIsSubmitting(true);
 
     try {
@@ -100,10 +121,23 @@ export function CreateVisitEditMenuItemScreen({
         queryKey: ['feature', 'menuItems', restaurantId],
       });
 
+      trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_SUCCEEDED', {
+        source: 'CreateVisitEditMenuItemScreen',
+        restaurantId,
+        menuItemId,
+        visibility,
+      });
       navigation.goBack();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update menu item.';
       setErrorMessage(message);
+      trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_SUBMIT_FAILED', {
+        source: 'CreateVisitEditMenuItemScreen',
+        restaurantId,
+        menuItemId,
+        visibility,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -154,7 +188,16 @@ export function CreateVisitEditMenuItemScreen({
           <View style={styles.visibilitySection}>
             <Text variant="label">Visibility</Text>
             <VisibilityOptionSelector
-              onChange={setVisibility}
+              onChange={(nextVisibility) => {
+                trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_VISIBILITY_CHANGED', {
+                  source: 'CreateVisitEditMenuItemScreen',
+                  restaurantId,
+                  menuItemId,
+                  previousVisibility: visibility,
+                  nextVisibility,
+                });
+                setVisibility(nextVisibility);
+              }}
               value={visibility}
             />
           </View>

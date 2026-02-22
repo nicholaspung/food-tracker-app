@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
 import { DefaultTheme, NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigation, type BottomTabRoute } from '../components/shared/BottomTabNavigation';
 import { EmptyState } from '../components/shared';
 import { useAuth } from '../providers/AuthProvider';
+import { trackObservabilityEvent } from '../observability';
 import {
   AdminFeaturesScreen,
   AdminMenuReviewDetailScreen,
@@ -192,6 +193,7 @@ export function RootNavigator() {
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const [currentRouteName, setCurrentRouteName] = useState<keyof RootStackParamList>();
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const previousRouteNameRef = useRef<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -225,7 +227,18 @@ export function RootNavigator() {
 
   const updateCurrentRoute = () => {
     const routeName = navigationRef.getCurrentRoute()?.name;
-    setCurrentRouteName(routeName as keyof RootStackParamList | undefined);
+    const typedRouteName = routeName as keyof RootStackParamList | undefined;
+    setCurrentRouteName(typedRouteName);
+
+    if (!typedRouteName || previousRouteNameRef.current === typedRouteName) {
+      return;
+    }
+
+    trackObservabilityEvent('SCREEN_VIEW', {
+      screenName: typedRouteName,
+      previousScreenName: previousRouteNameRef.current,
+    });
+    previousRouteNameRef.current = typedRouteName;
   };
 
   const showBottomTabs =
@@ -251,6 +264,10 @@ export function RootNavigator() {
       return;
     }
 
+    trackObservabilityEvent('TAB_PRESSED', {
+      currentScreenName: currentRouteName ?? null,
+      tabRoute: route,
+    });
     navigationRef.navigate(route);
   };
 

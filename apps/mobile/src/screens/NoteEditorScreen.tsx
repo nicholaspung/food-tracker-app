@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { CurrentLocationButton, EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
@@ -17,7 +17,9 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -216,6 +218,9 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   }, [totalPhotoCount]);
 
   const handleOpenCamera = useCallback(async () => {
+    trackObservabilityEvent('NOTE_CAMERA_OPEN_STARTED', {
+      source: 'NoteEditorScreen',
+    });
     setIsPhotoSourcePickerOpen(false);
 
     if (totalPhotoCount >= MAX_NOTE_PHOTOS) {
@@ -227,15 +232,24 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     if (!hasPermission) {
       const permissionResult = await requestCameraPermission();
       if (!permissionResult.granted) {
+        trackObservabilityEvent('NOTE_CAMERA_PERMISSION_DENIED', {
+          source: 'NoteEditorScreen',
+        });
         setErrorMessage('Camera permission is required to add photos.');
         return;
       }
     }
 
+    trackObservabilityEvent('NOTE_CAMERA_OPENED', {
+      source: 'NoteEditorScreen',
+    });
     setIsCameraOpen(true);
   }, [cameraPermission?.granted, requestCameraPermission, totalPhotoCount]);
 
   const handlePickFromPhotoLibrary = useCallback(async () => {
+    trackObservabilityEvent('NOTE_LIBRARY_PICK_STARTED', {
+      source: 'NoteEditorScreen',
+    });
     setIsPhotoSourcePickerOpen(false);
 
     if (totalPhotoCount >= MAX_NOTE_PHOTOS) {
@@ -252,6 +266,9 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     try {
       const permission = await imagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
+        trackObservabilityEvent('NOTE_LIBRARY_PERMISSION_DENIED', {
+          source: 'NoteEditorScreen',
+        });
         setErrorMessage('Photo library permission is required to select photos.');
         return;
       }
@@ -267,6 +284,9 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
       const wasCancelled = pickerResult.canceled === true || pickerResult.cancelled === true;
       if (wasCancelled) {
+        trackObservabilityEvent('NOTE_LIBRARY_PICK_CANCELED', {
+          source: 'NoteEditorScreen',
+        });
         return;
       }
 
@@ -277,8 +297,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       }
 
       addDraftPhoto(selectedAsset.uri, selectedAsset.fileName, selectedAsset.mimeType);
+      trackObservabilityEvent('NOTE_LIBRARY_PICKED', {
+        source: 'NoteEditorScreen',
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not choose a photo from your library.';
+      trackObservabilityEvent('NOTE_LIBRARY_PICK_FAILED', {
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'NoteEditorScreen',
+      });
       setErrorMessage(message);
     }
   }, [addDraftPhoto, totalPhotoCount]);
@@ -303,12 +331,19 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   }, [addDraftPhoto]);
 
   const handleUseCurrentLocation = useCallback(async () => {
+    trackObservabilityEvent('NOTE_LOCATION_CAPTURE_STARTED', {
+      source: 'NoteEditorScreen',
+    });
     setIsGettingLocation(true);
     setErrorMessage(null);
 
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) {
+        trackObservabilityEvent('NOTE_LOCATION_PERMISSION_DENIED', {
+          canAskAgain: permission.canAskAgain,
+          source: 'NoteEditorScreen',
+        });
         setErrorMessage(
           permission.canAskAgain === false
             ? 'Location permission is blocked. Enable it in device settings.'
@@ -322,8 +357,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       });
 
       setLocationText(`${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`);
+      trackObservabilityEvent('NOTE_LOCATION_CAPTURED', {
+        source: 'NoteEditorScreen',
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not get current location.';
+      trackObservabilityEvent('NOTE_LOCATION_CAPTURE_FAILED', {
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'NoteEditorScreen',
+      });
       setErrorMessage(message);
     } finally {
       setIsGettingLocation(false);
@@ -375,7 +418,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         }
 
         await queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] });
-        Alert.alert('Saved Offline', 'Note queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Note');
         navigation.navigate('Notes');
         return;
       }

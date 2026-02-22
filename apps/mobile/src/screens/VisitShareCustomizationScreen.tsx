@@ -17,6 +17,7 @@ import { captureRef } from 'react-native-view-shot';
 import { buildPocketBaseFileUrl } from '../features';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
 import { Button, Text } from '../ui';
 
@@ -178,6 +179,11 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       return;
     }
 
+    trackObservabilityEvent('VISIT_SHARE_RENDER_STARTED', {
+      itemCount: items.length,
+      source: 'VisitShareCustomizationScreen',
+      theme: shareTheme,
+    });
     setErrorMessage(null);
     setIsSharing(true);
 
@@ -188,21 +194,31 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
         result: 'tmpfile',
       });
 
-      await Share.share({
+      const shareResult = await Share.share({
         message:
           Platform.OS === 'android'
             ? `Check out what I tried at ${restaurantName}!`
             : undefined,
         url: capturedUri,
       });
+      trackObservabilityEvent('VISIT_SHARE_COMPLETED', {
+        action: shareResult.action,
+        itemCount: items.length,
+        source: 'VisitShareCustomizationScreen',
+      });
 
       navigation.goBack();
     } catch (error) {
+      trackObservabilityEvent('VISIT_SHARE_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'VisitShareCustomizationScreen',
+      });
       setErrorMessage(error instanceof Error ? error.message : 'Could not share visit image.');
     } finally {
       setIsSharing(false);
     }
-  }, [navigation, restaurantName]);
+  }, [items.length, navigation, restaurantName, shareTheme]);
 
   const styles = StyleSheet.create({
     screen: {

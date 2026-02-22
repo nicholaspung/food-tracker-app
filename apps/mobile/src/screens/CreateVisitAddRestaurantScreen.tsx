@@ -11,6 +11,7 @@ import {
 } from '../components/shared';
 import { createCollectionRecord, resolveDefaultRestaurantVisibilityFromAuth } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -56,6 +57,10 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
   const handleAddRestaurant = async () => {
     const currentUserId = user?.id;
     if (!currentUserId) {
+      trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitAddRestaurantScreen',
+        reason: 'missing_user',
+      });
       setErrorMessage('Please sign in again to add a restaurant.');
       return;
     }
@@ -64,16 +69,32 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
     const trimmedLocation = restaurantLocation.trim();
 
     if (!trimmedName) {
+      trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitAddRestaurantScreen',
+        reason: 'missing_restaurant_name',
+        visibility,
+      });
       setErrorMessage('Restaurant name is required.');
       return;
     }
 
     if (!trimmedLocation) {
+      trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitAddRestaurantScreen',
+        reason: 'missing_location',
+        visibility,
+      });
       setErrorMessage('Location is required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_STARTED', {
+      source: 'CreateVisitAddRestaurantScreen',
+      visibility,
+      isAdmin,
+      hasCuisine: restaurantCuisine.trim().length > 0,
+    });
     setIsSubmitting(true);
 
     try {
@@ -91,6 +112,11 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
       });
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurants'] });
+      trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_SUCCEEDED', {
+        source: 'CreateVisitAddRestaurantScreen',
+        restaurantId: createdRestaurant.id,
+        visibility: resolvedVisibility,
+      });
       navigation.navigate('CreateVisit', {
         preselectedRestaurantId: createdRestaurant.id,
         preselectedRestaurantName: createdRestaurant.name,
@@ -98,6 +124,11 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not add restaurant.';
       setErrorMessage(message);
+      trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_FAILED', {
+        source: 'CreateVisitAddRestaurantScreen',
+        visibility,
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -157,7 +188,15 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
             <Text variant="label">Visibility</Text>
             <VisibilityOptionSelector
               options={visibilityOptions}
-              onChange={setVisibility}
+              onChange={(nextVisibility) => {
+                trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_VISIBILITY_CHANGED', {
+                  source: 'CreateVisitAddRestaurantScreen',
+                  previousVisibility: visibility,
+                  nextVisibility,
+                  isAdmin,
+                });
+                setVisibility(nextVisibility);
+              }}
               value={visibility}
             />
           </View>

@@ -18,7 +18,9 @@ import {
 import { inviteFriend, listFriends, markFriendInviteAccepted, removeFriend } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
@@ -301,7 +303,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       if (!isOnline) {
         await queueFeatureOutbox('friend.accept', { friendId });
         await invalidateFriends();
-        Alert.alert('Saved Offline', 'Friend action queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Friend action');
         return;
       }
 
@@ -324,7 +326,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       if (!isOnline) {
         await queueFeatureOutbox(operationName, { friendId });
         await invalidateFriends();
-        Alert.alert('Saved Offline', 'Friend action queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Friend action');
         return;
       }
 
@@ -361,7 +363,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
         setMainTab('friends-list');
         setFriendsSubTab('sent');
         await invalidateFriends();
-        Alert.alert('Saved Offline', 'Friend request queued and will sync when you reconnect.');
+        showQueuedOfflineAlert('Friend request');
         return;
       }
 
@@ -383,11 +385,22 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
 
   const handleCopyFriendCode = async () => {
     setErrorMessage(null);
+    trackObservabilityEvent('FRIEND_CODE_COPY_STARTED', {
+      source: 'FriendsScreen',
+    });
 
     try {
       await Clipboard.setStringAsync(myFriendCode);
+      trackObservabilityEvent('FRIEND_CODE_COPIED', {
+        source: 'FriendsScreen',
+      });
       Alert.alert('Copied', 'Friend code copied to clipboard.');
-    } catch {
+    } catch (error) {
+      trackObservabilityEvent('FRIEND_CODE_COPY_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'FriendsScreen',
+      });
       setErrorMessage('Could not copy friend code.');
     }
   };

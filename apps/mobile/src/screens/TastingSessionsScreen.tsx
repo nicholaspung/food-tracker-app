@@ -12,6 +12,7 @@ import {
 } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
@@ -91,11 +92,22 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     const restaurantName = selectedRestaurant.trim();
 
     if (!name || !restaurantName || !user) {
+      trackObservabilityEvent('TASTING_SESSION_CREATE_VALIDATION_FAILED', {
+        source: 'TastingSessionsScreen',
+        hasName: Boolean(name),
+        hasRestaurant: Boolean(restaurantName),
+        hasUser: Boolean(user),
+      });
       setErrorMessage('Session name, restaurant, and signed-in user are required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('TASTING_SESSION_CREATE_STARTED', {
+      source: 'TastingSessionsScreen',
+      restaurantName,
+      userId: user.id,
+    });
 
     try {
       await queueWrite('tasting-session.create');
@@ -111,20 +123,38 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       setSelectedRestaurant('');
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] });
+      trackObservabilityEvent('TASTING_SESSION_CREATE_SUCCEEDED', {
+        source: 'TastingSessionsScreen',
+        sessionId: session.id,
+      });
       navigation.navigate('TastingSessionDetail', { sessionId: session.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not create session.';
       setErrorMessage(message);
+      trackObservabilityEvent('TASTING_SESSION_CREATE_FAILED', {
+        source: 'TastingSessionsScreen',
+        error: message,
+      });
     }
   };
 
   const handleJoin = async () => {
     if (!joinCode.trim() || !user) {
+      trackObservabilityEvent('TASTING_SESSION_JOIN_VALIDATION_FAILED', {
+        source: 'TastingSessionsScreen',
+        hasInviteCode: Boolean(joinCode.trim()),
+        hasUser: Boolean(user),
+      });
       setErrorMessage('Join code is required.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('TASTING_SESSION_JOIN_STARTED', {
+      source: 'TastingSessionsScreen',
+      userId: user.id,
+      inviteCodeLength: joinCode.trim().length,
+    });
 
     try {
       await queueWrite('tasting-session.join');
@@ -136,10 +166,18 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
       setJoinCode('');
       await queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] });
+      trackObservabilityEvent('TASTING_SESSION_JOIN_SUCCEEDED', {
+        source: 'TastingSessionsScreen',
+        sessionId: session.id,
+      });
       navigation.navigate('TastingSessionDetail', { sessionId: session.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not join session.';
       setErrorMessage(message);
+      trackObservabilityEvent('TASTING_SESSION_JOIN_FAILED', {
+        source: 'TastingSessionsScreen',
+        error: message,
+      });
     }
   };
 
@@ -163,6 +201,11 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           <Button
             label="Active"
             onPress={() => {
+              trackObservabilityEvent('TASTING_SESSIONS_FILTER_CHANGED', {
+                source: 'TastingSessionsScreen',
+                previousFilter: filter,
+                nextFilter: 'active',
+              });
               setFilter('active');
             }}
             style={styles.rowAction}
@@ -171,6 +214,11 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           <Button
             label="Completed"
             onPress={() => {
+              trackObservabilityEvent('TASTING_SESSIONS_FILTER_CHANGED', {
+                source: 'TastingSessionsScreen',
+                previousFilter: filter,
+                nextFilter: 'completed',
+              });
               setFilter('completed');
             }}
             style={styles.rowAction}
@@ -273,6 +321,12 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
                 <Button
                   label="Open Session"
                   onPress={() => {
+                    trackObservabilityEvent('TASTING_SESSION_OPENED', {
+                      source: 'TastingSessionsScreen',
+                      sessionId: session.id,
+                      status: session.status,
+                      filter,
+                    });
                     navigation.navigate('TastingSessionDetail', { sessionId: session.id });
                   }}
                   variant="secondary"

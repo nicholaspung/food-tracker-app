@@ -16,6 +16,7 @@ import {
 } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
@@ -262,11 +263,23 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       return;
     }
 
+    trackObservabilityEvent('TASTING_INVITE_SHARE_STARTED', {
+      source: 'TastingSessionDetailScreen',
+    });
     try {
-      await Share.share({
+      const shareResult = await Share.share({
         message: `Join my tasting session with code: ${session.inviteCode}`,
       });
-    } catch {
+      trackObservabilityEvent('TASTING_INVITE_SHARE_COMPLETED', {
+        action: shareResult.action,
+        source: 'TastingSessionDetailScreen',
+      });
+    } catch (error) {
+      trackObservabilityEvent('TASTING_INVITE_SHARE_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'TastingSessionDetailScreen',
+      });
       setCopyStatus('Share sheet was canceled.');
     }
   };
