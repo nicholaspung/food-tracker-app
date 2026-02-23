@@ -15,6 +15,7 @@ import {
   AddRestaurantToListScreen,
   AddVisitScreen,
   BillDetailScreen,
+  BillingScreen,
   BillsScreen,
   CreateBillScreen,
   CreateRestaurantListScreen,
@@ -57,11 +58,25 @@ import { Screen } from '../ui';
 
 export type RootStackParamList = {
   Onboarding: undefined;
-  Login: undefined;
+  Login:
+    | {
+        email?: string;
+      }
+    | undefined;
   SignUp: undefined;
   ForgotPassword: undefined;
-  ResetPassword: undefined;
-  VerifyEmail: undefined;
+  ResetPassword:
+    | {
+        email?: string;
+      }
+    | undefined;
+  VerifyEmail:
+    | {
+        email?: string;
+        password?: string;
+        source?: 'sign_up' | 'login';
+      }
+    | undefined;
   Home: undefined;
   VisitShareCustomization: {
     restaurantName: string;
@@ -130,6 +145,7 @@ export type RootStackParamList = {
   TastingSessions: undefined;
   TastingSessionDetail: { sessionId: string };
   Bills: undefined;
+  Billing: undefined;
   CreateBill: { billId?: string } | undefined;
   BillDetail: { billId: string };
   TipCalculator: undefined;
@@ -168,6 +184,7 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Notes',
   'NoteEditor',
   'Bills',
+  'Billing',
   'CreateBill',
   'BillDetail',
   'TipCalculator',
@@ -393,29 +410,30 @@ export function RootNavigator() {
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
+                <Stack.Screen component={BillingScreen} name="Billing" options={{ headerShown: false }} />
                 <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
                 <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
                 <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />
               </>
             ) : (
               <>
-                <Stack.Screen component={OnboardingScreen} name="Onboarding" options={{ title: 'Welcome' }} />
-                <Stack.Screen component={LoginScreen} name="Login" options={{ title: 'Sign In' }} />
-                <Stack.Screen component={SignUpScreen} name="SignUp" options={{ title: 'Sign Up' }} />
+                <Stack.Screen component={OnboardingScreen} name="Onboarding" options={{ headerShown: false }} />
+                <Stack.Screen component={LoginScreen} name="Login" options={{ headerShown: false }} />
+                <Stack.Screen component={SignUpScreen} name="SignUp" options={{ headerShown: false }} />
                 <Stack.Screen
                   component={ForgotPasswordScreen}
                   name="ForgotPassword"
-                  options={{ title: 'Forgot Password' }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   component={ResetPasswordScreen}
                   name="ResetPassword"
-                  options={{ title: 'Reset Password' }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   component={VerifyEmailScreen}
                   name="VerifyEmail"
-                  options={{ title: 'Verify Email' }}
+                  options={{ headerShown: false }}
                 />
               </>
             )}

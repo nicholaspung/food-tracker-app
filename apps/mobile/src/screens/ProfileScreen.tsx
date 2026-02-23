@@ -560,6 +560,31 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <OptionList>
             <OptionListRow
+              iconName="card-outline"
+              onPress={() => {
+                navigation.navigate("Billing");
+              }}
+              rightAccessory={
+                isSubscriber ? (
+                  <StatusPill
+                    label="Subscriber"
+                    size="md"
+                    tone="info"
+                    variant="solid"
+                  />
+                ) : (
+                  <StatusPill
+                    label="Free"
+                    size="md"
+                    tone="muted"
+                    variant="soft"
+                  />
+                )
+              }
+              subtitle="View plans, subscribe, and manage purchases"
+              title="Subscription & Billing"
+            />
+            <OptionListRow
               iconName="chatbox-ellipses-outline"
               onPress={() => {
                 navigation.navigate("Feedback");

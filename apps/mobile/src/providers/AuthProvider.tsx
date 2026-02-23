@@ -22,6 +22,7 @@ import { normalizeAuthUser, type AuthUser } from '../types/auth';
 
 type AuthStatus = 'bootstrapping' | 'authenticated' | 'unauthenticated';
 type RolePreviewSettingKey = keyof RolePreviewSettings;
+export const AUTH_EMAIL_UNVERIFIED_ERROR = 'AUTH_EMAIL_UNVERIFIED';
 
 interface AuthContextValue {
   status: AuthStatus;
@@ -260,7 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!authUser.verified) {
         pb.authStore.clear();
-        throw new Error('Please verify your email before signing in.');
+        throw new Error(AUTH_EMAIL_UNVERIFIED_ERROR);
       }
 
       setActualUser(authUser);
@@ -270,7 +271,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         source: 'mobile_auth_shell',
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Sign in failed. Please try again.';
+      const message =
+        error instanceof Error && error.message === AUTH_EMAIL_UNVERIFIED_ERROR
+          ? 'Please verify your email to continue.'
+          : error instanceof Error
+            ? error.message
+            : 'Sign in failed. Please try again.';
       setAuthError(message);
       setStatus('unauthenticated');
       setActualUser(null);

@@ -39,13 +39,22 @@ export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList
     'AddRestaurantToList',
     'Notes',
     'NoteEditor',
-    'Settings',
     'Bills',
     'BillDetail',
     'TastingSessions',
     'TastingSessionDetail',
   ],
-  Profile: ['Profile', 'AdminFeatures', 'AdminMenuReviews', 'AdminMenuReviewDetail', 'WhatsNew'],
+  Profile: [
+    'Profile',
+    'AdminFeatures',
+    'AdminMenuReviews',
+    'AdminMenuReviewDetail',
+    'Settings',
+    'Feedback',
+    'FeedbackDetail',
+    'Billing',
+    'WhatsNew',
+  ],
 };
 
 export const BOTTOM_TAB_ROUTES: BottomTabRoute[] = ['Home', 'AddVisit', 'Friends', 'Misc', 'Profile'];

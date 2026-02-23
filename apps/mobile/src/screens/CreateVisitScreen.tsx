@@ -23,6 +23,7 @@ import {
   RatingLegend,
   RatingSelector,
   StepProgressBar,
+  UpgradePromptCard,
   VisibilityBadge,
   VisibilityOptionSelector,
   type VisibilityOptionValue,
@@ -341,6 +342,8 @@ const WIZARD_STEPS = [
 ];
 
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
+const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
+const FREE_SEARCH_WARNING_THRESHOLD = 2;
 
 export function CreateVisitScreen({
   navigation,
@@ -1983,6 +1986,14 @@ export function CreateVisitScreen({
     FREE_MONTHLY_PHOTO_LIMIT - estimatedMonthlyPhotoTotal,
     0,
   );
+  const shouldShowPlacesUpgradePrompt =
+    isDisplayFreeUser &&
+    typeof placesQueriesRemaining === 'number' &&
+    placesQueriesRemaining <= FREE_SEARCH_WARNING_THRESHOLD;
+  const shouldShowPhotoUpgradePrompt =
+    isDisplayFreeUser &&
+    draftPhotoCount > 0 &&
+    estimatedFreeMonthlyPhotosRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
 
   return (
     <FeatureFormScreenScaffold
@@ -2139,6 +2150,27 @@ export function CreateVisitScreen({
                   ? "Monthly food place search limit reached."
                   : "Monthly food place search limit reached in preview mode. Admin access is still allowed."}
               </Text>
+            ) : null}
+
+            {shouldShowPlacesUpgradePrompt ? (
+              <UpgradePromptCard
+                description={
+                  isPlacesQuotaReached
+                    ? "You have reached this month's free search limit. Subscribe for higher limits and uninterrupted place search."
+                    : `Only ${placesQueriesRemaining} food place searches left this month. Subscribe for higher limits.`
+                }
+                onPrimaryAction={() => {
+                  navigation.navigate('Billing');
+                }}
+                onSecondaryAction={() => {
+                  navigation.navigate('Billing');
+                }}
+                primaryActionLabel={isPlacesQuotaReached ? 'Subscribe now' : 'Upgrade'}
+                secondaryActionLabel="Compare plans"
+                title={
+                  isPlacesQuotaReached ? 'Free limit reached' : 'You are close to your free limit'
+                }
+              />
             ) : null}
           </Card>
 
@@ -2457,6 +2489,31 @@ export function CreateVisitScreen({
                 Monthly photo estimate: {estimatedFreeMonthlyPhotosRemaining} left.
               </Text>
             </Card>
+          ) : null}
+
+          {shouldShowPhotoUpgradePrompt ? (
+            <UpgradePromptCard
+              description={
+                estimatedFreeMonthlyPhotosRemaining <= 0
+                  ? "You have reached this month's free photo limit. Subscribe for higher monthly photo limits."
+                  : `Only ${estimatedFreeMonthlyPhotosRemaining} photo uploads left this month. Subscribe for higher limits.`
+              }
+              onPrimaryAction={() => {
+                navigation.navigate('Billing');
+              }}
+              onSecondaryAction={() => {
+                navigation.navigate('Billing');
+              }}
+              primaryActionLabel={
+                estimatedFreeMonthlyPhotosRemaining <= 0 ? 'Subscribe now' : 'Upgrade'
+              }
+              secondaryActionLabel="Compare plans"
+              title={
+                estimatedFreeMonthlyPhotosRemaining <= 0
+                  ? 'Free limit reached'
+                  : 'You are close to your free limit'
+              }
+            />
           ) : null}
 
           <Card style={styles.metadataCard}>

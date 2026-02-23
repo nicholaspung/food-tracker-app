@@ -1,10 +1,18 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, PhotoViewerModal, Skeleton, TabRootScreenScaffold } from '../components/shared';
+import {
+  EmptyState,
+  FeedHeaderControls,
+  PhotoViewerModal,
+  Skeleton,
+  TabRootScreenScaffold,
+  type FeedModeValue,
+  type FeedTypeFilterValue,
+} from '../components/shared';
 import {
   buildPocketBaseFileUrl,
   deleteQuickTrack,
@@ -28,8 +36,8 @@ import { Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
-type FeedMode = 'mine' | 'friends';
-type TypeFilter = 'all' | 'visits' | 'quick-track';
+type FeedMode = FeedModeValue;
+type TypeFilter = FeedTypeFilterValue;
 
 interface VisitPhotoRecord {
   id: string;
@@ -590,21 +598,21 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     });
   };
 
-  const renderTypeFilter = (filter: TypeFilter, label: string) => (
-    <Pressable
-      key={filter}
-      onPress={() => {
-        trackObservabilityEvent('HOME_TYPE_FILTER_SELECTED', {
-          filter,
-          source: 'HomeScreen',
-        });
-        setTypeFilter(filter);
-      }}
-      style={[styles.filterChip, typeFilter === filter && styles.filterChipActive]}
-    >
-      <Text style={[styles.filterChipLabel, typeFilter === filter && styles.filterChipLabelActive]}>{label}</Text>
-    </Pressable>
-  );
+  const handleFeedModeChange = useCallback((nextMode: FeedMode) => {
+    trackObservabilityEvent('HOME_FEED_MODE_SELECTED', {
+      feedMode: nextMode,
+      source: 'HomeScreen',
+    });
+    setFeedMode(nextMode);
+  }, []);
+
+  const handleTypeFilterChange = useCallback((nextFilter: TypeFilter) => {
+    trackObservabilityEvent('HOME_TYPE_FILTER_SELECTED', {
+      filter: nextFilter,
+      source: 'HomeScreen',
+    });
+    setTypeFilter(nextFilter);
+  }, []);
 
   const colors = {
     accent: theme.colors.text.brand,
@@ -637,133 +645,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       paddingBottom: theme.spacing.sm,
       paddingHorizontal: theme.spacing.md,
       paddingTop: theme.spacing.sm,
-    },
-    titleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: theme.spacing.sm,
-    },
-    title: {
-      color: colors.textPrimary,
-      ...theme.typography.titleLg,
-    },
-    subTitle: {
-      color: colors.textMuted,
-      ...theme.typography.bodyMd,
-    },
-    segmentedControl: {
-      backgroundColor: colors.screenBackground,
-      borderColor: colors.border,
-      borderRadius: 10,
-      borderWidth: 1,
-      flexDirection: 'row',
-      padding: 2,
-    },
-    segmentButton: {
-      borderRadius: 8,
-      minWidth: 60,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 7,
-    },
-    segmentButtonActive: {
-      backgroundColor: colors.surface,
-      shadowColor: colors.shadow,
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.08,
-      shadowRadius: 1,
-    },
-    segmentLabel: {
-      color: colors.textMuted,
-      ...theme.typography.label,
-      textAlign: 'center',
-    },
-    segmentLabelActive: {
-      color: colors.textPrimary,
-    },
-    searchRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    searchField: {
-      alignItems: 'center',
-      backgroundColor: colors.screenBackground,
-      borderColor: colors.border,
-      borderRadius: 10,
-      borderWidth: 1,
-      flex: 1,
-      flexDirection: 'row',
-      minHeight: 42,
-      paddingHorizontal: theme.spacing.sm,
-    },
-    searchInput: {
-      color: colors.textPrimary,
-      flex: 1,
-      ...theme.typography.bodyLg,
-      paddingVertical: theme.spacing.xs,
-    },
-    clearSearchButton: {
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xs,
-    },
-    clearSearchLabel: {
-      color: colors.textMuted,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 16,
-    },
-    filtersToggle: {
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 10,
-      borderWidth: 1,
-      flexDirection: 'row',
-      justifyContent: 'center',
-      minHeight: 42,
-      minWidth: 82,
-      paddingHorizontal: theme.spacing.sm,
-    },
-    filtersToggleActive: {
-      backgroundColor: colors.accent,
-      borderColor: colors.accent,
-    },
-    filtersToggleLabel: {
-      color: colors.textPrimary,
-      ...theme.typography.button,
-    },
-    filtersToggleLabelActive: {
-      color: theme.colors.text.inverse,
-    },
-    filtersRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    filterChip: {
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flex: 1,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 8,
-    },
-    filterChipActive: {
-      backgroundColor: colors.accentSoft,
-      borderColor: colors.accent,
-    },
-    filterChipLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.label,
-      lineHeight: 16,
-      textAlign: 'center',
-    },
-    filterChipLabelActive: {
-      color: colors.accent,
     },
     body: {
       flex: 1,
@@ -1162,72 +1043,20 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   return (
     <TabRootScreenScaffold contentStyle={styles.screenContent} scrollUnderlayColor={colors.screenBackground}>
       <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Ratings</Text>
-          <View style={styles.segmentedControl}>
-            <Pressable
-              onPress={() => {
-                trackObservabilityEvent('HOME_FEED_MODE_SELECTED', {
-                  feedMode: 'mine',
-                  source: 'HomeScreen',
-                });
-                setFeedMode('mine');
-              }}
-              style={[styles.segmentButton, feedMode === 'mine' && styles.segmentButtonActive]}
-            >
-              <Text style={[styles.segmentLabel, feedMode === 'mine' && styles.segmentLabelActive]}>Mine</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                trackObservabilityEvent('HOME_FEED_MODE_SELECTED', {
-                  feedMode: 'friends',
-                  source: 'HomeScreen',
-                });
-                setFeedMode('friends');
-              }}
-              style={[styles.segmentButton, feedMode === 'friends' && styles.segmentButtonActive]}
-            >
-              <Text style={[styles.segmentLabel, feedMode === 'friends' && styles.segmentLabelActive]}>Friends</Text>
-            </Pressable>
-          </View>
-        </View>
-        <Text style={styles.subTitle}>{summaryText}</Text>
-        <View style={styles.searchRow}>
-          <View style={styles.searchField}>
-            <TextInput
-              onChangeText={setSearchQuery}
-              placeholder="Search restaurants, food, notes..."
-              placeholderTextColor={colors.textMuted}
-              style={styles.searchInput}
-              value={searchQuery}
-            />
-            {searchQuery ? (
-              <Pressable
-                onPress={() => {
-                  setSearchQuery('');
-                }}
-                style={styles.clearSearchButton}
-              >
-                <Text style={styles.clearSearchLabel}>Clear</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <Pressable
-            onPress={handleToggleFilters}
-            style={[styles.filtersToggle, filtersExpanded && styles.filtersToggleActive]}
-          >
-            <Text style={[styles.filtersToggleLabel, filtersExpanded && styles.filtersToggleLabelActive]}>
-              Filters
-            </Text>
-          </Pressable>
-        </View>
-        {filtersExpanded ? (
-          <View style={styles.filtersRow}>
-            {renderTypeFilter('all', 'All')}
-            {renderTypeFilter('visits', 'Visits')}
-            {renderTypeFilter('quick-track', 'Quick Track')}
-          </View>
-        ) : null}
+        <FeedHeaderControls
+          feedMode={feedMode}
+          filtersExpanded={filtersExpanded}
+          onClearSearch={() => {
+            setSearchQuery('');
+          }}
+          onFeedModeChange={handleFeedModeChange}
+          onSearchQueryChange={setSearchQuery}
+          onToggleFilters={handleToggleFilters}
+          onTypeFilterChange={handleTypeFilterChange}
+          searchQuery={searchQuery}
+          summaryText={summaryText}
+          typeFilter={typeFilter}
+        />
       </View>
 
       <View style={styles.body}>

@@ -158,6 +158,13 @@ export function saveAuthRecord(record: RecordModel): void {
   pb.authStore.save(pb.authStore.token, record);
 }
 
+export async function refreshAuthenticatedUserRecord(): Promise<RecordModel> {
+  const authData = await pb.collection('users').authRefresh();
+  const refreshedRecord = authData.record as RecordModel;
+  saveAuthRecord(refreshedRecord);
+  return refreshedRecord;
+}
+
 export function resolveDefaultVisitVisibilityFromAuth(): 'friends' | 'private' {
   return pb.authStore.record?.defaultVisitVisibility === 'private' ? 'private' : 'friends';
 }

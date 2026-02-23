@@ -5,6 +5,7 @@ export * from './AdminMenuReviewsScreen';
 export * from './AddRestaurantToListScreen';
 export * from './AddVisitScreen';
 export * from './BillDetailScreen';
+export * from './BillingScreen';
 export * from './BillsScreen';
 export * from './CreateBillScreen';
 export * from './CreateRestaurantListScreen';

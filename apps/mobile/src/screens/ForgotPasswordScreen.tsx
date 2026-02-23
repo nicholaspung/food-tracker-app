@@ -1,20 +1,51 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, View } from 'react-native';
 
-import { FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
+import { AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import { requestUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { Button, Input, Screen } from '../ui';
+import { useTheme } from '../theme';
+import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
 export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
+  const theme = useTheme();
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const styles = StyleSheet.create({
+    formContent: {
+      paddingTop: theme.spacing.sm,
+    },
+    introCard: {
+      gap: theme.spacing.sm,
+      paddingVertical: theme.spacing.sm,
+    },
+    introVisual: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 64,
+    },
+    introIconFrame: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.background.muted,
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      height: 60,
+      justifyContent: 'center',
+      width: 60,
+    },
+    formCard: {
+      gap: theme.spacing.sm,
+    },
+  });
 
   const handleSubmit = async () => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -28,7 +59,6 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
     }
 
     setErrorMessage(null);
-    setSuccessMessage(null);
     setIsSubmitting(true);
     trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUBMIT_STARTED', {
       source: 'ForgotPasswordScreen',
@@ -40,7 +70,9 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
       trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUBMIT_SUCCEEDED', {
         source: 'ForgotPasswordScreen',
       });
-      setSuccessMessage('Reset instructions sent. Enter the token on the reset password screen.');
+      navigation.navigate('ResetPassword', {
+        email: trimmedEmail,
+      });
     } catch (error) {
       trackObservabilityEvent('AUTH_PASSWORD_RESET_REQUEST_SUBMIT_FAILED', {
         source: 'ForgotPasswordScreen',
@@ -54,42 +86,52 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
   };
 
   return (
-    <Screen background="surface" keyboardAware>
-      <FormScaffold subtitle="Request a reset token by email." title="Forgot Password">
-        <Input
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          label="Email"
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          value={email}
-        />
+    <Screen background="app" keyboardAware scroll>
+      <FormScaffold
+        lead={
+          <AuthTopBar
+            onBackPress={() => {
+              navigation.navigate('Login');
+            }}
+          />
+        }
+        showHeader={false}
+        title=""
+        contentStyle={styles.formContent}
+      >
+        <Card style={styles.introCard} tone="muted">
+          <View style={styles.introVisual}>
+            <View style={styles.introIconFrame}>
+              <Ionicons color={theme.colors.text.brand} name="mail-open-outline" size={28} />
+            </View>
+          </View>
+          <Text variant="titleMd">Forgot Password</Text>
+          <Text tone="secondary">Request a reset token by email.</Text>
+        </Card>
 
-        <PageErrorToast errorMessage={errorMessage} title="Request failed" />
+        <Card style={styles.formCard}>
+          <Input
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            label="Email"
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            value={email}
+          />
 
-        {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
+          <PageErrorToast errorMessage={errorMessage} title="Request failed" />
 
-        <Button
-          disabled={!email.trim()}
-          label="Send Reset Email"
-          loading={isSubmitting}
-          onPress={() => {
-            void handleSubmit();
-          }}
-        />
+          <Button
+            disabled={!email.trim()}
+            label="Send Reset Email"
+            loading={isSubmitting}
+            onPress={() => {
+              void handleSubmit();
+            }}
+          />
+        </Card>
 
-        <Button
-          label="I have a reset token"
-          onPress={() => {
-            trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
-              source: 'ForgotPasswordScreen',
-              destination: 'ResetPassword',
-            });
-            navigation.navigate('ResetPassword');
-          }}
-          variant="secondary"
-        />
       </FormScaffold>
       <LoadingOverlay label="Sending..." visible={isSubmitting} />
     </Screen>

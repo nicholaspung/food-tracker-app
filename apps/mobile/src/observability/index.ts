@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import { PostHog } from 'posthog-react-native';
 import { Platform } from 'react-native';
@@ -42,18 +41,16 @@ export function initializeObservability(): void {
     return;
   }
 
-  if (env.sentryDsn) {
-    Sentry.init({
-      dsn: env.sentryDsn,
-      tracesSampleRate: env.sentryTracesSampleRate,
-    });
-  } else {
-    logger.log('[Observability] Sentry disabled (missing EXPO_PUBLIC_SENTRY_DSN)');
-  }
-
   if (env.posthogApiKey) {
     posthogClient = new PostHog(env.posthogApiKey, {
       host: env.posthogHost,
+      errorTracking: {
+        autocapture: {
+          uncaughtExceptions: true,
+          unhandledRejections: true,
+          console: ['error'],
+        },
+      },
     });
   } else {
     logger.log('[Observability] PostHog disabled (missing EXPO_PUBLIC_POSTHOG_API_KEY)');
@@ -67,14 +64,6 @@ export function identifyObservabilityUser(user: AuthUser): void {
     return;
   }
 
-  if (env.sentryDsn) {
-    Sentry.setUser({
-      id: user.id,
-      email: user.email,
-      username: user.name,
-    });
-  }
-
   posthogClient?.identify(user.id, {
     isAdmin: Boolean(user.isAdmin),
     isSubscriber: Boolean(user.isSubscriber),
@@ -84,10 +73,6 @@ export function identifyObservabilityUser(user: AuthUser): void {
 export function clearObservabilityUser(): void {
   if (!initialized) {
     return;
-  }
-
-  if (env.sentryDsn) {
-    Sentry.setUser(null);
   }
 
   posthogClient?.reset();
@@ -131,12 +116,19 @@ export function captureObservabilityError(error: unknown): void {
     return;
   }
 
-  if (error instanceof Error) {
-    Sentry.captureException(error);
+  if (posthogClient) {
+    posthogClient.captureException(error, {
+      ...staticEventProperties,
+      ...contextProperties,
+      source: 'capture_observability_error',
+    });
     return;
   }
 
-  Sentry.captureMessage(String(error));
+  trackObservabilityEvent('OBSERVABILITY_ERROR_CAPTURED', {
+    errorMessage: error instanceof Error ? error.message : String(error),
+    errorType: error instanceof Error ? error.name : 'unknown_error',
+  });
 }
 
 function sanitizeEventProperties(properties?: EventProperties): EventProperties {

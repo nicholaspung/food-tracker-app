@@ -17,6 +17,7 @@ import {
   PhotoSourceActionCards,
   RatingLegend,
   RatingSelector,
+  UpgradePromptCard,
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
@@ -43,6 +44,7 @@ type QuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'QuickTr
 
 const QUICK_TRACK_RATED_BEFORE_KEY = 'ui.quickTrack.hasRatedBefore';
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
+const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 
 const ITEM_CATEGORIES = [
   { value: 'convenience_store', label: 'Convenience Store' },
@@ -137,6 +139,10 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const estimatedFreePhotoRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.photoUploadsMonthly ?? null
     : null;
+  const shouldShowPhotoUpgradePrompt =
+    isDisplayFreeUser &&
+    typeof estimatedFreePhotoRemaining === 'number' &&
+    estimatedFreePhotoRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
 
   const linkedNoteQuery = useQuery({
     queryKey: ['feature', 'note', sourceNoteId],
@@ -575,6 +581,29 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
               {estimatedFreePhotoRemaining === null ? 'unknown' : `${estimatedFreePhotoRemaining} left`}.
             </Text>
           </Card>
+        ) : null}
+
+        {shouldShowPhotoUpgradePrompt ? (
+          <UpgradePromptCard
+            description={
+              estimatedFreePhotoRemaining === 0
+                ? "You have reached this month's free photo limit. Subscribe for higher monthly limits."
+                : `Only ${estimatedFreePhotoRemaining} photo uploads left this month. Subscribe for higher limits.`
+            }
+            onPrimaryAction={() => {
+              navigation.navigate('Billing');
+            }}
+            onSecondaryAction={() => {
+              navigation.navigate('Billing');
+            }}
+            primaryActionLabel={estimatedFreePhotoRemaining === 0 ? 'Subscribe now' : 'Upgrade'}
+            secondaryActionLabel="Compare plans"
+            title={
+              estimatedFreePhotoRemaining === 0
+                ? 'Free limit reached'
+                : 'You are close to your free limit'
+            }
+          />
         ) : null}
 
         {sourceNoteId ? (

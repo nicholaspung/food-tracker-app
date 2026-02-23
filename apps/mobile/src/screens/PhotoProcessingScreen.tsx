@@ -15,6 +15,7 @@ import {
   RatingSelector,
   ScreenHeader,
   StepProgressBar,
+  UpgradePromptCard,
   VisibilityOptionSelector,
 } from '../components/shared';
 import {
@@ -98,6 +99,7 @@ const QUICK_TRACK_CATEGORIES: { value: QuickTrackCategory; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
+const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 
 function buildScannedItemNames(seedLabel: string): string[] {
   const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
@@ -959,6 +961,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     FREE_MONTHLY_PHOTO_LIMIT - estimatedFreeMonthlyPhotoTotal,
     0,
   );
+  const shouldShowPhotoUpgradePrompt =
+    isDisplayFreeUser &&
+    estimatedFreeMonthlyPhotoRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
 
   const updateCurrentRestaurantForm = (updates: Partial<RestaurantPhotoForm>) => {
     if (!currentPhoto) {
@@ -1746,6 +1751,29 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           </Card>
         ) : null}
 
+        {shouldShowPhotoUpgradePrompt ? (
+          <UpgradePromptCard
+            description={
+              estimatedFreeMonthlyPhotoRemaining <= 0
+                ? "You have reached this month's free photo limit. Subscribe for higher monthly limits."
+                : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscribe for higher limits.`
+            }
+            onPrimaryAction={() => {
+              navigation.navigate('Billing');
+            }}
+            onSecondaryAction={() => {
+              navigation.navigate('Billing');
+            }}
+            primaryActionLabel={estimatedFreeMonthlyPhotoRemaining <= 0 ? 'Subscribe now' : 'Upgrade'}
+            secondaryActionLabel="Compare plans"
+            title={
+              estimatedFreeMonthlyPhotoRemaining <= 0
+                ? 'Free limit reached'
+                : 'You are close to your free limit'
+            }
+          />
+        ) : null}
+
         <Card style={styles.uploadCard}>
           <Text variant="label">Choose Photo Source</Text>
           <Text tone="secondary">Take a new photo or upload multiple saved photos.</Text>
@@ -2173,6 +2201,29 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                 : 'unknown'}.
             </Text>
           </Card>
+        ) : null}
+
+        {shouldShowPhotoUpgradePrompt ? (
+          <UpgradePromptCard
+            description={
+              estimatedFreeMonthlyPhotoRemaining <= 0
+                ? "You have reached this month's free photo limit. Subscribe for higher monthly limits."
+                : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscribe for higher limits.`
+            }
+            onPrimaryAction={() => {
+              navigation.navigate('Billing');
+            }}
+            onSecondaryAction={() => {
+              navigation.navigate('Billing');
+            }}
+            primaryActionLabel={estimatedFreeMonthlyPhotoRemaining <= 0 ? 'Subscribe now' : 'Upgrade'}
+            secondaryActionLabel="Compare plans"
+            title={
+              estimatedFreeMonthlyPhotoRemaining <= 0
+                ? 'Free limit reached'
+                : 'You are close to your free limit'
+            }
+          />
         ) : null}
 
         {processType === 'restaurant' ? (

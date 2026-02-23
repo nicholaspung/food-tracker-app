@@ -66,6 +66,7 @@ func main() {
 		// Register all API handlers
 		handlers.RegisterInviteCodeHandlers(se, app)
 		handlers.RegisterUserHandlers(se, app)
+		handlers.RegisterBillingHandlers(se, app)
 		handlers.RegisterUsageLimitHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)

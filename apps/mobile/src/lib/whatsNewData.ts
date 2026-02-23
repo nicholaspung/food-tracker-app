@@ -10,6 +10,29 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.7',
+    date: '2026-02-22',
+    title: 'Subscription Management & Redesigned Auth Flow',
+    summary:
+      'A new Billing screen lets you view your plan, compare free vs. subscriber features, and manage your subscription. The entire sign-in, sign-up, and password reset experience has been redesigned with a cleaner layout and smarter step-by-step navigation.',
+    features: [
+      'New Billing screen: view your plan, compare free vs. subscriber features, and manage your subscription.',
+      'In-app purchase support for monthly and yearly subscriptions.',
+      'Billing shortcut on Profile with your current plan status shown as a badge.',
+      'Redesigned onboarding carousel: swipe through feature highlight cards before signing up.',
+      'Invite code field added to sign-up with clearer validation and error messages.',
+      'After sign-up you are taken directly to the verification screen with your email pre-filled.',
+      'Signing in with an unverified account now redirects automatically to the verification screen.',
+      'Upgrade prompt cards appear when free users are close to or have reached their monthly photo or search limit.',
+    ],
+    improvements: [
+      'All auth screens use a consistent card layout with icons and back navigation.',
+      'Forgot password flow navigates directly to reset password after sending the email.',
+      'Login screen accepts a pre-filled email when navigating from other screens.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.6',
     date: '2026-02-21',
     title: 'Analytics & Code Quality Improvements',

@@ -5,8 +5,9 @@ export interface MobileEnv {
   pocketbaseUrl: string;
   posthogApiKey: string;
   posthogHost: string;
-  sentryDsn: string;
-  sentryTracesSampleRate: number;
+  iapMonthlyProductId: string;
+  iapYearlyProductId: string;
+  androidPackageName: string;
 }
 
 type EnvSource = Record<string, string | undefined>;
@@ -22,18 +23,18 @@ export function loadMobileEnv(source?: EnvSource): MobileEnv {
   const apiBaseUrl = resolvedSource.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL;
   const pocketbaseUrl = resolvedSource.EXPO_PUBLIC_POCKETBASE_URL ?? apiBaseUrl;
 
-  const tracesRateValue = Number(resolvedSource.EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? '0.2');
-  const sentryTracesSampleRate = Number.isFinite(tracesRateValue)
-    ? tracesRateValue
-    : 0.2;
-
   return {
     apiBaseUrl,
     pocketbaseUrl,
     posthogApiKey: resolvedSource.EXPO_PUBLIC_POSTHOG_API_KEY ?? '',
     posthogHost: resolvedSource.EXPO_PUBLIC_POSTHOG_HOST ?? `${apiBaseUrl}/api/visit-insights`,
-    sentryDsn: resolvedSource.EXPO_PUBLIC_SENTRY_DSN ?? '',
-    sentryTracesSampleRate,
+    iapMonthlyProductId:
+      resolvedSource.EXPO_PUBLIC_IAP_MONTHLY_PRODUCT_ID ??
+      'foodtracker.subscription.monthly',
+    iapYearlyProductId:
+      resolvedSource.EXPO_PUBLIC_IAP_YEARLY_PRODUCT_ID ??
+      'foodtracker.subscription.yearly',
+    androidPackageName: resolvedSource.EXPO_PUBLIC_ANDROID_PACKAGE_NAME ?? '',
   };
 }
 

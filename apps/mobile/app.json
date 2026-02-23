@@ -45,7 +45,10 @@
           "photosPermission": "Allow Food Tracker Mobile to select menu photos from your library.",
           "cameraPermission": "Allow Food Tracker Mobile to capture menu photos."
         }
-      ]
+      ],
+      "expo-iap",
+      "expo-localization",
+      "posthog-react-native/expo"
     ],
     "extra": {
       "eas": {

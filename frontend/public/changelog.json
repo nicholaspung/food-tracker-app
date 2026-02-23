@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.7.7",
+    "date": "2026-02-22",
+    "title": "Subscription Management & Redesigned Auth Flow",
+    "summary": "A new Billing screen lets you view your plan, compare free vs. subscriber features, and manage your subscription with in-app purchase. The entire sign-in, sign-up, and password reset flow has been redesigned with a cleaner card layout, icons, and smarter navigation between steps.",
+    "features": [
+      "New Billing screen: View your current plan (Free or Subscriber), compare plan features side-by-side, and manage your subscription",
+      "In-app purchase support: Subscribe to a monthly or yearly plan directly from the app",
+      "Billing shortcut on Profile: Quick access to the Billing screen with your current plan status shown as a badge",
+      "Redesigned onboarding carousel: Swipe through feature highlight cards before signing up",
+      "Invite code on sign-up: Invite code field is now part of the sign-up form with clearer validation",
+      "Seamless email verification: After sign-up you are taken directly to the verification screen with your email pre-filled",
+      "Smarter login redirect: Attempting to sign in with an unverified account now takes you to the verification screen automatically",
+      "Upgrade prompt cards: Free users see contextual upgrade prompts when approaching or reaching their monthly photo or search limits"
+    ],
+    "improvements": [
+      "All auth screens (Login, Sign Up, Forgot Password, Reset Password, Verify Email) now use a consistent card-based layout with icons and back navigation",
+      "Forgot password flow navigates directly to the reset password screen after sending the email — no more manual token hunting",
+      "Login screen accepts a pre-filled email when navigating from other screens",
+      "Sign-up error messages are now more specific for invalid or already-used invite codes"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.6",
     "date": "2026-02-21",
     "title": "Analytics & Code Quality Improvements",

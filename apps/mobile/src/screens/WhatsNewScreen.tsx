@@ -17,7 +17,7 @@ import { LATEST_WHATS_NEW_VERSION, WHATS_NEW_ENTRIES, type WhatsNewEntry } from 
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
-import { Card, Text } from '../ui';
+import { Button, Card, Text } from '../ui';
 
 type WhatsNewScreenProps = NativeStackScreenProps<RootStackParamList, 'WhatsNew'>;
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -30,6 +30,8 @@ interface SectionDefinition {
   iconBackground: string;
 }
 
+const WHATS_NEW_PAGE_SIZE = 5;
+
 export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -41,6 +43,7 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
   const [isFirstViewOfLatest, setIsFirstViewOfLatest] = useState(false);
   const [hasCapturedFirstViewState, setHasCapturedFirstViewState] = useState(false);
   const [hasTrackedViewEvent, setHasTrackedViewEvent] = useState(false);
+  const [visibleEntryCount, setVisibleEntryCount] = useState(WHATS_NEW_PAGE_SIZE);
 
   useEffect(() => {
     if (hasCapturedFirstViewState || seenVersionQuery.isLoading) {
@@ -227,7 +230,13 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
       fontSize: 14,
       lineHeight: 20,
     },
+    showMoreButton: {
+      marginTop: theme.spacing.xs,
+    },
   });
+
+  const visibleEntries = WHATS_NEW_ENTRIES.slice(0, visibleEntryCount);
+  const hasMoreEntries = visibleEntryCount < WHATS_NEW_ENTRIES.length;
 
   const renderSection = (entry: WhatsNewEntry, section: SectionDefinition) => {
     const items = entry[section.key];
@@ -264,8 +273,8 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
       subtitle="Latest product updates and improvements."
       title="What's New"
     >
-      {WHATS_NEW_ENTRIES.map((entry, index) => (
-        <Card key={entry.version} style={styles.releaseCard} tone="muted">
+      {visibleEntries.map((entry, index) => (
+        <Card key={entry.version} style={styles.releaseCard}>
           <View style={styles.releaseHeaderRow}>
             <View style={styles.releaseTitleWrap}>
               <Text style={styles.releaseTitle}>{entry.title}</Text>
@@ -295,6 +304,18 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
           {sectionDefinitions.map((section) => renderSection(entry, section))}
         </Card>
       ))}
+      {hasMoreEntries ? (
+        <Button
+          label="Show more"
+          onPress={() => {
+            setVisibleEntryCount((currentCount) =>
+              Math.min(currentCount + WHATS_NEW_PAGE_SIZE, WHATS_NEW_ENTRIES.length),
+            );
+          }}
+          style={styles.showMoreButton}
+          variant="secondary"
+        />
+      ) : null}
     </BackHeaderScreenScaffold>
   );
 }
