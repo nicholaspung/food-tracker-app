@@ -199,7 +199,7 @@ export default function LoginPage({
       {/* Header */}
       <div className="pt-8 pb-4 flex justify-center items-center gap-3 px-4">
         <img
-          src="/logo-speech-bubble-plate.svg"
+          src="/brand-logo.png"
           alt="Yummy Recs Logo"
           className="w-14 h-14"
         />

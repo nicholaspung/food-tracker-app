@@ -9,10 +9,18 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://beta.yummyrecs.com",
+        "EXPO_PUBLIC_POCKETBASE_URL": "https://beta.yummyrecs.com"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://yummyrecs.com",
+        "EXPO_PUBLIC_POCKETBASE_URL": "https://yummyrecs.com"
+      }
     },
     "ios-simulator": {
       "extends": "development",

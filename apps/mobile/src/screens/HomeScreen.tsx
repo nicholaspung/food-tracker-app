@@ -15,6 +15,7 @@ import {
 } from '../components/shared';
 import {
   buildPocketBaseFileUrl,
+  createFriendSuggestionAcceptance,
   deleteQuickTrack,
   deleteVisit,
   getAuthenticatedUserIdOrNull,
@@ -27,9 +28,15 @@ import {
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import {
+  clearPendingFriendSuggestion,
+  getPendingFriendSuggestion,
+  type PendingFriendSuggestion,
+} from '../lib/pendingFriendSuggestion';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Text } from '../ui';
@@ -120,6 +127,7 @@ function formatCategoryLabel(category: string): string {
 
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -133,6 +141,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const [friendSuggestion, setFriendSuggestion] = useState<PendingFriendSuggestion | null>(null);
+  const [friendSuggestionErrorMessage, setFriendSuggestionErrorMessage] = useState<string | null>(null);
+  const [isApplyingFriendSuggestion, setIsApplyingFriendSuggestion] = useState(false);
 
   const visitsQuery = useQuery({
     queryKey: ['feature', 'visits'],
@@ -156,6 +167,39 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     !hasBlockingFeedError &&
     (visitsQuery.isError || quickTracksQuery.isError || visitPhotosQuery.isError);
   const currentUserId = getAuthenticatedUserIdOrNull();
+  const inviterDisplayName =
+    friendSuggestion?.inviterName?.trim() ||
+    friendSuggestion?.inviterEmail?.split('@')[0] ||
+    'your inviter';
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPendingFriendSuggestion = async () => {
+      if (!user?.email) {
+        return;
+      }
+
+      const pendingSuggestion = await getPendingFriendSuggestion();
+      if (!pendingSuggestion) {
+        return;
+      }
+
+      if (pendingSuggestion.newUserEmail.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+        return;
+      }
+
+      if (isMounted) {
+        setFriendSuggestion(pendingSuggestion);
+      }
+    };
+
+    void loadPendingFriendSuggestion();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.email]);
 
   const photosByFoodItem = useMemo(() => {
     const map = new Map<string, VisitPhotoRecord[]>();
@@ -613,6 +657,51 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     });
     setTypeFilter(nextFilter);
   }, []);
+
+  const handleDismissFriendSuggestion = useCallback(() => {
+    setFriendSuggestionErrorMessage(null);
+    setFriendSuggestion(null);
+    void clearPendingFriendSuggestion();
+  }, []);
+
+  const handleAcceptFriendSuggestion = useCallback(async () => {
+    if (!friendSuggestion) {
+      return;
+    }
+
+    if (!isOnline) {
+      setFriendSuggestionErrorMessage('Connect to the internet to add this friend.');
+      return;
+    }
+
+    setFriendSuggestionErrorMessage(null);
+    setIsApplyingFriendSuggestion(true);
+    trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_STARTED', {
+      source: 'HomeScreen',
+    });
+
+    try {
+      await queueWrite('friend.suggestion.accept');
+      await createFriendSuggestionAcceptance({ inviterId: friendSuggestion.inviterId });
+      await clearPendingFriendSuggestion();
+      setFriendSuggestion(null);
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+      trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_SUCCEEDED', {
+        source: 'HomeScreen',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not add this friend.';
+      setFriendSuggestionErrorMessage(message);
+      trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_FAILED', {
+        source: 'HomeScreen',
+        errorMessage: message,
+      });
+    } finally {
+      setIsApplyingFriendSuggestion(false);
+    }
+  }, [friendSuggestion, isOnline, queryClient, queueWrite]);
 
   const colors = {
     accent: theme.colors.text.brand,
@@ -1084,6 +1173,36 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             void visitPhotosQuery.refetch();
           }}
         />
+        <PageErrorToast errorMessage={friendSuggestionErrorMessage} title="Friend suggestion unavailable" />
+
+        {friendSuggestion ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Add {inviterDisplayName} as a friend?</Text>
+            <Text style={styles.infoDescription}>
+              They invited you to Yummy Recs. Add them now so you can see each other's food activity.
+            </Text>
+            <View style={styles.infoActionRow}>
+              <Pressable
+                disabled={isApplyingFriendSuggestion}
+                onPress={() => {
+                  void handleAcceptFriendSuggestion();
+                }}
+                style={[styles.quickActionButton, styles.quickActionPrimary]}
+              >
+                <Text style={[styles.quickActionLabel, styles.quickActionPrimaryLabel]}>
+                  {isApplyingFriendSuggestion ? 'Adding...' : 'Add Friend'}
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={isApplyingFriendSuggestion}
+                onPress={handleDismissFriendSuggestion}
+                style={styles.quickActionButton}
+              >
+                <Text style={styles.quickActionLabel}>Not Now</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         {!isLoading && !hasBlockingFeedError && feedMode === 'friends' && friendFeed.length === 0 ? (
           <View style={styles.infoCard}>

@@ -173,8 +173,8 @@ All deployment scripts are in `/scripts/`:
 
 - **Primary Admin**: 22228236+nicholaspung@users.noreply.github.com
 - **Repository**: https://github.com/nicholaspung/food-tracker-app
-- **Live App**: https://trackyourfoods.com
-- **Admin Panel**: https://trackyourfoods.com/_/
+- **Live App**: https://yummyrecs.com
+- **Admin Panel**: https://yummyrecs.com/_/
 
 ---
 

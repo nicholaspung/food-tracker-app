@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document outlines the implementation plan for adding a subscription-based monetization model to the food tracker app. The model balances user retention with revenue generation through a generous 6-month trial and thoughtful feature limitations for free users.
+This document outlines the implementation plan for adding a subscription-based monetization model to the Yummy Recs app. The model balances user retention with revenue generation through a generous 6-month trial and thoughtful feature limitations for free users.
 
 **Subscription Model:**
 - **Trial Period**: 6 months full access for all new users
@@ -276,7 +276,7 @@ Creates Stripe checkout session for subscription purchase.
 // Request
 {
   "priceId": "price_xxx", // Stripe price ID
-  "returnUrl": "https://app.foodtracker.com/settings"
+  "returnUrl": "https://app.yummyrecs.com/settings"
 }
 
 // Response
@@ -1003,8 +1003,8 @@ These are suggestions for features to gate behind the premium tier to increase v
 
 **Product IDs:**
 ```
-com.foodtracker.subscription.monthly
-com.foodtracker.subscription.annual
+com.yummyrecs.subscription.monthly
+com.yummyrecs.subscription.annual
 ```
 
 **Tauri Plugin:**

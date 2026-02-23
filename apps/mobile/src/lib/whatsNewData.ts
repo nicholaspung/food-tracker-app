@@ -10,6 +10,30 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.8',
+    date: '2026-02-22',
+    title: 'Auto-Friend on Sign-Up & Smarter Photo Processing',
+    summary:
+      'New users are now automatically prompted to add the person who invited them as a friend. In Photo Processing, restaurants are ranked by proximity to where your photo was taken, and a new button lets you fill in the date straight from photo metadata.',
+    features: [
+      'Auto-friend suggestion: after signing up with an invite code, a prompt on your home screen lets you add your inviter as a friend with one tap.',
+      'Invite via link: invite codes can be shared as deep links that open the app directly to sign-up with the code pre-filled.',
+      'Proximity-ranked restaurants in Photo Processing: the restaurant list is sorted by distance from your photo\u2019s GPS location.',
+      'Use Photo Date button: one tap fills in the visit or quick-track date from your photo\u2019s metadata.',
+      'Location metadata hint: a notice confirms when GPS data from your photo is being used to rank restaurants.',
+    ],
+    improvements: [
+      'First onboarding card now shows the Yummy Recs brand logo.',
+      'Invite code sharing includes a deep link so recipients can tap to open sign-up directly.',
+      'Locked invite codes are highlighted in amber on the Profile screen.',
+      'Sign-up now checks that your password is at least 8 characters before submitting.',
+      'Invite codes are now case-insensitive.',
+    ],
+    fixes: [
+      'Fixed new users not receiving the default \u2018friends\u2019 visibility setting on sign-up.',
+    ],
+  },
+  {
     version: '0.7.7',
     date: '2026-02-22',
     title: 'Subscription Management & Redesigned Auth Flow',

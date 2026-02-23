@@ -1,6 +1,6 @@
 # Performance Optimization Guide
 
-This guide covers performance best practices for the food tracker application.
+This guide covers performance best practices for the Yummy Recs application.
 
 ## React Performance Patterns
 

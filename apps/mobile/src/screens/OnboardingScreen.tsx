@@ -1,11 +1,12 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { ComponentProps } from 'react';
 
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { AuthTopBar, FormScaffold } from '../components/shared';
+import { BRAND_LOGO } from '../lib/branding';
 import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
 import { Button, Card, Screen, Text } from '../ui';
@@ -18,7 +19,8 @@ interface OnboardingCardConfig {
   id: 'track' | 'offline' | 'friends';
   title: string;
   description: string;
-  heroIcon: IoniconName;
+  heroIcon?: IoniconName;
+  heroLogo?: boolean;
   badges: {
     icon: IoniconName;
     tone: BadgeTone;
@@ -31,7 +33,7 @@ const ONBOARDING_CARDS: OnboardingCardConfig[] = [
     id: 'track',
     title: 'Track Meals. Rate Smarter.',
     description: 'Keep your food records organized, synced, and ready whenever you need them.',
-    heroIcon: 'restaurant-outline',
+    heroLogo: true,
     badges: [
       { icon: 'compass-outline', position: 'topLeft', tone: 'info' },
       { icon: 'people-outline', position: 'topRight', tone: 'success' },
@@ -145,6 +147,10 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
       height: 84,
       justifyContent: 'center',
       width: 84,
+    },
+    heroLogo: {
+      height: 52,
+      width: 52,
     },
     heroTitle: {
       textAlign: 'center',
@@ -270,7 +276,11 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
                       );
                     })}
                     <View style={styles.heroIconFrame}>
-                      <Ionicons color={theme.colors.text.brand} name={card.heroIcon} size={40} />
+                      {card.heroLogo ? (
+                        <Image resizeMode="contain" source={BRAND_LOGO} style={styles.heroLogo} />
+                      ) : (
+                        <Ionicons color={theme.colors.text.brand} name={card.heroIcon ?? 'restaurant-outline'} size={40} />
+                      )}
                     </View>
                   </View>
 

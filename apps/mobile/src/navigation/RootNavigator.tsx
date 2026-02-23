@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
-import { DefaultTheme, NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
+import {
+  DefaultTheme,
+  NavigationContainer,
+  type LinkingOptions,
+  useNavigationContainerRef,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -63,7 +68,12 @@ export type RootStackParamList = {
         email?: string;
       }
     | undefined;
-  SignUp: undefined;
+  SignUp:
+    | {
+        inviteCode?: string;
+        code?: string;
+      }
+    | undefined;
   ForgotPassword: undefined;
   ResetPassword:
     | {
@@ -153,6 +163,26 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const TAB_BAR_BASE_HEIGHT = 56;
+const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
+  prefixes: [
+    'yummyrecs://',
+    'https://yummyrecs.com',
+    'https://www.yummyrecs.com',
+    'https://beta.yummyrecs.com',
+  ],
+  config: {
+    screens: {
+      Onboarding: '',
+      Login: 'login',
+      SignUp: 'signup',
+      ForgotPassword: 'forgot-password',
+      ResetPassword: 'reset-password',
+      VerifyEmail: 'verify-email',
+      Home: 'home',
+      Friends: 'friends',
+    },
+  },
+};
 
 const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Home',
@@ -290,6 +320,7 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer
+      linking={AUTH_LINKING}
       onReady={updateCurrentRoute}
       onStateChange={updateCurrentRoute}
       ref={navigationRef}

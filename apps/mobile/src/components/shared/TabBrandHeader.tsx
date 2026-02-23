@@ -1,19 +1,15 @@
-import { Ionicons } from '@expo/vector-icons';
-import type { ComponentProps } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 
+import { APP_NAME, BRAND_LOGO } from '../../lib/branding';
 import { useTheme } from '../../theme';
 import { Text } from '../../ui';
-
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export interface TabBrandHeaderProps {
   title: string;
   subtitle?: string;
   showBrand?: boolean;
   brandLabel?: string;
-  brandIconName?: IoniconName;
   style?: StyleProp<ViewStyle>;
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
@@ -28,8 +24,7 @@ export function TabBrandHeader({
   title,
   subtitle,
   showBrand = true,
-  brandLabel = 'Yummy Recs',
-  brandIconName = 'restaurant-outline',
+  brandLabel = APP_NAME,
   style,
   titleStyle,
   subtitleStyle,
@@ -54,13 +49,14 @@ export function TabBrandHeader({
       gap: theme.spacing.xs,
     },
     logoBadge: {
-      alignItems: 'center',
-      borderColor: theme.colors.text.brand,
-      borderRadius: theme.radii.pill,
-      borderWidth: 2,
       height: 32,
-      justifyContent: 'center',
+      overflow: 'hidden',
+      borderRadius: theme.radii.md,
       width: 32,
+    },
+    logoImage: {
+      height: '100%',
+      width: '100%',
     },
     brandLabel: {
       color: theme.colors.text.secondary,
@@ -78,7 +74,7 @@ export function TabBrandHeader({
       {showBrand ? (
         <View style={styles.brandRow}>
           <View style={styles.logoBadge}>
-            <Ionicons color={theme.colors.text.brand} name={brandIconName} size={16} />
+            <Image resizeMode="contain" source={BRAND_LOGO} style={styles.logoImage} />
           </View>
           <Text style={[styles.brandLabel, brandLabelStyle]}>{brandLabel}</Text>
         </View>

@@ -46,7 +46,7 @@ func TestBillingSyncElevatesSubscriberOnVerifiedPurchase(t *testing.T) {
 			"purchases":[
 				{
 					"platform":"ios",
-					"productId":"foodtracker.subscription.monthly",
+					"productId":"yummyrecs.subscription.monthly",
 					"purchaseState":"purchased",
 					"purchaseToken":"sample-purchase-token",
 					"transactionId":"sample-transaction-id"

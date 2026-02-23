@@ -1,6 +1,6 @@
 # OAuth Authentication Setup Guide
 
-This guide provides step-by-step instructions for setting up Google and Facebook OAuth authentication in production for your Track Your Foods application.
+This guide provides step-by-step instructions for setting up Google and Facebook OAuth authentication in production for your Yummy Recs application.
 
 ## Table of Contents
 1. [Overview](#overview)

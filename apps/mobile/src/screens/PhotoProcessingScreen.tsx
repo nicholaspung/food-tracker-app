@@ -35,6 +35,7 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { calculateDistance, formatDistance } from '../lib/googlePlaces';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -51,12 +52,18 @@ type ProcessType = 'restaurant' | 'quickTrack';
 type GeneralPhotoStep = 'choice' | 'upload' | 'process' | 'review';
 type QuickTrackCategory = 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
 
+interface PhotoCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 interface DraftPhotoAsset {
   id: string;
   uri: string;
   name: string;
   mimeType: string;
   captureDate: Date | null;
+  captureCoordinates: PhotoCoordinates | null;
 }
 
 interface RestaurantPhotoForm {
@@ -186,6 +193,134 @@ function parseExifDate(rawValue: unknown): Date | null {
   }
 
   return parsed;
+}
+
+function parseExifRational(rawValue: unknown): number | null {
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    return rawValue;
+  }
+
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (trimmed.includes('/')) {
+      const [numeratorRaw, denominatorRaw] = trimmed.split('/');
+      const numerator = Number(numeratorRaw);
+      const denominator = Number(denominatorRaw);
+      if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator !== 0) {
+        return numerator / denominator;
+      }
+    }
+
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (rawValue && typeof rawValue === 'object') {
+    const maybeFraction = rawValue as { numerator?: unknown; denominator?: unknown };
+    if (typeof maybeFraction.numerator === 'number' && typeof maybeFraction.denominator === 'number') {
+      if (!Number.isFinite(maybeFraction.numerator) || !Number.isFinite(maybeFraction.denominator)) {
+        return null;
+      }
+
+      if (maybeFraction.denominator === 0) {
+        return null;
+      }
+
+      return maybeFraction.numerator / maybeFraction.denominator;
+    }
+  }
+
+  return null;
+}
+
+function parseExifCoordinate(rawValue: unknown): number | null {
+  const directValue = parseExifRational(rawValue);
+  if (directValue !== null) {
+    return directValue;
+  }
+
+  if (!Array.isArray(rawValue) || rawValue.length === 0) {
+    return null;
+  }
+
+  const degrees = parseExifRational(rawValue[0]);
+  if (degrees === null) {
+    return null;
+  }
+
+  const minutes = parseExifRational(rawValue[1]) ?? 0;
+  const seconds = parseExifRational(rawValue[2]) ?? 0;
+  const sign = degrees < 0 ? -1 : 1;
+  const absoluteDegrees = Math.abs(degrees) + minutes / 60 + seconds / 3600;
+  return sign * absoluteDegrees;
+}
+
+function applyCoordinateDirection(coordinate: number, rawDirection: unknown): number {
+  if (typeof rawDirection !== 'string') {
+    return coordinate;
+  }
+
+  const direction = rawDirection.trim().toUpperCase();
+  if (direction === 'S' || direction === 'W') {
+    return -Math.abs(coordinate);
+  }
+
+  if (direction === 'N' || direction === 'E') {
+    return Math.abs(coordinate);
+  }
+
+  return coordinate;
+}
+
+function extractCaptureCoordinates(asset: ImagePicker.ImagePickerAsset): PhotoCoordinates | null {
+  if (!asset.exif || typeof asset.exif !== 'object') {
+    return null;
+  }
+
+  const exif = asset.exif as Record<string, unknown>;
+  const latitudeRaw = parseExifCoordinate(exif.GPSLatitude ?? exif.latitude ?? exif.Latitude);
+  const longitudeRaw = parseExifCoordinate(exif.GPSLongitude ?? exif.longitude ?? exif.Longitude);
+
+  if (latitudeRaw === null || longitudeRaw === null) {
+    return null;
+  }
+
+  const latitude = applyCoordinateDirection(latitudeRaw, exif.GPSLatitudeRef ?? exif.LatitudeRef);
+  const longitude = applyCoordinateDirection(longitudeRaw, exif.GPSLongitudeRef ?? exif.LongitudeRef);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function formatCoordinatesForDisplay(coordinates: PhotoCoordinates): string {
+  const latitudeDirection = coordinates.latitude >= 0 ? 'N' : 'S';
+  const longitudeDirection = coordinates.longitude >= 0 ? 'E' : 'W';
+  const latitude = Math.abs(coordinates.latitude).toFixed(4);
+  const longitude = Math.abs(coordinates.longitude).toFixed(4);
+  return `${latitude}${latitudeDirection}, ${longitude}${longitudeDirection}`;
+}
+
+function buildRestaurantDescription(restaurant: RestaurantRecord, distanceMiles: number | null): string {
+  const parts = [restaurant.location, restaurant.cuisineType].filter(Boolean);
+  if (distanceMiles !== null) {
+    parts.push(`${formatDistance(distanceMiles)} away`);
+  }
+
+  return parts.join(' • ') || 'Restaurant';
 }
 
 function extractCaptureDate(asset: ImagePicker.ImagePickerAsset): Date | null {
@@ -783,6 +918,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [restaurantForms, setRestaurantForms] = useState<Record<string, RestaurantPhotoForm>>({});
   const [quickTrackForms, setQuickTrackForms] = useState<Record<string, QuickTrackPhotoForm>>({});
+  const [dateMetadataHintDismissedByPhotoId, setDateMetadataHintDismissedByPhotoId] = useState<
+    Record<string, boolean>
+  >({});
+  const [locationMetadataHintDismissedByPhotoId, setLocationMetadataHintDismissedByPhotoId] = useState<
+    Record<string, boolean>
+  >({});
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(
     resolveDefaultQuickTrackVisibility(),
   );
@@ -884,20 +1025,60 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
   const filteredRestaurants = useMemo(() => {
     const normalizedQuery = restaurantSearchQuery.trim().toLowerCase();
+    const photoCoordinates = currentPhoto?.captureCoordinates ?? null;
     const restaurants = restaurantsQuery.data ?? [];
-    if (!normalizedQuery) {
-      return restaurants.slice(0, 12);
-    }
+    const rankedRestaurants = restaurants.map((restaurant) => {
+      if (
+        !photoCoordinates ||
+        typeof restaurant.latitude !== 'number' ||
+        typeof restaurant.longitude !== 'number'
+      ) {
+        return { restaurant, distanceMiles: null };
+      }
 
-    return restaurants
-      .filter((restaurant) => {
+      return {
+        restaurant,
+        distanceMiles: calculateDistance(
+          photoCoordinates.latitude,
+          photoCoordinates.longitude,
+          restaurant.latitude,
+          restaurant.longitude,
+        ),
+      };
+    });
+
+    return rankedRestaurants
+      .filter(({ restaurant }) => {
+        if (!normalizedQuery) {
+          return true;
+        }
+
         const matchesName = restaurant.name.toLowerCase().includes(normalizedQuery);
         const matchesLocation = (restaurant.location ?? '').toLowerCase().includes(normalizedQuery);
         const matchesCuisine = (restaurant.cuisineType ?? '').toLowerCase().includes(normalizedQuery);
         return matchesName || matchesLocation || matchesCuisine;
       })
+      .sort((left, right) => {
+        if (left.distanceMiles === null && right.distanceMiles === null) {
+          return left.restaurant.name.localeCompare(right.restaurant.name);
+        }
+
+        if (left.distanceMiles === null) {
+          return 1;
+        }
+
+        if (right.distanceMiles === null) {
+          return -1;
+        }
+
+        if (left.distanceMiles === right.distanceMiles) {
+          return left.restaurant.name.localeCompare(right.restaurant.name);
+        }
+
+        return left.distanceMiles - right.distanceMiles;
+      })
       .slice(0, 12);
-  }, [restaurantSearchQuery, restaurantsQuery.data]);
+  }, [currentPhoto?.captureCoordinates, restaurantSearchQuery, restaurantsQuery.data]);
 
   const filteredMenuItems = useMemo(() => {
     const normalizedQuery = menuItemSearchQuery.trim().toLowerCase();
@@ -1020,6 +1201,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           name: asset.fileName?.trim() || buildDraftPhotoName(asset.uri),
           mimeType: asset.mimeType || inferImageMimeType(asset.uri),
           captureDate: extractCaptureDate(asset),
+          captureCoordinates: extractCaptureCoordinates(asset),
         });
         existingUris.add(asset.uri);
       });
@@ -1118,6 +1300,24 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       return next;
     });
     setQuickTrackForms((current) => {
+      if (!current[photoId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[photoId];
+      return next;
+    });
+    setDateMetadataHintDismissedByPhotoId((current) => {
+      if (!current[photoId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[photoId];
+      return next;
+    });
+    setLocationMetadataHintDismissedByPhotoId((current) => {
       if (!current[photoId]) {
         return current;
       }
@@ -1547,6 +1747,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.xs,
     },
+    metadataActionButton: {
+      alignSelf: 'flex-start',
+    },
     notesInput: {
       minHeight: 96,
       textAlignVertical: 'top',
@@ -1638,6 +1841,8 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setCurrentPhotoIndex(0);
               setRestaurantForms({});
               setQuickTrackForms({});
+              setDateMetadataHintDismissedByPhotoId({});
+              setLocationMetadataHintDismissedByPhotoId({});
               setErrorMessage(null);
             }}
           >
@@ -1666,6 +1871,8 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setCurrentPhotoIndex(0);
               setRestaurantForms({});
               setQuickTrackForms({});
+              setDateMetadataHintDismissedByPhotoId({});
+              setLocationMetadataHintDismissedByPhotoId({});
               setErrorMessage(null);
             }}
           >
@@ -1842,6 +2049,14 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     const captureDateLabel = currentPhoto.captureDate
       ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(currentPhoto.captureDate)
       : null;
+    const captureDateValue = currentPhoto.captureDate ? formatDateToLocalDateString(currentPhoto.captureDate) : null;
+    const captureCoordinatesLabel = currentPhoto.captureCoordinates
+      ? formatCoordinatesForDisplay(currentPhoto.captureCoordinates)
+      : null;
+    const showDateMetadataHint =
+      Boolean(captureDateValue) && !dateMetadataHintDismissedByPhotoId[currentPhoto.id];
+    const showLocationMetadataHint =
+      Boolean(captureCoordinatesLabel) && !locationMetadataHintDismissedByPhotoId[currentPhoto.id];
     const selectedRestaurant = (restaurantsQuery.data ?? []).find(
       (restaurant) => restaurant.id === currentRestaurantForm?.restaurantId,
     );
@@ -1906,9 +2121,28 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           <>
             <Card style={styles.sectionCard}>
               <Text variant="label">Restaurant</Text>
+              {showLocationMetadataHint ? (
+                <Text tone="info" variant="bodySm">
+                  Location data grabbed from image metadata: {captureCoordinatesLabel}. Nearby restaurants are shown
+                  first.
+                </Text>
+              ) : null}
               <Input
                 autoCapitalize="words"
-                onChangeText={setRestaurantSearchQuery}
+                onChangeText={(value) => {
+                  setRestaurantSearchQuery(value);
+                  if (currentPhoto.captureCoordinates) {
+                    setLocationMetadataHintDismissedByPhotoId((current) => {
+                      if (current[currentPhoto.id]) {
+                        return current;
+                      }
+                      return {
+                        ...current,
+                        [currentPhoto.id]: true,
+                      };
+                    });
+                  }
+                }}
                 placeholder="Search restaurants..."
                 value={restaurantSearchQuery}
               />
@@ -1921,12 +2155,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               {restaurantsQuery.isLoading ? <Text tone="secondary">Loading restaurants...</Text> : null}
               {restaurantsQuery.isError ? <Text tone="danger">Could not load restaurants.</Text> : null}
               <View style={styles.listSection}>
-                {filteredRestaurants.map((restaurant) => {
-                  const description = [restaurant.location, restaurant.cuisineType].filter(Boolean).join(' • ');
+                {filteredRestaurants.map(({ restaurant, distanceMiles }) => {
+                  const description = buildRestaurantDescription(restaurant, distanceMiles);
                   const isSelected = currentRestaurantForm?.restaurantId === restaurant.id;
                   return (
                     <ListItem
-                      description={description || 'Restaurant'}
+                      description={description}
                       key={restaurant.id}
                       onPress={() => {
                         updateCurrentRestaurantForm({
@@ -2036,10 +2270,43 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                 label="Date (YYYY-MM-DD)"
                 onChangeText={(value) => {
                   updateCurrentRestaurantForm({ date: value });
+                  if (captureDateValue && value !== captureDateValue) {
+                    setDateMetadataHintDismissedByPhotoId((current) => {
+                      if (current[currentPhoto.id]) {
+                        return current;
+                      }
+                      return {
+                        ...current,
+                        [currentPhoto.id]: true,
+                      };
+                    });
+                  }
                 }}
                 placeholder="YYYY-MM-DD"
                 value={currentRestaurantForm?.date ?? getTodayLocalDateString()}
               />
+              {showDateMetadataHint ? (
+                <>
+                  <Text tone="secondary" variant="bodySm">
+                    Date data grabbed from image metadata.
+                  </Text>
+                </>
+              ) : null}
+              {captureDateValue ? (
+                <Button
+                  label="Use Photo Date"
+                  onPress={() => {
+                    updateCurrentRestaurantForm({ date: captureDateValue });
+                    setDateMetadataHintDismissedByPhotoId((current) => ({
+                      ...current,
+                      [currentPhoto.id]: false,
+                    }));
+                    setErrorMessage(null);
+                  }}
+                  style={styles.metadataActionButton}
+                  variant="secondary"
+                />
+              ) : null}
               <Input
                 inputStyle={styles.notesInput}
                 label="Notes"
@@ -2116,10 +2383,43 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                 label="Date (YYYY-MM-DD)"
                 onChangeText={(value) => {
                   updateCurrentQuickTrackForm({ date: value });
+                  if (captureDateValue && value !== captureDateValue) {
+                    setDateMetadataHintDismissedByPhotoId((current) => {
+                      if (current[currentPhoto.id]) {
+                        return current;
+                      }
+                      return {
+                        ...current,
+                        [currentPhoto.id]: true,
+                      };
+                    });
+                  }
                 }}
                 placeholder="YYYY-MM-DD"
                 value={currentQuickTrackForm?.date ?? getTodayLocalDateString()}
               />
+              {showDateMetadataHint ? (
+                <>
+                  <Text tone="secondary" variant="bodySm">
+                    Date data grabbed from image metadata.
+                  </Text>
+                </>
+              ) : null}
+              {captureDateValue ? (
+                <Button
+                  label="Use Photo Date"
+                  onPress={() => {
+                    updateCurrentQuickTrackForm({ date: captureDateValue });
+                    setDateMetadataHintDismissedByPhotoId((current) => ({
+                      ...current,
+                      [currentPhoto.id]: false,
+                    }));
+                    setErrorMessage(null);
+                  }}
+                  style={styles.metadataActionButton}
+                  variant="secondary"
+                />
+              ) : null}
               <Input
                 label="Location (Optional)"
                 onChangeText={(value) => {

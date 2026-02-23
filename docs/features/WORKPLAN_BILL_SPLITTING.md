@@ -838,6 +838,6 @@ When you're ready to start building this feature, we'll follow this sequence:
 
 ## 📚 Reference
 
-This workplan is based on the conversation from 2025-10-31 where we designed a standalone bill splitting feature for the food tracker app.
+This workplan is based on the conversation from 2025-10-31 where we designed a standalone bill splitting feature for the Yummy Recs app.
 
 **Key Design Decision**: Standalone feature (Option B) rather than integrated with visits, to maximize flexibility and reach.

@@ -15,7 +15,7 @@ import (
 func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 	// Custom API endpoint: Get inviter info from invite code (public endpoint for signup)
 	se.Router.GET("/api/invite-codes/inviter/{code}", func(e *core.RequestEvent) error {
-		inviteCode := e.Request.PathValue("code")
+		inviteCode := strings.TrimSpace(e.Request.PathValue("code"))
 		if inviteCode == "" {
 			return apis.NewBadRequestError("invite code is required", nil)
 		}
@@ -23,7 +23,7 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 		// Find the invite code
 		inviteCodeRecord, err := app.FindFirstRecordByFilter(
 			"invite_codes",
-			"code = {:code}",
+			"LOWER(code) = LOWER({:code})",
 			map[string]any{"code": inviteCode},
 		)
 

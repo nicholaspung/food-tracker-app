@@ -357,6 +357,8 @@
 					"FB_SONARKIT_ENABLED=1",
 				);
 				INFOPLIST_FILE = FoodTrackerMobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Yummy Recs";
+				INFOPLIST_KEY_CFBundleName = "Yummy Recs";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -369,7 +371,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.anonymous.food-tracker-mobile";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anonymous.yummy-recs-mobile";
 				PRODUCT_NAME = FoodTrackerMobile;
 				SWIFT_OBJC_BRIDGING_HEADER = "FoodTrackerMobile/FoodTrackerMobile-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -388,6 +390,8 @@
 				CODE_SIGN_ENTITLEMENTS = FoodTrackerMobile/FoodTrackerMobile.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = FoodTrackerMobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Yummy Recs";
+				INFOPLIST_KEY_CFBundleName = "Yummy Recs";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -400,7 +404,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.anonymous.food-tracker-mobile";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anonymous.yummy-recs-mobile";
 				PRODUCT_NAME = FoodTrackerMobile;
 				SWIFT_OBJC_BRIDGING_HEADER = "FoodTrackerMobile/FoodTrackerMobile-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

@@ -1,11 +1,12 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
 
 import { AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
-import { createCollectionRecord } from '../features';
+import { createCollectionRecord, sendApiRequest } from '../features';
 import { getErrorMessage } from '../lib/errorUtils';
+import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
@@ -14,8 +15,19 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 
-export function SignUpScreen({ navigation }: SignUpScreenProps) {
+interface InviteCodeInviterResponse {
+  hasInviter?: boolean;
+  inviter?: {
+    id?: string;
+    email?: string;
+    name?: string;
+  };
+}
+
+export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const theme = useTheme();
+  const prefilledInviteCode =
+    route.params?.inviteCode?.trim() ?? route.params?.code?.trim() ?? '';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -23,6 +35,14 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!prefilledInviteCode) {
+      return;
+    }
+
+    setInviteCode(prefilledInviteCode);
+  }, [prefilledInviteCode]);
 
   const styles = StyleSheet.create({
     formContent: {
@@ -59,7 +79,7 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
   const handleSignUp = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedName = name.trim();
-    const trimmedInviteCode = inviteCode.trim().toUpperCase();
+    const trimmedInviteCode = inviteCode.trim();
 
     if (!trimmedName || !trimmedEmail || !trimmedInviteCode || !password) {
       trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
@@ -79,6 +99,15 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
       return;
     }
 
+    if (password.length < 8) {
+      trackObservabilityEvent('AUTH_SIGNUP_VALIDATION_FAILED', {
+        source: 'SignUpScreen',
+        reason: 'password_too_short',
+      });
+      setErrorMessage('Password must be at least 8 characters long.');
+      return;
+    }
+
     setErrorMessage(null);
     setIsSubmitting(true);
     trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_STARTED', {
@@ -90,17 +119,54 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
     });
 
     try {
+      let pendingFriendSuggestion: PendingFriendSuggestion | null = null;
+
+      try {
+        const inviteLookup = await sendApiRequest<InviteCodeInviterResponse>(
+          `/api/invite-codes/inviter/${encodeURIComponent(trimmedInviteCode)}`,
+          { method: 'GET' },
+        );
+
+        if (
+          inviteLookup?.hasInviter &&
+          typeof inviteLookup.inviter?.id === 'string' &&
+          inviteLookup.inviter.id.trim().length > 0 &&
+          typeof inviteLookup.inviter?.email === 'string' &&
+          inviteLookup.inviter.email.trim().length > 0
+        ) {
+          pendingFriendSuggestion = {
+            inviterId: inviteLookup.inviter.id,
+            inviterEmail: inviteLookup.inviter.email,
+            inviterName: inviteLookup.inviter.name,
+            newUserEmail: trimmedEmail,
+          };
+        }
+      } catch (inviteLookupError) {
+        trackObservabilityEvent('AUTH_SIGNUP_INVITER_LOOKUP_FAILED', {
+          source: 'SignUpScreen',
+          errorMessage:
+            inviteLookupError instanceof Error ? inviteLookupError.message : String(inviteLookupError),
+        });
+      }
+
       await createCollectionRecord('users', {
         name: trimmedName,
         email: trimmedEmail,
         inviteCode: trimmedInviteCode,
+        defaultVisitVisibility: 'friends',
+        defaultRestaurantVisibility: 'friends',
         password,
         passwordConfirm,
         username: `${trimmedEmail.split('@')[0]}_${Date.now().toString(36)}`,
       });
 
+      if (pendingFriendSuggestion) {
+        await savePendingFriendSuggestion(pendingFriendSuggestion);
+      }
+
       trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_SUCCEEDED', {
         source: 'SignUpScreen',
+        hasInviter: Boolean(pendingFriendSuggestion),
       });
       navigation.navigate('VerifyEmail', {
         email: trimmedEmail,
@@ -176,7 +242,7 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
             value={email}
           />
           <Input
-            autoCapitalize="characters"
+            autoCapitalize="none"
             autoCorrect={false}
             label="Invite Code"
             onChangeText={setInviteCode}
@@ -205,7 +271,15 @@ export function SignUpScreen({ navigation }: SignUpScreenProps) {
           <PageErrorToast errorMessage={errorMessage} title="Could not create account" />
 
           <Button
-            disabled={!name.trim() || !email.trim() || !inviteCode.trim() || !password || !passwordConfirm}
+            disabled={
+              !name.trim() ||
+              !email.trim() ||
+              !inviteCode.trim() ||
+              !password ||
+              !passwordConfirm ||
+              password.length < 8 ||
+              passwordConfirm.length < 8
+            }
             label="Create Account"
             loading={isSubmitting}
             onPress={() => {

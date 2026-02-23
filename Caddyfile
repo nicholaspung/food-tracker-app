@@ -8,12 +8,12 @@
 }
 
 # WWW to non-WWW redirect - Production
-www.trackyourfoods.com {
-    redir https://trackyourfoods.com{uri} permanent
+www.yummyrecs.com {
+    redir https://yummyrecs.com{uri} permanent
 }
 
 # Production Environment
-trackyourfoods.com {
+yummyrecs.com {
     # Enhanced security headers
     header {
         # HSTS - Force HTTPS for 1 year
@@ -133,7 +133,7 @@ trackyourfoods.com {
 }
 
 # Beta Environment
-beta.trackyourfoods.com {
+beta.yummyrecs.com {
     # Enhanced security headers
     header {
         # HSTS - Force HTTPS for 1 year

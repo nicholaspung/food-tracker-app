@@ -1,6 +1,6 @@
 # Component Organization Guide
 
-This guide defines the structure and organization of components in the food tracker application.
+This guide defines the structure and organization of components in the Yummy Recs application.
 
 ## Directory Structure
 

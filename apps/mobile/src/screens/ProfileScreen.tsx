@@ -56,6 +56,23 @@ interface InviteCode {
   locked?: boolean;
 }
 
+const INVITE_SIGNUP_DEEP_LINK_PREFIX = 'yummyrecs://signup?code=';
+
+function buildInviteShareMessage(code: string): string {
+  const signupUrl = `${INVITE_SIGNUP_DEEP_LINK_PREFIX}${encodeURIComponent(code)}`;
+
+  return [
+    "Hey! You're invited to join our app!",
+    '',
+    'Use this link to sign up:',
+    signupUrl,
+    '',
+    `Your invite code: ${code}`,
+    '',
+    'Looking forward to seeing you there!',
+  ].join('\n');
+}
+
 export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -229,7 +246,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
     try {
       const shareResult = await Share.share({
-        message: `Use invite code ${code} to join Yummy Recs.`,
+        message: buildInviteShareMessage(code),
       });
 
       if (shareResult.action !== Share.sharedAction) {
@@ -492,6 +509,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       gap: theme.spacing.xs,
       padding: theme.spacing.sm,
     },
+    inviteCodeCardLocked: {
+      backgroundColor: theme.colors.status.warningBg,
+      borderColor: theme.colors.border.warning,
+    },
     inviteCodeText: {
       fontSize: 16,
       fontWeight: "700",
@@ -502,6 +523,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       color: theme.colors.text.muted,
       fontSize: 12,
       lineHeight: 16,
+    },
+    inviteCodeMetaLocked: {
+      color: theme.colors.text.warning,
     },
     dangerPanel: {
       backgroundColor: theme.colors.status.dangerBg,
@@ -820,11 +844,22 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                       <Text tone="muted">No invite codes available.</Text>
                     ) : (
                       inviteCodes.map((inviteCode) => (
-                        <View key={inviteCode.id} style={styles.inviteCodeCard}>
+                        <View
+                          key={inviteCode.id}
+                          style={[
+                            styles.inviteCodeCard,
+                            inviteCode.locked ? styles.inviteCodeCardLocked : null,
+                          ]}
+                        >
                           <Text style={styles.inviteCodeText}>
                             {inviteCode.code}
                           </Text>
-                          <Text style={styles.inviteCodeMeta}>
+                          <Text
+                            style={[
+                              styles.inviteCodeMeta,
+                              inviteCode.locked ? styles.inviteCodeMetaLocked : null,
+                            ]}
+                          >
                             {inviteCode.locked
                               ? "Copied recently"
                               : "Available"}

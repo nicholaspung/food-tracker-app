@@ -17,8 +17,8 @@ APP_DIR="/opt/food-tracker-app"
 LOG_FILE="/tmp/food-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
 LOCK_FILE="/tmp/food-tracker-post-setup.lock"
 
-# Default values (pre-configured for trackyourfoods.com)
-DOMAIN="${DOMAIN:-trackyourfoods.com}"
+# Default values (pre-configured for yummyrecs.com)
+DOMAIN="${DOMAIN:-yummyrecs.com}"
 EMAIL="${EMAIL:-22228236+nicholaspung@users.noreply.github.com}"
 
 #######################
@@ -313,7 +313,7 @@ create_env_files() {
 # Frontend Environment Variables
 
 # API Configuration - Production
-VITE_API_URL=https://$DOMAIN/api
+VITE_API_URL=https://$DOMAIN
 EOF
 ) || true
 

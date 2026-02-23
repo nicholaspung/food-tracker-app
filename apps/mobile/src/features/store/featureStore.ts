@@ -2877,6 +2877,31 @@ export async function inviteFriend(input: InviteFriendInput): Promise<FriendReco
   });
 }
 
+export async function createFriendSuggestionAcceptance(input: { inviterId: string }): Promise<void> {
+  return trackFeatureMutation('friend.suggestion.accept', async () => {
+    const currentUserId = getAuthenticatedUserId();
+    const inviterId = input.inviterId.trim();
+
+    if (!inviterId || inviterId === currentUserId) {
+      return;
+    }
+
+    const existing = await pb.collection('friendships').getList<FriendshipRecord>(1, 1, {
+      filter: `(user = "${currentUserId}" && friend = "${inviterId}") || (user = "${inviterId}" && friend = "${currentUserId}")`,
+    });
+
+    if (existing.totalItems > 0) {
+      return;
+    }
+
+    await pb.collection('friendships').create({
+      user: inviterId,
+      friend: currentUserId,
+      status: 'accepted',
+    });
+  });
+}
+
 export async function markFriendInviteAccepted(friendId: string): Promise<FriendRecord> {
   return trackFeatureMutation('friend.accept', async () => {
     const currentUserId = getAuthenticatedUserId();

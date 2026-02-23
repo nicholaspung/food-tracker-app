@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	defaultBillingMonthlyProductID = "foodtracker.subscription.monthly"
-	defaultBillingYearlyProductID  = "foodtracker.subscription.yearly"
+	defaultBillingMonthlyProductID = "yummyrecs.subscription.monthly"
+	defaultBillingYearlyProductID  = "yummyrecs.subscription.yearly"
 )
 
 type billingSyncRequest struct {

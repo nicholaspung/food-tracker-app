@@ -99,7 +99,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
 
   const myFriendCode = useMemo(() => generateFriendCode(user?.id), [user?.id]);
   const myFriendQrPayload = useMemo(
-    () => `foodtracker://friends/add?friendCode=${encodeURIComponent(myFriendCode)}`,
+    () => `yummyrecs://friends/add?friendCode=${encodeURIComponent(myFriendCode)}`,
     [myFriendCode],
   );
 

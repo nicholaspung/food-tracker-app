@@ -481,7 +481,7 @@ Looking forward to seeing you there!`;
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <img
-                src="/logo-speech-bubble-plate.svg"
+                src="/brand-logo.png"
                 alt="Yummy Recs Logo"
                 className="w-10 h-10"
               />

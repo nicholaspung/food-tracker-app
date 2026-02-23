@@ -30,10 +30,10 @@ export function loadMobileEnv(source?: EnvSource): MobileEnv {
     posthogHost: resolvedSource.EXPO_PUBLIC_POSTHOG_HOST ?? `${apiBaseUrl}/api/visit-insights`,
     iapMonthlyProductId:
       resolvedSource.EXPO_PUBLIC_IAP_MONTHLY_PRODUCT_ID ??
-      'foodtracker.subscription.monthly',
+      'yummyrecs.subscription.monthly',
     iapYearlyProductId:
       resolvedSource.EXPO_PUBLIC_IAP_YEARLY_PRODUCT_ID ??
-      'foodtracker.subscription.yearly',
+      'yummyrecs.subscription.yearly',
     androidPackageName: resolvedSource.EXPO_PUBLIC_ANDROID_PACKAGE_NAME ?? '',
   };
 }

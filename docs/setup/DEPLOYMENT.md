@@ -53,13 +53,13 @@ Before you start, you need:
 4. Verify DNS propagation:
    ```bash
    # Check main domain
-   dig trackyourfoods.com
+   dig yummyrecs.com
 
    # Check www redirect
-   dig www.trackyourfoods.com
+   dig www.yummyrecs.com
 
    # Check beta subdomain (if you added it)
-   dig beta.trackyourfoods.com
+   dig beta.yummyrecs.com
    ```
 
    You should see your VPS IP address in the ANSWER section of each response.
@@ -194,7 +194,7 @@ This will automatically:
 - ✅ Deploy frontend to `/opt/food-tracker-app/frontend_build`
 
 **When prompted:**
-- Press `Y` to use defaults (Domain: `trackyourfoods.com`, Email: `22228236+nicholaspung@users.noreply.github.com`)
+- Press `Y` to use defaults (Domain: `yummyrecs.com`, Email: `22228236+nicholaspung@users.noreply.github.com`)
 
 **What to expect:**
 - The script takes 5-10 minutes to complete
@@ -215,7 +215,7 @@ pocketbase  | http://0.0.0.0:8090/_/#/pbinstal/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXV
 
 **Copy the token part** (everything after `/_/#/pbinstal/`) and visit:
 ```
-https://trackyourfoods.com/_/#/pbinstal/YOUR_TOKEN_HERE
+https://yummyrecs.com/_/#/pbinstal/YOUR_TOKEN_HERE
 ```
 
 Replace `YOUR_TOKEN_HERE` with the actual token from your logs.
@@ -307,8 +307,8 @@ Enable built-in PocketBase security features via the admin UI.
 **Enable Multi-Factor Authentication (MFA):**
 
 1. Visit your PocketBase admin panel:
-   - Production: `https://trackyourfoods.com/_/`
-   - Beta: `https://beta.trackyourfoods.com/_/`
+   - Production: `https://yummyrecs.com/_/`
+   - Beta: `https://beta.yummyrecs.com/_/`
 
 2. Navigate to **Settings** (gear icon) → **Admins**
 
@@ -351,7 +351,7 @@ Enable built-in PocketBase security features via the admin UI.
 
 **⚠️ Advanced users only!** This encrypts your database files at rest using LUKS.
 
-**Domain:** This guide uses `trackyourfoods.com` as an example. Replace with your actual domain throughout the setup.
+**Domain:** This guide uses `yummyrecs.com` as an example. Replace with your actual domain throughout the setup.
 
 **When to use encryption:**
 - You store sensitive PII (Personally Identifiable Information)
@@ -400,16 +400,16 @@ The script will:
 Test your app:
 ```bash
 # Check if site is live
-curl https://trackyourfoods.com
+curl https://yummyrecs.com
 
 # Check API
-curl https://trackyourfoods.com/api/health
+curl https://yummyrecs.com/api/health
 
 # Check PocketBase admin
-curl https://trackyourfoods.com/_/
+curl https://yummyrecs.com/_/
 ```
 
-Visit in browser: `https://trackyourfoods.com`
+Visit in browser: `https://yummyrecs.com`
 
 ## Future Deployments
 
@@ -455,12 +455,12 @@ TTL: 300
 
 Wait 5-10 minutes for DNS propagation. Verify with:
 ```bash
-dig trackyourfoods.com
-dig beta.trackyourfoods.com
-dig www.trackyourfoods.com
+dig yummyrecs.com
+dig beta.yummyrecs.com
+dig www.yummyrecs.com
 ```
 
-**Note:** The Caddyfile is configured to redirect `www.trackyourfoods.com` to `trackyourfoods.com` with a 301 permanent redirect.
+**Note:** The Caddyfile is configured to redirect `www.yummyrecs.com` to `yummyrecs.com` with a 301 permanent redirect.
 
 ### Step 2: Setup VPS for Both Environments
 
@@ -505,7 +505,7 @@ bash scripts/deploy.sh beta
 Then get the installation token and visit the URL to create the beta admin account:
 ```bash
 docker compose -f docker-compose.beta.yml logs pocketbase_beta | grep "pbinstal"
-# Visit: https://beta.trackyourfoods.com/_/#/pbinstal/YOUR_TOKEN
+# Visit: https://beta.yummyrecs.com/_/#/pbinstal/YOUR_TOKEN
 ```
 
 **Troubleshooting: Production asking for admin again?**
@@ -545,8 +545,8 @@ sudo systemctl status caddy
 
 Verify both domains work:
 ```bash
-curl -I https://trackyourfoods.com
-curl -I https://beta.trackyourfoods.com
+curl -I https://yummyrecs.com
+curl -I https://beta.yummyrecs.com
 ```
 
 ### Step 4: Configure GitHub Environments
@@ -566,7 +566,7 @@ curl -I https://beta.trackyourfoods.com
 3. Click **"Configure environment"** (optional - you can just save immediately)
 4. No other configuration needed - click **"Save"** or just navigate away
 
-**Note:** The environment URLs (`https://beta.trackyourfoods.com` and `https://trackyourfoods.com`) are configured in the workflow file (`.github/workflows/deploy.yml`), not in the GitHub UI. They will automatically appear in the GitHub Actions UI after the first deployment.
+**Note:** The environment URLs (`https://beta.yummyrecs.com` and `https://yummyrecs.com`) are configured in the workflow file (`.github/workflows/deploy.yml`), not in the GitHub UI. They will automatically appear in the GitHub Actions UI after the first deployment.
 
 **Note about protection rules:**
 - **GitHub Free plan (private repos)**: "Required reviewers" is not available. Production deployments use manual workflow triggers instead (see workflow instructions below).
@@ -712,7 +712,7 @@ For `VPS_SSH_KEY`, paste the entire private key including the header and footer 
 **Automatic Beta Deployment (on push to `main`):**
 
 1. **Tests run locally** - E2E tests run via pre-push git hook before code is pushed
-2. **Auto-deploy to Beta** - On push to main, automatically deploys to `beta.trackyourfoods.com`
+2. **Auto-deploy to Beta** - On push to main, automatically deploys to `beta.yummyrecs.com`
 3. **Health check** - Verifies the beta deployment is accessible
 
 **Manual Production Deployment (workflow_dispatch):**
@@ -726,7 +726,7 @@ After testing your changes on beta, deploy to production:
 1. Make your code changes locally
 2. Tests run automatically via pre-push hook when you `git push`
 3. If tests pass, code is pushed to `main` and automatically deploys to beta
-4. Test the beta site: `https://beta.trackyourfoods.com`
+4. Test the beta site: `https://beta.yummyrecs.com`
 5. Once satisfied, go to **Actions** tab in GitHub
 6. Click on **"Deploy to Beta/Production"** workflow
 7. Click the **"Run workflow"** dropdown button (top right)
@@ -735,7 +735,7 @@ After testing your changes on beta, deploy to production:
 10. Click **"Run workflow"**
 
 The workflow will:
-- Deploy to production at `https://trackyourfoods.com`
+- Deploy to production at `https://yummyrecs.com`
 - Run health checks
 - Show deployment summary
 
@@ -761,7 +761,7 @@ bash scripts/deploy.sh production
 
 | Feature | Beta | Production |
 |---------|------|------------|
-| Domain | `beta.trackyourfoods.com` | `trackyourfoods.com` |
+| Domain | `beta.yummyrecs.com` | `yummyrecs.com` |
 | PocketBase Port | 8091 | 8090 |
 | Data Directory | `backend/pb_data_beta` | `backend/pb_data_production` |
 | Frontend Build | `frontend_build_beta` | `frontend_build` |
@@ -799,7 +799,7 @@ curl http://localhost:8090/api/health
 **Beta not accessible:**
 ```bash
 # Check DNS
-dig beta.trackyourfoods.com
+dig beta.yummyrecs.com
 
 # Check Caddy config
 sudo caddy validate --config /etc/caddy/Caddyfile
@@ -918,17 +918,17 @@ All deployment scripts are **fully compatible** with Ubuntu 25.04 x64. The setup
 The Caddyfile is pre-configured to redirect www URLs to non-www with a 301 permanent redirect:
 
 **Redirect:**
-- `www.trackyourfoods.com` → `trackyourfoods.com`
+- `www.yummyrecs.com` → `yummyrecs.com`
 
 **Testing the redirect:**
 ```bash
-curl -I https://www.trackyourfoods.com
-# Should show: Location: https://trackyourfoods.com/
+curl -I https://www.yummyrecs.com
+# Should show: Location: https://yummyrecs.com/
 ```
 
 The redirect preserves the full URI path, so:
-- `www.trackyourfoods.com/profile` → `trackyourfoods.com/profile`
-- `www.trackyourfoods.com/api/health` → `trackyourfoods.com/api/health`
+- `www.yummyrecs.com/profile` → `yummyrecs.com/profile`
+- `www.yummyrecs.com/api/health` → `yummyrecs.com/api/health`
 
 ## Costs
 

@@ -1,22 +1,29 @@
 {
   "expo": {
-    "name": "Food Tracker Mobile",
-    "slug": "food-tracker-mobile",
+    "name": "Yummy Recs",
+    "slug": "yummy-recs-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "foodtracker",
+    "scheme": "yummyrecs",
     "userInterfaceStyle": "light",
     "jsEngine": "hermes",
+    "icon": "./assets/brand-logo.png",
     "ios": {
-      "bundleIdentifier": "com.anonymous.food-tracker-mobile",
+      "bundleIdentifier": "com.anonymous.yummy-recs-mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "Allow Food Tracker Mobile to scan friend QR codes.",
-        "NSLocationWhenInUseUsageDescription": "Allow Food Tracker Mobile to use your GPS location for notes.",
-        "NSPhotoLibraryUsageDescription": "Allow Food Tracker Mobile to select menu photos from your library.",
-        "NSPhotoLibraryAddUsageDescription": "Allow Food Tracker Mobile to save processed menu photos when needed."
+        "NSCameraUsageDescription": "Allow Yummy Recs to scan friend QR codes.",
+        "NSLocationWhenInUseUsageDescription": "Allow Yummy Recs to use your GPS location for notes.",
+        "NSPhotoLibraryUsageDescription": "Allow Yummy Recs to select menu photos from your library.",
+        "NSPhotoLibraryAddUsageDescription": "Allow Yummy Recs to save processed menu photos when needed.",
+        "CFBundleDisplayName": "Yummy Recs",
+        "CFBundleName": "Yummy Recs"
       }
     },
     "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/brand-logo.png",
+        "backgroundColor": "#F4EFEA"
+      },
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -30,20 +37,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Food Tracker Mobile to scan friend QR codes."
+          "cameraPermission": "Allow Yummy Recs to scan friend QR codes."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Food Tracker Mobile to use your GPS location for notes."
+          "locationWhenInUsePermission": "Allow Yummy Recs to use your GPS location for notes."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Food Tracker Mobile to select menu photos from your library.",
-          "cameraPermission": "Allow Food Tracker Mobile to capture menu photos."
+          "photosPermission": "Allow Yummy Recs to select menu photos from your library.",
+          "cameraPermission": "Allow Yummy Recs to capture menu photos."
         }
       ],
       "expo-iap",

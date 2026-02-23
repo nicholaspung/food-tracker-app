@@ -60,7 +60,7 @@ export default function OnboardingPage({ onNavigateToSignUp, onNavigateToLogin }
       {isFirstScreen && (
         <div className="pt-8 pb-4 flex justify-center items-center gap-3">
           <img
-            src="/logo-speech-bubble-plate.svg"
+            src="/brand-logo.png"
             alt="Yummy Recs Logo"
             className="w-16 h-16"
           />

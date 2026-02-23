@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a mobile food tracker application built with:
+This is a mobile Yummy Recs application built with:
 - **Frontend**: Tauri v2 desktop app with React 19, TypeScript, and Vite
 - **PWA Support**: Progressive Web App capabilities via vite-plugin-pwa (works on Android & iOS browsers)
 - **Backend**: Go-based PocketBase server (v0.30.1) running on port 8090

@@ -124,8 +124,16 @@ func main() {
 
 	// Hook to validate invite code before user creation
 	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
-		// Try to get invite code from the HTTP request if this is called from an API request
-		// We'll extract it from the form data during API calls
+		// Ensure required visibility defaults are always present for new users.
+		// Some clients may omit these fields, but product default is "friends".
+		if strings.TrimSpace(e.Record.GetString("defaultVisitVisibility")) == "" {
+			e.Record.Set("defaultVisitVisibility", "friends")
+		}
+
+		if strings.TrimSpace(e.Record.GetString("defaultRestaurantVisibility")) == "" {
+			e.Record.Set("defaultRestaurantVisibility", "friends")
+		}
+
 		return e.Next()
 	})
 
@@ -183,6 +191,7 @@ func main() {
 
 		// Get invite code from JSON
 		inviteCode, ok := requestData["inviteCode"].(string)
+		inviteCode = strings.TrimSpace(inviteCode)
 		if !ok || inviteCode == "" {
 			return apis.NewBadRequestError("invite code is required", nil)
 		}
@@ -190,7 +199,7 @@ func main() {
 		// Find the invite code in the database
 		inviteCodeRecord, err := app.FindFirstRecordByFilter(
 			"invite_codes",
-			"code = {:code} && used = false",
+			"LOWER(code) = LOWER({:code}) && used = false",
 			map[string]any{"code": inviteCode},
 		)
 
@@ -256,7 +265,7 @@ func main() {
 		if userEmail != "" {
 			pendingInviteCodes[userEmail] = inviteCodeInfo{
 				recordId: inviteCodeRecord.Id,
-				code:     inviteCode,
+				code:     inviteCodeRecord.GetString("code"),
 			}
 		}
 

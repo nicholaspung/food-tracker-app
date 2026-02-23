@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.7.8",
+    "date": "2026-02-22",
+    "title": "Auto-Friend on Sign-Up & Smarter Photo Processing",
+    "summary": "New users are now automatically prompted to add the person who invited them as a friend — no manual friend request needed. In Photo Processing, your saved restaurant list is sorted by proximity using GPS coordinates from your photos, and a 'Use Photo Date' button makes filling in dates effortless.",
+    "features": [
+      "Auto-friend suggestion: After signing up with an invite code, your home screen prompts you to add your inviter as a friend with one tap",
+      "Invite via link: Invite codes can now be shared as deep links that open the app directly to the sign-up screen with the code pre-filled",
+      "Proximity-ranked restaurants in Photo Processing: Restaurants are sorted by distance from where your photo was taken using GPS coordinates embedded in the image",
+      "Use Photo Date button: One-tap button to fill in the date from your photo's metadata when processing photos",
+      "Location metadata hint: A notice appears when GPS data is detected in your photo, confirming which coordinates are being used"
+    ],
+    "improvements": [
+      "First onboarding screen now shows the Yummy Recs brand logo instead of a generic restaurant icon",
+      "Invite code sharing now includes a deep link so the recipient can tap to open the app and sign up",
+      "Locked invite codes are now highlighted in amber on the Profile screen so you can tell at a glance which codes have been used recently",
+      "Sign-up now validates that your password is at least 8 characters before you submit",
+      "Invite codes are now case-insensitive — you can type them in any combination of upper and lower case"
+    ],
+    "fixes": [
+      "Fixed new users not being assigned default 'friends' visibility if the app omitted those fields during sign-up"
+    ]
+  },
+  {
     "version": "0.7.7",
     "date": "2026-02-22",
     "title": "Subscription Management & Redesigned Auth Flow",

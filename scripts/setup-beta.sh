@@ -136,7 +136,7 @@ if [ -n "$install_url" ]; then
         echo -e "${YELLOW}========================================${NC}"
         echo ""
         echo "Visit this URL to create the beta admin account:"
-        echo -e "${GREEN}https://beta.trackyourfoods.com/_/#/pbinstal/$token${NC}"
+        echo -e "${GREEN}https://beta.yummyrecs.com/_/#/pbinstal/$token${NC}"
         echo ""
         echo "Do this now before continuing!"
         echo -e "${YELLOW}========================================${NC}"
@@ -165,7 +165,7 @@ echo ""
 echo "8. Verifying beta deployment..."
 
 # Check HTTPS
-if curl -sI https://beta.trackyourfoods.com | head -1 | grep -q "200"; then
+if curl -sI https://beta.yummyrecs.com | head -1 | grep -q "200"; then
     pass "Beta site is accessible via HTTPS"
 else
     warn "Beta site returned non-200 status"
@@ -173,7 +173,7 @@ else
 fi
 
 # Check API
-if curl -s https://beta.trackyourfoods.com/api/health | grep -q "healthy"; then
+if curl -s https://beta.yummyrecs.com/api/health | grep -q "healthy"; then
     pass "Beta API is responding"
 else
     warn "Beta API not responding correctly"
@@ -186,15 +186,15 @@ echo -e "${GREEN}Beta Environment Setup Complete!${NC}"
 echo "========================================"
 echo ""
 echo "Beta Environment Details:"
-echo "  • Domain: https://beta.trackyourfoods.com"
-echo "  • Admin Panel: https://beta.trackyourfoods.com/_/"
+echo "  • Domain: https://beta.yummyrecs.com"
+echo "  • Admin Panel: https://beta.yummyrecs.com/_/"
 echo "  • PocketBase Port: 8091"
 echo "  • Data Directory: $BACKEND_DIR/pb_data_beta"
 echo "  • Frontend Build: $APP_DIR/frontend_build_beta"
 echo ""
 echo "Next Steps:"
 echo "  1. Create beta admin account (see URL above if shown)"
-echo "  2. Test beta site: https://beta.trackyourfoods.com"
+echo "  2. Test beta site: https://beta.yummyrecs.com"
 echo "  3. Continue with GitHub Actions setup (Step 4-5 in docs)"
 echo ""
 echo "Useful Commands:"

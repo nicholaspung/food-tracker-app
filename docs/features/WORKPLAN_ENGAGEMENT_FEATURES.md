@@ -368,8 +368,8 @@ Returns special year-end summary with shareable format.
       "startDate": "2025-06-01"
     }
   },
-  "shareUrl": "https://app.foodtracker.com/wrapped/2025/xxx", // Public shareable link
-  "shareImage": "https://cdn.foodtracker.com/wrapped/2025/user_xxx.png" // Generated image
+  "shareUrl": "https://app.yummyrecs.com/wrapped/2025/xxx", // Public shareable link
+  "shareImage": "https://cdn.yummyrecs.com/wrapped/2025/user_xxx.png" // Generated image
 }
 ```
 
