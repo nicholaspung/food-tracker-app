@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.0',
+    date: '2026-02-25',
+    title: 'Real Menu Scanning & Security Hardening',
+    summary:
+      'Menu scanning in Photo Processing now extracts actual item names from your photos using AI — no more placeholder names. Usage limits are tracked server-side for accuracy, and backend security improvements prevent unauthorized profile changes.',
+    features: [
+      'Menu scanning now reads real item names from your photo: upload a menu and the AI extracts the actual dishes listed.',
+      'Usage limits are now recorded by the server during the scan action, so counts are always accurate.',
+    ],
+    improvements: [
+      'Deploy script only triggers rollback after deploy mutations have been applied, avoiding unnecessary rollbacks on early failures.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.9',
     date: '2026-02-25',
     title: 'Deployment & Infrastructure Improvements',

@@ -273,6 +273,7 @@ func main() {
 	})
 
 	hooks.RegisterUsageLimitHooks(app)
+	hooks.RegisterUserProfileSecurityHooks(app)
 
 	// Hook to delete unused invite codes before user deletion
 	app.OnRecordDelete("users").BindFunc(func(e *core.RecordEvent) error {

@@ -19,7 +19,6 @@ import {
   VisibilityOptionSelector,
 } from '../components/shared';
 import {
-  consumeUsage,
   createCollectionRecord,
   createQuickTrack,
   createVisit,
@@ -27,6 +26,7 @@ import {
   getAuthenticatedUserIdOrNull,
   listCollectionRecords,
   listRestaurants,
+  parseMenuImage,
   parseLimitExceededError,
   resolveDefaultVisitVisibilityFromAuth,
   useMonthlyUsage,
@@ -112,6 +112,69 @@ function buildScannedItemNames(seedLabel: string): string[] {
   const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
   const base = normalized || 'Scanned Item';
   return [`${base} #1`, `${base} #2`, `${base} #3`];
+}
+
+function parseCsvFirstColumn(line: string): string {
+  if (!line.trim()) {
+    return '';
+  }
+
+  let inQuotes = false;
+  let value = '';
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+
+    if (char === '"') {
+      const nextChar = line[index + 1];
+      if (inQuotes && nextChar === '"') {
+        value += '"';
+        index += 1;
+        continue;
+      }
+
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      break;
+    }
+
+    value += char;
+  }
+
+  return value.trim();
+}
+
+function parseMenuItemNamesFromCsv(csvText: string): string[] {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const names: string[] = [];
+  const firstLineFirstColumn = parseCsvFirstColumn(lines[0]).toLowerCase();
+  const startIndex = firstLineFirstColumn.includes('menu_item') || firstLineFirstColumn.includes('menu item') ? 1 : 0;
+
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const name = parseCsvFirstColumn(lines[index]);
+    if (!name) {
+      continue;
+    }
+
+    if (names.includes(name)) {
+      continue;
+    }
+
+    names.push(name);
+  }
+
+  return names;
 }
 
 function formatDateToLocalDateString(date: Date): string {
@@ -518,7 +581,7 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
     }, 1000);
   }, [navigateBackToItems]);
 
-  const createScannedMenuItems = useCallback(async (imageLabel: string) => {
+  const createScannedMenuItems = useCallback(async (itemNames: string[], fallbackLabel: string) => {
     if (!restaurantId) {
       throw new Error('Restaurant context is missing.');
     }
@@ -528,7 +591,7 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
       throw new Error('Please sign in again to continue.');
     }
 
-    const names = buildScannedItemNames(imageLabel);
+    const names = itemNames.length > 0 ? itemNames : buildScannedItemNames(fallbackLabel);
     const createdRecords: CreatedMenuItemRecord[] = [];
 
     for (const itemName of names) {
@@ -553,10 +616,30 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
     return createdRecords.map((record) => record.name);
   }, [queryClient, restaurantId]);
 
-  const processSelectedImage = useCallback(async (imageName: string) => {
+  const processSelectedImage = useCallback(async (imageName: string, imageInput: VisitPhotoUploadInput) => {
+    setPhase('processing');
+    setProgressValue(0);
+    setErrorMessage(null);
+    setCreatedItemNames([]);
+
+    const progressInterval = setInterval(() => {
+      setProgressValue((currentValue) => {
+        if (currentValue >= 0.92) {
+          return currentValue;
+        }
+
+        return Number((currentValue + 0.08).toFixed(2));
+      });
+    }, 250);
+
     try {
-      await consumeUsage('menu_scans');
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
+      const parseResult = await parseMenuImage(imageInput);
+      const parsedNames = parseMenuItemNamesFromCsv(parseResult.csv);
+      const createdNames = await createScannedMenuItems(parsedNames, imageName);
+      setCreatedItemNames(createdNames);
+      setProgressValue(1);
+      setPhase('success');
+      startCountdown();
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {
@@ -578,40 +661,9 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
           : 'Could not process this photo.';
       setErrorMessage(message);
       setPhase('error');
-      return;
-    }
-
-    setPhase('processing');
-    setProgressValue(0);
-    setErrorMessage(null);
-    setCreatedItemNames([]);
-
-    const progressInterval = setInterval(() => {
-      setProgressValue((currentValue) => {
-        if (currentValue >= 0.92) {
-          return currentValue;
-        }
-
-        return Number((currentValue + 0.08).toFixed(2));
-      });
-    }, 250);
-
-    try {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 2200);
-      });
-
-      const createdNames = await createScannedMenuItems(imageName);
-      setCreatedItemNames(createdNames);
-      setProgressValue(1);
-      setPhase('success');
-      startCountdown();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not process this photo.';
-      setErrorMessage(message);
-      setPhase('error');
     } finally {
       clearInterval(progressInterval);
+      void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
     }
   }, [createScannedMenuItems, queryClient, startCountdown]);
 
@@ -671,13 +723,18 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
         selectedAsset.fileName?.trim() ||
         selectedAsset.uri.split('/').pop()?.trim() ||
         (source === 'camera' ? 'camera-image' : 'library-image');
+      const imageInput: VisitPhotoUploadInput = {
+        uri: selectedAsset.uri,
+        name: imageLabel,
+        mimeType: inferImageMimeType(selectedAsset.uri),
+      };
 
       setSelectedImageName(imageLabel);
       trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICKED', {
         photoSource: source,
         source: 'PhotoProcessingScreen',
       });
-      await processSelectedImage(imageLabel);
+      await processSelectedImage(imageLabel, imageInput);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not select an image.';
       trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_FAILED', {

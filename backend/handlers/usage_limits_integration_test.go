@@ -20,7 +20,7 @@ func TestUsageMonthlyAuthRequired(t *testing.T) {
 	}
 }
 
-func TestUsageMonthlyAndConsumeFlow(t *testing.T) {
+func TestUsageMonthlyReflectsSeededUsageData(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterUsageLimitHandlers(se, app)
 	})
@@ -40,25 +40,7 @@ func TestUsageMonthlyAndConsumeFlow(t *testing.T) {
 		t.Fatalf("expected initial menuScans usage to be 0")
 	}
 
-	consumeResponse := performJSONRequest(
-		t,
-		server.mux,
-		http.MethodPost,
-		"/api/usage/consume",
-		token,
-		`{"metric":"menu_scans"}`,
-	)
-	if consumeResponse.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d, body=%s", consumeResponse.Code, consumeResponse.Body.String())
-	}
-
-	consumeData := parseJSONMap(t, consumeResponse.Body.Bytes())
-	if consumeData["used"].(float64) != 1 {
-		t.Fatalf("expected used=1, got %v", consumeData["used"])
-	}
-	if consumeData["remaining"].(float64) != 4 {
-		t.Fatalf("expected remaining=4, got %v", consumeData["remaining"])
-	}
+	seedMonthlyUsage(t, server.app, user.Id, 0, 0, 1)
 
 	latestSnapshot := performJSONRequest(t, server.mux, http.MethodGet, "/api/usage/monthly", token, "")
 	if latestSnapshot.Code != http.StatusOK {
@@ -81,24 +63,34 @@ func TestUsageMonthlyAndConsumeFlow(t *testing.T) {
 	}
 
 	seedMonthlyUsage(t, server.app, user.Id, 0, 0, 5)
-	blockedResponse := performJSONRequest(
+	atLimitSnapshot := performJSONRequest(t, server.mux, http.MethodGet, "/api/usage/monthly", token, "")
+	if atLimitSnapshot.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body=%s", atLimitSnapshot.Code, atLimitSnapshot.Body.String())
+	}
+
+	atLimitData := parseJSONMap(t, atLimitSnapshot.Body.Bytes())
+	atLimitRemaining := atLimitData["remaining"].(map[string]any)
+	if atLimitRemaining["menuScansMonthly"].(float64) != 0 {
+		t.Fatalf("expected remaining menu scans=0 at limit, got %v", atLimitRemaining["menuScansMonthly"])
+	}
+}
+
+func TestUsageConsumeEndpointIsDisabled(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUsageLimitHandlers(se, app)
+	})
+	_, token := createAuthUser(t, server.app, false, false)
+
+	response := performJSONRequest(
 		t,
 		server.mux,
 		http.MethodPost,
 		"/api/usage/consume",
 		token,
-		`{"metric":"menu_scans"}`,
+		`{"metric":"menu_scans","amount":1}`,
 	)
-	if blockedResponse.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected status 429, got %d, body=%s", blockedResponse.Code, blockedResponse.Body.String())
-	}
-
-	blockedData := parseJSONMap(t, blockedResponse.Body.Bytes())
-	if blockedData["code"] != "LIMIT_EXCEEDED" {
-		t.Fatalf("expected LIMIT_EXCEEDED code, got %v", blockedData["code"])
-	}
-	if blockedData["metric"] != "menu_scans" {
-		t.Fatalf("expected metric menu_scans, got %v", blockedData["metric"])
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d, body=%s", response.Code, response.Body.String())
 	}
 }
 
@@ -167,19 +159,7 @@ func TestUsageMonthlyAdminPreviewTierShowsPreviewLimitsWithoutBlockingAdmin(t *t
 		t.Fatalf("expected preview remaining menuScansMonthly=1, got %v", initialRemaining["menuScansMonthly"])
 	}
 
-	for i := 0; i < 2; i++ {
-		consumeResponse := performJSONRequest(
-			t,
-			server.mux,
-			http.MethodPost,
-			"/api/usage/consume",
-			adminToken,
-			`{"metric":"menu_scans"}`,
-		)
-		if consumeResponse.Code != http.StatusOK {
-			t.Fatalf("expected admin consume #%d to succeed, got %d, body=%s", i+1, consumeResponse.Code, consumeResponse.Body.String())
-		}
-	}
+	seedMonthlyUsage(t, server.app, adminUser.Id, 4, 95, 6)
 
 	afterPreview := performJSONRequest(
 		t,

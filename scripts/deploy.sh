@@ -71,6 +71,7 @@ step() {
 # CLEANUP & ROLLBACK
 #######################
 USER_CANCELLED=false
+ROLLBACK_REQUIRED=false
 
 handle_interrupt() {
     echo ""
@@ -102,7 +103,11 @@ cleanup() {
 
     if [ $exit_code -ne 0 ]; then
         error "Deployment failed with exit code $exit_code"
-        rollback
+        if [ "$ROLLBACK_REQUIRED" = true ]; then
+            rollback
+        else
+            warn "Skipping rollback because no deploy mutations were applied yet"
+        fi
     fi
 
     # Remove lock file
@@ -396,6 +401,9 @@ deploy_frontend() {
     step "Deploying frontend with blue-green strategy ($ENVIRONMENT)..."
 
     cd "$APP_DIR"
+
+    # From this point forward, failures should trigger rollback.
+    ROLLBACK_REQUIRED=true
 
     # Remove any leftover new build
     rm -rf "${FRONTEND_BUILD_DIR}_new"

@@ -2,7 +2,6 @@ import { sendApiRequest } from './pocketbaseGateway';
 
 export type UserTier = 'admin' | 'subscriber' | 'free';
 export type LimitValue = number | null;
-export type UsageMetric = 'menu_scans';
 export type UsagePreviewTier = UserTier;
 
 export interface MonthlyUsageSnapshot {
@@ -24,14 +23,6 @@ export interface MonthlyUsageSnapshot {
     placesQueriesMonthly: LimitValue;
     menuScansMonthly: LimitValue;
   };
-}
-
-export interface UsageConsumeResponse {
-  metric: UsageMetric;
-  used: number;
-  limit: LimitValue;
-  remaining: LimitValue;
-  monthKey: string;
 }
 
 export interface MonthlyUsageRequestOptions {
@@ -153,12 +144,5 @@ export async function getMonthlyUsage(
 
   return sendApiRequest<MonthlyUsageSnapshot>(path, {
     method: 'GET',
-  });
-}
-
-export async function consumeUsage(metric: UsageMetric): Promise<UsageConsumeResponse> {
-  return sendApiRequest<UsageConsumeResponse>('/api/usage/consume', {
-    method: 'POST',
-    body: { metric, amount: 1 },
   });
 }

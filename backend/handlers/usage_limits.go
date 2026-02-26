@@ -46,42 +46,6 @@ func RegisterUsageLimitHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
 
-		var requestData struct {
-			Metric string `json:"metric"`
-			Amount int    `json:"amount"`
-		}
-
-		if err := e.BindBody(&requestData); err != nil {
-			return apis.NewBadRequestError("invalid request body", err)
-		}
-
-		if requestData.Metric != string(lib.UsageMetricMenuScans) {
-			return apis.NewBadRequestError(`metric must be "menu_scans"`, nil)
-		}
-
-		amount := requestData.Amount
-		if amount == 0 {
-			amount = 1
-		}
-		if amount != 1 {
-			return apis.NewBadRequestError("amount must be 1", nil)
-		}
-
-		consumeResult, err := lib.ConsumeUsage(e.App, e.Auth, lib.UsageMetricMenuScans, amount)
-		if err != nil {
-			if limitErr, ok := lib.AsLimitExceededError(err); ok {
-				return e.JSON(429, limitErr.Payload())
-			}
-			log.Printf("Failed to consume usage metric=%s userId=%s: %v", requestData.Metric, e.Auth.Id, err)
-			return apis.NewApiError(500, "failed to consume usage", err)
-		}
-
-		return e.JSON(200, map[string]any{
-			"metric":    consumeResult.Metric,
-			"used":      consumeResult.Used,
-			"limit":     consumeResult.Limit,
-			"remaining": consumeResult.Remaining,
-			"monthKey":  consumeResult.MonthKey,
-		})
+		return apis.NewForbiddenError("usage consume endpoint is disabled; usage is consumed by backend actions", nil)
 	})
 }
