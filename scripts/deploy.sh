@@ -193,6 +193,19 @@ preflight_checks() {
         exit 1
     fi
 
+    # Ensure the target domain exists in the live Caddy configuration.
+    local caddy_config="/etc/caddy/Caddyfile"
+    if [ -r "$caddy_config" ]; then
+        if ! awk -v domain="$DOMAIN" '$1 == domain && $2 == "{" { found = 1 } END { exit(found ? 0 : 1) }' "$caddy_config"; then
+            error "Domain '$DOMAIN' is not configured in $caddy_config"
+            error "Update the live Caddy config before deploying this environment."
+            error "Suggested fix: sudo cp \"$APP_DIR/Caddyfile\" \"$caddy_config\" && sudo systemctl reload caddy"
+            exit 1
+        fi
+    else
+        warn "Cannot read $caddy_config. Skipping domain presence check."
+    fi
+
     # Check if PocketBase container exists and start it if needed
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
         warn "PocketBase container ($POCKETBASE_CONTAINER) is not running"
@@ -593,6 +606,22 @@ health_check_pocketbase() {
     return 1
 }
 
+caddy_frontend_status_code() {
+    local status_code
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" -L \
+        --connect-timeout 3 \
+        --max-time 10 \
+        --resolve "$DOMAIN:80:127.0.0.1" \
+        --resolve "$DOMAIN:443:127.0.0.1" \
+        "http://$DOMAIN/" || true)
+
+    if [ -z "$status_code" ]; then
+        echo "000"
+    else
+        echo "$status_code"
+    fi
+}
+
 health_check_frontend() {
     step "Performing frontend health check ($ENVIRONMENT)..."
 
@@ -610,21 +639,22 @@ health_check_frontend() {
     # Try to fetch the frontend via Caddy with proper Host header
     local max_attempts=10
     local attempt=0
+    local status_code="000"
 
     while [ $attempt -lt $max_attempts ]; do
-        # Use curl to check if Caddy can serve the frontend for this environment
-        # -L follows redirects (HTTP -> HTTPS)
-        if curl -f -s -o /dev/null -w "%{http_code}" -L -H "Host: $DOMAIN" http://localhost/ | grep -q "200"; then
+        # Resolve domain to localhost so health checks don't depend on external DNS propagation.
+        status_code=$(caddy_frontend_status_code)
+        if [ "$status_code" = "200" ]; then
             log "Frontend is accessible via Caddy ✓"
             return 0
         fi
 
         attempt=$((attempt + 1))
-        log "Waiting for frontend to be accessible (attempt $attempt/$max_attempts)..."
+        log "Waiting for frontend to be accessible (attempt $attempt/$max_attempts, status=$status_code)..."
         sleep 1
     done
 
-    error "Frontend health check failed - not accessible via Caddy"
+    error "Frontend health check failed - not accessible via Caddy (last status: $status_code)"
     return 1
 }
 
@@ -638,9 +668,11 @@ smoke_test() {
     fi
 
     # Test frontend (check if Caddy is serving it correctly)
-    # -L follows redirects (HTTP -> HTTPS)
     # -i makes grep case-insensitive (matches both <!DOCTYPE html> and <!doctype html>)
-    if ! curl -f -s -L -H "Host: $DOMAIN" http://localhost/ | grep -qi "<!doctype html>"; then
+    if ! curl -k -f -s -L \
+        --resolve "$DOMAIN:80:127.0.0.1" \
+        --resolve "$DOMAIN:443:127.0.0.1" \
+        "http://$DOMAIN/" | grep -qi "<!doctype html>"; then
         error "Smoke test failed: Frontend not serving HTML for $DOMAIN"
         return 1
     fi

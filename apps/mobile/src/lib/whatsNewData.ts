@@ -10,6 +10,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.7.9',
+    date: '2026-02-25',
+    title: 'Deployment & Infrastructure Improvements',
+    summary:
+      'Behind-the-scenes deployment reliability improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Deploy script validates the target domain in Caddy config before starting, preventing deploys to unconfigured environments.',
+      'Health checks and smoke tests resolve the domain to localhost, so they work before external DNS propagates.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.7.8',
     date: '2026-02-22',
     title: 'Auto-Friend on Sign-Up & Smarter Photo Processing',

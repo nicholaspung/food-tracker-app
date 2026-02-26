@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.7.9",
+    "date": "2026-02-25",
+    "title": "Deployment & Infrastructure Improvements",
+    "summary": "Behind-the-scenes deployment reliability improvements. No user-facing changes.",
+    "features": [],
+    "improvements": [
+      "Deploy script now validates that the target domain is present in the Caddy configuration before starting a deployment, preventing accidental deploys to unconfigured environments",
+      "Frontend health checks and smoke tests now resolve the domain to localhost directly, so they work correctly even before external DNS has propagated"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.7.8",
     "date": "2026-02-22",
     "title": "Auto-Friend on Sign-Up & Smarter Photo Processing",
