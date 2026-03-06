@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Yummy Recs",
-    "slug": "yummy-recs-mobile",
+    "slug": "food-tracker-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "yummyrecs",

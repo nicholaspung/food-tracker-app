@@ -11,15 +11,25 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://beta.yummyrecs.com",
-        "EXPO_PUBLIC_POCKETBASE_URL": "https://beta.yummyrecs.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://beta-api.yummyrecs.com",
+        "EXPO_PUBLIC_POCKETBASE_URL": "https://beta-api.yummyrecs.com",
+        "EXPO_PUBLIC_APP_WEB_URL": "https://beta-app.yummyrecs.com",
+        "EXPO_PUBLIC_ADMIN_URL": "https://beta-admin.yummyrecs.com",
+        "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
+        "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
+        "EXPO_PUBLIC_BETA_ADMIN_ONLY": "true"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://yummyrecs.com",
-        "EXPO_PUBLIC_POCKETBASE_URL": "https://yummyrecs.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.yummyrecs.com",
+        "EXPO_PUBLIC_POCKETBASE_URL": "https://api.yummyrecs.com",
+        "EXPO_PUBLIC_APP_WEB_URL": "https://app.yummyrecs.com",
+        "EXPO_PUBLIC_ADMIN_URL": "https://admin.yummyrecs.com",
+        "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
+        "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
+        "EXPO_PUBLIC_BETA_ADMIN_ONLY": "true"
       }
     },
     "ios-simulator": {

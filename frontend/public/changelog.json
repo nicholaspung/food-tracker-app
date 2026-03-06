@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.8.1",
+    "date": "2026-03-05",
+    "title": "Build Configuration Updates",
+    "summary": "Behind-the-scenes build and infrastructure configuration updates. No user-facing changes.",
+    "features": [],
+    "improvements": [
+      "EAS build environments updated to use dedicated subdomains for API, web, and admin services",
+      "Beta and production build configs now include web and admin URLs for consistent environment setup"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.8.0",
     "date": "2026-02-25",
     "title": "Real Menu Scanning & Security Hardening",
