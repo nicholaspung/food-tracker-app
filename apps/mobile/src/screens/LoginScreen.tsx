@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
+import { AuthTopBar, FormScaffold, LoadingOverlay, OtaUpdateCard } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { AUTH_EMAIL_UNVERIFIED_ERROR, useAuth } from '../providers/AuthProvider';
@@ -53,6 +53,9 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
     secondaryActions: {
       gap: theme.spacing.sm,
       marginTop: theme.spacing.xs,
+    },
+    errorCard: {
+      gap: theme.spacing.xs,
     },
   });
 
@@ -109,6 +112,12 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
           <Text tone="secondary">Sign in with your email and password.</Text>
         </Card>
 
+        <OtaUpdateCard
+          description="If beta sign-in works on the web but not on mobile, verify the running OTA here and update this app before trying again."
+          source="LoginScreen"
+          title="Login build status"
+        />
+
         <Card style={styles.formCard}>
           <Input
             autoCapitalize="none"
@@ -148,6 +157,17 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
           </Pressable>
 
           <PageErrorToast errorMessage={authError} title="Sign in failed" />
+
+          {authError ? (
+            <Card style={styles.errorCard} tone="danger">
+              <Text tone="danger" variant="label">
+                Sign-in diagnostics
+              </Text>
+              <Text tone="danger" variant="bodySm">
+                {authError}
+              </Text>
+            </Card>
+          ) : null}
 
           <Button
             disabled={!email.trim() || !password}

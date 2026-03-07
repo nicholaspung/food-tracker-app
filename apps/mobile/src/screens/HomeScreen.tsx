@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   EmptyState,
   FeedHeaderControls,
+  OtaUpdateCard,
   PhotoViewerModal,
   Skeleton,
   TabRootScreenScaffold,
@@ -1174,6 +1175,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           }}
         />
         <PageErrorToast errorMessage={friendSuggestionErrorMessage} title="Friend suggestion unavailable" />
+        <OtaUpdateCard source="HomeScreen" />
 
         {friendSuggestion ? (
           <View style={styles.infoCard}>

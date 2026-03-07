@@ -12,13 +12,18 @@ export interface MobileEnv {
 
 type EnvSource = Record<string, string | undefined>;
 
-function getRuntimeEnv(): EnvSource {
-  const maybeProcess = globalThis as { process?: { env?: EnvSource } };
-  return maybeProcess.process?.env ?? {};
-}
+const expoPublicEnv: EnvSource = {
+  EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL,
+  EXPO_PUBLIC_POCKETBASE_URL: process.env.EXPO_PUBLIC_POCKETBASE_URL,
+  EXPO_PUBLIC_POSTHOG_API_KEY: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
+  EXPO_PUBLIC_POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST,
+  EXPO_PUBLIC_IAP_MONTHLY_PRODUCT_ID: process.env.EXPO_PUBLIC_IAP_MONTHLY_PRODUCT_ID,
+  EXPO_PUBLIC_IAP_YEARLY_PRODUCT_ID: process.env.EXPO_PUBLIC_IAP_YEARLY_PRODUCT_ID,
+  EXPO_PUBLIC_ANDROID_PACKAGE_NAME: process.env.EXPO_PUBLIC_ANDROID_PACKAGE_NAME,
+};
 
 export function loadMobileEnv(source?: EnvSource): MobileEnv {
-  const resolvedSource = source ?? getRuntimeEnv();
+  const resolvedSource = source ?? expoPublicEnv;
 
   const apiBaseUrl = resolvedSource.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL;
   const pocketbaseUrl = resolvedSource.EXPO_PUBLIC_POCKETBASE_URL ?? apiBaseUrl;

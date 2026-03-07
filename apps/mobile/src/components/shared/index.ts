@@ -20,6 +20,7 @@ export * from './LinearProgressBar';
 export * from './LocalDatePickerField';
 export * from './OfflineBanner';
 export * from './OptionList';
+export * from './OtaUpdateCard';
 export * from './PhotoViewerModal';
 export * from './PageErrorToast';
 export * from './PhotoSourceActionCards';

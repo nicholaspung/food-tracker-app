@@ -10,6 +10,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.2',
+    date: '2026-03-07',
+    title: 'OTA Updates & Smarter Sign-In Errors',
+    summary:
+      'The app now supports over-the-air (OTA) updates — apply the latest version without reinstalling from the App Store. A new update card on the Home and Login screens shows your current build details and lets you pull the latest update with one tap. Sign-in errors also now include detailed diagnostics to pinpoint connection and credential issues faster.',
+    features: [
+      'OTA update card on Home screen: see your current build version, channel, runtime, and OTA identifier, and apply the latest update with one tap.',
+      'Build status card on Login screen: verify which OTA is running before troubleshooting sign-in problems.',
+    ],
+    improvements: [
+      'Sign-in errors now show detailed diagnostics — backend URL, HTTP status, and specific messages for invalid credentials, unreachable servers, and backend failures.',
+      'CI/CD workflow automatically publishes OTA updates or triggers a full preview build when mobile code changes.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.1',
     date: '2026-03-05',
     title: 'Build Configuration Updates',
