@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 
 import { useTheme } from '../theme';
+import { useKeyboardAwareScroll } from './KeyboardAwareScrollContext';
 import { Text } from './Text';
 
 export interface InputProps extends Omit<TextInputProps, 'style'> {
@@ -24,6 +25,8 @@ export function Input({
   ...props
 }: InputProps) {
   const theme = useTheme();
+  const inputRef = useRef<TextInput>(null);
+  const { scrollToFocusedInput } = useKeyboardAwareScroll();
   const [isFocused, setIsFocused] = useState(false);
 
   const styles = StyleSheet.create({
@@ -53,12 +56,14 @@ export function Input({
       <TextInput
         placeholderTextColor={theme.colors.text.muted}
         {...props}
+        ref={inputRef}
         onBlur={(event) => {
           setIsFocused(false);
           onBlur?.(event);
         }}
         onFocus={(event) => {
           setIsFocused(true);
+          scrollToFocusedInput(inputRef.current);
           onFocus?.(event);
         }}
         style={[styles.input, inputStyle]}

@@ -21,7 +21,7 @@ export function TabRootScreenScaffold({
   contentStyle,
   scrollUnderlayColor,
   scrollUnderlayTopInset = 220,
-  keyboardAware = false,
+  keyboardAware = true,
   testID,
 }: TabRootScreenScaffoldProps) {
   return (

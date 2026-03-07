@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Image, Linking, StyleSheet, View } from 'react-native';
+import { Image, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -15,6 +15,7 @@ import {
   OptionListRow,
   PageErrorToast,
   PhotoSourceActionCards,
+  PhotoViewerModal,
   RatingLegend,
   RatingSelector,
   UpgradePromptCard,
@@ -57,6 +58,18 @@ const ITEM_CATEGORIES = [
 type ItemCategory = (typeof ITEM_CATEGORIES)[number]['value'];
 type PhotoSource = 'camera' | 'gallery';
 type QuickTrackVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
+
+function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
+  if (!asset.uri) {
+    return null;
+  }
+
+  return {
+    uri: asset.uri,
+    name: asset.fileName?.trim() || buildDraftPhotoName(asset.uri),
+    mimeType: asset.mimeType?.trim() || inferImageMimeType(asset.uri),
+  };
+}
 
 function formatDateToLocalDateString(date: Date): string {
   const year = date.getFullYear();
@@ -164,6 +177,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
   const [isSelectingPhoto, setIsSelectingPhoto] = useState(false);
+  const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [isCapturingLocation, setIsCapturingLocation] = useState(false);
   const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
   const [photoPermissionNeedsSettings, setPhotoPermissionNeedsSettings] = useState(false);
@@ -206,6 +220,50 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     setDidApplyNotePrefill(true);
   }, [didApplyNotePrefill, linkedNoteQuery.data]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    let isMounted = true;
+
+    const restorePendingPickerResult = async () => {
+      try {
+        const pendingResult = await ImagePicker.getPendingResultAsync();
+        if (!isMounted || !pendingResult || 'code' in pendingResult || pendingResult.canceled) {
+          return;
+        }
+
+        const pendingAsset = pendingResult.assets?.[0];
+        const nextPhoto = pendingAsset ? buildDraftPhotoInput(pendingAsset) : null;
+        if (!nextPhoto) {
+          return;
+        }
+
+        setIsPhotoViewerVisible(false);
+        setPhoto(nextPhoto);
+        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
+          photoSource: 'gallery',
+          restoredPendingResult: true,
+          source: 'QuickTrackScreen',
+        });
+      } catch (error) {
+        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          photoSource: 'gallery',
+          restoredPendingResult: true,
+          source: 'QuickTrackScreen',
+        });
+      }
+    };
+
+    void restorePendingPickerResult();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const styles = StyleSheet.create({
     body: {
       gap: theme.spacing.md,
@@ -217,25 +275,34 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     photoSection: {
       gap: theme.spacing.sm,
     },
-    photoPreview: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
+    photoPreviewWrap: {
+      alignSelf: 'flex-start',
       borderColor: theme.colors.border.subtle,
       borderRadius: theme.radii.md,
       borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      padding: theme.spacing.sm,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    photoPreview: {
+      backgroundColor: theme.colors.background.muted,
     },
     photoImage: {
       backgroundColor: theme.colors.background.app,
-      borderRadius: theme.radii.sm,
-      height: 56,
-      width: 56,
+      height: 120,
+      width: 120,
     },
-    photoMeta: {
-      flex: 1,
-      gap: theme.spacing.xs,
+    removePhotoButton: {
+      alignItems: 'center',
+      backgroundColor: theme.colors.status.dangerBg,
+      borderColor: theme.colors.status.dangerBorder,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      height: 24,
+      justifyContent: 'center',
+      position: 'absolute',
+      right: theme.spacing.xs,
+      top: theme.spacing.xs,
+      width: 24,
     },
     locationRow: {
       alignItems: 'flex-start',
@@ -385,17 +452,18 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       const pickerResult =
         source === 'camera'
           ? await ImagePicker.launchCameraAsync({
-              mediaTypes: ['images'],
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
               allowsEditing: false,
               quality: 0.8,
             })
           : await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['images'],
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
               allowsEditing: false,
               quality: 0.8,
+              selectionLimit: 1,
             });
 
-      if (pickerResult.canceled || pickerResult.assets.length === 0) {
+      if (pickerResult.canceled) {
         trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_CANCELED', {
           photoSource: source,
           source: 'QuickTrackScreen',
@@ -403,13 +471,14 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         return;
       }
 
-      const selectedAsset = pickerResult.assets[0];
-      const selectedUri = selectedAsset.uri;
-      setPhoto({
-        uri: selectedUri,
-        name: selectedAsset.fileName?.trim() || buildDraftPhotoName(selectedUri),
-        mimeType: selectedAsset.mimeType?.trim() || inferImageMimeType(selectedUri),
-      });
+      const selectedAsset = pickerResult.assets?.[0];
+      const nextPhoto = selectedAsset ? buildDraftPhotoInput(selectedAsset) : null;
+      if (!nextPhoto) {
+        throw new Error('Could not read the selected image.');
+      }
+
+      setIsPhotoViewerVisible(false);
+      setPhoto(nextPhoto);
       trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
         photoSource: source,
         source: 'QuickTrackScreen',
@@ -668,20 +737,31 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
             />
 
             {photo ? (
-              <View style={styles.photoPreview}>
-                <Image source={{ uri: photo.uri }} style={styles.photoImage} />
-                <View style={styles.photoMeta}>
-                  <Text numberOfLines={1} variant="label">
-                    {photo.name}
-                  </Text>
-                  <Button
-                    label="Remove Photo"
+              <View style={styles.photoSection}>
+                <View style={styles.photoPreviewWrap}>
+                  <Pressable
+                    accessibilityLabel="View attached photo full screen"
                     onPress={() => {
+                      setIsPhotoViewerVisible(true);
+                    }}
+                    style={styles.photoPreview}
+                  >
+                    <Image source={{ uri: photo.uri }} style={styles.photoImage} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Remove attached photo"
+                    onPress={() => {
+                      setIsPhotoViewerVisible(false);
                       setPhoto(null);
                     }}
-                    variant="secondary"
-                  />
+                    style={styles.removePhotoButton}
+                  >
+                    <Ionicons color={theme.colors.text.inverse} name="close" size={14} />
+                  </Pressable>
                 </View>
+                <Text tone="secondary" variant="bodySm">
+                  Tap the photo to view it full screen.
+                </Text>
               </View>
             ) : null}
 
@@ -808,6 +888,13 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           />
         </Card>
       </View>
+      <PhotoViewerModal
+        onRequestClose={() => {
+          setIsPhotoViewerVisible(false);
+        }}
+        urls={photo ? [photo.uri] : []}
+        visible={Boolean(photo) && isPhotoViewerVisible}
+      />
     </FeatureFormScreenScaffold>
   );
 }

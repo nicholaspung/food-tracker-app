@@ -18,6 +18,7 @@ import {
   EmptyState,
   FeatureFormScreenScaffold,
   LocalDatePickerField,
+  LoadingState,
   PageErrorToast,
   PhotoSourceActionCards,
   RatingLegend,
@@ -2077,6 +2078,7 @@ export function CreateVisitScreen({
                 <Button
                   disabled={createVisitSearchUi.isSearchDisabled}
                   label={isSearching ? "Searching..." : compactSearchLabel}
+                  loading={isSearching}
                   onPress={() => {
                     void handleSearchByText(true);
                   }}
@@ -2123,6 +2125,7 @@ export function CreateVisitScreen({
                 <Button
                   disabled={createVisitSearchUi.isSearchDisabled}
                   label={isSearching ? "Searching..." : expandedSearchLabel}
+                  loading={isSearching}
                   onPress={() => {
                     void handleSearchByText(true);
                   }}
@@ -2184,7 +2187,7 @@ export function CreateVisitScreen({
             <>
               {isSearching || isSearchingNearby || isGettingLocation ? (
                 <Card style={styles.statusCard} tone="muted">
-                  <Text tone="muted">Looking up nearby food places...</Text>
+                  <LoadingState label="Looking up nearby food places..." />
                 </Card>
               ) : null}
 
@@ -2220,13 +2223,13 @@ export function CreateVisitScreen({
                 setRestaurantListAnchorY(event.nativeEvent.layout.y);
               }}
             >
-              <Card style={styles.listCard}>
-                <Text variant="label">Your restaurants</Text>
-                {restaurantsQuery.isLoading ? (
-                  <Text tone="muted">Loading restaurants...</Text>
-                ) : restaurantsQuery.isError ? (
-                  <PageErrorToast
-                    errorMessage="Could not load your restaurants."
+                <Card style={styles.listCard}>
+                  <Text variant="label">Your restaurants</Text>
+                  {restaurantsQuery.isLoading ? (
+                    <LoadingState label="Loading restaurants..." />
+                  ) : restaurantsQuery.isError ? (
+                    <PageErrorToast
+                      errorMessage="Could not load your restaurants."
                     title="Restaurant list unavailable"
                     actionLabel="Retry"
                     onAction={() => {
@@ -2433,7 +2436,7 @@ export function CreateVisitScreen({
             />
 
             {menuItemsQuery.isLoading ? (
-              <Text tone="muted">Loading menu items...</Text>
+              <LoadingState label="Loading menu items..." />
             ) : menuItemsQuery.isError ? (
               <PageErrorToast
                 errorMessage="Could not load menu items for this restaurant."

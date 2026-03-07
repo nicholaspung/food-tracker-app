@@ -37,7 +37,7 @@ export function BackHeaderScreenScaffold({
   backAccessibilityLabel,
   headerVariant = 'large',
   scroll = true,
-  keyboardAware = false,
+  keyboardAware = true,
   contentBackgroundTone = 'muted',
   contentStyle,
   bodyStyle,

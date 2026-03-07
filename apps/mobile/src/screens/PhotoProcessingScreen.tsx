@@ -9,6 +9,7 @@ import {
   EmptyState,
   FeatureFormScreenScaffold,
   LinearProgressBar,
+  LoadingState,
   PageErrorToast,
   PhotoSourceActionCards,
   RatingLegend,
@@ -2209,7 +2210,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                   <Text tone="success">Selected: {selectedRestaurant.name}</Text>
                 </View>
               ) : null}
-              {restaurantsQuery.isLoading ? <Text tone="secondary">Loading restaurants...</Text> : null}
+              {restaurantsQuery.isLoading ? <LoadingState label="Loading restaurants..." /> : null}
               {restaurantsQuery.isError ? <Text tone="danger">Could not load restaurants.</Text> : null}
               <View style={styles.listSection}>
                 {filteredRestaurants.map(({ restaurant, distanceMiles }) => {
@@ -2265,7 +2266,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               <Text style={styles.menuSuggestionTitle} tone="secondary" variant="bodySm">
                 Suggestions
               </Text>
-              {menuItemsQuery.isLoading ? <Text tone="secondary">Loading menu items...</Text> : null}
+              {menuItemsQuery.isLoading ? <LoadingState label="Loading menu items..." /> : null}
               {menuItemsQuery.isError ? <Text tone="danger">Could not load menu items.</Text> : null}
               <View style={styles.listSection}>
                 {filteredMenuItems.map((menuItem) => {

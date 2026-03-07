@@ -1,8 +1,10 @@
+import { useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { useTheme } from '../../theme';
+import { KeyboardAwareScrollProvider } from '../../ui/KeyboardAwareScrollContext';
 import { Button, Screen } from '../../ui';
 import { ScreenHeader } from './ScreenHeader';
 
@@ -52,6 +54,8 @@ export function FeatureFormScreenScaffold({
   testID,
 }: FeatureFormScreenScaffoldProps) {
   const theme = useTheme();
+  const internalScrollViewRef = useRef<ScrollView | null>(null);
+  const resolvedScrollViewRef = scrollViewRef ?? internalScrollViewRef;
 
   const styles = StyleSheet.create({
     screenContent: {
@@ -114,12 +118,19 @@ export function FeatureFormScreenScaffold({
       {headerBottomContent ? <View style={styles.headerBottom}>{headerBottomContent}</View> : null}
       <View style={styles.bodyContainer}>
         <ScrollView
+          automaticallyAdjustKeyboardInsets={keyboardAware}
           contentContainerStyle={[styles.bodyContent, bodyStyle]}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
-          ref={scrollViewRef}
+          ref={resolvedScrollViewRef}
           style={styles.bodyScroll}
         >
-          {children}
+          <KeyboardAwareScrollProvider
+            extraKeyboardOffset={theme.spacing.xxl + theme.sizes.buttonHeight}
+            scrollViewRef={resolvedScrollViewRef}
+          >
+            {children}
+          </KeyboardAwareScrollProvider>
         </ScrollView>
 
         <View style={styles.footer}>

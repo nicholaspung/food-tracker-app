@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { KeyboardDismissOverlay } from './src/components/shared/KeyboardDismissOverlay';
 import { SyncStatusBanner } from './src/components/SyncStatusBanner';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AppProviders } from './src/providers/AppProviders';
@@ -30,6 +31,7 @@ function AppShell() {
       <View style={styles.navigatorContainer}>
         <RootNavigator />
       </View>
+      <KeyboardDismissOverlay />
     </View>
   );
 }

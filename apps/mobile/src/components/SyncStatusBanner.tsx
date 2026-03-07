@@ -9,6 +9,7 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useSync } from '../providers/SyncProvider';
 import { useTheme } from '../theme';
 import { Modal, Text } from '../ui';
+import { LoadingState } from './shared';
 
 function formatQueuedMutationTitle(mutation: QueuedMutation): string {
   const operationName =
@@ -270,7 +271,7 @@ export function SyncStatusBanner() {
         title="Sync Queue"
         visible={isModalVisible}
       >
-        {isLoadingQueue ? <Text tone="secondary">Loading queued writes...</Text> : null}
+        {isLoadingQueue ? <LoadingState label="Loading queued writes..." /> : null}
         {!isLoadingQueue && queuedMutations.length === 0 ? (
           <Text tone="secondary">No queued writes right now.</Text>
         ) : null}

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { buildPocketBaseFileUrl } from '../features';
+import { LoadingState } from '../components/shared';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -507,6 +508,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       minHeight: 16,
       textAlign: 'center',
     },
+    statusLoading: {
+      justifyContent: 'center',
+      minHeight: 16,
+    },
     statusErrorText: {
       color: theme.colors.text.danger,
     },
@@ -815,9 +820,13 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
           </View>
         </View>
 
-        <Text style={[styles.statusText, errorMessage ? styles.statusErrorText : null]}>
-          {errorMessage ?? (areAllPhotosReady ? '' : 'Loading photos...')}
-        </Text>
+        {errorMessage ? (
+          <Text style={[styles.statusText, styles.statusErrorText]}>{errorMessage}</Text>
+        ) : !areAllPhotosReady ? (
+          <LoadingState label="Loading photos..." style={styles.statusLoading} />
+        ) : (
+          <Text style={styles.statusText}>{''}</Text>
+        )}
 
         <Button
           disabled={!areAllPhotosReady}

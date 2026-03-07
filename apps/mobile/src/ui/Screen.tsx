@@ -1,10 +1,12 @@
 import type { PropsWithChildren } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableWithoutFeedback, View } from 'react-native';
+import { useRef } from 'react';
 import type { Edge } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { useTheme } from '../theme';
+import { KeyboardAwareScrollProvider } from './KeyboardAwareScrollContext';
 
 interface ScreenProps {
   edges?: Edge[];
@@ -28,7 +30,7 @@ export function Screen({
   background = 'app',
   padded = true,
   scroll = false,
-  keyboardAware = false,
+  keyboardAware = true,
   style,
   contentStyle,
   scrollStyle,
@@ -37,6 +39,7 @@ export function Screen({
   testID,
 }: PropsWithChildren<ScreenProps>) {
   const theme = useTheme();
+  const scrollViewRef = useRef<ScrollView | null>(null);
 
   const styles = StyleSheet.create({
     safeArea: {
@@ -60,15 +63,27 @@ export function Screen({
   });
 
   const body = scroll ? (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={[styles.scrollContent, styles.content, contentStyle]}
-      style={[styles.keyboardContainer, scrollStyle]}
-    >
-      {children}
-    </ScrollView>
+    <KeyboardAwareScrollProvider extraKeyboardOffset={theme.spacing.xl} scrollViewRef={scrollViewRef}>
+      <ScrollView
+        automaticallyAdjustKeyboardInsets={keyboardAware}
+        contentContainerStyle={[styles.scrollContent, styles.content, contentStyle]}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
+        ref={scrollViewRef}
+        style={[styles.keyboardContainer, scrollStyle]}
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAwareScrollProvider>
   ) : (
-    <View style={[styles.nonScrollContent, styles.content, contentStyle]}>{children}</View>
+    <TouchableWithoutFeedback
+      accessible={false}
+      onPress={() => {
+        Keyboard.dismiss();
+      }}
+    >
+      <View style={[styles.nonScrollContent, styles.content, contentStyle]}>{children}</View>
+    </TouchableWithoutFeedback>
   );
 
   return (
@@ -87,7 +102,7 @@ export function Screen({
       ) : null}
       {keyboardAware ? (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardContainer}
         >
           {body}

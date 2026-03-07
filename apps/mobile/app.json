@@ -11,9 +11,9 @@
     "ios": {
       "bundleIdentifier": "com.anonymous.yummy-recs-mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "Allow Yummy Recs to scan friend QR codes.",
-        "NSLocationWhenInUseUsageDescription": "Allow Yummy Recs to use your GPS location for notes.",
-        "NSPhotoLibraryUsageDescription": "Allow Yummy Recs to select menu photos from your library.",
+        "NSCameraUsageDescription": "Allow Yummy Recs to scan QR codes and capture food photos.",
+        "NSLocationWhenInUseUsageDescription": "Allow Yummy Recs to use your GPS location for notes, quick tracks, and nearby restaurant search.",
+        "NSPhotoLibraryUsageDescription": "Allow Yummy Recs to select food photos from your library.",
         "NSPhotoLibraryAddUsageDescription": "Allow Yummy Recs to save processed menu photos when needed.",
         "CFBundleDisplayName": "Yummy Recs",
         "CFBundleName": "Yummy Recs"
@@ -47,20 +47,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Yummy Recs to scan friend QR codes."
+          "cameraPermission": "Allow Yummy Recs to scan QR codes and capture food photos."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Yummy Recs to use your GPS location for notes."
+          "locationWhenInUsePermission": "Allow Yummy Recs to use your GPS location for notes, quick tracks, and nearby restaurant search."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Yummy Recs to select menu photos from your library.",
-          "cameraPermission": "Allow Yummy Recs to capture menu photos."
+          "photosPermission": "Allow Yummy Recs to select food photos from your library.",
+          "cameraPermission": "Allow Yummy Recs to scan QR codes and capture food photos."
         }
       ],
       "expo-iap",

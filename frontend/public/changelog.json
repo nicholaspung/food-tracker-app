@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.8.3",
+    "date": "2026-03-07",
+    "title": "Smarter Keyboard Handling & Quick Track Photo Viewer",
+    "summary": "Tapping anywhere outside a text field now dismisses the keyboard, and inputs automatically scroll into view when focused so the keyboard never covers what you're typing. The photo preview in Quick Track is now larger and tappable to view full screen. Loading states across the app are also more consistent with spinner indicators.",
+    "features": [
+      "Tap anywhere outside a text field to dismiss the keyboard across all screens",
+      "Inputs automatically scroll into view when you tap them — the keyboard no longer covers what you're typing",
+      "Quick Track photo preview is now larger and tappable to view it full screen"
+    ],
+    "improvements": [
+      "Remove photo button in Quick Track is now a compact icon overlay on the photo instead of a separate button",
+      "Restaurant and menu item lists show a spinner while loading instead of plain text",
+      "Restaurant search button shows a loading spinner while searching",
+      "Share screen shows a spinner while food photos are loading",
+      "Sync queue shows a spinner while loading pending writes"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.8.2",
     "date": "2026-03-07",
     "title": "OTA Updates & Smarter Sign-In Errors",
