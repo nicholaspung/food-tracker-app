@@ -26,6 +26,11 @@ jobs:
   preview:
     name: Publish Mobile Preview
     runs-on: ubuntu-latest
+    environment:
+      name: beta
+      url: https://beta.yummyrecs.com
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
     defaults:
       run:
@@ -49,6 +54,14 @@ jobs:
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Verify Expo token
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "EXPO_TOKEN is not available to this job."
+            echo "If you stored it as an environment secret, it must be attached to the 'beta' GitHub environment."
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci

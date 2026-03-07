@@ -22,6 +22,7 @@ export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
     improvements: [
       'Sign-in errors now show detailed diagnostics — backend URL, HTTP status, and specific messages for invalid credentials, unreachable servers, and backend failures.',
       'CI/CD workflow automatically publishes OTA updates or triggers a full preview build when mobile code changes.',
+      'Preview CI job now validates the Expo token before running, with a clear error if the GitHub environment secret is misconfigured.',
     ],
     fixes: [],
   },

@@ -10,7 +10,8 @@
     ],
     "improvements": [
       "Sign-in errors now include detailed diagnostics — backend URL, HTTP status code, and specific messages for invalid credentials, unreachable servers, and backend failures",
-      "CI/CD workflow automatically publishes OTA updates or triggers a full preview build whenever mobile code changes"
+      "CI/CD workflow automatically publishes OTA updates or triggers a full preview build whenever mobile code changes",
+      "Preview CI job now validates the Expo token is available before proceeding, with a clear error message if the GitHub environment secret is misconfigured"
     ],
     "fixes": []
   },
