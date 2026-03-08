@@ -62,6 +62,9 @@ export function EmptyState({ title, description, icon, actionLabel, onAction, fi
     contentFill: {
       flex: 1,
     },
+    description: {
+      textAlign: 'center',
+    },
     action: {
       width: '100%',
       marginTop: theme.spacing.xs,
@@ -74,7 +77,7 @@ export function EmptyState({ title, description, icon, actionLabel, onAction, fi
         {icon ? <View>{icon}</View> : null}
         <Text variant="titleMd">{title}</Text>
         {description ? (
-          <Text style={{ textAlign: 'center' }} tone="secondary">
+          <Text style={styles.description} tone="secondary">
             {description}
           </Text>
         ) : null}

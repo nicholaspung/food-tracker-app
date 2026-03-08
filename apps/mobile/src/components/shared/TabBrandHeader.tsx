@@ -4,6 +4,7 @@ import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 import { APP_NAME, BRAND_LOGO } from '../../lib/branding';
 import { useTheme } from '../../theme';
 import { Text } from '../../ui';
+import type { TextProps } from '../../ui';
 
 export interface TabBrandHeaderProps {
   title: string;
@@ -14,6 +15,7 @@ export interface TabBrandHeaderProps {
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
   brandLabelStyle?: StyleProp<TextStyle>;
+  titleVariant?: TextProps['variant'];
   testID?: string;
 }
 
@@ -29,6 +31,7 @@ export function TabBrandHeader({
   titleStyle,
   subtitleStyle,
   brandLabelStyle,
+  titleVariant = 'titleMd',
   testID,
 }: TabBrandHeaderProps) {
   const theme = useTheme();
@@ -60,9 +63,6 @@ export function TabBrandHeader({
     },
     brandLabel: {
       color: theme.colors.text.secondary,
-      fontSize: 28,
-      fontWeight: '700',
-      lineHeight: 32,
     },
     subtitle: {
       color: theme.colors.text.muted,
@@ -76,10 +76,12 @@ export function TabBrandHeader({
           <View style={styles.logoBadge}>
             <Image resizeMode="contain" source={BRAND_LOGO} style={styles.logoImage} />
           </View>
-          <Text style={[styles.brandLabel, brandLabelStyle]}>{brandLabel}</Text>
+          <Text style={[styles.brandLabel, brandLabelStyle]} variant="displayMd">
+            {brandLabel}
+          </Text>
         </View>
       ) : null}
-      <Text style={titleStyle} variant="titleMd">
+      <Text style={titleStyle} variant={titleVariant}>
         {title}
       </Text>
       {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}

@@ -10,6 +10,25 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.5',
+    date: '2026-03-07',
+    title: 'Code Quality & Component Refactoring',
+    summary:
+      'Behind-the-scenes improvements to keep the app consistent and maintainable. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Auth screens share a single AuthIntroCard component for the icon-and-heading layout.',
+      'Pressable option cards across Add, Photo Processing, and Photo Source screens now use a shared IconActionCard.',
+      'Titled card sections in Settings, Admin, and About screens use a shared SectionCard.',
+      'Privacy Policy and Terms of Service screens simplified with a shared StaticContentSectionsScreen.',
+      'Date formatting utilities centralised into one module instead of being duplicated across multiple screens.',
+      'Typography scale expanded with display, section, card, eyebrow, and meta tokens for consistency.',
+      'TabBrandHeader accepts a titleVariant prop so screens can pick the right scale without inline overrides.',
+      'PhotoViewerModal colours sourced from the theme system via getPhotoViewerPalette.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.4',
     date: '2026-03-07',
     title: 'Photo Date Auto-Fill, Bill Final Price & About Screen',

@@ -19,7 +19,7 @@ import { LoadingState } from '../components/shared';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { getVisitSharePalette, useTheme } from '../theme';
 import { Button, Text } from '../ui';
 
 type VisitShareCustomizationScreenProps = NativeStackScreenProps<RootStackParamList, 'VisitShareCustomization'>;
@@ -99,69 +99,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
     return formattedVisitDate;
   }, [formattedVisitDate, shareTheme]);
 
-  const themeTokens = useMemo(() => {
-    if (shareTheme === 'rustic') {
-      return {
-        canvasBackground: theme.colors.background.muted,
-        canvasBorder: 'transparent',
-        itemBorder: theme.colors.border.warning,
-        itemBackground: theme.colors.background.surface,
-        overlayBackground: 'rgba(64, 43, 26, 0.74)',
-        primaryText: theme.colors.text.inverse,
-        secondaryText: theme.colors.text.inverse,
-        overlayTopBorderColor: 'rgba(255, 238, 214, 0.5)',
-        overlayBottomBorderColor: 'rgba(255, 238, 214, 0.28)',
-      };
-    }
-
-    if (shareTheme === 'minimal') {
-      return {
-        canvasBackground: theme.colors.background.surface,
-        canvasBorder: 'transparent',
-        itemBorder: 'rgba(255, 255, 255, 0.08)',
-        itemBackground: theme.colors.background.surface,
-        overlayBackground: 'rgba(255, 255, 255, 0.88)',
-        primaryText: theme.colors.text.primary,
-        secondaryText: theme.colors.text.secondary,
-        overlayTopBorderColor: 'rgba(17, 24, 39, 0.2)',
-        overlayBottomBorderColor: 'rgba(17, 24, 39, 0.08)',
-      };
-    }
-
-    if (shareTheme === 'neon') {
-      return {
-        canvasBackground: 'rgba(6, 10, 20, 1)',
-        canvasBorder: 'rgba(22, 217, 255, 1)',
-        itemBorder: 'rgba(22, 217, 255, 1)',
-        itemBackground: 'rgba(4, 8, 19, 1)',
-        overlayBackground: 'rgba(3, 9, 24, 0.88)',
-        primaryText: 'rgba(163, 240, 255, 1)',
-        secondaryText: 'rgba(226, 246, 255, 1)',
-        overlayTopBorderColor: 'rgba(22, 217, 255, 1)',
-        overlayBottomBorderColor: 'rgba(140, 55, 255, 1)',
-      };
-    }
-
-    return {
-      canvasBackground: theme.colors.background.surface,
-      canvasBorder: 'transparent',
-      itemBorder: 'rgba(255, 255, 255, 0.08)',
-      itemBackground: theme.colors.background.surface,
-      overlayBackground: 'rgba(15, 23, 40, 0.72)',
-      primaryText: theme.colors.text.inverse,
-      secondaryText: theme.colors.text.inverse,
-      overlayTopBorderColor: 'transparent',
-      overlayBottomBorderColor: 'transparent',
-    };
-  }, [
-    shareTheme,
-    theme.colors.background.muted,
-    theme.colors.background.surface,
-    theme.colors.border.warning,
-    theme.colors.text.inverse,
-    theme.colors.text.primary,
-    theme.colors.text.secondary,
-  ]);
+  const sharePalette = useMemo(() => getVisitSharePalette(theme, shareTheme), [shareTheme, theme]);
 
   const markPhotoReady = useCallback((photoId: string) => {
     setReadyPhotoIds((previous) => {
@@ -223,7 +161,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
 
   const styles = StyleSheet.create({
     screen: {
-      backgroundColor: 'rgba(0, 0, 0, 0.97)',
+      backgroundColor: sharePalette.screenBackground,
       flex: 1,
     },
     header: {
@@ -244,13 +182,13 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       lineHeight: 24,
     },
     headerSubtitle: {
-      color: 'rgba(255, 255, 255, 0.76)',
+      color: sharePalette.headerSubtitle,
       fontSize: 13,
       lineHeight: 18,
     },
     closeButton: {
       alignItems: 'center',
-      backgroundColor: 'rgba(255, 255, 255, 0.18)',
+      backgroundColor: sharePalette.closeButtonBackground,
       borderRadius: theme.radii.pill,
       height: 38,
       justifyContent: 'center',
@@ -393,24 +331,24 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       paddingVertical: 0,
     },
     metaRightRustic: {
-      backgroundColor: 'rgba(30, 16, 8, 0.45)',
-      borderColor: 'rgba(255, 235, 210, 0.35)',
+      backgroundColor: sharePalette.metaRightBackground,
+      borderColor: sharePalette.metaRightBorderColor,
       borderRadius: 0,
       borderWidth: 1,
       paddingHorizontal: 8,
       paddingVertical: 2,
     },
     metaRightMinimal: {
-      backgroundColor: 'rgba(17, 24, 39, 0.06)',
-      borderColor: 'rgba(17, 24, 39, 0.2)',
+      backgroundColor: sharePalette.metaRightBackground,
+      borderColor: sharePalette.metaRightBorderColor,
       borderRadius: 0,
       borderWidth: 1,
       paddingHorizontal: 8,
       paddingVertical: 2,
     },
     metaRightNeon: {
-      backgroundColor: 'rgba(7, 16, 38, 0.72)',
-      borderColor: 'rgba(22, 217, 255, 1)',
+      backgroundColor: sharePalette.metaRightBackground,
+      borderColor: sharePalette.metaRightBorderColor,
       borderRadius: 0,
       borderWidth: 1,
       paddingHorizontal: 8,
@@ -459,8 +397,8 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       textTransform: 'uppercase',
     },
     optionPanel: {
-      backgroundColor: 'rgba(20, 20, 20, 0.98)',
-      borderTopColor: 'rgba(255, 255, 255, 0.12)',
+      backgroundColor: sharePalette.optionPanelBackground,
+      borderTopColor: sharePalette.optionPanelBorder,
       borderTopWidth: 1,
       gap: theme.spacing.sm,
       paddingHorizontal: theme.spacing.md,
@@ -480,7 +418,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
     },
     chipButton: {
       alignItems: 'center',
-      borderColor: 'rgba(255, 255, 255, 0.24)',
+      borderColor: sharePalette.chipBorder,
       borderRadius: theme.radii.md,
       borderWidth: 1,
       flex: 1,
@@ -489,11 +427,11 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       paddingVertical: theme.spacing.xs,
     },
     chipButtonActive: {
-      backgroundColor: 'rgba(255, 255, 255, 0.2)',
-      borderColor: 'rgba(255, 255, 255, 0.62)',
+      backgroundColor: sharePalette.chipActiveBackground,
+      borderColor: sharePalette.chipActiveBorder,
     },
     chipLabel: {
-      color: 'rgba(255, 255, 255, 0.72)',
+      color: sharePalette.chipLabel,
       fontSize: 12,
       fontWeight: '600',
       lineHeight: 16,
@@ -502,7 +440,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       color: theme.colors.text.inverse,
     },
     statusText: {
-      color: 'rgba(255, 255, 255, 0.72)',
+      color: sharePalette.statusText,
       fontSize: 12,
       lineHeight: 16,
       minHeight: 16,
@@ -547,8 +485,8 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
           style={[
             styles.shareCanvas,
             {
-              backgroundColor: themeTokens.canvasBackground,
-              borderColor: themeTokens.canvasBorder,
+              backgroundColor: sharePalette.canvasBackground,
+              borderColor: sharePalette.canvasBorder,
               width: previewWidth,
             },
           ]}
@@ -559,8 +497,8 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
               style={[
                 styles.shareItemCard,
                 {
-                  backgroundColor: themeTokens.itemBackground,
-                  borderColor: themeTokens.itemBorder,
+                  backgroundColor: sharePalette.itemBackground,
+                  borderColor: sharePalette.itemBorder,
                 },
                 isRusticTheme ? { borderWidth: 2, borderRadius: 0 } : null,
                 isMinimalTheme ? { borderWidth: 1, borderRadius: 0 } : null,
@@ -590,9 +528,9 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                           ? styles.shareOverlayNeon
                           : styles.shareOverlayModern,
                     {
-                      backgroundColor: themeTokens.overlayBackground,
-                      borderTopColor: themeTokens.overlayTopBorderColor,
-                      borderBottomColor: themeTokens.overlayBottomBorderColor,
+                      backgroundColor: sharePalette.overlayBackground,
+                      borderTopColor: sharePalette.overlayTopBorderColor,
+                      borderBottomColor: sharePalette.overlayBottomBorderColor,
                     },
                   ]}
                 >
@@ -607,7 +545,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                             : isNeonTheme
                               ? styles.overlayPrimaryNeon
                             : styles.overlayPrimaryModern,
-                        { color: themeTokens.primaryText },
+                        { color: sharePalette.primaryText },
                       ]}
                     >
                       {item.itemName}
@@ -624,7 +562,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                             : isNeonTheme
                               ? styles.overlaySecondaryNeon
                             : styles.overlaySecondaryModern,
-                        { color: themeTokens.secondaryText },
+                        { color: sharePalette.secondaryText },
                       ]}
                     >
                       {restaurantName}
@@ -645,7 +583,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                                 : isNeonTheme
                                   ? styles.dateTextNeon
                                 : null,
-                            { color: themeTokens.secondaryText },
+                            { color: sharePalette.secondaryText },
                           ]}
                         >
                           {themedDateLabel}
@@ -683,7 +621,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                                   : isNeonTheme
                                     ? styles.ratingTextNeon
                                   : null,
-                              { color: themeTokens.secondaryText },
+                              { color: sharePalette.secondaryText },
                             ]}
                           >
                             {getRatingLabel(item.rating)}
@@ -726,10 +664,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                                 : isNeonTheme
                                   ? styles.ratingTextNeon
                                 : null,
-                            { color: themeTokens.secondaryText },
-                          ]}
-                        >
-                          {getRatingLabel(item.rating)}
+                              { color: sharePalette.secondaryText },
+                            ]}
+                          >
+                            {getRatingLabel(item.rating)}
                         </Text>
                       </View>
                     ) : (
@@ -743,7 +681,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                               : isNeonTheme
                                 ? styles.dateTextNeon
                               : null,
-                          { color: themeTokens.secondaryText },
+                          { color: sharePalette.secondaryText },
                         ]}
                       >
                         {themedDateLabel}

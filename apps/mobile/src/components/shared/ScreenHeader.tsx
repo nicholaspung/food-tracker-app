@@ -62,14 +62,11 @@ export function ScreenHeader({
     title: {
       color: theme.colors.text.primary,
       flexShrink: 1,
-      fontSize: isCompact ? theme.typography.titleMd.fontSize : 38,
-      fontWeight: '700',
-      lineHeight: isCompact ? theme.typography.titleMd.lineHeight : 44,
+      ...(isCompact ? theme.typography.titleMd : theme.typography.displayLg),
     },
     subtitle: {
       color: theme.colors.text.muted,
-      fontSize: 14,
-      lineHeight: 20,
+      ...theme.typography.bodyMd,
     },
     rightAccessory: {
       marginLeft: 'auto',

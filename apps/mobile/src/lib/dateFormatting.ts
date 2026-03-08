@@ -4,6 +4,12 @@ interface FormatDisplayDateOptions {
   fallback?: string;
 }
 
+interface FormatLocalDateOptions {
+  locale?: string | string[];
+  fallback?: string;
+  options?: Intl.DateTimeFormatOptions;
+}
+
 interface ParsedDateTime {
   year: number;
   monthIndex: number;
@@ -175,4 +181,52 @@ export function formatDisplayDate(
   }
 
   return resolvedDate.toLocaleDateString(locale, options);
+}
+
+export function formatDateToLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function getTodayLocalDateString(): string {
+  return formatDateToLocalDateString(new Date());
+}
+
+export function localDateStringToUTC(localDateString: string): string {
+  return new Date(`${localDateString}T00:00:00`).toISOString();
+}
+
+export function isValidLocalDate(localDateString: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDateString)) {
+    return false;
+  }
+
+  const parsedDate = new Date(`${localDateString}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return false;
+  }
+
+  return parsedDate.toISOString().slice(0, 10) === localDateString;
+}
+
+export function formatLocalDateLabel(
+  localDateString: string,
+  {
+    locale,
+    fallback = localDateString,
+    options = {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    },
+  }: FormatLocalDateOptions = {},
+): string {
+  const parsedDate = new Date(`${localDateString}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return fallback;
+  }
+
+  return parsedDate.toLocaleDateString(locale, options);
 }

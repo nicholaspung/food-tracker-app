@@ -1,14 +1,13 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
-import { AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
+import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import { requestUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { Button, Card, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
@@ -22,25 +21,6 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
   const styles = StyleSheet.create({
     formContent: {
       paddingTop: theme.spacing.sm,
-    },
-    introCard: {
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    introVisual: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 64,
-    },
-    introIconFrame: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 60,
-      justifyContent: 'center',
-      width: 60,
     },
     formCard: {
       gap: theme.spacing.sm,
@@ -99,15 +79,11 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
         title=""
         contentStyle={styles.formContent}
       >
-        <Card style={styles.introCard} tone="muted">
-          <View style={styles.introVisual}>
-            <View style={styles.introIconFrame}>
-              <Ionicons color={theme.colors.text.brand} name="mail-open-outline" size={28} />
-            </View>
-          </View>
-          <Text variant="titleMd">Forgot Password</Text>
-          <Text tone="secondary">Request a reset token by email.</Text>
-        </Card>
+        <AuthIntroCard
+          description="Request a reset token by email."
+          iconName="mail-open-outline"
+          title="Forgot Password"
+        />
 
         <Card style={styles.formCard}>
           <Input

@@ -53,6 +53,12 @@ import {
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
+import {
+  formatDateToLocalDateString,
+  getTodayLocalDateString,
+  isValidLocalDate,
+  localDateStringToUTC,
+} from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { extractPhotoCaptureDate } from '../lib/photoMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -131,35 +137,6 @@ function normalizeMenuItemVisibility(
   }
 
   return "friends";
-}
-
-function getTodayLocalDateString(): string {
-  const now = new Date();
-  return formatDateToLocalDateString(now);
-}
-
-function formatDateToLocalDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function localDateStringToUTC(localDateString: string): string {
-  return new Date(`${localDateString}T00:00:00`).toISOString();
-}
-
-function isValidLocalDate(localDateString: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDateString)) {
-    return false;
-  }
-
-  const parsed = new Date(`${localDateString}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return false;
-  }
-
-  return parsed.toISOString().slice(0, 10) === localDateString;
 }
 
 function resolveDefaultVisitVisibility(): VisitVisibility {

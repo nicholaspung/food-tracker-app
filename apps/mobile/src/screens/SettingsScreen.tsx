@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { BackHeaderScreenScaffold, EmptyState, Skeleton, VisibilityOptionSelector } from '../components/shared';
+import { BackHeaderScreenScaffold, EmptyState, SectionCard, Skeleton, VisibilityOptionSelector } from '../components/shared';
 import { getCollectionRecord, updateCollectionRecord } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -82,19 +82,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     body: {
       gap: theme.spacing.md,
       paddingTop: theme.spacing.sm,
-    },
-    sectionCard: {
-      gap: theme.spacing.xs,
-    },
-    sectionTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24,
-    },
-    sectionDescription: {
-      color: theme.colors.text.secondary,
-      marginBottom: theme.spacing.xs,
     },
     optionList: {
       gap: theme.spacing.xs,
@@ -283,12 +270,10 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
         {!settingsQuery.isLoading && !settingsQuery.isError ? (
           <>
-            <Card style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Default Visit Visibility</Text>
-              <Text style={styles.sectionDescription}>
-                Choose who can see your visits by default. You can change this on each visit later.
-              </Text>
-
+            <SectionCard
+              description="Choose who can see your visits by default. You can change this on each visit later."
+              title="Default Visit Visibility"
+            >
               <View style={styles.optionList}>
                 <VisibilityOptionSelector
                   onChange={(selectedValue) => {
@@ -302,14 +287,12 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
                   variant="cards"
                 />
               </View>
-            </Card>
+            </SectionCard>
 
-            <Card style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Default Restaurant Visibility</Text>
-              <Text style={styles.sectionDescription}>
-                Choose who can see restaurants you add by default. You can change this per restaurant later.
-              </Text>
-
+            <SectionCard
+              description="Choose who can see restaurants you add by default. You can change this per restaurant later."
+              title="Default Restaurant Visibility"
+            >
               <View style={styles.optionList}>
                 <VisibilityOptionSelector
                   onChange={(selectedValue) => {
@@ -328,7 +311,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
                   variant="cards"
                 />
               </View>
-            </Card>
+            </SectionCard>
 
             <PageErrorToast errorMessage={errorMessage} title="Settings update failed" />
             {successMessage ? (

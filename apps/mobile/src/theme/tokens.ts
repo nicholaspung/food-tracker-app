@@ -25,6 +25,16 @@ export const sizeTokens = {
 } as const;
 
 export const typographyTokens = {
+  displayLg: {
+    fontSize: 38,
+    lineHeight: 44,
+    fontWeight: '700',
+  },
+  displayMd: {
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '700',
+  },
   titleLg: {
     fontSize: 30,
     lineHeight: 36,
@@ -54,6 +64,31 @@ export const typographyTokens = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "600",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  cardTitle: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  titleSm: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
+  eyebrow: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  meta: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   button: {
     fontSize: 16,

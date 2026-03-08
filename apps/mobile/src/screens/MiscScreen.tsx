@@ -7,8 +7,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import {
   OptionList,
   OptionListRow,
-  ScreenHeader,
   StatusPill,
+  TabBrandHeader,
   TabRootScreenScaffold,
   TabSectionCard,
 } from '../components/shared';
@@ -187,17 +187,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       paddingHorizontal: 0,
       paddingVertical: 0,
     },
-    header: {
-      gap: theme.spacing.xxs,
-      paddingBottom: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    headerTitle: {
-      color: sectionColors.title,
-      fontSize: 30,
-      fontWeight: '700',
-      lineHeight: 36,
-    },
     body: {
       gap: theme.spacing.md,
       paddingBottom: theme.spacing.xl,
@@ -271,11 +260,11 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
       scrollUnderlayColor={sectionColors.background}
       testID="misc-page"
     >
-      <ScreenHeader
-        style={styles.header}
+      <TabBrandHeader
+        showBrand={false}
         subtitle="Additional features and helpful tips"
         title="More"
-        titleStyle={styles.headerTitle}
+        titleVariant="displayMd"
       />
 
       <View style={styles.body}>

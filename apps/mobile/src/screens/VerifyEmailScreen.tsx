@@ -1,15 +1,14 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
-import { AuthTopBar, FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
+import { AuthIntroCard, AuthTopBar, FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { confirmUserEmailVerification } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { AUTH_EMAIL_UNVERIFIED_ERROR, useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Screen, Text } from '../ui';
+import { Button, Card, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type VerifyEmailScreenProps = NativeStackScreenProps<RootStackParamList, 'VerifyEmail'>;
@@ -31,25 +30,6 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const styles = StyleSheet.create({
     formContent: {
       paddingTop: theme.spacing.sm,
-    },
-    introCard: {
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    introVisual: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 64,
-    },
-    introIconFrame: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 60,
-      justifyContent: 'center',
-      width: 60,
     },
     formCard: {
       gap: theme.spacing.sm,
@@ -168,15 +148,11 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
         title=""
         contentStyle={styles.formContent}
       >
-        <Card style={styles.introCard} tone="muted">
-          <View style={styles.introVisual}>
-            <View style={styles.introIconFrame}>
-              <Ionicons color={theme.colors.text.brand} name="mail-unread-outline" size={28} />
-            </View>
-          </View>
-          <Text variant="titleMd">Verify Email</Text>
-          <Text tone="secondary">{subtitle}</Text>
-        </Card>
+        <AuthIntroCard
+          description={subtitle}
+          iconName="mail-unread-outline"
+          title="Verify Email"
+        />
 
         <Card style={styles.formCard}>
           <Input

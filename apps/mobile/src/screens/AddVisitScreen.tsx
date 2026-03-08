@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
-import { ScreenHeader, TabRootScreenScaffold } from '../components/shared';
+import { TabBrandHeader, TabRootScreenScaffold } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
@@ -38,17 +38,6 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       gap: 0,
       paddingHorizontal: 0,
       paddingVertical: 0,
-    },
-    header: {
-      gap: theme.spacing.xxs,
-      paddingBottom: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    headerTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 30,
-      fontWeight: '700',
-      lineHeight: 36,
     },
     body: {
       flex: 1,
@@ -137,11 +126,11 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       scrollUnderlayColor={theme.colors.background.muted}
       testID="add-visit-selector"
     >
-      <ScreenHeader
-        style={styles.header}
+      <TabBrandHeader
+        showBrand={false}
         subtitle="Choose how you want to track your food"
         title="Add New"
-        titleStyle={styles.headerTitle}
+        titleVariant="displayMd"
       />
 
       <View style={styles.body}>

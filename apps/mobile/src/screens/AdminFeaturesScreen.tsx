@@ -10,6 +10,7 @@ import {
   OptionList,
   OptionListInlineBody,
   OptionListRow,
+  SectionCard,
   RoleBadge,
   StatusPill,
 } from '../components/shared';
@@ -19,7 +20,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Text } from '../ui';
+import { Button, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type AdminFeaturesScreenProps = NativeStackScreenProps<RootStackParamList, 'AdminFeatures'>;
@@ -134,17 +135,6 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
       gap: theme.spacing.md,
       paddingTop: theme.spacing.sm,
     },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24,
-    },
-    sectionDescription: {
-      color: theme.colors.text.secondary,
-    },
     warningPanel: {
       backgroundColor: theme.colors.status.warningBg,
       borderColor: theme.colors.border.warning,
@@ -210,10 +200,10 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
         />
       ) : (
         <>
-          <Card style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Admin Tools</Text>
-            <Text style={styles.sectionDescription}>Manage subscribers and review flagged menus.</Text>
-
+          <SectionCard
+            description="Manage subscribers and review flagged menus."
+            title="Admin Tools"
+          >
             {isAdmin ? (
               <OptionList>
                 <OptionListRow
@@ -299,12 +289,12 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
                 </Text>
               </View>
             )}
-          </Card>
+          </SectionCard>
 
-          <Card style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>View Mode</Text>
-            <Text style={styles.sectionDescription}>Preview the app with reduced permissions.</Text>
-
+          <SectionCard
+            description="Preview the app with reduced permissions."
+            title="View Mode"
+          >
             <OptionList>
               <OptionListRow
                 iconName="eye-outline"
@@ -356,7 +346,7 @@ export function AdminFeaturesScreen({ navigation }: AdminFeaturesScreenProps) {
                 ? 'Preview mode is active across the app until these toggles are disabled.'
                 : 'Enable a toggle to preview the app with reduced access.'}
             </Text>
-          </Card>
+          </SectionCard>
         </>
       )}
     </BackHeaderScreenScaffold>

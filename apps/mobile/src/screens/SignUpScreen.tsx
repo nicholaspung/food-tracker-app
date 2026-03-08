@@ -1,9 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
 
-import { AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
+import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import { createCollectionRecord, sendApiRequest } from '../features';
 import { getErrorMessage } from '../lib/errorUtils';
 import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
@@ -47,25 +46,6 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const styles = StyleSheet.create({
     formContent: {
       paddingTop: theme.spacing.sm,
-    },
-    introCard: {
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    introVisual: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 64,
-    },
-    introIconFrame: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 60,
-      justifyContent: 'center',
-      width: 60,
     },
     formCard: {
       gap: theme.spacing.sm,
@@ -218,17 +198,11 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         title=""
         contentStyle={styles.formContent}
       >
-        <Card style={styles.introCard} tone="muted">
-          <View style={styles.introVisual}>
-            <View style={styles.introIconFrame}>
-              <Ionicons color={theme.colors.text.brand} name="person-add-outline" size={28} />
-            </View>
-          </View>
-          <Text variant="titleMd">Create Account</Text>
-          <Text tone="secondary">
-            Start building your own recommendation history and share favorite finds with friends.
-          </Text>
-        </Card>
+        <AuthIntroCard
+          description="Start building your own recommendation history and share favorite finds with friends."
+          iconName="person-add-outline"
+          title="Create Account"
+        />
 
         <Card style={styles.formCard}>
           <Input label="Name" onChangeText={setName} placeholder="Your name" value={name} />

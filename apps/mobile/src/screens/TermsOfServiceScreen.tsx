@@ -1,10 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { StyleSheet, View } from 'react-native';
 
-import { BackHeaderScreenScaffold } from '../components/shared';
+import { StaticContentSectionsScreen } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { useTheme } from '../theme';
-import { Card, Text } from '../ui';
 
 type TermsOfServiceScreenProps = NativeStackScreenProps<RootStackParamList, 'TermsOfService'>;
 
@@ -32,47 +29,6 @@ const TERMS_SECTIONS = [
 ] as const;
 
 export function TermsOfServiceScreen({ navigation }: TermsOfServiceScreenProps) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    introCard: {
-      gap: theme.spacing.xs,
-    },
-    introTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24,
-    },
-    introCopy: {
-      color: theme.colors.text.secondary,
-      lineHeight: 20,
-    },
-    sectionCard: {
-      gap: theme.spacing.xs,
-    },
-    sectionTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 16,
-      fontWeight: '700',
-      lineHeight: 22,
-    },
-    sectionBody: {
-      color: theme.colors.text.secondary,
-      lineHeight: 20,
-    },
-    caption: {
-      color: theme.colors.text.muted,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
-      textTransform: 'uppercase',
-    },
-  });
-
   const handleBackPress = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -83,29 +39,14 @@ export function TermsOfServiceScreen({ navigation }: TermsOfServiceScreenProps) 
   };
 
   return (
-    <BackHeaderScreenScaffold
-      bodyStyle={styles.body}
+    <StaticContentSectionsScreen
+      introCaption="Scaffold"
+      introDescription="This screen is wired and ready for final legal copy. Replace the sections below with approved language or fetch the content from your canonical source later."
+      introTitle="Terms content has not been finalized yet."
       onBackPress={handleBackPress}
+      sections={TERMS_SECTIONS}
       subtitle="Placeholder structure for future legal copy"
       title="Terms of Service"
-    >
-      <Card style={styles.introCard} tone="muted">
-        <Text style={styles.caption}>Scaffold</Text>
-        <Text style={styles.introTitle}>Terms content has not been finalized yet.</Text>
-        <Text style={styles.introCopy}>
-          This screen is wired and ready for final legal copy. Replace the sections below with
-          approved language or fetch the content from your canonical source later.
-        </Text>
-      </Card>
-
-      {TERMS_SECTIONS.map((section) => (
-        <Card key={section.title} style={styles.sectionCard}>
-          <View>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <Text style={styles.sectionBody}>{section.body}</Text>
-          </View>
-        </Card>
-      ))}
-    </BackHeaderScreenScaffold>
+    />
   );
 }

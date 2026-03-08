@@ -12,6 +12,7 @@ import {
   SegmentedControl,
   Skeleton,
   StatusPill,
+  TabBrandHeader,
   TabRootScreenScaffold,
   type SegmentedControlOption,
 } from '../components/shared';
@@ -133,30 +134,12 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       paddingHorizontal: 0,
       paddingVertical: 0,
     },
-    header: {
-      backgroundColor: theme.colors.background.surface,
-      gap: theme.spacing.xs,
-      paddingBottom: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-    },
     mainTabsSection: {
       backgroundColor: theme.colors.background.surface,
       borderBottomColor: theme.colors.border.subtle,
       borderBottomWidth: 1,
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.sm,
-    },
-    title: {
-      color: theme.colors.text.primary,
-      fontSize: 38,
-      fontWeight: '700',
-      lineHeight: 44,
-    },
-    subtitle: {
-      color: theme.colors.text.muted,
-      fontSize: 14,
-      lineHeight: 20,
     },
     body: {
       gap: theme.spacing.md,
@@ -556,10 +539,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       keyboardAware
       scrollUnderlayColor={theme.colors.background.muted}
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Friends</Text>
-        <Text style={styles.subtitle}>{friendSummary}</Text>
-      </View>
+      <TabBrandHeader showBrand={false} subtitle={friendSummary} title="Friends" titleVariant="displayLg" />
 
       <View style={styles.mainTabsSection}>
         <SegmentedControl onChange={setMainTab} options={MAIN_TAB_OPTIONS} value={mainTab} />

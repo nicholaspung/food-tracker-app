@@ -66,14 +66,11 @@ export function FriendListItemCard({
     },
     name: {
       color: theme.colors.text.primary,
-      fontSize: 20,
-      fontWeight: '700',
-      lineHeight: 24,
+      ...theme.typography.cardTitle,
     },
     meta: {
       color: theme.colors.text.muted,
-      fontSize: 13,
-      lineHeight: 18,
+      ...theme.typography.meta,
     },
   });
 

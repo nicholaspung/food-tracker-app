@@ -3,6 +3,11 @@ import { useMemo, useState } from 'react';
 import { Modal as RNModal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
+import {
+  formatDateToLocalDateString,
+  formatLocalDateLabel,
+  isValidLocalDate,
+} from '../../lib/dateFormatting';
 import { useTheme } from '../../theme';
 import { Button, Card, Input, Text } from '../../ui';
 
@@ -16,39 +21,6 @@ interface LocalDatePickerFieldProps {
   fallbackHelperText?: string;
   helperText?: string;
   highlighted?: boolean;
-}
-
-function formatDateToLocalDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function isValidLocalDate(localDateString: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDateString)) {
-    return false;
-  }
-
-  const parsed = new Date(`${localDateString}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return false;
-  }
-
-  return parsed.toISOString().slice(0, 10) === localDateString;
-}
-
-function formatVisitDateLabel(localDateString: string): string {
-  const date = new Date(`${localDateString}T00:00:00`);
-  if (Number.isNaN(date.getTime())) {
-    return localDateString;
-  }
-
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(date);
 }
 
 export function LocalDatePickerField({
@@ -207,7 +179,7 @@ export function LocalDatePickerField({
             name="calendar-outline"
             size={16}
           />
-          <Text tone={highlighted ? 'info' : 'primary'}>{formatVisitDateLabel(value)}</Text>
+          <Text tone={highlighted ? 'info' : 'primary'}>{formatLocalDateLabel(value)}</Text>
         </View>
         <Ionicons
           color={highlighted ? theme.colors.text.info : theme.colors.text.muted}

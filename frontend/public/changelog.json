@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.8.5",
+    "date": "2026-03-07",
+    "title": "Code Quality & Component Refactoring",
+    "summary": "Behind-the-scenes improvements to keep the app consistent and maintainable. No user-facing changes.",
+    "features": [],
+    "improvements": [
+      "New shared AuthIntroCard component standardises the icon-and-heading pattern on all auth screens (Login, Sign Up, Forgot Password, Reset Password)",
+      "New shared IconActionCard component replaces duplicated pressable card layouts across Add, Photo Processing, and Photo Source screens",
+      "New shared SectionCard component unifies the titled card-with-description pattern used in Settings, Admin, and About screens",
+      "New StaticContentSectionsScreen component simplifies Privacy Policy and Terms of Service screens",
+      "Date formatting utilities (formatDateToLocalDateString, getTodayLocalDateString, localDateStringToUTC, isValidLocalDate, formatLocalDateLabel) centralised into a single module instead of being duplicated across three screens",
+      "Typography tokens expanded with displayLg, displayMd, sectionTitle, cardTitle, titleSm, eyebrow, and meta scales so font sizes are consistent across the app",
+      "TabBrandHeader now accepts a titleVariant prop so screens can use the correct display scale without overriding styles inline",
+      "PhotoViewerModal colours sourced from getPhotoViewerPalette to stay in sync with the theme system",
+      "TabSectionCard refactored to delegate to the new SectionCard, eliminating duplicate implementation"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.8.4",
     "date": "2026-03-07",
     "title": "Photo Date Auto-Fill, Bill Final Price & About Screen",

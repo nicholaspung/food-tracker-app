@@ -3,7 +3,21 @@ import type { StyleProp, TextProps as RNTextProps, TextStyle } from 'react-nativ
 
 import { useTheme, type Theme } from '../theme';
 
-type TextVariant = 'titleLg' | 'titleMd' | 'bodyLg' | 'bodyMd' | 'bodySm' | 'label' | 'button';
+type TextVariant =
+  | 'displayLg'
+  | 'displayMd'
+  | 'titleLg'
+  | 'titleMd'
+  | 'bodyLg'
+  | 'bodyMd'
+  | 'bodySm'
+  | 'label'
+  | 'sectionTitle'
+  | 'cardTitle'
+  | 'titleSm'
+  | 'eyebrow'
+  | 'meta'
+  | 'button';
 type TextTone = 'primary' | 'secondary' | 'muted' | 'inverse' | 'brand' | 'danger' | 'warning' | 'success' | 'info';
 
 export interface TextProps extends RNTextProps {

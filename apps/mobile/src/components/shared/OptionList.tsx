@@ -121,14 +121,11 @@ export function OptionListRow({
     },
     title: {
       color: theme.colors.text.primary,
-      fontSize: 15,
-      fontWeight: '600',
-      lineHeight: 19,
+      ...theme.typography.titleSm,
     },
     subtitle: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
+      ...theme.typography.bodySm,
     },
     right: {
       alignItems: 'center',

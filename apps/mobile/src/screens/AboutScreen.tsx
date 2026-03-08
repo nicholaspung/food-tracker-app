@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
 
-import { BackHeaderScreenScaffold, OptionList, OptionListRow } from '../components/shared';
+import { BackHeaderScreenScaffold, OptionList, OptionListRow, SectionCard } from '../components/shared';
 import { formatAppVersionLabel, getApplicationId, getApplicationName } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
@@ -24,36 +24,21 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
     },
     heroEyebrow: {
       color: theme.colors.text.brand,
-      fontSize: 12,
-      fontWeight: '700',
+      ...theme.typography.eyebrow,
       letterSpacing: 0.6,
-      lineHeight: 16,
       textTransform: 'uppercase',
     },
     heroTitle: {
       color: theme.colors.text.primary,
-      fontSize: 22,
-      fontWeight: '700',
-      lineHeight: 28,
+      ...theme.typography.titleMd,
     },
     heroDescription: {
       color: theme.colors.text.secondary,
       lineHeight: 20,
     },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    sectionTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24,
-    },
     metaValue: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
-      fontWeight: '600',
-      lineHeight: 18,
+      ...theme.typography.meta,
     },
     footerCopy: {
       color: theme.colors.text.muted,
@@ -87,8 +72,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
         </Text>
       </Card>
 
-      <Card style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>App Information</Text>
+      <SectionCard title="App Information">
         <OptionList>
           <OptionListRow
             iconName="phone-portrait-outline"
@@ -104,10 +88,9 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
             title="Application ID"
           />
         </OptionList>
-      </Card>
+      </SectionCard>
 
-      <Card style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Legal</Text>
+      <SectionCard title="Legal">
         <OptionList>
           <OptionListRow
             iconName="document-text-outline"
@@ -127,7 +110,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
             title="Privacy Policy"
           />
         </OptionList>
-      </Card>
+      </SectionCard>
 
       <View>
         <Text style={styles.footerCopy}>

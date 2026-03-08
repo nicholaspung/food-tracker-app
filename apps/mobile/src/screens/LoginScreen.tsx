@@ -1,9 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AuthTopBar, FormScaffold, LoadingOverlay, OtaUpdateCard } from '../components/shared';
+import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay, OtaUpdateCard } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { AUTH_EMAIL_UNVERIFIED_ERROR, useAuth } from '../providers/AuthProvider';
@@ -23,25 +22,6 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   const styles = StyleSheet.create({
     formContent: {
       paddingTop: theme.spacing.sm,
-    },
-    introCard: {
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    introVisual: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 64,
-    },
-    introIconFrame: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 60,
-      justifyContent: 'center',
-      width: 60,
     },
     formCard: {
       gap: theme.spacing.sm,
@@ -102,15 +82,11 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
         title=""
         contentStyle={styles.formContent}
       >
-        <Card style={styles.introCard} tone="muted">
-          <View style={styles.introVisual}>
-            <View style={styles.introIconFrame}>
-              <Ionicons color={theme.colors.text.brand} name="key-outline" size={28} />
-            </View>
-          </View>
-          <Text variant="titleMd">Welcome Back</Text>
-          <Text tone="secondary">Sign in with your email and password.</Text>
-        </Card>
+        <AuthIntroCard
+          description="Sign in with your email and password."
+          iconName="key-outline"
+          title="Welcome Back"
+        />
 
         <OtaUpdateCard
           description="If beta sign-in works on the web but not on mobile, verify the running OTA here and update this app before trying again."

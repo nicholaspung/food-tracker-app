@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FlatList, Image, Modal as RNModal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '../../theme';
+import { getPhotoViewerPalette, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 export interface PhotoViewerModalProps {
@@ -22,6 +22,7 @@ export function PhotoViewerModal({
   onRequestClose,
 }: PhotoViewerModalProps) {
   const theme = useTheme();
+  const viewerPalette = getPhotoViewerPalette(theme);
   const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const listRef = useRef<FlatList<string>>(null);
@@ -71,7 +72,7 @@ export function PhotoViewerModal({
 
   const styles = StyleSheet.create({
     modalContainer: {
-      backgroundColor: 'rgba(0, 0, 0, 0.96)',
+      backgroundColor: viewerPalette.background,
       flex: 1,
     },
     topBar: {
@@ -81,7 +82,7 @@ export function PhotoViewerModal({
     },
     closeButton: {
       alignItems: 'center',
-      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      backgroundColor: viewerPalette.controlBackground,
       borderRadius: theme.radii.pill,
       height: 36,
       justifyContent: 'center',
@@ -109,7 +110,7 @@ export function PhotoViewerModal({
     },
     navButton: {
       alignItems: 'center',
-      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      backgroundColor: viewerPalette.controlBackground,
       borderRadius: theme.radii.pill,
       height: 40,
       justifyContent: 'center',
@@ -119,7 +120,7 @@ export function PhotoViewerModal({
       opacity: 0.35,
     },
     count: {
-      color: theme.colors.text.inverse,
+      color: viewerPalette.text,
       fontSize: 14,
       fontWeight: '600',
       lineHeight: 18,
@@ -130,7 +131,7 @@ export function PhotoViewerModal({
       gap: 2,
     },
     ownerLabel: {
-      color: theme.colors.text.inverse,
+      color: viewerPalette.text,
       fontSize: 12,
       fontWeight: '600',
       lineHeight: 16,

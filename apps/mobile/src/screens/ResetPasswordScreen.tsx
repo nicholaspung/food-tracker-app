@@ -1,9 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
-import { AuthTopBar, FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
+import { AuthIntroCard, AuthTopBar, FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { confirmUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -26,25 +25,6 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
   const styles = StyleSheet.create({
     formContent: {
       paddingTop: theme.spacing.sm,
-    },
-    introCard: {
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    introVisual: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 64,
-    },
-    introIconFrame: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 60,
-      justifyContent: 'center',
-      width: 60,
     },
     formCard: {
       gap: theme.spacing.sm,
@@ -145,15 +125,11 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
         title=""
         contentStyle={styles.formContent}
       >
-        <Card style={styles.introCard} tone="muted">
-          <View style={styles.introVisual}>
-            <View style={styles.introIconFrame}>
-              <Ionicons color={theme.colors.text.brand} name="lock-open-outline" size={28} />
-            </View>
-          </View>
-          <Text variant="titleMd">Reset Password</Text>
-          <Text tone="secondary">Enter your reset token and choose a new password.</Text>
-        </Card>
+        <AuthIntroCard
+          description="Enter your reset token and choose a new password."
+          iconName="lock-open-outline"
+          title="Reset Password"
+        />
 
         <Card style={styles.formCard}>
           {resetEmail ? (

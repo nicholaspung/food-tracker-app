@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   EmptyState,
   FeatureFormScreenScaffold,
+  IconActionCard,
   LinearProgressBar,
   LoadingState,
   PageErrorToast,
@@ -36,6 +37,13 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import {
+  formatDateToLocalDateString,
+  formatLocalDateLabel,
+  getTodayLocalDateString,
+  isValidLocalDate,
+  localDateStringToUTC,
+} from '../lib/dateFormatting';
 import { calculateDistance, formatDistance } from '../lib/googlePlaces';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -176,47 +184,6 @@ function parseMenuItemNamesFromCsv(csvText: string): string[] {
   }
 
   return names;
-}
-
-function formatDateToLocalDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getTodayLocalDateString(): string {
-  return formatDateToLocalDateString(new Date());
-}
-
-function localDateStringToUTC(localDateString: string): string {
-  return new Date(`${localDateString}T00:00:00`).toISOString();
-}
-
-function isValidLocalDate(localDateString: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDateString)) {
-    return false;
-  }
-
-  const parsedDate = new Date(`${localDateString}T00:00:00`);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return false;
-  }
-
-  return parsedDate.toISOString().slice(0, 10) === localDateString;
-}
-
-function formatReviewDate(localDateString: string): string {
-  const parsedDate = new Date(`${localDateString}T00:00:00`);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return localDateString;
-  }
-
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(parsedDate);
 }
 
 function buildDraftPhotoName(uri: string): string {
@@ -1699,33 +1666,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       paddingTop: theme.spacing.md,
       paddingBottom: theme.spacing.xl,
     },
-    choiceCard: {
-      gap: theme.spacing.xs,
-    },
-    choiceCardRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    choiceTextWrap: {
-      flex: 1,
-    },
-    choiceIconWrap: {
-      alignItems: 'center',
-      borderRadius: theme.radii.md,
-      height: 42,
-      justifyContent: 'center',
-      width: 42,
-    },
-    choiceChevronWrap: {
-      alignSelf: 'flex-start',
-      alignItems: 'center',
-      height: 24,
-      justifyContent: 'center',
-      marginLeft: 'auto',
-      marginTop: 2,
-      width: 24,
-    },
     uploadCard: {
       gap: theme.spacing.sm,
     },
@@ -1754,6 +1694,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       justifyContent: 'space-between',
       paddingHorizontal: theme.spacing.xs,
       paddingBottom: theme.spacing.xs,
+    },
+    photoName: {
+      flex: 1,
     },
     photoRemoveButton: {
       alignItems: 'center',
@@ -1890,8 +1833,11 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             steps={resolveProgressSteps(null)}
           />
 
-          <Pressable
-            accessibilityRole="button"
+          <IconActionCard
+            description="Track menu items from your saved photos"
+            iconBackground={theme.colors.text.info}
+            iconColor={theme.colors.text.inverse}
+            iconName="restaurant-outline"
             onPress={() => {
               setProcessType('restaurant');
               setStep('upload');
@@ -1903,25 +1849,15 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setLocationMetadataHintDismissedByPhotoId({});
               setErrorMessage(null);
             }}
-          >
-            <Card style={styles.choiceCard}>
-              <View style={styles.choiceCardRow}>
-                <View style={[styles.choiceIconWrap, { backgroundColor: theme.colors.text.info }]}>
-                  <Ionicons color={theme.colors.text.inverse} name="restaurant-outline" size={20} />
-                </View>
-                <View style={styles.choiceTextWrap}>
-                  <Text variant="label">Restaurant Visit</Text>
-                  <Text tone="secondary">Track menu items from your saved photos</Text>
-                </View>
-                <View style={styles.choiceChevronWrap}>
-                  <Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />
-                </View>
-              </View>
-            </Card>
-          </Pressable>
+            title="Restaurant Visit"
+            trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
+          />
 
-          <Pressable
-            accessibilityRole="button"
+          <IconActionCard
+            description="Rate each photo as an individual item"
+            iconBackground={theme.colors.text.success}
+            iconColor={theme.colors.text.inverse}
+            iconName="flash-outline"
             onPress={() => {
               setProcessType('quickTrack');
               setStep('upload');
@@ -1933,22 +1869,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setLocationMetadataHintDismissedByPhotoId({});
               setErrorMessage(null);
             }}
-          >
-            <Card style={styles.choiceCard}>
-              <View style={styles.choiceCardRow}>
-                <View style={[styles.choiceIconWrap, { backgroundColor: theme.colors.text.success }]}>
-                  <Ionicons color={theme.colors.text.inverse} name="flash-outline" size={20} />
-                </View>
-                <View style={styles.choiceTextWrap}>
-                  <Text variant="label">Quick Track Items</Text>
-                  <Text tone="secondary">Rate each photo as an individual item</Text>
-                </View>
-                <View style={styles.choiceChevronWrap}>
-                  <Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />
-                </View>
-              </View>
-            </Card>
-          </Pressable>
+            title="Quick Track Items"
+            trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
+          />
         </View>
       </Screen>
     );
@@ -2076,7 +1999,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                     <Text
                       ellipsizeMode="tail"
                       numberOfLines={1}
-                      style={{ flex: 1 }}
+                      style={styles.photoName}
                       tone="secondary"
                       variant="bodySm"
                     >
@@ -2603,7 +2526,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             {restaurantReviewGroups.map((group) => (
               <Card key={`${group.restaurantName}_${group.date}`} style={styles.reviewCard}>
                 <Text variant="label">{group.restaurantName}</Text>
-                <Text tone="secondary">Date: {formatReviewDate(group.date)}</Text>
+                <Text tone="secondary">Date: {formatLocalDateLabel(group.date)}</Text>
                 {group.items.map((item) => (
                   <View key={item.photo.id} style={styles.reviewItemRow}>
                     <Image source={{ uri: item.photo.uri }} style={styles.reviewThumb} />
@@ -2649,7 +2572,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                     </Text>
                   ) : null}
                   <Text tone="secondary" variant="bodySm">
-                    Date: {formatReviewDate(entry.form.date)}
+                    Date: {formatLocalDateLabel(entry.form.date)}
                   </Text>
                 </View>
               </View>
