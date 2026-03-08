@@ -26,7 +26,7 @@ export function Input({
 }: InputProps) {
   const theme = useTheme();
   const inputRef = useRef<TextInput>(null);
-  const { scrollToFocusedInput } = useKeyboardAwareScroll();
+  const { clearFocusedInput, scrollToFocusedInput } = useKeyboardAwareScroll();
   const [isFocused, setIsFocused] = useState(false);
 
   const styles = StyleSheet.create({
@@ -59,6 +59,7 @@ export function Input({
         ref={inputRef}
         onBlur={(event) => {
           setIsFocused(false);
+          clearFocusedInput(inputRef.current);
           onBlur?.(event);
         }}
         onFocus={(event) => {

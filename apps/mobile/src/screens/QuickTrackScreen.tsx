@@ -3,8 +3,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
-import { Image, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -14,6 +14,7 @@ import {
   OptionList,
   OptionListRow,
   PageErrorToast,
+  PhotoAttachmentRow,
   PhotoSourceActionCards,
   PhotoViewerModal,
   RatingLegend,
@@ -34,6 +35,7 @@ import {
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { extractPhotoCaptureDate } from '../lib/photoMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -173,10 +175,10 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const [photo, setPhoto] = useState<VisitPhotoUploadInput | null>(null);
   const [latitude, setLatitude] = useState<number | undefined>(undefined);
   const [longitude, setLongitude] = useState<number | undefined>(undefined);
+  const [isItemDateAutoFilled, setIsItemDateAutoFilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
-  const [isSelectingPhoto, setIsSelectingPhoto] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [isCapturingLocation, setIsCapturingLocation] = useState(false);
   const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
@@ -220,50 +222,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     setDidApplyNotePrefill(true);
   }, [didApplyNotePrefill, linkedNoteQuery.data]);
 
-  useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
-
-    let isMounted = true;
-
-    const restorePendingPickerResult = async () => {
-      try {
-        const pendingResult = await ImagePicker.getPendingResultAsync();
-        if (!isMounted || !pendingResult || 'code' in pendingResult || pendingResult.canceled) {
-          return;
-        }
-
-        const pendingAsset = pendingResult.assets?.[0];
-        const nextPhoto = pendingAsset ? buildDraftPhotoInput(pendingAsset) : null;
-        if (!nextPhoto) {
-          return;
-        }
-
-        setIsPhotoViewerVisible(false);
-        setPhoto(nextPhoto);
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
-          photoSource: 'gallery',
-          restoredPendingResult: true,
-          source: 'QuickTrackScreen',
-        });
-      } catch (error) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
-          errorMessage: error instanceof Error ? error.message : String(error),
-          errorType: error instanceof Error ? error.name : 'unknown_error',
-          photoSource: 'gallery',
-          restoredPendingResult: true,
-          source: 'QuickTrackScreen',
-        });
-      }
-    };
-
-    void restorePendingPickerResult();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   const styles = StyleSheet.create({
     body: {
       gap: theme.spacing.md,
@@ -274,35 +232,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     },
     photoSection: {
       gap: theme.spacing.sm,
-    },
-    photoPreviewWrap: {
-      alignSelf: 'flex-start',
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      overflow: 'hidden',
-      position: 'relative',
-    },
-    photoPreview: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    photoImage: {
-      backgroundColor: theme.colors.background.app,
-      height: 120,
-      width: 120,
-    },
-    removePhotoButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.status.dangerBg,
-      borderColor: theme.colors.status.dangerBorder,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 24,
-      justifyContent: 'center',
-      position: 'absolute',
-      right: theme.spacing.xs,
-      top: theme.spacing.xs,
-      width: 24,
     },
     locationRow: {
       alignItems: 'flex-start',
@@ -350,6 +279,68 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       gap: theme.spacing.xs,
     },
   });
+
+  const applyPhotoCaptureDate = useCallback((asset: ImagePicker.ImagePickerAsset) => {
+    const captureDate = extractPhotoCaptureDate(asset);
+    if (!captureDate) {
+      return;
+    }
+
+    setItemDate(formatDateToLocalDateString(captureDate));
+    setIsItemDateAutoFilled(true);
+  }, []);
+
+  const handleItemDateChange = (value: string) => {
+    setItemDate(value);
+    setIsItemDateAutoFilled(false);
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    let isMounted = true;
+
+    const restorePendingPickerResult = async () => {
+      try {
+        const pendingResult = await ImagePicker.getPendingResultAsync();
+        if (!isMounted || !pendingResult || 'code' in pendingResult || pendingResult.canceled) {
+          return;
+        }
+
+        const pendingAsset = pendingResult.assets?.[0];
+        const nextPhoto = pendingAsset ? buildDraftPhotoInput(pendingAsset) : null;
+        if (!nextPhoto) {
+          return;
+        }
+
+        if (pendingAsset) {
+          applyPhotoCaptureDate(pendingAsset);
+        }
+        setIsPhotoViewerVisible(false);
+        setPhoto(nextPhoto);
+        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
+          photoSource: 'gallery',
+          restoredPendingResult: true,
+          source: 'QuickTrackScreen',
+        });
+      } catch (error) {
+        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          photoSource: 'gallery',
+          restoredPendingResult: true,
+          source: 'QuickTrackScreen',
+        });
+      }
+    };
+
+    void restorePendingPickerResult();
+    return () => {
+      isMounted = false;
+    };
+  }, [applyPhotoCaptureDate]);
 
   const handleVisibilityChange = (value: VisibilityOptionValue) => {
     if (value === 'private' || value === 'friends') {
@@ -427,26 +418,19 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       return;
     }
 
-    setIsSelectingPhoto(true);
-
     try {
-      const permission =
-        source === 'camera'
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (source === 'camera') {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
 
-      if (!permission.granted) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
-          photoSource: source,
-          source: 'QuickTrackScreen',
-        });
-        setPhotoPermissionNeedsSettings(permission.canAskAgain === false);
-        throw new Error(
-          source === 'camera'
-            ? 'Camera permission is required to take a photo.'
-            : 'Photo library permission is required to upload an image.',
-        );
+        if (!permission.granted) {
+          trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
+            canAskAgain: permission.canAskAgain,
+            photoSource: source,
+            source: 'QuickTrackScreen',
+          });
+          setPhotoPermissionNeedsSettings(permission.canAskAgain === false);
+          throw new Error('Camera permission is required to take a photo.');
+        }
       }
 
       const pickerResult =
@@ -454,13 +438,27 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           ? await ImagePicker.launchCameraAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Images,
               allowsEditing: false,
+              exif: true,
               quality: 0.8,
+              presentationStyle:
+                Platform.OS === 'ios'
+                  ? ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
+                  : undefined,
             })
           : await ImagePicker.launchImageLibraryAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Images,
               allowsEditing: false,
-              quality: 0.8,
+              exif: true,
+              quality: 1,
               selectionLimit: 1,
+              presentationStyle:
+                Platform.OS === 'ios'
+                  ? ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
+                  : undefined,
+              preferredAssetRepresentationMode:
+                Platform.OS === 'ios'
+                  ? ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current
+                  : undefined,
             });
 
       if (pickerResult.canceled) {
@@ -477,6 +475,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         throw new Error('Could not read the selected image.');
       }
 
+      applyPhotoCaptureDate(selectedAsset);
       setIsPhotoViewerVisible(false);
       setPhoto(nextPhoto);
       trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
@@ -491,8 +490,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         source: 'QuickTrackScreen',
       });
       setErrorMessage(error instanceof Error ? error.message : 'Could not select a photo.');
-    } finally {
-      setIsSelectingPhoto(false);
     }
   };
 
@@ -695,9 +692,13 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
 
         <Card style={styles.sectionCard}>
           <LocalDatePickerField
+            helperText={
+              isItemDateAutoFilled ? 'Auto-set from a selected photo date. You can still change it.' : undefined
+            }
+            highlighted={isItemDateAutoFilled}
             label="Date"
             modalTitle="Select item date"
-            onChange={setItemDate}
+            onChange={handleItemDateChange}
             value={itemDate}
           />
         </Card>
@@ -725,7 +726,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
             <PhotoSourceActionCards
               cameraSubtitle="Camera"
               cameraTitle="Take Photo"
-              disabled={isSelectingPhoto || isSubmitting}
+              disabled={isSubmitting}
               gallerySubtitle="Photo Library"
               galleryTitle="Upload Image"
               onCameraPress={() => {
@@ -737,32 +738,18 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
             />
 
             {photo ? (
-              <View style={styles.photoSection}>
-                <View style={styles.photoPreviewWrap}>
-                  <Pressable
-                    accessibilityLabel="View attached photo full screen"
-                    onPress={() => {
-                      setIsPhotoViewerVisible(true);
-                    }}
-                    style={styles.photoPreview}
-                  >
-                    <Image source={{ uri: photo.uri }} style={styles.photoImage} />
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel="Remove attached photo"
-                    onPress={() => {
-                      setIsPhotoViewerVisible(false);
-                      setPhoto(null);
-                    }}
-                    style={styles.removePhotoButton}
-                  >
-                    <Ionicons color={theme.colors.text.inverse} name="close" size={14} />
-                  </Pressable>
-                </View>
-                <Text tone="secondary" variant="bodySm">
-                  Tap the photo to view it full screen.
-                </Text>
-              </View>
+              <PhotoAttachmentRow
+                accessibilityLabel="View attached photo full screen"
+                name={photo.name}
+                onPress={() => {
+                  setIsPhotoViewerVisible(true);
+                }}
+                onRemove={() => {
+                  setIsPhotoViewerVisible(false);
+                  setPhoto(null);
+                }}
+                uri={photo.uri}
+              />
             ) : null}
 
             {photoPermissionNeedsSettings ? (

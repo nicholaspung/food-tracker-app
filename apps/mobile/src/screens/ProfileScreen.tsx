@@ -40,6 +40,7 @@ import {
   hasUnseenWhatsNew,
   WHATS_NEW_SEEN_QUERY_KEY,
 } from '../lib/whatsNewState';
+import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -189,6 +190,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     }, 0);
   }, [feedbackQuery.data]);
   const showWhatsNewDot = hasUnseenWhatsNew(whatsNewSeenVersionQuery.data);
+  const appVersionLabel = formatAppVersionLabel();
 
   const accountCreated = formatDisplayDate(authRecord?.created, {
     fallback: "Unknown",
@@ -431,6 +433,12 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       height: 8,
       width: 8,
     },
+    optionMetaText: {
+      color: theme.colors.text.secondary,
+      fontSize: 12,
+      fontWeight: "600",
+      lineHeight: 16,
+    },
     sectionBody: {
       backgroundColor: theme.colors.background.muted,
       borderColor: theme.colors.border.subtle,
@@ -627,7 +635,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
             />
             <OptionListRow
               iconName="sparkles-outline"
-              isLast
               onPress={() => {
                 navigation.navigate("WhatsNew");
               }}
@@ -636,6 +643,18 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               }
               subtitle="Latest updates and product improvements"
               title="What's New"
+            />
+            <OptionListRow
+              iconName="information-circle-outline"
+              isLast
+              onPress={() => {
+                navigation.navigate("About");
+              }}
+              rightAccessory={
+                <Text style={styles.optionMetaText}>{appVersionLabel}</Text>
+              }
+              subtitle="Current version, legal information, and app details"
+              title="About"
             />
           </OptionList>
         </Card>

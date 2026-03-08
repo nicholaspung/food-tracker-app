@@ -246,6 +246,7 @@ export interface CreateBillInput {
   createdByUserId: string;
   items: BillItemRecord[];
   participants: BillParticipantRecord[];
+  totalAmount?: number;
   tax: number;
   tip: number;
   fees: number;
@@ -257,6 +258,7 @@ export interface UpdateBillInput {
   restaurantName?: string;
   items?: BillItemRecord[];
   participants?: BillParticipantRecord[];
+  totalAmount?: number;
   tax?: number;
   tip?: number;
   fees?: number;
@@ -3286,7 +3288,10 @@ export async function createBill(input: CreateBillInput): Promise<BillRecord> {
       const normalizedTip = sanitizeCurrency(input.tip);
       const normalizedFees = sanitizeCurrency(input.fees);
       const subtotal = input.items.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
-      const totalAmount = sanitizeCurrency(subtotal + normalizedTax + normalizedTip + normalizedFees);
+      const computedTotalAmount = sanitizeCurrency(subtotal + normalizedTax + normalizedTip + normalizedFees);
+      const totalAmount = typeof input.totalAmount === 'number' && Number.isFinite(input.totalAmount)
+        ? sanitizeCurrency(input.totalAmount)
+        : computedTotalAmount;
 
       const createdBill = await pb.collection('bills').create<BillCollectionRecord>({
         creator_user: currentUserId,
@@ -3396,7 +3401,10 @@ export async function updateBill(billId: string, updates: UpdateBillInput): Prom
       const nextTip = sanitizeCurrency(updates.tip ?? currentBill.tip);
       const nextFees = sanitizeCurrency(updates.fees ?? currentBill.fees);
       const nextSubtotal = nextItems.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
-      const nextTotalAmount = sanitizeCurrency(nextSubtotal + nextTax + nextTip + nextFees);
+      const computedNextTotalAmount = sanitizeCurrency(nextSubtotal + nextTax + nextTip + nextFees);
+      const nextTotalAmount = typeof updates.totalAmount === 'number' && Number.isFinite(updates.totalAmount)
+        ? sanitizeCurrency(updates.totalAmount)
+        : computedNextTotalAmount;
       const nextStatus: BillCollectionRecord['status'] =
         updates.status !== undefined
           ? toBillCollectionStatusFromRecord(updates.status)
@@ -3575,6 +3583,7 @@ export async function updateBill(billId: string, updates: UpdateBillInput): Prom
       hasTitleUpdate: updates.title !== undefined,
       hasItemsUpdate: updates.items !== undefined,
       hasParticipantsUpdate: updates.participants !== undefined,
+      hasTotalAmountUpdate: updates.totalAmount !== undefined,
       hasTaxUpdate: updates.tax !== undefined,
       hasTipUpdate: updates.tip !== undefined,
       hasFeesUpdate: updates.fees !== undefined,

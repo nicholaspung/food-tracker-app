@@ -9,7 +9,7 @@ export const RATING_OPTIONS = [
   { value: 1, label: "Don't eat" },
   { value: 2, label: 'Not good not bad' },
   { value: 3, label: 'Worth trying' },
-  { value: 4, label: 'Eat occasionally' },
+  { value: 4, label: 'Would get again' },
   { value: 5, label: 'Eat often' },
 ] as const satisfies readonly RatingOption[];
 

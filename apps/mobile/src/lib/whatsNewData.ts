@@ -10,6 +10,27 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.4',
+    date: '2026-03-07',
+    title: 'Photo Date Auto-Fill, Bill Final Price & About Screen',
+    summary:
+      'Attaching a photo to a visit or quick track item now automatically fills in the date from the photo\u2019s capture time. Bill splitting gets a new optional Final Price field so you can enter the exact receipt total and have the difference spread automatically. A new About screen shows the current app version and links to legal pages.',
+    features: [
+      'Photo date auto-fill: the visit or quick-track date is set automatically from the capture time when you attach a photo.',
+      'Final Price field in custom bill splits: enter the actual receipt total and the difference from the calculated amount is spread across participants.',
+      'New About screen: view the app version, application ID, and navigate to Terms of Service and Privacy Policy.',
+    ],
+    improvements: [
+      'Profile screen shows the current app version next to the About row.',
+      'Rating 4 label updated from \u2018Eat occasionally\u2019 to \u2018Would get again\u2019.',
+      'Quick track location on the home feed now shows a location icon and formats GPS coordinates cleanly.',
+      'Location permission blocked error now includes an Open Settings button.',
+      'Form footer buttons hide when the keyboard is open to maximise typing space.',
+      'Keyboard scroll re-adjusts when the keyboard frame changes, keeping the active input visible.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.3',
     date: '2026-03-07',
     title: 'Smarter Keyboard Handling & Quick Track Photo Viewer',

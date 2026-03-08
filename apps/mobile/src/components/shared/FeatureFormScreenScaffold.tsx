@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { useTheme } from '../../theme';
@@ -56,6 +56,26 @@ export function FeatureFormScreenScaffold({
   const theme = useTheme();
   const internalScrollViewRef = useRef<ScrollView | null>(null);
   const resolvedScrollViewRef = scrollViewRef ?? internalScrollViewRef;
+  const [footerHeight, setFooterHeight] = useState(theme.sizes.buttonHeight + theme.spacing.xl);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const shouldShowFooter = !keyboardAware || !isKeyboardVisible;
+
+  useEffect(() => {
+    const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEventName, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEventName, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const styles = StyleSheet.create({
     screenContent: {
@@ -79,7 +99,6 @@ export function FeatureFormScreenScaffold({
     },
     bodyContent: {
       gap: theme.spacing.md,
-      paddingBottom: theme.spacing.lg,
       paddingHorizontal: theme.spacing.md,
       paddingTop: theme.spacing.sm,
     },
@@ -119,40 +138,57 @@ export function FeatureFormScreenScaffold({
       <View style={styles.bodyContainer}>
         <ScrollView
           automaticallyAdjustKeyboardInsets={keyboardAware}
-          contentContainerStyle={[styles.bodyContent, bodyStyle]}
+          contentContainerStyle={[
+            styles.bodyContent,
+            {
+              paddingBottom: (shouldShowFooter ? footerHeight : theme.spacing.none) + theme.spacing.lg,
+            },
+            bodyStyle,
+          ]}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           ref={resolvedScrollViewRef}
           style={styles.bodyScroll}
         >
           <KeyboardAwareScrollProvider
-            extraKeyboardOffset={theme.spacing.xxl + theme.sizes.buttonHeight}
+            extraKeyboardOffset={shouldShowFooter ? footerHeight + theme.spacing.xl : theme.spacing.xxl}
             scrollViewRef={resolvedScrollViewRef}
           >
             {children}
           </KeyboardAwareScrollProvider>
         </ScrollView>
 
-        <View style={styles.footer}>
-          {secondaryAction ? (
+        {shouldShowFooter ? (
+          <View
+            onLayout={(event) => {
+              const nextFooterHeight = event.nativeEvent.layout.height;
+
+              setFooterHeight((currentFooterHeight) =>
+                currentFooterHeight === nextFooterHeight ? currentFooterHeight : nextFooterHeight,
+              );
+            }}
+            style={styles.footer}
+          >
+            {secondaryAction ? (
+              <Button
+                disabled={secondaryAction.disabled}
+                label={secondaryAction.label}
+                loading={secondaryAction.loading}
+                onPress={secondaryAction.onPress}
+                style={styles.footerAction}
+                variant={secondaryAction.variant ?? 'secondary'}
+              />
+            ) : null}
             <Button
-              disabled={secondaryAction.disabled}
-              label={secondaryAction.label}
-              loading={secondaryAction.loading}
-              onPress={secondaryAction.onPress}
+              disabled={primaryAction.disabled}
+              label={primaryAction.label}
+              loading={primaryAction.loading}
+              onPress={primaryAction.onPress}
               style={styles.footerAction}
-              variant={secondaryAction.variant ?? 'secondary'}
+              variant={primaryAction.variant ?? 'primary'}
             />
-          ) : null}
-          <Button
-            disabled={primaryAction.disabled}
-            label={primaryAction.label}
-            loading={primaryAction.loading}
-            onPress={primaryAction.onPress}
-            style={styles.footerAction}
-            variant={primaryAction.variant ?? 'primary'}
-          />
-        </View>
+          </View>
+        ) : null}
       </View>
     </Screen>
   );

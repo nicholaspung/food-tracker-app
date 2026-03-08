@@ -14,6 +14,8 @@ interface LocalDatePickerFieldProps {
   containerStyle?: StyleProp<ViewStyle>;
   maximumDate?: Date;
   fallbackHelperText?: string;
+  helperText?: string;
+  highlighted?: boolean;
 }
 
 function formatDateToLocalDateString(date: Date): string {
@@ -57,6 +59,8 @@ export function LocalDatePickerField({
   containerStyle,
   maximumDate = new Date(),
   fallbackHelperText = 'Use YYYY-MM-DD format.',
+  helperText,
+  highlighted = false,
 }: LocalDatePickerFieldProps) {
   const theme = useTheme();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -92,6 +96,10 @@ export function LocalDatePickerField({
       minHeight: theme.sizes.inputMinHeight,
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.xs,
+    },
+    datePickerButtonHighlighted: {
+      backgroundColor: theme.colors.status.infoBg,
+      borderColor: theme.colors.status.infoBorder,
     },
     datePickerButtonDisabled: {
       opacity: 0.65,
@@ -133,6 +141,9 @@ export function LocalDatePickerField({
     },
     datePickerModalAction: {
       flex: 1,
+    },
+    helperText: {
+      paddingHorizontal: theme.spacing.xxs,
     },
   });
 
@@ -184,14 +195,32 @@ export function LocalDatePickerField({
         accessibilityRole="button"
         disabled={!NativeDateTimePicker}
         onPress={handleOpenDatePicker}
-        style={[styles.datePickerButton, !NativeDateTimePicker ? styles.datePickerButtonDisabled : null]}
+        style={[
+          styles.datePickerButton,
+          highlighted ? styles.datePickerButtonHighlighted : null,
+          !NativeDateTimePicker ? styles.datePickerButtonDisabled : null,
+        ]}
       >
         <View style={styles.datePickerButtonLeft}>
-          <Ionicons color={theme.colors.text.secondary} name="calendar-outline" size={16} />
-          <Text>{formatVisitDateLabel(value)}</Text>
+          <Ionicons
+            color={highlighted ? theme.colors.text.info : theme.colors.text.secondary}
+            name="calendar-outline"
+            size={16}
+          />
+          <Text tone={highlighted ? 'info' : 'primary'}>{formatVisitDateLabel(value)}</Text>
         </View>
-        <Ionicons color={theme.colors.text.muted} name="chevron-down-outline" size={14} />
+        <Ionicons
+          color={highlighted ? theme.colors.text.info : theme.colors.text.muted}
+          name="chevron-down-outline"
+          size={14}
+        />
       </Pressable>
+
+      {NativeDateTimePicker && helperText ? (
+        <Text style={styles.helperText} tone={highlighted ? 'info' : 'muted'} variant="bodySm">
+          {helperText}
+        </Text>
+      ) : null}
 
       {NativeDateTimePicker ? (
         Platform.OS === 'android' && isDatePickerOpen ? (
@@ -214,7 +243,7 @@ export function LocalDatePickerField({
           <Input
             autoCapitalize="none"
             autoCorrect={false}
-            helperText={fallbackHelperText}
+            helperText={helperText ?? fallbackHelperText}
             onChangeText={onChange}
             placeholder="YYYY-MM-DD"
             value={value}

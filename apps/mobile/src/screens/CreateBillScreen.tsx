@@ -301,6 +301,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [taxInput, setTaxInput] = useState('');
   const [tipInput, setTipInput] = useState('');
   const [feesInput, setFeesInput] = useState('');
+  const [finalTotalInput, setFinalTotalInput] = useState('');
   const [isCustomTipEnabled, setIsCustomTipEnabled] = useState(false);
   const [customTipSplitType, setCustomTipSplitType] = useState<DraftAdvancedSplitType>('amount');
   const [customTipSplits, setCustomTipSplits] = useState<DraftAdvancedSplitEntry[]>([]);
@@ -397,6 +398,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setTaxInput('');
     setTipInput('');
     setFeesInput('');
+    setFinalTotalInput('');
     setIsCustomTipEnabled(false);
     setCustomTipSplitType('amount');
     setCustomTipSplits([]);
@@ -494,10 +496,10 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     const resolvedDraftParticipantIds = Array.from(
       new Set(Array.from(draftIdByParticipantRecordId.values())),
     );
-    const fallbackTotalAmount = roundToCurrency(
+    const computedCustomTotal = roundToCurrency(
       bill.items.reduce((sum, item) => sum + item.price, 0) + bill.tax + bill.tip + bill.fees,
     );
-    const totalAmount = roundToCurrency(bill.totalAmount ?? fallbackTotalAmount);
+    const totalAmount = roundToCurrency(bill.totalAmount ?? computedCustomTotal);
 
     const nextDraftItems: DraftBillItem[] =
       inferredSplitMode === 'custom'
@@ -605,6 +607,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setTaxInput(bill.tax > 0 ? toCurrencyInput(roundToCurrency(bill.tax)) : '');
     setTipInput(bill.tip > 0 ? toCurrencyInput(roundToCurrency(bill.tip)) : '');
     setFeesInput(bill.fees > 0 ? toCurrencyInput(roundToCurrency(bill.fees)) : '');
+    setFinalTotalInput(
+      inferredSplitMode === 'custom' && Math.abs(totalAmount - computedCustomTotal) > 0.01
+        ? toCurrencyInput(totalAmount)
+        : '',
+    );
     setIsCustomTipEnabled(inferredSplitMode === 'custom' && hasCustomTipContributions);
     setCustomTipSplitType('amount');
     setCustomTipSplits(nextCustomTipSplits);
@@ -649,6 +656,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const parsedTax = useMemo(() => Number(taxInput || '0'), [taxInput]);
   const parsedTip = useMemo(() => Number(tipInput || '0'), [tipInput]);
   const parsedFees = useMemo(() => Number(feesInput || '0'), [feesInput]);
+  const parsedFinalTotal = useMemo(() => Number(finalTotalInput || '0'), [finalTotalInput]);
   const parsedEqualTotal = useMemo(() => Number(equalTotalInput || '0'), [equalTotalInput]);
   const normalizedTax = Number.isFinite(parsedTax) ? parsedTax : 0;
   const normalizedTip = Number.isFinite(parsedTip) ? parsedTip : 0;
@@ -771,12 +779,40 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     [items],
   );
 
+  const computedCustomTotal = useMemo(
+    () => subtotal + normalizedTax + normalizedTip + normalizedFees,
+    [normalizedFees, normalizedTax, normalizedTip, subtotal],
+  );
+
+  const hasFinalTotalOverride = useMemo(
+    () => finalTotalInput.trim().length > 0,
+    [finalTotalInput],
+  );
+
+  const resolvedCustomTotal = useMemo(
+    () =>
+      hasFinalTotalOverride && Number.isFinite(parsedFinalTotal)
+        ? roundToCurrency(parsedFinalTotal)
+        : roundToCurrency(computedCustomTotal),
+    [computedCustomTotal, hasFinalTotalOverride, parsedFinalTotal],
+  );
+
+  const customTotalAdjustment = useMemo(
+    () => roundToCurrency(resolvedCustomTotal - roundToCurrency(computedCustomTotal)),
+    [computedCustomTotal, resolvedCustomTotal],
+  );
+
+  const effectiveDistributableExtrasTotal = useMemo(
+    () => roundToCurrency(distributableExtrasTotal + customTotalAdjustment),
+    [customTotalAdjustment, distributableExtrasTotal],
+  );
+
   const previewTotal = useMemo(
     () =>
       (isEqualSplitMode || isManualSplitMode)
         ? (Number.isFinite(parsedEqualTotal) ? parsedEqualTotal : 0)
-        : subtotal + normalizedTax + normalizedTip + normalizedFees,
-    [isEqualSplitMode, isManualSplitMode, normalizedFees, normalizedTax, normalizedTip, parsedEqualTotal, subtotal],
+        : resolvedCustomTotal,
+    [isEqualSplitMode, isManualSplitMode, parsedEqualTotal, resolvedCustomTotal],
   );
 
   const suggestedAmounts = useMemo(() => {
@@ -866,10 +902,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       participantIds.forEach((participantId) => {
         const baseAmount = amountMap.get(participantId) ?? 0;
         const proportion = computedSubtotal > 0 ? baseAmount / computedSubtotal : 0;
-        amountMap.set(participantId, baseAmount + (distributableExtrasTotal * proportion));
+        amountMap.set(participantId, baseAmount + (effectiveDistributableExtrasTotal * proportion));
       });
     } else {
-      const extrasPerParticipant = participantIds.length > 0 ? distributableExtrasTotal / participantIds.length : 0;
+      const extrasPerParticipant = participantIds.length > 0
+        ? effectiveDistributableExtrasTotal / participantIds.length
+        : 0;
       participantIds.forEach((participantId) => {
         const baseAmount = amountMap.get(participantId) ?? 0;
         amountMap.set(participantId, baseAmount + extrasPerParticipant);
@@ -927,7 +965,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   }, [
     customTipSplitType,
     customTipSplits,
-    distributableExtrasTotal,
+    effectiveDistributableExtrasTotal,
     extrasSplitMode,
     isCustomSplitMode,
     isCustomTipEnabled,
@@ -1047,6 +1085,10 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         })),
         previewTotal,
       );
+
+      if (owedAmountEntries.some((entry) => entry.amount < 0)) {
+        return false;
+      }
 
       if (!isManualSplitMode) {
         return baseMatch;
@@ -1826,6 +1868,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         return;
       }
 
+      if (hasFinalTotalOverride && (!Number.isFinite(parsedFinalTotal) || parsedFinalTotal <= 0)) {
+        trackSubmitValidationFailed('invalid_final_total');
+        setErrorMessage('Final price must be a valid amount greater than zero.');
+        return;
+      }
+
       if (isCustomTipEnabled && !isCustomTipSplitBalanced) {
         trackSubmitValidationFailed('custom_tip_unbalanced');
         setErrorMessage('Custom tip split must match the tip total.');
@@ -1836,6 +1884,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     if (!Number.isFinite(previewTotal) || previewTotal <= 0) {
       trackSubmitValidationFailed('invalid_total_amount');
       setErrorMessage('Total bill amount must be greater than zero.');
+      return;
+    }
+
+    if (owedAmountEntries.some((entry) => entry.amount < 0)) {
+      trackSubmitValidationFailed('negative_participant_amount');
+      setErrorMessage('Final price cannot reduce any participant below $0.00.');
       return;
     }
 
@@ -2052,6 +2106,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         restaurantName: billTitle.trim(),
         items: itemRecords,
         participants: participantRecords,
+        totalAmount: roundToCurrency(previewTotal),
         tax: isCustomSplitMode ? roundToCurrency(parsedTax) : 0,
         tip: isCustomSplitMode ? roundToCurrency(parsedTip) : 0,
         fees: isCustomSplitMode ? roundToCurrency(parsedFees) : 0,
@@ -2675,6 +2730,32 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               </Text>
             </View>
           )}
+        </Card>
+      ) : null}
+
+      {isCustomSplitMode ? (
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons color={theme.colors.text.secondary} name="receipt-outline" size={16} />
+            <Text style={styles.sectionTitle}>Final Price</Text>
+            <StatusPill label="Optional" tone="muted" />
+          </View>
+
+          <Input
+            keyboardType="decimal-pad"
+            label="Final Price"
+            onChangeText={setFinalTotalInput}
+            placeholder="0.00"
+            value={finalTotalInput}
+          />
+
+          <Text style={styles.sectionHint}>
+            Leave this blank to use items plus tax, tip, and fees. If you enter a final price, the difference is spread
+            across the split automatically.
+          </Text>
+          <Text style={styles.sectionHint}>
+            Current calculated total: {formatCurrency(roundToCurrency(computedCustomTotal))}
+          </Text>
         </Card>
       ) : null}
 

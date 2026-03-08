@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableWithoutFeedback, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useRef } from 'react';
 import type { Edge } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -76,14 +76,7 @@ export function Screen({
       </ScrollView>
     </KeyboardAwareScrollProvider>
   ) : (
-    <TouchableWithoutFeedback
-      accessible={false}
-      onPress={() => {
-        Keyboard.dismiss();
-      }}
-    >
-      <View style={[styles.nonScrollContent, styles.content, contentStyle]}>{children}</View>
-    </TouchableWithoutFeedback>
+    <View style={[styles.nonScrollContent, styles.content, contentStyle]}>{children}</View>
   );
 
   return (

@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.8.4",
+    "date": "2026-03-07",
+    "title": "Photo Date Auto-Fill, Bill Final Price & About Screen",
+    "summary": "Attaching a photo to a visit or quick track item now automatically fills in the date from the photo's capture time — no more typing it manually. Bill splitting gets a new optional Final Price field so you can enter the exact total and have the difference spread automatically. A new About screen on your Profile shows the current app version and links to legal pages.",
+    "features": [
+      "Photo date auto-fill: attaching a photo to a visit or quick track item now automatically fills the date from the photo's capture time",
+      "Final Price field in custom bill splits: enter the actual receipt total and the difference from the calculated amount is spread across participants automatically",
+      "New About screen: view the current app version, application ID, and navigate to Terms of Service and Privacy Policy"
+    ],
+    "improvements": [
+      "Profile screen now shows the current app version next to the About row at a glance",
+      "Rating 4 label updated from 'Eat occasionally' to 'Would get again' for clearer meaning",
+      "Quick track location on the home feed now shows a location icon and formats GPS coordinates cleanly instead of raw coordinate strings",
+      "Location permission blocked error now includes an 'Open Settings' button to fix it without leaving the screen",
+      "Form footer buttons hide automatically when the keyboard is visible so typing space is maximised",
+      "Keyboard scroll now re-adjusts when the keyboard frame changes, keeping the active input visible even when the autocomplete bar appears or disappears"
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.8.3",
     "date": "2026-03-07",
     "title": "Smarter Keyboard Handling & Quick Track Photo Viewer",

@@ -47,7 +47,7 @@ export function FeedHeaderControls({
 }: FeedHeaderControlsProps) {
   const theme = useTheme();
   const searchInputRef = useRef<TextInput>(null);
-  const { scrollToFocusedInput } = useKeyboardAwareScroll();
+  const { clearFocusedInput, scrollToFocusedInput } = useKeyboardAwareScroll();
 
   const styles = StyleSheet.create({
     container: {
@@ -206,6 +206,9 @@ export function FeedHeaderControls({
         <View style={styles.searchField}>
           <TextInput
             onChangeText={onSearchQueryChange}
+            onBlur={() => {
+              clearFocusedInput(searchInputRef.current);
+            }}
             onFocus={() => {
               scrollToFocusedInput(searchInputRef.current);
             }}

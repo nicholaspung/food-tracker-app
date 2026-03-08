@@ -19,6 +19,7 @@ import {
   AdminMenuReviewsScreen,
   AddRestaurantToListScreen,
   AddVisitScreen,
+  AboutScreen,
   BillDetailScreen,
   BillingScreen,
   BillsScreen,
@@ -44,6 +45,7 @@ import {
   NotesScreen,
   OnboardingScreen,
   PhotoProcessingScreen,
+  PrivacyPolicyScreen,
   ProfileScreen,
   QRScannerScreen,
   QuickTrackScreen,
@@ -51,6 +53,7 @@ import {
   SettingsScreen,
   SignUpScreen,
   SplashScreen,
+  TermsOfServiceScreen,
   TipCalculatorScreen,
   TastingSessionDetailScreen,
   TastingSessionsScreen,
@@ -143,6 +146,9 @@ export type RootStackParamList = {
   NoteEditor: { noteId?: string } | undefined;
   Friends: undefined;
   Profile: undefined;
+  About: undefined;
+  TermsOfService: undefined;
+  PrivacyPolicy: undefined;
   AdminFeatures: undefined;
   AdminMenuReviews: undefined;
   AdminMenuReviewDetail: { requestId: string };
@@ -198,6 +204,9 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Friends',
   'QRScanner',
   'Profile',
+  'About',
+  'TermsOfService',
+  'PrivacyPolicy',
   'AdminFeatures',
   'AdminMenuReviews',
   'AdminMenuReviewDetail',
@@ -405,6 +414,17 @@ export function RootNavigator() {
                 <Stack.Screen component={NoteEditorScreen} name="NoteEditor" options={{ headerShown: false }} />
                 <Stack.Screen component={FriendsScreen} name="Friends" options={{ headerShown: false }} />
                 <Stack.Screen component={ProfileScreen} name="Profile" options={{ headerShown: false }} />
+                <Stack.Screen component={AboutScreen} name="About" options={{ headerShown: false }} />
+                <Stack.Screen
+                  component={TermsOfServiceScreen}
+                  name="TermsOfService"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  component={PrivacyPolicyScreen}
+                  name="PrivacyPolicy"
+                  options={{ headerShown: false }}
+                />
                 <Stack.Screen
                   component={actualUser?.isAdmin ? AdminFeaturesScreen : AdminOnlyRouteGuard}
                   name="AdminFeatures"

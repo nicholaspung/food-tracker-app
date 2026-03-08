@@ -25,6 +25,7 @@ export * from './OtaUpdateCard';
 export * from './PhotoViewerModal';
 export * from './PageErrorToast';
 export * from './PhotoSourceActionCards';
+export * from './PhotoAttachmentRow';
 export * from './RatingLegend';
 export * from './RatingPill';
 export * from './RatingSelector';

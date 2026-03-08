@@ -4,7 +4,6 @@ import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -20,7 +19,9 @@ import {
   LocalDatePickerField,
   LoadingState,
   PageErrorToast,
+  PhotoAttachmentRow,
   PhotoSourceActionCards,
+  PhotoViewerModal,
   RatingLegend,
   RatingSelector,
   StepProgressBar,
@@ -53,6 +54,7 @@ import {
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { extractPhotoCaptureDate } from '../lib/photoMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -428,12 +430,18 @@ export function CreateVisitScreen({
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
   const [draftItems, setDraftItems] = useState<DraftVisitItem[]>([]);
   const [visitDate, setVisitDate] = useState(getTodayLocalDateString());
+  const [isVisitDateAutoFilled, setIsVisitDateAutoFilled] = useState(false);
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>(
     resolveDefaultVisitVisibility,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] =
+    useState(false);
   const [photoPermissionNeedsSettings, setPhotoPermissionNeedsSettings] =
     useState(false);
+  const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
@@ -1057,33 +1065,6 @@ export function CreateVisitScreen({
     itemPhotoList: {
       gap: theme.spacing.xs,
     },
-    itemPhotoChip: {
-      alignItems: "center",
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xs,
-    },
-    itemPhotoPreview: {
-      borderRadius: theme.radii.sm,
-      height: 28,
-      width: 28,
-    },
-    itemPhotoName: {
-      flex: 1,
-    },
-    itemPhotoRemoveButton: {
-      alignItems: "center",
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 20,
-      justifyContent: "center",
-      width: 20,
-    },
     inlineLink: {
       alignSelf: "flex-start",
       paddingVertical: theme.spacing.xxs,
@@ -1141,6 +1122,7 @@ export function CreateVisitScreen({
     setNearbyResults([]);
     setSearchResults([]);
     setSearchErrorMessage(null);
+    setLocationPermissionNeedsSettings(false);
   };
 
   const scrollToRestaurantList = useCallback(() => {
@@ -1437,6 +1419,7 @@ export function CreateVisitScreen({
     setIsSearching(true);
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
+    setLocationPermissionNeedsSettings(false);
     let didAttemptPlacesQuery = false;
 
     try {
@@ -1524,6 +1507,7 @@ export function CreateVisitScreen({
     });
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
+    setLocationPermissionNeedsSettings(false);
     setIsGettingLocation(true);
     let didAttemptPlacesQuery = false;
 
@@ -1534,6 +1518,7 @@ export function CreateVisitScreen({
           canAskAgain: permission.canAskAgain,
           source: "CreateVisitScreen",
         });
+        setLocationPermissionNeedsSettings(permission.canAskAgain === false);
         setSearchErrorMessage(
           permission.canAskAgain === false
             ? "Location permission is blocked. Enable it in device settings."
@@ -1614,6 +1599,34 @@ export function CreateVisitScreen({
     );
   };
 
+  const handleVisitDateChange = (value: string) => {
+    setVisitDate(value);
+    setIsVisitDateAutoFilled(false);
+  };
+
+  const applyPhotoCaptureDateToVisit = useCallback(
+    (asset: ImagePicker.ImagePickerAsset) => {
+      const captureDate = extractPhotoCaptureDate(asset);
+      if (!captureDate) {
+        return;
+      }
+
+      setVisitDate(formatDateToLocalDateString(captureDate));
+      setIsVisitDateAutoFilled(true);
+    },
+    [],
+  );
+
+  const openPhotoViewer = (photos: DraftVisitItemPhoto[], initialIndex: number) => {
+    if (photos.length === 0) {
+      return;
+    }
+
+    setPhotoViewerUrls(photos.map((photo) => photo.uri));
+    setPhotoViewerInitialIndex(initialIndex);
+    setIsPhotoViewerVisible(true);
+  };
+
   const handleVisitVisibilityChange = (value: VisibilityOptionValue) => {
     if (value === "friends" || value === "private") {
       setVisitVisibility(value);
@@ -1683,11 +1696,13 @@ export function CreateVisitScreen({
         ? await ImagePicker.launchCameraAsync({
             mediaTypes: ["images"],
             allowsEditing: false,
+            exif: true,
             quality: 0.8,
           })
         : await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ["images"],
             allowsEditing: false,
+            exif: true,
             quality: 0.8,
             selectionLimit: 1,
           });
@@ -1706,6 +1721,8 @@ export function CreateVisitScreen({
       name: asset.fileName?.trim() || buildDraftPhotoName(asset.uri),
       mimeType: asset.mimeType || inferImageMimeType(asset.uri),
     };
+
+    applyPhotoCaptureDateToVisit(asset);
 
     setDraftItems((currentItems) =>
       currentItems.map((item) => {
@@ -1734,6 +1751,7 @@ export function CreateVisitScreen({
   };
 
   const removeDraftItemPhoto = (itemId: string, uri: string) => {
+    setIsPhotoViewerVisible(false);
     setDraftItems((currentItems) =>
       currentItems.map((item) =>
         item.id === itemId
@@ -2178,10 +2196,19 @@ export function CreateVisitScreen({
           </Card>
 
           {searchErrorMessage ? (
-            <Card style={styles.statusCard}>
-              <Text tone="danger">{searchErrorMessage}</Text>
-            </Card>
-          ) : null}
+          <Card style={styles.statusCard}>
+            <Text tone="danger">{searchErrorMessage}</Text>
+            {locationPermissionNeedsSettings ? (
+              <Button
+                label="Open Settings"
+                onPress={() => {
+                  void Linking.openSettings();
+                }}
+                variant="secondary"
+              />
+            ) : null}
+          </Card>
+        ) : null}
 
           {showNearbyPlaces ? (
             <>
@@ -2521,9 +2548,13 @@ export function CreateVisitScreen({
 
           <Card style={styles.metadataCard}>
             <LocalDatePickerField
+              helperText={
+                isVisitDateAutoFilled ? "Auto-set from a selected photo date. You can still change it." : undefined
+              }
+              highlighted={isVisitDateAutoFilled}
               label="Visit Date"
               modalTitle="Select visit date"
-              onChange={setVisitDate}
+              onChange={handleVisitDateChange}
               value={visitDate}
             />
 
@@ -2581,35 +2612,19 @@ export function CreateVisitScreen({
               </View>
               {item.photos.length > 0 ? (
                 <View style={styles.itemPhotoList}>
-                  {item.photos.map((photo) => (
-                    <View key={photo.uri} style={styles.itemPhotoChip}>
-                      <Image
-                        source={{ uri: photo.uri }}
-                        style={styles.itemPhotoPreview}
-                      />
-                      <Text
-                        ellipsizeMode="tail"
-                        numberOfLines={1}
-                        style={styles.itemPhotoName}
-                        variant="bodySm"
-                      >
-                        {photo.name}
-                      </Text>
-                      <Pressable
-                        accessibilityLabel="Remove attached photo"
-                        accessibilityRole="button"
-                        onPress={() => {
-                          removeDraftItemPhoto(item.id, photo.uri);
-                        }}
-                        style={styles.itemPhotoRemoveButton}
-                      >
-                        <Ionicons
-                          color={theme.colors.text.secondary}
-                          name="close"
-                          size={12}
-                        />
-                      </Pressable>
-                    </View>
+                  {item.photos.map((photo, index) => (
+                    <PhotoAttachmentRow
+                      accessibilityLabel={`View attached photo ${index + 1} full screen`}
+                      key={photo.uri}
+                      name={photo.name}
+                      onPress={() => {
+                        openPhotoViewer(item.photos, index);
+                      }}
+                      onRemove={() => {
+                        removeDraftItemPhoto(item.id, photo.uri);
+                      }}
+                      uri={photo.uri}
+                    />
                   ))}
                 </View>
               ) : null}
@@ -2626,6 +2641,14 @@ export function CreateVisitScreen({
         </>
       ) : null}
 
+      <PhotoViewerModal
+        initialIndex={photoViewerInitialIndex}
+        onRequestClose={() => {
+          setIsPhotoViewerVisible(false);
+        }}
+        urls={photoViewerUrls}
+        visible={isPhotoViewerVisible}
+      />
     </FeatureFormScreenScaffold>
   );
 }

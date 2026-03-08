@@ -126,6 +126,30 @@ function formatCategoryLabel(category: string): string {
   return category.replace(/_/g, ' ');
 }
 
+function parseCoordinateString(value: string): { latitude: number; longitude: number } | null {
+  const match = value.trim().match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) {
+    return null;
+  }
+
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function formatQuickTrackLocationLabel(value: string): string {
+  const coordinates = parseCoordinateString(value);
+  if (!coordinates) {
+    return value.trim();
+  }
+
+  return `${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)}`;
+}
+
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
@@ -989,7 +1013,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     quickTrackMeta: {
       color: colors.textSecondary,
-      ...theme.typography.button,
+      ...theme.typography.bodySm,
+      lineHeight: 16,
     },
     quickTrackMetaRow: {
       alignItems: 'center',
@@ -998,6 +1023,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     quickTrackMetaInline: {
       flex: 1,
+    },
+    quickTrackLocationIcon: {
+      marginTop: 1,
     },
     quickTrackCategoryRow: {
       alignItems: 'center',
@@ -1484,8 +1512,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                         thumb: '100x100',
                                       })
                                     : null;
-                                  const quickTrackMeta =
-                                    quickTrack.locationText || quickTrack.restaurantName || 'Quick Track';
+                                  const quickTrackMetaSource =
+                                    quickTrack.locationText || quickTrack.restaurantName || '';
+                                  const quickTrackMeta = quickTrackMetaSource || 'Quick Track';
+                                  const quickTrackMetaLabel = formatQuickTrackLocationLabel(quickTrackMetaSource);
 
                                   return (
                                     <View key={feedItem.id} style={[styles.entryCard, styles.entryCardQuickTrack]}>
@@ -1566,11 +1596,19 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                         ) : null}
 
                                         <View style={styles.foodItemContent}>
-                                          <View style={styles.quickTrackMetaRow}>
-                                            <Text numberOfLines={1} style={[styles.quickTrackMeta, styles.quickTrackMetaInline]}>
-                                              {quickTrackMeta}
-                                            </Text>
-                                          </View>
+                                          {quickTrackMetaSource ? (
+                                            <View style={styles.quickTrackMetaRow}>
+                                              <Ionicons
+                                                color={colors.textMuted}
+                                                name="location-outline"
+                                                size={12}
+                                                style={styles.quickTrackLocationIcon}
+                                              />
+                                              <Text numberOfLines={1} style={[styles.quickTrackMeta, styles.quickTrackMetaInline]}>
+                                                {quickTrackMetaLabel}
+                                              </Text>
+                                            </View>
+                                          ) : null}
                                           {quickTrack.notes ? (
                                             <Text numberOfLines={2} style={styles.foodItemNotes}>
                                               "{quickTrack.notes}"
