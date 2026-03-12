@@ -76,33 +76,35 @@ step() {
     echo -e "${BLUE}==>${NC} $*"
 }
 
-ensure_sudo_access() {
-    if sudo -n true 2>/dev/null; then
+run_sudo() {
+    local sudo_output
+    local exit_code
+
+    if sudo_output=$(sudo -n "$@" 2>&1); then
+        if [ -n "$sudo_output" ]; then
+            printf '%s\n' "$sudo_output"
+        fi
         return 0
     fi
 
-    if [ -n "${SUDO_PASSWORD:-}" ]; then
-        if printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' -v >/dev/null 2>&1; then
-            return 0
+    exit_code=$?
+
+    if printf '%s\n' "$sudo_output" | grep -qiE 'a password is required|authentication failed|incorrect authentication attempts|sorry, try again'; then
+        if [ -n "${SUDO_PASSWORD:-}" ]; then
+            printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' "$@"
+            return $?
         fi
 
-        error "SUDO_PASSWORD was provided, but sudo authentication failed."
+        error "This deployment requires sudo for: $*"
+        error "Run 'sudo bash $APP_DIR/scripts/setup-deploy-sudo.sh $USER' on the VPS, or add SUDO_PASSWORD to the GitHub environment secrets."
         exit 1
     fi
 
-    error "This deployment requires sudo, but passwordless sudo is not configured for $USER."
-    error "Run 'sudo bash $APP_DIR/scripts/setup-deploy-sudo.sh $USER' on the VPS, or add SUDO_PASSWORD to the GitHub environment secrets."
-    exit 1
-}
-
-run_sudo() {
-    ensure_sudo_access
-
-    if sudo -n true 2>/dev/null; then
-        sudo "$@"
-    else
-        printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' "$@"
+    if [ -n "$sudo_output" ]; then
+        printf '%s\n' "$sudo_output" >&2
     fi
+
+    return $exit_code
 }
 
 caddy_config_has_domain() {
@@ -442,7 +444,6 @@ preflight_checks() {
         exit 1
     fi
 
-    ensure_sudo_access
     ensure_live_caddy_config
 
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
@@ -644,16 +645,12 @@ configure_backend() {
             chmod 700 /opt/food-tracker-secrets
             chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
             log "Created secrets directory without sudo"
-        elif [ -n "${SUDO_PASSWORD:-}" ] || sudo -n true 2>/dev/null; then
+        else
             run_sudo mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
             run_sudo chown -R "$USER:$USER" /opt/food-tracker-secrets
             run_sudo chmod 700 /opt/food-tracker-secrets
             run_sudo chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
             log "Created secrets directory with sudo"
-        else
-            error "Cannot create /opt/food-tracker-secrets/${ENVIRONMENT}"
-            error "Either pre-create it, set SUDO_PASSWORD, or configure passwordless sudo."
-            exit 1
         fi
     fi
 

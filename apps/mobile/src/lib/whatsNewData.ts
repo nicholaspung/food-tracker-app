@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.1',
+    date: '2026-03-12',
+    title: 'Deployment Reliability Improvements',
+    summary:
+      'Behind-the-scenes deployment improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Deploy script sudo handling is now more resilient — passwordless and password-based sudo are tried automatically, with clearer error messages when neither is available.',
+      'Pre-flight checks no longer require sudo access upfront, so deployments start faster on restricted servers.',
+      'Secrets directory creation falls back to sudo automatically instead of failing with a manual fix instruction.',
+      'VPS SSH helper script is now marked executable out of the box.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.0',
     date: '2026-03-12',
     title: 'Deployment Reliability & Mobile Entry Point Fix',
