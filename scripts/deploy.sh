@@ -849,11 +849,18 @@ smoke_test() {
     local site_key
     for site_key in $(site_keys); do
         local domain
+        local html_response
         domain=$(site_domain "$site_key")
-        if ! curl -k -f -s -L \
+
+        if ! html_response=$(curl -k -f -s -L \
             --resolve "$domain:80:127.0.0.1" \
             --resolve "$domain:443:127.0.0.1" \
-            "http://$domain/" | grep -qi "<!doctype html>"; then
+            "http://$domain/"); then
+            error "Smoke test failed: $(site_label "$site_key") is not reachable for $domain"
+            return 1
+        fi
+
+        if ! printf '%s' "$html_response" | grep -qi "<!doctype html>"; then
             error "Smoke test failed: $(site_label "$site_key") is not serving HTML for $domain"
             return 1
         fi

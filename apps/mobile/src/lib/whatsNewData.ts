@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.5',
+    date: '2026-03-12',
+    title: 'Deployment Smoke Test Improvements',
+    summary:
+      'Behind-the-scenes deployment reliability improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Deployment smoke tests now separately check whether a site is reachable and whether it is serving a valid HTML page, giving clearer error messages when something goes wrong.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.4',
     date: '2026-03-12',
     title: 'Marketing Site Build Cleanup',
