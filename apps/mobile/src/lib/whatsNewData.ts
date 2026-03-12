@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.2',
+    date: '2026-03-12',
+    title: 'Deployment Build Fix',
+    summary:
+      'Behind-the-scenes deployment fix. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Deploy script now uses explicit pnpm workspace filters when building the admin and web surfaces, making builds more reliable across different pnpm configurations.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.1',
     date: '2026-03-12',
     title: 'Deployment Reliability Improvements',

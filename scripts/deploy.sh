@@ -578,8 +578,8 @@ build_web_surfaces() {
 
     export VITE_API_URL="https://$ADMIN_DOMAIN"
 
-    run_pnpm admin:build
-    run_pnpm mobile:web:build
+    run_pnpm --filter @food-tracker/admin build
+    run_pnpm --filter @food-tracker/mobile web:build
 
     log "Web surfaces built ✓"
 }
