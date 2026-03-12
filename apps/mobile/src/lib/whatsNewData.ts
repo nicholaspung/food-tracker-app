@@ -10,6 +10,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.4',
+    date: '2026-03-12',
+    title: 'Marketing Site Build Cleanup',
+    summary:
+      'Behind-the-scenes infrastructure update. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Marketing site build output moved from the temporary dev-dist folder to a stable dist folder, making the production build artefacts consistent with the rest of the project.',
+      'gitignore updated to track the marketing dist folder while ignoring dev and verify build directories.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.3',
     date: '2026-03-12',
     title: 'Marketing Site & Build Config Cleanup',

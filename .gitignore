@@ -9,8 +9,12 @@ frontend/.env
 frontend_build/
 frontend_build_beta/
 dist/
+!apps/marketing/dist/
+!apps/marketing/dist/**
 build/
 apps/mobile/web-dist/
+apps/marketing/.dev-dist/
+apps/marketing/.verify-dist/
 backend/myapp
 
 # VPS SSH script (contains sensitive server info)
