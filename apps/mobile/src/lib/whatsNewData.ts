@@ -10,6 +10,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.3',
+    date: '2026-03-12',
+    title: 'Marketing Site & Build Config Cleanup',
+    summary:
+      'Behind-the-scenes infrastructure update. No user-facing changes.',
+    features: [],
+    improvements: [
+      'New marketing website added for Yummy Recs (landing page, privacy, terms, and contact pages).',
+      'Admin build config simplified — explicit React alias pinning and optimizeDeps overrides removed now that they are no longer needed.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.2',
     date: '2026-03-12',
     title: 'Deployment Build Fix',

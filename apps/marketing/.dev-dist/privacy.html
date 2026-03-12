@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy | Yummy Recs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FFF8F2;
+      --surface: #FFFFFF;
+      --surface-muted: #FFF1E6;
+      --orange: #C35A00;
+      --orange-dark: #9E4600;
+      --orange-pale: #FFF1E2;
+      --text: #2F241B;
+      --text-2: #5A4536;
+      --text-3: #8A6E5D;
+      --border: #E2CCB9;
+      --border-sub: #F1E0D1;
+      --border-strong: #BF987C;
+      --r: 16px;
+      --r-sm: 12px;
+      --r-pill: 999px;
+      --shadow: 0 2px 16px rgba(180,100,60,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* NAV */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      padding: 14px 48px;
+      background: rgba(255,248,242,0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-sub);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-icon {
+      width: 38px; height: 38px; border-radius: var(--r-sm);
+      background: var(--orange); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700;
+    }
+    .nav-name { font-size: 17px; font-weight: 700; color: var(--text); }
+    .nav-links { display: flex; align-items: center; gap: 6px; }
+    .nav-link {
+      font-size: 14px; font-weight: 500; color: var(--text-2);
+      text-decoration: none; padding: 8px 14px; border-radius: var(--r-pill);
+      transition: background 0.15s;
+    }
+    .nav-link:hover { background: var(--surface-muted); }
+    .nav-cta {
+      font-size: 14px; font-weight: 600; color: #fff;
+      text-decoration: none; padding: 10px 20px;
+      background: var(--orange); border-radius: var(--r-sm);
+      transition: background 0.15s;
+    }
+    .nav-cta:hover { background: var(--orange-dark); }
+
+    /* PAGE LAYOUT */
+    .page {
+      max-width: 800px; margin: 0 auto;
+      padding: 64px 48px 80px;
+    }
+
+    /* PAGE HERO */
+    .page-hero {
+      margin-bottom: 40px;
+      animation: fadeUp 0.5s ease both;
+    }
+    .page-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--orange-pale); border: 1px solid var(--border);
+      border-radius: var(--r-pill); padding: 6px 14px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--orange);
+      margin-bottom: 20px;
+    }
+    .page-h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700; line-height: 1.1;
+      letter-spacing: -0.02em; color: var(--text);
+      margin-bottom: 14px;
+    }
+    .page-sub {
+      font-size: 16px; line-height: 1.75; color: var(--text-2);
+    }
+    .page-meta {
+      display: flex; flex-wrap: wrap; gap: 8px 20px;
+      margin-top: 20px;
+    }
+    .meta-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--text-3);
+    }
+    .meta-tag::before { content: '·'; color: var(--border-strong); }
+    .meta-tag:first-child::before { content: none; }
+
+    /* CONTENT STACK */
+    .content-stack {
+      display: flex; flex-direction: column; gap: 12px;
+      animation: fadeUp 0.5s 0.1s ease both;
+    }
+    .policy-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      padding: 28px 28px;
+      box-shadow: var(--shadow);
+    }
+    .policy-card h2 {
+      font-size: 17px; font-weight: 700; color: var(--text);
+      margin-bottom: 12px;
+    }
+    .policy-card p {
+      font-size: 15px; line-height: 1.75; color: var(--text-2);
+    }
+    .policy-card p + p { margin-top: 10px; }
+    .policy-card ul {
+      margin-top: 12px; padding-left: 0;
+      display: flex; flex-direction: column; gap: 8px;
+      list-style: none;
+    }
+    .policy-card li {
+      font-size: 15px; line-height: 1.7; color: var(--text-2);
+      padding-left: 18px; position: relative;
+    }
+    .policy-card li::before {
+      content: ''; position: absolute; left: 0; top: 9px;
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--orange); flex-shrink: 0;
+    }
+    .policy-card strong { color: var(--text); font-weight: 600; }
+    .policy-card a { color: var(--orange); text-decoration: none; font-weight: 500; }
+    .policy-card a:hover { text-decoration: underline; }
+    .link-list {
+      display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
+    }
+    .link-list a {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--orange); text-decoration: none; font-size: 15px; font-weight: 500;
+    }
+    .link-list a:hover { text-decoration: underline; }
+    .policy-note {
+      font-size: 13px; color: var(--text-3); margin-top: 14px; line-height: 1.65;
+    }
+
+    /* FOOTER */
+    footer {
+      max-width: 800px; margin: 0 auto;
+      padding: 24px 48px 32px;
+      border-top: 1px solid var(--border-sub);
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    }
+    .footer-text { font-size: 13px; color: var(--text-3); }
+    .footer-nav { display: flex; gap: 20px; }
+    .footer-nav a { font-size: 13px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.15s; }
+    .footer-nav a:hover { color: var(--orange); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 720px) {
+      .nav { padding: 12px 20px; }
+      .nav-link { display: none; }
+      .page { padding: 48px 20px 64px; }
+      footer { padding: 20px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a class="nav-brand" href="/">
+      <div class="nav-icon">YR</div>
+      <span class="nav-name">Yummy Recs</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/">Home</a>
+      <a class="nav-link" href="/terms.html">Terms</a>
+      <a class="nav-link" href="/contact.html">Contact</a>
+      <a class="nav-cta" href="http://localhost:8081/">Open App</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="page">
+      <div class="page-hero">
+        <div class="page-eyebrow">Privacy Policy</div>
+        <h1 class="page-h1">How Yummy Recs handles your information</h1>
+        <p class="page-sub">This policy explains what information Yummy Recs collects, how it is used, when it may be shared, and what choices you have when using the website, mobile app, and related services.</p>
+        <div class="page-meta">
+          <span class="meta-tag">Effective March 12, 2026</span>
+          <span class="meta-tag">Applies to mobile, web, and support workflows</span>
+        </div>
+      </div>
+
+      <div class="content-stack">
+        <article class="policy-card">
+          <h2>1. Information We Collect</h2>
+          <p>We collect information you provide directly, including:</p>
+          <ul>
+            <li>Account details such as your email address, display name, login credentials, and profile preferences.</li>
+            <li>Content you create in the service, including ratings, notes, visit history, quick tracks, restaurant lists, feedback messages, friend connections, and invitations.</li>
+            <li>Photos and related metadata that you choose to upload, including creation time and image metadata when supported by your device.</li>
+          </ul>
+        </article>
+
+        <article class="policy-card">
+          <h2>2. Device Data and Permissions</h2>
+          <p>Some features request access to device capabilities only when needed for the feature you choose to use.</p>
+          <ul>
+            <li><strong>Camera:</strong> to capture food photos and scan QR codes.</li>
+            <li><strong>Photo library:</strong> to select existing food photos and, when you ask, save processed images back to your library.</li>
+            <li><strong>Location:</strong> to attach your current location to entries and improve nearby restaurant search.</li>
+            <li><strong>Technical diagnostics:</strong> app version, platform, crash details, and usage events may be collected to diagnose issues and improve product reliability.</li>
+          </ul>
+        </article>
+
+        <article class="policy-card">
+          <h2>3. How We Use Information</h2>
+          <p>We use collected information to operate and improve Yummy Recs, including to:</p>
+          <ul>
+            <li>Create and manage your account.</li>
+            <li>Store, sync, and display your food records, ratings, photos, lists, and friend activity.</li>
+            <li>Support offline-safe write replay and restore your data across sessions and devices.</li>
+            <li>Provide customer support, enforce product rules, protect the service against misuse, and respond to legal obligations.</li>
+            <li>Measure product usage, understand feature adoption, and investigate crashes or errors through analytics and observability tools.</li>
+          </ul>
+        </article>
+
+        <article class="policy-card">
+          <h2>4. Sharing and Visibility</h2>
+          <p>Your information is shared only as needed to run the service or according to the visibility controls you choose.</p>
+          <ul>
+            <li>Content you mark as private stays limited to your account, subject to internal access needed for support, security, and legal compliance.</li>
+            <li>Content you share with friends may be visible to approved connections inside the app.</li>
+            <li>Some data may be processed by vendors that help operate Yummy Recs, such as hosting, analytics, and error monitoring providers.</li>
+            <li>We may disclose information if required by law, to enforce our terms, or to protect users, the service, or the public.</li>
+          </ul>
+        </article>
+
+        <article class="policy-card">
+          <h2>5. Analytics, Diagnostics, and Infrastructure Providers</h2>
+          <p>Yummy Recs uses service providers to help run the product. These providers process information on our behalf under their own contractual and legal obligations.</p>
+          <ul>
+            <li><strong>Analytics and diagnostics:</strong> usage events, app version, platform details, and error reports may be processed to improve performance and reliability.</li>
+            <li><strong>Infrastructure and storage:</strong> service providers may store or transmit data needed to deliver sync, account, and support features.</li>
+          </ul>
+        </article>
+
+        <article class="policy-card">
+          <h2>6. Retention and Security</h2>
+          <p>We retain information for as long as needed to provide the service, maintain account history, resolve disputes, meet legal obligations, and protect the platform.</p>
+          <ul>
+            <li>Account and content data may remain available while your account is active.</li>
+            <li>Cached or offline copies of data may persist on your device until they are refreshed, deleted, or overwritten.</li>
+            <li>Backups, logs, and support records may remain for a limited period after account changes or deletion requests.</li>
+            <li>We use reasonable administrative, technical, and organizational safeguards, but no system can guarantee absolute security.</li>
+          </ul>
+        </article>
+
+        <article class="policy-card">
+          <h2>7. Your Choices and Rights</h2>
+          <p>You can manage your information in several ways:</p>
+          <ul>
+            <li>Review and edit profile details and content inside the app.</li>
+            <li>Update visibility settings for supported content types.</li>
+            <li>Control camera, photos, and location access through your device settings.</li>
+            <li>Request access, correction, export, or deletion by contacting us at <a href="mailto:privacy@yummyrecs.com">privacy@yummyrecs.com</a>.</li>
+          </ul>
+        </article>
+
+        <article class="policy-card">
+          <h2>8. Children's Privacy</h2>
+          <p>Yummy Recs is not intended for children under 13, and we do not knowingly collect personal information from children under 13. If you believe a child has provided us personal information, contact us so we can review and take appropriate action.</p>
+        </article>
+
+        <article class="policy-card">
+          <h2>9. Contact</h2>
+          <p>For privacy questions or rights requests, contact:</p>
+          <div class="link-list">
+            <a href="mailto:privacy@yummyrecs.com">privacy@yummyrecs.com</a>
+            <a href="mailto:support@yummyrecs.com">support@yummyrecs.com</a>
+          </div>
+          <p class="policy-note">If this policy changes materially, the effective date at the top of this page will be updated.</p>
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p class="footer-text">&copy; 2026 Yummy Recs, Inc. All rights reserved.</p>
+    <nav class="footer-nav">
+      <a href="/">Home</a>
+      <a href="/terms.html">Terms</a>
+      <a href="/contact.html">Contact</a>
+    </nav>
+  </footer>
+
+</body>
+</html>

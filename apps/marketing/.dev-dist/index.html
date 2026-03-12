@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yummy Recs — Track meals. Rate smarter.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FFF8F2;
+      --surface: #FFFFFF;
+      --surface-muted: #FFF1E6;
+      --orange: #C35A00;
+      --orange-dark: #9E4600;
+      --orange-pale: #FFF1E2;
+      --text: #2F241B;
+      --text-2: #5A4536;
+      --text-3: #8A6E5D;
+      --border: #E2CCB9;
+      --border-sub: #F1E0D1;
+      --border-strong: #BF987C;
+      --r: 16px;
+      --r-sm: 12px;
+      --r-pill: 999px;
+      --shadow: 0 2px 16px rgba(180,100,60,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* NAV */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      padding: 14px 48px;
+      background: rgba(255,248,242,0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-sub);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-icon {
+      width: 38px; height: 38px; border-radius: var(--r-sm);
+      background: var(--orange); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700;
+    }
+    .nav-name { font-size: 17px; font-weight: 700; color: var(--text); }
+    .nav-links { display: flex; align-items: center; gap: 6px; }
+    .nav-link {
+      font-size: 14px; font-weight: 500; color: var(--text-2);
+      text-decoration: none; padding: 8px 14px; border-radius: var(--r-pill);
+      transition: background 0.15s;
+    }
+    .nav-link:hover { background: var(--surface-muted); }
+    .nav-cta {
+      font-size: 14px; font-weight: 600; color: #fff;
+      text-decoration: none; padding: 10px 20px;
+      background: var(--orange); border-radius: var(--r-sm);
+      transition: background 0.15s;
+    }
+    .nav-cta:hover { background: var(--orange-dark); }
+
+    /* HERO SPLIT */
+    .hero {
+      max-width: 1200px; margin: 0 auto;
+      padding: 72px 48px;
+      display: grid;
+      grid-template-columns: 1fr 460px;
+      gap: 64px;
+      align-items: center;
+    }
+    .hero-left { animation: fadeUp 0.6s ease both; }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--orange-pale); border: 1px solid var(--border);
+      border-radius: var(--r-pill); padding: 7px 14px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--orange); margin-bottom: 28px;
+    }
+    .hero-h1 {
+      font-size: clamp(42px, 5.5vw, 68px);
+      font-weight: 700; line-height: 1.05;
+      letter-spacing: -0.03em; color: var(--text);
+      margin-bottom: 20px;
+    }
+    .hero-sub {
+      font-size: 17px; line-height: 1.8; color: var(--text-2);
+      max-width: 460px; margin-bottom: 40px;
+    }
+    .hero-btns { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 36px; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--orange); color: #fff;
+      text-decoration: none; font-size: 15px; font-weight: 600;
+      padding: 13px 24px; border-radius: var(--r-sm);
+      transition: background 0.15s, transform 0.15s;
+    }
+    .btn-primary:hover { background: var(--orange-dark); transform: translateY(-1px); }
+    .btn-secondary {
+      display: inline-flex; align-items: center;
+      background: var(--surface); color: var(--text-2);
+      text-decoration: none; font-size: 15px; font-weight: 600;
+      padding: 12px 24px; border-radius: var(--r-sm);
+      border: 1.5px solid var(--border);
+      transition: border-color 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--border-strong); }
+    .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: var(--r-pill); padding: 7px 12px;
+      font-size: 12px; font-weight: 500; color: var(--text-2);
+    }
+    .tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+
+    /* APP MOCKUP */
+    .hero-right { animation: fadeUp 0.6s 0.15s ease both; }
+    .mockup {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 28px;
+      padding: 20px 16px;
+      box-shadow: 0 16px 56px rgba(180,100,60,0.14);
+    }
+    .mockup-header {
+      padding: 4px 0 16px;
+      border-bottom: 1px solid var(--border-sub);
+      margin-bottom: 12px;
+    }
+    .mockup-title { font-size: 26px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .mockup-meta { font-size: 13px; color: var(--text-3); }
+    .mock-group {
+      background: var(--surface-muted);
+      border: 1.5px solid var(--border-sub);
+      border-radius: var(--r);
+      padding: 12px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .mock-group-left { display: flex; align-items: center; gap: 8px; }
+    .mock-chevron { font-size: 11px; color: var(--text-3); }
+    .mock-month { font-size: 15px; font-weight: 700; color: var(--text); }
+    .mock-count { font-size: 15px; font-weight: 700; color: var(--text); }
+    .mock-count-sub { font-size: 12px; color: var(--text-3); margin-left: 4px; }
+    .mock-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border-sub);
+      border-radius: var(--r);
+      padding: 14px;
+      margin-bottom: 8px;
+    }
+    .mock-card-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .mock-card-name { font-size: 15px; font-weight: 700; color: var(--text); }
+    .mock-badge {
+      font-size: 11px; font-weight: 700; color: var(--orange);
+      border: 1.5px solid var(--orange); border-radius: var(--r-pill);
+      padding: 3px 10px; letter-spacing: 0.06em;
+    }
+    .mock-card-addr { font-size: 12px; color: var(--text-3); margin-bottom: 10px; }
+    .mock-item {
+      background: var(--surface-muted);
+      border-radius: var(--r-sm);
+      padding: 10px 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .mock-item-img {
+      width: 44px; height: 44px; border-radius: 8px;
+      background: var(--border); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+    .mock-item-info { flex: 1; }
+    .mock-item-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .mock-item-note { font-size: 12px; color: var(--text-3); font-style: italic; }
+    .mock-item-rating { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--text-2); }
+    .rating-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .rating-green { background: #22c55e; }
+    .rating-amber { background: #f59e0b; }
+    .mockup-nav {
+      margin-top: 12px; padding-top: 12px;
+      border-top: 1px solid var(--border-sub);
+      display: flex; justify-content: space-around; align-items: center;
+    }
+    .mnav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .mnav-icon { font-size: 20px; }
+    .mnav-label { font-size: 10px; font-weight: 600; color: var(--text-3); }
+
+    /* FEATURES */
+    .features-section {
+      background: var(--surface);
+      border-top: 1px solid var(--border-sub);
+      border-bottom: 1px solid var(--border-sub);
+      padding: 80px 48px;
+    }
+    .features-inner { max-width: 1200px; margin: 0 auto; }
+    .section-header { text-align: center; margin-bottom: 48px; }
+    .section-eyebrow {
+      font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--orange); margin-bottom: 10px;
+    }
+    .section-title { font-size: clamp(28px, 3.5vw, 40px); font-weight: 700; color: var(--text); line-height: 1.15; }
+    .feat-rows { display: flex; flex-direction: column; gap: 16px; }
+    .feat-row {
+      display: grid; grid-template-columns: 72px 1fr;
+      gap: 20px; align-items: start;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      padding: 24px;
+    }
+    .feat-num {
+      width: 48px; height: 48px; border-radius: var(--r-sm);
+      background: var(--orange-pale); border: 1.5px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 700; color: var(--orange);
+    }
+    .feat-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .feat-desc { font-size: 14px; line-height: 1.7; color: var(--text-2); }
+
+    /* CTA */
+    .cta-section { padding: 80px 48px; }
+    .cta-inner {
+      max-width: 1200px; margin: 0 auto;
+      background: var(--orange);
+      border-radius: var(--r);
+      padding: 52px 48px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 32px; flex-wrap: wrap;
+    }
+    .cta-title { font-size: 32px; font-weight: 700; color: #fff; line-height: 1.2; }
+    .cta-sub { font-size: 15px; color: rgba(255,255,255,0.72); margin-top: 10px; line-height: 1.65; }
+    .cta-btns { display: flex; gap: 12px; flex-wrap: wrap; flex-shrink: 0; }
+    .btn-white {
+      display: inline-flex; align-items: center;
+      background: #fff; color: var(--orange);
+      text-decoration: none; font-size: 15px; font-weight: 600;
+      padding: 13px 24px; border-radius: var(--r-sm);
+      transition: transform 0.15s;
+      white-space: nowrap;
+    }
+    .btn-white:hover { transform: translateY(-1px); }
+    .btn-white-ghost {
+      display: inline-flex; align-items: center;
+      background: rgba(255,255,255,0.15); color: #fff;
+      text-decoration: none; font-size: 15px; font-weight: 600;
+      padding: 13px 24px; border-radius: var(--r-sm);
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .btn-white-ghost:hover { background: rgba(255,255,255,0.22); }
+    .store-links {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+    .store-link,
+    .store-link-placeholder {
+      min-width: 168px;
+      padding: 12px 16px;
+      border-radius: var(--r-sm);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      border: 1px solid transparent;
+    }
+    .store-link {
+      background: #fff;
+      color: var(--orange);
+      transition: transform 0.15s;
+    }
+    .store-link:hover { transform: translateY(-1px); }
+    .store-link-placeholder {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      border-color: rgba(255,255,255,0.2);
+      cursor: default;
+    }
+    .store-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      line-height: 1.1;
+      align-items: center;
+    }
+    .store-kicker {
+      font-size: 11px;
+      opacity: 0.72;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .store-name {
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    /* FOOTER */
+    footer {
+      max-width: 1200px; margin: 0 auto;
+      padding: 24px 48px 32px;
+      border-top: 1px solid var(--border-sub);
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    }
+    .footer-text { font-size: 13px; color: var(--text-3); }
+    .footer-nav { display: flex; gap: 20px; }
+    .footer-nav a { font-size: 13px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.15s; }
+    .footer-nav a:hover { color: var(--orange); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 960px) {
+      .nav { padding: 12px 20px; }
+      .nav-link { display: none; }
+      .hero { grid-template-columns: 1fr; gap: 48px; padding: 56px 24px; }
+      .features-section { padding: 56px 24px; }
+      .cta-section { padding: 48px 24px; }
+      .cta-inner { padding: 36px 28px; }
+      footer { padding: 20px 24px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a class="nav-brand" href="/">
+      <div class="nav-icon">YR</div>
+      <span class="nav-name">Yummy Recs</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/privacy.html">Privacy</a>
+      <a class="nav-link" href="/terms.html">Terms</a>
+      <a class="nav-link" href="/contact.html">Contact</a>
+      <a class="nav-cta" href="http://localhost:8081/">Open App</a>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="hero-left">
+        <div class="hero-eyebrow">Food tracking &amp; recommendations</div>
+        <h1 class="hero-h1">Track meals.<br>Rate smarter.</h1>
+        <p class="hero-sub">
+          Yummy Recs keeps your food notes, ratings, lists, and photos organized in one calm, easy-to-scan workspace.
+        </p>
+        <div class="hero-btns">
+          <a class="btn-primary" href="http://localhost:8081/">Launch the app →</a>
+          <a class="btn-secondary" href="/privacy.html">Privacy policy</a>
+        </div>
+        <div class="hero-tags">
+          <span class="tag">Offline-safe logging</span>
+          <span class="tag">Friends-only sharing</span>
+          <span class="tag">Lists, notes &amp; photos</span>
+        </div>
+      </div>
+
+      <div class="hero-right">
+        <div class="mockup">
+          <div class="mockup-header">
+            <div class="mockup-title">Ratings</div>
+            <div class="mockup-meta">6 visits · 1 quick item</div>
+          </div>
+
+          <div class="mock-group">
+            <div class="mock-group-left">
+              <span class="mock-chevron">▾</span>
+              <span class="mock-month">March 2026</span>
+            </div>
+            <div>
+              <span class="mock-count">2</span>
+              <span class="mock-count-sub">(1v · 1q)</span>
+            </div>
+          </div>
+
+          <div class="mock-card">
+            <div class="mock-card-header">
+              <span class="mock-card-name">Delicious Food Corner</span>
+              <span class="mock-badge">VISIT</span>
+            </div>
+            <div class="mock-card-addr">17170 Colima Rd, Hacienda Heights...</div>
+            <div class="mock-item">
+              <div class="mock-item-img">🥐</div>
+              <div class="mock-item-info">
+                <div class="mock-item-name">Pineapple Bun With Butter</div>
+                <div class="mock-item-note">"Biscuity"</div>
+              </div>
+              <div class="mock-item-rating">
+                <span class="rating-dot rating-green"></span>
+                Would get again
+              </div>
+            </div>
+          </div>
+
+          <div class="mock-card">
+            <div class="mock-card-header">
+              <span class="mock-card-name">Name</span>
+              <span class="mock-badge" style="color:#1e40af;border-color:#1e40af">QUICK</span>
+            </div>
+            <div class="mock-card-addr">Packaged Food</div>
+            <div class="mock-item">
+              <div class="mock-item-img">📦</div>
+              <div class="mock-item-info">
+                <div class="mock-item-name">34.0151, -117.9822</div>
+              </div>
+              <div class="mock-item-rating">
+                <span class="rating-dot rating-amber"></span>
+                Worth trying
+              </div>
+            </div>
+          </div>
+
+          <div class="mockup-nav">
+            <div class="mnav-item active">
+              <div class="mnav-icon">🏠</div>
+              <span class="mnav-label" style="color:var(--orange)">Home</span>
+            </div>
+            <div class="mnav-item">
+              <div class="mnav-icon">➕</div>
+              <span class="mnav-label">Add</span>
+            </div>
+            <div class="mnav-item">
+              <div class="mnav-icon">👥</div>
+              <span class="mnav-label">Friends</span>
+            </div>
+            <div class="mnav-item">
+              <div class="mnav-icon">···</div>
+              <span class="mnav-label">More</span>
+            </div>
+            <div class="mnav-item">
+              <div class="mnav-icon">👤</div>
+              <span class="mnav-label">Profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features-section">
+      <div class="features-inner">
+        <div class="section-header">
+          <p class="section-eyebrow">What you get</p>
+          <h2 class="section-title">Built around the same product language</h2>
+        </div>
+        <div class="feat-rows">
+          <div class="feat-row">
+            <div class="feat-num">01</div>
+            <div class="feat-body">
+              <h3 class="feat-title">Track meals clearly</h3>
+              <p class="feat-desc">Save dishes, visits, photos, notes, and ratings with a layout that keeps every detail easy to scan and revisit anytime.</p>
+            </div>
+          </div>
+          <div class="feat-row">
+            <div class="feat-num">02</div>
+            <div class="feat-body">
+              <h3 class="feat-title">Work well offline</h3>
+              <p class="feat-desc">Core logging stays available no matter your connection. Everything syncs automatically the moment you're back online.</p>
+            </div>
+          </div>
+          <div class="feat-row">
+            <div class="feat-num">03</div>
+            <div class="feat-body">
+              <h3 class="feat-title">Share on your terms</h3>
+              <p class="feat-desc">Private, friends-only, or limited public — you control who sees each visit. No algorithms, no public feeds unless you choose.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-section">
+      <div class="cta-inner">
+        <div>
+          <h2 class="cta-title">Every great meal deserves<br>to be remembered.</h2>
+        </div>
+        <div class="store-links">
+          <a class="store-link" href="http://localhost:8081/">
+            <span class="store-copy">
+              <span class="store-kicker">Use Yummy Recs</span>
+              <span class="store-name">Open App</span>
+            </span>
+          </a>
+          <button class="store-link-placeholder" type="button" disabled>
+            <span class="store-copy">
+              <span class="store-kicker">Download on the</span>
+              <span class="store-name">App Store</span>
+            </span>
+          </button>
+          <button class="store-link-placeholder" type="button" disabled>
+            <span class="store-copy">
+              <span class="store-kicker">Get it on</span>
+              <span class="store-name">Google Play</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p class="footer-text">&copy; 2026 Yummy Recs, Inc. All rights reserved.</p>
+    <nav class="footer-nav">
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms</a>
+      <a href="/contact.html">Contact</a>
+    </nav>
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service | Yummy Recs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FFF8F2;
+      --surface: #FFFFFF;
+      --surface-muted: #FFF1E6;
+      --orange: #C35A00;
+      --orange-dark: #9E4600;
+      --orange-pale: #FFF1E2;
+      --text: #2F241B;
+      --text-2: #5A4536;
+      --text-3: #8A6E5D;
+      --border: #E2CCB9;
+      --border-sub: #F1E0D1;
+      --border-strong: #BF987C;
+      --r: 16px;
+      --r-sm: 12px;
+      --r-pill: 999px;
+      --shadow: 0 2px 16px rgba(180,100,60,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* NAV */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      padding: 14px 48px;
+      background: rgba(255,248,242,0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-sub);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-icon {
+      width: 38px; height: 38px; border-radius: var(--r-sm);
+      background: var(--orange); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700;
+    }
+    .nav-name { font-size: 17px; font-weight: 700; color: var(--text); }
+    .nav-links { display: flex; align-items: center; gap: 6px; }
+    .nav-link {
+      font-size: 14px; font-weight: 500; color: var(--text-2);
+      text-decoration: none; padding: 8px 14px; border-radius: var(--r-pill);
+      transition: background 0.15s;
+    }
+    .nav-link:hover { background: var(--surface-muted); }
+    .nav-cta {
+      font-size: 14px; font-weight: 600; color: #fff;
+      text-decoration: none; padding: 10px 20px;
+      background: var(--orange); border-radius: var(--r-sm);
+      transition: background 0.15s;
+    }
+    .nav-cta:hover { background: var(--orange-dark); }
+
+    /* PAGE LAYOUT */
+    .page {
+      max-width: 800px; margin: 0 auto;
+      padding: 64px 48px 80px;
+    }
+
+    /* PAGE HERO */
+    .page-hero {
+      margin-bottom: 40px;
+      animation: fadeUp 0.5s ease both;
+    }
+    .page-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--orange-pale); border: 1px solid var(--border);
+      border-radius: var(--r-pill); padding: 6px 14px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--orange);
+      margin-bottom: 20px;
+    }
+    .page-h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700; line-height: 1.1;
+      letter-spacing: -0.02em; color: var(--text);
+      margin-bottom: 14px;
+    }
+    .page-sub {
+      font-size: 16px; line-height: 1.75; color: var(--text-2);
+    }
+    .page-meta {
+      display: flex; flex-wrap: wrap; gap: 8px 20px;
+      margin-top: 20px;
+    }
+    .meta-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--text-3);
+    }
+    .meta-tag::before { content: '·'; color: var(--border-strong); }
+    .meta-tag:first-child::before { content: none; }
+
+    /* CONTENT STACK */
+    .content-stack {
+      display: flex; flex-direction: column; gap: 12px;
+      animation: fadeUp 0.5s 0.1s ease both;
+    }
+    .policy-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .policy-card h2 {
+      font-size: 17px; font-weight: 700; color: var(--text);
+      margin-bottom: 12px;
+    }
+    .policy-card p {
+      font-size: 15px; line-height: 1.75; color: var(--text-2);
+    }
+    .policy-card p + p { margin-top: 10px; }
+    .policy-card a { color: var(--orange); text-decoration: none; font-weight: 500; }
+    .policy-card a:hover { text-decoration: underline; }
+
+    /* FOOTER */
+    footer {
+      max-width: 800px; margin: 0 auto;
+      padding: 24px 48px 32px;
+      border-top: 1px solid var(--border-sub);
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    }
+    .footer-text { font-size: 13px; color: var(--text-3); }
+    .footer-nav { display: flex; gap: 20px; }
+    .footer-nav a { font-size: 13px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.15s; }
+    .footer-nav a:hover { color: var(--orange); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 720px) {
+      .nav { padding: 12px 20px; }
+      .nav-link { display: none; }
+      .page { padding: 48px 20px 64px; }
+      footer { padding: 20px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a class="nav-brand" href="/">
+      <div class="nav-icon">YR</div>
+      <span class="nav-name">Yummy Recs</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/">Home</a>
+      <a class="nav-link" href="/privacy.html">Privacy Policy</a>
+      <a class="nav-link" href="/contact.html">Contact</a>
+      <a class="nav-cta" href="http://localhost:8081/">Open App</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="page">
+      <div class="page-hero">
+        <div class="page-eyebrow">Terms of Service</div>
+        <h1 class="page-h1">Rules for using Yummy Recs</h1>
+        <p class="page-sub">These summary terms cover account responsibilities and acceptable use for the Yummy Recs service.</p>
+        <div class="page-meta">
+          <span class="meta-tag">Effective March 12, 2026</span>
+        </div>
+      </div>
+
+      <div class="content-stack">
+        <article class="policy-card">
+          <h2>Accounts</h2>
+          <p>You are responsible for account activity performed under your credentials and for maintaining the security of your login information.</p>
+        </article>
+
+        <article class="policy-card">
+          <h2>Acceptable Use</h2>
+          <p>Do not use Yummy Recs for fraudulent, abusive, infringing, or unlawful conduct, and do not interfere with the operation or security of the service.</p>
+        </article>
+
+        <article class="policy-card">
+          <h2>Contact</h2>
+          <p>Questions about these terms can be sent to <a href="mailto:legal@yummyrecs.com">legal@yummyrecs.com</a>.</p>
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p class="footer-text">&copy; 2026 Yummy Recs, Inc. All rights reserved.</p>
+    <nav class="footer-nav">
+      <a href="/">Home</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/contact.html">Contact</a>
+    </nav>
+  </footer>
+
+</body>
+</html>
