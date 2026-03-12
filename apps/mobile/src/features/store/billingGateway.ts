@@ -1,70 +1,33 @@
 import { sendApiRequest } from './pocketbaseGateway';
 
-export type BillingSyncSource = 'purchase' | 'restore';
+export type BillingPlanId = 'monthly' | 'yearly';
 
-export interface BillingPurchasePayload {
-  platform: 'ios' | 'android';
-  productId: string;
-  purchaseState: string | null;
-  purchaseToken: string | null;
-  transactionId: string | null;
-  transactionDate: number | null;
-  store: string | null;
+export interface BillingCheckoutSessionRequest {
+  planId: BillingPlanId;
+  returnUrl: string;
 }
 
-export interface BillingSyncRequest {
-  source: BillingSyncSource;
-  purchases: BillingPurchasePayload[];
+export interface BillingPortalSessionRequest {
+  returnUrl: string;
 }
 
-export interface BillingVerifiedPurchase {
-  platform: 'ios' | 'android';
-  productId: string;
-  purchaseToken: string | null;
-  transactionId: string | null;
+export interface BillingSessionResponse {
+  url: string;
 }
 
-export interface BillingSyncResponse {
-  isSubscriber: boolean;
-  ignoredCount: number;
-  message: string;
-  verifiedPurchases: BillingVerifiedPurchase[];
+export async function createStripeCheckoutSession(
+  request: BillingCheckoutSessionRequest,
+): Promise<BillingSessionResponse> {
+  return sendApiRequest<BillingSessionResponse>('/api/billing/checkout-session', {
+    method: 'POST',
+    body: request,
+  });
 }
 
-interface BillingGatewayPurchase {
-  platform: unknown;
-  productId: string;
-  purchaseState?: unknown;
-  purchaseToken?: string | null;
-  transactionId?: string | null;
-  transactionDate?: number | null;
-  store?: unknown;
-}
-
-function normalizeBillingPlatform(value: unknown): 'ios' | 'android' {
-  if (typeof value === 'string' && value.toLowerCase() === 'android') {
-    return 'android';
-  }
-
-  return 'ios';
-}
-
-export function mapIapPurchaseForBillingSync(purchase: BillingGatewayPurchase): BillingPurchasePayload {
-  return {
-    platform: normalizeBillingPlatform(purchase.platform),
-    productId: purchase.productId,
-    purchaseState: typeof purchase.purchaseState === 'string' ? purchase.purchaseState : null,
-    purchaseToken: purchase.purchaseToken ?? null,
-    transactionId: purchase.transactionId ?? null,
-    transactionDate: typeof purchase.transactionDate === 'number' ? purchase.transactionDate : null,
-    store: typeof purchase.store === 'string' ? purchase.store : null,
-  };
-}
-
-export async function syncBillingPurchases(
-  request: BillingSyncRequest,
-): Promise<BillingSyncResponse> {
-  return sendApiRequest<BillingSyncResponse>('/api/billing/sync', {
+export async function createStripePortalSession(
+  request: BillingPortalSessionRequest,
+): Promise<BillingSessionResponse> {
+  return sendApiRequest<BillingSessionResponse>('/api/billing/portal-session', {
     method: 'POST',
     body: request,
   });

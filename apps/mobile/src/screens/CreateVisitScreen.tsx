@@ -59,8 +59,9 @@ import {
   isValidLocalDate,
   localDateStringToUTC,
 } from '../lib/dateFormatting';
+import { isBillingScreenEnabled } from '../lib/billingAccess';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { extractPhotoCaptureDate } from '../lib/photoMetadata';
+import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -1582,8 +1583,8 @@ export function CreateVisitScreen({
   };
 
   const applyPhotoCaptureDateToVisit = useCallback(
-    (asset: ImagePicker.ImagePickerAsset) => {
-      const captureDate = extractPhotoCaptureDate(asset);
+    async (asset: ImagePicker.ImagePickerAsset) => {
+      const captureDate = await resolvePhotoCaptureDate(asset);
       if (!captureDate) {
         return;
       }
@@ -1699,7 +1700,7 @@ export function CreateVisitScreen({
       mimeType: asset.mimeType || inferImageMimeType(asset.uri),
     };
 
-    applyPhotoCaptureDateToVisit(asset);
+    await applyPhotoCaptureDateToVisit(asset);
 
     setDraftItems((currentItems) =>
       currentItems.map((item) => {
@@ -2154,17 +2155,35 @@ export function CreateVisitScreen({
               <UpgradePromptCard
                 description={
                   isPlacesQuotaReached
-                    ? "You have reached this month's free search limit. Subscribe for higher limits and uninterrupted place search."
-                    : `Only ${placesQueriesRemaining} food place searches left this month. Subscribe for higher limits.`
+                    ? isBillingScreenEnabled
+                      ? "You have reached this month's free search limit. Subscribe for higher limits and uninterrupted place search."
+                      : "You have reached this month's free search limit. If you need a higher limit, we'll email subscription details."
+                    : isBillingScreenEnabled
+                      ? `Only ${placesQueriesRemaining} food place searches left this month. Subscribe for higher limits.`
+                      : `Only ${placesQueriesRemaining} food place searches left this month. If you need a higher limit, we'll email subscription details.`
                 }
-                onPrimaryAction={() => {
-                  navigation.navigate('Billing');
-                }}
-                onSecondaryAction={() => {
-                  navigation.navigate('Billing');
-                }}
-                primaryActionLabel={isPlacesQuotaReached ? 'Subscribe now' : 'Upgrade'}
-                secondaryActionLabel="Compare plans"
+                onPrimaryAction={
+                  isBillingScreenEnabled
+                    ? () => {
+                        navigation.navigate('Billing');
+                      }
+                    : undefined
+                }
+                onSecondaryAction={
+                  isBillingScreenEnabled
+                    ? () => {
+                        navigation.navigate('Billing');
+                      }
+                    : undefined
+                }
+                primaryActionLabel={
+                  isBillingScreenEnabled
+                    ? isPlacesQuotaReached
+                      ? 'Subscribe now'
+                      : 'Upgrade'
+                    : undefined
+                }
+                secondaryActionLabel={isBillingScreenEnabled ? "Compare plans" : undefined}
                 title={
                   isPlacesQuotaReached ? 'Free limit reached' : 'You are close to your free limit'
                 }
@@ -2502,19 +2521,35 @@ export function CreateVisitScreen({
             <UpgradePromptCard
               description={
                 estimatedFreeMonthlyPhotosRemaining <= 0
-                  ? "You have reached this month's free photo limit. Subscribe for higher monthly photo limits."
-                  : `Only ${estimatedFreeMonthlyPhotosRemaining} photo uploads left this month. Subscribe for higher limits.`
+                  ? isBillingScreenEnabled
+                    ? "You have reached this month's free photo limit. Subscribe for higher monthly photo limits."
+                    : "You have reached this month's free photo limit. If you need a higher limit, we'll email subscription details."
+                  : isBillingScreenEnabled
+                    ? `Only ${estimatedFreeMonthlyPhotosRemaining} photo uploads left this month. Subscribe for higher limits.`
+                    : `Only ${estimatedFreeMonthlyPhotosRemaining} photo uploads left this month. If you need a higher limit, we'll email subscription details.`
               }
-              onPrimaryAction={() => {
-                navigation.navigate('Billing');
-              }}
-              onSecondaryAction={() => {
-                navigation.navigate('Billing');
-              }}
+              onPrimaryAction={
+                isBillingScreenEnabled
+                  ? () => {
+                      navigation.navigate('Billing');
+                    }
+                  : undefined
+              }
+              onSecondaryAction={
+                isBillingScreenEnabled
+                  ? () => {
+                      navigation.navigate('Billing');
+                    }
+                  : undefined
+              }
               primaryActionLabel={
-                estimatedFreeMonthlyPhotosRemaining <= 0 ? 'Subscribe now' : 'Upgrade'
+                isBillingScreenEnabled
+                  ? estimatedFreeMonthlyPhotosRemaining <= 0
+                    ? 'Subscribe now'
+                    : 'Upgrade'
+                  : undefined
               }
-              secondaryActionLabel="Compare plans"
+              secondaryActionLabel={isBillingScreenEnabled ? "Compare plans" : undefined}
               title={
                 estimatedFreeMonthlyPhotosRemaining <= 0
                   ? 'Free limit reached'

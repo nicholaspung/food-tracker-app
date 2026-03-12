@@ -1,55 +1,61 @@
 #!/bin/bash
-# Production Deployment Script for Mobile Tracker App
-# Features: Blue-green deployment, rollback, health checks, error handling, backups
-# Supports beta and production environments
+# Deployment script for Yummy Recs
+# Supports beta and production environments with separate marketing, app, admin, and PocketBase surfaces.
 
 set -euo pipefail
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Environment argument (default: production)
 ENVIRONMENT="${1:-production}"
 
-# Validate environment
 if [[ "$ENVIRONMENT" != "beta" && "$ENVIRONMENT" != "production" ]]; then
     echo -e "${RED}ERROR: Invalid environment. Use 'beta' or 'production'${NC}"
     echo "Usage: $0 [beta|production]"
     exit 1
 fi
 
-# Configuration based on environment
 APP_DIR="/opt/food-tracker-app"
-LOG_DIR="/opt/food-tracker-app/logs"
+MARKETING_SOURCE_DIR="$APP_DIR/apps/marketing/dist"
+APP_WEB_SOURCE_DIR="$APP_DIR/apps/mobile/web-dist"
+ADMIN_SOURCE_DIR="$APP_DIR/apps/admin/dist"
+LOG_DIR="$APP_DIR/logs"
 LOG_FILE="${LOG_DIR}/deploy-${ENVIRONMENT}.log"
 LOCK_FILE="/tmp/food-tracker-deploy-${ENVIRONMENT}.lock"
 BACKUP_DIR="/opt/food-tracker-backups/${ENVIRONMENT}"
 MAX_BACKUPS=5
+MARKETING_APP_URL="https://app.yummyrecs.com/"
 
-# Environment-specific configuration
 if [[ "$ENVIRONMENT" == "beta" ]]; then
     POCKETBASE_PORT="8091"
     POCKETBASE_CONTAINER="pocketbase_beta"
     POCKETBASE_SERVICE="pocketbase_beta"
-    FRONTEND_BUILD_DIR="frontend_build_beta"
     COMPOSE_FILE="docker-compose.beta.yml"
-    DOMAIN="beta.yummyrecs.com"
+    POCKETBASE_DOMAIN="beta.app.yummyrecs.com"
+    MARKETING_DOMAIN="beta.yummyrecs.com"
+    APP_DOMAIN="beta.app.yummyrecs.com"
+    ADMIN_DOMAIN="beta.admin.yummyrecs.com"
+    MARKETING_BUILD_DIR="marketing_build_beta"
+    APP_BUILD_DIR="app_build_beta"
+    ADMIN_BUILD_DIR="admin_build_beta"
+    MARKETING_APP_URL="https://beta.app.yummyrecs.com/"
 else
     POCKETBASE_PORT="8090"
     POCKETBASE_CONTAINER="pocketbase"
     POCKETBASE_SERVICE="pocketbase"
-    FRONTEND_BUILD_DIR="frontend_build"
     COMPOSE_FILE="docker-compose.yml"
-    DOMAIN="yummyrecs.com"
+    POCKETBASE_DOMAIN="app.yummyrecs.com"
+    MARKETING_DOMAIN="yummyrecs.com"
+    APP_DOMAIN="app.yummyrecs.com"
+    ADMIN_DOMAIN="admin.yummyrecs.com"
+    MARKETING_BUILD_DIR="marketing_build"
+    APP_BUILD_DIR="app_build"
+    ADMIN_BUILD_DIR="admin_build"
 fi
 
-#######################
-# LOGGING
-#######################
 log() {
     echo -e "${GREEN}[$(date +'%H:%M:%S')]${NC} $*" | tee -a "$LOG_FILE"
 }
@@ -67,18 +73,99 @@ step() {
     echo -e "${BLUE}==>${NC} $*"
 }
 
-#######################
-# CLEANUP & ROLLBACK
-#######################
 USER_CANCELLED=false
 ROLLBACK_REQUIRED=false
+
+site_keys() {
+    echo "marketing app admin"
+}
+
+site_label() {
+    case "$1" in
+        marketing) echo "marketing site" ;;
+        app) echo "app web" ;;
+        admin) echo "admin site" ;;
+        *)
+            error "Unknown site key: $1"
+            exit 1
+            ;;
+    esac
+}
+
+site_source_dir() {
+    case "$1" in
+        marketing) echo "$MARKETING_SOURCE_DIR" ;;
+        app) echo "$APP_WEB_SOURCE_DIR" ;;
+        admin) echo "$ADMIN_SOURCE_DIR" ;;
+        *)
+            error "Unknown site key: $1"
+            exit 1
+            ;;
+    esac
+}
+
+site_build_dir() {
+    case "$1" in
+        marketing) echo "$MARKETING_BUILD_DIR" ;;
+        app) echo "$APP_BUILD_DIR" ;;
+        admin) echo "$ADMIN_BUILD_DIR" ;;
+        *)
+            error "Unknown site key: $1"
+            exit 1
+            ;;
+    esac
+}
+
+site_domain() {
+    case "$1" in
+        marketing) echo "$MARKETING_DOMAIN" ;;
+        app) echo "$APP_DOMAIN" ;;
+        admin) echo "$ADMIN_DOMAIN" ;;
+        *)
+            error "Unknown site key: $1"
+            exit 1
+            ;;
+    esac
+}
+
+validate_site_source() {
+    local site_key="$1"
+    local source_dir
+    local site_name
+
+    source_dir=$(site_source_dir "$site_key")
+    site_name=$(site_label "$site_key")
+
+    if [ ! -d "$source_dir" ]; then
+        error "The ${site_name} source directory is missing: $source_dir"
+        exit 1
+    fi
+
+    case "$site_key" in
+        marketing)
+            for required_file in index.html privacy.html terms.html contact.html styles.css; do
+                if [ ! -f "$source_dir/$required_file" ]; then
+                    error "The ${site_name} asset is missing: $source_dir/$required_file"
+                    exit 1
+                fi
+            done
+            ;;
+        app|admin)
+            if [ ! -f "$source_dir/index.html" ]; then
+                error "The ${site_name} build is missing index.html: $source_dir/index.html"
+                exit 1
+            fi
+            ;;
+    esac
+
+    log "$(tr '[:lower:]' '[:upper:]' <<< "${site_name:0:1}")${site_name:1} assets verified ✓ ($(du -sh "$source_dir" | cut -f1))"
+}
 
 handle_interrupt() {
     echo ""
     warn "Deployment interrupted by user (CTRL+C)"
     USER_CANCELLED=true
 
-    # Ask user if they want to rollback
     echo -n "Do you want to rollback the deployment? (y/N): "
     read -t 10 -r response || response="n"
 
@@ -96,7 +183,6 @@ handle_interrupt() {
 cleanup() {
     local exit_code=$?
 
-    # Don't trigger cleanup if user already cancelled
     if [ "$USER_CANCELLED" = true ]; then
         return
     fi
@@ -110,9 +196,7 @@ cleanup() {
         fi
     fi
 
-    # Remove lock file
     rm -f "$LOCK_FILE"
-
     exit $exit_code
 }
 
@@ -121,19 +205,25 @@ rollback() {
 
     cd "$APP_DIR"
 
-    # Rollback frontend if old version exists
-    if [ -d "${FRONTEND_BUILD_DIR}_old" ]; then
-        log "Rolling back frontend to previous version..."
-        rm -rf "${FRONTEND_BUILD_DIR}_new" 2>/dev/null || true
-        rm -rf "$FRONTEND_BUILD_DIR" 2>/dev/null || true
-        mv "${FRONTEND_BUILD_DIR}_old" "$FRONTEND_BUILD_DIR"
+    local had_static_rollback=false
+    local site_key
+    for site_key in $(site_keys); do
+        local build_dir
+        build_dir=$(site_build_dir "$site_key")
+        if [ -d "${build_dir}_old" ]; then
+            log "Rolling back $(site_label "$site_key")..."
+            rm -rf "${build_dir}_new" 2>/dev/null || true
+            rm -rf "$build_dir" 2>/dev/null || true
+            mv "${build_dir}_old" "$build_dir"
+            had_static_rollback=true
+        fi
+    done
 
-        # Reload Caddy to serve old frontend
+    if [ "$had_static_rollback" = true ]; then
         sudo systemctl reload caddy
-        log "Frontend rolled back successfully"
+        log "Static sites rolled back successfully"
     fi
 
-    # Rollback PocketBase if backup exists
     if [ -f "$BACKUP_DIR/latest/$COMPOSE_FILE" ]; then
         log "Rolling back PocketBase container..."
         docker compose -f "$COMPOSE_FILE" down "$POCKETBASE_SERVICE"
@@ -148,70 +238,63 @@ rollback() {
 trap cleanup EXIT TERM
 trap handle_interrupt INT
 
-#######################
-# PRE-FLIGHT CHECKS
-#######################
 preflight_checks() {
     step "Running pre-flight checks..."
 
-    # Check for deployment lock
     if [ -f "$LOCK_FILE" ]; then
         error "Deployment already in progress (lock file exists: $LOCK_FILE)"
         error "If no deployment is running, remove the lock file manually"
         exit 1
     fi
 
-    # Create lock file
     echo $$ > "$LOCK_FILE"
 
-    # Check required commands
-    for cmd in git npm docker systemctl; do
-        if ! command -v $cmd &> /dev/null; then
+    for cmd in git docker curl systemctl node corepack pnpm; do
+        if ! command -v "$cmd" &> /dev/null; then
             error "Required command not found: $cmd"
             exit 1
         fi
     done
 
-    # Check Docker Compose (V2 plugin)
     if ! docker compose version &> /dev/null; then
         error "Docker Compose not found (requires Docker Compose V2)"
         exit 1
     fi
 
-    # Check if app directory exists
     if [ ! -d "$APP_DIR" ]; then
         error "App directory does not exist: $APP_DIR"
         exit 1
     fi
 
-    # Check disk space (require at least 1GB free)
-    local available_space_kb=$(df "$APP_DIR" | awk 'NR==2 {print $4}')
-    local available_space_mb=$((available_space_kb / 1024))
+    local available_space_kb
+    local available_space_mb
+    available_space_kb=$(df "$APP_DIR" | awk 'NR==2 {print $4}')
+    available_space_mb=$((available_space_kb / 1024))
     if [ "$available_space_mb" -lt 1000 ]; then
         error "Insufficient disk space. Required: 1GB, Available: ${available_space_mb}MB"
         exit 1
     fi
 
-    # Check if Caddy is running
     if ! systemctl is-active --quiet caddy; then
         error "Caddy is not running"
         exit 1
     fi
 
-    # Ensure the target domain exists in the live Caddy configuration.
     local caddy_config="/etc/caddy/Caddyfile"
     if [ -r "$caddy_config" ]; then
-        if ! awk -v domain="$DOMAIN" '$1 == domain && $2 == "{" { found = 1 } END { exit(found ? 0 : 1) }' "$caddy_config"; then
-            error "Domain '$DOMAIN' is not configured in $caddy_config"
-            error "Update the live Caddy config before deploying this environment."
-            error "Suggested fix: sudo cp \"$APP_DIR/Caddyfile\" \"$caddy_config\" && sudo systemctl reload caddy"
-            exit 1
-        fi
+        local domain
+        for domain in "$MARKETING_DOMAIN" "$APP_DOMAIN" "$ADMIN_DOMAIN"; do
+            if ! awk -v domain="$domain" '$1 == domain && $2 == "{" { found = 1 } END { exit(found ? 0 : 1) }' "$caddy_config"; then
+                error "Domain '$domain' is not configured in $caddy_config"
+                error "Update the live Caddy config before deploying this environment."
+                error "Suggested fix: sudo cp \"$APP_DIR/Caddyfile\" \"$caddy_config\" && sudo systemctl reload caddy"
+                exit 1
+            fi
+        done
     else
-        warn "Cannot read $caddy_config. Skipping domain presence check."
+        warn "Cannot read $caddy_config. Skipping domain presence checks."
     fi
 
-    # Check if PocketBase container exists and start it if needed
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
         warn "PocketBase container ($POCKETBASE_CONTAINER) is not running"
         log "Attempting to start PocketBase container..."
@@ -219,7 +302,7 @@ preflight_checks() {
         cd "$APP_DIR"
         if docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_SERVICE"; then
             log "PocketBase container started successfully"
-            sleep 3  # Give it a moment to initialize
+            sleep 3
         else
             error "Failed to start PocketBase container"
             exit 1
@@ -229,48 +312,47 @@ preflight_checks() {
     log "Pre-flight checks passed for $ENVIRONMENT environment ✓"
 }
 
-#######################
-# BACKUP
-#######################
 create_backup() {
     step "Creating backup before deployment ($ENVIRONMENT)..."
 
-    local backup_timestamp=$(date +'%Y%m%d_%H%M%S')
-    local backup_path="$BACKUP_DIR/$backup_timestamp"
+    local backup_timestamp
+    local backup_path
+    backup_timestamp=$(date +'%Y%m%d_%H%M%S')
+    backup_path="$BACKUP_DIR/$backup_timestamp"
 
-    # Ensure backup directory exists with proper permissions
     if [ ! -d "$BACKUP_DIR" ]; then
         sudo mkdir -p "$BACKUP_DIR"
-        sudo chown -R $USER:$USER /opt/food-tracker-backups
+        sudo chown -R "$USER:$USER" /opt/food-tracker-backups
         sudo chmod 755 /opt/food-tracker-backups
     fi
 
     mkdir -p "$backup_path"
 
-    # Backup current frontend build
-    if [ -d "$APP_DIR/$FRONTEND_BUILD_DIR" ]; then
-        cp -r "$APP_DIR/$FRONTEND_BUILD_DIR" "$backup_path/"
-        log "Frontend backed up to $backup_path/$FRONTEND_BUILD_DIR"
-    fi
+    local site_key
+    for site_key in $(site_keys); do
+        local build_dir
+        build_dir=$(site_build_dir "$site_key")
+        if [ -d "$APP_DIR/$build_dir" ]; then
+            cp -r "$APP_DIR/$build_dir" "$backup_path/"
+            log "Backed up $(site_label "$site_key") to $backup_path/$build_dir"
+        fi
+    done
 
-    # Backup docker-compose file (to track PocketBase image version)
     if [ -f "$APP_DIR/$COMPOSE_FILE" ]; then
         cp "$APP_DIR/$COMPOSE_FILE" "$backup_path/"
     fi
 
-    # Backup PocketBase data (database) - environment specific
     local pb_data_dir="backend/pb_data_${ENVIRONMENT}"
     if [ -d "$APP_DIR/$pb_data_dir" ]; then
         tar -czf "$backup_path/pb_data_backup.tar.gz" -C "$APP_DIR/backend" "pb_data_${ENVIRONMENT}"
         log "PocketBase data backed up to $backup_path/pb_data_backup.tar.gz"
     fi
 
-    # Create symlink to latest backup
     rm -f "$BACKUP_DIR/latest"
     ln -s "$backup_path" "$BACKUP_DIR/latest"
 
-    # Cleanup old backups (keep only MAX_BACKUPS)
-    local backup_count=$(ls -1t "$BACKUP_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | wc -l)
+    local backup_count
+    backup_count=$(ls -1t "$BACKUP_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | wc -l)
     if [ "$backup_count" -gt "$MAX_BACKUPS" ]; then
         log "Cleaning up old backups (keeping latest $MAX_BACKUPS)..."
         ls -1t "$BACKUP_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | tail -n +$((MAX_BACKUPS + 1)) | while read -r old_backup; do
@@ -282,41 +364,32 @@ create_backup() {
     log "Backup created successfully ✓"
 }
 
-#######################
-# GIT OPERATIONS
-#######################
 update_source_code() {
     step "Updating source code from Git..."
 
     cd "$APP_DIR"
-
-    # Fetch latest changes
     git fetch origin
 
-    # Check current branch
-    local current_branch=$(git rev-parse --abbrev-ref HEAD)
+    local current_branch
+    local old_commit
+    local new_commit
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    old_commit=$(git rev-parse HEAD)
     log "Current branch: $current_branch"
 
-    # Get current commit before update
-    local old_commit=$(git rev-parse HEAD)
-
-    # Check for local changes
     if ! git diff-index --quiet HEAD --; then
         warn "Local changes detected on server. Discarding them..."
-        # Discard all local changes (deployment server should not have local mods)
         git reset --hard HEAD
         git clean -fd
         log "Local changes discarded"
     fi
 
-    # Reset to remote branch (ensures clean state)
     if ! git reset --hard "origin/$current_branch"; then
         error "Git reset failed. Check network or branch existence."
         exit 1
     fi
 
-    local new_commit=$(git rev-parse HEAD)
-
+    new_commit=$(git rev-parse HEAD)
     if [ "$old_commit" = "$new_commit" ]; then
         warn "No new commits. Source code is already up to date."
     else
@@ -326,160 +399,120 @@ update_source_code() {
     log "Source code updated ✓"
 }
 
-#######################
-# BUILD FRONTEND
-#######################
-build_frontend() {
-    step "Building frontend..."
+install_workspace_dependencies() {
+    step "Installing workspace dependencies..."
 
-    cd "$APP_DIR/frontend"
+    cd "$APP_DIR"
+    corepack enable
+    pnpm install --frozen-lockfile
 
-    # Create environment-specific .env file
-    log "Creating frontend .env for $ENVIRONMENT environment..."
-
-    # Read PostHog configuration from environment variables (optional)
-    local posthog_key="${VITE_POSTHOG_KEY:-}"
-    local disable_analytics="${VITE_DISABLE_ANALYTICS:-false}"
-
-    # Create .env file with API URL and analytics configuration
-    cat > .env <<EOF
-# Frontend Environment Variables - $ENVIRONMENT
-# PocketBase automatically appends /api/ to requests
-VITE_API_URL=https://$DOMAIN
-
-# Analytics Configuration (PostHog)
-# Analytics requests are proxied through backend at /api/visit-insights
-# This path is disguised to blend with the app and bypass ad blockers
-VITE_POSTHOG_KEY=${posthog_key}
-VITE_DISABLE_ANALYTICS=${disable_analytics}
-
-# NOTE: Google Places API and Gemini API keys are now stored in the backend
-# See backend/.env for API key configuration
-EOF
-    log "Frontend .env created with API URL: https://$DOMAIN"
-
-    if [ -n "$posthog_key" ]; then
-        log "✓ VITE_POSTHOG_KEY configured for analytics (via /api/visit-insights proxy)"
-    else
-        warn "VITE_POSTHOG_KEY not set. Frontend analytics will be disabled."
-    fi
-
-    # Clean install dependencies
-    log "Installing dependencies..."
-    if ! npm ci --production=false --loglevel=error 2>&1 | tee -a "$LOG_FILE"; then
-        error "npm ci failed. Check package.json and package-lock.json"
-        exit 1
-    fi
-
-    # Build frontend
-    log "Running build..."
-    if ! npm run build 2>&1 | tee -a "$LOG_FILE"; then
-        error "npm run build failed. Check build logs above"
-        exit 1
-    fi
-
-    # Verify build output exists
-    if [ ! -d "dist" ] || [ -z "$(ls -A dist)" ]; then
-        error "Build succeeded but dist/ directory is missing or empty"
-        exit 1
-    fi
-
-    # Verify critical files exist
-    if [ ! -f "dist/index.html" ]; then
-        error "Build succeeded but index.html is missing"
-        exit 1
-    fi
-
-    local build_size=$(du -sh dist | cut -f1)
-    log "Frontend built successfully ✓ (size: $build_size)"
+    log "Workspace dependencies installed ✓"
 }
 
-#######################
-# DEPLOY FRONTEND
-#######################
-deploy_frontend() {
-    step "Deploying frontend with blue-green strategy ($ENVIRONMENT)..."
+build_web_surfaces() {
+    step "Building web surfaces..."
 
     cd "$APP_DIR"
 
-    # From this point forward, failures should trigger rollback.
-    ROLLBACK_REQUIRED=true
-
-    # Remove any leftover new build
-    rm -rf "${FRONTEND_BUILD_DIR}_new"
-
-    # Copy new build
-    cp -r frontend/dist "${FRONTEND_BUILD_DIR}_new"
-
-    # Verify copy succeeded
-    if [ ! -d "${FRONTEND_BUILD_DIR}_new" ] || [ ! -f "${FRONTEND_BUILD_DIR}_new/index.html" ]; then
-        error "Failed to copy build to ${FRONTEND_BUILD_DIR}_new"
-        exit 1
+    export EXPO_PUBLIC_API_BASE_URL="https://$APP_DOMAIN"
+    export EXPO_PUBLIC_POCKETBASE_URL="https://$APP_DOMAIN"
+    export EXPO_PUBLIC_APP_WEB_URL="https://$APP_DOMAIN"
+    export EXPO_PUBLIC_ADMIN_URL="https://$ADMIN_DOMAIN"
+    export EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS="true"
+    export EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS="true"
+    if [ "$ENVIRONMENT" = "beta" ]; then
+        export EXPO_PUBLIC_BETA_ADMIN_ONLY="true"
+    else
+        export EXPO_PUBLIC_BETA_ADMIN_ONLY="false"
     fi
 
-    # Atomic swap: old -> _old, new -> current
-    if [ -d "$FRONTEND_BUILD_DIR" ]; then
-        # Move current to old (overwrites previous old)
-        rm -rf "${FRONTEND_BUILD_DIR}_old"
-        mv "$FRONTEND_BUILD_DIR" "${FRONTEND_BUILD_DIR}_old"
-        log "Current build moved to ${FRONTEND_BUILD_DIR}_old"
-    fi
+    export VITE_API_URL="https://$ADMIN_DOMAIN"
 
-    # Move new to current
-    mv "${FRONTEND_BUILD_DIR}_new" "$FRONTEND_BUILD_DIR"
-    log "New build moved to $FRONTEND_BUILD_DIR"
+    pnpm admin:build
+    pnpm mobile:web:build
 
-    # Verify the swap
-    if [ ! -f "$FRONTEND_BUILD_DIR/index.html" ]; then
-        error "Frontend swap failed - index.html not found in $FRONTEND_BUILD_DIR"
-        exit 1
-    fi
-
-    log "Frontend deployed ✓"
+    log "Web surfaces built ✓"
 }
 
-#######################
-# CONFIGURE BACKEND
-#######################
+prepare_static_sites() {
+    step "Preparing static site assets..."
+
+    local site_key
+    for site_key in $(site_keys); do
+        validate_site_source "$site_key"
+    done
+}
+
+deploy_static_sites() {
+    step "Deploying static sites with blue-green strategy ($ENVIRONMENT)..."
+
+    cd "$APP_DIR"
+    ROLLBACK_REQUIRED=true
+
+    local site_key
+    for site_key in $(site_keys); do
+        local source_dir
+        local build_dir
+        local site_name
+
+        source_dir=$(site_source_dir "$site_key")
+        build_dir=$(site_build_dir "$site_key")
+        site_name=$(site_label "$site_key")
+
+        rm -rf "${build_dir}_new"
+        if [ "$site_key" = "marketing" ]; then
+            APP_OPEN_URL="$MARKETING_APP_URL" bash "$APP_DIR/scripts/prepare-marketing.sh" "$source_dir" "${build_dir}_new"
+        else
+            cp -r "$source_dir" "${build_dir}_new"
+        fi
+
+        if [ ! -d "${build_dir}_new" ] || [ ! -f "${build_dir}_new/index.html" ]; then
+            error "Failed to copy the ${site_name} build to ${build_dir}_new"
+            exit 1
+        fi
+
+        if [ -d "$build_dir" ]; then
+            rm -rf "${build_dir}_old"
+            mv "$build_dir" "${build_dir}_old"
+            log "Current ${site_name} build moved to ${build_dir}_old"
+        fi
+
+        mv "${build_dir}_new" "$build_dir"
+        log "New ${site_name} build moved to $build_dir"
+    done
+
+    log "Static sites deployed ✓"
+}
+
 configure_backend() {
     step "Configuring backend environment variables ($ENVIRONMENT)..."
 
     cd "$APP_DIR/backend"
 
-    # Backend .env file location (environment-specific storage)
     local env_file_storage="/opt/food-tracker-secrets/${ENVIRONMENT}/.env"
-
-    # Ensure secrets directory exists with proper permissions
     if [ ! -d "/opt/food-tracker-secrets/${ENVIRONMENT}" ]; then
-        # Try to create without sudo first (for CI/CD environments)
         if mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}" 2>/dev/null; then
             chmod 700 /opt/food-tracker-secrets
             chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
             log "Created secrets directory without sudo"
-        elif [ -n "$SUDO_PASSWORD" ]; then
-            # Use sudo with password from environment variable (if provided)
+        elif [ -n "${SUDO_PASSWORD:-}" ]; then
             echo "$SUDO_PASSWORD" | sudo -S mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
-            echo "$SUDO_PASSWORD" | sudo -S chown -R $USER:$USER /opt/food-tracker-secrets
+            echo "$SUDO_PASSWORD" | sudo -S chown -R "$USER:$USER" /opt/food-tracker-secrets
             echo "$SUDO_PASSWORD" | sudo -S chmod 700 /opt/food-tracker-secrets
             echo "$SUDO_PASSWORD" | sudo -S chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
             log "Created secrets directory with sudo"
         else
             error "Cannot create /opt/food-tracker-secrets/${ENVIRONMENT}"
-            error "Either:"
-            error "  1. Pre-create it manually: sudo mkdir -p /opt/food-tracker-secrets/${ENVIRONMENT} && sudo chown -R \$USER:\$USER /opt/food-tracker-secrets"
-            error "  2. Set SUDO_PASSWORD environment variable"
-            error "  3. Configure passwordless sudo for this user"
+            error "Either pre-create it, set SUDO_PASSWORD, or configure passwordless sudo."
             exit 1
         fi
     fi
 
-    # Read API keys from environment variables (set by GitHub Actions or manually on server)
     local gemini_key="${GEMINI_API_KEY:-}"
     local places_key="${GOOGLE_PLACES_API_KEY:-}"
     local posthog_api_key="${POSTHOG_API_KEY:-}"
     local posthog_host="${POSTHOG_HOST:-https://us.i.posthog.com}"
 
-    # If env vars not set, try to read from existing env file
     if [ -z "$gemini_key" ] && [ -f "$env_file_storage" ]; then
         gemini_key=$(grep "^GEMINI_API_KEY=" "$env_file_storage" | cut -d '=' -f 2)
     fi
@@ -496,89 +529,59 @@ configure_backend() {
         posthog_host=$(grep "^POSTHOG_HOST=" "$env_file_storage" | cut -d '=' -f 2)
     fi
 
-    # Warn if API keys are missing
     if [ -z "$gemini_key" ]; then
         warn "GEMINI_API_KEY not set. Menu OCR features will not work."
-        warn "Set it via: export GEMINI_API_KEY=your_key"
     fi
 
     if [ -z "$places_key" ]; then
         warn "GOOGLE_PLACES_API_KEY not set. Restaurant search features will not work."
-        warn "Set it via: export GOOGLE_PLACES_API_KEY=your_key"
     fi
 
     if [ -z "$posthog_api_key" ]; then
         warn "POSTHOG_API_KEY not set. Backend analytics will be disabled."
     fi
 
-    # Create backend .env file in secure location
     cat > "$env_file_storage" <<EOF
 # Backend Environment Variables - $ENVIRONMENT
 # Generated on $(date)
-
-# Google Gemini API Key for menu OCR
 GEMINI_API_KEY=${gemini_key}
-
-# Google Places API Key for restaurant search
 GOOGLE_PLACES_API_KEY=${places_key}
-
-# PostHog Analytics (Optional)
 POSTHOG_API_KEY=${posthog_api_key}
 POSTHOG_HOST=${posthog_host}
 EOF
 
-    # Secure the env file
     chmod 600 "$env_file_storage"
-
-    # Create symlink from backend directory to secrets location
     ln -sf "$env_file_storage" "$APP_DIR/backend/.env"
 
-    # Export environment variables so docker-compose can use them
     export GEMINI_API_KEY="$gemini_key"
     export GOOGLE_PLACES_API_KEY="$places_key"
     export POSTHOG_API_KEY="$posthog_api_key"
     export POSTHOG_HOST="$posthog_host"
 
     log "Backend .env configured at $env_file_storage (symlinked to backend/.env)"
-
-    if [ -n "$gemini_key" ]; then
-        log "✓ GEMINI_API_KEY configured and exported"
-    fi
-
-    if [ -n "$places_key" ]; then
-        log "✓ GOOGLE_PLACES_API_KEY configured and exported"
-    fi
-
-    if [ -n "$posthog_api_key" ]; then
-        log "✓ POSTHOG_API_KEY configured and exported"
-    fi
 }
 
-#######################
-# DEPLOY POCKETBASE
-#######################
 deploy_pocketbase() {
     step "Updating PocketBase container ($ENVIRONMENT)..."
 
     cd "$APP_DIR"
 
-    # Build PocketBase image (custom image, not from Docker Hub)
     log "Building PocketBase image..."
     if ! docker compose -f "$COMPOSE_FILE" build "$POCKETBASE_SERVICE" 2>&1 | tee -a "$LOG_FILE"; then
         error "Failed to build PocketBase image"
         exit 1
     fi
 
-    # Get current container ID before update
-    local old_container=$(docker ps -qf "name=$POCKETBASE_CONTAINER")
+    local old_container
+    local new_container
+    old_container=$(docker ps -qf "name=$POCKETBASE_CONTAINER")
 
-    # Update container (recreates if image changed)
     if ! docker compose -f "$COMPOSE_FILE" up -d "$POCKETBASE_SERVICE"; then
         error "Failed to start PocketBase container"
         exit 1
     fi
 
-    local new_container=$(docker ps -qf "name=$POCKETBASE_CONTAINER")
+    new_container=$(docker ps -qf "name=$POCKETBASE_CONTAINER")
 
     if [ "$old_container" != "$new_container" ]; then
         log "PocketBase container recreated (new container ID: $new_container)"
@@ -589,39 +592,38 @@ deploy_pocketbase() {
     log "PocketBase updated ✓"
 }
 
-#######################
-# HEALTH CHECKS
-#######################
 health_check_pocketbase() {
     step "Performing PocketBase health check ($ENVIRONMENT)..."
 
     local max_attempts=30
     local attempt=0
-    local wait_time=2
 
     while [ $attempt -lt $max_attempts ]; do
-        if docker compose -f "$COMPOSE_FILE" exec -T "$POCKETBASE_SERVICE" wget --spider -q http://localhost:$POCKETBASE_PORT/api/health 2>/dev/null; then
+        if docker compose -f "$COMPOSE_FILE" exec -T "$POCKETBASE_SERVICE" wget --spider -q "http://localhost:$POCKETBASE_PORT/api/health" 2>/dev/null; then
             log "PocketBase is healthy ✓"
             return 0
         fi
 
         attempt=$((attempt + 1))
         log "Waiting for PocketBase to be healthy (attempt $attempt/$max_attempts)..."
-        sleep $wait_time
+        sleep 2
     done
 
     error "PocketBase health check failed after $max_attempts attempts"
     return 1
 }
 
-caddy_frontend_status_code() {
+caddy_site_status_code() {
+    local domain="$1"
+    local path="${2:-/}"
     local status_code
+
     status_code=$(curl -k -s -o /dev/null -w "%{http_code}" -L \
         --connect-timeout 3 \
         --max-time 10 \
-        --resolve "$DOMAIN:80:127.0.0.1" \
-        --resolve "$DOMAIN:443:127.0.0.1" \
-        "http://$DOMAIN/" || true)
+        --resolve "$domain:80:127.0.0.1" \
+        --resolve "$domain:443:127.0.0.1" \
+        "http://$domain$path" || true)
 
     if [ -z "$status_code" ]; then
         echo "000"
@@ -630,82 +632,57 @@ caddy_frontend_status_code() {
     fi
 }
 
-health_check_frontend() {
-    step "Performing frontend health check ($ENVIRONMENT)..."
-
-    # Check if frontend build exists and has content
-    if [ ! -d "$APP_DIR/$FRONTEND_BUILD_DIR" ]; then
-        error "$FRONTEND_BUILD_DIR directory does not exist"
-        return 1
-    fi
-
-    if [ ! -f "$APP_DIR/$FRONTEND_BUILD_DIR/index.html" ]; then
-        error "index.html not found in $FRONTEND_BUILD_DIR"
-        return 1
-    fi
-
-    # Try to fetch the frontend via Caddy with proper Host header
+health_check_static_site() {
+    local site_key="$1"
+    local domain
+    local build_dir
+    local site_name
     local max_attempts=10
     local attempt=0
     local status_code="000"
 
+    domain=$(site_domain "$site_key")
+    build_dir=$(site_build_dir "$site_key")
+    site_name=$(site_label "$site_key")
+
+    if [ ! -d "$APP_DIR/$build_dir" ]; then
+        error "$build_dir directory does not exist"
+        return 1
+    fi
+
+    if [ ! -f "$APP_DIR/$build_dir/index.html" ]; then
+        error "index.html not found in $build_dir"
+        return 1
+    fi
+
     while [ $attempt -lt $max_attempts ]; do
-        # Resolve domain to localhost so health checks don't depend on external DNS propagation.
-        status_code=$(caddy_frontend_status_code)
+        status_code=$(caddy_site_status_code "$domain")
         if [ "$status_code" = "200" ]; then
-            log "Frontend is accessible via Caddy ✓"
+            log "${site_name} is accessible via Caddy ✓"
             return 0
         fi
 
         attempt=$((attempt + 1))
-        log "Waiting for frontend to be accessible (attempt $attempt/$max_attempts, status=$status_code)..."
+        log "Waiting for ${site_name} to be accessible (attempt $attempt/$max_attempts, status=$status_code)..."
         sleep 1
     done
 
-    error "Frontend health check failed - not accessible via Caddy (last status: $status_code)"
+    error "${site_name} health check failed via Caddy (last status: $status_code)"
     return 1
 }
 
-smoke_test() {
-    step "Running smoke tests ($ENVIRONMENT)..."
-
-    # Test PocketBase API
-    if ! curl -f -s http://localhost:$POCKETBASE_PORT/api/health > /dev/null; then
-        error "Smoke test failed: PocketBase API not responding on port $POCKETBASE_PORT"
-        return 1
-    fi
-
-    # Test frontend (check if Caddy is serving it correctly)
-    # -i makes grep case-insensitive (matches both <!DOCTYPE html> and <!doctype html>)
-    if ! curl -k -f -s -L \
-        --resolve "$DOMAIN:80:127.0.0.1" \
-        --resolve "$DOMAIN:443:127.0.0.1" \
-        "http://$DOMAIN/" | grep -qi "<!doctype html>"; then
-        error "Smoke test failed: Frontend not serving HTML for $DOMAIN"
-        return 1
-    fi
-
-    log "Smoke tests passed ✓"
-}
-
-#######################
-# FINALIZE DEPLOYMENT
-#######################
 reload_caddy() {
     step "Reloading Caddy..."
 
-    # Test Caddy configuration first
     if ! sudo caddy validate --config /etc/caddy/Caddyfile 2>/dev/null; then
         warn "Caddy configuration validation failed, but continuing..."
     fi
 
-    # Graceful reload (no downtime)
     if ! sudo systemctl reload caddy; then
         error "Failed to reload Caddy"
         exit 1
     fi
 
-    # Verify Caddy is still running
     sleep 2
     if ! systemctl is-active --quiet caddy; then
         error "Caddy is not running after reload"
@@ -715,25 +692,62 @@ reload_caddy() {
     log "Caddy reloaded ✓"
 }
 
-cleanup_old_build() {
-    step "Cleaning up old frontend build ($ENVIRONMENT)..."
+smoke_test() {
+    step "Running smoke tests ($ENVIRONMENT)..."
+
+    if ! curl -f -s "http://localhost:$POCKETBASE_PORT/api/health" > /dev/null; then
+        error "PocketBase API not responding on port $POCKETBASE_PORT"
+        return 1
+    fi
+
+    local site_key
+    for site_key in $(site_keys); do
+        local domain
+        domain=$(site_domain "$site_key")
+        if ! curl -k -f -s -L \
+            --resolve "$domain:80:127.0.0.1" \
+            --resolve "$domain:443:127.0.0.1" \
+            "http://$domain/" | grep -qi "<!doctype html>"; then
+            error "Smoke test failed: $(site_label "$site_key") is not serving HTML for $domain"
+            return 1
+        fi
+    done
+
+    if ! curl -k -f -s -L \
+        --resolve "$POCKETBASE_DOMAIN:80:127.0.0.1" \
+        --resolve "$POCKETBASE_DOMAIN:443:127.0.0.1" \
+        "http://$POCKETBASE_DOMAIN/api/health" > /dev/null; then
+        error "Smoke test failed: PocketBase API is not reachable through $POCKETBASE_DOMAIN/api/health"
+        return 1
+    fi
+
+    log "Smoke tests passed ✓"
+}
+
+cleanup_old_builds() {
+    step "Cleaning up old static site builds ($ENVIRONMENT)..."
 
     cd "$APP_DIR"
 
-    # Keep old build for 5 minutes in case we need emergency rollback
-    if [ -d "${FRONTEND_BUILD_DIR}_old" ]; then
-        # Properly detach the background process to avoid hanging SSH sessions
-        nohup bash -c "sleep 300 && rm -rf '${FRONTEND_BUILD_DIR}_old'" > /dev/null 2>&1 &
-        disown
-        log "Old build will be deleted in 5 minutes (detached process)"
-    fi
+    local site_key
+    for site_key in $(site_keys); do
+        local build_dir
+        build_dir=$(site_build_dir "$site_key")
+        if [ -d "${build_dir}_old" ]; then
+            nohup bash -c "sleep 300 && rm -rf '${build_dir}_old'" > /dev/null 2>&1 &
+            disown
+            log "Old $(site_label "$site_key") build will be deleted in 5 minutes"
+        fi
+    done
 }
 
 print_summary() {
-    local db_size=$(du -sh "$APP_DIR/backend/pb_data_${ENVIRONMENT}/" 2>/dev/null | cut -f1 || echo 'N/A')
-    local fe_size=$(du -sh "$APP_DIR/$FRONTEND_BUILD_DIR/" 2>/dev/null | cut -f1 || echo 'N/A')
-    local git_commit=$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo 'N/A')
-    local backup_location=$(readlink -f "$BACKUP_DIR/latest" 2>/dev/null || echo 'N/A')
+    local db_size
+    local git_commit
+    local backup_location
+    db_size=$(du -sh "$APP_DIR/backend/pb_data_${ENVIRONMENT}/" 2>/dev/null | cut -f1 || echo 'N/A')
+    git_commit=$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo 'N/A')
+    backup_location=$(readlink -f "$BACKUP_DIR/latest" 2>/dev/null || echo 'N/A')
 
     echo ""
     echo -e "${GREEN}========================================${NC}"
@@ -743,28 +757,25 @@ print_summary() {
     echo -e "${YELLOW}Deployment Summary (${ENVIRONMENT}):${NC}"
     echo "  - Environment: $ENVIRONMENT"
     echo "  - Database size: $db_size"
-    echo "  - Frontend size: $fe_size"
     echo "  - Backup location: $backup_location"
     echo "  - Git commit: $git_commit"
     echo "  - PocketBase port: $POCKETBASE_PORT"
-    echo ""
-    echo "🌐 Your app is now live at: https://$DOMAIN"
+    echo "  - Marketing URL: https://$MARKETING_DOMAIN"
+    echo "  - App URL: https://$APP_DOMAIN"
+    echo "  - Admin URL: https://$ADMIN_DOMAIN"
+    echo "  - PocketBase Admin URL: https://$APP_DOMAIN/_/"
     echo ""
     echo -e "${YELLOW}Deployment log saved to:${NC} $LOG_FILE"
     echo ""
 }
 
-#######################
-# MAIN DEPLOYMENT
-#######################
 main() {
-    # Ensure log directory exists before any logging
     mkdir -p "$LOG_DIR"
     chmod 755 "$LOG_DIR"
 
     echo ""
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}  Deploying Mobile Tracker App${NC}"
+    echo -e "${BLUE}  Deploying Yummy Recs${NC}"
     echo -e "${BLUE}  Environment: ${ENVIRONMENT}${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo ""
@@ -773,45 +784,26 @@ main() {
     log "Started at $(date)"
     echo ""
 
-    # Step 1: Pre-flight checks
     preflight_checks
-
-    # Step 2: Create backup
     create_backup
-
-    # Step 3: Update source code
     update_source_code
-
-    # Step 4: Build frontend
-    build_frontend
-
-    # Step 5: Deploy frontend (blue-green)
-    deploy_frontend
-
-    # Step 6: Reload Caddy
+    install_workspace_dependencies
+    build_web_surfaces
+    prepare_static_sites
+    deploy_static_sites
     reload_caddy
 
-    # Step 7: Health check frontend
-    health_check_frontend
+    local site_key
+    for site_key in $(site_keys); do
+        health_check_static_site "$site_key"
+    done
 
-    # Step 8: Configure backend environment variables
     configure_backend
-
-    # Step 9: Deploy PocketBase
     deploy_pocketbase
-
-    # Step 10: Health check PocketBase
     health_check_pocketbase
-
-    # Step 11: Run smoke tests
     smoke_test
-
-    # Step 12: Cleanup
-    cleanup_old_build
-
-    # Success!
+    cleanup_old_builds
     print_summary
 }
 
-# Run main deployment
 main "$@"

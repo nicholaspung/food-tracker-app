@@ -1,40 +1,29 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
 
-import { BackHeaderScreenScaffold, OptionList, OptionListRow, SectionCard } from '../components/shared';
-import { formatAppVersionLabel, getApplicationId, getApplicationName } from '../lib/appMetadata';
+import {
+  BackHeaderScreenScaffold,
+  OptionList,
+  OptionListRow,
+  OtaUpdateCard,
+  SectionCard,
+} from '../components/shared';
+import { shouldShowAppUpdateStatus } from '../lib/appUpdateVisibility';
+import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useTheme } from '../theme';
-import { Card, Text } from '../ui';
+import { Text } from '../ui';
 
 type AboutScreenProps = NativeStackScreenProps<RootStackParamList, 'About'>;
 
 export function AboutScreen({ navigation }: AboutScreenProps) {
   const theme = useTheme();
-  const applicationName = getApplicationName();
   const appVersionLabel = formatAppVersionLabel();
-  const applicationId = getApplicationId();
+  const showAppUpdateStatus = shouldShowAppUpdateStatus();
 
   const styles = StyleSheet.create({
     body: {
       gap: theme.spacing.md,
-    },
-    heroCard: {
-      gap: theme.spacing.xs,
-    },
-    heroEyebrow: {
-      color: theme.colors.text.brand,
-      ...theme.typography.eyebrow,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
-    },
-    heroTitle: {
-      color: theme.colors.text.primary,
-      ...theme.typography.titleMd,
-    },
-    heroDescription: {
-      color: theme.colors.text.secondary,
-      lineHeight: 20,
     },
     metaValue: {
       color: theme.colors.text.secondary,
@@ -63,32 +52,19 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
       subtitle="Version details, legal pages, and app information"
       title="About"
     >
-      <Card style={styles.heroCard} tone="info">
-        <Text style={styles.heroEyebrow}>Current Build</Text>
-        <Text style={styles.heroTitle}>{applicationName}</Text>
-        <Text style={styles.heroDescription}>
-          Keep this page as the single place for app versioning, legal documents, and other
-          reference details.
-        </Text>
-      </Card>
-
       <SectionCard title="App Information">
         <OptionList>
           <OptionListRow
             iconName="phone-portrait-outline"
+            isLast
             rightAccessory={<Text style={styles.metaValue}>{appVersionLabel}</Text>}
             subtitle="Current app version and native build"
             title="Version"
           />
-          <OptionListRow
-            iconName="cube-outline"
-            isLast
-            rightAccessory={<Text style={styles.metaValue}>{applicationId}</Text>}
-            subtitle="Installed app identifier"
-            title="Application ID"
-          />
         </OptionList>
       </SectionCard>
+
+      {showAppUpdateStatus ? <OtaUpdateCard source="AboutScreen" /> : null}
 
       <SectionCard title="Legal">
         <OptionList>

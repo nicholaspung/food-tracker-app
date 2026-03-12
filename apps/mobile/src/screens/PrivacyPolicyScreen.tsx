@@ -7,24 +7,44 @@ type PrivacyPolicyScreenProps = NativeStackScreenProps<RootStackParamList, 'Priv
 
 const PRIVACY_SECTIONS = [
   {
-    title: 'What Data You Collect',
+    title: 'Information We Collect',
     body:
-      'List account profile fields, restaurant activity, ratings, uploaded media, billing metadata, and device diagnostics collected by the app.',
+      'Yummy Recs collects account details, profile settings, food activity such as notes, ratings, visits, quick tracks, lists, bills, feedback, friend connections, and photos you choose to upload.',
   },
   {
-    title: 'How Data Is Used',
+    title: 'Permissions and Device Access',
     body:
-      'Explain how app data supports recommendations, syncing, support workflows, analytics, abuse prevention, and subscription management.',
+      'The app may request camera, photo library, and location access when you use features that need them, such as scanning QR codes, uploading food photos, saving processed images, or attaching your current location.',
   },
   {
-    title: 'Sharing and Disclosure',
+    title: 'How We Use Data',
     body:
-      'Document when information is visible to friends, shared publicly, processed by vendors, or disclosed for legal or safety reasons.',
+      'We use information to operate and sync your account, display your food records, support offline replay, manage subscriptions, respond to support requests, improve the product, and protect the service against misuse.',
   },
   {
-    title: 'Retention and User Controls',
+    title: 'Sharing and Visibility',
     body:
-      'Describe deletion windows, cache or backup retention, export rights, and the settings users can use to manage their account data.',
+      'Your content is shared according to the visibility settings you choose and may also be processed by service providers that help with hosting, analytics, diagnostics, and payment processing, or disclosed when required by law.',
+  },
+  {
+    title: 'Analytics and Billing Providers',
+    body:
+      'Yummy Recs may collect app version, platform details, usage events, and error reports to improve reliability, and subscription billing is processed through Stripe, which handles payment details directly.',
+  },
+  {
+    title: 'Retention and Security',
+    body:
+      'We keep information for as long as needed to provide the service, maintain account history, meet legal obligations, and protect the platform. Cached or offline copies may remain on your device until refreshed or deleted.',
+  },
+  {
+    title: 'Your Choices',
+    body:
+      'You can update supported profile and content settings in the app, change device permissions through system settings, and request access, correction, export, or deletion by contacting the privacy inbox.',
+  },
+  {
+    title: 'Contact',
+    body:
+      'For privacy questions or rights requests, email privacy@yummyrecs.com. Support questions can be sent to support@yummyrecs.com.',
   },
 ] as const;
 
@@ -40,12 +60,12 @@ export function PrivacyPolicyScreen({ navigation }: PrivacyPolicyScreenProps) {
 
   return (
     <StaticContentSectionsScreen
-      introCaption="Scaffold"
-      introDescription="This page is a placeholder for approved privacy language. Swap these sections for final copy or a remote document source once your policy is ready."
-      introTitle="Privacy content has not been finalized yet."
+      introCaption="Effective March 12, 2026"
+      introDescription="This summary explains how Yummy Recs collects, uses, shares, and retains information across the mobile app, web experiences, and related support workflows."
+      introTitle="How Yummy Recs handles your information"
       onBackPress={handleBackPress}
       sections={PRIVACY_SECTIONS}
-      subtitle="Placeholder structure for future privacy disclosures"
+      subtitle="Summary of data handling, permissions, sharing, and user controls"
       title="Privacy Policy"
     />
   );

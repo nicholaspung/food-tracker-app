@@ -1,5 +1,5 @@
 #!/bin/bash
-# VPS Initial Setup Script for Mobile Tracker App
+# VPS Initial Setup Script for Yummy Recs
 # Run this on a fresh Ubuntu VPS (22.04-25.04)
 # Features: Security hardening, idempotency, error handling
 
@@ -270,6 +270,37 @@ install_git() {
 }
 
 #######################
+# INSTALL NODE TOOLING
+#######################
+install_node_tooling() {
+    step "Installing Node.js and pnpm..."
+
+    local install_node=false
+    if command -v node &> /dev/null; then
+        local node_major
+        node_major=$(node -p "process.versions.node.split('.')[0]")
+        if [ "$node_major" -lt 20 ]; then
+            warn "Detected Node.js $(node --version), upgrading to Node.js 22"
+            install_node=true
+        else
+            log "Node.js already installed ($(node --version))"
+        fi
+    else
+        install_node=true
+    fi
+
+    if [ "$install_node" = true ]; then
+        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+        log "Node.js installed ✓ ($(node --version))"
+    fi
+
+    sudo corepack enable
+    corepack prepare pnpm@10.32.1 --activate
+    log "pnpm installed ✓ ($(pnpm --version))"
+}
+
+#######################
 # INSTALL LIBHEIF
 #######################
 install_libheif() {
@@ -293,27 +324,6 @@ create_backup_directory() {
     sudo mkdir -p /var/backups/pocketbase
     sudo chown $USER:$USER /var/backups/pocketbase
     log "Backup directory created ✓"
-}
-
-#######################
-# INSTALL NODE.JS
-#######################
-install_nodejs() {
-    step "Installing Node.js 20..."
-
-    if command -v node &> /dev/null; then
-        NODE_VERSION=$(node --version | grep -oP '(?<=v)\d+')
-        if [ "$NODE_VERSION" -ge 20 ]; then
-            log "Node.js already installed ($(node --version))"
-            return
-        else
-            log "Upgrading Node.js from v$NODE_VERSION to v20..."
-        fi
-    fi
-
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-    log "Node.js installed ($(node --version)) ✓"
 }
 
 #######################
@@ -377,7 +387,7 @@ EOF
 main() {
     echo ""
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}  Mobile Tracker App - VPS Setup${NC}"
+    echo -e "${BLUE}  Yummy Recs - VPS Setup${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo ""
     log "Logging to: $LOG_FILE"
@@ -393,9 +403,9 @@ main() {
     install_fail2ban
     enable_security_updates
     install_git
+    install_node_tooling
     install_libheif
     create_backup_directory
-    install_nodejs
     create_swap
     setup_log_rotation
 

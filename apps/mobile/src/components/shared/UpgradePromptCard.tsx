@@ -8,7 +8,7 @@ export interface UpgradePromptCardProps {
   description: string;
   primaryActionLabel?: string;
   secondaryActionLabel?: string;
-  onPrimaryAction: () => void;
+  onPrimaryAction?: () => void;
   onSecondaryAction?: () => void;
   disabled?: boolean;
 }
@@ -23,6 +23,19 @@ export function UpgradePromptCard({
   disabled = false,
 }: UpgradePromptCardProps) {
   const theme = useTheme();
+  const primaryAction = onPrimaryAction
+    ? {
+        label: primaryActionLabel,
+        onPress: onPrimaryAction,
+      }
+    : null;
+  const secondaryAction =
+    secondaryActionLabel && onSecondaryAction
+      ? {
+          label: secondaryActionLabel,
+          onPress: onSecondaryAction,
+        }
+      : null;
 
   const styles = StyleSheet.create({
     card: {
@@ -45,21 +58,25 @@ export function UpgradePromptCard({
         <Text style={styles.title}>{title}</Text>
         <Text tone="secondary">{description}</Text>
       </View>
-      <View style={styles.actions}>
-        <Button
-          disabled={disabled}
-          label={primaryActionLabel}
-          onPress={onPrimaryAction}
-        />
-        {secondaryActionLabel && onSecondaryAction ? (
-          <Button
-            disabled={disabled}
-            label={secondaryActionLabel}
-            onPress={onSecondaryAction}
-            variant="secondary"
-          />
-        ) : null}
-      </View>
+      {primaryAction || secondaryAction ? (
+        <View style={styles.actions}>
+          {primaryAction ? (
+            <Button
+              disabled={disabled}
+              label={primaryAction.label}
+              onPress={primaryAction.onPress}
+            />
+          ) : null}
+          {secondaryAction ? (
+            <Button
+              disabled={disabled}
+              label={secondaryAction.label}
+              onPress={secondaryAction.onPress}
+              variant="secondary"
+            />
+          ) : null}
+        </View>
+      ) : null}
     </Card>
   );
 }

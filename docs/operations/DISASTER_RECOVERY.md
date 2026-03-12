@@ -1,377 +1,90 @@
 # Disaster Recovery Plan
 
-## Emergency Contacts
-- **Primary Admin**: 22228236+nicholaspung@users.noreply.github.com
-- **VPS Provider**: [Your VPS Provider]
-- **Domain Registrar**: [Your Domain Registrar]
+## Critical Paths
 
----
+- production marketing: `/opt/food-tracker-app/marketing_build`
+- production app: `/opt/food-tracker-app/app_build`
+- production admin: `/opt/food-tracker-app/admin_build`
+- beta marketing: `/opt/food-tracker-app/marketing_build_beta`
+- beta app: `/opt/food-tracker-app/app_build_beta`
+- beta admin: `/opt/food-tracker-app/admin_build_beta`
+- production data: `/opt/food-tracker-app/backend/pb_data_production`
+- beta data: `/opt/food-tracker-app/backend/pb_data_beta`
+- backups: `/opt/food-tracker-backups`
 
-## Recovery Scenarios
+## Scenario 1: Full VPS Loss
 
-### Scenario 1: VPS Completely Lost (Worst Case)
+1. Provision a new VPS.
+2. Clone the repo into `/opt/food-tracker-app`.
+3. Run `bash scripts/setup-vps.sh`.
+4. Restore the latest PocketBase backup into the correct `backend/pb_data_*` directory.
+5. Run `bash scripts/post-setup.sh`.
+6. Run `bash scripts/deploy.sh production`.
 
-**Recovery Time Objective (RTO):** 2-4 hours
-**Recovery Point Objective (RPO):** Last backup (daily at 2 AM)
+## Scenario 2: PocketBase Data Corruption
 
-#### Steps:
-
-1. **Provision new VPS**
-   ```bash
-   # On new VPS
-   curl -o setup-vps.sh https://raw.githubusercontent.com/nicholaspung/food-tracker-app/master/scripts/setup-vps.sh
-   chmod +x setup-vps.sh
-   ./setup-vps.sh
-   ```
-
-2. **Update DNS A record** to point to new VPS IP
-
-3. **Clone repository**
-   ```bash
-   cd /opt/food-tracker-app
-   git clone https://github.com/nicholaspung/food-tracker-app.git .
-   ```
-
-4. **Restore from remote backup**
-   ```bash
-   # Download latest backup from S3/B2/Rsync
-   aws s3 cp s3://your-bucket/food-tracker-app/pb-LATEST.tar.gz /tmp/
-
-   # Or from Backblaze B2
-   b2 download-file-by-name food-tracker-backups pocketbase/pb-LATEST.tar.gz /tmp/pb-LATEST.tar.gz
-
-   # Extract to pb_data
-   mkdir -p backend/pb_data
-   tar -xzf /tmp/pb-LATEST.tar.gz -C backend/pb_data
-   ```
-
-5. **Run post-setup**
-   ```bash
-   bash scripts/post-setup.sh
-   # Press Y for defaults
-   ```
-
-6. **Verify restoration**
-   ```bash
-   # Check users exist
-   curl https://yummyrecs.com/api/health
-   # Login to admin panel
-   open https://yummyrecs.com/_/
-   ```
-
-**Total Time:** ~2-4 hours (depending on backup size and download speed)
-
----
-
-### Scenario 2: Database Corruption
-
-**RTO:** 15-30 minutes
-**RPO:** Last backup
-
-#### Steps:
-
-1. **Stop PocketBase**
-   ```bash
-   cd /opt/food-tracker-app
-   docker-compose down pocketbase
-   ```
-
-2. **Backup corrupted data** (for investigation)
-   ```bash
-   mv backend/pb_data backend/pb_data_corrupted_$(date +%Y%m%d)
-   ```
-
-3. **Restore from latest backup**
-   ```bash
-   # Find latest backup
-   ls -lt /var/backups/pocketbase/pb-*.tar.gz | head -1
-
-   # Extract
-   mkdir -p backend/pb_data
-   tar -xzf /var/backups/pocketbase/pb-LATEST.tar.gz -C backend/pb_data
-   ```
-
-4. **Restart PocketBase**
-   ```bash
-   docker-compose up -d pocketbase
-   docker-compose logs -f pocketbase
-   ```
-
-5. **Verify**
-   ```bash
-   curl http://localhost:8090/api/health
-   ```
-
----
-
-### Scenario 3: Deployment Rollback
-
-**RTO:** 2-5 minutes
-**RPO:** Previous deployment
-
-#### Automatic (on failure):
-- Deploy script automatically rolls back on failure
-- Old build kept for 5 minutes
-
-#### Manual rollback:
 ```bash
 cd /opt/food-tracker-app
+docker compose down pocketbase
+mv backend/pb_data_production backend/pb_data_production_corrupted_$(date +%Y%m%d_%H%M%S)
+tar -xzf /opt/food-tracker-backups/production/latest/pb_data_backup.tar.gz -C backend
+docker compose up -d pocketbase
+curl http://localhost:8090/api/health
+```
 
-# List available backups
-ls -lt /opt/food-tracker-backups/
+## Scenario 3: Bad Site Deploy
 
-# Choose backup to restore
-BACKUP_DIR=/opt/food-tracker-backups/20250106_143022
-
-# Restore frontend
-rm -rf frontend_build
-cp -r $BACKUP_DIR/frontend_build .
-
-# Restore PocketBase
-docker-compose down pocketbase
-rm -rf backend/pb_data
-tar -xzf $BACKUP_DIR/pb_data_backup.tar.gz -C backend/
-docker-compose up -d pocketbase
-
-# Reload Caddy
+```bash
+cd /opt/food-tracker-app
+rm -rf marketing_build app_build admin_build
+cp -r /opt/food-tracker-backups/production/latest/marketing_build marketing_build
+cp -r /opt/food-tracker-backups/production/latest/app_build app_build
+cp -r /opt/food-tracker-backups/production/latest/admin_build admin_build
 sudo systemctl reload caddy
 ```
 
----
+For beta, use the matching `marketing_build_beta`, `app_build_beta`, and `admin_build_beta` backups.
 
-### Scenario 4: SSL Certificate Issues
-
-**RTO:** 5-10 minutes
-
-#### Steps:
-
-1. **Check Caddy logs**
-   ```bash
-   sudo journalctl -u caddy -n 100
-   ```
-
-2. **Verify DNS**
-   ```bash
-   dig yummyrecs.com
-   # Should point to your VPS IP
-   ```
-
-3. **Restart Caddy**
-   ```bash
-   sudo systemctl restart caddy
-   ```
-
-4. **Force certificate renewal**
-   ```bash
-   sudo caddy reload --config /etc/caddy/Caddyfile
-   ```
-
-5. **Check Let's Encrypt rate limits**
-   - https://crt.sh/?q=yummyrecs.com
-   - Limit: 5 certs per week
-
----
-
-### Scenario 5: Out of Disk Space
-
-**RTO:** 10-30 minutes
-
-#### Steps:
-
-1. **Check disk usage**
-   ```bash
-   df -h
-   du -sh /opt/food-tracker-app/* | sort -h
-   du -sh /var/backups/pocketbase/* | sort -h
-   ```
-
-2. **Clean old backups**
-   ```bash
-   # Remove backups older than 3 days
-   find /var/backups/pocketbase -name "pb-*.tar.gz" -mtime +3 -delete
-   find /opt/food-tracker-backups -type d -mtime +7 -exec rm -rf {} +
-   ```
-
-3. **Clean Docker**
-   ```bash
-   docker system prune -af
-   ```
-
-4. **Clean logs**
-   ```bash
-   sudo journalctl --vacuum-time=7d
-   sudo truncate -s 0 /var/log/caddy/access.log
-   ```
-
-5. **Emergency: Clean node_modules**
-   ```bash
-   rm -rf /opt/food-tracker-app/frontend/node_modules
-   ```
-
----
-
-### Scenario 6: PocketBase Container Won't Start
-
-**RTO:** 5-15 minutes
-
-#### Steps:
-
-1. **Check logs**
-   ```bash
-   docker-compose logs pocketbase
-   ```
-
-2. **Common issues:**
-
-   **File permissions:**
-   ```bash
-   sudo chown -R 1000:1000 backend/pb_data
-   ```
-
-   **Port conflict:**
-   ```bash
-   sudo lsof -i :8090
-   # Kill conflicting process
-   ```
-
-   **Corrupted migration:**
-   ```bash
-   # Temporarily disable migrations
-   docker-compose run --rm pocketbase serve --http=0.0.0.0:8090
-   ```
-
-3. **Restart from clean state**
-   ```bash
-   docker-compose down
-   docker-compose rm -f pocketbase
-   docker-compose up -d pocketbase
-   ```
-
----
-
-## Recovery Testing Schedule
-
-| Test | Frequency | Last Tested | Next Test |
-|------|-----------|-------------|-----------|
-| Backup restoration | Monthly | - | - |
-| Full VPS rebuild | Quarterly | - | - |
-| Rollback deployment | Monthly | - | - |
-| SSL certificate renewal | Annually | - | - |
-
----
-
-## Backup Verification Checklist
-
-Run this monthly:
+## Scenario 4: Caddy or TLS Issues
 
 ```bash
-#!/bin/bash
-# Test backup restoration
-
-# 1. Download latest backup
-LATEST_BACKUP=$(ls -t /var/backups/pocketbase/pb-*.tar.gz | head -1)
-
-# 2. Extract to temp directory
-TEST_DIR="/tmp/backup-test-$(date +%s)"
-mkdir -p $TEST_DIR
-tar -xzf $LATEST_BACKUP -C $TEST_DIR
-
-# 3. Verify database integrity
-docker run --rm -v $TEST_DIR/data.db:/test.db \
-  ghcr.io/pocketbase/pocketbase:latest \
-  sqlite3 /test.db "PRAGMA integrity_check;"
-
-# 4. Verify user count matches production
-PROD_USERS=$(docker exec pocketbase sqlite3 /pb/pb_data/data.db "SELECT COUNT(*) FROM _users;")
-BACKUP_USERS=$(docker run --rm -v $TEST_DIR/data.db:/test.db \
-  ghcr.io/pocketbase/pocketbase:latest \
-  sqlite3 /test.db "SELECT COUNT(*) FROM _users;")
-
-if [ "$PROD_USERS" -eq "$BACKUP_USERS" ]; then
-  echo "✅ Backup verification passed"
-else
-  echo "❌ User count mismatch: Prod=$PROD_USERS, Backup=$BACKUP_USERS"
-fi
-
-# 5. Cleanup
-rm -rf $TEST_DIR
-```
-
----
-
-## Escalation Path
-
-1. **Check automated rollback** (automatic on deployment failure)
-2. **Check logs** in `/var/log/`
-3. **Try manual rollback** from `/opt/food-tracker-backups/`
-4. **Restore from remote backup** (S3/B2)
-5. **Rebuild VPS from scratch** (2-4 hours)
-6. **Contact emergency support** (if configured)
-
----
-
-## Key Files to Backup Manually
-
-Before major changes, backup:
-```bash
-# Configuration
-/etc/caddy/Caddyfile
-/opt/food-tracker-app/docker-compose.yml
-/opt/food-tracker-app/.env
-/opt/food-tracker-app/frontend/.env
-
-# Database
-/opt/food-tracker-app/backend/pb_data/
-
-# Scripts (already in git)
-/opt/food-tracker-app/scripts/
-```
-
----
-
-## Emergency Commands Cheat Sheet
-
-```bash
-# Quick health check
-curl https://yummyrecs.com/api/health
-
-# View all logs
-docker-compose logs -f
-sudo journalctl -u caddy -f
-
-# Restart everything
-docker-compose restart
+sudo journalctl -u caddy -n 100
+sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl restart caddy
-
-# Nuclear option (clean slate)
-cd /opt/food-tracker-app
-docker-compose down
-rm -rf frontend_build
-bash scripts/deploy.sh
 ```
 
----
+## Scenario 5: Disk Pressure
 
-## Prevention Checklist
+```bash
+df -h
+du -sh /opt/food-tracker-app/* | sort -h
+du -sh /opt/food-tracker-backups/* | sort -h
+docker system prune -af
+sudo journalctl --vacuum-time=7d
+```
 
-- [ ] Daily backups running (check cron)
-- [ ] Remote backups configured (S3/B2/rsync)
-- [ ] Monitoring alerts working (healthchecks.io)
-- [ ] Disk space > 20% free
-- [ ] SSL certificate valid > 30 days
-- [ ] Test restoration monthly
-- [ ] Document any manual changes
+If workspace dependencies were installed on the server manually, they can also be removed:
 
----
+```bash
+rm -rf /opt/food-tracker-app/node_modules
+rm -rf /opt/food-tracker-app/apps/admin/node_modules
+rm -rf /opt/food-tracker-app/apps/mobile/node_modules
+```
 
-## Contact Information
+## Scenario 6: Beta Recovery
 
-**In case of emergency:**
-1. Email: 22228236+nicholaspung@users.noreply.github.com
-2. GitHub Issues: https://github.com/nicholaspung/food-tracker-app/issues
-3. Check monitoring alerts (healthchecks.io, Uptime Robot)
+```bash
+cd /opt/food-tracker-app
+docker compose -f docker-compose.beta.yml down
+tar -xzf /opt/food-tracker-backups/beta/latest/pb_data_backup.tar.gz -C backend
+bash scripts/deploy.sh beta
+curl http://localhost:8091/api/health
+```
 
-**Service Providers:**
-- VPS: [Provider dashboard URL]
-- Domain: [Registrar dashboard URL]
-- Backup Storage: [S3/B2 dashboard URL]
+## Verification Checklist
+
+- `curl https://app.yummyrecs.com/api/health`
+- `curl https://beta.app.yummyrecs.com/api/health`
+- `docker compose ps`
+- `docker compose -f docker-compose.beta.yml ps`
+- `sudo journalctl -u caddy -n 50`

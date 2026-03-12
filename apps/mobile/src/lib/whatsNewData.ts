@@ -10,6 +10,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.6',
+    date: '2026-03-11',
+    title: 'Stripe Billing & Smarter Photo Date Detection',
+    summary:
+      'Subscription management now uses Stripe web checkout for a smoother, more reliable payment experience. Photo date detection is also more accurate, catching a wider range of EXIF formats and falling back to your device's media library when needed.',
+    features: [
+      'Subscription purchases and management now go through Stripe web checkout instead of in-app purchases.',
+      'Manage your active subscription (cancel, update payment) via the Stripe customer portal, accessible from the Billing screen on web.',
+    ],
+    improvements: [
+      'Photo date extraction handles more EXIF timestamp formats, including timezone-aware values and numeric timestamps from older cameras.',
+      'When EXIF data is missing, photo date falls back to your device media library for a more reliable auto-fill.',
+      'Upgrade prompt cards no longer show subscription action buttons on native builds where the billing screen is unavailable.',
+      'New app.yummyrecs.com and beta.app.yummyrecs.com deep link domains supported.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.5',
     date: '2026-03-07',
     title: 'Code Quality & Component Refactoring',

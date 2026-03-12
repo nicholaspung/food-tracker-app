@@ -2,7 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay, OtaUpdateCard } from '../components/shared';
+import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { AUTH_EMAIL_UNVERIFIED_ERROR, useAuth } from '../providers/AuthProvider';
@@ -86,12 +86,6 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
           description="Sign in with your email and password."
           iconName="key-outline"
           title="Welcome Back"
-        />
-
-        <OtaUpdateCard
-          description="If beta sign-in works on the web but not on mobile, verify the running OTA here and update this app before trying again."
-          source="LoginScreen"
-          title="Login build status"
         />
 
         <Card style={styles.formCard}>

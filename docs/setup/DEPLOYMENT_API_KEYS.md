@@ -8,7 +8,7 @@ As of the latest changes, the following API keys have been **moved to the backen
 - ✅ **Google Gemini API** - For menu OCR/parsing
 - ✅ **Google Places API** - For restaurant search and geocoding
 
-These keys are **no longer stored in the frontend** for security reasons.
+These keys are **no longer stored in client-side app configuration** for security reasons.
 
 ---
 
@@ -270,9 +270,9 @@ This is just a **warning**, not an error. The deployment will complete successfu
 
 ## 📊 Migration from Old Setup
 
-If you're migrating from the old setup where `VITE_GOOGLE_PLACES_API_KEY` was in frontend:
+If you're migrating from the old setup where `VITE_GOOGLE_PLACES_API_KEY` lived in client-side config:
 
-1. **Remove old frontend .env variable**:
+1. **Remove the old client-side env variable**:
    - The deployment script now automatically removes `VITE_GOOGLE_PLACES_API_KEY`
    - Your old key can be reused as `GOOGLE_PLACES_API_KEY` in backend
 
@@ -281,7 +281,7 @@ If you're migrating from the old setup where `VITE_GOOGLE_PLACES_API_KEY` was in
 
 3. **Deploy**:
    - The first deployment will create the new backend `.env` files
-   - Frontend will use backend APIs for all Google Places operations
+   - Client apps will use backend APIs for all Google Places operations
 
 4. **Verify**:
    - Check that restaurant search still works

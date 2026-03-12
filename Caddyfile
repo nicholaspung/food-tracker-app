@@ -1,107 +1,134 @@
 {
     email 22228236+nicholaspung@users.noreply.github.com
 
-    # Global options for better performance
     servers {
-        protocols h1 h2 h3  # Enable HTTP/1, HTTP/2, and HTTP/3 (QUIC)
+        protocols h1 h2 h3
     }
 }
 
-# WWW to non-WWW redirect - Production
+(common_security_headers) {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-XSS-Protection "1; mode=block"
+        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://maps.googleapis.com https://places.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+        -Server
+    }
+
+    encode {
+        gzip 6
+        zstd
+        minimum_length 256
+    }
+
+    request_body {
+        max_size 10MB
+    }
+}
+
+(prod_logging) {
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+}
+
+(beta_logging) {
+    log {
+        output file /var/log/caddy/beta-access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+}
+
+(prod_proxy_headers) {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+    header_up X-Forwarded-Host {host}
+
+    transport http {
+        dial_timeout 10s
+        response_header_timeout 30s
+        read_timeout 60s
+        write_timeout 60s
+    }
+}
+
+(prod_pocketbase_proxy) {
+    reverse_proxy localhost:8090 {
+        import prod_proxy_headers
+        health_uri /api/health
+        health_interval 30s
+        health_timeout 10s
+    }
+}
+
+(prod_pocketbase_admin_proxy) {
+    reverse_proxy localhost:8090 {
+        import prod_proxy_headers
+    }
+}
+
+(beta_proxy_headers) {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+    header_up X-Forwarded-Host {host}
+
+    transport http {
+        dial_timeout 10s
+        response_header_timeout 30s
+        read_timeout 60s
+        write_timeout 60s
+    }
+}
+
+(beta_pocketbase_proxy) {
+    reverse_proxy localhost:8091 {
+        import beta_proxy_headers
+        health_uri /api/health
+        health_interval 30s
+        health_timeout 10s
+    }
+}
+
+(beta_pocketbase_admin_proxy) {
+    reverse_proxy localhost:8091 {
+        import beta_proxy_headers
+    }
+}
+
+# WWW to non-WWW redirect - Production marketing site
 www.yummyrecs.com {
     redir https://yummyrecs.com{uri} permanent
 }
 
-# Production Environment
+# Production marketing website
 yummyrecs.com {
-    # Enhanced security headers
-    header {
-        # HSTS - Force HTTPS for 1 year
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    import common_security_headers
+    import prod_logging
 
-        # Prevent MIME sniffing
-        X-Content-Type-Options "nosniff"
-
-        # Clickjacking protection
-        X-Frame-Options "SAMEORIGIN"
-
-        # Referrer policy
-        Referrer-Policy "strict-origin-when-cross-origin"
-
-        # XSS protection for older browsers
-        X-XSS-Protection "1; mode=block"
-
-        # Permissions Policy - disable unused browser features
-        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-
-        # Content Security Policy (relaxed for React/PocketBase)
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://maps.googleapis.com https://places.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
-
-        # Remove server identification
-        -Server
-    }
-
-    # Enable compression for all responses
-    encode {
-        gzip 6              # Gzip compression level 6 (balance of speed vs size)
-        zstd                # Zstandard compression (faster than gzip)
-        minimum_length 256  # Only compress responses > 256 bytes
-    }
-
-    # PocketBase API - with proper headers
-    handle /api/* {
-        reverse_proxy localhost:8090 {
-            # Proper header forwarding
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-
-            # Timeouts
-            transport http {
-                dial_timeout 10s
-                response_header_timeout 30s
-                read_timeout 60s
-                write_timeout 60s
-            }
-
-            # Health check
-            health_uri /api/health
-            health_interval 30s
-            health_timeout 10s
-        }
-    }
-
-    # PocketBase Admin UI
-    handle /_/* {
-        reverse_proxy localhost:8090 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-
-            transport http {
-                dial_timeout 10s
-                response_header_timeout 30s
-                read_timeout 60s
-                write_timeout 60s
-            }
-        }
-    }
-
-    # Serve React static files with aggressive caching
     handle {
-        root * /opt/food-tracker-app/frontend_build
+        root * /opt/food-tracker-app/marketing_build
 
-        # Cache static assets (JS, CSS, images, fonts) for 1 year
         @static {
             path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
         }
         header @static Cache-Control "public, max-age=31536000, immutable"
 
-        # Don't cache HTML files (for SPA updates)
         @html {
             path *.html /
         }
@@ -109,122 +136,34 @@ yummyrecs.com {
         header @html Pragma "no-cache"
         header @html Expires "0"
 
-        # SPA routing - serve index.html for all non-file requests
         try_files {path} /index.html
         file_server {
-            precompressed gzip zstd  # Serve .gz and .zst files if they exist
+            precompressed gzip zstd
         }
-    }
-
-    # Request size limit (prevents large file uploads via frontend)
-    request_body {
-        max_size 10MB
-    }
-
-    # Enhanced logging with more details
-    log {
-        output file /var/log/caddy/access.log {
-            roll_size 100mb      # Rotate when file reaches 100MB
-            roll_keep 5          # Keep 5 old log files
-            roll_keep_for 720h   # Delete logs older than 30 days (720 hours)
-        }
-        format json
     }
 }
 
-# Beta Environment
-beta.yummyrecs.com {
-    # Enhanced security headers
-    header {
-        # HSTS - Force HTTPS for 1 year
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+# Production app web + PocketBase
+app.yummyrecs.com {
+    import common_security_headers
+    import prod_logging
 
-        # Prevent MIME sniffing
-        X-Content-Type-Options "nosniff"
-
-        # Clickjacking protection
-        X-Frame-Options "SAMEORIGIN"
-
-        # Referrer policy
-        Referrer-Policy "strict-origin-when-cross-origin"
-
-        # XSS protection for older browsers
-        X-XSS-Protection "1; mode=block"
-
-        # Permissions Policy - disable unused browser features
-        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-
-        # Content Security Policy (relaxed for React/PocketBase)
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://maps.googleapis.com https://places.googleapis.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
-
-        # Remove server identification
-        -Server
-
-        # Beta environment indicator
-        X-Environment "beta"
-    }
-
-    # Enable compression for all responses
-    encode {
-        gzip 6              # Gzip compression level 6 (balance of speed vs size)
-        zstd                # Zstandard compression (faster than gzip)
-        minimum_length 256  # Only compress responses > 256 bytes
-    }
-
-    # PocketBase API - Beta (port 8091)
     handle /api/* {
-        reverse_proxy localhost:8091 {
-            # Proper header forwarding
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-
-            # Timeouts
-            transport http {
-                dial_timeout 10s
-                response_header_timeout 30s
-                read_timeout 60s
-                write_timeout 60s
-            }
-
-            # Health check
-            health_uri /api/health
-            health_interval 30s
-            health_timeout 10s
-        }
+        import prod_pocketbase_proxy
     }
 
-    # PocketBase Admin UI - Beta
     handle /_/* {
-        reverse_proxy localhost:8091 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-
-            transport http {
-                dial_timeout 10s
-                response_header_timeout 30s
-                read_timeout 60s
-                write_timeout 60s
-            }
-        }
+        import prod_pocketbase_admin_proxy
     }
 
-    # Serve React static files with aggressive caching - Beta
     handle {
-        root * /opt/food-tracker-app/frontend_build_beta
+        root * /opt/food-tracker-app/app_build
 
-        # Cache static assets (JS, CSS, images, fonts) for 1 year
         @static {
             path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
         }
         header @static Cache-Control "public, max-age=31536000, immutable"
 
-        # Don't cache HTML files (for SPA updates)
         @html {
             path *.html /
         }
@@ -232,25 +171,144 @@ beta.yummyrecs.com {
         header @html Pragma "no-cache"
         header @html Expires "0"
 
-        # SPA routing - serve index.html for all non-file requests
         try_files {path} /index.html
         file_server {
-            precompressed gzip zstd  # Serve .gz and .zst files if they exist
+            precompressed gzip zstd
         }
     }
+}
 
-    # Request size limit (prevents large file uploads via frontend)
-    request_body {
-        max_size 10MB
+# Production admin website + PocketBase proxy
+admin.yummyrecs.com {
+    import common_security_headers
+    import prod_logging
+
+    handle /api/* {
+        import prod_pocketbase_proxy
     }
 
-    # Enhanced logging with more details - Beta
-    log {
-        output file /var/log/caddy/beta-access.log {
-            roll_size 100mb      # Rotate when file reaches 100MB
-            roll_keep 5          # Keep 5 old log files
-            roll_keep_for 720h   # Delete logs older than 30 days (720 hours)
+    handle /_/* {
+        import prod_pocketbase_admin_proxy
+    }
+
+    handle {
+        root * /opt/food-tracker-app/admin_build
+
+        @static {
+            path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
         }
-        format json
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        @html {
+            path *.html /
+        }
+        header @html Cache-Control "no-cache, no-store, must-revalidate"
+        header @html Pragma "no-cache"
+        header @html Expires "0"
+
+        try_files {path} /index.html
+        file_server {
+            precompressed gzip zstd
+        }
+    }
+}
+
+# Beta marketing website
+beta.yummyrecs.com {
+    import common_security_headers
+    import beta_logging
+    header X-Environment "beta"
+
+    handle {
+        root * /opt/food-tracker-app/marketing_build_beta
+
+        @static {
+            path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
+        }
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        @html {
+            path *.html /
+        }
+        header @html Cache-Control "no-cache, no-store, must-revalidate"
+        header @html Pragma "no-cache"
+        header @html Expires "0"
+
+        try_files {path} /index.html
+        file_server {
+            precompressed gzip zstd
+        }
+    }
+}
+
+# Beta app web + PocketBase
+beta.app.yummyrecs.com {
+    import common_security_headers
+    import beta_logging
+    header X-Environment "beta"
+
+    handle /api/* {
+        import beta_pocketbase_proxy
+    }
+
+    handle /_/* {
+        import beta_pocketbase_admin_proxy
+    }
+
+    handle {
+        root * /opt/food-tracker-app/app_build_beta
+
+        @static {
+            path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
+        }
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        @html {
+            path *.html /
+        }
+        header @html Cache-Control "no-cache, no-store, must-revalidate"
+        header @html Pragma "no-cache"
+        header @html Expires "0"
+
+        try_files {path} /index.html
+        file_server {
+            precompressed gzip zstd
+        }
+    }
+}
+
+# Beta admin website + PocketBase proxy
+beta.admin.yummyrecs.com {
+    import common_security_headers
+    import beta_logging
+    header X-Environment "beta"
+
+    handle /api/* {
+        import beta_pocketbase_proxy
+    }
+
+    handle /_/* {
+        import beta_pocketbase_admin_proxy
+    }
+
+    handle {
+        root * /opt/food-tracker-app/admin_build_beta
+
+        @static {
+            path *.js *.css *.woff *.woff2 *.ttf *.eot *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp
+        }
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        @html {
+            path *.html /
+        }
+        header @html Cache-Control "no-cache, no-store, must-revalidate"
+        header @html Pragma "no-cache"
+        header @html Expires "0"
+
+        try_files {path} /index.html
+        file_server {
+            precompressed gzip zstd
+        }
     }
 }

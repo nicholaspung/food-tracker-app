@@ -10,6 +10,7 @@ frontend_build/
 frontend_build_beta/
 dist/
 build/
+apps/mobile/web-dist/
 backend/myapp
 
 # VPS SSH script (contains sensitive server info)

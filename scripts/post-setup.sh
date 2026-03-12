@@ -1,5 +1,5 @@
 #!/bin/bash
-# Post-Setup Script for Mobile Tracker App
+# Post-Setup Script for Yummy Recs
 # Run after cloning repository to /opt/food-tracker-app
 # Features: Rollback capability, validation, idempotency, error handling
 
@@ -14,6 +14,8 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_DIR="/opt/food-tracker-app"
+PUBLIC_SITE_DIR="$APP_DIR/apps/marketing/dist"
+PUBLIC_SITE_APP_URL="https://app.yummyrecs.com/"
 LOG_FILE="/tmp/food-tracker-post-setup-$(date +%Y%m%d-%H%M%S).log"
 LOCK_FILE="/tmp/food-tracker-post-setup.lock"
 
@@ -71,11 +73,11 @@ rollback() {
         mv Caddyfile.backup Caddyfile
     fi
 
-    # Restore frontend build backup if exists
-    if [ -d "frontend_build.backup" ]; then
-        log "Restoring frontend build backup..."
-        rm -rf frontend_build
-        mv frontend_build.backup frontend_build
+    # Restore marketing site build backup if exists
+    if [ -d "marketing_build.backup" ]; then
+        log "Restoring marketing site build backup..."
+        rm -rf marketing_build
+        mv marketing_build.backup marketing_build
     fi
 
     error "Rollback complete. System restored to previous state."
@@ -104,7 +106,7 @@ validate_prerequisites() {
     fi
 
     # Check required commands
-    local required_commands="docker npm node curl sudo systemctl"
+    local required_commands="docker curl sudo systemctl"
     for cmd in $required_commands; do
         if ! command -v $cmd &> /dev/null; then
             error "Required command '$cmd' not found"
@@ -117,13 +119,6 @@ validate_prerequisites() {
     if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
         error "Docker Compose not found"
         error "Please run setup-vps.sh first"
-        exit 1
-    fi
-
-    # Check Node.js version (require 18+ for React 19)
-    local node_version=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$node_version" -lt 18 ]; then
-        error "Node.js version 18 or higher required (found v$node_version)"
         exit 1
     fi
 
@@ -302,41 +297,10 @@ deploy_caddyfile() {
 }
 
 create_env_files() {
-    step "Creating environment files..."
+    step "Creating environment file..."
 
-    # Frontend .env
-    if [ -f "frontend/.env" ]; then
-        warn "frontend/.env already exists"
-
-        # Show diff
-        diff -u frontend/.env <(cat <<EOF
-# Frontend Environment Variables
-
-# API Configuration - Production
-VITE_API_URL=https://$DOMAIN
-EOF
-) || true
-
-        read -p "Overwrite? (y/N): " OVERWRITE
-        if [ "$OVERWRITE" != "y" ] && [ "$OVERWRITE" != "Y" ]; then
-            log "Keeping existing frontend/.env"
-            return
-        fi
-    fi
-
-    cat > frontend/.env <<EOF
-# Frontend Environment Variables
-
-# API Configuration - Production
-# PocketBase automatically appends /api/ to requests
-VITE_API_URL=https://$DOMAIN
-EOF
-
-    log "Created frontend/.env ✓"
-
-    # Root .env (optional)
     cat > .env <<EOF
-# Environment Configuration for Mobile Tracker App VPS Deployment
+# Environment Configuration for Yummy Recs VPS Deployment
 
 # Application
 APP_NAME=food-tracker-app
@@ -416,64 +380,49 @@ start_pocketbase() {
 }
 
 #######################
-# FRONTEND
+# MARKETING SITE
 #######################
-build_frontend() {
-    step "Building frontend..."
+prepare_public_site() {
+    step "Preparing marketing site assets..."
 
-    cd "$APP_DIR/frontend"
-
-    # Install dependencies
-    log "Installing dependencies..."
-    if ! npm ci --production=false --loglevel=error 2>&1 | tee -a "$LOG_FILE"; then
-        error "npm ci failed. Check package.json and package-lock.json"
+    if [ ! -d "$PUBLIC_SITE_DIR" ]; then
+        error "Marketing site source directory is missing: $PUBLIC_SITE_DIR"
         exit 1
     fi
 
-    # Build
-    log "Running build..."
-    if ! npm run build 2>&1 | tee -a "$LOG_FILE"; then
-        error "npm run build failed. Check build logs above"
-        exit 1
-    fi
+    for required_file in index.html privacy.html terms.html contact.html styles.css; do
+        if [ ! -f "$PUBLIC_SITE_DIR/$required_file" ]; then
+            error "Marketing site asset missing: $PUBLIC_SITE_DIR/$required_file"
+            exit 1
+        fi
+    done
 
-    # Verify build output
-    if [ ! -d "dist" ] || [ -z "$(ls -A dist)" ]; then
-        error "Build succeeded but dist/ directory is missing or empty"
-        exit 1
-    fi
-
-    if [ ! -f "dist/index.html" ]; then
-        error "Build succeeded but index.html is missing"
-        exit 1
-    fi
-
-    local build_size=$(du -sh dist | cut -f1)
-    log "Frontend built successfully ✓ (size: $build_size)"
+    local build_size=$(du -sh "$PUBLIC_SITE_DIR" | cut -f1)
+    log "Marketing site assets verified ✓ (size: $build_size)"
 }
 
-deploy_frontend() {
-    step "Deploying frontend..."
+deploy_public_site() {
+    step "Deploying marketing site..."
 
     cd "$APP_DIR"
 
     # Backup existing build if it exists
-    if [ -d "frontend_build" ]; then
-        log "Backing up current frontend build..."
-        cp -r frontend_build frontend_build.backup
+    if [ -d "marketing_build" ]; then
+        log "Backing up current marketing site build..."
+        cp -r marketing_build marketing_build.backup
     fi
 
     # Deploy new build
-    rm -rf frontend_build
-    cp -r frontend/dist frontend_build
+    rm -rf marketing_build
+    APP_OPEN_URL="$PUBLIC_SITE_APP_URL" bash "$APP_DIR/scripts/prepare-marketing.sh" "$PUBLIC_SITE_DIR" marketing_build
 
     # Verify deployment
-    if [ ! -f "frontend_build/index.html" ]; then
-        error "Frontend deployment failed - index.html not found"
+    if [ ! -f "marketing_build/index.html" ]; then
+        error "Marketing site deployment failed - index.html not found"
         exit 1
     fi
 
-    log "Frontend deployed ✓"
+    log "Marketing site deployed ✓"
 }
 
 #######################
@@ -510,16 +459,21 @@ print_summary() {
     echo -e "${GREEN}🎉 Deployment Complete!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
-    echo "Your app should now be live at: ${BLUE}https://$DOMAIN${NC}"
+    echo "Your production environment should now be live at:"
+    echo "  ${BLUE}https://yummyrecs.com${NC} (marketing)"
+    echo "  ${BLUE}https://app.yummyrecs.com${NC} (app web + API)"
+    echo "  ${BLUE}https://admin.yummyrecs.com${NC} (admin web)"
     echo ""
     echo -e "${YELLOW}Important Next Steps:${NC}"
     echo ""
     echo "1. ${BLUE}Setup PocketBase Admin Account:${NC}"
-    echo "   Visit: https://$DOMAIN/_/"
+    echo "   Visit: https://app.yummyrecs.com/_/"
     echo "   ${RED}Create your admin account NOW for security!${NC}"
     echo ""
-    echo "2. ${BLUE}Test your app:${NC}"
-    echo "   Visit: https://$DOMAIN"
+    echo "2. ${BLUE}Test the web surfaces:${NC}"
+    echo "   Visit: https://yummyrecs.com"
+    echo "   Visit: https://app.yummyrecs.com"
+    echo "   Visit: https://admin.yummyrecs.com"
     echo ""
     echo "3. ${BLUE}Setup automated backups (recommended):${NC}"
     echo "   crontab -e"
@@ -547,7 +501,7 @@ print_summary() {
 main() {
     echo ""
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}  Mobile Tracker App - Post Setup${NC}"
+    echo -e "${BLUE}  Yummy Recs - Post Setup${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo ""
     log "Logging to: $LOG_FILE"
@@ -559,14 +513,14 @@ main() {
     deploy_caddyfile
     create_env_files
     start_pocketbase
-    build_frontend
-    deploy_frontend
     setup_backups
+    step "Running unified production deploy..."
+    bash "$APP_DIR/scripts/deploy.sh" production
     print_summary
 
     # Cleanup backup files on success
     rm -f Caddyfile.backup
-    rm -rf frontend_build.backup
+    rm -rf marketing_build.backup
 }
 
 main "$@"

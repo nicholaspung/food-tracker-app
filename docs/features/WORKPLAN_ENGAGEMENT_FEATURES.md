@@ -463,7 +463,9 @@ func generateYearlyWrappedForAllUsers(app core.App) {
 
 ### 1.5 Frontend Implementation
 
-**New Route: `frontend/src/routes/stats.tsx`**
+Note: the original `frontend/` web app referenced in this workplan has been removed. The targets below now point to proposed mobile-app files under `apps/mobile`.
+
+**New Screen: `apps/mobile/src/screens/StatsScreen.tsx`**
 
 Main insights dashboard page.
 
@@ -545,7 +547,7 @@ export function StatsPage() {
 }
 ```
 
-**New Component: `frontend/src/components/stats/StatsCard.tsx`**
+**New Component: `apps/mobile/src/components/shared/StatsCard.tsx`**
 
 ```tsx
 interface StatsCardProps {
@@ -575,7 +577,7 @@ export function StatsCard({ label, value, trend, icon }: StatsCardProps) {
 }
 ```
 
-**New Component: `frontend/src/components/stats/ShareButton.tsx`**
+**New Component: `apps/mobile/src/components/shared/ShareStatsButton.tsx`**
 
 Generates shareable image/story for social media.
 
@@ -620,7 +622,7 @@ export function ShareButton({ stats, period }: { stats: any, period: string }) {
 
 ### 1.6 Yearly Wrapped Feature
 
-**New Route: `frontend/src/routes/wrapped/$year.tsx`**
+**New Screen: `apps/mobile/src/screens/YearlyWrappedScreen.tsx`**
 
 Special year-end summary page.
 
@@ -1109,7 +1111,7 @@ Get social stats for a food item.
 
 ### 2.4 Frontend Implementation
 
-**Update: `frontend/src/components/VisitCard.tsx`**
+**Update: `apps/mobile/src/screens/HomeScreen.tsx`**
 
 Add like button and social stats.
 
@@ -1152,7 +1154,7 @@ export function VisitCard({ visit }: { visit: Visit }) {
 }
 ```
 
-**New Component: `frontend/src/components/FoodItemCard.tsx`**
+**New Component: `apps/mobile/src/components/shared/FoodItemCard.tsx`**
 
 Food item card with like and want-to-try buttons.
 
@@ -1210,7 +1212,7 @@ export function FoodItemCard({ item, visit }: { item: FoodItem, visit: Visit }) 
 }
 ```
 
-**New Route: `frontend/src/routes/want-to-try.tsx`**
+**New Screen: `apps/mobile/src/screens/WantToTryScreen.tsx`**
 
 Want to try list page.
 
@@ -1247,7 +1249,7 @@ export function WantToTryPage() {
 }
 ```
 
-**New Component: `frontend/src/components/NotificationBell.tsx`**
+**New Component: `apps/mobile/src/components/shared/NotificationBellButton.tsx`**
 
 Notification bell with badge.
 
@@ -1272,7 +1274,7 @@ export function NotificationBell() {
 }
 ```
 
-**New Route: `frontend/src/routes/notifications.tsx`**
+**New Screen: `apps/mobile/src/screens/NotificationsScreen.tsx`**
 
 Notifications page.
 
@@ -1535,7 +1537,7 @@ Returns highest-rated restaurants (all time, min 5 visits).
 
 ### 3.4 Frontend Implementation
 
-**New Route: `frontend/src/routes/explore.tsx`**
+**New Screen: `apps/mobile/src/screens/ExploreScreen.tsx`**
 
 ```tsx
 export function ExplorePage() {

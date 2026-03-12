@@ -1,151 +1,89 @@
 # Environment Variables Guide
 
-## Overview
+## Root `.env`
 
-This project uses minimal environment configuration. Most values are set automatically by the deployment scripts.
-
-## Files and Their Purpose
-
-### 1. `.env` (root directory)
-**Created automatically by `post-setup.sh`**
-
-This is mainly for documentation. The values are used in Caddyfile and scripts.
+`scripts/post-setup.sh` creates `/opt/food-tracker-app/.env` on the VPS with:
 
 ```bash
-# Application
 APP_NAME=food-tracker-app
-DOMAIN=yourdomain.com          # Your actual domain
-
-# Email for Let's Encrypt
-ADMIN_EMAIL=your@email.com     # Your email for SSL cert notifications
-
-# PocketBase Configuration
-TZ=America/Los_Angeles         # Your timezone
+DOMAIN=yourdomain.com
+ADMIN_EMAIL=you@example.com
+TZ=America/Los_Angeles
 ```
 
-**You don't need to manually create this** - the post-setup script will ask for your domain and email, then generate it.
+This file is deployment metadata for the server scripts and Caddy setup.
 
-### 2. `frontend/.env` (frontend directory)
-**Created automatically by `post-setup.sh`**
+## Mobile App
+
+Use `apps/mobile/.env.example` as the template for local mobile development.
+
+Typical local values:
 
 ```bash
-# API Configuration - Production
-VITE_API_URL=https://yourdomain.com/api
+EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8090
+EXPO_PUBLIC_POCKETBASE_URL=http://127.0.0.1:8090
+EXPO_PUBLIC_POSTHOG_API_KEY=
+EXPO_PUBLIC_POSTHOG_HOST=
 ```
 
-This tells the React app where the PocketBase API is located.
+## Admin App
 
-**For local development**, create `frontend/.env.local`:
+Use `apps/admin/.env.example` as the template for local admin development.
+
+Typical local value:
+
 ```bash
-# Local development only
-VITE_API_URL=http://127.0.0.1:8090/api
+VITE_API_URL=http://127.0.0.1:8090
 ```
 
-### 3. GitHub Actions Secrets (Optional - for CI/CD)
+## Public Marketing Site
 
-If you want automatic deployments when you push code, add these as **repository secrets** in GitHub:
+`apps/marketing/dist` is static and does not use a runtime `.env` file.
 
-1. Go to: `Settings → Secrets and variables → Actions → New repository secret`
+The `Open App` marketing links use a deploy-time placeholder replacement:
 
-2. Add these secrets:
+- local marketing dev injects `http://localhost:8081/`
+- beta deploy injects `https://beta.app.yummyrecs.com/`
+- production deploy injects `https://app.yummyrecs.com/`
 
-| Secret Name | Value | Example |
-|-------------|-------|---------|
-| `VPS_HOST` | Your VPS IP address | `123.45.67.89` |
-| `VPS_USER` | SSH username | `deploy` or `root` |
-| `VPS_SSH_KEY` | Your private SSH key | Contents of `~/.ssh/id_rsa` |
-| `VPS_PORT` | SSH port | `22` |
+## App/Admin Web Deploy Builds
 
-**How to get your SSH key:**
+`scripts/deploy.sh` builds these on the VPS:
+
+- `apps/mobile/web-dist` for `app.yummyrecs.com` or `beta.app.yummyrecs.com`
+- `apps/admin/dist` for `admin.yummyrecs.com` or `beta.admin.yummyrecs.com`
+
+The deploy script injects environment-specific API origins before building:
+
+- mobile web uses `https://app.yummyrecs.com` or `https://beta.app.yummyrecs.com`
+- admin web uses `https://admin.yummyrecs.com` or `https://beta.admin.yummyrecs.com`
+
+## Local Workflow
+
 ```bash
-# On your local machine
-cat ~/.ssh/id_rsa
-# Copy the entire output (including BEGIN/END lines)
+corepack enable
+pnpm install
+pnpm dev
 ```
 
-## What You Actually Need to Provide
+Or run pieces separately:
 
-### During Initial Setup
-
-When you run `scripts/post-setup.sh`, it will ask for:
-
-1. **Domain name**
-   - Example: `myapp.com` or `tracker.example.com`
-   - Must be pointed to your VPS IP (A record in DNS)
-
-2. **Email address**
-   - Example: `you@gmail.com`
-   - Used for Let's Encrypt SSL certificate notifications
-
-**That's it!** Everything else is configured automatically.
-
-## Environment Priority
-
-The app uses environment variables in this order:
-
-1. **Production (VPS)**: Values from `frontend/.env` (created by post-setup script)
-   - `VITE_API_URL=https://yourdomain.com/api`
-
-2. **Local Development**: Values from `frontend/.env.local` (you create this)
-   - `VITE_API_URL=http://127.0.0.1:8090/api`
-
-3. **Default (in code)**: Fallback in `src/lib/pocketbase.ts`
-   - `http://127.0.0.1:8090`
-
-## Quick Reference
-
-### I want to deploy to VPS
-1. Run `scripts/setup-vps.sh` (installs Docker, Caddy, etc.)
-2. Clone your repo to `/opt/food-tracker-app`
-3. Run `scripts/post-setup.sh` (asks for domain & email, configures everything)
-
-**No manual .env editing required!**
-
-### I want to develop locally
-1. Start backend: `cd backend && go run main.go serve`
-2. Create `frontend/.env.local`:
-   ```bash
-   VITE_API_URL=http://127.0.0.1:8090/api
-   ```
-3. Start frontend: `cd frontend && npm run dev`
-
-### I want to change my domain
-1. Update DNS A record to point to VPS IP
-2. Edit `/opt/food-tracker-app/Caddyfile` (change `yourdomain.com`)
-3. Edit `/opt/food-tracker-app/frontend/.env` (change VITE_API_URL)
-4. Redeploy:
-   ```bash
-   sudo systemctl restart caddy
-   bash scripts/deploy.sh
-   ```
-
-## Troubleshooting
-
-### "API calls are failing"
-Check that `VITE_API_URL` is set correctly:
 ```bash
-# On VPS
-cat /opt/food-tracker-app/frontend/.env
-
-# Locally
-cat frontend/.env.local
+pnpm dev:admin
+pnpm dev:api
+pnpm mobile:start
 ```
 
-### "Let's Encrypt SSL not working"
-1. Check your domain DNS: `dig yourdomain.com`
-2. Check email in Caddyfile: `sudo cat /etc/caddy/Caddyfile`
-3. Check Caddy logs: `sudo journalctl -u caddy -n 50`
+## Production Workflow
 
-### "Frontend showing wrong API URL"
-The API URL is baked into the build. After changing `.env`, rebuild:
 ```bash
 cd /opt/food-tracker-app
-bash scripts/deploy.sh
+bash scripts/post-setup.sh
+bash scripts/deploy.sh production
 ```
 
 ## Security Notes
 
-- ✅ `.env` and `frontend/.env` are in `.gitignore` (don't commit them!)
-- ✅ `.env.example` and `frontend/.env.example` are templates (safe to commit)
-- ✅ Never commit API keys or secrets to git
-- ✅ Use GitHub Secrets for CI/CD credentials
+- do not commit real `.env` files
+- commit only `.env.example` templates
+- keep deployment secrets in the VPS environment or GitHub Actions secrets

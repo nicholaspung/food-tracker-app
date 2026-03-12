@@ -1,54 +1,37 @@
-import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import {
   BackHeaderScreenScaffold,
   FormResultBanner,
+  SectionCard,
   StatusPill,
 } from '../components/shared';
-import { env } from '../config/env';
 import {
-  mapIapPurchaseForBillingSync,
+  createStripeCheckoutSession,
+  createStripePortalSession,
   refreshAuthenticatedUserRecord,
-  syncBillingPurchases,
-  type BillingSyncSource,
-  type BillingVerifiedPurchase,
+  type BillingPlanId,
 } from '../features';
-import {
-  deepLinkToSubscriptionsCompat,
-  getAvailablePurchasesCompat as queryAvailablePurchases,
-  type IapProductSubscription,
-  type IapPurchase,
-  isExpoIapAvailable,
-  useIAPCompat,
-} from '../lib/expoIapCompat';
+import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Text } from '../ui';
+import { Button, Text } from '../ui';
 
 type BillingScreenProps = NativeStackScreenProps<RootStackParamList, 'Billing'>;
-type BillingPlanId = 'monthly' | 'yearly';
 type BannerTone = 'info' | 'warning' | 'danger' | 'success';
-
-const IAP_UNAVAILABLE_MESSAGE =
-  'In-app purchases are unavailable in this build. Install a development build to manage subscriptions.';
-const PRICING_COMING_SOON_NOTICE =
-  'Paid subscription pricing is coming soon. For now, everyone stays on the free plan limits.';
-const IS_PRICING_COMING_SOON = true;
 
 interface BillingPlanOption {
   id: BillingPlanId;
-  title: string;
-  fallbackPriceLabel: string;
-  detailLabel: string;
-  productId: string;
+  label: string;
+  priceLabel: string;
+  cadenceLabel: string;
   savingsLabel?: string;
 }
 
@@ -89,65 +72,61 @@ const PLAN_COMPARISON_ROWS: {
   },
 ];
 
-function resolveManageSubscriptionUrl(): string | null {
-  if (Platform.OS === 'ios') {
-    return 'https://apps.apple.com/account/subscriptions';
-  }
-
-  if (Platform.OS === 'android') {
-    return 'https://play.google.com/store/account/subscriptions';
-  }
-
-  return null;
-}
-
-function resolveAndroidOfferToken(subscription: IapProductSubscription | undefined): string | null {
-  if (!subscription || subscription.platform !== 'android') {
-    return null;
-  }
-
-  const standardizedOfferToken = subscription.subscriptionOffers.find((offer) => {
-    return typeof offer.offerTokenAndroid === 'string' && offer.offerTokenAndroid.trim().length > 0;
-  })?.offerTokenAndroid;
-
-  if (standardizedOfferToken) {
-    return standardizedOfferToken;
-  }
-
-  const legacyOfferToken = subscription.subscriptionOfferDetailsAndroid.find((offer) => {
-    return typeof offer.offerToken === 'string' && offer.offerToken.trim().length > 0;
-  })?.offerToken;
-
-  return legacyOfferToken ?? null;
-}
-
-function buildPurchaseKey(input: {
-  platform: 'ios' | 'android';
-  productId: string;
-  purchaseToken: string | null;
-  transactionId: string | null;
-}): string {
-  return `${input.platform}:${input.productId}:${input.transactionId ?? ''}:${input.purchaseToken ?? ''}`;
-}
-
 function createPlanOptions(): BillingPlanOption[] {
   return [
     {
       id: 'monthly',
-      title: 'Monthly',
-      fallbackPriceLabel: '$5',
-      detailLabel: 'per month',
-      productId: env.iapMonthlyProductId.trim(),
+      label: 'Monthly',
+      priceLabel: '$5',
+      cadenceLabel: 'per month',
     },
     {
       id: 'yearly',
-      title: 'Yearly',
-      fallbackPriceLabel: '$50',
-      detailLabel: 'per year',
-      productId: env.iapYearlyProductId.trim(),
+      label: 'Yearly',
+      priceLabel: '$50',
+      cadenceLabel: 'per year',
       savingsLabel: 'Save $10/year',
     },
   ];
+}
+
+function getCurrentBillingPageUrl(): string {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return '';
+  }
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete('billing');
+  nextUrl.searchParams.delete('session_id');
+  return nextUrl.toString();
+}
+
+function redirectToExternalUrl(url: string) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.location.assign(url);
+    return;
+  }
+
+  throw new Error('Stripe billing is only available on web.');
+}
+
+function readBillingQueryParam(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return null;
+  }
+
+  return new URL(window.location.href).searchParams.get('billing');
+}
+
+function clearBillingQueryParam() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return;
+  }
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete('billing');
+  nextUrl.searchParams.delete('session_id');
+  window.history.replaceState({}, '', nextUrl.toString());
 }
 
 export function BillingScreen({ navigation }: BillingScreenProps) {
@@ -155,147 +134,127 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
-  const isIapAvailable = isExpoIapAvailable();
   const [selectedPlanId, setSelectedPlanId] = useState<BillingPlanId>('yearly');
   const [bannerState, setBannerState] = useState<ResultBannerState | null>(null);
-  const [isSyncingBilling, setIsSyncingBilling] = useState(false);
   const isSubscriber = user?.isSubscriber === true;
-  const isSubscriberStatusActive = !IS_PRICING_COMING_SOON && isSubscriber;
   const planOptions = useMemo(createPlanOptions, []);
-  const productIds = useMemo(
-    () =>
-      planOptions
-        .map((plan) => plan.productId)
-        .filter((productId): productId is string => productId.length > 0),
-    [planOptions],
-  );
-
   const selectedPlan = useMemo(
     () => planOptions.find((plan) => plan.id === selectedPlanId) ?? planOptions[0],
     [planOptions, selectedPlanId],
   );
 
-  const {
-    connected,
-    subscriptions,
-    requestPurchase,
-    restorePurchases,
-    finishTransaction,
-    fetchProducts,
-    getAvailablePurchases,
-  } = useIAPCompat({
-    onError: (error) => {
-      setBannerState({
-        message: error.message,
-        tone: 'danger',
-      });
-    },
-    onPurchaseError: (error) => {
-      trackObservabilityEvent('BILLING_PURCHASE_FAILED', {
-        code: error.code ?? 'unknown_code',
-        message: error.message,
-        source: 'BillingScreen',
-      });
-      setBannerState({
-        message: error.message || 'Could not complete purchase.',
-        tone: 'danger',
-      });
-    },
-  });
-
-  const subscriptionsById = useMemo(() => {
-    return new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
-  }, [subscriptions]);
-
-  const selectedStoreSubscription = subscriptionsById.get(selectedPlan.productId);
-  const selectedAndroidOfferToken = resolveAndroidOfferToken(selectedStoreSubscription);
-
-  const syncAuthAndInvalidate = useCallback(async () => {
-    await refreshAuthenticatedUserRecord();
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['feature', 'profile'] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
-    ]);
-  }, [queryClient]);
-
-  const syncPurchasesWithBackend = useCallback(
-    async (purchases: IapPurchase[], source: BillingSyncSource) => {
-      const syncResult = await syncBillingPurchases({
-        source,
-        purchases: purchases.map((purchase) => mapIapPurchaseForBillingSync(purchase)),
-      });
-
-      const verifiedPurchaseKeys = new Set(
-        syncResult.verifiedPurchases.map((purchase: BillingVerifiedPurchase) =>
-          buildPurchaseKey({
-            platform: purchase.platform,
-            productId: purchase.productId,
-            purchaseToken: purchase.purchaseToken,
-            transactionId: purchase.transactionId,
-          }),
-        ),
-      );
-
-      await Promise.all(
-        purchases.map(async (purchase) => {
-          const mappedPurchase = mapIapPurchaseForBillingSync(purchase);
-          const key = buildPurchaseKey({
-            platform: mappedPurchase.platform,
-            productId: mappedPurchase.productId,
-            purchaseToken: mappedPurchase.purchaseToken,
-            transactionId: mappedPurchase.transactionId,
-          });
-
-          if (!verifiedPurchaseKeys.has(key)) {
-            return;
-          }
-
-          await finishTransaction({
-            purchase,
-            isConsumable: false,
-          });
-        }),
-      );
-
-      await syncAuthAndInvalidate();
-
-      return syncResult;
-    },
-    [finishTransaction, syncAuthAndInvalidate],
-  );
-
   useEffect(() => {
-    if (!isIapAvailable || !connected || productIds.length === 0) {
+    if (Platform.OS !== 'web') {
+      return;
+    }
+
+    const billingState = readBillingQueryParam();
+    if (!billingState) {
       return;
     }
 
     let isMounted = true;
 
-    const loadProductsAndPurchases = async () => {
+    const syncSubscriptionState = async () => {
       try {
-        await fetchProducts({
-          skus: productIds,
-          type: 'subs',
+        if (billingState === 'success') {
+          await refreshAuthenticatedUserRecord();
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['feature', 'profile'] }),
+            queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
+          ]);
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        setBannerState({
+          message:
+            billingState === 'success'
+              ? 'Stripe checkout completed. Your subscription status has been refreshed.'
+              : 'Stripe checkout was canceled.',
+          tone: billingState === 'success' ? 'success' : 'info',
         });
-        await getAvailablePurchases();
       } catch (error) {
         if (!isMounted) {
           return;
         }
 
         setBannerState({
-          message: error instanceof Error ? error.message : 'Could not load subscription products.',
-          tone: 'danger',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Stripe checkout completed, but the account status could not be refreshed yet.',
+          tone: 'warning',
         });
+      } finally {
+        clearBillingQueryParam();
       }
     };
 
-    void loadProductsAndPurchases();
+    void syncSubscriptionState();
 
     return () => {
       isMounted = false;
     };
-  }, [connected, fetchProducts, getAvailablePurchases, isIapAvailable, productIds]);
+  }, [queryClient]);
+
+  const checkoutMutation = useMutation({
+    mutationFn: async (planId: BillingPlanId) => {
+      return createStripeCheckoutSession({
+        planId,
+        returnUrl: getCurrentBillingPageUrl(),
+      });
+    },
+    onSuccess: (result, planId) => {
+      trackObservabilityEvent('BILLING_CHECKOUT_STARTED', {
+        planId,
+        provider: 'stripe',
+        source: 'BillingScreen',
+      });
+      redirectToExternalUrl(result.url);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not start Stripe checkout.';
+      setBannerState({
+        message,
+        tone: 'danger',
+      });
+      trackObservabilityEvent('BILLING_CHECKOUT_FAILED', {
+        message,
+        provider: 'stripe',
+        source: 'BillingScreen',
+      });
+    },
+  });
+
+  const portalMutation = useMutation({
+    mutationFn: async () => {
+      return createStripePortalSession({
+        returnUrl: getCurrentBillingPageUrl(),
+      });
+    },
+    onSuccess: (result) => {
+      trackObservabilityEvent('BILLING_PORTAL_OPENED', {
+        provider: 'stripe',
+        source: 'BillingScreen',
+      });
+      redirectToExternalUrl(result.url);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Could not open the Stripe billing portal.';
+      setBannerState({
+        message,
+        tone: 'danger',
+      });
+      trackObservabilityEvent('BILLING_PORTAL_FAILED', {
+        message,
+        provider: 'stripe',
+        source: 'BillingScreen',
+      });
+    },
+  });
 
   const handleBackPress = () => {
     if (navigation.canGoBack()) {
@@ -307,7 +266,7 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
   };
 
   const handlePlanSelect = (planId: BillingPlanId) => {
-    if (IS_PRICING_COMING_SOON || isSubscriber || !isIapAvailable) {
+    if (isSubscriber) {
       return;
     }
 
@@ -315,27 +274,12 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
     setBannerState(null);
     trackObservabilityEvent('BILLING_PLAN_SELECTED', {
       planId,
+      provider: 'stripe',
       source: 'BillingScreen',
     });
   };
 
   const handleSubscribePress = async () => {
-    if (IS_PRICING_COMING_SOON) {
-      setBannerState({
-        message: PRICING_COMING_SOON_NOTICE,
-        tone: 'info',
-      });
-      return;
-    }
-
-    if (!isIapAvailable) {
-      setBannerState({
-        message: IAP_UNAVAILABLE_MESSAGE,
-        tone: 'warning',
-      });
-      return;
-    }
-
     if (!isOnline) {
       setBannerState({
         message: 'Subscription actions require internet connection.',
@@ -344,113 +288,11 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
       return;
     }
 
-    if (!connected) {
-      setBannerState({
-        message: 'Store connection is still initializing. Please try again.',
-        tone: 'warning',
-      });
-      return;
-    }
-
-    if (!selectedPlan.productId) {
-      setBannerState({
-        message: 'Subscription product IDs are not configured.',
-        tone: 'danger',
-      });
-      return;
-    }
-
-    setIsSyncingBilling(true);
     setBannerState(null);
-
-    try {
-      trackObservabilityEvent('BILLING_SUBSCRIBE_TAPPED', {
-        planId: selectedPlan.id,
-        productId: selectedPlan.productId,
-        source: 'BillingScreen',
-      });
-
-      const purchaseResult = await requestPurchase({
-        type: 'subs',
-        request: {
-          apple: {
-            sku: selectedPlan.productId,
-          },
-          google: {
-            skus: [selectedPlan.productId],
-            subscriptionOffers: selectedAndroidOfferToken
-              ? [
-                  {
-                    offerToken: selectedAndroidOfferToken,
-                    sku: selectedPlan.productId,
-                  },
-                ]
-              : undefined,
-          },
-        },
-      });
-
-      const purchases = purchaseResult
-        ? Array.isArray(purchaseResult)
-          ? purchaseResult
-          : [purchaseResult]
-        : [];
-
-      const purchasesToSync =
-        purchases.length > 0
-          ? purchases
-          : await queryAvailablePurchases({
-              alsoPublishToEventListenerIOS: false,
-              onlyIncludeActiveItemsIOS: true,
-            });
-
-      const syncResult = await syncPurchasesWithBackend(purchasesToSync, 'purchase');
-
-      if (syncResult.verifiedPurchases.length > 0) {
-        setBannerState({
-          message: 'Subscription activated successfully.',
-          tone: 'success',
-        });
-      } else {
-        setBannerState({
-          message:
-            syncResult.message ||
-            'Purchase completed but no active subscription was verified. Try Restore Purchases.',
-          tone: 'warning',
-        });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not complete purchase.';
-      setBannerState({
-        message,
-        tone: 'danger',
-      });
-      trackObservabilityEvent('BILLING_PURCHASE_FAILED', {
-        message,
-        source: 'BillingScreen',
-      });
-    } finally {
-      setIsSyncingBilling(false);
-    }
+    await checkoutMutation.mutateAsync(selectedPlan.id);
   };
 
   const handleManageSubscriptionPress = async () => {
-    if (IS_PRICING_COMING_SOON) {
-      setBannerState({
-        message: PRICING_COMING_SOON_NOTICE,
-        tone: 'info',
-      });
-      return;
-    }
-
-    if (!isIapAvailable) {
-      setBannerState({
-        message: IAP_UNAVAILABLE_MESSAGE,
-        tone: 'warning',
-      });
-      return;
-    }
-
     if (!isOnline) {
       setBannerState({
         message: 'Subscription actions require internet connection.',
@@ -459,115 +301,14 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
       return;
     }
 
-    try {
-      if (Platform.OS === 'android') {
-        const packageName =
-          env.androidPackageName ||
-          Constants.expoConfig?.android?.package ||
-          '';
-
-        if (!packageName) {
-          const fallbackUrl = resolveManageSubscriptionUrl();
-          if (!fallbackUrl) {
-            throw new Error('Subscription management is not available on this platform.');
-          }
-
-          await Linking.openURL(fallbackUrl);
-        } else {
-          await deepLinkToSubscriptionsCompat({
-            packageNameAndroid: packageName,
-            skuAndroid: selectedPlan.productId,
-          });
-        }
-      } else {
-        await deepLinkToSubscriptionsCompat({});
-      }
-
-      trackObservabilityEvent('BILLING_MANAGE_SUBSCRIPTION_OPENED', {
-        platform: Platform.OS,
-        source: 'BillingScreen',
-      });
-    } catch (error) {
-      setBannerState({
-        message: error instanceof Error ? error.message : 'Could not open subscription settings.',
-        tone: 'danger',
-      });
-    }
-  };
-
-  const handleRestorePurchasesPress = async () => {
-    if (IS_PRICING_COMING_SOON) {
-      setBannerState({
-        message: PRICING_COMING_SOON_NOTICE,
-        tone: 'info',
-      });
-      return;
-    }
-
-    if (!isIapAvailable) {
-      setBannerState({
-        message: IAP_UNAVAILABLE_MESSAGE,
-        tone: 'warning',
-      });
-      return;
-    }
-
-    if (!isOnline) {
-      setBannerState({
-        message: 'Subscription actions require internet connection.',
-        tone: 'warning',
-      });
-      return;
-    }
-
-    setIsSyncingBilling(true);
     setBannerState(null);
-
-    try {
-      trackObservabilityEvent('BILLING_RESTORE_TAPPED', {
-        source: 'BillingScreen',
-      });
-
-      await restorePurchases();
-      const availablePurchases = await queryAvailablePurchases({
-        alsoPublishToEventListenerIOS: false,
-        onlyIncludeActiveItemsIOS: true,
-      });
-      const syncResult = await syncPurchasesWithBackend(availablePurchases, 'restore');
-
-      if (syncResult.verifiedPurchases.length > 0) {
-        setBannerState({
-          message: 'Purchases restored successfully.',
-          tone: 'success',
-        });
-      } else {
-        setBannerState({
-          message: syncResult.message || 'No active subscription purchases were found to restore.',
-          tone: 'info',
-        });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not restore purchases.';
-      setBannerState({
-        message,
-        tone: 'danger',
-      });
-      trackObservabilityEvent('BILLING_RESTORE_FAILED', {
-        message,
-        source: 'BillingScreen',
-      });
-    } finally {
-      setIsSyncingBilling(false);
-    }
+    await portalMutation.mutateAsync();
   };
 
   const styles = StyleSheet.create({
     body: {
       gap: theme.spacing.md,
       paddingTop: theme.spacing.sm,
-    },
-    statusCard: {
-      gap: theme.spacing.sm,
     },
     statusRow: {
       alignItems: 'center',
@@ -607,15 +348,7 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
       flexDirection: 'row',
       gap: theme.spacing.xxs,
     },
-    planMeta: {
-      color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
-    },
     actions: {
-      gap: theme.spacing.xs,
-    },
-    tableCard: {
       gap: theme.spacing.xs,
     },
     tableHeaderRow: {
@@ -642,6 +375,10 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
     tableCell: {
       flex: 1,
     },
+    providerMeta: {
+      color: theme.colors.text.secondary,
+      lineHeight: 20,
+    },
   });
 
   return (
@@ -652,61 +389,58 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
       title="Subscription & Billing"
     >
       {!isOnline ? (
-        <Card tone="warning">
+        <SectionCard title="Connection required">
           <Text tone="warning">Subscription actions require internet connection.</Text>
-        </Card>
-      ) : null}
-
-      {!IS_PRICING_COMING_SOON && !connected ? (
-        <Card tone="muted">
-          <Text tone="secondary">Connecting to the app store...</Text>
-        </Card>
-      ) : null}
-
-      {!IS_PRICING_COMING_SOON && !isIapAvailable ? (
-        <Card tone="warning">
-          <Text tone="warning">{IAP_UNAVAILABLE_MESSAGE}</Text>
-        </Card>
+        </SectionCard>
       ) : null}
 
       {bannerState ? <FormResultBanner message={bannerState.message} tone={bannerState.tone} /> : null}
 
-      <Card style={styles.statusCard}>
+      <SectionCard
+        description={
+          isSubscriber
+            ? 'Your premium limits are active and billed through Stripe on web.'
+            : 'Upgrade on web to unlock higher limits and fewer interruptions.'
+        }
+        title="Current Plan"
+      >
         <View style={styles.statusRow}>
           <Text style={styles.sectionTitle}>
-            {isSubscriberStatusActive ? 'You are a Subscriber' : 'You are on Free'}
+            {isSubscriber ? 'You are a Subscriber' : 'You are on Free'}
           </Text>
           <StatusPill
-            label={isSubscriberStatusActive ? 'Subscriber' : 'Free'}
-            tone={isSubscriberStatusActive ? 'info' : 'muted'}
-            variant={isSubscriberStatusActive ? 'solid' : 'soft'}
+            label={isSubscriber ? 'Subscriber' : 'Free'}
+            tone={isSubscriber ? 'info' : 'muted'}
+            variant={isSubscriber ? 'solid' : 'soft'}
           />
         </View>
-        <Text tone="secondary">
-          {IS_PRICING_COMING_SOON
-            ? 'Paid plans are not live yet, so your account currently uses free limits.'
-            : isSubscriberStatusActive
-              ? 'Your premium limits are active.'
-              : 'Upgrade to unlock higher limits and fewer interruptions.'}
+        <Text style={styles.providerMeta}>
+          Billing provider: {user?.subscriptionProvider === 'stripe' ? 'Stripe' : 'Stripe (web only)'}
         </Text>
-      </Card>
+        {user?.subscriptionCurrentPeriodEnd ? (
+          <Text style={styles.providerMeta}>
+            Renews on {formatDisplayDate(user.subscriptionCurrentPeriodEnd)}.
+          </Text>
+        ) : null}
+      </SectionCard>
 
-      <Card>
+      <SectionCard
+        description="Checkout and subscription management are only available on the web app."
+        title="Choose a Plan"
+      >
         <Text style={styles.sectionTitle}>Choose a Plan</Text>
         <View style={styles.planList}>
           {planOptions.map((plan) => {
             const isSelected = selectedPlan.id === plan.id;
-            const storeSubscription = subscriptionsById.get(plan.productId);
-            const displayedPrice = storeSubscription?.displayPrice || plan.fallbackPriceLabel;
-            const isPlanSelectionDisabled = IS_PRICING_COMING_SOON || isSubscriber || !isIapAvailable;
+            const isPlanSelectionDisabled = isSubscriber;
 
             return (
               <Pressable
+                accessibilityRole="button"
                 accessibilityState={{
                   disabled: isPlanSelectionDisabled,
                   selected: isSelected,
                 }}
-                accessibilityRole="button"
                 disabled={isPlanSelectionDisabled}
                 key={plan.id}
                 onPress={() => {
@@ -719,18 +453,14 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
                 ]}
               >
                 <View style={styles.planHeader}>
-                  <Text variant="label">{plan.title}</Text>
+                  <Text variant="label">{plan.label}</Text>
                   {isSelected ? (
-                    <Ionicons
-                      color={theme.colors.text.info}
-                      name="checkmark-circle"
-                      size={18}
-                    />
+                    <Ionicons color={theme.colors.text.info} name="checkmark-circle" size={18} />
                   ) : null}
                 </View>
                 <View style={styles.planPriceRow}>
-                  <Text variant="titleMd">{displayedPrice}</Text>
-                  {!storeSubscription?.displayPrice ? <Text tone="secondary">{plan.detailLabel}</Text> : null}
+                  <Text variant="titleMd">{plan.priceLabel}</Text>
+                  <Text tone="secondary">{plan.cadenceLabel}</Text>
                 </View>
                 {plan.savingsLabel ? <Text tone="success">{plan.savingsLabel}</Text> : null}
               </Pressable>
@@ -740,41 +470,26 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
 
         <View style={styles.actions}>
           <Button
-            disabled={
-              IS_PRICING_COMING_SOON || !isIapAvailable || !isOnline || !connected || isSyncingBilling || isSubscriber
-            }
-            label={
-              IS_PRICING_COMING_SOON ? 'Pricing coming soon' : isSubscriber ? 'Already Subscribed' : 'Subscribe now'
-            }
-            loading={isSyncingBilling}
+            disabled={!isOnline || checkoutMutation.isPending || portalMutation.isPending || isSubscriber}
+            label={isSubscriber ? 'Already subscribed' : 'Subscribe with Stripe'}
+            loading={checkoutMutation.isPending}
             onPress={() => {
               void handleSubscribePress();
             }}
           />
-          {!IS_PRICING_COMING_SOON ? (
-            <Button
-              disabled={!isIapAvailable || !isOnline || !connected || isSyncingBilling}
-              label="Manage subscription"
-              onPress={() => {
-                void handleManageSubscriptionPress();
-              }}
-              variant="secondary"
-            />
-          ) : null}
-          {!IS_PRICING_COMING_SOON ? (
-            <Button
-              disabled={!isIapAvailable || !isOnline || !connected || isSyncingBilling}
-              label="Restore purchases"
-              onPress={() => {
-                void handleRestorePurchasesPress();
-              }}
-              variant="secondary"
-            />
-          ) : null}
+          <Button
+            disabled={!isOnline || portalMutation.isPending || checkoutMutation.isPending || !user?.stripeCustomerId}
+            label="Manage subscription"
+            loading={portalMutation.isPending}
+            onPress={() => {
+              void handleManageSubscriptionPress();
+            }}
+            variant="secondary"
+          />
         </View>
-      </Card>
+      </SectionCard>
 
-      <Card style={styles.tableCard}>
+      <SectionCard title="Free vs Subscriber">
         <Text style={styles.sectionTitle}>Free vs Subscriber</Text>
         <View style={styles.tableHeaderRow}>
           <View style={styles.tableFeatureCell}>
@@ -807,8 +522,7 @@ export function BillingScreen({ navigation }: BillingScreenProps) {
             </View>
           </View>
         ))}
-      </Card>
-
+      </SectionCard>
     </BackHeaderScreenScaffold>
   );
 }

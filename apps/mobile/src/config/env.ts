@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8090';
 
 export interface MobileEnv {
@@ -5,9 +7,6 @@ export interface MobileEnv {
   pocketbaseUrl: string;
   posthogApiKey: string;
   posthogHost: string;
-  iapMonthlyProductId: string;
-  iapYearlyProductId: string;
-  androidPackageName: string;
 }
 
 type EnvSource = Record<string, string | undefined>;
@@ -17,15 +16,20 @@ const expoPublicEnv: EnvSource = {
   EXPO_PUBLIC_POCKETBASE_URL: process.env.EXPO_PUBLIC_POCKETBASE_URL,
   EXPO_PUBLIC_POSTHOG_API_KEY: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
   EXPO_PUBLIC_POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST,
-  EXPO_PUBLIC_IAP_MONTHLY_PRODUCT_ID: process.env.EXPO_PUBLIC_IAP_MONTHLY_PRODUCT_ID,
-  EXPO_PUBLIC_IAP_YEARLY_PRODUCT_ID: process.env.EXPO_PUBLIC_IAP_YEARLY_PRODUCT_ID,
-  EXPO_PUBLIC_ANDROID_PACKAGE_NAME: process.env.EXPO_PUBLIC_ANDROID_PACKAGE_NAME,
 };
+
+function resolveDefaultApiBaseUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.origin) {
+    return window.location.origin;
+  }
+
+  return DEFAULT_API_BASE_URL;
+}
 
 export function loadMobileEnv(source?: EnvSource): MobileEnv {
   const resolvedSource = source ?? expoPublicEnv;
 
-  const apiBaseUrl = resolvedSource.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+  const apiBaseUrl = resolvedSource.EXPO_PUBLIC_API_BASE_URL ?? resolveDefaultApiBaseUrl();
   const pocketbaseUrl = resolvedSource.EXPO_PUBLIC_POCKETBASE_URL ?? apiBaseUrl;
 
   return {
@@ -33,13 +37,6 @@ export function loadMobileEnv(source?: EnvSource): MobileEnv {
     pocketbaseUrl,
     posthogApiKey: resolvedSource.EXPO_PUBLIC_POSTHOG_API_KEY ?? '',
     posthogHost: resolvedSource.EXPO_PUBLIC_POSTHOG_HOST ?? `${apiBaseUrl}/api/visit-insights`,
-    iapMonthlyProductId:
-      resolvedSource.EXPO_PUBLIC_IAP_MONTHLY_PRODUCT_ID ??
-      'yummyrecs.subscription.monthly',
-    iapYearlyProductId:
-      resolvedSource.EXPO_PUBLIC_IAP_YEARLY_PRODUCT_ID ??
-      'yummyrecs.subscription.yearly',
-    androidPackageName: resolvedSource.EXPO_PUBLIC_ANDROID_PACKAGE_NAME ?? '',
   };
 }
 

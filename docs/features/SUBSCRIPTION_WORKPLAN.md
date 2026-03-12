@@ -664,9 +664,11 @@ func CreateBillSplit(user *core.Record, billData map[string]any) error {
 
 ## Phase 4: Frontend Implementation
 
+Note: the original `frontend/` web app referenced in this workplan has been removed. The target below now points to a proposed mobile-app provider file under `apps/mobile`.
+
 ### 4.1 Subscription Context Provider
 
-**New File: `frontend/src/contexts/SubscriptionContext.tsx`**
+**New File: `apps/mobile/src/providers/SubscriptionProvider.tsx`**
 
 ```tsx
 interface SubscriptionStatus {

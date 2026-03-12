@@ -136,7 +136,7 @@ if [ -n "$install_url" ]; then
         echo -e "${YELLOW}========================================${NC}"
         echo ""
         echo "Visit this URL to create the beta admin account:"
-        echo -e "${GREEN}https://beta.yummyrecs.com/_/#/pbinstal/$token${NC}"
+        echo -e "${GREEN}https://beta.app.yummyrecs.com/_/#/pbinstal/$token${NC}"
         echo ""
         echo "Do this now before continuing!"
         echo -e "${YELLOW}========================================${NC}"
@@ -151,12 +151,12 @@ else
 fi
 echo ""
 
-# Step 7: Deploy beta frontend
-echo "7. Deploying beta frontend..."
+# Step 7: Deploy beta environment
+echo "7. Deploying beta environment..."
 if bash "$APP_DIR/scripts/deploy.sh" beta; then
-    pass "Beta frontend deployed"
+    pass "Beta environment deployed"
 else
-    fail "Failed to deploy beta frontend"
+    fail "Failed to deploy beta environment"
     exit 1
 fi
 echo ""
@@ -166,14 +166,14 @@ echo "8. Verifying beta deployment..."
 
 # Check HTTPS
 if curl -sI https://beta.yummyrecs.com | head -1 | grep -q "200"; then
-    pass "Beta site is accessible via HTTPS"
+    pass "Beta marketing site is accessible via HTTPS"
 else
-    warn "Beta site returned non-200 status"
+    warn "Beta marketing site returned non-200 status"
     info "Check Caddy logs: sudo journalctl -u caddy -n 50"
 fi
 
 # Check API
-if curl -s https://beta.yummyrecs.com/api/health | grep -q "healthy"; then
+if curl -s https://beta.app.yummyrecs.com/api/health | grep -q "healthy"; then
     pass "Beta API is responding"
 else
     warn "Beta API not responding correctly"
@@ -186,15 +186,19 @@ echo -e "${GREEN}Beta Environment Setup Complete!${NC}"
 echo "========================================"
 echo ""
 echo "Beta Environment Details:"
-echo "  • Domain: https://beta.yummyrecs.com"
-echo "  • Admin Panel: https://beta.yummyrecs.com/_/"
+echo "  • Marketing Site: https://beta.yummyrecs.com"
+echo "  • App Web: https://beta.app.yummyrecs.com"
+echo "  • Admin Site: https://beta.admin.yummyrecs.com"
+echo "  • PocketBase Admin: https://beta.app.yummyrecs.com/_/"
 echo "  • PocketBase Port: 8091"
 echo "  • Data Directory: $BACKEND_DIR/pb_data_beta"
-echo "  • Frontend Build: $APP_DIR/frontend_build_beta"
+echo "  • Marketing Build: $APP_DIR/marketing_build_beta"
+echo "  • App Build: $APP_DIR/app_build_beta"
+echo "  • Admin Build: $APP_DIR/admin_build_beta"
 echo ""
 echo "Next Steps:"
 echo "  1. Create beta admin account (see URL above if shown)"
-echo "  2. Test beta site: https://beta.yummyrecs.com"
+echo "  2. Test beta marketing/app/admin sites"
 echo "  3. Continue with GitHub Actions setup (Step 4-5 in docs)"
 echo ""
 echo "Useful Commands:"

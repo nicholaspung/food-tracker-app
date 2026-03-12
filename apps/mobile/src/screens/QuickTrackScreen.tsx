@@ -40,8 +40,9 @@ import {
   isValidLocalDate,
   localDateStringToUTC,
 } from '../lib/dateFormatting';
+import { isBillingScreenEnabled } from '../lib/billingAccess';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { extractPhotoCaptureDate } from '../lib/photoMetadata';
+import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -258,8 +259,8 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     },
   });
 
-  const applyPhotoCaptureDate = useCallback((asset: ImagePicker.ImagePickerAsset) => {
-    const captureDate = extractPhotoCaptureDate(asset);
+  const applyPhotoCaptureDate = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
+    const captureDate = await resolvePhotoCaptureDate(asset);
     if (!captureDate) {
       return;
     }
@@ -294,7 +295,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         }
 
         if (pendingAsset) {
-          applyPhotoCaptureDate(pendingAsset);
+          await applyPhotoCaptureDate(pendingAsset);
         }
         setIsPhotoViewerVisible(false);
         setPhoto(nextPhoto);
@@ -397,24 +398,29 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     }
 
     try {
-      if (source === 'camera') {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
+      const permission =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-        if (!permission.granted) {
-          trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
-            canAskAgain: permission.canAskAgain,
-            photoSource: source,
-            source: 'QuickTrackScreen',
-          });
-          setPhotoPermissionNeedsSettings(permission.canAskAgain === false);
-          throw new Error('Camera permission is required to take a photo.');
-        }
+      if (!permission.granted) {
+        trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
+          canAskAgain: permission.canAskAgain,
+          photoSource: source,
+          source: 'QuickTrackScreen',
+        });
+        setPhotoPermissionNeedsSettings(permission.canAskAgain === false);
+        throw new Error(
+          source === 'camera'
+            ? 'Camera permission is required to take a photo.'
+            : 'Photo library permission is required to upload an image.',
+        );
       }
 
       const pickerResult =
         source === 'camera'
           ? await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              mediaTypes: ['images'],
               allowsEditing: false,
               exif: true,
               quality: 0.8,
@@ -424,7 +430,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
                   : undefined,
             })
           : await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              mediaTypes: ['images'],
               allowsEditing: false,
               exif: true,
               quality: 1,
@@ -453,7 +459,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         throw new Error('Could not read the selected image.');
       }
 
-      applyPhotoCaptureDate(selectedAsset);
+      await applyPhotoCaptureDate(selectedAsset);
       setIsPhotoViewerVisible(false);
       setPhoto(nextPhoto);
       trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
@@ -631,17 +637,35 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           <UpgradePromptCard
             description={
               estimatedFreePhotoRemaining === 0
-                ? "You have reached this month's free photo limit. Subscribe for higher monthly limits."
-                : `Only ${estimatedFreePhotoRemaining} photo uploads left this month. Subscribe for higher limits.`
+                ? isBillingScreenEnabled
+                  ? "You have reached this month's free photo limit. Subscribe for higher monthly limits."
+                  : "You have reached this month's free photo limit. If you need a higher limit, we'll email subscription details."
+                : isBillingScreenEnabled
+                  ? `Only ${estimatedFreePhotoRemaining} photo uploads left this month. Subscribe for higher limits.`
+                  : `Only ${estimatedFreePhotoRemaining} photo uploads left this month. If you need a higher limit, we'll email subscription details.`
             }
-            onPrimaryAction={() => {
-              navigation.navigate('Billing');
-            }}
-            onSecondaryAction={() => {
-              navigation.navigate('Billing');
-            }}
-            primaryActionLabel={estimatedFreePhotoRemaining === 0 ? 'Subscribe now' : 'Upgrade'}
-            secondaryActionLabel="Compare plans"
+            onPrimaryAction={
+              isBillingScreenEnabled
+                ? () => {
+                    navigation.navigate('Billing');
+                  }
+                : undefined
+            }
+            onSecondaryAction={
+              isBillingScreenEnabled
+                ? () => {
+                    navigation.navigate('Billing');
+                  }
+                : undefined
+            }
+            primaryActionLabel={
+              isBillingScreenEnabled
+                ? estimatedFreePhotoRemaining === 0
+                  ? 'Subscribe now'
+                  : 'Upgrade'
+                : undefined
+            }
+            secondaryActionLabel={isBillingScreenEnabled ? "Compare plans" : undefined}
             title={
               estimatedFreePhotoRemaining === 0
                 ? 'Free limit reached'

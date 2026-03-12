@@ -101,8 +101,8 @@ docker compose ps
 
 **Open PocketBase Admin UI:**
 
-- **Production**: https://yummyrecs.com/_/
-- **Beta**: https://beta.yummyrecs.com/_/
+- **Production**: https://app.yummyrecs.com/_/
+- **Beta**: https://beta.app.yummyrecs.com/_/
 
 **Configure SMTP:**
 
@@ -145,7 +145,7 @@ docker compose ps
 
    **Why this matters**: This URL is used in verification emails, password reset emails, and any email template that uses the `{APP_URL}` placeholder. Without this, emails will contain incorrect links!
 
-7. **Repeat for beta** environment at https://beta.yummyrecs.com/_/ (optional)
+7. **Repeat for beta** environment at https://beta.app.yummyrecs.com/_/ (optional)
 
 ---
 

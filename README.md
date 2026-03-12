@@ -1,151 +1,79 @@
-# Mobile Tracker App
+# Yummy Recs
 
-A personal productivity suite built as a Tauri desktop application for tracking various aspects of daily life. This project serves as a collection of integrated tracking tools with a focus on AI-assisted development using Claude Code.
+Yummy Recs is a multi-app workspace for the mobile product, admin console, backend, and public marketing pages.
 
-## Project Vision
+## Apps
 
-This application provides a unified interface for tracking:
+- `apps/mobile`: Expo + React Native mobile app
+- `apps/admin`: Vite + React admin console
+- `apps/marketing`: Static public site served by Caddy in production
+- `backend`: PocketBase-based Go backend
 
-- **Time Tracker** - Monitor how you spend your time across different activities
-- **Habit Tracker** - Track daily habits (built on metric tracking foundation)
-- **Journal Tracker** - Record daily thoughts and reflections
-- **People Tracker** - Manage relationships and interactions
+## Tooling
 
-All data is stored locally using PocketBase, ensuring privacy and offline-first functionality.
+- Node.js 20+
+- `pnpm` via Corepack
+- Go 1.24+
 
-## Tech Stack
+## Local Development
 
-- **Frontend**: Tauri v2 + React 19 + TypeScript + Vite
-- **Backend**: PocketBase (Go-based backend-as-a-service)
-- **Routing**: TanStack Router (file-based)
-- **Styling**: Tailwind CSS v4 + shadcn/ui
-- **State Management**: TanStack Query + TanStack Form
-- **Testing**: Playwright (E2E browser tests)
-
-## Prerequisites
-
-- **Node.js** (v18 or higher)
-- **Go** (1.24.3 or higher)
-- **Rust** (latest stable - for Tauri development)
-- **npm** or **pnpm**
-
-## Getting Started
-
-### 1. Install Dependencies
+Install workspace dependencies once from the repo root:
 
 ```bash
-# Install frontend dependencies
-cd frontend
-npm install
+corepack enable
+pnpm install
 ```
 
-### 2. Start the Backend
-
-The backend uses PocketBase, which provides the database, admin UI, and REST/realtime APIs.
+Start the main local workflow:
 
 ```bash
-cd backend
-go run main.go serve
+pnpm dev
 ```
 
-The PocketBase server will start on `http://localhost:8090`
+That script starts:
 
-- Admin UI: `http://localhost:8090/_/`
-- API: `http://localhost:8090/api/`
+- the admin app on `http://localhost:5173`
+- the backend on `http://localhost:8090`
+- the static marketing site on `http://localhost:4173`
+- the Expo mobile dev client flow
 
-### 3. Start the Frontend
-
-In a separate terminal:
+Useful commands:
 
 ```bash
-cd frontend
-npm run dev
+pnpm dev:admin
+pnpm dev:api
+pnpm mobile:start
+pnpm mobile:ios
+pnpm mobile:android
+pnpm mobile:lint
+pnpm mobile:typecheck
+pnpm admin:build
+pnpm admin:typecheck
 ```
 
-The Tauri app will launch with the dev server running on `http://localhost:1420`
+## Environment Files
 
-### 4. Running Tests
-
-End-to-end tests automatically start the dev server and validate functionality:
-
-```bash
-cd frontend
-npm run test:e2e          # Run all tests headless
-npm run test:e2e:ui       # Interactive test UI
-npm run test:e2e:headed   # Run with visible browser
-```
-
-See `frontend/E2E_TESTING.md` for detailed testing documentation.
-
-## Development Workflow
-
-This project uses an AI-assisted development workflow with Claude Code:
-
-1. **Feature Implementation** - Implement features using Claude Code subagents
-2. **CLI Verification** - Verify functionality works via command-line testing
-3. **E2E Testing** - Create Playwright tests that validate the full stack (frontend + PocketBase backend)
-4. **Data Validation** - Ensure all data flows correctly through the PocketBase API
-
-### Building for Production
-
-```bash
-cd frontend
-npm run build           # TypeScript check + Vite build
-npm run tauri build     # Build Tauri desktop app
-```
-
-## Project Structure
-
-```
-food-tracker-app/
-├── frontend/                 # Tauri + React application
-│   ├── src/
-│   │   ├── routes/          # TanStack Router file-based routes
-│   │   ├── components/      # React components
-│   │   └── lib/             # Utilities (PocketBase client, etc.)
-│   ├── e2e/                 # Playwright E2E tests
-│   ├── src-tauri/           # Tauri Rust code
-│   └── package.json
-├── backend/                 # PocketBase Go server
-│   ├── main.go              # Server entry point
-│   └── go.mod
-└── CLAUDE.md                # AI development guidance
-```
-
-## Development Philosophy
-
-- **Test-Driven**: Every feature should have E2E tests before completion
-- **CLI-First**: Features should be verifiable from the command line
-- **Data Integrity**: All data operations validated through PocketBase
-- **AI-Assisted**: Leverage Claude Code for rapid, reliable development
-
-## Contributing
-
-This is a personal project, but the development approach and architecture may be useful as a reference for AI-assisted application development.
+- `apps/mobile/.env.example`: mobile app local API and observability config
+- `apps/admin/.env.example`: admin API URL override
+- `.env`: VPS deployment metadata created by `scripts/post-setup.sh`
 
 ## Production Deployment
 
-This project includes production-ready deployment infrastructure for VPS hosting.
+Production serves:
 
-**📚 Complete deployment documentation:** See [`docs/`](docs/)
+- PocketBase via Docker
+- the marketing site from `apps/marketing/dist`, copied to `marketing_build` on the VPS
+- the app web build from `apps/mobile/web-dist`, copied to `app_build` on the VPS
+- the admin web build from `apps/admin/dist`, copied to `admin_build` on the VPS
+- Caddy on the host machine, routing `yummyrecs.com`, `app.yummyrecs.com`, and `admin.yummyrecs.com`
 
-**Quick Start:**
-1. [Infrastructure Overview](docs/INFRASTRUCTURE.md) - Architecture deep-dive
-2. [Deployment Guide](docs/DEPLOYMENT.md) - Step-by-step VPS setup
-3. [Path to 100/100](docs/PATH_TO_100.md) - Achieve perfect production score
+Deployment docs live in [docs/setup/README.md](docs/setup/README.md).
 
-**Current Production Score: 92/100** ⭐
+Useful scripts:
 
-Features:
-- ✅ Zero-downtime deployments (blue-green strategy)
-- ✅ Zero-downtime backups (SQLite online backup)
-- ✅ Automatic rollback on failure
-- ✅ Production-grade security (fail2ban, security headers, resource limits)
-- ✅ Comprehensive error handling
-- ✅ HTTP/3 support
-
-See [docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md) for full details.
-
-## License
-
-This project is for personal use.
+```bash
+bash scripts/setup-vps.sh
+bash scripts/post-setup.sh
+bash scripts/deploy.sh production
+bash scripts/deploy.sh beta
+```

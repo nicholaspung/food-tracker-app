@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - "apps/mobile/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/mobile-preview.yml"
   workflow_dispatch:
     inputs:
@@ -28,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: beta
-      url: https://beta.yummyrecs.com
+      url: https://beta.app.yummyrecs.com
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
@@ -46,8 +49,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
 
       - name: Set up Expo and EAS
         uses: expo/expo-github-action@v8
@@ -64,24 +72,25 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint mobile app
-        run: npm run lint
+        run: pnpm lint
 
       - name: Typecheck mobile app
-        run: npm run typecheck
+        run: pnpm typecheck
 
       - name: Detect preview release type
         id: release_type
         shell: bash
         run: |
           BEFORE_SHA="${{ github.event.before }}"
+          EXTRA_PATHS=(package.json pnpm-lock.yaml pnpm-workspace.yaml)
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            CHANGED_FILES="$(git ls-files apps/mobile)"
+            CHANGED_FILES="$(git ls-files apps/mobile "${EXTRA_PATHS[@]}")"
           else
-            CHANGED_FILES="$(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" -- apps/mobile)"
+            CHANGED_FILES="$(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" -- apps/mobile "${EXTRA_PATHS[@]}")"
           fi
 
           printf '%s\n' "$CHANGED_FILES"
@@ -91,7 +100,7 @@ jobs:
             exit 0
           fi
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^apps/mobile/(android/|ios/|app\.json|app\.config\.(js|ts|mjs|cjs)|eas\.json|package\.json|package-lock\.json)'; then
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(apps/mobile/(android/|ios/|app\.json|app\.config\.(js|ts|mjs|cjs)|eas\.json|package\.json)|pnpm-lock\.yaml|pnpm-workspace\.yaml)'; then
             echo "publish_mode=build" >> "$GITHUB_OUTPUT"
           else
             echo "publish_mode=ota" >> "$GITHUB_OUTPUT"

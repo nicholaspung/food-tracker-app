@@ -63,7 +63,6 @@
           "cameraPermission": "Allow Yummy Recs to scan QR codes and capture food photos."
         }
       ],
-      "expo-iap",
       "expo-localization",
       "posthog-react-native/expo",
       "expo-font"

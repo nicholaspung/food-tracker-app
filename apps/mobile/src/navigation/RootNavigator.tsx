@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomTabNavigation, type BottomTabRoute } from '../components/shared/BottomTabNavigation';
 import { EmptyState } from '../components/shared';
+import { isBillingScreenEnabled } from '../lib/billingAccess';
 import { useAuth } from '../providers/AuthProvider';
 import { trackObservabilityEvent } from '../observability';
 import {
@@ -175,6 +176,8 @@ const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
     'https://yummyrecs.com',
     'https://www.yummyrecs.com',
     'https://beta.yummyrecs.com',
+    'https://app.yummyrecs.com',
+    'https://beta.app.yummyrecs.com',
   ],
   config: {
     screens: {
@@ -461,7 +464,9 @@ export function RootNavigator() {
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
-                <Stack.Screen component={BillingScreen} name="Billing" options={{ headerShown: false }} />
+                {isBillingScreenEnabled ? (
+                  <Stack.Screen component={BillingScreen} name="Billing" options={{ headerShown: false }} />
+                ) : null}
                 <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
                 <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
                 <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />
