@@ -70,11 +70,17 @@ $DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/systemctl status caddy
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/systemctl start caddy
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/systemctl stop caddy
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/caddy validate *
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/cp /opt/food-tracker-app/Caddyfile /etc/caddy/Caddyfile
 
 # Backup directory management
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/mkdir -p /opt/food-tracker-backups*
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/chown * /opt/food-tracker-backups*
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/chmod * /opt/food-tracker-backups*
+
+# Secrets directory management
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/mkdir -p /opt/food-tracker-secrets*
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/chown * /opt/food-tracker-secrets*
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/chmod * /opt/food-tracker-secrets*
 
 # Docker Compose operations (if needed)
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/docker-compose *
@@ -112,8 +118,8 @@ log_info "=========================================="
 echo ""
 log_info "The deploy user '$DEPLOY_USER' can now run these commands without a password:"
 echo "  - systemctl reload/restart/status caddy"
-echo "  - caddy validate"
-echo "  - mkdir/chown/chmod for backup directories"
+echo "  - caddy validate and copy the live Caddyfile"
+echo "  - mkdir/chown/chmod for backup and secrets directories"
 echo "  - docker-compose operations"
 echo ""
 log_info "GitHub Actions deployments should now work without password prompts."

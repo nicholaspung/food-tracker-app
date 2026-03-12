@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.0',
+    date: '2026-03-12',
+    title: 'Deployment Reliability & Mobile Entry Point Fix',
+    summary:
+      'Behind-the-scenes deployment and infrastructure improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Deploy script now supports password-based sudo via a SUDO_PASSWORD secret, so CI deployments work on servers without passwordless sudo configured.',
+      'Sudo calls throughout the deploy script use a unified run_sudo helper, making the script more consistent and easier to maintain.',
+      'Sudoers rules now cover Caddyfile copy and secrets directory management, so no manual VPS setup is needed for these operations.',
+      'Mobile app entry point updated to an explicit index.js so Expo resolves the root component more reliably.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.9',
     date: '2026-03-12',
     title: 'Deployment & CI Reliability Improvements',

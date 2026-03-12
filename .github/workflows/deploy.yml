@@ -32,13 +32,14 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,VITE_POSTHOG_KEY
+          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,VITE_POSTHOG_KEY,SUDO_PASSWORD
           script: |
             export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
             export GOOGLE_PLACES_API_KEY="${{ secrets.GOOGLE_PLACES_API_KEY }}"
             export POSTHOG_API_KEY="${{ secrets.POSTHOG_API_KEY }}"
             export POSTHOG_HOST="${{ secrets.POSTHOG_HOST }}"
             export VITE_POSTHOG_KEY="${{ secrets.VITE_POSTHOG_KEY }}"
+            export SUDO_PASSWORD="${{ secrets.SUDO_PASSWORD }}"
             cd /opt/food-tracker-app
             git pull origin main
             bash scripts/deploy.sh beta
@@ -80,13 +81,14 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,VITE_POSTHOG_KEY
+          envs: GEMINI_API_KEY,GOOGLE_PLACES_API_KEY,POSTHOG_API_KEY,POSTHOG_HOST,VITE_POSTHOG_KEY,SUDO_PASSWORD
           script: |
             export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
             export GOOGLE_PLACES_API_KEY="${{ secrets.GOOGLE_PLACES_API_KEY }}"
             export POSTHOG_API_KEY="${{ secrets.POSTHOG_API_KEY }}"
             export POSTHOG_HOST="${{ secrets.POSTHOG_HOST }}"
             export VITE_POSTHOG_KEY="${{ secrets.VITE_POSTHOG_KEY }}"
+            export SUDO_PASSWORD="${{ secrets.SUDO_PASSWORD }}"
             cd /opt/food-tracker-app
             git pull origin main
             bash scripts/deploy.sh production

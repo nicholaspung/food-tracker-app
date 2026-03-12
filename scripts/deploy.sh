@@ -76,6 +76,35 @@ step() {
     echo -e "${BLUE}==>${NC} $*"
 }
 
+ensure_sudo_access() {
+    if sudo -n true 2>/dev/null; then
+        return 0
+    fi
+
+    if [ -n "${SUDO_PASSWORD:-}" ]; then
+        if printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' -v >/dev/null 2>&1; then
+            return 0
+        fi
+
+        error "SUDO_PASSWORD was provided, but sudo authentication failed."
+        exit 1
+    fi
+
+    error "This deployment requires sudo, but passwordless sudo is not configured for $USER."
+    error "Run 'sudo bash $APP_DIR/scripts/setup-deploy-sudo.sh $USER' on the VPS, or add SUDO_PASSWORD to the GitHub environment secrets."
+    exit 1
+}
+
+run_sudo() {
+    ensure_sudo_access
+
+    if sudo -n true 2>/dev/null; then
+        sudo "$@"
+    else
+        printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' "$@"
+    fi
+}
+
 caddy_config_has_domain() {
     local caddy_config="$1"
     local domain="$2"
@@ -88,7 +117,7 @@ validate_caddy_config() {
     local validation_output
     validation_output=$(mktemp)
 
-    if sudo caddy validate --config "$config_path" --adapter caddyfile >"$validation_output" 2>&1; then
+    if run_sudo caddy validate --config "$config_path" --adapter caddyfile >"$validation_output" 2>&1; then
         rm -f "$validation_output"
         return 0
     fi
@@ -142,9 +171,9 @@ ensure_live_caddy_config() {
         exit 1
     fi
 
-    sudo cp "$repo_caddy_config" "$caddy_config"
+    run_sudo cp "$repo_caddy_config" "$caddy_config"
 
-    if ! sudo systemctl reload caddy; then
+    if ! run_sudo systemctl reload caddy; then
         error "Failed to reload Caddy after updating $caddy_config"
         error "Check logs: sudo journalctl -u caddy -n 50"
         exit 1
@@ -345,7 +374,7 @@ rollback() {
     done
 
     if [ "$had_static_rollback" = true ]; then
-        sudo systemctl reload caddy
+        run_sudo systemctl reload caddy
         log "Static sites rolled back successfully"
     fi
 
@@ -413,6 +442,7 @@ preflight_checks() {
         exit 1
     fi
 
+    ensure_sudo_access
     ensure_live_caddy_config
 
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
@@ -441,9 +471,9 @@ create_backup() {
     backup_path="$BACKUP_DIR/$backup_timestamp"
 
     if [ ! -d "$BACKUP_DIR" ]; then
-        sudo mkdir -p "$BACKUP_DIR"
-        sudo chown -R "$USER:$USER" /opt/food-tracker-backups
-        sudo chmod 755 /opt/food-tracker-backups
+        run_sudo mkdir -p "$BACKUP_DIR"
+        run_sudo chown -R "$USER:$USER" /opt/food-tracker-backups
+        run_sudo chmod 755 /opt/food-tracker-backups
     fi
 
     mkdir -p "$backup_path"
@@ -614,11 +644,11 @@ configure_backend() {
             chmod 700 /opt/food-tracker-secrets
             chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
             log "Created secrets directory without sudo"
-        elif [ -n "${SUDO_PASSWORD:-}" ]; then
-            echo "$SUDO_PASSWORD" | sudo -S mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
-            echo "$SUDO_PASSWORD" | sudo -S chown -R "$USER:$USER" /opt/food-tracker-secrets
-            echo "$SUDO_PASSWORD" | sudo -S chmod 700 /opt/food-tracker-secrets
-            echo "$SUDO_PASSWORD" | sudo -S chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
+        elif [ -n "${SUDO_PASSWORD:-}" ] || sudo -n true 2>/dev/null; then
+            run_sudo mkdir -p "/opt/food-tracker-secrets/${ENVIRONMENT}"
+            run_sudo chown -R "$USER:$USER" /opt/food-tracker-secrets
+            run_sudo chmod 700 /opt/food-tracker-secrets
+            run_sudo chmod 700 "/opt/food-tracker-secrets/${ENVIRONMENT}"
             log "Created secrets directory with sudo"
         else
             error "Cannot create /opt/food-tracker-secrets/${ENVIRONMENT}"
@@ -797,7 +827,7 @@ reload_caddy() {
         warn "Caddy configuration validation failed, but continuing..."
     fi
 
-    if ! sudo systemctl reload caddy; then
+    if ! run_sudo systemctl reload caddy; then
         error "Failed to reload Caddy"
         exit 1
     fi
