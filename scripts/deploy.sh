@@ -83,6 +83,21 @@ caddy_config_has_domain() {
     awk -v domain="$domain" '$1 == domain && $2 == "{" { found = 1 } END { exit(found ? 0 : 1) }' "$caddy_config"
 }
 
+validate_caddy_config() {
+    local config_path="$1"
+    local validation_output
+    validation_output=$(mktemp)
+
+    if sudo caddy validate --config "$config_path" --adapter caddyfile >"$validation_output" 2>&1; then
+        rm -f "$validation_output"
+        return 0
+    fi
+
+    cat "$validation_output" | tee -a "$LOG_FILE" >&2
+    rm -f "$validation_output"
+    return 1
+}
+
 ensure_live_caddy_config() {
     local caddy_config="/etc/caddy/Caddyfile"
     local repo_caddy_config="$APP_DIR/Caddyfile"
@@ -121,7 +136,7 @@ ensure_live_caddy_config() {
 
     step "Syncing live Caddy config..."
 
-    if ! sudo caddy validate --config "$repo_caddy_config" > /dev/null 2>&1; then
+    if ! validate_caddy_config "$repo_caddy_config"; then
         error "Repo Caddyfile failed validation: $repo_caddy_config"
         error "Fix the checked-in Caddyfile before deploying."
         exit 1
@@ -778,7 +793,7 @@ health_check_static_site() {
 reload_caddy() {
     step "Reloading Caddy..."
 
-    if ! sudo caddy validate --config /etc/caddy/Caddyfile 2>/dev/null; then
+    if ! validate_caddy_config /etc/caddy/Caddyfile; then
         warn "Caddy configuration validation failed, but continuing..."
     fi
 

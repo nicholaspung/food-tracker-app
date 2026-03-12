@@ -10,6 +10,20 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.9',
+    date: '2026-03-12',
+    title: 'Deployment & CI Reliability Improvements',
+    summary:
+      'Behind-the-scenes deployment and CI reliability improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Caddy config validation now uses the explicit caddyfile adapter flag, preventing silent parse failures on some server configurations.',
+      'Caddy validation errors are now written to the deploy log and shown in the terminal, making misconfigured Caddyfiles easier to diagnose.',
+      'Mobile CI workflow sets up pnpm before Node.js so the package manager cache is always available during dependency installation.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.8',
     date: '2026-03-12',
     title: 'Deployment Infrastructure Improvements',
@@ -38,7 +52,7 @@ export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
     date: '2026-03-11',
     title: 'Stripe Billing & Smarter Photo Date Detection',
     summary:
-      'Subscription management now uses Stripe web checkout for a smoother, more reliable payment experience. Photo date detection is also more accurate, catching a wider range of EXIF formats and falling back to your device's media library when needed.',
+      "Subscription management now uses Stripe web checkout for a smoother, more reliable payment experience. Photo date detection is also more accurate, catching a wider range of EXIF formats and falling back to your device's media library when needed.",
     features: [
       'Subscription purchases and management now go through Stripe web checkout instead of in-app purchases.',
       'Manage your active subscription (cancel, update payment) via the Stripe customer portal, accessible from the Billing screen on web.',

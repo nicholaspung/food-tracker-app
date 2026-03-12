@@ -260,7 +260,7 @@ deploy_caddyfile() {
     step "Deploying Caddyfile to /etc/caddy/..."
 
     # Validate Caddyfile syntax
-    if ! sudo caddy validate --config Caddyfile 2>/dev/null; then
+    if ! sudo caddy validate --config Caddyfile --adapter caddyfile 2>/dev/null; then
         warn "Caddyfile validation failed, but continuing..."
     fi
 
