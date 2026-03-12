@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.8',
+    date: '2026-03-12',
+    title: 'Deployment Infrastructure Improvements',
+    summary:
+      'Behind-the-scenes deployment reliability improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Deploy script now automatically syncs the Caddy web server config when environment domains are missing, instead of failing with a manual fix instruction.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.7',
     date: '2026-03-12',
     title: 'Offline Support on Web',

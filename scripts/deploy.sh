@@ -76,6 +76,75 @@ step() {
     echo -e "${BLUE}==>${NC} $*"
 }
 
+caddy_config_has_domain() {
+    local caddy_config="$1"
+    local domain="$2"
+
+    awk -v domain="$domain" '$1 == domain && $2 == "{" { found = 1 } END { exit(found ? 0 : 1) }' "$caddy_config"
+}
+
+ensure_live_caddy_config() {
+    local caddy_config="/etc/caddy/Caddyfile"
+    local repo_caddy_config="$APP_DIR/Caddyfile"
+    local missing_domains=()
+    local domain
+
+    if [ ! -r "$caddy_config" ]; then
+        warn "Cannot read $caddy_config. Skipping domain presence checks."
+        return
+    fi
+
+    for domain in "$MARKETING_DOMAIN" "$APP_DOMAIN" "$ADMIN_DOMAIN"; do
+        if ! caddy_config_has_domain "$caddy_config" "$domain"; then
+            missing_domains+=("$domain")
+        fi
+    done
+
+    if [ "${#missing_domains[@]}" -eq 0 ]; then
+        return
+    fi
+
+    warn "Live Caddy config is missing environment domains: ${missing_domains[*]}"
+
+    if [ ! -r "$repo_caddy_config" ]; then
+        error "Repo Caddyfile is not readable: $repo_caddy_config"
+        exit 1
+    fi
+
+    for domain in "$MARKETING_DOMAIN" "$APP_DOMAIN" "$ADMIN_DOMAIN"; do
+        if ! caddy_config_has_domain "$repo_caddy_config" "$domain"; then
+            error "Repo Caddyfile is also missing domain '$domain': $repo_caddy_config"
+            error "Update $repo_caddy_config before deploying this environment."
+            exit 1
+        fi
+    done
+
+    step "Syncing live Caddy config..."
+
+    if ! sudo caddy validate --config "$repo_caddy_config" > /dev/null 2>&1; then
+        error "Repo Caddyfile failed validation: $repo_caddy_config"
+        error "Fix the checked-in Caddyfile before deploying."
+        exit 1
+    fi
+
+    sudo cp "$repo_caddy_config" "$caddy_config"
+
+    if ! sudo systemctl reload caddy; then
+        error "Failed to reload Caddy after updating $caddy_config"
+        error "Check logs: sudo journalctl -u caddy -n 50"
+        exit 1
+    fi
+
+    for domain in "$MARKETING_DOMAIN" "$APP_DOMAIN" "$ADMIN_DOMAIN"; do
+        if ! caddy_config_has_domain "$caddy_config" "$domain"; then
+            error "Domain '$domain' is still missing from $caddy_config after sync"
+            exit 1
+        fi
+    done
+
+    log "Live Caddy config synchronized ✓"
+}
+
 configure_package_manager() {
     local detected_package_manager=""
 
@@ -329,20 +398,7 @@ preflight_checks() {
         exit 1
     fi
 
-    local caddy_config="/etc/caddy/Caddyfile"
-    if [ -r "$caddy_config" ]; then
-        local domain
-        for domain in "$MARKETING_DOMAIN" "$APP_DOMAIN" "$ADMIN_DOMAIN"; do
-            if ! awk -v domain="$domain" '$1 == domain && $2 == "{" { found = 1 } END { exit(found ? 0 : 1) }' "$caddy_config"; then
-                error "Domain '$domain' is not configured in $caddy_config"
-                error "Update the live Caddy config before deploying this environment."
-                error "Suggested fix: sudo cp \"$APP_DIR/Caddyfile\" \"$caddy_config\" && sudo systemctl reload caddy"
-                exit 1
-            fi
-        done
-    else
-        warn "Cannot read $caddy_config. Skipping domain presence checks."
-    fi
+    ensure_live_caddy_config
 
     if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
         warn "PocketBase container ($POCKETBASE_CONTAINER) is not running"
