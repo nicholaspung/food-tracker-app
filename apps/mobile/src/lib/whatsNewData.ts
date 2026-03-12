@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.8.7',
+    date: '2026-03-12',
+    title: 'Offline Support on Web',
+    summary:
+      'Actions you take while offline on the web version of the app are now queued and synced automatically when your connection is restored, matching the offline behaviour already available on mobile.',
+    features: [],
+    improvements: [
+      'Offline mutation queue now works in the browser using local storage, so visits, quick tracks, and other actions are saved and retried when you reconnect.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.8.6',
     date: '2026-03-11',
     title: 'Stripe Billing & Smarter Photo Date Detection',

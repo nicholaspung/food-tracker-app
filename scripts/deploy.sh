@@ -28,6 +28,9 @@ LOCK_FILE="/tmp/food-tracker-deploy-${ENVIRONMENT}.lock"
 BACKUP_DIR="/opt/food-tracker-backups/${ENVIRONMENT}"
 MAX_BACKUPS=5
 MARKETING_APP_URL="https://app.yummyrecs.com/"
+DEFAULT_PNPM_PACKAGE_MANAGER="pnpm@10.32.1"
+PNPM_PACKAGE_MANAGER=""
+PNPM_CMD=()
 
 if [[ "$ENVIRONMENT" == "beta" ]]; then
     POCKETBASE_PORT="8091"
@@ -71,6 +74,44 @@ error() {
 step() {
     echo ""
     echo -e "${BLUE}==>${NC} $*"
+}
+
+configure_package_manager() {
+    local detected_package_manager=""
+
+    if [ -f "$APP_DIR/package.json" ]; then
+        detected_package_manager=$(node -p "require('$APP_DIR/package.json').packageManager || ''" 2>/dev/null || true)
+    fi
+
+    if [ -n "$detected_package_manager" ]; then
+        PNPM_PACKAGE_MANAGER="$detected_package_manager"
+    else
+        PNPM_PACKAGE_MANAGER="$DEFAULT_PNPM_PACKAGE_MANAGER"
+    fi
+
+    if command -v pnpm &> /dev/null; then
+        PNPM_CMD=(pnpm)
+        return
+    fi
+
+    if ! command -v corepack &> /dev/null; then
+        error "pnpm is unavailable and Corepack is not installed"
+        exit 1
+    fi
+
+    if ! corepack prepare "$PNPM_PACKAGE_MANAGER" --activate > /dev/null 2>&1; then
+        warn "Could not activate $PNPM_PACKAGE_MANAGER globally; using Corepack shim for this deploy"
+    fi
+
+    PNPM_CMD=(corepack pnpm)
+}
+
+run_pnpm() {
+    if [ "${#PNPM_CMD[@]}" -eq 0 ]; then
+        configure_package_manager
+    fi
+
+    "${PNPM_CMD[@]}" "$@"
 }
 
 USER_CANCELLED=false
@@ -249,12 +290,20 @@ preflight_checks() {
 
     echo $$ > "$LOCK_FILE"
 
-    for cmd in git docker curl systemctl node corepack pnpm; do
+    for cmd in git docker curl systemctl node corepack; do
         if ! command -v "$cmd" &> /dev/null; then
             error "Required command not found: $cmd"
             exit 1
         fi
     done
+
+    configure_package_manager
+    local pnpm_version
+    if ! pnpm_version=$(run_pnpm --version 2>/dev/null); then
+        error "Failed to initialize $PNPM_PACKAGE_MANAGER via Corepack"
+        exit 1
+    fi
+    log "Package manager ready ✓ ($pnpm_version)"
 
     if ! docker compose version &> /dev/null; then
         error "Docker Compose not found (requires Docker Compose V2)"
@@ -403,8 +452,7 @@ install_workspace_dependencies() {
     step "Installing workspace dependencies..."
 
     cd "$APP_DIR"
-    corepack enable
-    pnpm install --frozen-lockfile
+    run_pnpm install --frozen-lockfile
 
     log "Workspace dependencies installed ✓"
 }
@@ -428,8 +476,8 @@ build_web_surfaces() {
 
     export VITE_API_URL="https://$ADMIN_DOMAIN"
 
-    pnpm admin:build
-    pnpm mobile:web:build
+    run_pnpm admin:build
+    run_pnpm mobile:web:build
 
     log "Web surfaces built ✓"
 }
