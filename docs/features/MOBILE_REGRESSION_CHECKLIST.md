@@ -11,7 +11,7 @@ This checklist is intended to help review the React Native app for screen regres
 
 ## Priority guide
 
-- `P0`: Core auth, logging, feed, note, social, and billing flows that are most likely to break user journeys.
+- `P0`: Core auth, logging, feed, note, social, and account flows that are most likely to break user journeys.
 - `P1`: Important secondary flows and edge cases that should be covered after the core path is stable.
 - `P2`: Admin-only or lower-frequency flows.
 
@@ -182,7 +182,7 @@ This checklist is intended to help review the React Native app for screen regres
 - [ ] `P0` Bill deletion queues successfully offline.
 - [ ] `P1` Tip calculator updates correctly for supported split modes.
 
-## Profile, Settings, About, Billing
+## Profile, Settings, About
 
 - [ ] `P0` Profile screen loads core account data.
 - [ ] `P0` Account name can be edited and saved.
@@ -193,10 +193,6 @@ This checklist is intended to help review the React Native app for screen regres
 - [ ] `P0` Default visit visibility can be changed and saved.
 - [ ] `P0` Default restaurant visibility can be changed and saved.
 - [ ] `P1` About screen opens legal pages.
-- [ ] `P1` Billing screen appears only when enabled.
-- [ ] `P1` Billing screen can start checkout when online on web.
-- [ ] `P1` Billing screen can open the Stripe portal when online on web.
-- [ ] `P1` Billing screen shows an offline warning when subscription actions are unavailable.
 - [ ] `P1` Account deletion succeeds and signs the user out.
 
 ## Feedback

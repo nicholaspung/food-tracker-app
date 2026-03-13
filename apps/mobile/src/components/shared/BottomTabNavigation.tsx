@@ -52,7 +52,6 @@ export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList
     'Settings',
     'Feedback',
     'FeedbackDetail',
-    'Billing',
     'WhatsNew',
   ],
 };

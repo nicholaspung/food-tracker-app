@@ -5,10 +5,6 @@ export interface AuthUser {
   verified: boolean;
   isAdmin?: boolean;
   isSubscriber?: boolean;
-  subscriptionProvider?: string;
-  subscriptionStatus?: string;
-  subscriptionCurrentPeriodEnd?: string;
-  stripeCustomerId?: string;
 }
 
 export function normalizeAuthUser(record: Record<string, unknown> | null | undefined): AuthUser | null {
@@ -30,15 +26,5 @@ export function normalizeAuthUser(record: Record<string, unknown> | null | undef
     verified: Boolean(record.verified),
     isAdmin: Boolean(record.isAdmin),
     isSubscriber: Boolean(record.isSubscriber),
-    subscriptionProvider:
-      typeof record.subscriptionProvider === 'string' ? record.subscriptionProvider : undefined,
-    subscriptionStatus:
-      typeof record.subscriptionStatus === 'string' ? record.subscriptionStatus : undefined,
-    subscriptionCurrentPeriodEnd:
-      typeof record.subscriptionCurrentPeriodEnd === 'string'
-        ? record.subscriptionCurrentPeriodEnd
-        : undefined,
-    stripeCustomerId:
-      typeof record.stripeCustomerId === 'string' ? record.stripeCustomerId : undefined,
   };
 }

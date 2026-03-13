@@ -55,7 +55,18 @@ pnpm admin:typecheck
 
 - `apps/mobile/.env.example`: mobile app local API and observability config
 - `apps/admin/.env.example`: admin API URL override
+- `backend/.env.example`: backend runtime URLs and service integrations for local development
 - `.env`: VPS deployment metadata created by `scripts/post-setup.sh`
+
+## Environment Modes
+
+The workspace now uses three shared environment modes:
+
+- `local`: app web `http://localhost:8081`, admin `http://localhost:5173`, marketing `http://localhost:4173`, backend `http://127.0.0.1:8090`
+- `beta`: marketing `https://beta.yummyrecs.com`, app web/API `https://beta.app.yummyrecs.com`, admin `https://beta.admin.yummyrecs.com`
+- `production`: marketing `https://yummyrecs.com`, app web/API `https://app.yummyrecs.com`, admin `https://admin.yummyrecs.com`
+
+`pnpm dev` exports the `local` environment automatically. `scripts/deploy.sh beta` and `scripts/deploy.sh production` export the matching hosted environment before building and starting services.
 
 ## Production Deployment
 

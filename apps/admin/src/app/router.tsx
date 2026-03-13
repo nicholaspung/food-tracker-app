@@ -6,7 +6,6 @@ import { Design1Bloomberg } from '@/features/design-previews/Design1Bloomberg';
 import { Design2Linear } from '@/features/design-previews/Design2Linear';
 import { Design3Grafana } from '@/features/design-previews/Design3Grafana';
 import { Design4Apple } from '@/features/design-previews/Design4Apple';
-import { Design5Stripe } from '@/features/design-previews/Design5Stripe';
 import { FeedbackInboxPage } from '@/features/feedback/FeedbackInboxPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { MenuReviewDetailPage } from '@/features/menu-reviews/MenuReviewDetailPage';
@@ -83,7 +82,6 @@ export const router = createBrowserRouter([
   { path: '/2', element: <Design2Linear /> },
   { path: '/3', element: <Design3Grafana /> },
   { path: '/4', element: <Design4Apple /> },
-  { path: '/5', element: <Design5Stripe /> },
   shellRoutes,
   {
     path: '*',

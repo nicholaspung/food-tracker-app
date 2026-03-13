@@ -19,17 +19,17 @@ const PRIVACY_SECTIONS = [
   {
     title: 'How We Use Data',
     body:
-      'We use information to operate and sync your account, display your food records, support offline replay, manage subscriptions, respond to support requests, improve the product, and protect the service against misuse.',
+      'We use information to operate and sync your account, display your food records, support offline replay, respond to support requests, improve the product, and protect the service against misuse.',
   },
   {
     title: 'Sharing and Visibility',
     body:
-      'Your content is shared according to the visibility settings you choose and may also be processed by service providers that help with hosting, analytics, diagnostics, and payment processing, or disclosed when required by law.',
+      'Your content is shared according to the visibility settings you choose and may also be processed by service providers that help with hosting, analytics, and diagnostics, or disclosed when required by law.',
   },
   {
-    title: 'Analytics and Billing Providers',
+    title: 'Analytics and Service Providers',
     body:
-      'Yummy Recs may collect app version, platform details, usage events, and error reports to improve reliability, and subscription billing is processed through Stripe, which handles payment details directly.',
+      'Yummy Recs may collect app version, platform details, usage events, and error reports to improve reliability through internal tooling and third-party analytics or infrastructure providers.',
   },
   {
     title: 'Retention and Security',

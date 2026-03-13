@@ -73,7 +73,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
             onPress={() => {
               navigation.navigate('TermsOfService');
             }}
-            subtitle="Scaffold for user agreements, account rules, and billing terms"
+            subtitle="Scaffold for user agreements, account rules, and subscriber access terms"
             title="Terms of Service"
           />
           <OptionListRow

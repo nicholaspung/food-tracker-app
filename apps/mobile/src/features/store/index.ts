@@ -1,4 +1,3 @@
-export * from './billingGateway';
 export * from './featureStore';
 export * from './menuParsingGateway';
 export * from './pocketbaseGateway';

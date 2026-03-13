@@ -33,6 +33,7 @@ func main() {
 		"GEMINI_API_KEY",
 		"GOOGLE_PLACES_API_KEY",
 	}
+	runtimeResources := lib.LoadRuntimeResourcesFromEnv()
 
 	missingVars := []string{}
 	for _, envVar := range requiredEnvVars {
@@ -46,6 +47,15 @@ func main() {
 	}
 
 	log.Printf("Environment variables validated successfully")
+	log.Printf(
+		"Runtime environment configured: env=%s api=%s app=%s admin=%s marketing=%s pocketbase=%s",
+		runtimeResources.Environment,
+		runtimeResources.APIBaseURL,
+		runtimeResources.AppURL,
+		runtimeResources.AdminURL,
+		runtimeResources.MarketingURL,
+		runtimeResources.PocketBaseURL,
+	)
 
 	// Initialize PostHog analytics (optional - continues if not configured)
 	if err := lib.InitAnalytics(); err != nil {
@@ -66,7 +76,6 @@ func main() {
 		// Register all API handlers
 		handlers.RegisterInviteCodeHandlers(se, app)
 		handlers.RegisterUserHandlers(se, app)
-		handlers.RegisterBillingHandlers(se, app)
 		handlers.RegisterUsageLimitHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)

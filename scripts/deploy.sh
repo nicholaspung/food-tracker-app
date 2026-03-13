@@ -10,13 +10,15 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-ENVIRONMENT="${1:-production}"
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/app-env.sh"
+ENVIRONMENT="$(normalize_food_tracker_env "${1:-production}")"
 if [[ "$ENVIRONMENT" != "beta" && "$ENVIRONMENT" != "production" ]]; then
     echo -e "${RED}ERROR: Invalid environment. Use 'beta' or 'production'${NC}"
     echo "Usage: $0 [beta|production]"
     exit 1
 fi
+load_food_tracker_env "$ENVIRONMENT"
 
 APP_DIR="/opt/food-tracker-app"
 MARKETING_SOURCE_DIR="$APP_DIR/apps/marketing/dist"
@@ -27,33 +29,31 @@ LOG_FILE="${LOG_DIR}/deploy-${ENVIRONMENT}.log"
 LOCK_FILE="/tmp/food-tracker-deploy-${ENVIRONMENT}.lock"
 BACKUP_DIR="/opt/food-tracker-backups/${ENVIRONMENT}"
 MAX_BACKUPS=5
-MARKETING_APP_URL="https://app.yummyrecs.com/"
 DEFAULT_PNPM_PACKAGE_MANAGER="pnpm@10.32.1"
 PNPM_PACKAGE_MANAGER=""
 PNPM_CMD=()
 
 if [[ "$ENVIRONMENT" == "beta" ]]; then
-    POCKETBASE_PORT="8091"
+    POCKETBASE_PORT="$FOOD_TRACKER_POCKETBASE_PORT"
     POCKETBASE_CONTAINER="pocketbase_beta"
     POCKETBASE_SERVICE="pocketbase_beta"
     COMPOSE_FILE="docker-compose.beta.yml"
-    POCKETBASE_DOMAIN="beta.app.yummyrecs.com"
-    MARKETING_DOMAIN="beta.yummyrecs.com"
-    APP_DOMAIN="beta.app.yummyrecs.com"
-    ADMIN_DOMAIN="beta.admin.yummyrecs.com"
+    POCKETBASE_DOMAIN="${FOOD_TRACKER_APP_URL#https://}"
+    MARKETING_DOMAIN="${FOOD_TRACKER_MARKETING_URL#https://}"
+    APP_DOMAIN="${FOOD_TRACKER_APP_URL#https://}"
+    ADMIN_DOMAIN="${FOOD_TRACKER_ADMIN_URL#https://}"
     MARKETING_BUILD_DIR="marketing_build_beta"
     APP_BUILD_DIR="app_build_beta"
     ADMIN_BUILD_DIR="admin_build_beta"
-    MARKETING_APP_URL="https://beta.app.yummyrecs.com/"
 else
-    POCKETBASE_PORT="8090"
+    POCKETBASE_PORT="$FOOD_TRACKER_POCKETBASE_PORT"
     POCKETBASE_CONTAINER="pocketbase"
     POCKETBASE_SERVICE="pocketbase"
     COMPOSE_FILE="docker-compose.yml"
-    POCKETBASE_DOMAIN="app.yummyrecs.com"
-    MARKETING_DOMAIN="yummyrecs.com"
-    APP_DOMAIN="app.yummyrecs.com"
-    ADMIN_DOMAIN="admin.yummyrecs.com"
+    POCKETBASE_DOMAIN="${FOOD_TRACKER_APP_URL#https://}"
+    MARKETING_DOMAIN="${FOOD_TRACKER_MARKETING_URL#https://}"
+    APP_DOMAIN="${FOOD_TRACKER_APP_URL#https://}"
+    ADMIN_DOMAIN="${FOOD_TRACKER_ADMIN_URL#https://}"
     MARKETING_BUILD_DIR="marketing_build"
     APP_BUILD_DIR="app_build"
     ADMIN_BUILD_DIR="admin_build"
@@ -564,20 +564,6 @@ build_web_surfaces() {
 
     cd "$APP_DIR"
 
-    export EXPO_PUBLIC_API_BASE_URL="https://$APP_DOMAIN"
-    export EXPO_PUBLIC_POCKETBASE_URL="https://$APP_DOMAIN"
-    export EXPO_PUBLIC_APP_WEB_URL="https://$APP_DOMAIN"
-    export EXPO_PUBLIC_ADMIN_URL="https://$ADMIN_DOMAIN"
-    export EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS="true"
-    export EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS="true"
-    if [ "$ENVIRONMENT" = "beta" ]; then
-        export EXPO_PUBLIC_BETA_ADMIN_ONLY="true"
-    else
-        export EXPO_PUBLIC_BETA_ADMIN_ONLY="false"
-    fi
-
-    export VITE_API_URL="https://$ADMIN_DOMAIN"
-
     run_pnpm --filter @food-tracker/admin build
     run_pnpm --filter @food-tracker/mobile web:build
 
@@ -611,7 +597,7 @@ deploy_static_sites() {
 
         rm -rf "${build_dir}_new"
         if [ "$site_key" = "marketing" ]; then
-            APP_OPEN_URL="$MARKETING_APP_URL" bash "$APP_DIR/scripts/prepare-marketing.sh" "$source_dir" "${build_dir}_new"
+            APP_OPEN_URL="$APP_OPEN_URL" bash "$APP_DIR/scripts/prepare-marketing.sh" "$source_dir" "${build_dir}_new"
         else
             cp -r "$source_dir" "${build_dir}_new"
         fi
@@ -690,6 +676,13 @@ configure_backend() {
     cat > "$env_file_storage" <<EOF
 # Backend Environment Variables - $ENVIRONMENT
 # Generated on $(date)
+FOOD_TRACKER_ENV=${FOOD_TRACKER_ENV}
+FOOD_TRACKER_MARKETING_URL=${FOOD_TRACKER_MARKETING_URL}
+FOOD_TRACKER_APP_URL=${FOOD_TRACKER_APP_URL}
+FOOD_TRACKER_ADMIN_URL=${FOOD_TRACKER_ADMIN_URL}
+FOOD_TRACKER_API_BASE_URL=${FOOD_TRACKER_API_BASE_URL}
+FOOD_TRACKER_POCKETBASE_URL=${FOOD_TRACKER_POCKETBASE_URL}
+FOOD_TRACKER_POSTHOG_HOST=${FOOD_TRACKER_POSTHOG_HOST}
 GEMINI_API_KEY=${gemini_key}
 GOOGLE_PLACES_API_KEY=${places_key}
 POSTHOG_API_KEY=${posthog_api_key}
@@ -699,6 +692,13 @@ EOF
     chmod 600 "$env_file_storage"
     ln -sf "$env_file_storage" "$APP_DIR/backend/.env"
 
+    export FOOD_TRACKER_ENV="$FOOD_TRACKER_ENV"
+    export FOOD_TRACKER_MARKETING_URL="$FOOD_TRACKER_MARKETING_URL"
+    export FOOD_TRACKER_APP_URL="$FOOD_TRACKER_APP_URL"
+    export FOOD_TRACKER_ADMIN_URL="$FOOD_TRACKER_ADMIN_URL"
+    export FOOD_TRACKER_API_BASE_URL="$FOOD_TRACKER_API_BASE_URL"
+    export FOOD_TRACKER_POCKETBASE_URL="$FOOD_TRACKER_POCKETBASE_URL"
+    export FOOD_TRACKER_POSTHOG_HOST="$FOOD_TRACKER_POSTHOG_HOST"
     export GEMINI_API_KEY="$gemini_key"
     export GOOGLE_PLACES_API_KEY="$places_key"
     export POSTHOG_API_KEY="$posthog_api_key"

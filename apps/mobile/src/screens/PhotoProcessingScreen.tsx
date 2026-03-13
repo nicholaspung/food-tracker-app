@@ -44,7 +44,6 @@ import {
   isValidLocalDate,
   localDateStringToUTC,
 } from '../lib/dateFormatting';
-import { isBillingScreenEnabled } from '../lib/billingAccess';
 import { calculateDistance, formatDistance } from '../lib/googlePlaces';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -1944,35 +1943,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           <UpgradePromptCard
             description={
               estimatedFreeMonthlyPhotoRemaining <= 0
-                ? isBillingScreenEnabled
-                  ? "You have reached this month's free photo limit. Subscribe for higher monthly limits."
-                  : "You have reached this month's free photo limit. If you need a higher limit, we'll email subscription details."
-                : isBillingScreenEnabled
-                  ? `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscribe for higher limits.`
-                  : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. If you need a higher limit, we'll email subscription details.`
+                ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly limits."
+                : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscriber accounts have higher monthly limits.`
             }
-            onPrimaryAction={
-              isBillingScreenEnabled
-                ? () => {
-                    navigation.navigate('Billing');
-                  }
-                : undefined
-            }
-            onSecondaryAction={
-              isBillingScreenEnabled
-                ? () => {
-                    navigation.navigate('Billing');
-                  }
-                : undefined
-            }
-            primaryActionLabel={
-              isBillingScreenEnabled
-                ? estimatedFreeMonthlyPhotoRemaining <= 0
-                  ? 'Subscribe now'
-                  : 'Upgrade'
-                : undefined
-            }
-            secondaryActionLabel={isBillingScreenEnabled ? "Compare plans" : undefined}
             title={
               estimatedFreeMonthlyPhotoRemaining <= 0
                 ? 'Free limit reached'
@@ -2507,35 +2480,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           <UpgradePromptCard
             description={
               estimatedFreeMonthlyPhotoRemaining <= 0
-                ? isBillingScreenEnabled
-                  ? "You have reached this month's free photo limit. Subscribe for higher monthly limits."
-                  : "You have reached this month's free photo limit. If you need a higher limit, we'll email subscription details."
-                : isBillingScreenEnabled
-                  ? `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscribe for higher limits.`
-                  : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. If you need a higher limit, we'll email subscription details.`
+                ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly limits."
+                : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscriber accounts have higher monthly limits.`
             }
-            onPrimaryAction={
-              isBillingScreenEnabled
-                ? () => {
-                    navigation.navigate('Billing');
-                  }
-                : undefined
-            }
-            onSecondaryAction={
-              isBillingScreenEnabled
-                ? () => {
-                    navigation.navigate('Billing');
-                  }
-                : undefined
-            }
-            primaryActionLabel={
-              isBillingScreenEnabled
-                ? estimatedFreeMonthlyPhotoRemaining <= 0
-                  ? 'Subscribe now'
-                  : 'Upgrade'
-                : undefined
-            }
-            secondaryActionLabel={isBillingScreenEnabled ? "Compare plans" : undefined}
             title={
               estimatedFreeMonthlyPhotoRemaining <= 0
                 ? 'Free limit reached'

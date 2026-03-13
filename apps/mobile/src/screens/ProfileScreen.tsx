@@ -35,7 +35,6 @@ import {
 } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { getErrorMessage } from '../lib/errorUtils';
-import { isBillingScreenEnabled } from '../lib/billingAccess';
 import {
   getSeenWhatsNewVersion,
   hasUnseenWhatsNew,
@@ -592,33 +591,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         <Card style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <OptionList>
-            {isBillingScreenEnabled ? (
-              <OptionListRow
-                iconName="card-outline"
-                onPress={() => {
-                  navigation.navigate("Billing");
-                }}
-                rightAccessory={
-                  isSubscriber ? (
-                    <StatusPill
-                      label="Subscriber"
-                      size="md"
-                      tone="info"
-                      variant="solid"
-                    />
-                  ) : (
-                    <StatusPill
-                      label="Free"
-                      size="md"
-                      tone="muted"
-                      variant="soft"
-                    />
-                  )
-                }
-                subtitle="View plans, subscribe, and manage purchases"
-                title="Subscription & Billing"
-              />
-            ) : null}
             <OptionListRow
               iconName="chatbox-ellipses-outline"
               onPress={() => {

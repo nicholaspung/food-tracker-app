@@ -10,6 +10,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.6',
+    date: '2026-03-12',
+    title: 'Subscription & Billing Simplification',
+    summary:
+      'The in-app billing screen has been removed. Subscriber status is still recognized and unlocks higher usage limits — account upgrades are now handled outside the app.',
+    features: [],
+    improvements: [
+      'Upgrade prompt cards on Visit, Quick Track, and Photo Processing screens now show a clear note that subscriber accounts have higher limits, without prompting you to navigate to a billing screen.',
+      'Privacy Policy and Terms of Service updated to remove references to payment processing.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.5',
     date: '2026-03-12',
     title: 'Deployment Smoke Test Improvements',
@@ -130,17 +143,13 @@ export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
     version: '0.8.6',
     date: '2026-03-11',
-    title: 'Stripe Billing & Smarter Photo Date Detection',
+    title: 'Smarter Photo Date Detection',
     summary:
-      "Subscription management now uses Stripe web checkout for a smoother, more reliable payment experience. Photo date detection is also more accurate, catching a wider range of EXIF formats and falling back to your device's media library when needed.",
-    features: [
-      'Subscription purchases and management now go through Stripe web checkout instead of in-app purchases.',
-      'Manage your active subscription (cancel, update payment) via the Stripe customer portal, accessible from the Billing screen on web.',
-    ],
+      "Photo date detection is now more accurate, catching a wider range of EXIF formats and falling back to your device's media library when needed.",
+    features: [],
     improvements: [
       'Photo date extraction handles more EXIF timestamp formats, including timezone-aware values and numeric timestamps from older cameras.',
       'When EXIF data is missing, photo date falls back to your device media library for a more reliable auto-fill.',
-      'Upgrade prompt cards no longer show subscription action buttons on native builds where the billing screen is unavailable.',
       'New app.yummyrecs.com and beta.app.yummyrecs.com deep link domains supported.',
     ],
     fixes: [],
@@ -290,18 +299,16 @@ export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
     version: '0.7.7',
     date: '2026-02-22',
-    title: 'Subscription Management & Redesigned Auth Flow',
+    title: 'Usage Limits & Redesigned Auth Flow',
     summary:
-      'A new Billing screen lets you view your plan, compare free vs. subscriber features, and manage your subscription. The entire sign-in, sign-up, and password reset experience has been redesigned with a cleaner layout and smarter step-by-step navigation.',
+      'Free and subscriber usage tiers are now surfaced more clearly throughout the app, and the entire sign-in, sign-up, and password reset experience has been redesigned with a cleaner layout and smarter step-by-step navigation.',
     features: [
-      'New Billing screen: view your plan, compare free vs. subscriber features, and manage your subscription.',
-      'In-app purchase support for monthly and yearly subscriptions.',
-      'Billing shortcut on Profile with your current plan status shown as a badge.',
+      'Usage limit prompt cards appear when free users are close to or have reached their monthly photo or search limit.',
+      'Profile shows your current account tier status.',
       'Redesigned onboarding carousel: swipe through feature highlight cards before signing up.',
       'Invite code field added to sign-up with clearer validation and error messages.',
       'After sign-up you are taken directly to the verification screen with your email pre-filled.',
       'Signing in with an unverified account now redirects automatically to the verification screen.',
-      'Upgrade prompt cards appear when free users are close to or have reached their monthly photo or search limit.',
     ],
     improvements: [
       'All auth screens use a consistent card layout with icons and back navigation.',

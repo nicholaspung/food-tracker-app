@@ -7,15 +7,15 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "local"
+      },
       "channel": "development"
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://beta.app.yummyrecs.com",
-        "EXPO_PUBLIC_POCKETBASE_URL": "https://beta.app.yummyrecs.com",
-        "EXPO_PUBLIC_APP_WEB_URL": "https://beta.app.yummyrecs.com",
-        "EXPO_PUBLIC_ADMIN_URL": "https://beta.admin.yummyrecs.com",
+        "EXPO_PUBLIC_APP_ENV": "beta",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
         "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
         "EXPO_PUBLIC_BETA_ADMIN_ONLY": "true"
@@ -25,10 +25,7 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://app.yummyrecs.com",
-        "EXPO_PUBLIC_POCKETBASE_URL": "https://app.yummyrecs.com",
-        "EXPO_PUBLIC_APP_WEB_URL": "https://app.yummyrecs.com",
-        "EXPO_PUBLIC_ADMIN_URL": "https://admin.yummyrecs.com",
+        "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
         "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
         "EXPO_PUBLIC_BETA_ADMIN_ONLY": "false"
@@ -39,6 +36,9 @@
       "extends": "development",
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "local"
       },
       "channel": "ios-simulator"
     }

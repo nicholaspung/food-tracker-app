@@ -17,13 +17,8 @@ var selfServiceUserEditableFields = map[string]struct{}{
 }
 
 var adminOnlyUserFields = map[string]struct{}{
-	"isAdmin":                      {},
-	"isSubscriber":                 {},
-	"stripeCustomerId":             {},
-	"subscriptionCurrentPeriodEnd": {},
-	"subscriptionId":               {},
-	"subscriptionProvider":         {},
-	"subscriptionStatus":           {},
+	"isAdmin":      {},
+	"isSubscriber": {},
 }
 
 var userUpdateIgnoredFields = map[string]struct{}{

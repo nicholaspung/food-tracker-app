@@ -11,7 +11,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomTabNavigation, type BottomTabRoute } from '../components/shared/BottomTabNavigation';
 import { EmptyState } from '../components/shared';
-import { isBillingScreenEnabled } from '../lib/billingAccess';
 import { useAuth } from '../providers/AuthProvider';
 import { trackObservabilityEvent } from '../observability';
 import {
@@ -22,7 +21,6 @@ import {
   AddVisitScreen,
   AboutScreen,
   BillDetailScreen,
-  BillingScreen,
   BillsScreen,
   CreateBillScreen,
   CreateRestaurantListScreen,
@@ -162,7 +160,6 @@ export type RootStackParamList = {
   TastingSessions: undefined;
   TastingSessionDetail: { sessionId: string };
   Bills: undefined;
-  Billing: undefined;
   CreateBill: { billId?: string } | undefined;
   BillDetail: { billId: string };
   TipCalculator: undefined;
@@ -226,7 +223,6 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Notes',
   'NoteEditor',
   'Bills',
-  'Billing',
   'CreateBill',
   'BillDetail',
   'TipCalculator',
@@ -464,9 +460,6 @@ export function RootNavigator() {
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
-                {isBillingScreenEnabled ? (
-                  <Stack.Screen component={BillingScreen} name="Billing" options={{ headerShown: false }} />
-                ) : null}
                 <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
                 <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
                 <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />

@@ -12,9 +12,9 @@ const TERMS_SECTIONS = [
       'Describe who can use the app, what information they must provide, and the conditions for account suspension or removal.',
   },
   {
-    title: 'Subscriptions and Billing',
+    title: 'Subscriber Access',
     body:
-      'Outline purchase terms, renewals, refunds, cancellation rules, and what happens when subscription status changes.',
+      'Outline what subscriber status unlocks, how access may change over time, and any eligibility or account-state rules tied to that access.',
   },
   {
     title: 'User Content and Conduct',

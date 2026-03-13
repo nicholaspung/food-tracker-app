@@ -5,6 +5,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+source "$ROOT_DIR/scripts/app-env.sh"
+load_food_tracker_env local
+
 declare -a BG_PIDS=()
 
 ensure_workspace_deps() {
@@ -46,10 +49,10 @@ start_service "MARKETING" pnpm dev:marketing
 
 echo ""
 echo "Development services are running:"
-echo "  - App (web):    http://localhost:8081"
-echo "  - Admin:        http://localhost:5173"
-echo "  - API:          http://localhost:8090"
-echo "  - Marketing:    http://localhost:4173"
+echo "  - App (web):    ${FOOD_TRACKER_APP_URL}"
+echo "  - Admin:        ${FOOD_TRACKER_ADMIN_URL}"
+echo "  - API:          ${FOOD_TRACKER_API_BASE_URL}"
+echo "  - Marketing:    ${FOOD_TRACKER_MARKETING_URL}"
 echo ""
 echo "Starting Expo iOS dev client (interactive mode)..."
 echo "Use Expo terminal shortcuts: r (reload), d (dev menu), j (debugger), ? (help)."

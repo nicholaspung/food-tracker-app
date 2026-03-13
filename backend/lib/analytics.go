@@ -147,9 +147,8 @@ func estimateCost(model string, promptTokens, outputTokens int) float64 {
 	}
 }
 
-// Google Places API pricing (as of 2025-01)
+// Google Places API pricing estimates (as of 2025-01)
 func estimatePlacesCost(apiType string) float64 {
-	// Pricing: https://developers.google.com/maps/documentation/places/web-service/usage-and-billing
 	switch apiType {
 	case "nearby", "search":
 		// Nearby Search (New) and Text Search (New): $0.032 per request
@@ -217,4 +216,3 @@ func TrackPlacesAPICall(userID string, props PlacesAPIProperties) {
 		log.Printf("[Analytics] Failed to track Places API call: %v", err)
 	}
 }
-
