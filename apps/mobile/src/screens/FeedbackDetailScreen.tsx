@@ -5,21 +5,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
-  FEEDBACK_STATUS_LABELS,
-  FEEDBACK_STATUS_OPTIONS,
   FeedbackThreadCard,
   FeatureDetailScreenScaffold,
-  FilterChipGroup,
-  RoleBadge,
   Skeleton,
-  type FeedbackStatus,
 } from '../components/shared';
 import {
   getFeedbackById,
   listFeedbackMessages,
   markFeedbackAsRead,
   sendFeedbackMessage,
-  updateFeedbackStatus,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -28,15 +22,10 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Text } from '../ui';
+import { Button, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FeedbackDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'FeedbackDetail'>;
-
-const STATUS_FILTER_OPTIONS: { label: string; value: FeedbackStatus }[] = FEEDBACK_STATUS_OPTIONS.map((status) => ({
-  label: FEEDBACK_STATUS_LABELS[status],
-  value: status,
-}));
 
 function formatTimestamp(value: string): string {
   const parsed = new Date(value);
@@ -62,13 +51,10 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const { isOnline } = useConnectivity();
   const messagesScrollRef = useRef<ScrollView>(null);
   const feedbackId = route.params.feedbackId;
-  const isAdmin = user?.isAdmin === true;
 
   const [draftMessage, setDraftMessage] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const [statusError, setStatusError] = useState<string | null>(null);
 
   const feedbackQuery = useQuery({
     queryKey: ['feature', 'feedback', feedbackId],
@@ -130,13 +116,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       gap: theme.spacing.sm,
       paddingHorizontal: theme.spacing.md,
       paddingTop: theme.spacing.sm,
-    },
-    statusControlCard: {
-      gap: theme.spacing.xs,
-    },
-    statusOptionsContent: {
-      gap: theme.spacing.xs,
-      paddingRight: theme.spacing.sm,
     },
     messagesContainer: {
       flex: 1,
@@ -298,55 +277,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     }
   };
 
-  const handleStatusUpdate = async (nextStatus: FeedbackStatus) => {
-    if (!isAdmin || !feedbackQuery.data || feedbackQuery.data.status === nextStatus || isUpdatingStatus) {
-      return;
-    }
-    trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_TAPPED', {
-      source: 'FeedbackDetailScreen',
-      feedbackId,
-      previousStatus: feedbackQuery.data.status,
-      nextStatus,
-      isOnline,
-    });
-    if (!isOnline) {
-      setStatusError('Status updates require internet connection.');
-      trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_FAILED', {
-        source: 'FeedbackDetailScreen',
-        feedbackId,
-        nextStatus,
-        error: 'offline',
-      });
-      return;
-    }
-
-    setStatusError(null);
-    setIsUpdatingStatus(true);
-
-    try {
-      await queueWrite('feedback.status.update');
-      await updateFeedbackStatus(feedbackId, nextStatus);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback', feedbackId] });
-      trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_SUCCEEDED', {
-        source: 'FeedbackDetailScreen',
-        feedbackId,
-        nextStatus,
-      });
-    } catch (error) {
-      const nextMessage = error instanceof Error ? error.message : 'Could not update status.';
-      setStatusError(nextMessage);
-      trackObservabilityEvent('FEEDBACK_DETAIL_STATUS_UPDATE_FAILED', {
-        source: 'FeedbackDetailScreen',
-        feedbackId,
-        nextStatus,
-        error: nextMessage,
-      });
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
-
   const handleBackPress = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -363,7 +293,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       contentBackgroundTone="app"
       keyboardAware
       onBackPress={handleBackPress}
-      rightAccessory={isAdmin ? <RoleBadge /> : undefined}
       scroll={false}
       title="Feedback"
     >
@@ -393,41 +322,11 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
           <>
             <FeedbackThreadCard
               description={feedbackQuery.data.description}
-              ownerLabel={
-                isAdmin
-                  ? `From ${
-                      feedbackQuery.data.userName?.trim() ||
-                      feedbackQuery.data.userEmail?.trim() ||
-                      'Unknown user'
-                    }`
-                  : undefined
-              }
               status={feedbackQuery.data.status}
               timestampLabel={`Opened ${formatTimestamp(feedbackQuery.data.createdAt)}`}
               title={feedbackQuery.data.title}
               tone="muted"
             />
-
-            {isAdmin ? (
-              <Card style={styles.statusControlCard}>
-                <Text variant="label">Update status</Text>
-                {!isOnline ? (
-                  <Text tone="warning" variant="bodySm">
-                    You are offline. Admin status updates require internet connection.
-                  </Text>
-                ) : null}
-                <FilterChipGroup
-                  contentContainerStyle={styles.statusOptionsContent}
-                  onChange={(nextStatus) => {
-                    void handleStatusUpdate(nextStatus);
-                  }}
-                  options={STATUS_FILTER_OPTIONS}
-                  scrollable
-                  value={feedbackQuery.data.status}
-                />
-                {statusError ? <Text style={styles.inlineErrorText}>{statusError}</Text> : null}
-              </Card>
-            ) : null}
 
             <ScrollView
               contentContainerStyle={styles.messagesContent}
@@ -497,7 +396,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
                   value={draftMessage}
                 />
                 <Button
-                  disabled={isSending || isUpdatingStatus || !draftMessage.trim()}
+                  disabled={isSending || !draftMessage.trim()}
                   label={isSending ? 'Sending...' : 'Send'}
                   onPress={() => {
                     void handleSendMessage();

@@ -10,6 +10,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.7',
+    date: '2026-03-13',
+    title: 'Admin Tools Move to Web & Account Updates',
+    summary:
+      'Admin features have moved to a dedicated web dashboard. The app now shows a Beta membership badge, renames "Free Account" to "Standard Account", and tightens feedback privacy so you only see your own threads.',
+    features: [],
+    improvements: [
+      'Admin tools (user management, menu review moderation, feedback inbox) have moved to a dedicated web admin app — the Admin Features section has been removed from the mobile app.',
+      'Profile Membership section now shows a "Beta" badge if your account has beta access.',
+      '"Free Account" label renamed to "Standard Account" for clarity.',
+      'Feedback screen now only ever shows your own submitted threads — no cross-user visibility.',
+      'Web version of the app now updates the browser tab title as you navigate between screens.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.6',
     date: '2026-03-12',
     title: 'Subscription & Billing Simplification',

@@ -6,12 +6,14 @@ import { Design1Bloomberg } from '@/features/design-previews/Design1Bloomberg';
 import { Design2Linear } from '@/features/design-previews/Design2Linear';
 import { Design3Grafana } from '@/features/design-previews/Design3Grafana';
 import { Design4Apple } from '@/features/design-previews/Design4Apple';
+import { FeedbackDetailPage } from '@/features/feedback/FeedbackDetailPage';
 import { FeedbackInboxPage } from '@/features/feedback/FeedbackInboxPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { MenuReviewDetailPage } from '@/features/menu-reviews/MenuReviewDetailPage';
 import { MenuReviewsPage } from '@/features/menu-reviews/MenuReviewsPage';
 import { ModerationPage } from '@/features/moderation/ModerationPage';
 import { RequireAdminRoute } from '@/features/auth/RequireAdminRoute';
+import { AccessControlsPage } from '@/features/users/AccessControlsPage';
 import { UserDetailPage } from '@/features/users/UserDetailPage';
 import { UsersPage } from '@/features/users/UsersPage';
 
@@ -40,6 +42,14 @@ const shellRoutes = {
         {
           path: '/feedback',
           element: <FeedbackInboxPage />,
+        },
+        {
+          path: '/feedback/:threadId',
+          element: <FeedbackDetailPage />,
+        },
+        {
+          path: '/access-controls',
+          element: <AccessControlsPage />,
         },
         {
           path: '/moderation',

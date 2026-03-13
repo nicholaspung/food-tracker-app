@@ -2954,15 +2954,16 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<Profil
 export async function listFeedback(options?: {
   status?: FeedbackStatusFilter;
 }): Promise<FeedbackRecord[]> {
-  getAuthenticatedUserId();
+  const currentUserId = getAuthenticatedUserId();
 
   const statusFilter = options?.status ?? 'all';
-  const filter =
+  const statusClause =
     statusFilter === 'active'
       ? '(status = "open" || status = "in_progress")'
       : statusFilter === 'all'
         ? undefined
         : `status = "${statusFilter}"`;
+  const filter = statusClause ? `user = "${currentUserId}" && ${statusClause}` : `user = "${currentUserId}"`;
 
   const queryOptions: {
     filter?: string;
@@ -2973,9 +2974,7 @@ export async function listFeedback(options?: {
     expand: 'user',
   };
 
-  if (filter) {
-    queryOptions.filter = filter;
-  }
+  queryOptions.filter = filter;
 
   const records = await pb.collection('feedback').getFullList<FeedbackCollectionRecord>(queryOptions);
 
@@ -2983,13 +2982,18 @@ export async function listFeedback(options?: {
 }
 
 export async function getFeedbackById(feedbackId: string): Promise<FeedbackRecord> {
-  getAuthenticatedUserId();
+  const currentUserId = getAuthenticatedUserId();
 
   const record = await pb.collection('feedback').getOne<FeedbackCollectionRecord>(feedbackId, {
     expand: 'user',
   });
 
-  return mapFeedbackRecord(record);
+  const feedback = mapFeedbackRecord(record);
+  if (feedback.userId !== currentUserId) {
+    throw new Error('This feedback thread could not be found.');
+  }
+
+  return feedback;
 }
 
 export async function createFeedback(input: CreateFeedbackInput): Promise<FeedbackRecord> {
@@ -3052,7 +3056,7 @@ export async function updateFeedbackStatus(
 }
 
 export async function listFeedbackMessages(feedbackId: string): Promise<FeedbackMessageRecord[]> {
-  getAuthenticatedUserId();
+  await getFeedbackById(feedbackId);
 
   const records = await pb.collection('feedback_messages').getFullList<FeedbackMessageCollectionRecord>({
     filter: `feedback = "${feedbackId}"`,
@@ -3066,16 +3070,7 @@ export async function listFeedbackMessages(feedbackId: string): Promise<Feedback
 export async function markFeedbackAsRead(feedbackId: string): Promise<boolean> {
   return trackFeatureMutation('feedback.mark_read', async () => {
     const feedback = await getFeedbackById(feedbackId);
-    const isAdmin = isCurrentUserAdmin();
-
-    if (isAdmin && feedback.adminUnreadCount > 0) {
-      await pb.collection('feedback').update(feedbackId, {
-        admin_unread_count: 0,
-      });
-      return true;
-    }
-
-    if (!isAdmin && feedback.userUnreadCount > 0) {
+    if (feedback.userUnreadCount > 0) {
       await pb.collection('feedback').update(feedbackId, {
         user_unread_count: 0,
       });
@@ -3091,7 +3086,6 @@ export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Prom
     'feedback.message.send',
     async () => {
       const userId = getAuthenticatedUserId();
-      const isAdmin = isCurrentUserAdmin();
       const trimmedMessage = input.message.trim();
 
       if (!trimmedMessage) {
@@ -3104,16 +3098,8 @@ export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Prom
         feedback: input.feedbackId,
         user: userId,
         message: trimmedMessage,
-        is_admin_message: isAdmin,
+        is_admin_message: false,
       });
-
-      if (isAdmin) {
-        await pb.collection('feedback').update(input.feedbackId, {
-          last_message_at: nowIso(),
-          user_unread_count: feedback.userUnreadCount + 1,
-        });
-        return;
-      }
 
       await pb.collection('feedback').update(input.feedbackId, {
         last_message_at: nowIso(),

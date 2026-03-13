@@ -11,6 +11,8 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+const postHogProxyPrefix = "/api/visit-insights"
+
 // RegisterPostHogProxyHandlers registers the PostHog reverse proxy endpoints
 // This allows the frontend to send analytics events through our backend,
 // bypassing ad blockers and improving privacy
@@ -35,43 +37,15 @@ func RegisterPostHogProxyHandlers(e *core.ServeEvent) error {
 
 	// Static assets proxy (for PostHog JavaScript SDK and other static files)
 	// GET /api/visit-insights/static/* -> us-assets.i.posthog.com/static/*
-	e.Router.GET("/api/visit-insights/static/*", func(re *core.RequestEvent) error {
-		// Extract the path after /api/visit-insights
-		path := strings.TrimPrefix(re.Request.URL.Path, "/api/visit-insights")
+	e.Router.GET(postHogProxyPrefix+"/static/*", func(re *core.RequestEvent) error {
+		path := strings.TrimPrefix(re.Request.URL.Path, postHogProxyPrefix)
 		return proxyPostHogRequestGET(re, posthogAssetsHost+path)
 	})
 
-	// API endpoints - support both with and without trailing slashes
-
-	// Event capture endpoint
-	e.Router.POST("/api/visit-insights/capture", func(re *core.RequestEvent) error {
-		return proxyPostHogRequest(re, posthogHost+"/capture/")
-	})
-	e.Router.POST("/api/visit-insights/capture/", func(re *core.RequestEvent) error {
-		return proxyPostHogRequest(re, posthogHost+"/capture/")
-	})
-
-	// Batch events endpoint
-	e.Router.POST("/api/visit-insights/batch", func(re *core.RequestEvent) error {
-		return proxyPostHogRequest(re, posthogHost+"/batch/")
-	})
-	e.Router.POST("/api/visit-insights/batch/", func(re *core.RequestEvent) error {
-		return proxyPostHogRequest(re, posthogHost+"/batch/")
-	})
-
-	// Feature flags decide endpoint (POST and GET)
-	e.Router.POST("/api/visit-insights/decide", func(re *core.RequestEvent) error {
-		return proxyPostHogRequest(re, posthogHost+"/decide/")
-	})
-	e.Router.POST("/api/visit-insights/decide/", func(re *core.RequestEvent) error {
-		return proxyPostHogRequest(re, posthogHost+"/decide/")
-	})
-	e.Router.GET("/api/visit-insights/decide", func(re *core.RequestEvent) error {
-		return proxyPostHogRequestGET(re, posthogHost+"/decide/")
-	})
-	e.Router.GET("/api/visit-insights/decide/", func(re *core.RequestEvent) error {
-		return proxyPostHogRequestGET(re, posthogHost+"/decide/")
-	})
+	// Proxy API endpoints through with their original path so newer SDK routes
+	// such as /flags and /array/<token>/config do not 404 in local dev.
+	registerPostHogMethodProxy(e, http.MethodGet, posthogHost)
+	registerPostHogMethodProxy(e, http.MethodPost, posthogHost)
 
 	log.Printf("[PostHog Proxy] Registered visit-insights proxy endpoints")
 	log.Printf("[PostHog Proxy] - API: %s", posthogHost)
@@ -79,8 +53,31 @@ func RegisterPostHogProxyHandlers(e *core.ServeEvent) error {
 	return nil
 }
 
+func registerPostHogMethodProxy(e *core.ServeEvent, method string, posthogHost string) {
+	handler := func(re *core.RequestEvent) error {
+		path := strings.TrimPrefix(re.Request.URL.Path, postHogProxyPrefix)
+		if path == "" {
+			path = "/"
+		}
+
+		targetURL := posthogHost + path
+		if method == http.MethodGet {
+			return proxyPostHogRequestGET(re, targetURL)
+		}
+
+		return proxyPostHogRequest(re, targetURL)
+	}
+
+	e.Router.Route(method, postHogProxyPrefix, handler)
+	e.Router.Route(method, postHogProxyPrefix+"/{path...}", handler)
+}
+
 // proxyPostHogRequest proxies the request to PostHog and returns the response
 func proxyPostHogRequest(re *core.RequestEvent, targetURL string) error {
+	if re.Request.URL.RawQuery != "" {
+		targetURL += "?" + re.Request.URL.RawQuery
+	}
+
 	// Read request body
 	body, err := io.ReadAll(re.Request.Body)
 	if err != nil {
@@ -99,25 +96,7 @@ func proxyPostHogRequest(re *core.RequestEvent, targetURL string) error {
 		})
 	}
 
-	// Forward important headers
-	proxyReq.Header.Set("Content-Type", "application/json")
-
-	// Forward User-Agent for accurate analytics
-	if ua := re.Request.Header.Get("User-Agent"); ua != "" {
-		proxyReq.Header.Set("User-Agent", ua)
-	}
-
-	// Forward IP information for geolocation
-	if xff := re.Request.Header.Get("X-Forwarded-For"); xff != "" {
-		proxyReq.Header.Set("X-Forwarded-For", xff)
-	} else if realIP := re.Request.Header.Get("X-Real-IP"); realIP != "" {
-		proxyReq.Header.Set("X-Forwarded-For", realIP)
-	}
-
-	// Forward referer for better analytics context
-	if referer := re.Request.Header.Get("Referer"); referer != "" {
-		proxyReq.Header.Set("Referer", referer)
-	}
+	forwardPostHogRequestHeaders(re, proxyReq)
 
 	// Make request to PostHog
 	client := &http.Client{}
@@ -169,22 +148,7 @@ func proxyPostHogRequestGET(re *core.RequestEvent, targetURL string) error {
 		})
 	}
 
-	// Forward important headers for GET requests
-	if ua := re.Request.Header.Get("User-Agent"); ua != "" {
-		proxyReq.Header.Set("User-Agent", ua)
-	}
-
-	// Forward IP information for geolocation
-	if xff := re.Request.Header.Get("X-Forwarded-For"); xff != "" {
-		proxyReq.Header.Set("X-Forwarded-For", xff)
-	} else if realIP := re.Request.Header.Get("X-Real-IP"); realIP != "" {
-		proxyReq.Header.Set("X-Forwarded-For", realIP)
-	}
-
-	// Forward referer for better analytics context
-	if referer := re.Request.Header.Get("Referer"); referer != "" {
-		proxyReq.Header.Set("Referer", referer)
-	}
+	forwardPostHogRequestHeaders(re, proxyReq)
 
 	// Make request to PostHog
 	client := &http.Client{}
@@ -218,4 +182,32 @@ func proxyPostHogRequestGET(re *core.RequestEvent, targetURL string) error {
 	re.Response.Write(respBody)
 
 	return nil
+}
+
+func forwardPostHogRequestHeaders(re *core.RequestEvent, proxyReq *http.Request) {
+	if contentType := re.Request.Header.Get("Content-Type"); contentType != "" {
+		proxyReq.Header.Set("Content-Type", contentType)
+	}
+
+	if accept := re.Request.Header.Get("Accept"); accept != "" {
+		proxyReq.Header.Set("Accept", accept)
+	}
+
+	if ua := re.Request.Header.Get("User-Agent"); ua != "" {
+		proxyReq.Header.Set("User-Agent", ua)
+	}
+
+	if xff := re.Request.Header.Get("X-Forwarded-For"); xff != "" {
+		proxyReq.Header.Set("X-Forwarded-For", xff)
+	} else if realIP := re.Request.Header.Get("X-Real-IP"); realIP != "" {
+		proxyReq.Header.Set("X-Forwarded-For", realIP)
+	}
+
+	if referer := re.Request.Header.Get("Referer"); referer != "" {
+		proxyReq.Header.Set("Referer", referer)
+	}
+
+	if auth := re.Request.Header.Get("Authorization"); auth != "" {
+		proxyReq.Header.Set("Authorization", auth)
+	}
 }

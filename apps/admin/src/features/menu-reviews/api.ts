@@ -35,7 +35,7 @@ export async function listMenuReviewRequests(
   const response = await pb.collection('menu_review_requests').getList<MenuReviewRequest>(1, 50, {
     expand: 'restaurant,requestedBy',
     filter: filters.length > 0 ? filters.join(' && ') : undefined,
-    sort: '-created',
+    sort: '-updated,-created',
   });
 
   return response.items;
@@ -60,8 +60,19 @@ export async function updateMenuReviewRequest(
   requestId: string,
   payload: {
     adminNotes: string;
-    status: 'reviewed' | 'dismissed';
+    status: 'pending' | 'reviewed' | 'dismissed';
   },
 ) {
   return pb.collection('menu_review_requests').update<MenuReviewRequest>(requestId, payload);
+}
+
+export async function updateMenuItem(
+  itemId: string,
+  payload: {
+    name: string;
+    description: string;
+    visibility: 'private' | 'friends' | 'public';
+  },
+) {
+  return pb.collection('menu_items').update<MenuItemRecord>(itemId, payload);
 }

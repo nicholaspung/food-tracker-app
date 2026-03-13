@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import { listFeedbackThreads, type FeedbackStatusFilter } from '@/features/feedback/api';
@@ -78,6 +79,7 @@ export function FeedbackInboxPage() {
                     <th>Status</th>
                     <th>Unread</th>
                     <th>Last Activity</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -95,6 +97,11 @@ export function FeedbackInboxPage() {
                       </td>
                       <td>{thread.admin_unread_count ?? 0}</td>
                       <td>{formatDateTime(thread.last_message_at ?? thread.updated)}</td>
+                      <td>
+                        <Link className="route-link" to={`/feedback/${thread.id}`}>
+                          Open
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -67,6 +67,7 @@ export function identifyObservabilityUser(user: AuthUser): void {
   posthogClient?.identify(user.id, {
     isAdmin: Boolean(user.isAdmin),
     isSubscriber: Boolean(user.isSubscriber),
+    isBetaUser: Boolean(user.isBetaUser),
   });
 }
 

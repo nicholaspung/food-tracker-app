@@ -26,6 +26,7 @@ function readAuthUser(): AdminUser | null {
     name: typeof record.name === 'string' ? record.name : undefined,
     isAdmin: Boolean(record.isAdmin),
     isSubscriber: Boolean(record.isSubscriber),
+    isBetaUser: Boolean(record.isBetaUser),
     created: typeof record.created === 'string' ? record.created : undefined,
     updated: typeof record.updated === 'string' ? record.updated : undefined,
   };

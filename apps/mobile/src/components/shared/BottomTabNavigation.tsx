@@ -46,9 +46,6 @@ export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList
   ],
   Profile: [
     'Profile',
-    'AdminFeatures',
-    'AdminMenuReviews',
-    'AdminMenuReviewDetail',
     'Settings',
     'Feedback',
     'FeedbackDetail',

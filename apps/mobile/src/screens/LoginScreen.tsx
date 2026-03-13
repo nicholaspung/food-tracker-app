@@ -18,6 +18,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   const [password, setPassword] = useState('');
   const { signInWithPassword, isSubmitting, authError } = useAuth();
   const prefilledEmail = route.params?.email?.trim().toLowerCase() ?? '';
+  const signInErrorMessage = authError ? 'Cannot log in. Please try again.' : null;
 
   const styles = StyleSheet.create({
     formContent: {
@@ -33,9 +34,6 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
     secondaryActions: {
       gap: theme.spacing.sm,
       marginTop: theme.spacing.xs,
-    },
-    errorCard: {
-      gap: theme.spacing.xs,
     },
   });
 
@@ -126,18 +124,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
             </Text>
           </Pressable>
 
-          <PageErrorToast errorMessage={authError} title="Sign in failed" />
-
-          {authError ? (
-            <Card style={styles.errorCard} tone="danger">
-              <Text tone="danger" variant="label">
-                Sign-in diagnostics
-              </Text>
-              <Text tone="danger" variant="bodySm">
-                {authError}
-              </Text>
-            </Card>
-          ) : null}
+          <PageErrorToast errorMessage={signInErrorMessage} title="Cannot log in" />
 
           <Button
             disabled={!email.trim() || !password}

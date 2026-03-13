@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 
 import { useAuth } from '@/features/auth/AuthProvider';
+import brandLogo from '../../../../mobile/assets/brand-logo.png';
 
 export function LoginPage() {
   const { isAuthenticated, isLoading, login } = useAuth();
@@ -35,6 +36,17 @@ export function LoginPage() {
       <section className="auth-panel">
         <form className="auth-content" onSubmit={handleSubmit}>
           <div>
+            <div className="auth-brand">
+              <span className="brand-mark">
+                <img alt="" aria-hidden="true" className="brand-mark-image" src={brandLogo} />
+              </span>
+              <div>
+                <p className="eyebrow">Yummy Recs</p>
+                <p className="text-muted" style={{ margin: 0 }}>
+                  Admin
+                </p>
+              </div>
+            </div>
             <p className="eyebrow">Internal access</p>
             <h1 style={{ marginBottom: 8 }}>Sign in to the admin website</h1>
             <p className="text-muted" style={{ margin: 0 }}>
@@ -79,40 +91,6 @@ export function LoginPage() {
             {isSubmitting ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
-      </section>
-
-      <section className="auth-hero">
-        <div className="hero-panel">
-          <div>
-            <p className="eyebrow">Why this app exists</p>
-            <h2 style={{ marginBottom: 12 }}>Built for moderation-first operations</h2>
-            <p className="text-muted" style={{ margin: 0 }}>
-              The scaffold focuses on the admin jobs you described: menu review queues, support
-              triage, user lookup, and moderation surfaces for user-generated uploads.
-            </p>
-          </div>
-
-          <div className="hero-grid">
-            <div className="mini-stat">
-              <strong>Menu integrity</strong>
-              <p className="text-muted">
-                Review flagged menus, inspect generated items, and document moderator decisions.
-              </p>
-            </div>
-            <div className="mini-stat">
-              <strong>Support inbox</strong>
-              <p className="text-muted">
-                Watch open or stalled feedback threads and route follow-up faster.
-              </p>
-            </div>
-            <div className="mini-stat">
-              <strong>User review</strong>
-              <p className="text-muted">
-                Search accounts, inspect recent content, and prepare for broader abuse tooling.
-              </p>
-            </div>
-          </div>
-        </div>
       </section>
     </div>
   );

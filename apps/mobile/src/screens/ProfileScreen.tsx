@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -25,7 +24,6 @@ import {
 import {
   deleteCollectionRecord,
   getAuthRecord,
-  getCollectionCount,
   getProfile,
   listFeedback,
   saveAuthRecord,
@@ -79,9 +77,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const queryClient = useQueryClient();
   const { actualUser, user, signOut } = useAuth();
   const authRecord = getAuthRecord();
-  const isActualAdmin = actualUser?.isAdmin === true;
-  const isAdmin = user?.isAdmin === true;
-  const isSubscriber = user?.isSubscriber === true;
+  const isAdmin = actualUser?.isAdmin === true;
+  const isSubscriber = actualUser?.isSubscriber === true;
+  const isBetaUser = actualUser?.isBetaUser === true;
   const isInitialUser = authRecord?.isInitialUser === true;
 
   const profileQuery = useQuery({
@@ -92,13 +90,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const feedbackQuery = useQuery({
     queryKey: ["feature", "feedback"],
     queryFn: () => listFeedback({ status: "all" }),
-  });
-  const pendingMenuReviewCountQuery = useQuery({
-    enabled: isAdmin,
-    queryKey: ["feature", "admin", "pending-menu-review-count"],
-    queryFn: async (): Promise<number> => {
-      return getCollectionCount("menu_review_requests", 'status = "pending"');
-    },
   });
   const whatsNewSeenVersionQuery = useQuery({
     queryKey: WHATS_NEW_SEEN_QUERY_KEY,
@@ -158,14 +149,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   useEffect(() => {
     void fetchInviteCodes();
   }, [user?.id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (isAdmin) {
-        void pendingMenuReviewCountQuery.refetch();
-      }
-    }, [isAdmin, pendingMenuReviewCountQuery]),
-  );
 
   const accountName = useMemo(() => {
     const profileName = profileQuery.data?.displayName?.trim() ?? "";
@@ -759,13 +742,21 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                   <Text style={styles.detailValue}>{accountCreated}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Account Status</Text>
+                  <Text style={styles.detailLabel}>Membership</Text>
                   <View style={styles.statusRow}>
                     {isAdmin ? (
                       <StatusPill
                         label="Admin"
                         size="md"
                         tone="brand"
+                        variant="solid"
+                      />
+                    ) : null}
+                    {isBetaUser ? (
+                      <StatusPill
+                        label="Beta"
+                        size="md"
+                        tone="warning"
                         variant="solid"
                       />
                     ) : null}
@@ -777,8 +768,8 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                         variant="solid"
                       />
                     ) : null}
-                    {!isAdmin && !isSubscriber ? (
-                      <Text tone="secondary">Free Account</Text>
+                    {!isSubscriber ? (
+                      <Text tone="secondary">Standard Account</Text>
                     ) : null}
                   </View>
                 </View>
@@ -883,46 +874,13 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
             <OptionListRow
               iconName="settings-outline"
+              isLast
               onPress={() => {
                 navigation.navigate("Settings");
               }}
               subtitle="App-level settings and controls"
               title="Settings"
             />
-
-            {isActualAdmin ? (
-              <OptionListRow
-                iconName="shield-checkmark-outline"
-                isLast
-                onPress={() => {
-                  navigation.navigate("AdminFeatures");
-                }}
-                rightAccessory={
-                  isAdmin && (pendingMenuReviewCountQuery.data ?? 0) > 0 ? (
-                    <View style={styles.optionBadge}>
-                      <Text style={styles.optionBadgeText}>
-                        {pendingMenuReviewCountQuery.data}
-                      </Text>
-                    </View>
-                  ) : null
-                }
-                subtitle={
-                  isAdmin
-                    ? "Open admin-only tools"
-                    : "Preview mode is enabled. Open to manage preview settings"
-                }
-                title="Admin Features"
-              />
-            ) : (
-              <OptionListRow
-                chevron={false}
-                iconColor={theme.colors.text.muted}
-                iconName="shield-outline"
-                isLast
-                subtitle="Hidden for non-admin accounts"
-                title="Admin Features"
-              />
-            )}
           </OptionList>
         </Card>
 

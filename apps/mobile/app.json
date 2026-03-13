@@ -8,6 +8,11 @@
     "userInterfaceStyle": "light",
     "jsEngine": "hermes",
     "icon": "./assets/brand-logo.png",
+    "web": {
+      "favicon": "./assets/brand-logo.png",
+      "name": "Yummy Recs",
+      "shortName": "Yummy Recs"
+    },
     "ios": {
       "bundleIdentifier": "com.anonymous.yummy-recs-mobile",
       "infoPlist": {

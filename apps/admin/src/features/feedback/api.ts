@@ -1,5 +1,6 @@
+import { escapeFilterValue } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
-import type { FeedbackThread } from '@/lib/types';
+import type { FeedbackMessage, FeedbackThread } from '@/lib/types';
 
 export type FeedbackStatusFilter = 'active' | 'resolved' | 'closed' | 'all';
 
@@ -18,4 +19,20 @@ export async function listFeedbackThreads(statusFilter: FeedbackStatusFilter) {
   });
 
   return response.items;
+}
+
+export async function getFeedbackThread(threadId: string) {
+  return pb.collection('feedback').getOne<FeedbackThread>(threadId, {
+    expand: 'user',
+  });
+}
+
+export async function listFeedbackMessages(threadId: string) {
+  const escapedThreadId = escapeFilterValue(threadId);
+
+  return pb.collection('feedback_messages').getFullList<FeedbackMessage>({
+    expand: 'user',
+    filter: `feedback = "${escapedThreadId}"`,
+    sort: 'created',
+  });
 }

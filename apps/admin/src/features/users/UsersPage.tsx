@@ -74,7 +74,7 @@ export function UsersPage() {
                   <tr>
                     <th>Email</th>
                     <th>Name</th>
-                    <th>Role</th>
+                    <th>Access</th>
                     <th>Joined</th>
                     <th />
                   </tr>
@@ -85,7 +85,11 @@ export function UsersPage() {
                       <td>{user.email}</td>
                       <td>{user.name?.trim() || 'No display name'}</td>
                       <td>
-                        <span className="tag">{user.isAdmin ? 'admin' : 'user'}</span>
+                        <div className="tag-row">
+                          <span className="tag">{user.isAdmin ? 'admin' : 'user'}</span>
+                          {user.isSubscriber ? <span className="tag">subscriber</span> : null}
+                          {user.isBetaUser ? <span className="tag">beta</span> : null}
+                        </div>
                       </td>
                       <td>{formatDateTime(user.created)}</td>
                       <td>

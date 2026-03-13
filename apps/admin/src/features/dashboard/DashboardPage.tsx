@@ -68,38 +68,57 @@ export function DashboardPage() {
           </section>
 
           <section className="route-grid">
-            <article className="route-card">
-              <p className="eyebrow">Menu moderation</p>
+            <Link className="route-card route-card-link" to="/menu-reviews">
+              <div className="summary-row">
+                <p className="eyebrow">Menu moderation</p>
+                <span aria-hidden="true" className="card-chevron">
+                  &gt;
+                </span>
+              </div>
               <h3>Review menu submissions</h3>
               <p className="text-muted">
                 Work through the current review queue and document admin notes on each request.
               </p>
-              <Link className="route-link" to="/menu-reviews">
-                Open menu review queue
-              </Link>
-            </article>
+            </Link>
 
-            <article className="route-card">
-              <p className="eyebrow">Support</p>
+            <Link className="route-card route-card-link" to="/feedback">
+              <div className="summary-row">
+                <p className="eyebrow">Support</p>
+                <span aria-hidden="true" className="card-chevron">
+                  &gt;
+                </span>
+              </div>
               <h3>Check feedback inbox</h3>
               <p className="text-muted">
                 Triage unresolved support items and identify threads with unread admin work.
               </p>
-              <Link className="route-link" to="/feedback">
-                Open feedback inbox
-              </Link>
-            </article>
+            </Link>
 
-            <article className="route-card">
-              <p className="eyebrow">Trust & safety</p>
+            <Link className="route-card route-card-link" to="/users">
+              <div className="summary-row">
+                <p className="eyebrow">Trust & safety</p>
+                <span aria-hidden="true" className="card-chevron">
+                  &gt;
+                </span>
+              </div>
               <h3>Inspect user content</h3>
               <p className="text-muted">
                 Search accounts, review recent uploads, and prepare future moderation workflows.
               </p>
-              <Link className="route-link" to="/users">
-                Search users
-              </Link>
-            </article>
+            </Link>
+
+            <Link className="route-card route-card-link" to="/access-controls">
+              <div className="summary-row">
+                <p className="eyebrow">Membership</p>
+                <span aria-hidden="true" className="card-chevron">
+                  &gt;
+                </span>
+              </div>
+              <h3>Manage access flags</h3>
+              <p className="text-muted">
+                Grant or revoke subscriber and beta access without leaving the admin workspace.
+              </p>
+            </Link>
           </section>
 
           <section className="detail-grid">
@@ -116,10 +135,15 @@ export function DashboardPage() {
                   </div>
                 ) : (
                   dashboardQuery.data.recentMenuReviews.map((request) => (
-                    <div className="list-item" key={request.id}>
+                    <Link className="list-item linked-list-item" key={request.id} to={`/menu-reviews/${request.id}`}>
                       <div className="summary-row">
                         <strong>{request.expand?.restaurant?.name ?? 'Unknown restaurant'}</strong>
-                        <span className={`status-pill ${request.status}`}>{request.status}</span>
+                        <div className="summary-actions">
+                          <span className={`status-pill ${request.status}`}>{request.status}</span>
+                          <span aria-hidden="true" className="card-chevron">
+                            &gt;
+                          </span>
+                        </div>
                       </div>
                       <span className="text-muted">
                         Requested by {request.expand?.requestedBy?.email ?? request.requestedBy}
@@ -127,10 +151,7 @@ export function DashboardPage() {
                       <span className="text-muted">
                         {request.reason?.trim() || 'No reason supplied.'}
                       </span>
-                      <Link className="route-link" to={`/menu-reviews/${request.id}`}>
-                        Review request
-                      </Link>
-                    </div>
+                    </Link>
                   ))
                 )}
               </div>
@@ -149,10 +170,15 @@ export function DashboardPage() {
                   </div>
                 ) : (
                   dashboardQuery.data.recentFeedback.map((feedback) => (
-                    <div className="list-item" key={feedback.id}>
+                    <Link className="list-item linked-list-item" key={feedback.id} to={`/feedback/${feedback.id}`}>
                       <div className="summary-row">
                         <strong>{feedback.title}</strong>
-                        <span className={`status-pill ${feedback.status}`}>{feedback.status}</span>
+                        <div className="summary-actions">
+                          <span className={`status-pill ${feedback.status}`}>{feedback.status}</span>
+                          <span aria-hidden="true" className="card-chevron">
+                            &gt;
+                          </span>
+                        </div>
                       </div>
                       <span className="text-muted">
                         {feedback.expand?.user?.email ?? feedback.user}
@@ -160,7 +186,7 @@ export function DashboardPage() {
                       <span className="text-muted">
                         Updated {formatDateTime(feedback.updated)}
                       </span>
-                    </div>
+                    </Link>
                   ))
                 )}
               </div>

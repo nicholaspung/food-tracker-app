@@ -19,7 +19,28 @@ ensure_workspace_deps() {
   pnpm install
 }
 
+ensure_port_available() {
+  local port="$1"
+  local name="$2"
+  local process_details=""
+
+  if command -v lsof >/dev/null 2>&1; then
+    process_details="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | tail -n +2 || true)"
+  fi
+
+  if [ -n "$process_details" ]; then
+    echo "Cannot start ${name}: port ${port} is already in use." >&2
+    echo "$process_details" >&2
+    echo "Stop the existing process or free port ${port}, then rerun pnpm dev." >&2
+    return 1
+  fi
+}
+
 cleanup() {
+  if [ "${#BG_PIDS[@]}" -eq 0 ]; then
+    return
+  fi
+
   for pid in "${BG_PIDS[@]}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       pkill -TERM -P "$pid" >/dev/null 2>&1 || true
@@ -42,6 +63,7 @@ start_service() {
 trap cleanup EXIT INT TERM
 
 ensure_workspace_deps
+ensure_port_available 4173 "MARKETING"
 
 start_service "ADMIN" pnpm dev:admin
 start_service "API" pnpm dev:api

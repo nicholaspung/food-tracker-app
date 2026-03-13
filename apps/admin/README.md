@@ -34,6 +34,7 @@ pnpm --filter @food-tracker/admin dev -- --host localhost --port 5173
 - `/menu-reviews`
 - `/menu-reviews/:requestId`
 - `/feedback`
+- `/access-controls`
 - `/moderation`
 - `/users`
 - `/users/:userId`

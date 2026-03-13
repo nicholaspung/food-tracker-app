@@ -45,8 +45,14 @@ jobs:
 
       - name: Health check Beta
         run: |
-          sleep 10
-          curl -f https://beta.app.yummyrecs.com/api/health || exit 1
+          for attempt in {1..10}; do
+            if curl -fsS https://beta.app.yummyrecs.com/api/health > /dev/null; then
+              exit 0
+            fi
+            echo "Waiting for beta API health check (attempt ${attempt}/10)..."
+            sleep 6
+          done
+          exit 1
 
       - name: Beta deployment summary
         if: always()
@@ -93,8 +99,14 @@ jobs:
 
       - name: Health check Production
         run: |
-          sleep 10
-          curl -f https://app.yummyrecs.com/api/health || exit 1
+          for attempt in {1..10}; do
+            if curl -fsS https://app.yummyrecs.com/api/health > /dev/null; then
+              exit 0
+            fi
+            echo "Waiting for production API health check (attempt ${attempt}/10)..."
+            sleep 6
+          done
+          exit 1
 
       - name: Production deployment summary
         if: always()

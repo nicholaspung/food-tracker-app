@@ -1,7 +1,4 @@
 export * from './AccessDeniedScreen';
-export * from './AdminFeaturesScreen';
-export * from './AdminMenuReviewDetailScreen';
-export * from './AdminMenuReviewsScreen';
 export * from './AddRestaurantToListScreen';
 export * from './AddVisitScreen';
 export * from './AboutScreen';

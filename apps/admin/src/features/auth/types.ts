@@ -4,6 +4,7 @@ export interface AdminUser {
   name?: string;
   isAdmin: boolean;
   isSubscriber?: boolean;
+  isBetaUser?: boolean;
   created?: string;
   updated?: string;
 }

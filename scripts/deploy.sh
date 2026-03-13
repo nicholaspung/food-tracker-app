@@ -778,6 +778,33 @@ caddy_site_status_code() {
     fi
 }
 
+pocketbase_domain_health_check() {
+    local domain="$1"
+    local max_attempts="${2:-15}"
+    local attempt=0
+    local status_code="000"
+
+    while [ $attempt -lt $max_attempts ]; do
+        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" \
+            --connect-timeout 3 \
+            --max-time 10 \
+            --resolve "$domain:443:127.0.0.1" \
+            "https://$domain/api/health" || true)
+
+        if [ "$status_code" = "200" ]; then
+            log "PocketBase API is reachable via $domain ✓"
+            return 0
+        fi
+
+        attempt=$((attempt + 1))
+        log "Waiting for PocketBase API via $domain (attempt $attempt/$max_attempts, status=$status_code)..."
+        sleep 2
+    done
+
+    error "Smoke test failed: PocketBase API is not reachable through https://$domain/api/health (last status: $status_code)"
+    return 1
+}
+
 health_check_static_site() {
     local site_key="$1"
     local domain
@@ -866,11 +893,7 @@ smoke_test() {
         fi
     done
 
-    if ! curl -k -f -s -L \
-        --resolve "$POCKETBASE_DOMAIN:80:127.0.0.1" \
-        --resolve "$POCKETBASE_DOMAIN:443:127.0.0.1" \
-        "http://$POCKETBASE_DOMAIN/api/health" > /dev/null; then
-        error "Smoke test failed: PocketBase API is not reachable through $POCKETBASE_DOMAIN/api/health"
+    if ! pocketbase_domain_health_check "$POCKETBASE_DOMAIN"; then
         return 1
     fi
 

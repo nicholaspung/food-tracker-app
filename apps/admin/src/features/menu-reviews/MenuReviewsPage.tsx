@@ -7,7 +7,7 @@ import {
   type MenuReviewStatusFilter,
   type MenuReviewTimeFilter,
 } from '@/features/menu-reviews/api';
-import { formatDateTime } from '@/lib/formatters';
+import { getCreatedUpdatedDisplay } from '@/lib/formatters';
 
 const statusFilters: MenuReviewStatusFilter[] = ['pending', 'reviewed', 'dismissed', 'all'];
 const timeFilters: MenuReviewTimeFilter[] = ['all_time', 'last_7_days', 'last_30_days', 'last_90_days'];
@@ -117,7 +117,7 @@ export function MenuReviewsPage() {
                       <td>
                         <span className={`status-pill ${request.status}`}>{request.status}</span>
                       </td>
-                      <td>{formatDateTime(request.updated)}</td>
+                      <td>{getCreatedUpdatedDisplay(request.created, request.updated).value}</td>
                       <td>
                         <Link className="route-link" to={`/menu-reviews/${request.id}`}>
                           Open

@@ -5,6 +5,7 @@ export interface AuthUser {
   verified: boolean;
   isAdmin?: boolean;
   isSubscriber?: boolean;
+  isBetaUser?: boolean;
 }
 
 export function normalizeAuthUser(record: Record<string, unknown> | null | undefined): AuthUser | null {
@@ -26,5 +27,6 @@ export function normalizeAuthUser(record: Record<string, unknown> | null | undef
     verified: Boolean(record.verified),
     isAdmin: Boolean(record.isAdmin),
     isSubscriber: Boolean(record.isSubscriber),
+    isBetaUser: Boolean(record.isBetaUser),
   };
 }

@@ -1,21 +1,74 @@
 import { pb } from '@/lib/pocketbase';
-import { escapeFilterValue } from '@/lib/formatters';
 import type { AdminUser } from '@/features/auth/types';
 import type { FeedbackThread, FoodItemSummary, NoteSummary, PhotoUpload, VisitSummary } from '@/lib/types';
 
+interface AdminListResponse<T> {
+  items: T[];
+}
+
+function toErrorMessage(error: unknown, fallbackMessage: string) {
+  if (typeof error === 'object' && error !== null) {
+    const responseData = (error as { response?: { message?: string } }).response;
+    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
+      return responseData.message;
+    }
+
+    if (typeof (error as { message?: string }).message === 'string' && (error as { message?: string }).message?.trim()) {
+      return (error as { message: string }).message;
+    }
+  }
+
+  return fallbackMessage;
+}
+
 export async function searchUsers(searchTerm: string) {
-  const trimmed = searchTerm.trim();
-  const filter =
-    trimmed.length > 0
-      ? `id ~ "${escapeFilterValue(trimmed)}" || email ~ "${escapeFilterValue(trimmed)}" || name ~ "${escapeFilterValue(trimmed)}"`
-      : undefined;
+  try {
+    const response = await pb.send<AdminListResponse<AdminUser>>('/api/admin/users', {
+      query: {
+        search: searchTerm.trim(),
+      },
+    });
 
-  const response = await pb.collection('users').getList<AdminUser>(1, 25, {
-    filter,
-    sort: '-created',
-  });
+    return response.items;
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not load users.'));
+  }
+}
 
-  return response.items;
+export async function findUserByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    throw new Error('Email is required.');
+  }
+
+  try {
+    return await pb.send<AdminUser>('/api/admin/users/lookup', {
+      query: {
+        email: normalizedEmail,
+      },
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'No user was found for that email address.'));
+  }
+}
+
+export async function updateUserAccessFlags(input: {
+  userId: string;
+  isSubscriber: boolean;
+  isBetaUser: boolean;
+}) {
+  try {
+    return await pb.send<AdminUser>(`/api/admin/users/${encodeURIComponent(input.userId)}/access`, {
+      method: 'PATCH',
+      body: {
+        isSubscriber: input.isSubscriber,
+        isBetaUser: input.isBetaUser,
+      },
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update user access.'));
+  }
 }
 
 export interface UserModerationProfile {
@@ -28,42 +81,12 @@ export interface UserModerationProfile {
 }
 
 export async function getUserModerationProfile(userId: string): Promise<UserModerationProfile> {
-  const escapedUserId = escapeFilterValue(userId);
-
-  const [user, visits, foodItems, notes, feedback, photos] = await Promise.all([
-    pb.collection('users').getOne<AdminUser>(userId),
-    pb.collection('visits').getList<VisitSummary>(1, 10, {
-      filter: `user = "${escapedUserId}"`,
-      expand: 'restaurant',
-      sort: '-visitDate,-created',
-    }),
-    pb.collection('food_items').getList<FoodItemSummary>(1, 10, {
-      filter: `user = "${escapedUserId}"`,
-      expand: 'visit',
-      sort: '-created',
-    }),
-    pb.collection('notes').getList<NoteSummary>(1, 10, {
-      filter: `user = "${escapedUserId}"`,
-      expand: 'restaurant',
-      sort: '-created',
-    }),
-    pb.collection('feedback').getList<FeedbackThread>(1, 10, {
-      filter: `user = "${escapedUserId}"`,
-      sort: '-updated',
-    }),
-    pb.collection('visit_photos').getList<PhotoUpload>(1, 10, {
-      filter: `user = "${escapedUserId}"`,
-      expand: 'foodItem',
-      sort: '-created',
-    }),
-  ]);
-
-  return {
-    user,
-    recentVisits: visits.items,
-    recentFoodItems: foodItems.items,
-    recentNotes: notes.items,
-    recentFeedback: feedback.items,
-    recentPhotos: photos.items,
-  };
+  try {
+    return await pb.send<UserModerationProfile>(
+      `/api/admin/users/${encodeURIComponent(userId)}/profile`,
+      {},
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not load this user.'));
+  }
 }

@@ -85,8 +85,16 @@ export function UserDetailPage() {
                   <strong>{formatDateTime(profileQuery.data.user.created)}</strong>
                 </div>
                 <div className="summary-row">
-                  <span className="text-muted">Role</span>
-                  <strong>{profileQuery.data.user.isAdmin ? 'Admin' : 'Standard user'}</strong>
+                  <span className="text-muted">Access</span>
+                  <div className="tag-row">
+                    <span className="tag">
+                      {profileQuery.data.user.isAdmin ? 'admin' : 'user'}
+                    </span>
+                    {profileQuery.data.user.isSubscriber ? (
+                      <span className="tag">subscriber</span>
+                    ) : null}
+                    {profileQuery.data.user.isBetaUser ? <span className="tag">beta</span> : null}
+                  </div>
                 </div>
               </div>
 

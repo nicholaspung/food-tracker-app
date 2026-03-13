@@ -41,6 +41,7 @@ func createProfileSecurityUser(t *testing.T, app core.App, isAdmin bool, isSubsc
 	user.Set("name", "Profile Security User")
 	user.Set("isAdmin", isAdmin)
 	user.Set("isSubscriber", isSubscriber)
+	user.Set("isBetaUser", false)
 	user.Set("defaultRestaurantVisibility", "friends")
 	user.Set("defaultVisitVisibility", "friends")
 	user.SetVerified(true)
@@ -198,7 +199,7 @@ func TestUserUpdateRequestSecurityAllowsProfileFieldsForNonAdmin(t *testing.T) {
 	}
 }
 
-func TestUserUpdateRequestSecurityBlocksAdminAndSubscriberFlagsForNonAdmin(t *testing.T) {
+func TestUserUpdateRequestSecurityBlocksPrivilegedFlagsForNonAdmin(t *testing.T) {
 	app := newUserProfileSecurityTestApp(t)
 	user := createProfileSecurityUser(t, app, false, false)
 
@@ -208,12 +209,12 @@ func TestUserUpdateRequestSecurityBlocksAdminAndSubscriberFlagsForNonAdmin(t *te
 		user,
 		user.Id,
 		map[string]any{
-			"isSubscriber": true,
+			"isBetaUser": true,
 		},
 		false,
 	)
 	apiErr := requireAPIErrorStatus(t, err, http.StatusForbidden)
-	if !strings.Contains(strings.ToLower(apiErr.Message), "only admins can modify issubscriber") {
+	if !strings.Contains(strings.ToLower(apiErr.Message), "only admins can modify isbetauser") {
 		t.Fatalf("expected admin-only error message, got %q", apiErr.Message)
 	}
 }
@@ -249,6 +250,7 @@ func TestUserUpdateRequestSecurityAllowsAdminToModifyPrivilegedFields(t *testing
 		adminUser.Id,
 		map[string]any{
 			"isSubscriber": true,
+			"isBetaUser":   true,
 		},
 		true,
 	)
@@ -264,6 +266,9 @@ func TestUserUpdateRequestSecurityAllowsAdminToModifyPrivilegedFields(t *testing
 	if !updatedRecord.GetBool("isSubscriber") {
 		t.Fatalf("expected admin to set isSubscriber=true")
 	}
+	if !updatedRecord.GetBool("isBetaUser") {
+		t.Fatalf("expected admin to set isBetaUser=true")
+	}
 }
 
 func TestUserCreateRequestSecuritySanitizesPrivilegedFlagsForPublicSignup(t *testing.T) {
@@ -278,6 +283,7 @@ func TestUserCreateRequestSecuritySanitizesPrivilegedFlagsForPublicSignup(t *tes
 			"email":                       "new-user@example.com",
 			"isAdmin":                     true,
 			"isSubscriber":                true,
+			"isBetaUser":                  true,
 			"isInitialUser":               true,
 			"defaultVisitVisibility":      "",
 			"defaultRestaurantVisibility": "",
@@ -292,6 +298,9 @@ func TestUserCreateRequestSecuritySanitizesPrivilegedFlagsForPublicSignup(t *tes
 	}
 	if record.GetBool("isSubscriber") {
 		t.Fatalf("expected isSubscriber to be sanitized to false")
+	}
+	if record.GetBool("isBetaUser") {
+		t.Fatalf("expected isBetaUser to be sanitized to false")
 	}
 	if record.GetBool("isInitialUser") {
 		t.Fatalf("expected isInitialUser to be sanitized to false")

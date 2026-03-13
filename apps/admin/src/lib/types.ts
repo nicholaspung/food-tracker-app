@@ -46,6 +46,18 @@ export interface FeedbackThread {
   };
 }
 
+export interface FeedbackMessage {
+  id: string;
+  feedback: string;
+  user: string;
+  message: string;
+  is_admin_message: boolean;
+  created: string;
+  expand?: {
+    user?: AdminUser;
+  };
+}
+
 export interface VisitSummary {
   id: string;
   user: string;

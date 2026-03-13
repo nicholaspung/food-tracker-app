@@ -19,6 +19,7 @@ var selfServiceUserEditableFields = map[string]struct{}{
 var adminOnlyUserFields = map[string]struct{}{
 	"isAdmin":      {},
 	"isSubscriber": {},
+	"isBetaUser":   {},
 }
 
 var userUpdateIgnoredFields = map[string]struct{}{
@@ -47,6 +48,7 @@ func EnforceUserCreateRequestSecurity(e *core.RecordRequestEvent) error {
 	// Never allow public signup payloads to grant privileged flags.
 	e.Record.Set("isAdmin", false)
 	e.Record.Set("isSubscriber", false)
+	e.Record.Set("isBetaUser", false)
 	e.Record.Set("isInitialUser", false)
 
 	if strings.TrimSpace(e.Record.GetString("defaultVisitVisibility")) == "" {

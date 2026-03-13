@@ -1,30 +1,65 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useAuth } from '@/features/auth/AuthProvider';
+import brandLogo from '../../../../mobile/assets/brand-logo.png';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: '⊞' },
   { to: '/menu-reviews', label: 'Menu Reviews', icon: '☰' },
   { to: '/feedback', label: 'Feedback', icon: '✉' },
+  { to: '/access-controls', label: 'Access Controls', icon: '⌘' },
   { to: '/moderation', label: 'Moderation', icon: '⚑' },
   { to: '/users', label: 'Users', icon: '◎' },
 ];
 
+const SIDEBAR_STORAGE_KEY = 'admin-sidebar-collapsed';
+
 export function AdminShell() {
   const { user, logout } = useAuth();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const initials = (user?.name?.trim() || user?.email || 'A')[0].toUpperCase();
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    setIsSidebarCollapsed(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true');
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
+
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
         {/* App identity */}
         <div className="sidebar-header">
-          <span className="brand-mark">🍔</span>
-          <div className="sidebar-brand-text">
-            <span className="sidebar-brand-name">Food Tracker</span>
-            <span className="sidebar-brand-sub">Admin Console</span>
+          <div className="sidebar-brand">
+            <span className="brand-mark">
+              <img alt="" aria-hidden="true" className="brand-mark-image" src={brandLogo} />
+            </span>
+            <div className="sidebar-brand-text">
+              <span className="sidebar-brand-name">Yummy Recs</span>
+              <span className="sidebar-brand-sub">Admin</span>
+            </div>
           </div>
+          <button
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="sidebar-toggle sidebar-toggle-header"
+            onClick={() => setIsSidebarCollapsed((value) => !value)}
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            type="button"
+          >
+            {isSidebarCollapsed ? '›' : '‹'}
+          </button>
         </div>
 
         {/* Nav */}
@@ -34,6 +69,7 @@ export function AdminShell() {
             <NavLink
               key={item.to}
               className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+              title={item.label}
               to={item.to}
             >
               <span className="nav-link-icon">{item.icon}</span>
@@ -50,13 +86,24 @@ export function AdminShell() {
             <span className="sidebar-user-email">{user?.email}</span>
           </div>
           <button
-            className="button ghost"
+            className="button ghost sidebar-logout-button"
             onClick={logout}
-            style={{ padding: '4px 8px', minHeight: 'auto', fontSize: 12, flexShrink: 0 }}
             title="Log out"
             type="button"
           >
             ↩
+          </button>
+        </div>
+
+        <div className="sidebar-mobile-toggle-wrap">
+          <button
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="sidebar-toggle sidebar-toggle-mobile"
+            onClick={() => setIsSidebarCollapsed((value) => !value)}
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            type="button"
+          >
+            {isSidebarCollapsed ? '›' : '‹'}
           </button>
         </div>
       </aside>

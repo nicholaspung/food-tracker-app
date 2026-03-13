@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, StyleSheet, View } from 'react-native';
 import {
   DefaultTheme,
   NavigationContainer,
@@ -9,14 +9,16 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomTabNavigation, type BottomTabRoute } from '../components/shared/BottomTabNavigation';
+import {
+  BottomTabNavigation,
+  getBottomTabRouteForScreen,
+  type BottomTabRoute,
+} from '../components/shared/BottomTabNavigation';
 import { EmptyState } from '../components/shared';
+import { APP_NAME } from '../lib/branding';
 import { useAuth } from '../providers/AuthProvider';
 import { trackObservabilityEvent } from '../observability';
 import {
-  AdminFeaturesScreen,
-  AdminMenuReviewDetailScreen,
-  AdminMenuReviewsScreen,
   AddRestaurantToListScreen,
   AddVisitScreen,
   AboutScreen,
@@ -148,9 +150,6 @@ export type RootStackParamList = {
   About: undefined;
   TermsOfService: undefined;
   PrivacyPolicy: undefined;
-  AdminFeatures: undefined;
-  AdminMenuReviews: undefined;
-  AdminMenuReviewDetail: { requestId: string };
   QRScanner: undefined;
   Settings: undefined;
   Feedback: undefined;
@@ -207,9 +206,6 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'About',
   'TermsOfService',
   'PrivacyPolicy',
-  'AdminFeatures',
-  'AdminMenuReviews',
-  'AdminMenuReviewDetail',
   'Settings',
   'Feedback',
   'FeedbackDetail',
@@ -230,6 +226,37 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'TastingSessionDetail',
 ];
 
+const WEB_TAB_TITLE_BY_ROUTE: Record<BottomTabRoute, string> = {
+  Home: 'Home',
+  AddVisit: 'Add',
+  Friends: 'Friends',
+  Misc: 'More',
+  Profile: 'Profile',
+};
+
+const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string>> = {
+  Onboarding: 'Welcome',
+  Login: 'Login',
+  SignUp: 'Sign Up',
+  ForgotPassword: 'Forgot Password',
+  ResetPassword: 'Reset Password',
+  VerifyEmail: 'Verify Email',
+  VisitShareCustomization: 'Share',
+};
+
+function getWebDocumentTitle(routeName?: keyof RootStackParamList) {
+  if (!routeName) {
+    return APP_NAME;
+  }
+
+  const tabRoute = getBottomTabRouteForScreen(routeName);
+  const screenTitle = tabRoute
+    ? WEB_TAB_TITLE_BY_ROUTE[tabRoute]
+    : (WEB_SCREEN_TITLE_BY_ROUTE[routeName] ?? routeName);
+
+  return `${APP_NAME} - ${screenTitle}`;
+}
+
 function AdminOnlyRouteGuard() {
   return (
     <Screen>
@@ -242,7 +269,7 @@ function AdminOnlyRouteGuard() {
 }
 
 export function RootNavigator() {
-  const { actualUser, status, user } = useAuth();
+  const { status, user } = useAuth();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
@@ -263,6 +290,14 @@ export function RootNavigator() {
       hideSubscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      return;
+    }
+
+    document.title = getWebDocumentTitle(currentRouteName);
+  }, [currentRouteName]);
 
   if (status === 'bootstrapping') {
     return <SplashScreen />;
@@ -422,21 +457,6 @@ export function RootNavigator() {
                 <Stack.Screen
                   component={PrivacyPolicyScreen}
                   name="PrivacyPolicy"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={actualUser?.isAdmin ? AdminFeaturesScreen : AdminOnlyRouteGuard}
-                  name="AdminFeatures"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={user?.isAdmin ? AdminMenuReviewsScreen : AdminOnlyRouteGuard}
-                  name="AdminMenuReviews"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={user?.isAdmin ? AdminMenuReviewDetailScreen : AdminOnlyRouteGuard}
-                  name="AdminMenuReviewDetail"
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen component={QRScannerScreen} name="QRScanner" options={{ headerShown: false }} />
