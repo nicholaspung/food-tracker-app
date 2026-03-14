@@ -10,6 +10,23 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.8',
+    date: '2026-03-13',
+    title: 'Admin Moderation System & Audit Logging',
+    summary:
+      'Behind-the-scenes trust & safety and admin tooling improvements. No user-facing changes in the mobile or web app.',
+    features: [],
+    improvements: [
+      'Admin dashboard now includes a full content moderation queue — admins can claim, review, hide, remove, escalate, or restore visits, quick tracks, photos, and lists.',
+      'Admin feedback inbox now supports claim/release ownership so threads are handled by one admin at a time, with a 24-hour reply deadline that extends automatically when you send a new message.',
+      'Admins can reply directly to feedback threads from the web dashboard.',
+      'Audit log trail records all admin actions (create, update, delete, view) across every collection, with before/after snapshots and actor attribution.',
+      'User detail page in the admin dashboard now shows tabbed views of a user\'s ratings, restaurants, menu items, visits, notes, photos, lists, and bills.',
+      'New migrations add moderation fields to users and content collections, and create a dedicated moderation cases collection.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.7',
     date: '2026-03-13',
     title: 'Admin Tools Move to Web & Account Updates',

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import {
   listMenuReviewRequests,
   type MenuReviewStatusFilter,
@@ -94,40 +95,48 @@ export function MenuReviewsPage() {
               </span>
             </div>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Restaurant</th>
-                    <th>Requested By</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                    <th>Updated</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {reviewsQuery.data.map((request) => (
-                    <tr key={request.id}>
-                      <td>
-                        <strong>{request.expand?.restaurant?.name ?? 'Unknown restaurant'}</strong>
-                      </td>
-                      <td>{request.expand?.requestedBy?.email ?? request.requestedBy}</td>
-                      <td>{request.reason?.trim() || 'No reason supplied.'}</td>
-                      <td>
-                        <span className={`status-pill ${request.status}`}>{request.status}</span>
-                      </td>
-                      <td>{getCreatedUpdatedDisplay(request.created, request.updated).value}</td>
-                      <td>
-                        <Link className="route-link" to={`/menu-reviews/${request.id}`}>
-                          Open
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PaginatedCollection
+              items={reviewsQuery.data}
+              itemsPerPage={20}
+              resetKey={`${statusFilter}:${timeFilter}`}
+            >
+              {(pageRequests) => (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Restaurant</th>
+                        <th>Requested By</th>
+                        <th>Reason</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageRequests.map((request) => (
+                        <tr key={request.id}>
+                          <td>
+                            <strong>{request.expand?.restaurant?.name ?? 'Unknown restaurant'}</strong>
+                          </td>
+                          <td>{request.expand?.requestedBy?.email ?? request.requestedBy}</td>
+                          <td>{request.reason?.trim() || 'No reason supplied.'}</td>
+                          <td>
+                            <span className={`status-pill ${request.status}`}>{request.status}</span>
+                          </td>
+                          <td>{getCreatedUpdatedDisplay(request.created, request.updated).value}</td>
+                          <td>
+                            <Link className="route-link" to={`/menu-reviews/${request.id}`}>
+                              Open
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </PaginatedCollection>
           )}
         </section>
       ) : null}

@@ -1,6 +1,7 @@
 import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom';
 
 import { AdminShell } from '@/components/layout/AdminShell';
+import { AuditTrailPage } from '@/features/audit/AuditTrailPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { Design1Bloomberg } from '@/features/design-previews/Design1Bloomberg';
 import { Design2Linear } from '@/features/design-previews/Design2Linear';
@@ -62,6 +63,10 @@ const shellRoutes = {
         {
           path: '/users/:userId',
           element: <UserDetailPage />,
+        },
+        {
+          path: '/audit-trail',
+          element: <AuditTrailPage />,
         },
       ],
     },

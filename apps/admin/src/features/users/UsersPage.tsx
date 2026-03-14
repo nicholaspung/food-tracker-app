@@ -2,6 +2,7 @@ import { useDeferredValue, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import { searchUsers } from '@/features/users/api';
 import { formatDateTime } from '@/lib/formatters';
 
@@ -68,40 +69,48 @@ export function UsersPage() {
               <span className="text-muted">No users matched your search.</span>
             </div>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Name</th>
-                    <th>Access</th>
-                    <th>Joined</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersQuery.data.map((user) => (
-                    <tr key={user.id}>
-                      <td>{user.email}</td>
-                      <td>{user.name?.trim() || 'No display name'}</td>
-                      <td>
-                        <div className="tag-row">
-                          <span className="tag">{user.isAdmin ? 'admin' : 'user'}</span>
-                          {user.isSubscriber ? <span className="tag">subscriber</span> : null}
-                          {user.isBetaUser ? <span className="tag">beta</span> : null}
-                        </div>
-                      </td>
-                      <td>{formatDateTime(user.created)}</td>
-                      <td>
-                        <Link className="route-link" to={`/users/${user.id}`}>
-                          Inspect
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PaginatedCollection
+              items={usersQuery.data}
+              itemsPerPage={25}
+              resetKey={deferredSearchTerm}
+            >
+              {(pageUsers) => (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>Name</th>
+                        <th>Access</th>
+                        <th>Joined</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageUsers.map((user) => (
+                        <tr key={user.id}>
+                          <td>{user.email}</td>
+                          <td>{user.name?.trim() || 'No display name'}</td>
+                          <td>
+                            <div className="tag-row">
+                              <span className="tag">{user.isAdmin ? 'admin' : 'user'}</span>
+                              {user.isSubscriber ? <span className="tag">subscriber</span> : null}
+                              {user.isBetaUser ? <span className="tag">beta</span> : null}
+                            </div>
+                          </td>
+                          <td>{formatDateTime(user.created)}</td>
+                          <td>
+                            <Link className="route-link" to={`/users/${user.id}`}>
+                              Inspect
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </PaginatedCollection>
           )}
         </section>
       ) : null}

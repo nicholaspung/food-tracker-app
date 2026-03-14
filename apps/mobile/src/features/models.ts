@@ -148,6 +148,8 @@ export interface FeedbackRecord {
   userId: string;
   userName?: string;
   userEmail?: string;
+  assignedAdminId?: string;
+  adminReplyDeadlineAt?: string;
   title: string;
   description: string;
   status: 'open' | 'in_progress' | 'resolved' | 'closed';

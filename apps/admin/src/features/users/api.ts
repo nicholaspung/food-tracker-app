@@ -1,6 +1,21 @@
 import { pb } from '@/lib/pocketbase';
 import type { AdminUser } from '@/features/auth/types';
-import type { FeedbackThread, FoodItemSummary, NoteSummary, PhotoUpload, VisitSummary } from '@/lib/types';
+import type {
+  FeedbackThread,
+  FoodItemSummary,
+  MenuItemRecord,
+  ModerationAction,
+  ModerationAppealState,
+  ModerationCase,
+  ModerationFeedEntry,
+  ModerationReasonCode,
+  ModerationRestaurantList,
+  NoteSummary,
+  PhotoUpload,
+  UserBillSummary,
+  UserRestaurantRecord,
+  VisitSummary,
+} from '@/lib/types';
 
 interface AdminListResponse<T> {
   items: T[];
@@ -78,6 +93,12 @@ export interface UserModerationProfile {
   recentNotes: NoteSummary[];
   recentFeedback: FeedbackThread[];
   recentPhotos: PhotoUpload[];
+  recentRestaurants: UserRestaurantRecord[];
+  recentMenuItems: MenuItemRecord[];
+  recentBills: UserBillSummary[];
+  feedEntries: ModerationFeedEntry[];
+  restaurantLists: ModerationRestaurantList[];
+  moderationCases: ModerationCase[];
 }
 
 export async function getUserModerationProfile(userId: string): Promise<UserModerationProfile> {
@@ -88,5 +109,106 @@ export async function getUserModerationProfile(userId: string): Promise<UserMode
     );
   } catch (error) {
     throw new Error(toErrorMessage(error, 'Could not load this user.'));
+  }
+}
+
+export async function deleteModeratedUserContent(input: {
+  userId: string;
+  contentType: 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'note' | 'photo';
+  recordId: string;
+}) {
+  try {
+    await pb.send(
+      `/api/admin/users/${encodeURIComponent(input.userId)}/content/${encodeURIComponent(input.contentType)}/${encodeURIComponent(input.recordId)}`,
+      {
+        method: 'DELETE',
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not moderate this content.'));
+  }
+}
+
+export async function updateUserModeration(input: {
+  userId: string;
+  action?: ModerationAction | 'restore';
+  moderationState?: AdminUser['moderationState'];
+  contentModerationMode?: AdminUser['contentModerationMode'];
+  moderationNotice?: string;
+  moderationNotes?: string;
+  postingSuspendedUntil?: string;
+  photoSuspendedUntil?: string;
+  warningCount?: number;
+}) {
+  try {
+    return await pb.send<AdminUser>(`/api/admin/users/${encodeURIComponent(input.userId)}/moderation`, {
+      method: 'PATCH',
+      body: input,
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update account moderation.'));
+  }
+}
+
+export async function moderateUserContent(input: {
+  userId: string;
+  contentType: 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'note' | 'photo';
+  recordId: string;
+  action: ModerationAction;
+  reasonCode?: ModerationReasonCode;
+  moderatorNote?: string;
+  userNotice?: string;
+  appealState?: ModerationAppealState;
+}) {
+  try {
+    await pb.send(
+      `/api/admin/users/${encodeURIComponent(input.userId)}/content/${encodeURIComponent(input.contentType)}/${encodeURIComponent(input.recordId)}/moderation`,
+      {
+        method: 'PATCH',
+        body: input,
+      },
+    );
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not update content moderation.'));
+  }
+}
+
+export async function listModerationCases(filters?: {
+  status?: string;
+  userId?: string;
+  assignment?: 'all' | 'mine' | 'unassigned';
+}) {
+  try {
+    const response = await pb.send<AdminListResponse<ModerationCase>>('/api/admin/moderation/cases', {
+      query: {
+        assignment: filters?.assignment && filters.assignment !== 'all' ? filters.assignment : undefined,
+        status: filters?.status && filters.status !== 'all' ? filters.status : undefined,
+        userId: filters?.userId?.trim() || undefined,
+      },
+    });
+
+    return response.items;
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not load moderation cases.'));
+  }
+}
+
+export async function claimModerationCase(caseId: string) {
+  try {
+    await pb.send(`/api/admin/moderation/cases/${encodeURIComponent(caseId)}/claim`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not claim this moderation case.'));
+  }
+}
+
+export async function releaseModerationCase(caseId: string) {
+  try {
+    await pb.send(`/api/admin/moderation/cases/${encodeURIComponent(caseId)}/release`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not release this moderation case.'));
   }
 }

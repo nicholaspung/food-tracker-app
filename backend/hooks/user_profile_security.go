@@ -59,6 +59,14 @@ func EnforceUserCreateRequestSecurity(e *core.RecordRequestEvent) error {
 		e.Record.Set("defaultRestaurantVisibility", "friends")
 	}
 
+	if strings.TrimSpace(e.Record.GetString("moderationState")) == "" {
+		e.Record.Set("moderationState", "active")
+	}
+
+	if strings.TrimSpace(e.Record.GetString("contentModerationMode")) == "" {
+		e.Record.Set("contentModerationMode", "normal")
+	}
+
 	return e.Next()
 }
 
@@ -114,12 +122,16 @@ func EnforceUserUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 }
 
 func changedUserFields(record *core.Record) []string {
+	return changedRecordFields(record, userUpdateIgnoredFields)
+}
+
+func changedRecordFields(record *core.Record, ignoredFields map[string]struct{}) []string {
 	original := record.Original()
 	fields := make([]string, 0, len(record.Collection().Fields))
 
 	for _, collectionField := range record.Collection().Fields {
 		fieldName := collectionField.GetName()
-		if _, ignored := userUpdateIgnoredFields[fieldName]; ignored {
+		if _, ignored := ignoredFields[fieldName]; ignored {
 			continue
 		}
 

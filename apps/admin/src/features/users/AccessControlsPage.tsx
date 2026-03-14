@@ -3,46 +3,99 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { findUserByEmail, updateUserAccessFlags } from '@/features/users/api';
 
+interface LoadedAccessUser {
+  email: string;
+  id: string;
+  isBetaUser: boolean;
+  isSubscriber: boolean;
+}
+
+function renderAccessTags(flags: { isBetaUser: boolean; isSubscriber: boolean }) {
+  const tags = [];
+
+  if (flags.isSubscriber) {
+    tags.push(
+      <span className="tag" key="subscriber">
+        subscriber
+      </span>,
+    );
+  }
+
+  if (flags.isBetaUser) {
+    tags.push(
+      <span className="tag" key="beta">
+        beta
+      </span>,
+    );
+  }
+
+  if (tags.length === 0) {
+    tags.push(
+      <span className="tag" key="none">
+        no access flags
+      </span>,
+    );
+  }
+
+  return tags;
+}
+
 export function AccessControlsPage() {
   const [accessEmail, setAccessEmail] = useState('');
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [isSubscriber, setIsSubscriber] = useState(false);
-  const [isBetaUser, setIsBetaUser] = useState(false);
-  const [selectedUserEmail, setSelectedUserEmail] = useState<string | null>(null);
+  const [loadedUser, setLoadedUser] = useState<LoadedAccessUser | null>(null);
+  const [draftAccess, setDraftAccess] = useState({
+    isBetaUser: false,
+    isSubscriber: false,
+  });
   const [accessError, setAccessError] = useState<string | null>(null);
-  const [accessSuccess, setAccessSuccess] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const lookupMutation = useMutation({
     mutationFn: findUserByEmail,
     onSuccess: (user) => {
-      setSelectedUserId(user.id);
-      setSelectedUserEmail(user.email);
+      const nextLoadedUser = {
+        email: user.email,
+        id: user.id,
+        isBetaUser: user.isBetaUser === true,
+        isSubscriber: user.isSubscriber === true,
+      };
+
+      setLoadedUser(nextLoadedUser);
       setAccessEmail(user.email);
-      setIsSubscriber(user.isSubscriber === true);
-      setIsBetaUser(user.isBetaUser === true);
+      setDraftAccess({
+        isBetaUser: nextLoadedUser.isBetaUser,
+        isSubscriber: nextLoadedUser.isSubscriber,
+      });
       setAccessError(null);
-      setAccessSuccess(`Loaded access controls for ${user.email}.`);
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Could not load user access.';
-      setSelectedUserId(null);
-      setSelectedUserEmail(null);
+      setLoadedUser(null);
+      setDraftAccess({
+        isBetaUser: false,
+        isSubscriber: false,
+      });
       setAccessError(message);
-      setAccessSuccess(null);
     },
   });
 
   const saveMutation = useMutation({
     mutationFn: updateUserAccessFlags,
     onSuccess: async (user) => {
-      setSelectedUserId(user.id);
-      setSelectedUserEmail(user.email);
+      const nextLoadedUser = {
+        email: user.email,
+        id: user.id,
+        isBetaUser: user.isBetaUser === true,
+        isSubscriber: user.isSubscriber === true,
+      };
+
+      setLoadedUser(nextLoadedUser);
       setAccessEmail(user.email);
-      setIsSubscriber(user.isSubscriber === true);
-      setIsBetaUser(user.isBetaUser === true);
+      setDraftAccess({
+        isBetaUser: nextLoadedUser.isBetaUser,
+        isSubscriber: nextLoadedUser.isSubscriber,
+      });
       setAccessError(null);
-      setAccessSuccess(`Saved subscriber and beta access for ${user.email}.`);
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }),
@@ -52,39 +105,64 @@ export function AccessControlsPage() {
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Could not update user access.';
       setAccessError(message);
-      setAccessSuccess(null);
     },
   });
 
   const normalizedAccessEmail = accessEmail.trim().toLowerCase();
+  const hasLoadedUser = loadedUser !== null;
   const isAccessBusy = lookupMutation.isPending || saveMutation.isPending;
+  const isDirty =
+    hasLoadedUser &&
+    (draftAccess.isSubscriber !== loadedUser.isSubscriber ||
+      draftAccess.isBetaUser !== loadedUser.isBetaUser);
+
+  const resetLoadedState = () => {
+    setLoadedUser(null);
+    setDraftAccess({
+      isBetaUser: false,
+      isSubscriber: false,
+    });
+  };
 
   const handleLoadAccess = () => {
     if (!normalizedAccessEmail) {
       setAccessError('Email is required.');
-      setAccessSuccess(null);
       return;
     }
 
     setAccessError(null);
-    setAccessSuccess(null);
     lookupMutation.mutate(normalizedAccessEmail);
   };
 
   const handleSaveAccess = () => {
-    if (!selectedUserId) {
-      setAccessError('Load a user before saving access changes.');
-      setAccessSuccess(null);
+    if (!loadedUser || !isDirty) {
       return;
     }
 
     setAccessError(null);
-    setAccessSuccess(null);
     saveMutation.mutate({
-      userId: selectedUserId,
-      isSubscriber,
-      isBetaUser,
+      userId: loadedUser.id,
+      isSubscriber: draftAccess.isSubscriber,
+      isBetaUser: draftAccess.isBetaUser,
     });
+  };
+
+  const handleReset = () => {
+    if (!loadedUser) {
+      return;
+    }
+
+    setDraftAccess({
+      isBetaUser: loadedUser.isBetaUser,
+      isSubscriber: loadedUser.isSubscriber,
+    });
+    setAccessError(null);
+  };
+
+  const handleClearUser = () => {
+    setAccessEmail('');
+    resetLoadedState();
+    setAccessError(null);
   };
 
   return (
@@ -99,17 +177,26 @@ export function AccessControlsPage() {
       </section>
 
       <section className="panel">
+        <div>
+          <p className="eyebrow">Lookup</p>
+          <h3 style={{ marginBottom: 0 }}>User email</h3>
+        </div>
+
         <div className="field-row access-toolbar">
           <div className="field">
-            <label htmlFor="user-access-email">User email</label>
             <input
               autoCapitalize="none"
               className="input"
               id="user-access-email"
               onChange={(event) => {
-                setAccessEmail(event.target.value);
+                const nextEmail = event.target.value;
+
+                setAccessEmail(nextEmail);
                 setAccessError(null);
-                setAccessSuccess(null);
+
+                if (loadedUser && nextEmail.trim().toLowerCase() !== loadedUser.email.trim().toLowerCase()) {
+                  resetLoadedState();
+                }
               }}
               placeholder="person@example.com"
               type="email"
@@ -122,77 +209,126 @@ export function AccessControlsPage() {
               {lookupMutation.isPending ? 'Loading...' : 'Load access'}
             </button>
             <button
+              className="button ghost"
+              disabled={isAccessBusy || (!hasLoadedUser && !accessEmail.trim())}
+              onClick={handleClearUser}
+              type="button"
+            >
+              Clear user
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {hasLoadedUser ? (
+        <section className="panel">
+          <div>
+            <p className="eyebrow">Flags</p>
+            <h3 style={{ marginBottom: 0 }}>Subscriber and beta access</h3>
+          </div>
+
+          <div className="access-flag-grid">
+            <label className="checkbox-card">
+              <input
+                checked={draftAccess.isSubscriber}
+                onChange={(event) => {
+                  setDraftAccess((current) => ({
+                    ...current,
+                    isSubscriber: event.target.checked,
+                  }));
+                  setAccessError(null);
+                }}
+                type="checkbox"
+              />
+              <div>
+                <strong>Subscriber access</strong>
+                <p className="text-muted">Enables subscriber-only functionality for this account.</p>
+              </div>
+            </label>
+
+            <label className="checkbox-card">
+              <input
+                checked={draftAccess.isBetaUser}
+                onChange={(event) => {
+                  setDraftAccess((current) => ({
+                    ...current,
+                    isBetaUser: event.target.checked,
+                  }));
+                  setAccessError(null);
+                }}
+                type="checkbox"
+              />
+              <div>
+                <strong>Beta access</strong>
+                <p className="text-muted">Enables beta-only functionality for this account.</p>
+              </div>
+            </label>
+          </div>
+        </section>
+      ) : null}
+
+      {hasLoadedUser ? (
+        <section className="panel">
+          <div>
+            <p className="eyebrow">Review</p>
+            <h3 style={{ marginBottom: 0 }}>Current and pending user state</h3>
+          </div>
+
+          <div className="access-state-grid">
+            <div className="list-item">
+              <div className="summary-row">
+                <strong>Current user state</strong>
+                <div className="tag-row">{renderAccessTags(loadedUser)}</div>
+              </div>
+              <span>{loadedUser.email}</span>
+              <span className="text-muted">This is the saved access configuration currently on the account.</span>
+            </div>
+
+            <div className="list-item">
+              <div className="summary-row">
+                <strong>To be saved user state</strong>
+                <div className="tag-row">{renderAccessTags(draftAccess)}</div>
+              </div>
+              <span>{loadedUser.email}</span>
+              <span className="text-muted">
+                {isDirty
+                  ? 'This pending state will be written when you save access.'
+                  : 'No pending changes. Update a toggle to enable saving.'}
+              </span>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {hasLoadedUser ? (
+        <section className="panel">
+          <div>
+            <p className="eyebrow">Actions</p>
+            <h3 style={{ marginBottom: 0 }}>Save or discard changes</h3>
+          </div>
+
+          <div className="button-row access-footer-actions">
+            <button className="button ghost" disabled={isAccessBusy || !isDirty} onClick={handleReset} type="button">
+              Reset
+            </button>
+            <button
               className="button primary"
-              disabled={isAccessBusy}
+              disabled={isAccessBusy || !isDirty}
               onClick={handleSaveAccess}
               type="button"
             >
               {saveMutation.isPending ? 'Saving...' : 'Save access'}
             </button>
           </div>
-        </div>
+        </section>
+      ) : null}
 
-        <div className="access-flag-grid">
-          <label className="checkbox-card">
-            <input
-              checked={isSubscriber}
-              onChange={(event) => {
-                setIsSubscriber(event.target.checked);
-                setAccessError(null);
-                setAccessSuccess(null);
-              }}
-              type="checkbox"
-            />
-            <div>
-              <strong>Subscriber access</strong>
-              <p className="text-muted">Enables subscriber-only functionality for this account.</p>
-            </div>
-          </label>
-
-          <label className="checkbox-card">
-            <input
-              checked={isBetaUser}
-              onChange={(event) => {
-                setIsBetaUser(event.target.checked);
-                setAccessError(null);
-                setAccessSuccess(null);
-              }}
-              type="checkbox"
-            />
-            <div>
-              <strong>Beta access</strong>
-              <p className="text-muted">Enables beta-only functionality for this account.</p>
-            </div>
-          </label>
-        </div>
-
-        {selectedUserEmail ? (
-          <div className="list-item">
-            <div className="summary-row">
-              <strong>{selectedUserEmail}</strong>
-              <div className="tag-row">
-                {isSubscriber ? <span className="tag">subscriber</span> : null}
-                {isBetaUser ? <span className="tag">beta</span> : null}
-              </div>
-            </div>
-            <span className="text-muted">Loaded user access state. Save after changing either flag.</span>
-          </div>
-        ) : null}
-
-        {accessError ? (
-          <div className="state-panel error">
-            <strong>Access update failed</strong>
-            <span className="text-muted">{accessError}</span>
-          </div>
-        ) : null}
-
-        {accessSuccess ? (
-          <div className="state-panel">
-            <strong>Access controls ready</strong>
-            <span className="text-muted">{accessSuccess}</span>
-          </div>
-        ) : null}
-      </section>
+      {accessError ? (
+        <section className="state-panel error">
+          <strong>Access update failed</strong>
+          <span className="text-muted">{accessError}</span>
+        </section>
+      ) : null}
     </>
   );
 }

@@ -3,6 +3,35 @@ import { pb } from '@/lib/pocketbase';
 import type { FeedbackMessage, FeedbackThread } from '@/lib/types';
 
 export type FeedbackStatusFilter = 'active' | 'resolved' | 'closed' | 'all';
+export interface SendAdminFeedbackMessageInput {
+  message: string;
+  threadId: string;
+}
+
+function requireAuthenticatedAdminId() {
+  const userId = pb.authStore.record?.id;
+
+  if (!userId) {
+    throw new Error('You must be signed in as an admin to reply.');
+  }
+
+  return userId;
+}
+
+function toErrorMessage(error: unknown, fallbackMessage: string) {
+  if (typeof error === 'object' && error !== null) {
+    const responseData = (error as { response?: { message?: string } }).response;
+    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
+      return responseData.message;
+    }
+
+    if (typeof (error as { message?: string }).message === 'string' && (error as { message?: string }).message?.trim()) {
+      return (error as { message: string }).message;
+    }
+  }
+
+  return fallbackMessage;
+}
 
 export async function listFeedbackThreads(statusFilter: FeedbackStatusFilter) {
   const filter =
@@ -13,7 +42,7 @@ export async function listFeedbackThreads(statusFilter: FeedbackStatusFilter) {
         : `status = "${statusFilter}"`;
 
   const response = await pb.collection('feedback').getList<FeedbackThread>(1, 50, {
-    expand: 'user',
+    expand: 'user,assigned_admin',
     filter,
     sort: '-last_message_at,-updated',
   });
@@ -23,7 +52,7 @@ export async function listFeedbackThreads(statusFilter: FeedbackStatusFilter) {
 
 export async function getFeedbackThread(threadId: string) {
   return pb.collection('feedback').getOne<FeedbackThread>(threadId, {
-    expand: 'user',
+    expand: 'user,assigned_admin',
   });
 }
 
@@ -35,4 +64,49 @@ export async function listFeedbackMessages(threadId: string) {
     filter: `feedback = "${escapedThreadId}"`,
     sort: 'created',
   });
+}
+
+export async function sendAdminFeedbackMessage(input: SendAdminFeedbackMessageInput) {
+  const trimmedMessage = input.message.trim();
+
+  if (!trimmedMessage) {
+    throw new Error('Reply is required.');
+  }
+
+  requireAuthenticatedAdminId();
+
+  try {
+    await pb.send(`/api/admin/feedback/${encodeURIComponent(input.threadId)}/reply`, {
+      method: 'POST',
+      body: {
+        message: trimmedMessage,
+      },
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not send this reply.'));
+  }
+}
+
+export async function claimFeedbackThread(threadId: string) {
+  requireAuthenticatedAdminId();
+
+  try {
+    await pb.send(`/api/admin/feedback/${encodeURIComponent(threadId)}/claim`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not claim this feedback thread.'));
+  }
+}
+
+export async function releaseFeedbackThread(threadId: string) {
+  requireAuthenticatedAdminId();
+
+  try {
+    await pb.send(`/api/admin/feedback/${encodeURIComponent(threadId)}/release`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, 'Could not release this feedback thread.'));
+  }
 }

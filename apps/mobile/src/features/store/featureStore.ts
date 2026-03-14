@@ -659,6 +659,9 @@ interface FeedbackCollectionUserExpand {
 interface FeedbackCollectionRecord {
   id: string;
   user: string;
+  assigned_admin?: string;
+  assigned_at?: string;
+  admin_reply_deadline_at?: string;
   title: string;
   description: string;
   status: string;
@@ -903,6 +906,8 @@ function mapFeedbackRecord(record: FeedbackCollectionRecord): FeedbackRecord {
     userId: record.user,
     userName: record.expand?.user?.name,
     userEmail: record.expand?.user?.email,
+    assignedAdminId: record.assigned_admin,
+    adminReplyDeadlineAt: record.admin_reply_deadline_at,
     title: record.title,
     description: record.description,
     status: normalizeFeedbackStatus(record.status),
@@ -3101,10 +3106,20 @@ export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Prom
         is_admin_message: false,
       });
 
-      await pb.collection('feedback').update(input.feedbackId, {
+      const feedbackUpdate: Record<string, string | number> = {
         last_message_at: nowIso(),
         admin_unread_count: feedback.adminUnreadCount + 1,
-      });
+      };
+
+      const hasActiveAssignedAdmin =
+        Boolean(feedback.assignedAdminId) &&
+        (!feedback.adminReplyDeadlineAt || new Date(feedback.adminReplyDeadlineAt).getTime() > Date.now());
+
+      if (hasActiveAssignedAdmin) {
+        feedbackUpdate.admin_reply_deadline_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      }
+
+      await pb.collection('feedback').update(input.feedbackId, feedbackUpdate);
     },
     {
       messageLength: input.message.trim().length,

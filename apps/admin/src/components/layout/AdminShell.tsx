@@ -11,6 +11,7 @@ const navItems = [
   { to: '/access-controls', label: 'Access Controls', icon: '⌘' },
   { to: '/moderation', label: 'Moderation', icon: '⚑' },
   { to: '/users', label: 'Users', icon: '◎' },
+  { to: '/audit-trail', label: 'Audit Trail', icon: '≡' },
 ];
 
 const SIDEBAR_STORAGE_KEY = 'admin-sidebar-collapsed';
@@ -58,7 +59,9 @@ export function AdminShell() {
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             type="button"
           >
-            {isSidebarCollapsed ? '›' : '‹'}
+            <span aria-hidden="true" className="sidebar-toggle-icon">
+              {isSidebarCollapsed ? '›' : '‹'}
+            </span>
           </button>
         </div>
 
@@ -103,7 +106,9 @@ export function AdminShell() {
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             type="button"
           >
-            {isSidebarCollapsed ? '›' : '‹'}
+            <span aria-hidden="true" className="sidebar-toggle-icon">
+              {isSidebarCollapsed ? '›' : '‹'}
+            </span>
           </button>
         </div>
       </aside>

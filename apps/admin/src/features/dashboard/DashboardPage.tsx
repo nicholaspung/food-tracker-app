@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import { getDashboardSnapshot } from '@/features/dashboard/api';
 import { formatDateTime } from '@/lib/formatters';
 
@@ -10,23 +11,58 @@ export function DashboardPage() {
     queryFn: getDashboardSnapshot,
   });
 
+  const dashboardCards = dashboardQuery.data
+    ? [
+        {
+          description:
+            'Work through the current review queue and document admin notes on each request.',
+          eyebrow: 'Menu moderation',
+          statusLabel: 'Pending menu reviews',
+          statusValue: dashboardQuery.data.pendingMenuReviews,
+          title: 'Review menu submissions',
+          to: '/menu-reviews',
+        },
+        {
+          description:
+            'Triage unresolved support items and identify threads with unread admin work.',
+          eyebrow: 'Support',
+          statusLabel: 'Active feedback threads',
+          statusValue: dashboardQuery.data.activeFeedbackThreads,
+          title: 'Check feedback inbox',
+          to: '/feedback',
+        },
+        {
+          description:
+            'Search accounts, review recent uploads, and prepare future moderation workflows.',
+          eyebrow: 'Trust & safety',
+          statusLabel: 'Recent photo uploads (7d)',
+          statusValue: dashboardQuery.data.recentPhotoUploads,
+          title: 'Inspect user content',
+          to: '/users',
+        },
+        {
+          description:
+            'Grant or revoke subscriber and beta access without leaving the admin workspace.',
+          eyebrow: 'Membership',
+          statusLabel: 'Total users',
+          statusValue: dashboardQuery.data.totalUsers,
+          title: 'Manage access flags',
+          to: '/access-controls',
+        },
+      ]
+    : [];
+
   return (
     <>
-      <section className="panel">
-        <p className="eyebrow">Queue overview</p>
-        <h2 style={{ marginBottom: 0 }}>Review workload at a glance</h2>
-        <p className="text-muted" style={{ margin: 0 }}>
-          This first pass is tuned for the current backend: menu review requests, feedback threads,
-          uploaded visit photos, and user search.
-        </p>
-      </section>
-
       {dashboardQuery.isLoading ? (
-        <section className="metric-grid">
+        <section className="dashboard-status-grid">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div className="metric-card" key={index}>
+            <div className="route-card" key={index}>
               <p className="text-muted">Loading...</p>
               <div className="metric-value">...</div>
+              <p className="text-muted" style={{ margin: 0 }}>
+                Fetching dashboard status.
+              </p>
             </div>
           ))}
         </section>
@@ -44,81 +80,23 @@ export function DashboardPage() {
 
       {dashboardQuery.data ? (
         <>
-          <section className="metric-grid">
-            <div className="metric-card">
-              <span className="text-muted">Pending menu reviews</span>
-              <div className="metric-value">{dashboardQuery.data.pendingMenuReviews}</div>
-              <span className="text-muted">Flagged menu items waiting for admin action.</span>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Active feedback threads</span>
-              <div className="metric-value">{dashboardQuery.data.activeFeedbackThreads}</div>
-              <span className="text-muted">Open or in-progress support conversations.</span>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Recent photo uploads</span>
-              <div className="metric-value">{dashboardQuery.data.recentPhotoUploads}</div>
-              <span className="text-muted">Uploads created in the last 7 days.</span>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Total users</span>
-              <div className="metric-value">{dashboardQuery.data.totalUsers}</div>
-              <span className="text-muted">Accounts currently addressable from admin search.</span>
-            </div>
-          </section>
-
-          <section className="route-grid">
-            <Link className="route-card route-card-link" to="/menu-reviews">
-              <div className="summary-row">
-                <p className="eyebrow">Menu moderation</p>
-                <span aria-hidden="true" className="card-chevron">
-                  &gt;
-                </span>
-              </div>
-              <h3>Review menu submissions</h3>
-              <p className="text-muted">
-                Work through the current review queue and document admin notes on each request.
-              </p>
-            </Link>
-
-            <Link className="route-card route-card-link" to="/feedback">
-              <div className="summary-row">
-                <p className="eyebrow">Support</p>
-                <span aria-hidden="true" className="card-chevron">
-                  &gt;
-                </span>
-              </div>
-              <h3>Check feedback inbox</h3>
-              <p className="text-muted">
-                Triage unresolved support items and identify threads with unread admin work.
-              </p>
-            </Link>
-
-            <Link className="route-card route-card-link" to="/users">
-              <div className="summary-row">
-                <p className="eyebrow">Trust & safety</p>
-                <span aria-hidden="true" className="card-chevron">
-                  &gt;
-                </span>
-              </div>
-              <h3>Inspect user content</h3>
-              <p className="text-muted">
-                Search accounts, review recent uploads, and prepare future moderation workflows.
-              </p>
-            </Link>
-
-            <Link className="route-card route-card-link" to="/access-controls">
-              <div className="summary-row">
-                <p className="eyebrow">Membership</p>
-                <span aria-hidden="true" className="card-chevron">
-                  &gt;
-                </span>
-              </div>
-              <h3>Manage access flags</h3>
-              <p className="text-muted">
-                Grant or revoke subscriber and beta access without leaving the admin workspace.
-              </p>
-            </Link>
+          <section className="dashboard-status-grid">
+            {dashboardCards.map((card) => (
+              <Link className="route-card route-card-link" key={card.to} to={card.to}>
+                <div className="summary-row">
+                  <p className="eyebrow">{card.eyebrow}</p>
+                  <span aria-hidden="true" className="card-chevron">
+                    &gt;
+                  </span>
+                </div>
+                <h3>{card.title}</h3>
+                <span className="text-muted">{card.statusLabel}</span>
+                <div className="metric-value">{card.statusValue}</div>
+                <p className="text-muted" style={{ margin: 0 }}>
+                  {card.description}
+                </p>
+              </Link>
+            ))}
           </section>
 
           <section className="detail-grid">
@@ -128,33 +106,43 @@ export function DashboardPage() {
                 <h3>Latest requests</h3>
               </div>
 
-              <div className="inline-list">
-                {dashboardQuery.data.recentMenuReviews.length === 0 ? (
-                  <div className="state-panel">
-                    <span className="text-muted">No menu review requests have been created yet.</span>
-                  </div>
-                ) : (
-                  dashboardQuery.data.recentMenuReviews.map((request) => (
-                    <Link className="list-item linked-list-item" key={request.id} to={`/menu-reviews/${request.id}`}>
-                      <div className="summary-row">
-                        <strong>{request.expand?.restaurant?.name ?? 'Unknown restaurant'}</strong>
-                        <div className="summary-actions">
-                          <span className={`status-pill ${request.status}`}>{request.status}</span>
-                          <span aria-hidden="true" className="card-chevron">
-                            &gt;
+              {dashboardQuery.data.recentMenuReviews.length === 0 ? (
+                <div className="state-panel">
+                  <span className="text-muted">No menu review requests have been created yet.</span>
+                </div>
+              ) : (
+                <PaginatedCollection items={dashboardQuery.data.recentMenuReviews} itemsPerPage={6}>
+                  {(pageReviews) => (
+                    <div className="inline-list">
+                      {pageReviews.map((request) => (
+                        <Link className="list-item linked-list-item" key={request.id} to={`/menu-reviews/${request.id}`}>
+                          <div className="summary-row">
+                            <strong>{request.expand?.restaurant?.name ?? 'Unknown restaurant'}</strong>
+                            <div className="summary-actions">
+                              <span className={`status-pill ${request.status}`}>{request.status}</span>
+                              <span aria-hidden="true" className="card-chevron">
+                                &gt;
+                              </span>
+                            </div>
+                          </div>
+                          <div className="tag-row tag-row-start">
+                            {request.expand?.requestedBy?.email ? (
+                              <span className="tag">{request.expand.requestedBy.email}</span>
+                            ) : (
+                              <span className="text-muted">Requester unavailable</span>
+                            )}
+                            <span className="tag">Requested {formatDateTime(request.created)}</span>
+                            <span className="tag">Updated {formatDateTime(request.updated)}</span>
+                          </div>
+                          <span className="text-muted">
+                            {request.reason?.trim() || 'No reason supplied.'}
                           </span>
-                        </div>
-                      </div>
-                      <span className="text-muted">
-                        Requested by {request.expand?.requestedBy?.email ?? request.requestedBy}
-                      </span>
-                      <span className="text-muted">
-                        {request.reason?.trim() || 'No reason supplied.'}
-                      </span>
-                    </Link>
-                  ))
-                )}
-              </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </PaginatedCollection>
+              )}
             </article>
 
             <article className="detail-card">
@@ -163,33 +151,44 @@ export function DashboardPage() {
                 <h3>Support triage</h3>
               </div>
 
-              <div className="summary-list">
-                {dashboardQuery.data.recentFeedback.length === 0 ? (
-                  <div className="state-panel">
-                    <span className="text-muted">No support threads found.</span>
-                  </div>
-                ) : (
-                  dashboardQuery.data.recentFeedback.map((feedback) => (
-                    <Link className="list-item linked-list-item" key={feedback.id} to={`/feedback/${feedback.id}`}>
-                      <div className="summary-row">
-                        <strong>{feedback.title}</strong>
-                        <div className="summary-actions">
-                          <span className={`status-pill ${feedback.status}`}>{feedback.status}</span>
-                          <span aria-hidden="true" className="card-chevron">
-                            &gt;
+              {dashboardQuery.data.recentFeedback.length === 0 ? (
+                <div className="state-panel">
+                  <span className="text-muted">No support threads found.</span>
+                </div>
+              ) : (
+                <PaginatedCollection items={dashboardQuery.data.recentFeedback} itemsPerPage={6}>
+                  {(pageFeedback) => (
+                    <div className="summary-list">
+                      {pageFeedback.map((feedback) => (
+                        <Link className="list-item linked-list-item" key={feedback.id} to={`/feedback/${feedback.id}`}>
+                          <div className="summary-row">
+                            <strong>{feedback.title}</strong>
+                            <div className="summary-actions">
+                              <span className={`status-pill ${feedback.status}`}>{feedback.status}</span>
+                              <span aria-hidden="true" className="card-chevron">
+                                &gt;
+                              </span>
+                            </div>
+                          </div>
+                          <div className="tag-row tag-row-start">
+                            {feedback.expand?.user?.email ? (
+                              <span className="tag">{feedback.expand.user.email}</span>
+                            ) : null}
+                            <span className="tag">
+                              Updated {formatDateTime(feedback.last_message_at ?? feedback.updated)}
+                            </span>
+                          </div>
+                          <span className="text-muted">
+                            {feedback.latestMessage?.message?.trim() ||
+                              feedback.description?.trim() ||
+                              'No comments in this thread yet.'}
                           </span>
-                        </div>
-                      </div>
-                      <span className="text-muted">
-                        {feedback.expand?.user?.email ?? feedback.user}
-                      </span>
-                      <span className="text-muted">
-                        Updated {formatDateTime(feedback.updated)}
-                      </span>
-                    </Link>
-                  ))
-                )}
-              </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </PaginatedCollection>
+              )}
             </article>
           </section>
         </>

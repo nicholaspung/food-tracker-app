@@ -42,11 +42,39 @@ cleanup() {
   fi
 
   for pid in "${BG_PIDS[@]}"; do
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      pkill -TERM -P "$pid" >/dev/null 2>&1 || true
-      kill "$pid" >/dev/null 2>&1 || true
-    fi
+    terminate_process_tree "$pid" TERM
   done
+
+  sleep 1
+
+  for pid in "${BG_PIDS[@]}"; do
+    terminate_process_tree "$pid" KILL
+  done
+}
+
+terminate_process_tree() {
+  local pid="$1"
+  local signal="${2:-TERM}"
+  local children=()
+  local child=""
+
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v pgrep >/dev/null 2>&1; then
+    while IFS= read -r child; do
+      if [ -n "$child" ]; then
+        children+=("$child")
+      fi
+    done < <(pgrep -P "$pid" || true)
+  fi
+
+  for child in "${children[@]}"; do
+    terminate_process_tree "$child" "$signal"
+  done
+
+  kill "-${signal}" "$pid" >/dev/null 2>&1 || true
 }
 
 start_service() {
@@ -76,8 +104,8 @@ echo "  - Admin:        ${FOOD_TRACKER_ADMIN_URL}"
 echo "  - API:          ${FOOD_TRACKER_API_BASE_URL}"
 echo "  - Marketing:    ${FOOD_TRACKER_MARKETING_URL}"
 echo ""
-echo "Starting Expo iOS dev client (interactive mode)..."
-echo "Use Expo terminal shortcuts: r (reload), d (dev menu), j (debugger), ? (help)."
+echo "Starting Expo dev server (interactive mode)..."
+echo "Use Expo terminal shortcuts: r (reload), d (dev menu), i (open iOS), j (debugger), ? (help)."
 echo ""
 
-pnpm dev:app-ios
+pnpm dev:app

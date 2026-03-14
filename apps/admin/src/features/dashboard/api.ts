@@ -1,6 +1,6 @@
 import { pb } from '@/lib/pocketbase';
 import { toPocketBaseDateTime } from '@/lib/formatters';
-import type { FeedbackThread, MenuReviewRequest, PhotoUpload } from '@/lib/types';
+import type { FeedbackMessage, FeedbackThread, MenuReviewRequest, PhotoUpload } from '@/lib/types';
 
 async function countRecords(collectionName: string, filter?: string) {
   const result = await pb.collection(collectionName).getList(1, 1, {
@@ -16,7 +16,11 @@ export interface DashboardSnapshot {
   recentPhotoUploads: number;
   totalUsers: number;
   recentMenuReviews: MenuReviewRequest[];
-  recentFeedback: FeedbackThread[];
+  recentFeedback: Array<
+    FeedbackThread & {
+      latestMessage: FeedbackMessage | null;
+    }
+  >;
 }
 
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
@@ -44,12 +48,27 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     }),
   ]);
 
+  const recentFeedback = await Promise.all(
+    feedbackResponse.items.map(async (thread) => {
+      const latestMessageResponse = await pb.collection('feedback_messages').getList<FeedbackMessage>(1, 1, {
+        expand: 'user',
+        filter: `feedback = "${thread.id}"`,
+        sort: '-created',
+      });
+
+      return {
+        ...thread,
+        latestMessage: latestMessageResponse.items[0] ?? null,
+      };
+    }),
+  );
+
   return {
     pendingMenuReviews,
     activeFeedbackThreads,
     recentPhotoUploads,
     totalUsers,
     recentMenuReviews: menuReviewResponse.items,
-    recentFeedback: feedbackResponse.items,
+    recentFeedback,
   };
 }

@@ -1,12 +1,556 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
+import type { UserModerationProfile } from '@/features/users/api';
 import { getUserModerationProfile } from '@/features/users/api';
-import { formatDateTime } from '@/lib/formatters';
+import { formatDateTime, getCreatedUpdatedDisplay } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
+
+type UserDetailTab =
+  | 'records'
+  | 'feedback'
+  | 'activity'
+  | 'ratings'
+  | 'restaurants'
+  | 'menu-items'
+  | 'visits'
+  | 'notes'
+  | 'photos'
+  | 'lists'
+  | 'bills';
+
+function formatCurrency(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 'Unknown';
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+  }).format(value);
+}
+
+function getActivityTitle(entry: UserModerationProfile['feedEntries'][number]) {
+  if (entry.contentType === 'quick-track') {
+    return entry.itemName?.trim() || entry.restaurantName?.trim() || 'Quick track';
+  }
+
+  return entry.restaurantName?.trim() || 'Visit';
+}
+
+function getActivitySummary(entry: UserModerationProfile['feedEntries'][number]) {
+  if (entry.contentType === 'quick-track') {
+    const ratingText = typeof entry.rating === 'number' ? `Rating ${entry.rating}` : 'Quick track';
+    return `${ratingText} • ${formatDateTime(entry.eventAt)}`;
+  }
+
+  const itemCount = entry.items?.length ?? 0;
+  const itemLabel = itemCount === 1 ? '1 rated item' : `${itemCount} rated items`;
+  return `${itemLabel} • ${formatDateTime(entry.eventAt)}`;
+}
+
+function UserDetailTabPanel({
+  activeTab,
+  onSelectTab,
+  profile,
+}: {
+  activeTab: UserDetailTab;
+  onSelectTab: (tab: UserDetailTab) => void;
+  profile: UserModerationProfile;
+}) {
+  const totalRecordCount =
+    profile.recentFoodItems.length +
+    profile.recentRestaurants.length +
+    profile.recentMenuItems.length +
+    profile.recentVisits.length +
+    profile.recentNotes.length +
+    profile.recentPhotos.length +
+    profile.restaurantLists.length +
+    profile.recentBills.length;
+
+  const overviewCards: Array<{
+    tab: Exclude<UserDetailTab, 'records' | 'feedback' | 'activity'>;
+    label: string;
+    count: number;
+    hint: string;
+  }> = [
+    {
+      tab: 'ratings',
+      label: 'Ratings',
+      count: profile.recentFoodItems.length,
+      hint: profile.recentFoodItems[0]
+        ? `Latest: ${profile.recentFoodItems[0].name} on ${formatDateTime(profile.recentFoodItems[0].created)}`
+        : 'No ratings recorded yet.',
+    },
+    {
+      tab: 'restaurants',
+      label: 'Restaurants',
+      count: profile.recentRestaurants.length,
+      hint: profile.recentRestaurants[0]
+        ? `Latest: ${profile.recentRestaurants[0].name}`
+        : 'No restaurants created yet.',
+    },
+    {
+      tab: 'menu-items',
+      label: 'Menu items',
+      count: profile.recentMenuItems.length,
+      hint: profile.recentMenuItems[0]
+        ? `Latest: ${profile.recentMenuItems[0].name}`
+        : 'No menu items created yet.',
+    },
+    {
+      tab: 'visits',
+      label: 'Visits',
+      count: profile.recentVisits.length,
+      hint: profile.recentVisits[0]
+        ? `Latest: ${formatDateTime(profile.recentVisits[0].visitDate ?? profile.recentVisits[0].created)}`
+        : 'No visits recorded yet.',
+    },
+    {
+      tab: 'notes',
+      label: 'Notes',
+      count: profile.recentNotes.length,
+      hint: profile.recentNotes[0]
+        ? `Latest: ${formatDateTime(profile.recentNotes[0].created)}`
+        : 'No notes recorded yet.',
+    },
+    {
+      tab: 'photos',
+      label: 'Photos',
+      count: profile.recentPhotos.length,
+      hint: profile.recentPhotos[0]
+        ? `Latest: ${formatDateTime(profile.recentPhotos[0].created)}`
+        : 'No photos uploaded yet.',
+    },
+    {
+      tab: 'lists',
+      label: 'Lists',
+      count: profile.restaurantLists.length,
+      hint: profile.restaurantLists[0]
+        ? `Latest: ${profile.restaurantLists[0].name}`
+        : 'No restaurant lists yet.',
+    },
+    {
+      tab: 'bills',
+      label: 'Bills',
+      count: profile.recentBills.length,
+      hint: profile.recentBills[0]
+        ? `Latest: ${profile.recentBills[0].billName}`
+        : 'No bills found for this user.',
+    },
+  ];
+
+  if (activeTab === 'records') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>User-created records</h3>
+          <span className="text-muted">
+            {totalRecordCount} recent records across ratings, restaurants, menu items, visits,
+            notes, photos, lists, and bills.
+          </span>
+        </div>
+
+        <div className="record-overview-grid">
+          {overviewCards.map((card) => (
+            <button
+              className="record-overview-card"
+              key={card.tab}
+              onClick={() => onSelectTab(card.tab)}
+              type="button"
+            >
+              <div className="summary-row">
+                <strong>{card.label}</strong>
+                <span className="tag">{card.count}</span>
+              </div>
+              <span className="text-muted">{card.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === 'feedback') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Recent feedback</h3>
+          <span className="text-muted">
+            {profile.recentFeedback.length} recent feedback threads from this user.
+          </span>
+        </div>
+
+        {profile.recentFeedback.length === 0 ? (
+          <span className="text-muted">No feedback threads for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentFeedback} itemsPerPage={10}>
+            {(pageThreads) => (
+              <div className="inline-list">
+                {pageThreads.map((thread) => (
+                  <div className="list-item" key={thread.id}>
+                    <div className="summary-row">
+                      <strong>{thread.title}</strong>
+                      <span className={`status-pill ${thread.status}`}>{thread.status}</span>
+                    </div>
+                    <span className="text-muted">{thread.description}</span>
+                    <span className="text-muted">Updated {formatDateTime(thread.updated)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'activity') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Activity feed</h3>
+          <span className="text-muted">
+            {profile.feedEntries.length} recent feed entries across visits and quick tracks.
+          </span>
+        </div>
+
+        {profile.feedEntries.length === 0 ? (
+          <span className="text-muted">No recent feed activity for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.feedEntries} itemsPerPage={10}>
+            {(pageEntries) => (
+              <div className="inline-list">
+                {pageEntries.map((entry) => (
+                  <div className="list-item" key={`${entry.contentType}-${entry.id}`}>
+                    <div className="summary-row">
+                      <strong>{getActivityTitle(entry)}</strong>
+                      <div className="tag-row">
+                        <span className="tag">{entry.contentType}</span>
+                        {entry.visibility ? <span className="tag">{entry.visibility}</span> : null}
+                      </div>
+                    </div>
+                    <span className="text-muted">{getActivitySummary(entry)}</span>
+                    {entry.locationText ? <span className="text-muted">{entry.locationText}</span> : null}
+                    {entry.notes ? <span className="text-muted">{entry.notes}</span> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'ratings') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Ratings</h3>
+          <span className="text-muted">
+            {profile.recentFoodItems.length} recent ratings created by this user.
+          </span>
+        </div>
+
+        {profile.recentFoodItems.length === 0 ? (
+          <span className="text-muted">No ratings found for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentFoodItems} itemsPerPage={12}>
+            {(pageItems) => (
+              <div className="inline-list">
+                {pageItems.map((item) => (
+                  <div className="list-item" key={item.id}>
+                    <strong>{item.name}</strong>
+                    <span className="text-muted">
+                      Rating {item.rating} • {formatDateTime(item.created)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'restaurants') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Restaurants</h3>
+          <span className="text-muted">
+            {profile.recentRestaurants.length} restaurants created by this user.
+          </span>
+        </div>
+
+        {profile.recentRestaurants.length === 0 ? (
+          <span className="text-muted">No restaurants created by this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentRestaurants} itemsPerPage={12}>
+            {(pageRestaurants) => (
+              <div className="inline-list">
+                {pageRestaurants.map((restaurant) => (
+                  <div className="list-item" key={restaurant.id}>
+                    <div className="summary-row">
+                      <strong>{restaurant.name}</strong>
+                      {restaurant.visibility ? <span className="tag">{restaurant.visibility}</span> : null}
+                    </div>
+                    <span className="text-muted">{restaurant.location || 'No location provided'}</span>
+                    <span className="text-muted">Created {formatDateTime(restaurant.created)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'menu-items') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Menu items</h3>
+          <span className="text-muted">
+            {profile.recentMenuItems.length} menu items created by this user.
+          </span>
+        </div>
+
+        {profile.recentMenuItems.length === 0 ? (
+          <span className="text-muted">No menu items created by this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentMenuItems} itemsPerPage={12}>
+            {(pageItems) => (
+              <div className="inline-list">
+                {pageItems.map((item) => (
+                  <div className="list-item" key={item.id}>
+                    <div className="summary-row">
+                      <strong>{item.name}</strong>
+                      {item.visibility ? <span className="tag">{item.visibility}</span> : null}
+                    </div>
+                    <span className="text-muted">
+                      {item.restaurantName ?? 'Unknown restaurant'} • {formatDateTime(item.created)}
+                    </span>
+                    {item.description ? <span className="text-muted">{item.description}</span> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'visits') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Visits</h3>
+          <span className="text-muted">
+            {profile.recentVisits.length} recent visits recorded by this user.
+          </span>
+        </div>
+
+        {profile.recentVisits.length === 0 ? (
+          <span className="text-muted">No recent visits found for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentVisits} itemsPerPage={12}>
+            {(pageVisits) => (
+              <div className="inline-list">
+                {pageVisits.map((visit) => (
+                  <div className="list-item" key={visit.id}>
+                    <strong>{visit.expand?.restaurant?.name ?? 'Visit'}</strong>
+                    <span className="text-muted">
+                      {formatDateTime(visit.visitDate ?? visit.created)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'notes') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Notes</h3>
+          <span className="text-muted">
+            {profile.recentNotes.length} recent notes created by this user.
+          </span>
+        </div>
+
+        {profile.recentNotes.length === 0 ? (
+          <span className="text-muted">No recent notes found for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentNotes} itemsPerPage={12}>
+            {(pageNotes) => (
+              <div className="inline-list">
+                {pageNotes.map((note) => (
+                  <div className="list-item" key={note.id}>
+                    <strong>Note</strong>
+                    <span className="text-muted">{note.content}</span>
+                    <span className="text-muted">Created {formatDateTime(note.created)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'photos') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Photos</h3>
+          <span className="text-muted">
+            {profile.recentPhotos.length} recent photos uploaded by this user.
+          </span>
+        </div>
+
+        {profile.recentPhotos.length === 0 ? (
+          <span className="text-muted">No recent photos found for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.recentPhotos} itemsPerPage={8}>
+            {(pagePhotos) => (
+              <div className="inline-list">
+                {pagePhotos.map((photo) => {
+                  const fileName = photo.photo?.trim();
+                  const collectionName = photo.collectionName?.trim() || 'visit_photos';
+                  const photoUrl = fileName
+                    ? pb.files.getURL(
+                        {
+                          id: photo.id,
+                          collectionName,
+                        },
+                        fileName,
+                      )
+                    : null;
+
+                  return (
+                    <div className="list-item" key={photo.id}>
+                      {photoUrl ? <img alt="User upload" className="photo-thumb" src={photoUrl} /> : null}
+                      {!photoUrl ? (
+                        <span className="text-muted">Photo preview unavailable for this upload.</span>
+                      ) : null}
+                      <span className="text-muted">Uploaded {formatDateTime(photo.created)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'lists') {
+    return (
+      <div className="tab-panel">
+        <div className="tab-panel-heading">
+          <h3>Lists</h3>
+          <span className="text-muted">
+            {profile.restaurantLists.length} restaurant lists created by this user.
+          </span>
+        </div>
+
+        {profile.restaurantLists.length === 0 ? (
+          <span className="text-muted">No restaurant lists found for this user.</span>
+        ) : (
+          <PaginatedCollection items={profile.restaurantLists} itemsPerPage={10}>
+            {(pageLists) => (
+              <div className="inline-list">
+                {pageLists.map((list) => {
+                  const activityDisplay = getCreatedUpdatedDisplay(list.created, list.updated, {
+                    createdLabel: 'Created',
+                  });
+
+                  return (
+                    <div className="list-item" key={list.id}>
+                      <div className="summary-row">
+                        <strong>{list.name}</strong>
+                        <div className="tag-row">
+                          <span className="tag">{list.visibility}</span>
+                          {list.isDefault ? <span className="tag">default</span> : null}
+                          {list.isCollaborative ? <span className="tag">collaborative</span> : null}
+                        </div>
+                      </div>
+                      <span className="text-muted">{list.description || 'No description provided.'}</span>
+                      <span className="text-muted">
+                        {list.items.length} items • {activityDisplay.label} {activityDisplay.value}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </PaginatedCollection>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="tab-panel">
+      <div className="tab-panel-heading">
+        <h3>Bills</h3>
+        <span className="text-muted">{profile.recentBills.length} bills tied to this user.</span>
+      </div>
+
+      {profile.recentBills.length === 0 ? (
+        <span className="text-muted">No bills found for this user.</span>
+      ) : (
+        <PaginatedCollection items={profile.recentBills} itemsPerPage={10}>
+          {(pageBills) => (
+            <div className="inline-list">
+              {pageBills.map((bill) => (
+                <div className="list-item" key={bill.id}>
+                  <div className="summary-row">
+                    <strong>{bill.billName}</strong>
+                    <div className="tag-row">
+                      <span className="tag">{bill.status}</span>
+                      <span className="tag">{bill.splitMode}</span>
+                      <span className="tag">{bill.isCreator ? 'creator' : 'participant'}</span>
+                    </div>
+                  </div>
+                  <span className="text-muted">
+                    {formatCurrency(bill.totalAmount)} total • {bill.participantCount} participants •{' '}
+                    {bill.itemCount} items
+                  </span>
+                  {typeof bill.amountOwed === 'number' ? (
+                    <span className="text-muted">
+                      User owes {formatCurrency(bill.amountOwed)}
+                      {bill.paidStatus ? ` • ${bill.paidStatus}` : ''}
+                      {bill.paymentMethod ? ` via ${bill.paymentMethod}` : ''}
+                    </span>
+                  ) : null}
+                  <span className="text-muted">Updated {formatDateTime(bill.updated)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </PaginatedCollection>
+      )}
+    </div>
+  );
+}
 
 export function UserDetailPage() {
   const { userId = '' } = useParams();
+  const [activeTab, setActiveTab] = useState<UserDetailTab>('records');
 
   const profileQuery = useQuery({
     enabled: Boolean(userId),
@@ -51,7 +595,7 @@ export function UserDetailPage() {
               <div className="metric-value">{profileQuery.data.recentVisits.length}</div>
             </div>
             <div className="metric-card">
-              <span className="text-muted">Recent food items</span>
+              <span className="text-muted">Ratings</span>
               <div className="metric-value">{profileQuery.data.recentFoodItems.length}</div>
             </div>
             <div className="metric-card">
@@ -62,10 +606,120 @@ export function UserDetailPage() {
               <span className="text-muted">Recent photos</span>
               <div className="metric-value">{profileQuery.data.recentPhotos.length}</div>
             </div>
+            <div className="metric-card">
+              <span className="text-muted">Restaurants created</span>
+              <div className="metric-value">{profileQuery.data.recentRestaurants.length}</div>
+            </div>
+            <div className="metric-card">
+              <span className="text-muted">Menu items created</span>
+              <div className="metric-value">{profileQuery.data.recentMenuItems.length}</div>
+            </div>
+            <div className="metric-card">
+              <span className="text-muted">Lists</span>
+              <div className="metric-value">{profileQuery.data.restaurantLists.length}</div>
+            </div>
+            <div className="metric-card">
+              <span className="text-muted">Bills</span>
+              <div className="metric-value">{profileQuery.data.recentBills.length}</div>
+            </div>
           </section>
 
-          <section className="detail-grid">
+          <section className="detail-grid user-detail-grid">
             <article className="detail-card">
+              <div>
+                <p className="eyebrow">Activity explorer</p>
+                <h3>Recent feedback and user-created records</h3>
+              </div>
+
+              <div aria-label="User detail tabs" className="tab-bar" role="tablist">
+                {[
+                  {
+                    id: 'records',
+                    label: 'User-created records',
+                    count:
+                      profileQuery.data.recentFoodItems.length +
+                      profileQuery.data.recentRestaurants.length +
+                      profileQuery.data.recentMenuItems.length +
+                      profileQuery.data.recentVisits.length +
+                      profileQuery.data.recentNotes.length +
+                      profileQuery.data.recentPhotos.length +
+                      profileQuery.data.restaurantLists.length +
+                      profileQuery.data.recentBills.length,
+                  },
+                  {
+                    id: 'feedback',
+                    label: 'Recent feedback',
+                    count: profileQuery.data.recentFeedback.length,
+                  },
+                  {
+                    id: 'activity',
+                    label: 'Activity feed',
+                    count: profileQuery.data.feedEntries.length,
+                  },
+                  {
+                    id: 'ratings',
+                    label: 'Ratings',
+                    count: profileQuery.data.recentFoodItems.length,
+                  },
+                  {
+                    id: 'restaurants',
+                    label: 'Restaurants',
+                    count: profileQuery.data.recentRestaurants.length,
+                  },
+                  {
+                    id: 'menu-items',
+                    label: 'Menu items',
+                    count: profileQuery.data.recentMenuItems.length,
+                  },
+                  {
+                    id: 'visits',
+                    label: 'Visits',
+                    count: profileQuery.data.recentVisits.length,
+                  },
+                  {
+                    id: 'notes',
+                    label: 'Notes',
+                    count: profileQuery.data.recentNotes.length,
+                  },
+                  {
+                    id: 'photos',
+                    label: 'Photos',
+                    count: profileQuery.data.recentPhotos.length,
+                  },
+                  {
+                    id: 'lists',
+                    label: 'Lists',
+                    count: profileQuery.data.restaurantLists.length,
+                  },
+                  {
+                    id: 'bills',
+                    label: 'Bills',
+                    count: profileQuery.data.recentBills.length,
+                  },
+                ].map((tab) => (
+                  <button
+                    aria-selected={activeTab === tab.id}
+                    className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as UserDetailTab)}
+                    role="tab"
+                    type="button"
+                  >
+                    {tab.label} ({tab.count})
+                  </button>
+                ))}
+              </div>
+
+              <div className="divider" />
+
+              <UserDetailTabPanel
+                activeTab={activeTab}
+                onSelectTab={setActiveTab}
+                profile={profileQuery.data}
+              />
+            </article>
+
+            <aside className="detail-card user-detail-sidebar">
               <div>
                 <p className="eyebrow">Account snapshot</p>
                 <h3>Identity and support history</h3>
@@ -100,66 +754,50 @@ export function UserDetailPage() {
 
               <div className="divider" />
 
-              <div>
-                <h3 style={{ marginBottom: 12 }}>Recent feedback</h3>
-                <div className="inline-list">
-                  {profileQuery.data.recentFeedback.length === 0 ? (
-                    <span className="text-muted">No feedback threads for this user.</span>
-                  ) : (
-                    profileQuery.data.recentFeedback.map((thread) => (
-                      <div className="list-item" key={thread.id}>
-                        <div className="summary-row">
-                          <strong>{thread.title}</strong>
-                          <span className={`status-pill ${thread.status}`}>{thread.status}</span>
-                        </div>
-                        <span className="text-muted">{thread.description}</span>
-                      </div>
-                    ))
-                  )}
+              <div className="summary-list">
+                <h3 style={{ marginBottom: 0 }}>Activity summary</h3>
+                <div className="summary-row">
+                  <span className="text-muted">Feedback threads</span>
+                  <strong>{profileQuery.data.recentFeedback.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Feed entries</span>
+                  <strong>{profileQuery.data.feedEntries.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Ratings</span>
+                  <strong>{profileQuery.data.recentFoodItems.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Restaurants created</span>
+                  <strong>{profileQuery.data.recentRestaurants.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Menu items created</span>
+                  <strong>{profileQuery.data.recentMenuItems.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Visits</span>
+                  <strong>{profileQuery.data.recentVisits.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Notes</span>
+                  <strong>{profileQuery.data.recentNotes.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Photos</span>
+                  <strong>{profileQuery.data.recentPhotos.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Lists</span>
+                  <strong>{profileQuery.data.restaurantLists.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span className="text-muted">Bills</span>
+                  <strong>{profileQuery.data.recentBills.length}</strong>
                 </div>
               </div>
-            </article>
-
-            <article className="detail-card">
-              <div>
-                <p className="eyebrow">Recent content</p>
-                <h3>User-created records</h3>
-              </div>
-
-              <div className="inline-list">
-                {profileQuery.data.recentFoodItems.map((item) => (
-                  <div className="list-item" key={item.id}>
-                    <strong>{item.name}</strong>
-                    <span className="text-muted">
-                      Rating {item.rating} • {formatDateTime(item.created)}
-                    </span>
-                  </div>
-                ))}
-                {profileQuery.data.recentNotes.map((note) => (
-                  <div className="list-item" key={note.id}>
-                    <strong>Note</strong>
-                    <span className="text-muted">{note.content}</span>
-                  </div>
-                ))}
-                {profileQuery.data.recentPhotos.map((photo) => (
-                  <div className="list-item" key={photo.id}>
-                    {photo.photo ? (
-                      <img
-                        alt="User upload"
-                        className="photo-thumb"
-                        src={pb.files.getURL(photo, photo.photo)}
-                      />
-                    ) : null}
-                    <span className="text-muted">Uploaded {formatDateTime(photo.created)}</span>
-                  </div>
-                ))}
-                {profileQuery.data.recentFoodItems.length === 0 &&
-                profileQuery.data.recentNotes.length === 0 &&
-                profileQuery.data.recentPhotos.length === 0 ? (
-                  <span className="text-muted">No recent content found for this user.</span>
-                ) : null}
-              </div>
-            </article>
+            </aside>
           </section>
         </>
       ) : null}

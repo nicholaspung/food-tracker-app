@@ -19,7 +19,15 @@ export function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
-export function getCreatedUpdatedDisplay(created?: string | null, updated?: string | null) {
+export function getCreatedUpdatedDisplay(
+  created?: string | null,
+  updated?: string | null,
+  options?: {
+    createdLabel?: string;
+  },
+) {
+  const createdLabel = options?.createdLabel ?? 'Submitted';
+
   if (created && updated && created !== updated) {
     return {
       label: 'Updated',
@@ -28,7 +36,7 @@ export function getCreatedUpdatedDisplay(created?: string | null, updated?: stri
   }
 
   return {
-    label: 'Submitted',
+    label: createdLabel,
     value: formatDateTime(created ?? updated),
   };
 }

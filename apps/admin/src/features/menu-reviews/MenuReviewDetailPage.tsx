@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { PaginatedCollection } from '@/components/shared/PaginatedCollection';
 import {
   getMenuReviewRequest,
   listRestaurantMenuItems,
@@ -37,6 +38,9 @@ export function MenuReviewDetailPage() {
     queryFn: () => listRestaurantMenuItems(requestQuery.data?.restaurant ?? ''),
   });
 
+  const request = requestQuery.data;
+  const canEditMenuItems = request?.status === 'pending';
+
   const actionMutation = useMutation({
     mutationFn: async (status: 'pending' | 'reviewed' | 'dismissed') => {
       return updateMenuReviewRequest(requestId, {
@@ -61,6 +65,10 @@ export function MenuReviewDetailPage() {
 
   const menuItemMutation = useMutation({
     mutationFn: async () => {
+      if (request?.status !== 'pending') {
+        throw new Error('Only pending menu review requests can edit menu items.');
+      }
+
       if (!editingItemId) {
         throw new Error('Select a menu item to edit.');
       }
@@ -84,22 +92,35 @@ export function MenuReviewDetailPage() {
     },
   });
 
-  const request = requestQuery.data;
   const activityDisplay = getCreatedUpdatedDisplay(request?.created, request?.updated);
-  const primaryAction =
+  const requestActions =
     request?.status === 'reviewed'
-      ? { label: 'Mark unreviewed', status: 'pending' as const, className: 'button reverse' }
-      : { label: 'Mark reviewed', status: 'reviewed' as const, className: 'button primary' };
-  const secondaryAction =
-    request?.status === 'dismissed'
-      ? { label: 'Reinstate request', status: 'pending' as const, className: 'button reverse' }
-      : { label: 'Dismiss request', status: 'dismissed' as const, className: 'button warn' };
+      ? [{ label: 'Mark unreviewed', status: 'pending' as const, className: 'button reverse' }]
+      : request?.status === 'dismissed'
+        ? [{ label: 'Reinstate request', status: 'pending' as const, className: 'button reverse' }]
+        : [
+            { label: 'Mark reviewed', status: 'reviewed' as const, className: 'button primary' },
+            { label: 'Dismiss request', status: 'dismissed' as const, className: 'button warn' },
+          ];
 
   useEffect(() => {
     setAdminNotes(request?.adminNotes ?? '');
   }, [request?.adminNotes]);
 
+  useEffect(() => {
+    if (canEditMenuItems) {
+      return;
+    }
+
+    setEditingItemId(null);
+    setMenuItemError(null);
+  }, [canEditMenuItems]);
+
   const handleStartEditingMenuItem = (item: MenuItemRecord) => {
+    if (!canEditMenuItems) {
+      return;
+    }
+
     setEditingItemId(item.id);
     setDraftName(item.name);
     setDraftDescription(item.description?.trim() ?? '');
@@ -189,22 +210,17 @@ export function MenuReviewDetailPage() {
             ) : null}
 
             <div className="button-row">
-              <button
-                className={primaryAction.className}
-                disabled={actionMutation.isPending}
-                onClick={() => actionMutation.mutate(primaryAction.status)}
-                type="button"
-              >
-                {actionMutation.isPending ? 'Saving...' : primaryAction.label}
-              </button>
-              <button
-                className={secondaryAction.className}
-                disabled={actionMutation.isPending}
-                onClick={() => actionMutation.mutate(secondaryAction.status)}
-                type="button"
-              >
-                {secondaryAction.label}
-              </button>
+              {requestActions.map((action) => (
+                <button
+                  className={action.className}
+                  disabled={actionMutation.isPending}
+                  key={action.label}
+                  onClick={() => actionMutation.mutate(action.status)}
+                  type="button"
+                >
+                  {actionMutation.isPending ? 'Saving...' : action.label}
+                </button>
+              ))}
             </div>
           </article>
 
@@ -212,6 +228,11 @@ export function MenuReviewDetailPage() {
             <div>
               <p className="eyebrow">Menu items</p>
               <h3>Current restaurant menu</h3>
+              {!canEditMenuItems ? (
+                <p className="text-muted">
+                  Menu items are read-only after a review request is reviewed or dismissed.
+                </p>
+              ) : null}
             </div>
 
             {menuItemsQuery.isLoading ? (
@@ -235,97 +256,105 @@ export function MenuReviewDetailPage() {
               </div>
             ) : null}
 
-            <div className="inline-list">
-              {menuItemsQuery.data?.map((item) => (
-                <div className="list-item" key={item.id}>
-                  <div className="summary-row">
-                    <strong>{item.name}</strong>
-                    <div className="summary-actions">
-                      <span className="tag">{item.visibility ?? 'friends'}</span>
-                      {editingItemId === item.id ? null : (
-                        <button
-                          className="button ghost"
-                          onClick={() => handleStartEditingMenuItem(item)}
-                          type="button"
-                        >
-                          Edit
-                        </button>
-                      )}
+            <PaginatedCollection
+              items={menuItemsQuery.data ?? []}
+              itemsPerPage={12}
+              resetKey={requestQuery.data?.restaurant ?? requestId}
+            >
+              {(pageItems) => (
+                <div className="inline-list">
+                  {pageItems.map((item) => (
+                    <div className="list-item" key={item.id}>
+                      <div className="summary-row">
+                        <strong>{item.name}</strong>
+                        <div className="summary-actions">
+                          <span className="tag">{item.visibility ?? 'friends'}</span>
+                          {canEditMenuItems && editingItemId !== item.id ? (
+                            <button
+                              className="button ghost"
+                              onClick={() => handleStartEditingMenuItem(item)}
+                              type="button"
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <span className="text-muted">{item.description?.trim() || 'No description.'}</span>
+
+                      {canEditMenuItems && editingItemId === item.id ? (
+                        <div className="menu-item-editor">
+                          <div className="field">
+                            <label htmlFor={`menu-item-name-${item.id}`}>Name</label>
+                            <input
+                              className="input"
+                              id={`menu-item-name-${item.id}`}
+                              onChange={(event) => {
+                                setDraftName(event.target.value);
+                                setMenuItemError(null);
+                              }}
+                              value={draftName}
+                            />
+                          </div>
+
+                          <div className="field">
+                            <label htmlFor={`menu-item-description-${item.id}`}>Description</label>
+                            <textarea
+                              className="textarea menu-item-textarea"
+                              id={`menu-item-description-${item.id}`}
+                              onChange={(event) => {
+                                setDraftDescription(event.target.value);
+                                setMenuItemError(null);
+                              }}
+                              placeholder="Optional description"
+                              value={draftDescription}
+                            />
+                          </div>
+
+                          <div className="field">
+                            <label htmlFor={`menu-item-visibility-${item.id}`}>Visibility</label>
+                            <select
+                              className="input"
+                              id={`menu-item-visibility-${item.id}`}
+                              onChange={(event) => {
+                                setDraftVisibility(event.target.value as MenuItemRecord['visibility']);
+                                setMenuItemError(null);
+                              }}
+                              value={draftVisibility ?? 'friends'}
+                            >
+                              {visibilityOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="button-row">
+                            <button
+                              className="button primary"
+                              disabled={menuItemMutation.isPending || draftName.trim().length === 0}
+                              onClick={() => menuItemMutation.mutate()}
+                              type="button"
+                            >
+                              {menuItemMutation.isPending ? 'Saving...' : 'Save menu item'}
+                            </button>
+                            <button
+                              className="button ghost"
+                              disabled={menuItemMutation.isPending}
+                              onClick={handleCancelEditingMenuItem}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                  <span className="text-muted">{item.description?.trim() || 'No description.'}</span>
-
-                  {editingItemId === item.id ? (
-                    <div className="menu-item-editor">
-                      <div className="field">
-                        <label htmlFor={`menu-item-name-${item.id}`}>Name</label>
-                        <input
-                          className="input"
-                          id={`menu-item-name-${item.id}`}
-                          onChange={(event) => {
-                            setDraftName(event.target.value);
-                            setMenuItemError(null);
-                          }}
-                          value={draftName}
-                        />
-                      </div>
-
-                      <div className="field">
-                        <label htmlFor={`menu-item-description-${item.id}`}>Description</label>
-                        <textarea
-                          className="textarea menu-item-textarea"
-                          id={`menu-item-description-${item.id}`}
-                          onChange={(event) => {
-                            setDraftDescription(event.target.value);
-                            setMenuItemError(null);
-                          }}
-                          placeholder="Optional description"
-                          value={draftDescription}
-                        />
-                      </div>
-
-                      <div className="field">
-                        <label htmlFor={`menu-item-visibility-${item.id}`}>Visibility</label>
-                        <select
-                          className="input"
-                          id={`menu-item-visibility-${item.id}`}
-                          onChange={(event) => {
-                            setDraftVisibility(event.target.value as MenuItemRecord['visibility']);
-                            setMenuItemError(null);
-                          }}
-                          value={draftVisibility ?? 'friends'}
-                        >
-                          {visibilityOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="button-row">
-                        <button
-                          className="button primary"
-                          disabled={menuItemMutation.isPending || draftName.trim().length === 0}
-                          onClick={() => menuItemMutation.mutate()}
-                          type="button"
-                        >
-                          {menuItemMutation.isPending ? 'Saving...' : 'Save menu item'}
-                        </button>
-                        <button
-                          className="button ghost"
-                          disabled={menuItemMutation.isPending}
-                          onClick={handleCancelEditingMenuItem}
-                          type="button"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </PaginatedCollection>
           </article>
         </section>
       ) : null}

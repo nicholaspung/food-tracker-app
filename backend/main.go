@@ -76,6 +76,8 @@ func main() {
 		// Register all API handlers
 		handlers.RegisterInviteCodeHandlers(se, app)
 		handlers.RegisterUserHandlers(se, app)
+		handlers.RegisterModerationHandlers(se, app)
+		handlers.RegisterFeedbackHandlers(se, app)
 		handlers.RegisterUsageLimitHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)
@@ -141,6 +143,14 @@ func main() {
 
 		if strings.TrimSpace(e.Record.GetString("defaultRestaurantVisibility")) == "" {
 			e.Record.Set("defaultRestaurantVisibility", "friends")
+		}
+
+		if strings.TrimSpace(e.Record.GetString("moderationState")) == "" {
+			e.Record.Set("moderationState", "active")
+		}
+
+		if strings.TrimSpace(e.Record.GetString("contentModerationMode")) == "" {
+			e.Record.Set("contentModerationMode", "normal")
 		}
 
 		return e.Next()
@@ -283,6 +293,9 @@ func main() {
 
 	hooks.RegisterUsageLimitHooks(app)
 	hooks.RegisterUserProfileSecurityHooks(app)
+	hooks.RegisterFeedbackSecurityHooks(app)
+	hooks.RegisterModerationHooks(app)
+	hooks.RegisterAuditHooks(app)
 
 	// Hook to delete unused invite codes before user deletion
 	app.OnRecordDelete("users").BindFunc(func(e *core.RecordEvent) error {

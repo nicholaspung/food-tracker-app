@@ -6,6 +6,7 @@
   "description": "Mobile tracker application with React frontend and Go backend",
   "scripts": {
     "dev": "bash scripts/dev.sh",
+    "dev:app": "EXPO_NO_DOTENV=1 pnpm --filter @food-tracker/mobile start -- --dev-client --web --localhost",
     "dev:app-ios": "EXPO_NO_DOTENV=1 pnpm --filter @food-tracker/mobile start -- --dev-client --ios --web --localhost",
     "dev:admin": "pnpm --filter @food-tracker/admin dev -- --host localhost --port 5173",
     "dev:api": "cd backend && go run . serve",
