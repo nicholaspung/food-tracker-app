@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '0.9.9',
+    date: '2026-03-16',
+    title: 'Dev Tooling & Build Script Improvements',
+    summary:
+      'Behind-the-scenes developer tooling improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Marketing site dev server replaced with a Node.js script using browser-sync and chokidar — source changes now trigger an automatic rebuild and browser reload without restarting the server.',
+      'Dev script cleanup handler now runs only once and handles HUP signals, preventing double-cleanup on exit.',
+      'Service log output correctly separates stdout and stderr so each stream is independently prefixed and routed.',
+      'Process tree termination handles empty child arrays safely, fixing a potential crash on cleanup.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.8',
     date: '2026-03-13',
     title: 'Admin Moderation System & Audit Logging',

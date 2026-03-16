@@ -10,7 +10,7 @@
     "dev:app-ios": "EXPO_NO_DOTENV=1 pnpm --filter @food-tracker/mobile start -- --dev-client --ios --web --localhost",
     "dev:admin": "pnpm --filter @food-tracker/admin dev -- --host localhost --port 5173",
     "dev:api": "cd backend && go run . serve",
-    "dev:marketing": "APP_OPEN_URL=\"${APP_OPEN_URL:-http://localhost:8081/}\" bash scripts/prepare-marketing.sh apps/marketing/dist apps/marketing/.dev-dist && python3 -m http.server 4173 --directory apps/marketing/.dev-dist",
+    "dev:marketing": "node scripts/dev-marketing.mjs",
     "dev:web": "concurrently \"pnpm dev:admin\" \"pnpm dev:api\"",
     "frontend": "pnpm dev:admin",
     "admin": "pnpm dev:admin",
@@ -39,6 +39,8 @@
     "mobile:test": "pnpm --filter @food-tracker/mobile test"
   },
   "devDependencies": {
+    "browser-sync": "^3.0.3",
+    "chokidar": "^4.0.3",
     "concurrently": "^8.2.2",
     "start-server-and-test": "^2.1.2"
   },

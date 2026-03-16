@@ -9,6 +9,7 @@ source "$ROOT_DIR/scripts/app-env.sh"
 load_food_tracker_env local
 
 declare -a BG_PIDS=()
+cleanup_ran=0
 
 ensure_workspace_deps() {
   if [ -x "apps/admin/node_modules/.bin/vite" ] && [ -x "apps/mobile/node_modules/.bin/expo" ]; then
@@ -37,6 +38,12 @@ ensure_port_available() {
 }
 
 cleanup() {
+  if [ "$cleanup_ran" -eq 1 ]; then
+    return
+  fi
+
+  cleanup_ran=1
+
   if [ "${#BG_PIDS[@]}" -eq 0 ]; then
     return
   fi
@@ -55,7 +62,7 @@ cleanup() {
 terminate_process_tree() {
   local pid="$1"
   local signal="${2:-TERM}"
-  local children=()
+  local -a children=()
   local child=""
 
   if ! kill -0 "$pid" >/dev/null 2>&1; then
@@ -70,7 +77,11 @@ terminate_process_tree() {
     done < <(pgrep -P "$pid" || true)
   fi
 
-  for child in "${children[@]}"; do
+  for child in "${children[@]-}"; do
+    if [ -z "$child" ]; then
+      continue
+    fi
+
     terminate_process_tree "$child" "$signal"
   done
 
@@ -81,14 +92,14 @@ start_service() {
   local name="$1"
   shift
 
-  (
-    "$@" 2>&1 | sed -u "s/^/[${name}] /"
-  ) &
+  "$@" \
+    > >(sed -u "s/^/[${name}] /") \
+    2> >(sed -u "s/^/[${name}] /" >&2) &
 
   BG_PIDS+=("$!")
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 ensure_workspace_deps
 ensure_port_available 4173 "MARKETING"
