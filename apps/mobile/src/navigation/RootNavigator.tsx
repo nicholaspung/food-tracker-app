@@ -32,6 +32,7 @@ import {
   CreateVisitScreen,
   EditRestaurantListScreen,
   EditQuickTrackScreen,
+  CreateFeedbackScreen,
   EditVisitScreen,
   FeedbackScreen,
   FeedbackDetailScreen,
@@ -153,6 +154,7 @@ export type RootStackParamList = {
   QRScanner: undefined;
   Settings: undefined;
   Feedback: undefined;
+  CreateFeedback: undefined;
   FeedbackDetail: { feedbackId: string };
   WhatsNew: undefined;
   Misc: undefined;
@@ -208,6 +210,7 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'PrivacyPolicy',
   'Settings',
   'Feedback',
+  'CreateFeedback',
   'FeedbackDetail',
   'WhatsNew',
   'Misc',
@@ -241,6 +244,7 @@ const WEB_SCREEN_TITLE_BY_ROUTE: Partial<Record<keyof RootStackParamList, string
   ForgotPassword: 'Forgot Password',
   ResetPassword: 'Reset Password',
   VerifyEmail: 'Verify Email',
+  CreateFeedback: 'New Feedback',
   VisitShareCustomization: 'Share',
 };
 
@@ -462,6 +466,11 @@ export function RootNavigator() {
                 <Stack.Screen component={QRScannerScreen} name="QRScanner" options={{ headerShown: false }} />
                 <Stack.Screen component={SettingsScreen} name="Settings" options={{ headerShown: false }} />
                 <Stack.Screen component={FeedbackScreen} name="Feedback" options={{ headerShown: false }} />
+                <Stack.Screen
+                  component={CreateFeedbackScreen}
+                  name="CreateFeedback"
+                  options={{ headerShown: false }}
+                />
                 <Stack.Screen
                   component={FeedbackDetailScreen}
                   name="FeedbackDetail"

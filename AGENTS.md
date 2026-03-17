@@ -39,6 +39,7 @@
 
 - Use primitives from `/Users/developer/programming/food-tracker-app/apps/mobile/src/ui` and shared components from `/Users/developer/programming/food-tracker-app/apps/mobile/src/components/shared`.
 - Keep styling theme-driven via `useTheme()` and token values from `/Users/developer/programming/food-tracker-app/apps/mobile/src/theme`.
+- Default section/form containers to white surface backgrounds. For shared `Card` usage, prefer the default tone for standard sections and only use `tone="muted"` when a tinted/emphasized container is intentionally needed.
 - Do not add raw hex color literals in feature code; ESLint enforces token usage outside `/Users/developer/programming/food-tracker-app/apps/mobile/src/theme/tokens.ts`.
 - Keep visibility/status semantics on dedicated components (for example `VisibilityOptionSelector`, `StatusPill`, `VisibilityBadge`) instead of ad-hoc badges.
 
@@ -103,6 +104,7 @@
 
 - Scaffold choice matches screen type, or legacy deviation is intentional and documented in the PR/summary.
 - No new raw color literals were introduced outside theme tokens.
+- Standard section/form containers still use white surface backgrounds unless a tinted treatment is intentionally required.
 - Query keys follow `['feature', ...]` and invalidation targets are present after mutations.
 - No new direct `pb.collection(...)` calls were introduced in `apps/mobile/src/screens`.
 - Offline-sensitive writes use outbox queueing patterns (or existing queue fallback with documented gap) for user-authored mutation domains.

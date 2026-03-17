@@ -9,42 +9,47 @@ const PRIVACY_SECTIONS = [
   {
     title: 'Information We Collect',
     body:
-      'Yummy Recs collects account details, profile settings, food activity such as notes, ratings, visits, quick tracks, lists, bills, feedback, friend connections, and photos you choose to upload.',
+      'We collect information you provide directly, including account details like your email address, display name, login credentials, and profile preferences, plus the content you create in the service such as ratings, notes, visit history, quick tracks, restaurant lists, feedback messages, friend connections, invitations, and photos you choose to upload.',
   },
   {
-    title: 'Permissions and Device Access',
+    title: 'Device Data and Permissions',
     body:
-      'The app may request camera, photo library, and location access when you use features that need them, such as scanning QR codes, uploading food photos, saving processed images, or attaching your current location.',
+      'Some features request device access only when needed. This can include camera access for food photos and QR codes, photo library access for selecting or saving images, location access for attaching your current location or improving nearby restaurant search, and technical diagnostics such as app version, platform, crash details, and usage events.',
   },
   {
     title: 'How We Use Data',
     body:
-      'We use information to operate and sync your account, display your food records, support offline replay, respond to support requests, improve the product, and protect the service against misuse.',
+      'We use collected information to create and manage your account, store, sync, and display your food records and friend activity, support offline-safe write replay across sessions and devices, provide support, enforce product rules, protect the service against misuse, respond to legal obligations, and improve reliability through analytics and observability tools.',
   },
   {
     title: 'Sharing and Visibility',
     body:
-      'Your content is shared according to the visibility settings you choose and may also be processed by service providers that help with hosting, analytics, and diagnostics, or disclosed when required by law.',
+      'Your information is shared only as needed to run the service or according to the visibility controls you choose. Private content stays limited to your account except for support, security, and legal compliance needs; content shared with friends may be visible to approved connections; and data may be disclosed when required by law or to protect users and the service.',
   },
   {
     title: 'Analytics and Service Providers',
     body:
-      'Yummy Recs may collect app version, platform details, usage events, and error reports to improve reliability through internal tooling and third-party analytics or infrastructure providers.',
+      'Yummy Recs uses providers for analytics, diagnostics, infrastructure, and storage. Those providers may process usage events, app version, platform details, error reports, and service data needed to deliver sync, account, and support features.',
   },
   {
     title: 'Retention and Security',
     body:
-      'We keep information for as long as needed to provide the service, maintain account history, meet legal obligations, and protect the platform. Cached or offline copies may remain on your device until refreshed or deleted.',
+      'We retain information for as long as needed to provide the service, maintain account history, resolve disputes, meet legal obligations, and protect the platform. Cached or offline copies may remain on your device until refreshed, deleted, or overwritten, and backups, logs, and support records may remain for a limited period after account changes or deletion requests.',
   },
   {
-    title: 'Your Choices',
+    title: 'Your Choices and Rights',
     body:
-      'You can update supported profile and content settings in the app, change device permissions through system settings, and request access, correction, export, or deletion by contacting the privacy inbox.',
+      'You can review and edit supported profile details and content in the app, update visibility settings for supported content types, and control camera, photo, and location access through device settings. You can also request access, correction, export, or deletion by contacting privacy@yummyrecs.com.',
+  },
+  {
+    title: "Children's Privacy",
+    body:
+      'Yummy Recs is not intended for children under 13, and we do not knowingly collect personal information from children under 13. If you believe a child has provided personal information, contact us so we can review and take appropriate action.',
   },
   {
     title: 'Contact',
     body:
-      'For privacy questions or rights requests, email privacy@yummyrecs.com. Support questions can be sent to support@yummyrecs.com.',
+      'For privacy questions or rights requests, contact privacy@yummyrecs.com. Support questions can be sent to support@yummyrecs.com. If this policy changes materially, the effective date at the top of the page will be updated.',
   },
 ] as const;
 
@@ -61,11 +66,11 @@ export function PrivacyPolicyScreen({ navigation }: PrivacyPolicyScreenProps) {
   return (
     <StaticContentSectionsScreen
       introCaption="Effective March 12, 2026"
-      introDescription="This summary explains how Yummy Recs collects, uses, shares, and retains information across the mobile app, web experiences, and related support workflows."
+      introDescription="This policy explains what information Yummy Recs collects, how it is used, when it may be shared, and what choices you have when using the website, mobile app, and related services."
       introTitle="How Yummy Recs handles your information"
       onBackPress={handleBackPress}
       sections={PRIVACY_SECTIONS}
-      subtitle="Summary of data handling, permissions, sharing, and user controls"
+      subtitle="Data collection, permissions, sharing, retention, and user rights"
       title="Privacy Policy"
     />
   );

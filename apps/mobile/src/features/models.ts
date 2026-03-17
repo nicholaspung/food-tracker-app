@@ -69,7 +69,7 @@ export interface RestaurantListRecord {
   id: string;
   name: string;
   description?: string;
-  visibility: 'private' | 'friends' | 'public';
+  visibility: 'private' | 'friends';
   userId: string;
   ownerName?: string;
   isDefault?: boolean;

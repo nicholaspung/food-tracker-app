@@ -18,29 +18,25 @@ import { Card, Input, Text } from '../ui';
 
 type CreateVisitAddRestaurantScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateVisitAddRestaurant'>;
 
-type RestaurantVisibility = VisibilityOptionValue;
+type RestaurantVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
 
-function resolveDefaultRestaurantVisibility(isAdmin: boolean): RestaurantVisibility {
-  return resolveDefaultRestaurantVisibilityFromAuth(isAdmin);
+function resolveDefaultRestaurantVisibility(): RestaurantVisibility {
+  return resolveDefaultRestaurantVisibilityFromAuth();
 }
 
 export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRestaurantScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin === true;
 
   const [restaurantName, setRestaurantName] = useState('');
   const [restaurantLocation, setRestaurantLocation] = useState('');
   const [restaurantCuisine, setRestaurantCuisine] = useState('');
-  const [visibility, setVisibility] = useState<RestaurantVisibility>(resolveDefaultRestaurantVisibility(isAdmin));
+  const [visibility, setVisibility] = useState<RestaurantVisibility>(resolveDefaultRestaurantVisibility());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const visibilityOptions = useMemo<RestaurantVisibility[]>(
-    () => (isAdmin ? ['private', 'friends', 'public'] : ['private', 'friends']),
-    [isAdmin],
-  );
+  const visibilityOptions = useMemo<RestaurantVisibility[]>(() => ['private', 'friends'], []);
 
   const styles = StyleSheet.create({
     body: {
@@ -92,14 +88,11 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
     trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_STARTED', {
       source: 'CreateVisitAddRestaurantScreen',
       visibility,
-      isAdmin,
       hasCuisine: restaurantCuisine.trim().length > 0,
     });
     setIsSubmitting(true);
 
     try {
-      const resolvedVisibility = !isAdmin && visibility === 'public' ? 'friends' : visibility;
-
       const createdRestaurant = await createCollectionRecord<{
         id: string;
         name: string;
@@ -107,7 +100,7 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
         name: trimmedName,
         location: trimmedLocation,
         cuisineType: restaurantCuisine.trim() || '',
-        visibility: resolvedVisibility,
+        visibility,
         createdBy: currentUserId,
       });
 
@@ -115,7 +108,7 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
       trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_SUCCEEDED', {
         source: 'CreateVisitAddRestaurantScreen',
         restaurantId: createdRestaurant.id,
-        visibility: resolvedVisibility,
+        visibility,
       });
       navigation.navigate('CreateVisit', {
         preselectedRestaurantId: createdRestaurant.id,
@@ -189,13 +182,14 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
             <VisibilityOptionSelector
               options={visibilityOptions}
               onChange={(nextVisibility) => {
-                trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_VISIBILITY_CHANGED', {
-                  source: 'CreateVisitAddRestaurantScreen',
-                  previousVisibility: visibility,
-                  nextVisibility,
-                  isAdmin,
-                });
-                setVisibility(nextVisibility);
+                if (nextVisibility === 'private' || nextVisibility === 'friends') {
+                  trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_VISIBILITY_CHANGED', {
+                    source: 'CreateVisitAddRestaurantScreen',
+                    previousVisibility: visibility,
+                    nextVisibility,
+                  });
+                  setVisibility(nextVisibility);
+                }
               }}
               value={visibility}
             />

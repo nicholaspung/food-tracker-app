@@ -15,7 +15,7 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 type VisitVisibility = 'friends' | 'private';
-type RestaurantVisibility = 'private' | 'friends' | 'public';
+type RestaurantVisibility = 'private' | 'friends';
 
 interface UserSettingsRecord {
   defaultVisitVisibility?: unknown;
@@ -33,23 +33,18 @@ function normalizeVisitVisibility(value: unknown): VisitVisibility {
 
 function normalizeRestaurantVisibility(
   value: unknown,
-  isAdmin: boolean,
 ): RestaurantVisibility {
-  if (value === 'private' || value === 'friends') {
-    return value;
+  if (value === 'private') {
+    return 'private';
   }
 
-  if (value === 'public' && isAdmin) {
-    return 'public';
-  }
-
-  return 'private';
+  return 'friends';
 }
 
-function mapUserSettings(record: UserSettingsRecord, isAdmin: boolean): UserSettings {
+function mapUserSettings(record: UserSettingsRecord): UserSettings {
   return {
     visitVisibility: normalizeVisitVisibility(record.defaultVisitVisibility),
-    restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility, isAdmin),
+    restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility),
   };
 }
 
@@ -58,7 +53,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
   const queryClient = useQueryClient();
-  const isAdmin = user?.isAdmin === true;
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>('friends');
   const [restaurantVisibility, setRestaurantVisibility] = useState<RestaurantVisibility>('private');
   const [isSaving, setIsSaving] = useState(false);
@@ -74,7 +68,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       }
 
       const record = await getCollectionRecord<UserSettingsRecord>('users', user.id);
-      return mapUserSettings(record, isAdmin);
+      return mapUserSettings(record);
     },
   });
 
@@ -137,7 +131,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         defaultVisitVisibility: visitVisibility,
       });
 
-      const nextSettings = mapUserSettings(updatedRecord, isAdmin);
+      const nextSettings = mapUserSettings(updatedRecord);
       queryClient.setQueryData(['feature', 'settings', user.id], nextSettings);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'settings', user.id] });
       trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
@@ -167,7 +161,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       source: 'SettingsScreen',
       previousValue: visitVisibility,
       nextValue: value,
-      isAdmin,
     });
     setVisitVisibility(value);
   };
@@ -179,7 +172,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       source: 'SettingsScreen',
       previousValue: restaurantVisibility,
       nextValue: value,
-      isAdmin,
     });
     setRestaurantVisibility(value);
   };
@@ -198,17 +190,8 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       ({
         private: 'Only you can see restaurants you add.',
         friends: 'Friends can see restaurants you add.',
-        public: 'Everyone can see restaurants you add.',
       }) as const,
     [],
-  );
-
-  const restaurantVisibilityBadgeLabels = useMemo(
-    () =>
-      ({
-        public: isAdmin ? 'Admin' : undefined,
-      }) as const,
-    [isAdmin],
   );
 
   if (!user?.id) {
@@ -282,7 +265,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
                     }
                   }}
                   optionDescriptions={visitVisibilityDescriptions}
-                  options={['friends', 'private']}
+                  options={['private', 'friends']}
                   value={visitVisibility}
                   variant="cards"
                 />
@@ -296,17 +279,12 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
               <View style={styles.optionList}>
                 <VisibilityOptionSelector
                   onChange={(selectedValue) => {
-                    if (
-                      selectedValue === 'private' ||
-                      selectedValue === 'friends' ||
-                      (selectedValue === 'public' && isAdmin)
-                    ) {
+                    if (selectedValue === 'private' || selectedValue === 'friends') {
                       handleSelectRestaurantVisibility(selectedValue);
                     }
                   }}
-                  optionBadgeLabels={restaurantVisibilityBadgeLabels}
                   optionDescriptions={restaurantVisibilityDescriptions}
-                  options={isAdmin ? ['private', 'friends', 'public'] : ['private', 'friends']}
+                  options={['private', 'friends']}
                   value={restaurantVisibility}
                   variant="cards"
                 />

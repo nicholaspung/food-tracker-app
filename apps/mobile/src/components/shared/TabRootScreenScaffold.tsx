@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 
 import { Screen } from '../../ui';
 
@@ -20,10 +21,13 @@ export function TabRootScreenScaffold({
   children,
   contentStyle,
   scrollUnderlayColor,
-  scrollUnderlayTopInset = 220,
+  scrollUnderlayTopInset,
   keyboardAware = true,
   testID,
 }: TabRootScreenScaffoldProps) {
+  const { height } = useWindowDimensions();
+  const resolvedScrollUnderlayTopInset = scrollUnderlayTopInset ?? Math.max(220, Math.round(height / 2));
+
   return (
     <Screen
       background="surface"
@@ -33,7 +37,7 @@ export function TabRootScreenScaffold({
       padded={false}
       scroll
       scrollUnderlayColor={scrollUnderlayColor}
-      scrollUnderlayTopInset={scrollUnderlayTopInset}
+      scrollUnderlayTopInset={resolvedScrollUnderlayTopInset}
       testID={testID}
     >
       {children}

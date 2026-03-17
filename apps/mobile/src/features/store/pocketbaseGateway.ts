@@ -169,20 +169,8 @@ export function resolveDefaultVisitVisibilityFromAuth(): 'friends' | 'private' {
   return pb.authStore.record?.defaultVisitVisibility === 'private' ? 'private' : 'friends';
 }
 
-export function resolveDefaultRestaurantVisibilityFromAuth(
-  isAdmin: boolean,
-): 'private' | 'friends' | 'public' {
-  const value = pb.authStore.record?.defaultRestaurantVisibility;
-
-  if (value === 'private') {
-    return 'private';
-  }
-
-  if (value === 'public' && isAdmin) {
-    return 'public';
-  }
-
-  return 'friends';
+export function resolveDefaultRestaurantVisibilityFromAuth(): 'private' | 'friends' {
+  return pb.authStore.record?.defaultRestaurantVisibility === 'private' ? 'private' : 'friends';
 }
 
 export function buildPocketBaseFileUrl(input: {

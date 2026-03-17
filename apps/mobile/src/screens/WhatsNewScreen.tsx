@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -40,45 +40,54 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
     queryFn: getSeenWhatsNewVersion,
     staleTime: Infinity,
   });
+  const hasMarkedLatestAsSeenRef = useRef(false);
   const [isFirstViewOfLatest, setIsFirstViewOfLatest] = useState(false);
   const [hasCapturedFirstViewState, setHasCapturedFirstViewState] = useState(false);
   const [hasTrackedViewEvent, setHasTrackedViewEvent] = useState(false);
   const [visibleEntryCount, setVisibleEntryCount] = useState(WHATS_NEW_PAGE_SIZE);
 
   useEffect(() => {
-    if (hasCapturedFirstViewState || seenVersionQuery.isLoading) {
+    if (
+      hasCapturedFirstViewState ||
+      seenVersionQuery.isLoading ||
+      typeof seenVersionQuery.data === 'undefined'
+    ) {
       return;
     }
 
     const wasUnseenOnOpen = hasUnseenWhatsNew(seenVersionQuery.data);
     setIsFirstViewOfLatest(wasUnseenOnOpen);
     setHasCapturedFirstViewState(true);
+  }, [hasCapturedFirstViewState, seenVersionQuery.data, seenVersionQuery.isLoading]);
 
-    if (!wasUnseenOnOpen) {
+  useEffect(() => {
+    if (!hasCapturedFirstViewState || !isFirstViewOfLatest) {
       return;
     }
 
-    let isCancelled = false;
+    const persistSeenState = async () => {
+      if (hasMarkedLatestAsSeenRef.current) {
+        return;
+      }
 
-    const markSeen = async () => {
+      hasMarkedLatestAsSeenRef.current = true;
       try {
         await markLatestWhatsNewAsSeen();
-        if (isCancelled) {
-          return;
-        }
-
         queryClient.setQueryData(WHATS_NEW_SEEN_QUERY_KEY, LATEST_WHATS_NEW_VERSION);
       } catch {
-        // Ignore local persistence failures and keep the page readable.
+        hasMarkedLatestAsSeenRef.current = false;
       }
     };
 
-    void markSeen();
+    const unsubscribeBlur = navigation.addListener('blur', () => {
+      void persistSeenState();
+    });
 
     return () => {
-      isCancelled = true;
+      unsubscribeBlur();
+      void persistSeenState();
     };
-  }, [hasCapturedFirstViewState, queryClient, seenVersionQuery.data, seenVersionQuery.isLoading]);
+  }, [hasCapturedFirstViewState, isFirstViewOfLatest, navigation, queryClient]);
 
   useEffect(() => {
     if (!hasCapturedFirstViewState || hasTrackedViewEvent) {
@@ -268,6 +277,11 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
       onBackPress={() => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+          return;
+        }
+
         navigation.navigate('Profile');
       }}
       subtitle="Latest product updates and improvements."

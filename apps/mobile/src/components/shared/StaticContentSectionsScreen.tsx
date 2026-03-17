@@ -53,7 +53,7 @@ export function StaticContentSectionsScreen({
       subtitle={subtitle}
       title={title}
     >
-      <Card style={styles.introCard} tone="muted">
+      <Card style={styles.introCard}>
         <Text style={styles.caption} tone="muted" variant="bodySm">
           {introCaption}
         </Text>

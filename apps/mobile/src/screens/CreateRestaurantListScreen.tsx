@@ -21,6 +21,7 @@ import { Card, Input, Text } from '../ui';
 
 type CreateRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateRestaurantList'>;
 type ListVisibility = RestaurantListRecord['visibility'];
+const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['private', 'friends'];
 
 export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListScreenProps) {
   const theme = useTheme();
@@ -142,7 +143,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
         label: 'Cancel',
         onPress: handleBack,
       }}
-      subtitle="Set your list name, description, and who can see it."
+      subtitle="Set your list name, description, and whether it stays private or is shared with friends."
       title="Create New List"
     >
       <View style={styles.body}>
@@ -167,13 +168,15 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
           <Text variant="label">Visibility</Text>
           <VisibilityOptionSelector
             onChange={(nextVisibility) => {
+              const resolvedVisibility: ListVisibility = nextVisibility === 'friends' ? 'friends' : 'private';
               trackObservabilityEvent('CREATE_RESTAURANT_LIST_VISIBILITY_CHANGED', {
                 source: 'CreateRestaurantListScreen',
                 previousVisibility: visibility,
-                nextVisibility,
+                nextVisibility: resolvedVisibility,
               });
-              setVisibility(nextVisibility);
+              setVisibility(resolvedVisibility);
             }}
+            options={LIST_VISIBILITY_OPTIONS}
             value={visibility as VisibilityOptionValue}
           />
         </Card>

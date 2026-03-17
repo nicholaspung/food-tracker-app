@@ -98,17 +98,17 @@ export interface UpdateQuickTrackInput {
 export interface CreateRestaurantListInput {
   name: string;
   description?: string;
-  visibility?: 'private' | 'friends' | 'public';
+  visibility?: 'private' | 'friends';
 }
 
 export interface UpdateRestaurantListInput {
   name?: string;
   description?: string;
-  visibility?: 'private' | 'friends' | 'public';
+  visibility?: 'private' | 'friends';
 }
 
 export interface ListRestaurantListsInput {
-  scope?: 'my' | 'friends' | 'public';
+  scope?: 'my' | 'friends';
 }
 
 export interface RestaurantListItemLinkRecord {
@@ -904,7 +904,7 @@ function mapFeedbackRecord(record: FeedbackCollectionRecord): FeedbackRecord {
   return {
     id: record.id,
     userId: record.user,
-    userName: record.expand?.user?.name,
+    userName: resolveExpandedUserName(record.expand?.user),
     userEmail: record.expand?.user?.email,
     assignedAdminId: record.assigned_admin,
     adminReplyDeadlineAt: record.admin_reply_deadline_at,
@@ -924,7 +924,7 @@ function mapFeedbackMessageRecord(record: FeedbackMessageCollectionRecord): Feed
     id: record.id,
     feedbackId: record.feedback,
     userId: record.user,
-    userName: record.expand?.user?.name,
+    userName: resolveExpandedUserName(record.expand?.user),
     userEmail: record.expand?.user?.email,
     message: record.message,
     isAdminMessage: record.is_admin_message === true,
@@ -1043,11 +1043,8 @@ function mapRestaurantCollectionRecord(record: RestaurantCollectionRecord): Rest
   };
 }
 
-function normalizeListVisibility(value: unknown): 'private' | 'friends' | 'public' {
-  if (value === 'friends' || value === 'public') {
-    return value;
-  }
-  return 'private';
+function normalizeListVisibility(value: unknown): 'private' | 'friends' {
+  return value === 'friends' || value === 'public' ? 'friends' : 'private';
 }
 
 function mapRestaurantListCollectionRecord(record: RestaurantListCollectionRecord): RestaurantListRecord {
@@ -1835,16 +1832,13 @@ export async function listRestaurantLists(input?: ListRestaurantListsInput): Pro
 
   const currentUserId = getAuthenticatedUserId();
   const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  const scope = input?.scope ?? 'my';
+  const scope = input?.scope === 'friends' ? 'friends' : 'my';
 
   let filter: string | undefined;
   let expand: string | undefined;
 
   if (scope === 'my') {
     filter = `user = "${escapedCurrentUserId}"`;
-  } else if (scope === 'public') {
-    filter = `visibility = "public" && user != "${escapedCurrentUserId}"`;
-    expand = 'user';
   } else {
     const friendships = await pb.collection('friendships').getFullList<FriendshipRecord>({
       filter: `(user = "${escapedCurrentUserId}" || friend = "${escapedCurrentUserId}") && status = "accepted"`,
@@ -1861,7 +1855,7 @@ export async function listRestaurantLists(input?: ListRestaurantListsInput): Pro
     }
 
     const friendFilter = friendIds.map((friendId) => `user = "${escapeFilterValue(friendId)}"`).join(' || ');
-    filter = `(${friendFilter}) && (visibility = "friends" || visibility = "public")`;
+    filter = `(${friendFilter}) && visibility = "friends"`;
     expand = 'user';
   }
 
@@ -1946,6 +1940,7 @@ export async function createRestaurantList(input: CreateRestaurantListInput): Pr
     async () => {
       const currentUserId = getAuthenticatedUserId();
       const trimmedName = input.name.trim();
+      const visibility = normalizeListVisibility(input.visibility);
       if (!trimmedName) {
         throw new Error('List name is required.');
       }
@@ -1954,7 +1949,7 @@ export async function createRestaurantList(input: CreateRestaurantListInput): Pr
         {
           name: trimmedName,
           description: input.description?.trim() || '',
-          visibility: input.visibility ?? 'private',
+          visibility,
           user: currentUserId,
         },
         {
@@ -1965,7 +1960,7 @@ export async function createRestaurantList(input: CreateRestaurantListInput): Pr
       return mapRestaurantListCollectionRecord(createdRecord);
     },
     {
-      visibility: input.visibility ?? 'private',
+      visibility: normalizeListVisibility(input.visibility),
       hasDescription: Boolean(input.description?.trim()),
     },
   );
@@ -1994,7 +1989,7 @@ export async function updateRestaurantList(
       }
 
       if (updates.visibility !== undefined) {
-        payload.visibility = updates.visibility;
+        payload.visibility = normalizeListVisibility(updates.visibility);
       }
 
       const updatedRecord =

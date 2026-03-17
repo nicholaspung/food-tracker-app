@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 
 import { useTheme } from '../../theme';
 import { Screen } from '../../ui';
@@ -45,6 +46,7 @@ export function BackHeaderScreenScaffold({
   testID,
 }: BackHeaderScreenScaffoldProps) {
   const theme = useTheme();
+  const { height } = useWindowDimensions();
 
   const backgroundColor =
     contentBackgroundTone === 'app'
@@ -52,6 +54,7 @@ export function BackHeaderScreenScaffold({
       : contentBackgroundTone === 'surface'
         ? theme.colors.background.surface
         : theme.colors.background.muted;
+  const scrollUnderlayTopInset = Math.max(220, Math.round(height / 2));
 
   const styles = StyleSheet.create({
     screenContent: {
@@ -77,7 +80,7 @@ export function BackHeaderScreenScaffold({
       padded={false}
       scroll={scroll}
       scrollUnderlayColor={scroll ? backgroundColor : undefined}
-      scrollUnderlayTopInset={scroll ? 220 : undefined}
+      scrollUnderlayTopInset={scroll ? scrollUnderlayTopInset : undefined}
       testID={testID}
     >
       <ScreenHeader

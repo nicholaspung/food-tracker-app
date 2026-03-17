@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
@@ -12,6 +12,26 @@ export interface OtaUpdateCardProps {
   source: string;
   title?: string;
   description?: string;
+}
+
+export interface OtaUpdateStatusState {
+  currentAppVersion: string;
+  currentBuildVersion: string;
+  currentOtaLabel: string;
+  currentChannel: string;
+  currentRuntimeVersion: string;
+  currentPublishedAt: string;
+  latestAvailableLabel: string;
+  statusText: string | null;
+  buttonLabel: string;
+  errorMessage: string | null;
+  isChecking: boolean;
+  isDownloading: boolean;
+  isApplyingUpdate: boolean;
+  isUpdatePending: boolean;
+  hasAvailableUpdate: boolean;
+  shouldAutoExpand: boolean;
+  handleApplyLatestOtaUpdate: () => Promise<void>;
 }
 
 function formatUpdateTimestamp(value: Date | undefined): string {
@@ -33,15 +53,34 @@ function formatUpdateIdentifier(value: string | undefined): string {
   return value.slice(0, 8);
 }
 
-export function OtaUpdateCard({
-  source,
-  title = 'App update status',
-  description,
-}: OtaUpdateCardProps) {
-  const theme = useTheme();
+function extractManifestUpdateId(manifest: unknown): string | undefined {
+  if (!manifest || typeof manifest !== 'object' || !('id' in manifest)) {
+    return undefined;
+  }
+
+  const { id } = manifest;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function formatAvailableUpdateLabel(updateId: string | undefined, isRollBackToEmbedded = false): string {
+  if (isRollBackToEmbedded) {
+    return 'Embedded rollback';
+  }
+
+  if (!updateId) {
+    return 'None detected';
+  }
+
+  return formatUpdateIdentifier(updateId);
+}
+
+export function useOtaUpdateStatus(source: string): OtaUpdateStatusState {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
+  const [checkedUpdateId, setCheckedUpdateId] = useState<string | undefined>();
+  const [isRollbackAvailable, setIsRollbackAvailable] = useState(false);
+  const [isRefreshingAvailability, setIsRefreshingAvailability] = useState(false);
   const { availableUpdate, currentlyRunning, isChecking, isDownloading, isUpdatePending } =
     Updates.useUpdates();
 
@@ -50,12 +89,65 @@ export function OtaUpdateCard({
     : `OTA ${formatUpdateIdentifier(currentlyRunning.updateId)}`;
   const currentAppVersion = Application.nativeApplicationVersion ?? 'unknown';
   const currentBuildVersion = Application.nativeBuildVersion ?? 'unknown';
+  const hasAvailableUpdate = Boolean(availableUpdate) || Boolean(checkedUpdateId) || isRollbackAvailable || isUpdatePending;
   const buttonLabel =
     isApplyingUpdate || isChecking || isDownloading
       ? 'Updating...'
       : isUpdatePending
         ? 'Restart Into Downloaded OTA'
         : 'Make App Latest OTA';
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function refreshAvailability() {
+      if (!Updates.isEnabled || __DEV__) {
+        return;
+      }
+
+      setIsRefreshingAvailability(true);
+
+      try {
+        const checkResult = await Updates.checkForUpdateAsync();
+        if (!isActive) {
+          return;
+        }
+
+        if (checkResult.isRollBackToEmbedded) {
+          setCheckedUpdateId(undefined);
+          setIsRollbackAvailable(true);
+          return;
+        }
+
+        if (checkResult.isAvailable) {
+          setCheckedUpdateId(extractManifestUpdateId(checkResult.manifest));
+          setIsRollbackAvailable(false);
+          return;
+        }
+
+        setCheckedUpdateId(undefined);
+        setIsRollbackAvailable(false);
+      } catch {
+        if (!isActive) {
+          return;
+        }
+
+        setCheckedUpdateId(undefined);
+        setIsRollbackAvailable(false);
+      } finally {
+        if (isActive) {
+          setIsRefreshingAvailability(false);
+        }
+      }
+    }
+
+    void refreshAvailability();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const statusText = useMemo(() => {
     if (errorMessage) {
       return null;
@@ -65,15 +157,29 @@ export function OtaUpdateCard({
       actionMessage ??
       (isDownloading
         ? 'Downloading the latest OTA update...'
-        : isChecking
+        : isChecking || isRefreshingAvailability
           ? 'Checking for the latest OTA update...'
           : isUpdatePending
             ? 'A downloaded OTA is ready. Tap the button to restart into it.'
-            : availableUpdate
-              ? `New OTA available: ${formatUpdateIdentifier(availableUpdate.updateId)}`
+            : hasAvailableUpdate
+              ? `New OTA available: ${formatAvailableUpdateLabel(
+                  availableUpdate?.updateId ?? checkedUpdateId,
+                  isRollbackAvailable,
+                )}`
               : 'Current OTA details are shown below.')
     );
-  }, [actionMessage, availableUpdate, errorMessage, isChecking, isDownloading, isUpdatePending]);
+  }, [
+    actionMessage,
+    availableUpdate?.updateId,
+    checkedUpdateId,
+    errorMessage,
+    hasAvailableUpdate,
+    isChecking,
+    isDownloading,
+    isRefreshingAvailability,
+    isRollbackAvailable,
+    isUpdatePending,
+  ]);
 
   const handleApplyLatestOtaUpdate = useCallback(async () => {
     setActionMessage(null);
@@ -103,6 +209,8 @@ export function OtaUpdateCard({
       const checkResult = await Updates.checkForUpdateAsync();
 
       if (!checkResult.isAvailable && !checkResult.isRollBackToEmbedded) {
+        setCheckedUpdateId(undefined);
+        setIsRollbackAvailable(false);
         setActionMessage('This app is already on the latest OTA update for this channel.');
         trackObservabilityEvent('OTA_UPDATE_ALREADY_CURRENT', {
           source,
@@ -117,6 +225,8 @@ export function OtaUpdateCard({
           ? 'A rollback to the embedded build is available. Downloading it now...'
           : 'New OTA update found. Downloading it now...',
       );
+      setCheckedUpdateId(extractManifestUpdateId(checkResult.manifest));
+      setIsRollbackAvailable(checkResult.isRollBackToEmbedded);
 
       const fetchResult = await Updates.fetchUpdateAsync();
 
@@ -159,15 +269,37 @@ export function OtaUpdateCard({
     source,
   ]);
 
+  return {
+    buttonLabel,
+    currentAppVersion,
+    currentBuildVersion,
+    currentChannel: currentlyRunning.channel ?? 'unknown',
+    currentOtaLabel,
+    currentPublishedAt: formatUpdateTimestamp(currentlyRunning.createdAt),
+    currentRuntimeVersion: currentlyRunning.runtimeVersion ?? 'unknown',
+    errorMessage,
+    handleApplyLatestOtaUpdate,
+    hasAvailableUpdate,
+    isApplyingUpdate,
+    isChecking: isChecking || isRefreshingAvailability,
+    isDownloading,
+    isUpdatePending,
+    latestAvailableLabel: formatAvailableUpdateLabel(
+      availableUpdate?.updateId ?? checkedUpdateId,
+      isRollbackAvailable,
+    ),
+    shouldAutoExpand:
+      hasAvailableUpdate || isDownloading || isApplyingUpdate || Boolean(actionMessage) || Boolean(errorMessage),
+    statusText,
+  };
+}
+
+export function OtaUpdateStatusDetails({ state }: { state: OtaUpdateStatusState }) {
+  const theme = useTheme();
+
   const styles = StyleSheet.create({
-    card: {
-      gap: theme.spacing.xs,
-    },
-    title: {
-      fontWeight: '700',
-    },
-    description: {
-      lineHeight: 20,
+    body: {
+      gap: theme.spacing.sm,
     },
     metaRow: {
       flexDirection: 'row',
@@ -196,31 +328,23 @@ export function OtaUpdateCard({
 
   return (
     <>
-      <PageErrorToast errorMessage={errorMessage} title="App update failed" />
-      <Card style={styles.card} tone="muted">
-        <Text style={styles.title} variant="bodyLg">
-          {title}
-        </Text>
-        {description ? (
-          <Text style={styles.description} tone="secondary" variant="bodyMd">
-            {description}
-          </Text>
-        ) : null}
+      <PageErrorToast errorMessage={state.errorMessage} title="App update failed" />
+      <View style={styles.body}>
         <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
-              App Version
-            </Text>
-            <Text style={styles.metaValue} variant="bodyMd">
-              {currentAppVersion} ({currentBuildVersion})
-            </Text>
-          </View>
           <View style={styles.metaItem}>
             <Text style={styles.metaLabel} tone="muted" variant="bodySm">
               Runtime
             </Text>
             <Text style={styles.metaValue} variant="bodyMd">
-              {currentlyRunning.runtimeVersion ?? 'unknown'}
+              {state.currentRuntimeVersion}
+            </Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
+              Published
+            </Text>
+            <Text style={styles.metaValue} variant="bodyMd">
+              {state.currentPublishedAt}
             </Text>
           </View>
         </View>
@@ -230,25 +354,7 @@ export function OtaUpdateCard({
               Current OTA
             </Text>
             <Text style={styles.metaValue} variant="bodyMd">
-              {currentOtaLabel}
-            </Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
-              Published
-            </Text>
-            <Text style={styles.metaValue} variant="bodyMd">
-              {formatUpdateTimestamp(currentlyRunning.createdAt)}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
-              Channel
-            </Text>
-            <Text style={styles.metaValue} variant="bodyMd">
-              {currentlyRunning.channel ?? 'unknown'}
+              {state.currentOtaLabel}
             </Text>
           </View>
           <View style={styles.metaItem}>
@@ -256,34 +362,73 @@ export function OtaUpdateCard({
               Latest Available
             </Text>
             <Text style={styles.metaValue} variant="bodyMd">
-              {availableUpdate ? formatUpdateIdentifier(availableUpdate.updateId) : 'None detected'}
+              {state.latestAvailableLabel}
             </Text>
           </View>
         </View>
-        {availableUpdate ? (
-          <Text style={styles.status} tone="secondary" variant="bodySm">
-            Latest available was published {formatUpdateTimestamp(availableUpdate.createdAt)}.
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel} tone="muted" variant="bodySm">
+            Channel
           </Text>
-        ) : null}
-        {statusText ? (
-          <Text style={styles.status} tone="secondary" variant="bodySm">
-            {statusText}
+          <Text style={styles.metaValue} variant="bodyMd">
+            {state.currentChannel}
           </Text>
-        ) : null}
-        {errorMessage ? (
-          <Text style={styles.error} tone="danger" variant="bodySm">
-            {errorMessage}
-          </Text>
+        </View>
+        {state.statusText ? (
+          <View style={styles.metaItem}>
+            <Text
+              style={state.errorMessage ? styles.error : styles.status}
+              tone={state.errorMessage ? 'danger' : 'secondary'}
+              variant="bodySm"
+            >
+              {state.statusText}
+            </Text>
+          </View>
         ) : null}
         <Button
-          disabled={isApplyingUpdate || isChecking || isDownloading}
-          label={buttonLabel}
-          loading={isApplyingUpdate || isChecking || isDownloading}
+          disabled={state.isApplyingUpdate || state.isChecking || state.isDownloading}
+          label={state.buttonLabel}
+          loading={state.isApplyingUpdate}
           onPress={() => {
-            void handleApplyLatestOtaUpdate();
+            void state.handleApplyLatestOtaUpdate();
           }}
         />
-      </Card>
+      </View>
     </>
+  );
+}
+
+export function OtaUpdateCard({
+  source,
+  title = 'App update status',
+  description,
+}: OtaUpdateCardProps) {
+  const theme = useTheme();
+  const state = useOtaUpdateStatus(source);
+
+  const styles = StyleSheet.create({
+    card: {
+      gap: theme.spacing.xs,
+    },
+    title: {
+      fontWeight: '700',
+    },
+    description: {
+      lineHeight: 20,
+    },
+  });
+
+  return (
+    <Card style={styles.card} tone="muted">
+      <Text style={styles.title} variant="bodyLg">
+        {title}
+      </Text>
+      {description ? (
+        <Text style={styles.description} tone="secondary" variant="bodyMd">
+          {description}
+        </Text>
+      ) : null}
+      <OtaUpdateStatusDetails state={state} />
+    </Card>
   );
 }

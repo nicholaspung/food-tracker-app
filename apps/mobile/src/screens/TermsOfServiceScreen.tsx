@@ -7,24 +7,19 @@ type TermsOfServiceScreenProps = NativeStackScreenProps<RootStackParamList, 'Ter
 
 const TERMS_SECTIONS = [
   {
-    title: 'Account Eligibility',
+    title: 'Accounts',
     body:
-      'Describe who can use the app, what information they must provide, and the conditions for account suspension or removal.',
+      'You are responsible for account activity performed under your credentials and for maintaining the security of your login information.',
   },
   {
-    title: 'Subscriber Access',
+    title: 'Acceptable Use',
     body:
-      'Outline what subscriber status unlocks, how access may change over time, and any eligibility or account-state rules tied to that access.',
+      'Do not use Yummy Recs for fraudulent, abusive, infringing, or unlawful conduct, and do not interfere with the operation or security of the service.',
   },
   {
-    title: 'User Content and Conduct',
+    title: 'Contact',
     body:
-      'Define expectations for restaurant notes, ratings, lists, photos, invite sharing, and prohibited misuse of the service.',
-  },
-  {
-    title: 'Service Availability',
-    body:
-      'Reserve room for uptime expectations, maintenance windows, beta features, and limits of liability for outages or data loss.',
+      'Questions about these terms can be sent to legal@yummyrecs.com.',
   },
 ] as const;
 
@@ -40,12 +35,12 @@ export function TermsOfServiceScreen({ navigation }: TermsOfServiceScreenProps) 
 
   return (
     <StaticContentSectionsScreen
-      introCaption="Scaffold"
-      introDescription="This screen is wired and ready for final legal copy. Replace the sections below with approved language or fetch the content from your canonical source later."
-      introTitle="Terms content has not been finalized yet."
+      introCaption="Effective March 12, 2026"
+      introDescription="These summary terms cover account responsibilities and acceptable use for the Yummy Recs service."
+      introTitle="Rules for using Yummy Recs"
       onBackPress={handleBackPress}
       sections={TERMS_SECTIONS}
-      subtitle="Placeholder structure for future legal copy"
+      subtitle="Account responsibilities, acceptable use, and legal contact"
       title="Terms of Service"
     />
   );

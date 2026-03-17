@@ -10,6 +10,28 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.0',
+    date: '2026-03-16',
+    title: 'Feedback Redesign & Lists Privacy Update',
+    summary:
+      'Submitting feedback now has its own dedicated screen with a cleaner form. Restaurant lists no longer support a public visibility option — lists can be private or shared with friends only. The About screen also shows OTA update status inline.',
+    features: [
+      'Feedback submission moved to a dedicated New Feedback screen, accessible via a "New" button on the Feedback list. The form includes subject and message fields with offline support.',
+    ],
+    improvements: [
+      'Feedback thread detail screen now shows the thread title in the header instead of the generic "Feedback" label.',
+      'Admin reply messages in feedback threads now show the sender\'s name or email as a badge instead of a plain "Admin" label.',
+      'Message timestamps in feedback threads now display as relative time ("2 hours ago") instead of an absolute date.',
+      'Restaurant lists can now only be private or shared with friends — the public visibility option has been removed.',
+      'The "Public" tab on the Lists screen has been removed; only My Lists and Friends tabs remain.',
+      'Settings no longer shows a public visibility option for default restaurant visibility.',
+      'Version row on the About screen now shows OTA update availability inline — tap to expand and see build details or apply a pending update.',
+      'OTA update check now runs automatically when you open the About screen, so you see update status without tapping a button first.',
+      'About screen descriptions for Terms of Service and Privacy Policy updated to reflect current document content.',
+    ],
+    fixes: [],
+  },
+  {
     version: '0.9.9',
     date: '2026-03-16',
     title: 'Dev Tooling & Build Script Improvements',

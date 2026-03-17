@@ -8,6 +8,7 @@ import {
   FeedbackThreadCard,
   FeatureDetailScreenScaffold,
   Skeleton,
+  StatusPill,
 } from '../components/shared';
 import {
   getFeedbackById,
@@ -19,7 +20,6 @@ import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
 import { Button, Input, Text } from '../ui';
@@ -42,12 +42,62 @@ function formatTimestamp(value: string): string {
   });
 }
 
+function resolveAdminReplyLabel(userName?: string, userEmail?: string): string {
+  const trimmedName = userName?.trim();
+  if (trimmedName) {
+    return trimmedName;
+  }
+
+  const trimmedEmail = userEmail?.trim();
+  if (trimmedEmail) {
+    return trimmedEmail.split('@')[0];
+  }
+
+  return 'Admin';
+}
+
+function formatRelativeReplyTime(value: string, isMine: boolean): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return isMine ? 'You replied recently' : 'Replied recently';
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - date.getTime());
+  const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
+  const prefix = isMine ? 'You replied' : 'Replied';
+
+  if (elapsedMinutes < 1) {
+    return `${prefix} just now`;
+  }
+
+  if (elapsedMinutes < 60) {
+    return `${prefix} ${elapsedMinutes} ${elapsedMinutes === 1 ? 'minute' : 'minutes'} ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${prefix} ${elapsedHours} ${elapsedHours === 1 ? 'hour' : 'hours'} ago`;
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 30) {
+    return `${prefix} ${elapsedDays} ${elapsedDays === 1 ? 'day' : 'days'} ago`;
+  }
+
+  const elapsedMonths = Math.floor(elapsedDays / 30);
+  if (elapsedMonths < 12) {
+    return `${prefix} ${elapsedMonths} ${elapsedMonths === 1 ? 'month' : 'months'} ago`;
+  }
+
+  const elapsedYears = Math.floor(elapsedMonths / 12);
+  return `${prefix} ${elapsedYears} ${elapsedYears === 1 ? 'year' : 'years'} ago`;
+}
+
 export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const queueWrite = useQueuedWrite();
-  const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const messagesScrollRef = useRef<ScrollView>(null);
   const feedbackId = route.params.feedbackId;
@@ -149,13 +199,9 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       backgroundColor: theme.colors.background.surface,
       borderColor: theme.colors.border.subtle,
     },
-    messageAdminLabel: {
-      color: theme.colors.text.muted,
-      fontSize: 10,
-      fontWeight: '700',
-      lineHeight: 12,
-      marginBottom: 2,
-      textTransform: 'uppercase',
+    messageSenderBadge: {
+      alignSelf: 'flex-start',
+      marginBottom: theme.spacing.xxs,
     },
     messageText: {
       color: theme.colors.text.primary,
@@ -294,7 +340,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       keyboardAware
       onBackPress={handleBackPress}
       scroll={false}
-      title="Feedback"
+      title={feedbackQuery.data?.title?.trim() || 'Feedback'}
     >
       <View style={styles.body}>
         {feedbackQuery.isLoading ? (
@@ -325,7 +371,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
               status={feedbackQuery.data.status}
               timestampLabel={`Opened ${formatTimestamp(feedbackQuery.data.createdAt)}`}
               title={feedbackQuery.data.title}
-              tone="muted"
+              tone="default"
             />
 
             <ScrollView
@@ -355,7 +401,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
               {!messagesQuery.isLoading && !messagesQuery.isError
                 ? (messagesQuery.data ?? []).map((messageItem) => {
-                    const isMine = messageItem.userId === user?.id;
+                    const isMine = !messageItem.isAdminMessage;
 
                     return (
                       <View
@@ -369,13 +415,19 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
                           ]}
                         >
                           {messageItem.isAdminMessage && !isMine ? (
-                            <Text style={styles.messageAdminLabel}>Admin</Text>
+                            <StatusPill
+                              label={resolveAdminReplyLabel(messageItem.userName, messageItem.userEmail)}
+                              labelStyle={{ textTransform: 'none' }}
+                              style={styles.messageSenderBadge}
+                              tone="info"
+                              variant="soft"
+                            />
                           ) : null}
                           <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
                             {messageItem.message}
                           </Text>
                           <Text style={[styles.messageTime, isMine && styles.messageTimeMine]}>
-                            {formatTimestamp(messageItem.createdAt)}
+                            {formatRelativeReplyTime(messageItem.createdAt, isMine)}
                           </Text>
                         </View>
                       </View>

@@ -33,7 +33,7 @@ import { Card, Input, ListItem, Text } from '../ui';
 
 type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
 
-type ListTab = 'my' | 'friends' | 'public';
+type ListTab = 'my' | 'friends';
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type ListCountSummary = {
   restaurantCount: number;
@@ -43,7 +43,6 @@ type ListCountSummary = {
 const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
   { label: 'My Lists', value: 'my' },
   { label: 'Friends', value: 'friends' },
-  { label: 'Public', value: 'public' },
 ];
 
 function toSafeNonNegativeInteger(value: unknown): number | null {
@@ -108,15 +107,7 @@ function getListCoverImageUrl(list: RestaurantListRecord): string | null {
 }
 
 function getVisibilityIconName(visibility: RestaurantListRecord['visibility']): IoniconName {
-  if (visibility === 'friends') {
-    return 'people-outline';
-  }
-
-  if (visibility === 'public') {
-    return 'globe-outline';
-  }
-
-  return 'lock-closed-outline';
+  return visibility === 'friends' ? 'people-outline' : 'lock-closed-outline';
 }
 
 function resolveListUpdatedValue(list: RestaurantListRecord): unknown {
@@ -226,11 +217,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     queryFn: () => listRestaurantLists({ scope: 'friends' }),
   });
 
-  const publicListsQuery = useQuery({
-    queryKey: ['feature', 'restaurantLists', 'public'],
-    queryFn: () => listRestaurantLists({ scope: 'public' }),
-  });
-
   useEffect(() => {
     hasTriedCreatingDefault.current = false;
   }, [user?.id]);
@@ -288,22 +274,14 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     queueWrite,
   ]);
 
-  const activeQuery =
-    activeTab === 'my' ? myListsQuery : activeTab === 'friends' ? friendsListsQuery : publicListsQuery;
+  const activeQuery = activeTab === 'my' ? myListsQuery : friendsListsQuery;
   const hasBlockingActiveQueryError = activeQuery.isError && !activeQuery.data;
   const hasActiveQueryRefreshError = !hasBlockingActiveQueryError && activeQuery.isError;
 
-  const visibleLists = useMemo(() => {
-    if (activeTab === 'friends') {
-      return friendsListsQuery.data ?? [];
-    }
-
-    if (activeTab === 'public') {
-      return publicListsQuery.data ?? [];
-    }
-
-    return myListsQuery.data ?? [];
-  }, [activeTab, friendsListsQuery.data, myListsQuery.data, publicListsQuery.data]);
+  const visibleLists = useMemo(
+    () => (activeTab === 'friends' ? friendsListsQuery.data ?? [] : myListsQuery.data ?? []),
+    [activeTab, friendsListsQuery.data, myListsQuery.data],
+  );
 
   const visibleListIds = useMemo(() => visibleLists.map((list) => list.id), [visibleLists]);
 
@@ -339,9 +317,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
             ? (myListsQuery.data ?? []).length
             : tab.value === 'friends'
               ? (friendsListsQuery.data ?? []).length
-              : (publicListsQuery.data ?? []).length,
+              : 0,
       })),
-    [friendsListsQuery.data, myListsQuery.data, publicListsQuery.data],
+    [friendsListsQuery.data, myListsQuery.data],
   );
 
   const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);
@@ -497,17 +475,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       );
     }
 
-    return (
-      <EmptyState
-        description="Public lists from other users will appear here."
-        icon={
-          <View style={styles.emptyIconWrap}>
-            <Ionicons color={theme.colors.text.muted} name="globe-outline" size={24} />
-          </View>
-        }
-        title="No public lists"
-      />
-    );
+    return null;
   };
 
   const renderNoSearchResults = () => (
@@ -541,9 +509,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     const visibilityIconColor =
       list.visibility === 'friends'
         ? theme.colors.text.info
-        : list.visibility === 'public'
-          ? theme.colors.text.success
-          : theme.colors.text.muted;
+        : theme.colors.text.muted;
 
     return (
       <Card key={list.id} style={[styles.listCard, list.isDefault ? styles.defaultListCard : null]}>
@@ -622,7 +588,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           />
         ) : undefined
       }
-      subtitle="Create, organize, and discover restaurant lists."
+      subtitle="Create, organize, and browse the restaurant lists your friends share."
       title="Lists"
     >
       <PageErrorToast errorMessage={errorMessage} title="List operation failed" />

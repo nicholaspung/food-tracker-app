@@ -1726,11 +1726,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                 const alreadySavedInList = alreadySavedListIdsForTarget.has(targetList.id);
                 const isSelected = selectedSaveListIds.has(targetList.id);
                 const visibilityIconName =
-                  targetList.visibility === 'friends'
-                    ? 'people-outline'
-                    : targetList.visibility === 'public'
-                      ? 'globe-outline'
-                      : 'lock-closed-outline';
+                  targetList.visibility === 'friends' ? 'people-outline' : 'lock-closed-outline';
 
                 return (
                   <Pressable

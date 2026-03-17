@@ -24,6 +24,7 @@ import { Card, Input, Text } from '../ui';
 
 type EditRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'EditRestaurantList'>;
 type ListVisibility = RestaurantListRecord['visibility'];
+const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['private', 'friends'];
 
 export function EditRestaurantListScreen({ navigation, route }: EditRestaurantListScreenProps) {
   const { listId } = route.params;
@@ -248,7 +249,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
         label: 'Cancel',
         onPress: handleBack,
       }}
-      subtitle="Update your list name, description, and visibility."
+      subtitle="Update your list name, description, and whether it stays private or is shared with friends."
       title="Edit List"
     >
       <View style={styles.body}>
@@ -273,14 +274,16 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           <Text variant="label">Visibility</Text>
           <VisibilityOptionSelector
             onChange={(nextVisibility) => {
+              const resolvedVisibility: ListVisibility = nextVisibility === 'friends' ? 'friends' : 'private';
               trackObservabilityEvent('EDIT_RESTAURANT_LIST_VISIBILITY_CHANGED', {
                 source: 'EditRestaurantListScreen',
                 listId,
                 previousVisibility: visibility,
-                nextVisibility,
+                nextVisibility: resolvedVisibility,
               });
-              setVisibility(nextVisibility);
+              setVisibility(resolvedVisibility);
             }}
+            options={LIST_VISIBILITY_OPTIONS}
             value={visibility as VisibilityOptionValue}
           />
         </Card>
