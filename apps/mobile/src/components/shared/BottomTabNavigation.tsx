@@ -199,6 +199,7 @@ export function BottomTabNavigation({
                 onNavigate(tab.route);
               }}
               style={styles.tab}
+              testID={`tab-${tab.route}`}
             >
               <View style={styles.iconWrap}>
                 <Ionicons

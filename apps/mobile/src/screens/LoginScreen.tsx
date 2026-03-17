@@ -67,7 +67,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   }, [prefilledEmail]);
 
   return (
-    <Screen background="app" keyboardAware scroll>
+    <Screen background="app" keyboardAware scroll testID="login-screen">
       <FormScaffold
         lead={
           <AuthTopBar
@@ -94,6 +94,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
             label="Email"
             onChangeText={setEmail}
             placeholder="you@example.com"
+            testID="login-email-input"
             value={email}
           />
 
@@ -104,6 +105,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
             onChangeText={setPassword}
             placeholder="Password"
             secureTextEntry
+            testID="login-password-input"
             value={password}
           />
 
@@ -133,6 +135,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
             onPress={() => {
               void handleSignIn();
             }}
+            testID="login-submit-button"
           />
         </Card>
 

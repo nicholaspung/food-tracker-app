@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screenshot Review</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h1>Screenshot Review</h1>
+          <p>Pick an artifact run, compare images, and move approved files into a baseline set.</p>
+        </div>
+
+        <label class="field">
+          <span>Baseline Set</span>
+          <input id="baseline-set-input" placeholder="current" />
+        </label>
+
+        <button id="refresh-button" class="secondary-button" type="button">Refresh</button>
+
+        <div class="sidebar-section">
+          <div class="section-heading">
+            <h2>Artifact Runs</h2>
+            <span id="run-count" class="meta"></span>
+          </div>
+          <div id="run-list" class="run-list"></div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="content-header">
+          <div>
+            <h2 id="current-run-title">Select a run</h2>
+            <p id="status-message" class="status-message">Waiting for artifact selection.</p>
+          </div>
+        </div>
+
+        <section id="image-grid" class="image-grid"></section>
+      </main>
+    </div>
+
+    <template id="image-card-template">
+      <article class="image-card">
+        <div class="image-card-header">
+          <div>
+            <h3 class="image-name"></h3>
+          </div>
+          <button class="primary-button promote-button" type="button">Move To Baseline</button>
+        </div>
+
+        <div class="comparison-grid">
+          <section class="preview-panel">
+            <h4>Artifact</h4>
+            <img class="artifact-image" alt="" loading="lazy" />
+          </section>
+
+          <section class="preview-panel">
+            <h4>Baseline</h4>
+            <div class="baseline-wrap">
+              <img class="baseline-image" alt="" loading="lazy" />
+              <p class="empty-state">No baseline image yet.</p>
+            </div>
+          </section>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+  </html>

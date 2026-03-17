@@ -589,6 +589,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         ) : undefined
       }
       subtitle="Create, organize, and browse the restaurant lists your friends share."
+      testID="lists-screen"
       title="Lists"
     >
       <PageErrorToast errorMessage={errorMessage} title="List operation failed" />

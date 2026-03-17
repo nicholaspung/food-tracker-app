@@ -43,6 +43,7 @@ export interface MobileEnv {
   apiBaseUrl: string;
   appWebUrl: string;
   environment: AppEnvironment;
+  isScreenshotReviewMode: boolean;
   marketingUrl: string;
   pocketbaseUrl: string;
   posthogApiKey: string;
@@ -60,11 +61,17 @@ const expoPublicEnv: EnvSource = {
   EXPO_PUBLIC_POCKETBASE_URL: process.env.EXPO_PUBLIC_POCKETBASE_URL,
   EXPO_PUBLIC_POSTHOG_API_KEY: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
   EXPO_PUBLIC_POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST,
+  EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: process.env.EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE,
 };
 
 function readOptionalEnvValue(value: string | undefined): string | undefined {
   const trimmedValue = value?.trim();
   return trimmedValue ? trimmedValue : undefined;
+}
+
+function readBooleanEnvValue(value: string | undefined): boolean {
+  const normalizedValue = value?.trim().toLowerCase();
+  return normalizedValue === '1' || normalizedValue === 'true' || normalizedValue === 'yes';
 }
 
 function normalizeAppEnvironment(value: string | undefined): AppEnvironment | null {
@@ -154,6 +161,7 @@ export function loadMobileEnv(source?: EnvSource, currentOrigin?: string): Mobil
     apiBaseUrl,
     appWebUrl,
     environment,
+    isScreenshotReviewMode: readBooleanEnvValue(resolvedSource.EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE),
     marketingUrl,
     pocketbaseUrl,
     posthogApiKey: readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POSTHOG_API_KEY) ?? '',

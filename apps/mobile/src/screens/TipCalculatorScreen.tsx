@@ -115,6 +115,7 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
         navigation.navigate('Misc');
       }}
       subtitle="Quickly estimate a tip before you split the bill."
+      testID="tip-calculator-screen"
       title="Tip Calculator"
     >
       <View style={styles.body}>

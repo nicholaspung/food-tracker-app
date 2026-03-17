@@ -105,9 +105,11 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
             });
             navigation.navigate('CreateBill');
           }}
+          testID="bills-create-button"
         />
       }
       subtitle="Split bills with your group and track payment status."
+      testID="bills-screen"
       title="Bills"
     >
       <View style={styles.body}>

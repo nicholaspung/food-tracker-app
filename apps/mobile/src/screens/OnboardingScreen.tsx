@@ -226,7 +226,7 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
   };
 
   return (
-    <Screen background="app" contentStyle={styles.screenContent} scroll>
+    <Screen background="app" contentStyle={styles.screenContent} scroll testID="onboarding-screen">
       <FormScaffold
         lead={<AuthTopBar />}
         showHeader={false}
@@ -344,6 +344,7 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
               });
               navigation.navigate('Login');
             }}
+            testID="onboarding-sign-in-button"
             variant="secondary"
           />
         </View>

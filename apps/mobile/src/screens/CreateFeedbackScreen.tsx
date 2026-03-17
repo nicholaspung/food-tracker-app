@@ -153,6 +153,7 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
         onPress: handleBack,
       }}
       subtitle="Describe the issue, idea, or support request you want to send."
+      testID="create-feedback-screen"
       title="New Feedback"
     >
       <View style={styles.body}>

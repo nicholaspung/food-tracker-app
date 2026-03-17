@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ClientResponseError } from 'pocketbase';
+import { ClientResponseError, type RecordModel } from 'pocketbase';
 
+import { env } from '../config/env';
 import { pb } from '../lib/pocketbase';
 import { authStore } from '../lib/pocketbaseAuthStore';
 import { logger } from '../lib/logger';
@@ -40,6 +41,20 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const SCREENSHOT_REVIEW_AUTH_RECORD: RecordModel = {
+  collectionId: 'users',
+  collectionName: 'users',
+  id: 'screenshot-review-user',
+  email: 'screenshots@yummyrecs.local',
+  name: 'Screenshot Review',
+  verified: true,
+  isAdmin: true,
+  isSubscriber: true,
+  isBetaUser: true,
+  defaultVisitVisibility: 'friends',
+  defaultRestaurantVisibility: 'friends',
+  created: '2026-01-01T12:00:00.000Z',
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -224,7 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const syncAuthSnapshot = useCallback(() => {
     const nextUser = getCurrentUser();
 
-    if (nextUser && pb.authStore.isValid) {
+    if (nextUser && (env.isScreenshotReviewMode || pb.authStore.isValid)) {
       setActualUser(nextUser);
       setStatus('authenticated');
       identifyObservabilityUser(nextUser);
@@ -249,6 +264,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       try {
+        if (env.isScreenshotReviewMode) {
+          const screenshotReviewUser = normalizeAuthUser(SCREENSHOT_REVIEW_AUTH_RECORD);
+
+          pb.authStore.save('screenshot-review-mode', SCREENSHOT_REVIEW_AUTH_RECORD);
+
+          if (isMounted && screenshotReviewUser) {
+            setActualUser(screenshotReviewUser);
+            setStatus('authenticated');
+            setAuthError(null);
+            identifyObservabilityUser(screenshotReviewUser);
+          }
+
+          trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
+            durationMs: Date.now() - restoreStartedAt,
+            hadPersistedToken,
+            hasValidSession: true,
+            refreshFailed: false,
+            source: 'AuthProvider',
+          });
+          return;
+        }
+
         await authStore.waitUntilReady();
         const loadedRolePreviewSettings = await loadRolePreviewSettings();
 

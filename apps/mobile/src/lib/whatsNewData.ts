@@ -10,6 +10,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.1',
+    date: '2026-03-16',
+    title: 'Screenshot & E2E Test Infrastructure',
+    summary:
+      'Behind-the-scenes developer tooling improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Screenshot review mode added — the app can now run with a pre-seeded auth session so UI screenshots can be captured without a live backend.',
+      'New Maestro E2E flow for onboarding, login, and home screen screenshot capture, with a local review server for inspecting results.',
+      'testID props added to all main screens, tab navigation buttons, login form inputs, and primary action buttons to support automated UI tests.',
+      'New npm scripts: mobile:start:screenshot-review, mobile:ios:screenshot-review, mobile:screenshots, and mobile:screenshots:review.',
+      'E2E artifacts and local env files added to .gitignore.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.0',
     date: '2026-03-16',
     title: 'Feedback Redesign & Lists Privacy Update',

@@ -567,6 +567,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
       scrollUnderlayColor={theme.colors.background.app}
+      testID="profile-screen"
     >
       <TabBrandHeader subtitle="Your account information" title="Profile" />
 
@@ -589,6 +590,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 ) : null
               }
               subtitle="Report issues and contact support"
+              testID="profile-feedback-link"
               title="Feedback & Support"
             />
             <OptionListRow
@@ -600,6 +602,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 showWhatsNewDot ? <View style={styles.optionDot} /> : null
               }
               subtitle="Latest updates and product improvements"
+              testID="profile-whats-new-link"
               title="What's New"
             />
             <OptionListRow
@@ -612,6 +615,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 <Text style={styles.optionMetaText}>{appVersionLabel}</Text>
               }
               subtitle="Current version, legal information, and app details"
+              testID="profile-about-link"
               title="About"
             />
           </OptionList>

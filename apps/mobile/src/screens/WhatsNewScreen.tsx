@@ -285,6 +285,7 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
         navigation.navigate('Profile');
       }}
       subtitle="Latest product updates and improvements."
+      testID="whats-new-screen"
       title="What's New"
     >
       {visibleEntries.map((entry, index) => (

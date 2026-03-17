@@ -538,6 +538,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       contentStyle={styles.screenContent}
       keyboardAware
       scrollUnderlayColor={theme.colors.background.muted}
+      testID="friends-screen"
     >
       <TabBrandHeader showBrand={false} subtitle={friendSummary} title="Friends" titleVariant="displayLg" />
 

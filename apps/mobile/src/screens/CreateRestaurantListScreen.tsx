@@ -144,6 +144,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
         onPress: handleBack,
       }}
       subtitle="Set your list name, description, and whether it stays private or is shared with friends."
+      testID="create-restaurant-list-screen"
       title="Create New List"
     >
       <View style={styles.body}>

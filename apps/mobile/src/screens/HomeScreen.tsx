@@ -1158,7 +1158,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   });
 
   return (
-    <TabRootScreenScaffold contentStyle={styles.screenContent} scrollUnderlayColor={colors.screenBackground}>
+    <TabRootScreenScaffold
+      contentStyle={styles.screenContent}
+      scrollUnderlayColor={colors.screenBackground}
+      testID="home-screen"
+    >
       <View style={styles.header}>
         <FeedHeaderControls
           feedMode={feedMode}

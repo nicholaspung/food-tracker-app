@@ -76,6 +76,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
       bodyStyle={styles.body}
       onBackPress={handleBackPress}
       subtitle="Version details, legal pages, and app information"
+      testID="about-screen"
       title="About"
     >
       <SectionCard title="App Information">

@@ -74,9 +74,11 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
             });
             navigation.navigate('CreateFeedback');
           }}
+          testID="feedback-create-button"
         />
       }
       subtitle="Report bugs, request features, and contact support."
+      testID="feedback-screen"
       title="Feedback"
     >
       {feedbackQuery.isSuccess ? (
