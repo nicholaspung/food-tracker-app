@@ -185,7 +185,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   };
 
   return (
-    <Screen background="app" keyboardAware scroll>
+    <Screen background="app" keyboardAware scroll testID="signup-screen">
       <FormScaffold
         lead={
           <AuthTopBar
@@ -259,6 +259,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             onPress={() => {
               void handleSignUp();
             }}
+            testID="signup-submit-button"
           />
         </Card>
 
@@ -275,6 +276,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
               });
               navigation.navigate('Login');
             }}
+            testID="signup-login-instead-button"
             variant="secondary"
           />
         </View>

@@ -82,6 +82,7 @@ export function ScreenHeader({
             accessibilityRole="button"
             onPress={onBackPress}
             style={styles.backButton}
+            testID="screen-back-button"
           >
             <Ionicons color={theme.colors.text.primary} name="chevron-back" size={isCompact ? 16 : 18} />
           </Pressable>

@@ -37,6 +37,7 @@ interface OptionListInlineBodyProps {
   children: ReactNode;
   withBottomDivider?: boolean;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 export function OptionList({ children, style }: OptionListProps) {
@@ -183,6 +184,7 @@ export function OptionListInlineBody({
   children,
   withBottomDivider = false,
   style,
+  testID,
 }: OptionListInlineBodyProps) {
   const theme = useTheme();
 
@@ -198,5 +200,9 @@ export function OptionListInlineBody({
     },
   });
 
-  return <View style={[styles.body, withBottomDivider && styles.bodyWithDivider, style]}>{children}</View>;
+  return (
+    <View style={[styles.body, withBottomDivider && styles.bodyWithDivider, style]} testID={testID}>
+      {children}
+    </View>
+  );
 }

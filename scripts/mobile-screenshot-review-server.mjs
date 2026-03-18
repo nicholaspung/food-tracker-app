@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createServer } from 'node:http';
-import { readFile, readdir, mkdir, rename, copyFile, unlink, stat } from 'node:fs/promises';
+import { readFile, readdir, mkdir, rename, copyFile, unlink, stat, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +14,7 @@ const staticDir = path.join(rootDir, 'apps/mobile/e2e/review-ui');
 const host = process.env.SCREENSHOT_REVIEW_HOST?.trim() || '127.0.0.1';
 const port = Number.parseInt(process.env.SCREENSHOT_REVIEW_PORT ?? '4174', 10);
 const defaultBaselineSet = process.env.SCREENSHOT_BASELINE_SET?.trim() || 'current';
+const defaultFlowPath = process.env.SCREENSHOT_REVIEW_FLOW?.trim() || 'apps/mobile/e2e/maestro/flows/core-review.yaml';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const MIME_BY_EXTENSION = {
@@ -38,6 +39,111 @@ function normalizeBaselineSet(value) {
   }
 
   return value;
+}
+
+function normalizeScreenshotName(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmedValue = value.trim().replace(/^['"]|['"]$/g, '');
+  if (!trimmedValue) {
+    return null;
+  }
+
+  return /\.[a-z0-9]+$/i.test(trimmedValue) ? trimmedValue : `${trimmedValue}.png`;
+}
+
+function resolveFlowPath(flowPath) {
+  if (typeof flowPath !== 'string' || flowPath.trim().length === 0) {
+    return path.join(rootDir, defaultFlowPath);
+  }
+
+  return path.isAbsolute(flowPath) ? flowPath : path.join(rootDir, flowPath);
+}
+
+async function parseExpectedScreenshotsFromFlow(flowPath) {
+  const absoluteFlowPath = resolveFlowPath(flowPath);
+  const contents = await readFile(absoluteFlowPath, 'utf8');
+  const screenshots = [];
+
+  for (const line of contents.split(/\r?\n/)) {
+    const match = line.match(/^\s*-\s*takeScreenshot:\s*(.+?)\s*$/);
+    if (!match) {
+      continue;
+    }
+
+    const screenshotName = normalizeScreenshotName(match[1]);
+    if (screenshotName) {
+      screenshots.push(screenshotName);
+    }
+  }
+
+  return screenshots;
+}
+
+async function readRunMetadata(runName) {
+  if (!isSafePathSegment(runName)) {
+    return null;
+  }
+
+  const metadataPath = path.join(artifactsDir, runName, 'run.json');
+
+  try {
+    const rawContents = await readFile(metadataPath, 'utf8');
+    const parsedContents = JSON.parse(rawContents);
+    return {
+      createdAt: typeof parsedContents.createdAt === 'string' ? parsedContents.createdAt : null,
+      expectationSource: 'run_metadata',
+      expectedScreenshots: Array.isArray(parsedContents.expectedScreenshots)
+        ? parsedContents.expectedScreenshots.map((value) => normalizeScreenshotName(value)).filter(Boolean)
+        : [],
+      flowPath:
+        typeof parsedContents.flowPath === 'string' && parsedContents.flowPath.trim().length > 0
+          ? parsedContents.flowPath.trim()
+          : defaultFlowPath,
+      runName: typeof parsedContents.runName === 'string' ? parsedContents.runName : runName,
+    };
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function getRunExpectations(runName) {
+  const metadata = await readRunMetadata(runName);
+  if (metadata && metadata.expectedScreenshots.length > 0) {
+    return metadata;
+  }
+
+  return {
+    createdAt: null,
+    expectationSource: 'default_flow',
+    expectedScreenshots: await parseExpectedScreenshotsFromFlow(defaultFlowPath),
+    flowPath: defaultFlowPath,
+    runName,
+  };
+}
+
+function buildRunSummary(expectedScreenshots, actualImages) {
+  const expectedSet = new Set(expectedScreenshots);
+  const actualSet = new Set(actualImages);
+  const missingExpectedNames = expectedScreenshots.filter((name) => !actualSet.has(name));
+  const unexpectedNames = actualImages.filter((name) => !expectedSet.has(name));
+
+  return {
+    actualCount: actualImages.length,
+    expectedCount: expectedScreenshots.length,
+    hasRegression: missingExpectedNames.length > 0,
+    matchedExpectedCount: expectedScreenshots.length - missingExpectedNames.length,
+    missingExpectedCount: missingExpectedNames.length,
+    missingExpectedNames,
+    unexpectedCount: unexpectedNames.length,
+    unexpectedNames,
+  };
 }
 
 async function listImageFiles(directory) {
@@ -69,10 +175,19 @@ async function listArtifactRuns() {
           return null;
         }
 
+        const expectations = await getRunExpectations(entry.name);
+        const summary = buildRunSummary(expectations.expectedScreenshots, images);
         const screenshotsStat = await stat(screenshotsDir);
         return {
+          expectationSource: expectations.expectationSource,
+          expectedScreenshotCount: summary.expectedCount,
+          flowPath: expectations.flowPath,
+          hasRegression: summary.hasRegression,
+          matchedExpectedCount: summary.matchedExpectedCount,
+          missingExpectedCount: summary.missingExpectedCount,
           name: entry.name,
           screenshotCount: images.length,
+          unexpectedCount: summary.unexpectedCount,
           updatedAt: screenshotsStat.mtime.toISOString(),
         };
       }),
@@ -98,10 +213,18 @@ async function getRunDetails(runName, baselineSet) {
 
   const safeBaselineSet = normalizeBaselineSet(baselineSet) ?? defaultBaselineSet;
   const screenshotsDir = path.join(artifactsDir, runName, 'screenshots');
-  const imageNames = await listImageFiles(screenshotsDir);
+  const actualImageNames = await listImageFiles(screenshotsDir);
+  const expectations = await getRunExpectations(runName);
+  const expectedSet = new Set(expectations.expectedScreenshots);
+  const actualSet = new Set(actualImageNames);
+  const orderedImageNames = [
+    ...expectations.expectedScreenshots,
+    ...actualImageNames.filter((name) => !expectedSet.has(name)),
+  ];
+  const summary = buildRunSummary(expectations.expectedScreenshots, actualImageNames);
 
   const images = await Promise.all(
-    imageNames.map(async (name) => {
+    orderedImageNames.map(async (name) => {
       const baselinePath = path.join(baselinesDir, safeBaselineSet, name);
       let baselineExists = false;
 
@@ -115,11 +238,18 @@ async function getRunDetails(runName, baselineSet) {
       }
 
       return {
+        artifactMissing: expectedSet.has(name) && !actualSet.has(name),
         name,
-        artifactUrl: `/files/artifacts/${encodeURIComponent(runName)}/${encodeURIComponent(name)}`,
+        artifactUrl: actualSet.has(name)
+          ? `/files/artifacts/${encodeURIComponent(runName)}/${encodeURIComponent(name)}`
+          : null,
         baselineUrl: baselineExists
           ? `/files/baselines/${encodeURIComponent(safeBaselineSet)}/${encodeURIComponent(name)}`
           : null,
+        hasArtifact: actualSet.has(name),
+        hasBaseline: baselineExists,
+        isExpected: expectedSet.has(name),
+        isUnexpected: !expectedSet.has(name),
       };
     }),
   );
@@ -127,7 +257,10 @@ async function getRunDetails(runName, baselineSet) {
   return {
     run: runName,
     baselineSet: safeBaselineSet,
+    expectationSource: expectations.expectationSource,
+    flowPath: expectations.flowPath,
     images,
+    summary,
   };
 }
 
@@ -177,6 +310,19 @@ async function promoteScreenshot(runName, baselineSet, filename) {
     ok: true,
     baselineSet: safeBaselineSet,
     filename,
+    run: runName,
+  };
+}
+
+async function deleteArtifactRun(runName) {
+  if (!isSafePathSegment(runName)) {
+    throw new Error('Invalid run name.');
+  }
+
+  await rm(path.join(artifactsDir, runName), { force: true, recursive: true });
+
+  return {
+    ok: true,
     run: runName,
   };
 }
@@ -258,6 +404,19 @@ const server = createServer(async (request, response) => {
 
       const parsedBody = JSON.parse(requestBody || '{}');
       const result = await promoteScreenshot(parsedBody.run, parsedBody.baselineSet, parsedBody.filename);
+      await sendJson(response, 200, result);
+      return;
+    }
+
+    if (request.method === 'DELETE' && requestUrl.pathname === '/api/run') {
+      const run = requestUrl.searchParams.get('run');
+
+      if (!run) {
+        await sendJson(response, 400, { error: 'Missing run parameter.' });
+        return;
+      }
+
+      const result = await deleteArtifactRun(run);
       await sendJson(response, 200, result);
       return;
     }

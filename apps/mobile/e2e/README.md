@@ -1,6 +1,6 @@
 # Mobile Screenshot Review
 
-This setup is now intentionally narrow.
+This setup now has a single default review flow.
 
 It assumes:
 
@@ -8,11 +8,7 @@ It assumes:
 - the iOS simulator is already open in your current dev build
 - the app starts on the first onboarding screen
 
-The flow only does three things:
-
-1. capture onboarding
-2. tap `Sign In` and log in with your dev account
-3. wait for Home and capture it
+The default review flow walks through onboarding, login, the Profile tab, legal/settings pages, feedback pages, and logout.
 
 ## Setup
 
@@ -36,13 +32,29 @@ Each run is written to `apps/mobile/e2e/artifacts/<timestamp>/`.
 
 ## Flow
 
-The active flow is `apps/mobile/e2e/maestro/flows/onboarding-login-home.yaml`.
+The active flow is `apps/mobile/e2e/maestro/flows/core-review.yaml`.
 
 It captures:
 
 - `01-onboarding`
-- `02-login`
-- `03-home`
+- `02-create-account`
+- `03-login`
+- `04-forgot-password`
+- `05-home`
+- `06-profile`
+- `07-profile-edit-account-name`
+- `08-profile-account-details-collapsed`
+- `09-profile-invite-codes`
+- `10-profile-delete-account`
+- `11-whats-new`
+- `12-about`
+- `13-terms-of-service`
+- `14-privacy-policy`
+- `15-settings`
+- `16-feedback-list`
+- `17-create-feedback`
+- `18-feedback-detail`
+- `19-onboarding-logged-out`
 
 ## Review Website
 

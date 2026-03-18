@@ -37,9 +37,8 @@
     "mobile:web:build": "pnpm --filter @food-tracker/mobile web:build",
     "mobile:update:preview": "pnpm --filter @food-tracker/mobile update:preview",
     "mobile:lint": "pnpm --filter @food-tracker/mobile lint",
-    "mobile:screenshots": "bash scripts/mobile-screenshot-suite.sh apps/mobile/e2e/maestro/flows/onboarding-login-home.yaml",
-    "mobile:screenshots:attached": "bash scripts/mobile-screenshot-suite.sh apps/mobile/e2e/maestro/flows/onboarding-login-home.yaml",
-    "mobile:screenshots:login": "bash scripts/mobile-screenshot-suite.sh apps/mobile/e2e/maestro/flows/onboarding-login-home.yaml",
+    "mobile:screenshots": "bash scripts/mobile-screenshot-suite.sh apps/mobile/e2e/maestro/flows/core-review.yaml",
+    "mobile:screenshots:attached": "bash scripts/mobile-screenshot-suite.sh apps/mobile/e2e/maestro/flows/core-review.yaml",
     "mobile:screenshots:review": "node scripts/mobile-screenshot-review-server.mjs",
     "mobile:typecheck": "pnpm --filter @food-tracker/mobile typecheck",
     "mobile:test": "pnpm --filter @food-tracker/mobile test"

@@ -71,6 +71,7 @@ export function PrivacyPolicyScreen({ navigation }: PrivacyPolicyScreenProps) {
       onBackPress={handleBackPress}
       sections={PRIVACY_SECTIONS}
       subtitle="Data collection, permissions, sharing, retention, and user rights"
+      testID="privacy-policy-screen"
       title="Privacy Policy"
     />
   );

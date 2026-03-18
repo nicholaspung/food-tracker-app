@@ -17,6 +17,7 @@ export interface StaticContentSectionsScreenProps {
   introDescription: string;
   sections: readonly StaticContentSection[];
   onBackPress: () => void;
+  testID?: string;
 }
 
 export function StaticContentSectionsScreen({
@@ -27,6 +28,7 @@ export function StaticContentSectionsScreen({
   introDescription,
   sections,
   onBackPress,
+  testID,
 }: StaticContentSectionsScreenProps) {
   const theme = useTheme();
 
@@ -51,6 +53,7 @@ export function StaticContentSectionsScreen({
       bodyStyle={styles.body}
       onBackPress={onBackPress}
       subtitle={subtitle}
+      testID={testID}
       title={title}
     >
       <Card style={styles.introCard}>

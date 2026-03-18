@@ -41,6 +41,7 @@ export function TermsOfServiceScreen({ navigation }: TermsOfServiceScreenProps) 
       onBackPress={handleBackPress}
       sections={TERMS_SECTIONS}
       subtitle="Account responsibilities, acceptable use, and legal contact"
+      testID="terms-of-service-screen"
       title="Terms of Service"
     />
   );

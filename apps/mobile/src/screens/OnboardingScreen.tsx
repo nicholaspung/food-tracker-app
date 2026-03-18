@@ -334,6 +334,7 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
               });
               navigation.navigate('SignUp');
             }}
+            testID="onboarding-create-account-button"
           />
           <Button
             label="Sign In"

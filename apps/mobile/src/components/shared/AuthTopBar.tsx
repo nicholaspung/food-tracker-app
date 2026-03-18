@@ -38,6 +38,7 @@ export function AuthTopBar({ onBackPress, backAccessibilityLabel = 'Back' }: Aut
           accessibilityRole="button"
           onPress={onBackPress}
           style={styles.backButton}
+          testID="screen-back-button"
         >
           <Ionicons color={theme.colors.text.primary} name="chevron-back" size={18} />
         </Pressable>

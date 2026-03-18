@@ -633,11 +633,12 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 togglePanel("account");
               }}
               subtitle="Name, email, status, and user info"
+              testID="profile-account-details-toggle"
               title="Account Details"
             />
 
             {expandedPanels.account ? (
-              <OptionListInlineBody>
+              <OptionListInlineBody testID="profile-account-details-panel">
                 <View style={styles.detailRow}>
                   <View style={styles.detailHeaderRow}>
                     <Text style={styles.detailLabel}>Name</Text>
@@ -650,6 +651,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                           styles.inlineIconButton,
                           pressed ? { opacity: 0.75 } : null,
                         ]}
+                        testID="profile-edit-account-name-button"
                       >
                         <Ionicons
                           color={theme.colors.text.muted}
@@ -671,6 +673,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                           onSubmitEditing={handleSaveAccountName}
                           placeholder="Enter your name"
                           returnKeyType="done"
+                          testID="profile-account-name-input"
                           value={editedAccountName}
                         />
                         <View style={styles.inlineIconActionRow}>
@@ -712,6 +715,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                                 : null,
                               pressed ? { opacity: 0.75 } : null,
                             ]}
+                            testID="profile-cancel-edit-account-name-button"
                           >
                             <Ionicons
                               color={theme.colors.text.danger}
@@ -793,11 +797,12 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 togglePanel("invite");
               }}
               subtitle="Share invite codes with friends"
+              testID="profile-invite-codes-toggle"
               title="Invite Codes"
             />
 
             {expandedPanels.invite ? (
-              <OptionListInlineBody withBottomDivider>
+              <OptionListInlineBody testID="profile-invite-codes-panel" withBottomDivider>
                 {isInitialUser ? (
                   <Button
                     label={
@@ -883,6 +888,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 navigation.navigate("Settings");
               }}
               subtitle="App-level settings and controls"
+              testID="profile-settings-link"
               title="Settings"
             />
           </OptionList>
@@ -900,12 +906,13 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 togglePanel("danger");
               }}
               subtitle="Permanently remove your account"
+              testID="profile-delete-account-toggle"
               title="Delete Account"
             />
           </OptionList>
 
           {expandedPanels.danger ? (
-            <View style={styles.sectionBody}>
+            <View style={styles.sectionBody} testID="profile-delete-account-panel">
               <View style={styles.dangerPanel}>
                 <Text style={styles.dangerTitle}>This action is permanent</Text>
                 <Text style={styles.dangerCopy}>
@@ -956,6 +963,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
             void signOut();
           }}
           style={styles.logoutButton}
+          testID="profile-logout-button"
           variant="secondary"
         />
       </View>

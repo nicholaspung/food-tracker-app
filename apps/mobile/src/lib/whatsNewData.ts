@@ -10,6 +10,25 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.2',
+    date: '2026-03-17',
+    title: 'Expanded E2E Test Coverage & Screenshot Review Improvements',
+    summary:
+      'Behind-the-scenes developer tooling improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'New core-review Maestro flow covers 19 screens end-to-end: onboarding, sign-up, login, forgot password, home, profile (including account details, invite codes, edit name, delete account), settings, what\'s new, about, terms of service, privacy policy, feedback list, create feedback, and feedback detail.',
+      'Screenshot review server now tracks expected screenshots from the flow file and flags regressions when expected screenshots are missing from a run.',
+      'Run metadata (run.json) is written alongside each screenshot run so the review server knows which flow was used and what screenshots were expected.',
+      'Screenshot review UI gains deletion support — runs can be removed directly from the review interface.',
+      'Images in the run detail view are now ordered by the flow\'s expected capture sequence, with unexpected extras listed after.',
+      'Each image card in the review UI now indicates whether the screenshot was expected, missing, or unexpected.',
+      'testID props added to back buttons (AuthTopBar, ScreenHeader), OptionListInlineBody, StaticContentSectionsScreen, and additional interactive elements across About, FeedbackDetail, FeedbackScreen, ForgotPassword, Login, Onboarding, PrivacyPolicy, Profile, Settings, SignUp, and TermsOfService screens.',
+      'mobile:screenshots npm script updated to use the new core-review flow; redundant mobile:screenshots:login script removed.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.1',
     date: '2026-03-16',
     title: 'Screenshot & E2E Test Infrastructure',

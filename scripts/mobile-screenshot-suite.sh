@@ -52,7 +52,7 @@ fi
 SCREENSHOT_LOGIN_EMAIL="${SCREENSHOT_LOGIN_EMAIL:-${MAESTRO_LOGIN_EMAIL:-${LOGIN_EMAIL:-}}}"
 SCREENSHOT_LOGIN_PASSWORD="${SCREENSHOT_LOGIN_PASSWORD:-${MAESTRO_LOGIN_PASSWORD:-${LOGIN_PASSWORD:-}}}"
 
-if [[ "$FLOW_PATH" == *"login"* || "$FLOW_PATH" == *"onboarding"* ]]; then
+if [[ "$FLOW_PATH" == *"core-review"* || "$FLOW_PATH" == *"login"* || "$FLOW_PATH" == *"onboarding"* ]]; then
   if [ -z "${SCREENSHOT_LOGIN_EMAIL:-}" ] || [ -z "${SCREENSHOT_LOGIN_PASSWORD:-}" ]; then
     echo "Login flows require credentials." >&2
     echo "Set SCREENSHOT_LOGIN_EMAIL and SCREENSHOT_LOGIN_PASSWORD in $ENV_FILE" >&2
@@ -62,6 +62,48 @@ if [[ "$FLOW_PATH" == *"login"* || "$FLOW_PATH" == *"onboarding"* ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+
+EXPECTED_SCREENSHOTS_JSON="$(
+  node -e '
+    const fs = require("node:fs");
+    const flowPath = process.argv[1];
+    const lines = fs.readFileSync(flowPath, "utf8").split(/\r?\n/);
+    const screenshots = [];
+
+    for (const line of lines) {
+      const match = line.match(/^\s*-\s*takeScreenshot:\s*(.+?)\s*$/);
+      if (!match) {
+        continue;
+      }
+
+      let name = match[1].trim().replace(/^["'"'"']|["'"'"']$/g, "");
+      if (!/\.[a-z0-9]+$/i.test(name)) {
+        name += ".png";
+      }
+
+      screenshots.push(name);
+    }
+
+    process.stdout.write(JSON.stringify(screenshots));
+  ' "$ROOT_DIR/$FLOW_PATH"
+)"
+
+node -e '
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const outputDir = process.argv[1];
+  const runName = process.argv[2];
+  const flowPath = process.argv[3];
+  const expectedScreenshots = JSON.parse(process.argv[4]);
+  const payload = {
+    createdAt: new Date().toISOString(),
+    expectedScreenshots,
+    flowPath,
+    runName,
+  };
+
+  fs.writeFileSync(path.join(outputDir, "run.json"), `${JSON.stringify(payload, null, 2)}\n`);
+' "$OUTPUT_DIR" "$RUN_NAME" "$FLOW_PATH" "$EXPECTED_SCREENSHOTS_JSON"
 
 echo "Running mobile screenshot review flow"
 echo "Flow:   $FLOW_PATH"

@@ -1,0 +1,208 @@
+appId: com.anonymous.yummy-recs-mobile
+---
+- assertVisible:
+    id: onboarding-screen
+- takeScreenshot: 01-onboarding
+
+- tapOn:
+    id: onboarding-create-account-button
+- assertVisible:
+    id: signup-screen
+- takeScreenshot: 02-create-account
+
+- scrollUntilVisible:
+    element:
+      id: signup-login-instead-button
+    direction: DOWN
+- tapOn:
+    id: signup-login-instead-button
+- assertVisible:
+    id: login-screen
+- takeScreenshot: 03-login
+
+- tapOn:
+    id: login-forgot-password-button
+- assertVisible:
+    id: forgot-password-screen
+- takeScreenshot: 04-forgot-password
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: login-screen
+
+- tapOn:
+    id: login-email-input
+- eraseText
+- inputText: ${LOGIN_EMAIL}
+
+- tapOn:
+    id: login-password-input
+- eraseText
+- inputText: ${LOGIN_PASSWORD}
+
+- tapOn:
+    id: login-submit-button
+- assertVisible:
+    id: home-screen
+- takeScreenshot: 05-home
+
+- tapOn:
+    id: tab-Profile
+- assertVisible:
+    id: profile-screen
+- takeScreenshot: 06-profile
+
+- tapOn:
+    id: profile-edit-account-name-button
+- assertVisible:
+    id: profile-account-name-input
+- takeScreenshot: 07-profile-edit-account-name
+
+- tapOn:
+    id: profile-cancel-edit-account-name-button
+- tapOn:
+    id: profile-account-details-toggle
+- takeScreenshot: 08-profile-account-details-collapsed
+
+- scrollUntilVisible:
+    element:
+      id: profile-invite-codes-toggle
+    direction: DOWN
+- tapOn:
+    id: profile-invite-codes-toggle
+- assertVisible:
+    id: profile-invite-codes-panel
+- scrollUntilVisible:
+    element:
+      id: profile-settings-link
+    direction: DOWN
+- takeScreenshot: 09-profile-invite-codes
+
+- tapOn:
+    id: profile-invite-codes-toggle
+- scrollUntilVisible:
+    element:
+      id: profile-delete-account-toggle
+    direction: DOWN
+- tapOn:
+    id: profile-delete-account-toggle
+- assertVisible:
+    id: profile-delete-account-panel
+- scrollUntilVisible:
+    element:
+      id: profile-logout-button
+    direction: DOWN
+- takeScreenshot: 10-profile-delete-account
+
+- scrollUntilVisible:
+    element:
+      id: profile-feedback-link
+    direction: UP
+- assertVisible:
+    id: profile-whats-new-link
+- tapOn:
+    id: profile-whats-new-link
+- assertVisible:
+    id: whats-new-screen
+- takeScreenshot: 11-whats-new
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: profile-screen
+
+- tapOn:
+    id: profile-about-link
+- assertVisible:
+    id: about-screen
+- takeScreenshot: 12-about
+
+- tapOn:
+    id: about-terms-link
+- assertVisible:
+    id: terms-of-service-screen
+- takeScreenshot: 13-terms-of-service
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: about-screen
+
+- tapOn:
+    id: about-privacy-link
+- assertVisible:
+    id: privacy-policy-screen
+- takeScreenshot: 14-privacy-policy
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: about-screen
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: profile-screen
+
+- scrollUntilVisible:
+    element:
+      id: profile-logout-button
+    direction: DOWN
+- assertVisible:
+    id: profile-settings-link
+- tapOn:
+    id: profile-settings-link
+- assertVisible:
+    id: settings-screen
+- takeScreenshot: 15-settings
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: profile-screen
+
+- scrollUntilVisible:
+    element:
+      id: profile-feedback-link
+    direction: UP
+- tapOn:
+    id: profile-feedback-link
+- assertVisible:
+    id: feedback-screen
+- takeScreenshot: 16-feedback-list
+
+- tapOn:
+    id: feedback-create-button
+- assertVisible:
+    id: create-feedback-screen
+- takeScreenshot: 17-create-feedback
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: feedback-screen
+
+- tapOn:
+    id: feedback-thread-first
+- assertVisible:
+    id: feedback-detail-screen
+- takeScreenshot: 18-feedback-detail
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: feedback-screen
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: profile-screen
+
+- scrollUntilVisible:
+    element:
+      id: profile-logout-button
+    direction: DOWN
+- tapOn:
+    id: profile-logout-button
+- assertVisible:
+    id: onboarding-screen
+- takeScreenshot: 19-onboarding-logged-out

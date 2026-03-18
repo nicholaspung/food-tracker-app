@@ -118,7 +118,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         ) : null}
 
         {feedbackQuery.isSuccess && !hasBlockingFeedbackError && visibleFeedbackCount > 0
-          ? displayedFeedback.map((feedback) => {
+          ? displayedFeedback.map((feedback, index) => {
               const unreadCount = feedback.userUnreadCount;
               const timestampLabel = formatDisplayDate(feedback.lastMessageAt ?? feedback.createdAt, {
                 fallback: 'Unknown',
@@ -143,6 +143,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
                     navigation.navigate('FeedbackDetail', { feedbackId: feedback.id });
                   }}
                   style={styles.feedbackPressable}
+                  testID={index === 0 ? 'feedback-thread-first' : `feedback-thread-${feedback.id}`}
                 >
                   <FeedbackThreadCard
                     compact

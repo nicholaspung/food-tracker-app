@@ -120,6 +120,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
               navigation.navigate('ForgotPassword');
             }}
             style={styles.forgotLink}
+            testID="login-forgot-password-button"
           >
             <Text tone="muted" variant="bodySm">
               Forgot Password?
@@ -152,6 +153,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
               });
               navigation.navigate('SignUp');
             }}
+            testID="login-create-account-button"
             variant="secondary"
           />
         </View>

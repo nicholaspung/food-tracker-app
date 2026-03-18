@@ -66,7 +66,7 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
   };
 
   return (
-    <Screen background="app" keyboardAware scroll>
+    <Screen background="app" keyboardAware scroll testID="forgot-password-screen">
       <FormScaffold
         lead={
           <AuthTopBar

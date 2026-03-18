@@ -201,6 +201,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
           navigation.navigate('Profile');
         }}
         subtitle="Set defaults for new visits and restaurants"
+        testID="settings-screen"
         title="Settings"
       >
         <View style={styles.body}>
@@ -220,6 +221,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         navigation.navigate('Profile');
       }}
       subtitle="Set defaults for new visits and restaurants"
+      testID="settings-screen"
       title="Settings"
     >
       <View style={styles.body}>

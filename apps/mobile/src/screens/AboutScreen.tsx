@@ -117,6 +117,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
               navigation.navigate('TermsOfService');
             }}
             subtitle="Current account responsibilities, acceptable use rules, and legal contact details"
+            testID="about-terms-link"
             title="Terms of Service"
           />
           <OptionListRow
@@ -126,6 +127,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
               navigation.navigate('PrivacyPolicy');
             }}
             subtitle="Current data collection, permissions, sharing, retention, and privacy rights summary"
+            testID="about-privacy-link"
             title="Privacy Policy"
           />
         </OptionList>

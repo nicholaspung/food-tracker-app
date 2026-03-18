@@ -340,6 +340,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       keyboardAware
       onBackPress={handleBackPress}
       scroll={false}
+      testID="feedback-detail-screen"
       title={feedbackQuery.data?.title?.trim() || 'Feedback'}
     >
       <View style={styles.body}>
