@@ -14,6 +14,7 @@ dist/
 build/
 apps/mobile/web-dist/
 apps/mobile/e2e/artifacts/
+apps/mobile/e2e/baselines/
 apps/mobile/e2e/.env.local
 apps/marketing/.dev-dist/
 apps/marketing/.verify-dist/

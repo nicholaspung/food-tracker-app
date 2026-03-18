@@ -73,3 +73,5 @@ What it does:
 - lets you move an approved artifact image into `apps/mobile/e2e/baselines/<set>/`
 
 The move is local filesystem state, not just UI state. Once promoted, the image is removed from the artifact run and becomes the baseline file for that filename.
+
+`apps/mobile/e2e/baselines/` is intentionally gitignored. Promoted baseline screenshots stay local unless you explicitly share them out of band.
