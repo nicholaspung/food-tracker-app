@@ -24,10 +24,14 @@ function resolveDefaultRestaurantVisibility(): RestaurantVisibility {
   return resolveDefaultRestaurantVisibilityFromAuth();
 }
 
-export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRestaurantScreenProps) {
+export function CreateVisitAddRestaurantScreen({
+  navigation,
+  route,
+}: CreateVisitAddRestaurantScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const editVisitId = route.params?.editVisitId;
 
   const [restaurantName, setRestaurantName] = useState('');
   const [restaurantLocation, setRestaurantLocation] = useState('');
@@ -111,6 +115,7 @@ export function CreateVisitAddRestaurantScreen({ navigation }: CreateVisitAddRes
         visibility,
       });
       navigation.navigate('CreateVisit', {
+        editVisitId,
         preselectedRestaurantId: createdRestaurant.id,
         preselectedRestaurantName: createdRestaurant.name,
       });

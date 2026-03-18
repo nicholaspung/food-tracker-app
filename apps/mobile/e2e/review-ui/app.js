@@ -76,38 +76,52 @@ function clampCurrentImageIndex() {
 function formatRunMeta(run) {
   const updatedAt = new Date(run.updatedAt);
   const updatedLabel = Number.isNaN(updatedAt.getTime()) ? run.updatedAt : updatedAt.toLocaleString();
-  const countLabel = run.expectedScreenshotCount
-    ? `${run.screenshotCount}/${run.expectedScreenshotCount} screenshots`
+  const reviewScreenshotCount = run.reviewScreenshotCount ?? run.expectedScreenshotCount ?? 0;
+  const missingArtifactCount = run.missingArtifactCount ?? run.missingExpectedCount ?? 0;
+  const countLabel = reviewScreenshotCount
+    ? `${run.screenshotCount}/${reviewScreenshotCount} screenshots`
     : `${run.screenshotCount} screenshots`;
-  const missingLabel = run.missingExpectedCount > 0 ? ` | ${run.missingExpectedCount} missing` : '';
+  const missingLabel = missingArtifactCount > 0 ? ` | ${missingArtifactCount} missing` : '';
   const unexpectedLabel = run.unexpectedCount > 0 ? ` | ${run.unexpectedCount} extra` : '';
   return `${countLabel}${missingLabel}${unexpectedLabel} | ${updatedLabel}`;
 }
 
 function formatFlowLabel(run) {
-  if (!run?.flowPath) {
+  const flowPaths = Array.isArray(run?.flowPaths)
+    ? run.flowPaths
+    : run?.flowPath
+      ? [run.flowPath]
+      : [];
+
+  if (flowPaths.length === 0) {
     return '';
   }
 
-  const flowName = run.flowPath.split('/').pop();
-  return run.expectationSource === 'default_flow'
-    ? `Expectations: ${flowName} (fallback)`
-    : `Flow: ${flowName}`;
+  const flowNames = flowPaths.map((flowPath) => flowPath.split('/').pop()).join(', ');
+  if (run.expectationSource === 'default_flow') {
+    return `Expectations: ${flowNames} (fallback)`;
+  }
+
+  return flowPaths.length === 1 ? `Flow: ${flowNames}` : `Flows: ${flowNames}`;
 }
 
 function renderRegressionAlert(summary) {
-  if (!summary || summary.missingExpectedCount === 0) {
+  if (!summary || summary.missingArtifactCount === 0) {
     elements.regressionAlert.classList.add('is-hidden');
     elements.regressionAlert.textContent = '';
     return;
   }
 
   const missingLabel =
-    summary.missingExpectedCount === 1
-      ? '1 expected screenshot is missing from this run.'
-      : `${summary.missingExpectedCount} expected screenshots are missing from this run.`;
+    summary.missingArtifactCount === 1
+      ? '1 review screenshot is missing from this run.'
+      : `${summary.missingArtifactCount} review screenshots are missing from this run.`;
+  const baselineOnlyLabel =
+    summary.baselineOnlyCount > 0
+      ? ` Baseline adds ${summary.baselineOnlyCount} additional screenshot${summary.baselineOnlyCount === 1 ? '' : 's'} to review.`
+      : '';
   elements.regressionAlert.classList.remove('is-hidden');
-  elements.regressionAlert.textContent = `Regression alert: ${missingLabel}`;
+  elements.regressionAlert.textContent = `Regression alert: ${missingLabel}${baselineOnlyLabel}`;
 }
 
 function renderSelectedRunPanel() {
@@ -260,11 +274,15 @@ function createImageCard(image) {
 
   if (image.artifactMissing) {
     artifactWrap.classList.add('is-empty');
-    artifactEmptyState.textContent = 'Expected screenshot missing from artifact run.';
+    artifactEmptyState.textContent = 'Review screenshot missing from artifact run.';
     flags.append(createStatusPill('Missing Artifact', 'danger'));
     card.classList.add('image-card-regression');
   } else if (image.isUnexpected) {
     flags.append(createStatusPill('Unexpected Artifact', 'warning'));
+  }
+
+  if (image.isBaselineOnly) {
+    flags.append(createStatusPill('Baseline Only', 'neutral'));
   }
 
   if (image.artifactUrl) {
@@ -419,7 +437,7 @@ async function loadRun(options = {}) {
     state.currentImageIndex = 0;
     elements.imageGrid.innerHTML = '';
     updateCarouselControls();
-    setStatus('No screenshots remain in this artifact run.');
+    setStatus('No screenshots are available for this artifact run yet.');
     return;
   }
 
@@ -432,17 +450,21 @@ async function loadRun(options = {}) {
 
   renderCurrentImageCard();
 
-  if (payload.summary.expectedCount > 0) {
+  if (payload.summary.comparisonCount > 0) {
     const missingLabel =
-      payload.summary.missingExpectedCount > 0
-        ? ` ${payload.summary.missingExpectedCount} missing expected.`
+      payload.summary.missingArtifactCount > 0
+        ? ` ${payload.summary.missingArtifactCount} missing from artifact run.`
         : '';
     const unexpectedLabel =
       payload.summary.unexpectedCount > 0
         ? ` ${payload.summary.unexpectedCount} unexpected extra.`
         : '';
+    const baselineOnlyLabel =
+      payload.summary.baselineOnlyCount > 0
+        ? ` Baseline adds ${payload.summary.baselineOnlyCount} additional review screenshot${payload.summary.baselineOnlyCount === 1 ? '' : 's'}.`
+        : '';
     setStatus(
-      `Loaded ${payload.summary.actualCount} of ${payload.summary.expectedCount} expected screenshots.${missingLabel}${unexpectedLabel}`.trim(),
+      `Loaded ${payload.summary.actualCount} of ${payload.summary.comparisonCount} review screenshots.${missingLabel}${unexpectedLabel}${baselineOnlyLabel}`.trim(),
     );
     return;
   }
@@ -451,7 +473,7 @@ async function loadRun(options = {}) {
 }
 
 async function refreshOverview() {
-  const response = await fetch('/api/overview');
+  const response = await fetch(`/api/overview?baselineSet=${encodeURIComponent(state.baselineSet)}`);
   const payload = await response.json();
 
   if (!response.ok) {
@@ -505,7 +527,10 @@ async function bootstrap() {
     }
 
     state.baselineSet = nextValue;
-    void loadRun().catch((error) => {
+    void (async () => {
+      await refreshOverview();
+      await loadRun();
+    })().catch((error) => {
       setStatus(error instanceof Error ? error.message : 'Could not load run.');
     });
   });

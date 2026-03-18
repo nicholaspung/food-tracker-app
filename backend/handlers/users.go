@@ -1676,7 +1676,6 @@ func serializeMenuItems(records []*core.Record, restaurantNames map[string]strin
 			"restaurant":     restaurantID,
 			"restaurantName": restaurantNames[restaurantID],
 			"name":           record.GetString("name"),
-			"description":    record.GetString("description"),
 			"visibility":     record.GetString("visibility"),
 			"created":        record.GetString("created"),
 			"updated":        record.GetString("updated"),

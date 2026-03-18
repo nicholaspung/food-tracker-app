@@ -20,6 +20,7 @@ type CreateVisitAddMenuItemScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'CreateVisitAddMenuItem'
 >;
+const MENU_ITEM_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['private', 'friends'];
 
 interface MenuItemRecord {
   id: string;
@@ -34,7 +35,7 @@ export function CreateVisitAddMenuItemScreen({
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
 
-  const { restaurantId, restaurantName } = route.params;
+  const { editVisitId, restaurantId, restaurantName } = route.params;
 
   const [menuItemName, setMenuItemName] = useState('');
   const [visibility, setVisibility] = useState<VisibilityOptionValue>('friends');
@@ -127,6 +128,7 @@ export function CreateVisitAddMenuItemScreen({
       });
 
       navigation.navigate('CreateVisit', {
+        editVisitId,
         preselectedRestaurantId: restaurantId,
         preselectedRestaurantName: restaurantName,
         preselectedMenuItemId: createdItem.id,
@@ -192,14 +194,17 @@ export function CreateVisitAddMenuItemScreen({
             <Text variant="label">Visibility</Text>
             <VisibilityOptionSelector
               onChange={(nextVisibility) => {
+                const resolvedVisibility: VisibilityOptionValue =
+                  nextVisibility === 'private' ? 'private' : 'friends';
                 trackObservabilityEvent('CREATE_VISIT_ADD_MENU_ITEM_VISIBILITY_CHANGED', {
                   source: 'CreateVisitAddMenuItemScreen',
                   restaurantId,
                   previousVisibility: visibility,
-                  nextVisibility,
+                  nextVisibility: resolvedVisibility,
                 });
-                setVisibility(nextVisibility);
+                setVisibility(resolvedVisibility);
               }}
+              options={MENU_ITEM_VISIBILITY_OPTIONS}
               value={visibility}
             />
           </View>

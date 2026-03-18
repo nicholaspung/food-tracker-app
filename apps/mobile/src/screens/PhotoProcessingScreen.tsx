@@ -98,7 +98,6 @@ interface MenuItemRecord {
   id: string;
   restaurant: string;
   name: string;
-  description?: string;
 }
 
 interface CreatedMenuItemRecord {
@@ -2188,7 +2187,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                   const isSelected = menuItem.name === (currentRestaurantForm?.menuItemName ?? '');
                   return (
                     <ListItem
-                      description={menuItem.description || 'Menu item'}
+                      description="Menu item"
                       key={menuItem.id}
                       onPress={() => {
                         updateCurrentRestaurantForm({ menuItemName: menuItem.name });

@@ -227,7 +227,6 @@ func TestAdminUserProfileIncludesCreatedRestaurantsAndMenuItems(t *testing.T) {
 
 	menuItem := core.NewRecord(menuItemsCollection)
 	menuItem.Set("name", "Created Menu Item")
-	menuItem.Set("description", "From the test fixture")
 	menuItem.Set("restaurant", restaurant.Id)
 	menuItem.Set("visibility", "public")
 	menuItem.Set("createdBy", targetUser.Id)

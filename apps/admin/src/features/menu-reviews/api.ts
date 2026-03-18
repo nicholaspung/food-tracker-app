@@ -70,7 +70,6 @@ export async function updateMenuItem(
   itemId: string,
   payload: {
     name: string;
-    description: string;
     visibility: 'private' | 'friends' | 'public';
   },
 ) {

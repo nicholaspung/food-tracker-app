@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.3',
+    date: '2026-03-17',
+    title: 'Improved Visit Editing & Menu Item Simplification',
+    summary:
+      'Editing a visit now uses the full step-by-step wizard — change the restaurant, items, ratings, date, and visibility all in one place. Menu item descriptions have been removed to keep things clean.',
+    features: [],
+    improvements: [
+      'Edit Visit now opens the full Create Visit wizard pre-filled with your existing visit data, so you can update the restaurant, menu items, ratings, date, and visibility in one guided flow.',
+      'Visit visibility (private or friends) can now be changed when editing an existing visit.',
+      'Menu item descriptions have been removed — item cards in the visit creation flow are now cleaner and easier to scan.',
+      'Menu item selection now matches by name as well as ID, so items added manually or via OCR are de-duplicated correctly.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.2',
     date: '2026-03-17',
     title: 'Expanded E2E Test Coverage & Screenshot Review Improvements',

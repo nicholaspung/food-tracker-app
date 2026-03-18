@@ -11,6 +11,7 @@ export interface ConfirmDestructiveModalProps {
   disabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  testID?: string;
 }
 
 export function ConfirmDestructiveModal({
@@ -24,6 +25,7 @@ export function ConfirmDestructiveModal({
   disabled = false,
   onConfirm,
   onCancel,
+  testID,
 }: ConfirmDestructiveModalProps) {
   const isPrimaryDisabled = disabled || loading;
 
@@ -42,6 +44,7 @@ export function ConfirmDestructiveModal({
         label: cancelLabel,
         onPress: onCancel,
       }}
+      testID={testID}
       title={title}
       visible={visible}
     />

@@ -498,7 +498,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     />
   );
 
-  const renderListCard = (list: RestaurantListRecord) => {
+  const renderListCard = (list: RestaurantListRecord, listIndex: number) => {
     const counts = normalizeListCountSummary(listItemCountsQuery.data?.[list.id]);
     const restaurantCount = counts.restaurantCount;
     const menuItemCount = counts.menuItemCount;
@@ -553,7 +553,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
             navigation.navigate('ListDetail', { listId: list.id });
           }}
           style={styles.cardListItem}
-          testID={`list-card-${list.id}`}
+          testID={`lists-list-card-${activeTab}-${listIndex}`}
           title={list.name}
           trailing={
             <View style={styles.trailingIcons}>
@@ -594,8 +594,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     >
       <PageErrorToast errorMessage={errorMessage} title="List operation failed" />
 
-      <SegmentedControl onChange={handleTabChange} options={tabOptions} value={activeTab} />
-
+      <SegmentedControl
+        getOptionTestID={(value) => `lists-tab-${value}`}
+        onChange={handleTabChange}
+        options={tabOptions}
+        value={activeTab}
+      />
       <View style={styles.searchRow}>
         <Input
           containerStyle={styles.searchField}
@@ -660,7 +664,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
             : renderEmptyState()
           : (
               <View style={styles.listsWrap}>
-                {filteredLists.map((list) => renderListCard(list))}
+                {filteredLists.map((list, index) => renderListCard(list, index))}
               </View>
             )
         : null}

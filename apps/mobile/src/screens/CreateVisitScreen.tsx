@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CurrentLocationButton,
   EmptyState,
+  ErrorState,
   FeatureFormScreenScaffold,
   LocalDatePickerField,
   LoadingState,
@@ -35,12 +36,14 @@ import {
   createVisit,
   formatLimitExceededMessage,
   getAuthenticatedUserIdOrNull,
+  getVisitById,
   linkVisitToListBookmark,
   listCollectionRecords,
   listRestaurants,
   listVisits,
   parseLimitExceededError,
   resolveDefaultVisitVisibilityFromAuth,
+  updateVisit,
   useMonthlyUsage,
   type RestaurantRecord,
 } from '../features';
@@ -84,6 +87,7 @@ interface DraftVisitItem {
   description: string;
   notes: string;
   photos: DraftVisitItemPhoto[];
+  sourceMenuItemId?: string;
 }
 
 interface DraftVisitItemPhoto {
@@ -113,7 +117,6 @@ interface MenuItemRecord {
   id: string;
   restaurant: string;
   name: string;
-  description?: string;
   createdBy?: string;
   visibility?: "private" | "friends" | "public";
   isFromOCR?: boolean;
@@ -284,6 +287,10 @@ function buildRestaurantDescription(
   return parts.join(" • ") || "Restaurant";
 }
 
+function normalizeSelectionLabel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function formatVisitCount(count: number): string {
   return `${count} ${count === 1 ? "visit" : "visits"}`;
 }
@@ -351,6 +358,8 @@ export function CreateVisitScreen({
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
+  const editVisitId = route.params?.editVisitId;
+  const isEditMode = Boolean(editVisitId);
 
   const restaurantsQuery = useQuery({
     queryKey: ["feature", "restaurants"],
@@ -422,6 +431,9 @@ export function CreateVisitScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
+  const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
+    null,
+  );
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
   const createVisitSearchUi = resolveCreateVisitSearchUi({
     isFreeTier: isDisplayFreeUser,
@@ -434,6 +446,17 @@ export function CreateVisitScreen({
   const compactSearchLabel = createVisitSearchUi.compactLabel;
   const expandedSearchLabel = createVisitSearchUi.expandedLabel;
   const scrollViewRef = useRef<ScrollView | null>(null);
+  const editVisitQuery = useQuery({
+    queryKey: ["feature", "visit", editVisitId ?? ""],
+    queryFn: async () => {
+      if (!editVisitId) {
+        return null;
+      }
+
+      return getVisitById(editVisitId);
+    },
+    enabled: Boolean(editVisitId),
+  });
   const menuItemsQuery = useQuery({
     queryKey: ["feature", "menuItems", selectedRestaurantId ?? ""],
     queryFn: async () => {
@@ -522,6 +545,7 @@ export function CreateVisitScreen({
             description: "",
             notes: "",
             photos: [],
+            sourceMenuItemId: preselectedMenuItemId,
           },
         ];
       });
@@ -562,6 +586,56 @@ export function CreateVisitScreen({
     route.params?.sourceListItemId,
     route.params?.returnToStep,
     selectedRestaurantId,
+  ]);
+
+  useEffect(() => {
+    if (!editVisitId) {
+      if (hydratedEditVisitId !== null) {
+        setHydratedEditVisitId(null);
+      }
+      return;
+    }
+
+    if (!editVisitQuery.data || hydratedEditVisitId === editVisitId) {
+      return;
+    }
+
+    const hydratedVisitDate = formatDateToLocalDateString(
+      new Date(editVisitQuery.data.visitedAt),
+    );
+    const requestedStep = route.params?.returnToStep;
+
+    setRestaurantName(editVisitQuery.data.restaurantName);
+    setSelectedRestaurantId(editVisitQuery.data.restaurantId ?? null);
+    setDraftItems(
+      editVisitQuery.data.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        rating: item.rating,
+        description: item.description?.trim() ?? "",
+        notes: item.notes?.trim() ?? "",
+        photos: [],
+      })),
+    );
+    setVisitDate(
+      isValidLocalDate(hydratedVisitDate)
+        ? hydratedVisitDate
+        : getTodayLocalDateString(),
+    );
+    setIsVisitDateAutoFilled(false);
+    setVisitVisibility(
+      editVisitQuery.data.visibility === "private" ? "private" : "friends",
+    );
+    setStep(requestedStep ?? 2);
+    setErrorMessage(null);
+    setSearchErrorMessage(null);
+    setSourceListItemId(null);
+    setHydratedEditVisitId(editVisitId);
+  }, [
+    editVisitId,
+    editVisitQuery.data,
+    hydratedEditVisitId,
+    route.params?.returnToStep,
   ]);
 
   useEffect(() => {
@@ -612,9 +686,17 @@ export function CreateVisitScreen({
       selectedRestaurantId,
     );
   }, [filteredSavedRestaurants, referenceCoords, selectedRestaurantId]);
-  const selectedMenuItemIds = useMemo(() => {
-    return new Set(draftItems.map((item) => item.id));
-  }, [draftItems]);
+  const isMenuItemSelected = useCallback(
+    (menuItem: MenuItemRecord) => {
+      const normalizedMenuItemName = normalizeSelectionLabel(menuItem.name);
+      return draftItems.some(
+        (item) =>
+          item.sourceMenuItemId === menuItem.id ||
+          normalizeSelectionLabel(item.name) === normalizedMenuItemName,
+      );
+    },
+    [draftItems],
+  );
   const filteredMenuItems = useMemo(() => {
     const items = menuItemsQuery.data ?? [];
     const normalizedQuery = menuItemSearchQuery.trim().toLowerCase();
@@ -627,21 +709,12 @@ export function CreateVisitScreen({
     );
   }, [menuItemSearchQuery, menuItemsQuery.data]);
   const displayedMenuItems = useMemo(() => {
-    const allItems = menuItemsQuery.data ?? [];
-    const byId = new Map<string, MenuItemRecord>();
-    for (const item of allItems) {
-      byId.set(item.id, item);
-    }
-
-    const selected = draftItems
-      .map((draftItem) => byId.get(draftItem.id))
-      .filter((item): item is MenuItemRecord => Boolean(item));
-    const selectedIds = new Set(selected.map((item) => item.id));
+    const selected = filteredMenuItems.filter((item) => isMenuItemSelected(item));
     const unselected = filteredMenuItems.filter(
-      (item) => !selectedIds.has(item.id),
+      (item) => !isMenuItemSelected(item),
     );
     return [...selected, ...unselected];
-  }, [draftItems, filteredMenuItems, menuItemsQuery.data]);
+  }, [filteredMenuItems, isMenuItemSelected]);
   const selectedMenuItemCount = draftItems.length;
   const draftPhotoCount = useMemo(
     () =>
@@ -656,19 +729,25 @@ export function CreateVisitScreen({
       return;
     }
 
-    const menuItemsById = new Map(
-      menuItems.map((item) => [item.id, item.name]),
+    const menuItemsById = new Map(menuItems.map((item) => [item.id, item]));
+    const menuItemsByNormalizedName = new Map(
+      menuItems.map((item) => [normalizeSelectionLabel(item.name), item]),
     );
     setDraftItems((currentItems) =>
       currentItems.map((item) => {
-        const latestName = menuItemsById.get(item.id);
-        if (!latestName || latestName === item.name) {
+        const matchedMenuItem =
+          (item.sourceMenuItemId
+            ? menuItemsById.get(item.sourceMenuItemId)
+            : undefined) ??
+          menuItemsByNormalizedName.get(normalizeSelectionLabel(item.name));
+        if (!matchedMenuItem) {
           return item;
         }
 
         return {
           ...item,
-          name: latestName,
+          name: matchedMenuItem.name,
+          sourceMenuItemId: matchedMenuItem.id,
         };
       }),
     );
@@ -1237,12 +1316,15 @@ export function CreateVisitScreen({
   };
 
   const toggleMenuItemSelection = (menuItem: MenuItemRecord) => {
-    const currentlySelected = draftItems.some(
-      (item) => item.id === menuItem.id,
+    const normalizedMenuItemName = normalizeSelectionLabel(menuItem.name);
+    const existingDraftItem = draftItems.find(
+      (item) =>
+        item.sourceMenuItemId === menuItem.id ||
+        normalizeSelectionLabel(item.name) === normalizedMenuItemName,
     );
-    if (currentlySelected) {
+    if (existingDraftItem) {
       setDraftItems((currentItems) =>
-        currentItems.filter((item) => item.id !== menuItem.id),
+        currentItems.filter((item) => item.id !== existingDraftItem.id),
       );
       return;
     }
@@ -1253,9 +1335,10 @@ export function CreateVisitScreen({
         id: menuItem.id,
         name: menuItem.name,
         rating: 3,
-        description: menuItem.description?.trim() ?? "",
+        description: "",
         notes: "",
         photos: [],
+        sourceMenuItemId: menuItem.id,
       },
     ]);
   };
@@ -1292,7 +1375,7 @@ export function CreateVisitScreen({
   };
 
   const renderMenuItemCard = (menuItem: MenuItemRecord) => {
-    const isSelected = selectedMenuItemIds.has(menuItem.id);
+    const isSelected = isMenuItemSelected(menuItem);
     const visibility = normalizeMenuItemVisibility(menuItem.visibility);
     const isUserCreated = menuItem.createdBy === currentUserId;
 
@@ -1309,9 +1392,6 @@ export function CreateVisitScreen({
         <View style={styles.menuItemHeaderRow}>
           <View style={styles.menuItemNameWrap}>
             <Text variant="label">{menuItem.name}</Text>
-            {menuItem.description ? (
-              <Text tone="secondary">{menuItem.description}</Text>
-            ) : null}
           </View>
           <Ionicons
             color={
@@ -1761,6 +1841,7 @@ export function CreateVisitScreen({
     }
 
     const parsedItems = draftItems.map((item) => ({
+      id: item.id,
       name: item.name,
       rating: item.rating,
       description: item.description.trim() || undefined,
@@ -1812,6 +1893,56 @@ export function CreateVisitScreen({
     setIsSubmitting(true);
 
     try {
+      if (isEditMode && editVisitId) {
+        const visitUpdateInput = {
+          restaurantName: trimmedRestaurant,
+          items: parsedItems.map((item) => ({
+            id: item.id,
+            name: item.name,
+            rating: item.rating,
+            description: item.description,
+            notes: item.notes,
+          })),
+          visitedAt: localDateStringToUTC(trimmedVisitDate),
+          visibility: visitVisibility,
+        };
+
+        if (!isOnline) {
+          await queueFeatureOutbox("visit.update", {
+            visitId: editVisitId,
+            updates: visitUpdateInput,
+          });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
+            queryClient.invalidateQueries({
+              queryKey: ["feature", "visit", editVisitId],
+            }),
+          ]);
+          showQueuedOfflineAlert("Visit update");
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate("Home");
+          }
+          return;
+        }
+
+        await queueWrite("visit.update");
+        await updateVisit(editVisitId, visitUpdateInput);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
+          queryClient.invalidateQueries({
+            queryKey: ["feature", "visit", editVisitId],
+          }),
+        ]);
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate("Home");
+        }
+        return;
+      }
+
       if (!isOnline) {
         await queueFeatureOutbox("visit.create", visitInput);
         setSourceListItemId(null);
@@ -1895,7 +2026,12 @@ export function CreateVisitScreen({
     }
 
     setSourceListItemId(null);
-    navigation.navigate("AddVisit");
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate(isEditMode ? "Home" : "AddVisit");
   };
 
   const primaryAction =
@@ -1917,8 +2053,8 @@ export function CreateVisitScreen({
               setErrorMessage(null);
             },
           }
-        : {
-            label: "Save Visit",
+      : {
+            label: isEditMode ? "Save Changes" : "Save Visit",
             disabled: isSubmitting || draftItems.length === 0,
             loading: isSubmitting,
             onPress: () => {
@@ -1932,7 +2068,12 @@ export function CreateVisitScreen({
           label: "Cancel",
           onPress: () => {
             setSourceListItemId(null);
-            navigation.navigate("AddVisit");
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+              return;
+            }
+
+            navigation.navigate(isEditMode ? "Home" : "AddVisit");
           },
         }
       : step === 1
@@ -1962,10 +2103,14 @@ export function CreateVisitScreen({
   const trimmedRestaurantName = restaurantName.trim();
   const headerSubtitle =
     step === 0
-      ? "Select your restaurant here."
+      ? isEditMode
+        ? "Update the restaurant for this visit."
+        : "Select your restaurant here."
       : step === 1
         ? `Search and select items you had at ${trimmedRestaurantName || "this restaurant"}.`
-        : `Rate your selected items and save your visit for ${trimmedRestaurantName || "this restaurant"}.`;
+        : isEditMode
+          ? `Update ratings for your selected items from ${trimmedRestaurantName || "this restaurant"}.`
+          : `Rate your selected items and save your visit for ${trimmedRestaurantName || "this restaurant"}.`;
 
   const headerProgress = (
     <StepProgressBar compact currentStep={step} steps={WIZARD_STEPS} />
@@ -1974,7 +2119,7 @@ export function CreateVisitScreen({
     ? `Search results (${filteredMenuItems.length})`
     : `All menu items (${menuItemsQuery.data?.length ?? 0})`;
   const firstUnselectedMenuItemIndex = displayedMenuItems.findIndex(
-    (item) => !selectedMenuItemIds.has(item.id),
+    (item) => !isMenuItemSelected(item),
   );
   const estimatedMonthlyPhotoTotal =
     (monthlyUsage.snapshot?.usage.photoUploads ?? 0) + draftPhotoCount;
@@ -1991,6 +2136,86 @@ export function CreateVisitScreen({
     draftPhotoCount > 0 &&
     estimatedFreeMonthlyPhotosRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
 
+  if (isEditMode && hydratedEditVisitId !== editVisitId) {
+    if (editVisitQuery.isError) {
+      return (
+        <FeatureFormScreenScaffold
+          keyboardAware
+          onBackPress={handleBackPress}
+          primaryAction={{
+            label: "Retry",
+            onPress: () => {
+              void editVisitQuery.refetch();
+            },
+          }}
+          secondaryAction={{
+            label: "Cancel",
+            onPress: handleBackPress,
+          }}
+          subtitle="We couldn't load this visit."
+          title="Edit Restaurant Visit"
+        >
+          <ErrorState
+            description="Could not load visit details."
+            onRetry={() => {
+              void editVisitQuery.refetch();
+            }}
+            title="Visit unavailable"
+          />
+        </FeatureFormScreenScaffold>
+      );
+    }
+
+    if (!editVisitQuery.isLoading && !editVisitQuery.data) {
+      return (
+        <FeatureFormScreenScaffold
+          keyboardAware
+          onBackPress={handleBackPress}
+          primaryAction={{
+            label: "Back to Home",
+            onPress: () => {
+              navigation.navigate("Home");
+            },
+          }}
+          secondaryAction={{
+            label: "Cancel",
+            onPress: handleBackPress,
+          }}
+          subtitle="This visit could not be found."
+          title="Edit Restaurant Visit"
+        >
+          <EmptyState
+            actionLabel="Back to Home"
+            onAction={() => {
+              navigation.navigate("Home");
+            }}
+            title="Visit not found"
+          />
+        </FeatureFormScreenScaffold>
+      );
+    }
+
+    return (
+      <FeatureFormScreenScaffold
+        keyboardAware
+        onBackPress={handleBackPress}
+        primaryAction={{
+          label: "Loading",
+          disabled: true,
+          onPress: () => {},
+        }}
+        secondaryAction={{
+          label: "Cancel",
+          onPress: handleBackPress,
+        }}
+        subtitle="Loading your visit details."
+        title="Edit Restaurant Visit"
+      >
+        <LoadingState label="Loading visit..." />
+      </FeatureFormScreenScaffold>
+    );
+  }
+
   return (
     <FeatureFormScreenScaffold
       headerBottomCompact
@@ -2001,7 +2226,7 @@ export function CreateVisitScreen({
       scrollViewRef={scrollViewRef}
       secondaryAction={secondaryAction}
       subtitle={headerSubtitle}
-      title="Track Restaurant Visit"
+      title={isEditMode ? "Edit Restaurant Visit" : "Track Restaurant Visit"}
     >
       <PageErrorToast
         actionLabel={photoPermissionNeedsSettings ? "Open Settings" : undefined}
@@ -2129,7 +2354,9 @@ export function CreateVisitScreen({
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => {
-                    navigation.navigate("CreateVisitAddRestaurant");
+                    navigation.navigate("CreateVisitAddRestaurant", {
+                      editVisitId,
+                    });
                   }}
                   style={styles.inlineLink}
                 >
@@ -2354,6 +2581,7 @@ export function CreateVisitScreen({
                 }
 
                 navigation.navigate("CreateVisitAddMenuItem", {
+                  editVisitId,
                   restaurantId: selectedRestaurantId,
                   restaurantName: restaurantName.trim(),
                 });
@@ -2474,7 +2702,7 @@ export function CreateVisitScreen({
 
       {step === 2 ? (
         <>
-          {shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
+          {!isEditMode && shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
             <Card style={styles.statusCard}>
               <Text tone="warning">
                 Offline estimate may be stale. Backend limits are enforced when sync runs.
@@ -2482,7 +2710,7 @@ export function CreateVisitScreen({
             </Card>
           ) : null}
 
-          {isDisplayFreeUser && draftPhotoCount > 0 ? (
+          {!isEditMode && isDisplayFreeUser && draftPhotoCount > 0 ? (
             <Card style={styles.statusCard} tone="muted">
               <Text tone="secondary">
                 Monthly photo estimate: {estimatedFreeMonthlyPhotosRemaining} left.
@@ -2490,7 +2718,7 @@ export function CreateVisitScreen({
             </Card>
           ) : null}
 
-          {shouldShowPhotoUpgradePrompt ? (
+          {!isEditMode && shouldShowPhotoUpgradePrompt ? (
             <UpgradePromptCard
               description={
                 estimatedFreeMonthlyPhotosRemaining <= 0
@@ -2503,6 +2731,14 @@ export function CreateVisitScreen({
                   : 'You are close to your free limit'
               }
             />
+          ) : null}
+
+          {isEditMode ? (
+            <Card style={styles.statusCard} tone="muted">
+              <Text tone="secondary">
+                Edit mode currently updates restaurant, date, visibility, ratings, descriptions, and notes.
+              </Text>
+            </Card>
           ) : null}
 
           <Card style={styles.metadataCard}>
@@ -2544,55 +2780,59 @@ export function CreateVisitScreen({
                 onChangeText={(value) => {
                   updateDraftItem(item.id, { description: value });
                 }}
-                placeholder="Describe this item (optional)"
+                placeholder="Optional description or modification"
                 value={item.description}
               />
-              <View style={styles.itemPhotoSection}>
-                <View style={styles.itemPhotoLabelRow}>
-                  <Ionicons
-                    color={theme.colors.text.secondary}
-                    name="images-outline"
-                    size={14}
-                  />
-                  <Text variant="label">Add photos</Text>
-                </View>
-                <PhotoSourceActionCards
-                  cameraSubtitle="Camera"
-                  cameraTitle="Capture"
-                  gallerySubtitle="Photo Library"
-                  galleryTitle="Upload"
-                  onCameraPress={() => {
-                    void attachPhotoToDraftItem(item.id, "camera");
-                  }}
-                  onGalleryPress={() => {
-                    void attachPhotoToDraftItem(item.id, "gallery");
-                  }}
-                />
-              </View>
-              {item.photos.length > 0 ? (
-                <View style={styles.itemPhotoList}>
-                  {item.photos.map((photo, index) => (
-                    <PhotoAttachmentRow
-                      accessibilityLabel={`View attached photo ${index + 1} full screen`}
-                      key={photo.uri}
-                      name={photo.name}
-                      onPress={() => {
-                        openPhotoViewer(item.photos, index);
+              {!isEditMode ? (
+                <>
+                  <View style={styles.itemPhotoSection}>
+                    <View style={styles.itemPhotoLabelRow}>
+                      <Ionicons
+                        color={theme.colors.text.secondary}
+                        name="images-outline"
+                        size={14}
+                      />
+                      <Text variant="label">Add photos</Text>
+                    </View>
+                    <PhotoSourceActionCards
+                      cameraSubtitle="Camera"
+                      cameraTitle="Capture"
+                      gallerySubtitle="Photo Library"
+                      galleryTitle="Upload"
+                      onCameraPress={() => {
+                        void attachPhotoToDraftItem(item.id, "camera");
                       }}
-                      onRemove={() => {
-                        removeDraftItemPhoto(item.id, photo.uri);
+                      onGalleryPress={() => {
+                        void attachPhotoToDraftItem(item.id, "gallery");
                       }}
-                      uri={photo.uri}
                     />
-                  ))}
-                </View>
+                  </View>
+                  {item.photos.length > 0 ? (
+                    <View style={styles.itemPhotoList}>
+                      {item.photos.map((photo, index) => (
+                        <PhotoAttachmentRow
+                          accessibilityLabel={`View attached photo ${index + 1} full screen`}
+                          key={photo.uri}
+                          name={photo.name}
+                          onPress={() => {
+                            openPhotoViewer(item.photos, index);
+                          }}
+                          onRemove={() => {
+                            removeDraftItemPhoto(item.id, photo.uri);
+                          }}
+                          uri={photo.uri}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </>
               ) : null}
               <Input
                 label="Notes"
                 onChangeText={(value) => {
                   updateDraftItem(item.id, { notes: value });
                 }}
-                placeholder="Optional notes"
+                placeholder='Optional notes, e.g. "tastes the same as every other boba shop"'
                 value={item.notes}
               />
             </Card>

@@ -1,0 +1,151 @@
+appId: com.anonymous.yummy-recs-mobile
+---
+- assertVisible:
+    id: onboarding-screen
+
+- tapOn:
+    id: onboarding-sign-in-button
+- assertVisible:
+    id: login-screen
+- takeScreenshot: 20-login
+
+- tapOn:
+    id: login-email-input
+- eraseText
+- inputText: ${LOGIN_EMAIL}
+
+- tapOn:
+    id: login-password-input
+- eraseText
+- inputText: ${LOGIN_PASSWORD}
+
+- tapOn:
+    id: login-submit-button
+- assertVisible:
+    id: home-screen
+- takeScreenshot: 21-home
+
+- tapOn:
+    id: tab-Misc
+- assertVisible:
+    id: misc-page
+- takeScreenshot: 22-more
+
+- tapOn:
+    id: feature-restaurant-lists
+- assertVisible:
+    id: lists-screen
+- assertVisible:
+    id: lists-list-card-my-0
+- takeScreenshot: 23-lists-list
+
+- tapOn:
+    id: create-list-button
+- assertVisible:
+    id: create-restaurant-list-screen
+- takeScreenshot: 24-add-list
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: lists-screen
+
+- tapOn:
+    id: lists-list-card-my-0
+- assertVisible:
+    id: list-detail-screen
+- takeScreenshot: 25-primary-list-detail
+
+- tapOn:
+    id: add-restaurant-banner
+- assertVisible:
+    id: add-restaurant-to-list-screen
+- takeScreenshot: 26-add-visit-ratings-to-list
+
+- tapOn:
+    id: add-restaurant-option-0
+- assertVisible:
+    id: add-restaurant-to-list-detail-screen
+- takeScreenshot: 27-add-restaurant-to-list-detail
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: add-restaurant-to-list-screen
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: list-detail-screen
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: lists-screen
+
+- tapOn:
+    id: lists-list-card-my-1
+- assertVisible:
+    id: list-detail-screen
+- assertVisible:
+    id: list-detail-photo-button-0-0
+- takeScreenshot: 28-secondary-list-detail
+
+- tapOn:
+    id: list-detail-photo-button-0-0
+- assertVisible:
+    id: photo-viewer-close-button
+- takeScreenshot: 29-full-photo
+
+- tapOn:
+    id: photo-viewer-close-button
+- assertVisible:
+    id: list-detail-screen
+
+- tapOn:
+    id: list-detail-edit-button
+- assertVisible:
+    id: edit-restaurant-list-screen
+- takeScreenshot: 30-edit-list
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: list-detail-screen
+
+- tapOn:
+    id: list-detail-delete-button
+- assertVisible:
+    id: delete-list-confirmation-modal
+- takeScreenshot: 31-delete-list-confirmation
+
+- tapOn: Keep List
+- assertVisible:
+    id: list-detail-screen
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: lists-screen
+
+- tapOn:
+    id: lists-tab-friends
+- assertVisible:
+    id: lists-list-card-friends-0
+- takeScreenshot: 32-friend-lists
+
+- tapOn:
+    id: lists-list-card-friends-0
+- assertVisible:
+    id: list-detail-screen
+- takeScreenshot: 33-friend-list-detail
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: lists-screen
+
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: misc-page

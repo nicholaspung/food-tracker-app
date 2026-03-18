@@ -19,6 +19,7 @@ export interface ModalProps {
   onRequestClose: () => void;
   primaryAction?: ModalAction;
   secondaryAction?: ModalAction;
+  testID?: string;
 }
 
 export function Modal({
@@ -28,6 +29,7 @@ export function Modal({
   onRequestClose,
   primaryAction,
   secondaryAction,
+  testID,
   children,
 }: PropsWithChildren<ModalProps>) {
   const theme = useTheme();
@@ -63,7 +65,7 @@ export function Modal({
   return (
     <RNModal animationType="fade" onRequestClose={onRequestClose} transparent visible={visible}>
       <Pressable onPress={onRequestClose} style={styles.overlay}>
-        <Pressable onPress={() => undefined} style={styles.card}>
+        <Pressable onPress={() => undefined} style={styles.card} testID={testID}>
           {title ? <Text variant="titleMd">{title}</Text> : null}
           {description ? <Text tone="secondary">{description}</Text> : null}
           {children}

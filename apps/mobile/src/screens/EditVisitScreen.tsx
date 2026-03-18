@@ -1,293 +1,49 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
-import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
-import { getVisitById, updateVisit, type VisitItem } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { FeatureFormScreenScaffold, LoadingState } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { trackObservabilityEvent } from '../observability';
-import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
-import { Card, Input, Text } from '../ui';
-import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type EditVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'EditVisit'>;
 
-interface EditableVisitItem extends VisitItem {
-  ratingText: string;
-}
-
 export function EditVisitScreen({ navigation, route }: EditVisitScreenProps) {
-  const { visitId } = route.params;
-  const theme = useTheme();
-  const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
-  const { isOnline } = useConnectivity();
-
-  const visitQuery = useQuery({
-    queryKey: ['feature', 'visit', visitId],
-    queryFn: () => getVisitById(visitId),
-  });
-
-  const [restaurantName, setRestaurantName] = useState('');
-  const [items, setItems] = useState<EditableVisitItem[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   useEffect(() => {
-    if (!visitQuery.data) {
-      return;
-    }
-
-    setRestaurantName(visitQuery.data.restaurantName);
-    setItems(
-      visitQuery.data.items.map((item) => ({
-        ...item,
-        ratingText: item.rating.toString(),
-      })),
-    );
-  }, [visitQuery.data]);
-
-  const updateItem = (itemId: string, updates: Partial<Pick<EditableVisitItem, 'ratingText' | 'notes'>>) => {
-    setItems((currentItems) =>
-      currentItems.map((item) => (item.id === itemId ? { ...item, ...updates } : item)),
-    );
-  };
-
-  const styles = StyleSheet.create({
-    container: {
-      gap: theme.spacing.md,
-    },
-    itemCard: {
-      gap: theme.spacing.sm,
-    },
-  });
-
-  const handleSave = async () => {
-    if (!restaurantName.trim()) {
-      trackObservabilityEvent('EDIT_VISIT_SUBMIT_VALIDATION_FAILED', {
-        source: 'EditVisitScreen',
-        visitId,
-        reason: 'missing_restaurant_name',
-        itemCount: items.length,
-      });
-      setErrorMessage('Restaurant name is required.');
-      return;
-    }
-
-    const parsedItems: VisitItem[] = items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      rating: Number(item.ratingText),
-      notes: item.notes,
-    }));
-
-    if (parsedItems.some((item) => Number.isNaN(item.rating) || item.rating <= 0 || item.rating > 5)) {
-      trackObservabilityEvent('EDIT_VISIT_SUBMIT_VALIDATION_FAILED', {
-        source: 'EditVisitScreen',
-        visitId,
-        reason: 'invalid_rating',
-        itemCount: parsedItems.length,
-      });
-      setErrorMessage('Ratings must be between 1 and 5.');
-      return;
-    }
-
-    setErrorMessage(null);
-    trackObservabilityEvent('EDIT_VISIT_SUBMIT_STARTED', {
-      source: 'EditVisitScreen',
-      visitId,
-      itemCount: parsedItems.length,
-      isOnline,
+    navigation.replace('CreateVisit', {
+      editVisitId: route.params.visitId,
+      returnToStep: 2,
     });
-    setIsSubmitting(true);
-
-    try {
-      const visitUpdateInput = {
-        restaurantName,
-        items: parsedItems,
-      };
-
-      if (!isOnline) {
-        await queueFeatureOutbox('visit.update', {
-          visitId,
-          updates: visitUpdateInput,
-        });
-
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'visit', visitId] }),
-        ]);
-        trackObservabilityEvent('EDIT_VISIT_SUBMIT_SUCCEEDED', {
-          source: 'EditVisitScreen',
-          visitId,
-          queued: true,
-          itemCount: parsedItems.length,
-        });
-        showQueuedOfflineAlert('Visit update');
-        navigation.navigate('Home');
-        return;
-      }
-
-      await queueWrite('visit.update');
-      await updateVisit(visitId, visitUpdateInput);
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visit', visitId] }),
-      ]);
-      trackObservabilityEvent('EDIT_VISIT_SUBMIT_SUCCEEDED', {
-        source: 'EditVisitScreen',
-        visitId,
-        queued: false,
-        itemCount: parsedItems.length,
-      });
-      navigation.navigate('Home');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not update visit.';
-      setErrorMessage(message);
-      trackObservabilityEvent('EDIT_VISIT_SUBMIT_FAILED', {
-        source: 'EditVisitScreen',
-        visitId,
-        itemCount: parsedItems.length,
-        error: message,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleBackPress = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-      return;
-    }
-
-    navigation.navigate('Home');
-  };
-
-  if (visitQuery.isLoading) {
-    return (
-      <FeatureFormScreenScaffold
-        onBackPress={handleBackPress}
-        primaryAction={{
-          label: 'Save Changes',
-          disabled: true,
-          onPress: () => {},
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: handleBackPress,
-        }}
-        title="Edit Visit"
-      >
-        <Skeleton height={20} />
-        <Skeleton height={20} />
-        <Skeleton height={20} />
-      </FeatureFormScreenScaffold>
-    );
-  }
-
-  if (visitQuery.isError) {
-    return (
-      <FeatureFormScreenScaffold
-        onBackPress={handleBackPress}
-        primaryAction={{
-          label: 'Save Changes',
-          disabled: true,
-          onPress: () => {},
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: handleBackPress,
-        }}
-        title="Edit Visit"
-      >
-        <ErrorState
-          description="Could not load visit details."
-          onRetry={() => {
-            void visitQuery.refetch();
-          }}
-          title="Visit unavailable"
-        />
-      </FeatureFormScreenScaffold>
-    );
-  }
-
-  if (!visitQuery.data) {
-    return (
-      <FeatureFormScreenScaffold
-        onBackPress={handleBackPress}
-        primaryAction={{
-          label: 'Save Changes',
-          disabled: true,
-          onPress: () => {},
-        }}
-        secondaryAction={{
-          label: 'Cancel',
-          onPress: handleBackPress,
-        }}
-        title="Edit Visit"
-      >
-        <EmptyState
-          actionLabel="Back to Home"
-          onAction={() => {
-            navigation.navigate('Home');
-          }}
-          title="Visit not found"
-        />
-      </FeatureFormScreenScaffold>
-    );
-  }
+  }, [navigation, route.params.visitId]);
 
   return (
     <FeatureFormScreenScaffold
-      onBackPress={handleBackPress}
+      onBackPress={() => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+          return;
+        }
+
+        navigation.navigate('Home');
+      }}
       primaryAction={{
-        label: 'Save Changes',
-        disabled: isSubmitting,
-        loading: isSubmitting,
-        onPress: () => {
-          void handleSave();
-        },
+        label: 'Loading',
+        disabled: true,
+        onPress: () => {},
       }}
       secondaryAction={{
         label: 'Cancel',
-        onPress: handleBackPress,
+        onPress: () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+            return;
+          }
+
+          navigation.navigate('Home');
+        },
       }}
-      title="Edit Visit"
+      subtitle="Opening the visit editor."
+      title="Edit Restaurant Visit"
     >
-      <View style={styles.container}>
-        <Input label="Restaurant" onChangeText={setRestaurantName} value={restaurantName} />
-
-        <PageErrorToast errorMessage={errorMessage} title="Update failed" />
-
-        {items.map((item) => (
-          <Card key={item.id} style={styles.itemCard} tone="muted">
-            <Text variant="label">{item.name}</Text>
-            <Input
-              keyboardType="decimal-pad"
-              label="Rating"
-              onChangeText={(value) => {
-                updateItem(item.id, { ratingText: value });
-              }}
-              value={item.ratingText}
-            />
-            <Input
-              label="Notes"
-              onChangeText={(value) => {
-                updateItem(item.id, { notes: value });
-              }}
-              value={item.notes ?? ''}
-            />
-          </Card>
-        ))}
-      </View>
+      <LoadingState label="Opening visit..." />
     </FeatureFormScreenScaffold>
   );
 }

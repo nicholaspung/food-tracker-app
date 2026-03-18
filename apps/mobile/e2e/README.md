@@ -1,6 +1,6 @@
 # Mobile Screenshot Review
 
-This setup now has a single default review flow.
+This setup supports named screenshot review flows and multi-flow runs.
 
 It assumes:
 
@@ -8,7 +8,10 @@ It assumes:
 - the iOS simulator is already open in your current dev build
 - the app starts on the first onboarding screen
 
-The default review flow walks through onboarding, login, the Profile tab, legal/settings pages, feedback pages, and logout.
+Available named flows:
+
+- `core-review`: onboarding, login, profile, legal/settings, feedback, logout
+- `lists-review`: login, More, list screens, photo viewer, edit/delete list states, and friend lists
 
 ## Setup
 
@@ -30,11 +33,29 @@ pnpm mobile:screenshots
 
 Each run is written to `apps/mobile/e2e/artifacts/<timestamp>/`.
 
+If you run `pnpm mobile:screenshots` in an interactive terminal, it will prompt you to choose:
+
+- `all`
+- `core-review`
+- `lists-review`
+
+You can also pass one or more flow names explicitly:
+
+```bash
+pnpm mobile:screenshots -- core-review
+pnpm mobile:screenshots -- lists-review
+pnpm mobile:screenshots -- core-review lists-review
+pnpm mobile:screenshots -- all
+```
+
 ## Flow
 
-The active flow is `apps/mobile/e2e/maestro/flows/core-review.yaml`.
+Flow aliases:
 
-It captures:
+- `core-review` -> `apps/mobile/e2e/maestro/flows/core-review.yaml`
+- `lists-review` -> `apps/mobile/e2e/maestro/flows/lists-review-part-1.yaml`
+
+`core-review` captures:
 
 - `01-onboarding`
 - `02-create-account`
@@ -55,6 +76,23 @@ It captures:
 - `17-create-feedback`
 - `18-feedback-detail`
 - `19-onboarding-logged-out`
+
+`lists-review` captures:
+
+- `20-login`
+- `21-home`
+- `22-more`
+- `23-lists-list`
+- `24-add-list`
+- `25-primary-list-detail`
+- `26-add-visit-ratings-to-list`
+- `27-add-restaurant-to-list-detail`
+- `28-secondary-list-detail`
+- `29-full-photo`
+- `30-edit-list`
+- `31-delete-list-confirmation`
+- `32-friend-lists`
+- `33-friend-list-detail`
 
 ## Review Website
 

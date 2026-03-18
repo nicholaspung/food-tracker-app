@@ -336,7 +336,6 @@ function UserDetailTabPanel({
                     <span className="text-muted">
                       {item.restaurantName ?? 'Unknown restaurant'} • {formatDateTime(item.created)}
                     </span>
-                    {item.description ? <span className="text-muted">{item.description}</span> : null}
                   </div>
                 ))}
               </div>

@@ -29,7 +29,6 @@ export interface MenuItemRecord {
   restaurant: string;
   restaurantName?: string;
   name: string;
-  description?: string;
   visibility?: 'private' | 'friends' | 'public';
   created: string;
   updated: string;

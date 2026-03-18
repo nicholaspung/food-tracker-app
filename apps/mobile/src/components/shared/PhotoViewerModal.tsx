@@ -148,7 +148,12 @@ export function PhotoViewerModal({
     >
       <View style={styles.modalContainer}>
         <View style={styles.topBar}>
-          <Pressable accessibilityLabel="Close photo viewer" onPress={onRequestClose} style={styles.closeButton}>
+          <Pressable
+            accessibilityLabel="Close photo viewer"
+            onPress={onRequestClose}
+            style={styles.closeButton}
+            testID="photo-viewer-close-button"
+          >
             <Ionicons color={theme.colors.text.inverse} name="close" size={22} />
           </Pressable>
         </View>

@@ -92,16 +92,26 @@ async function readRunMetadata(runName) {
   try {
     const rawContents = await readFile(metadataPath, 'utf8');
     const parsedContents = JSON.parse(rawContents);
+    const flowPaths = Array.isArray(parsedContents.flowPaths)
+      ? parsedContents.flowPaths.filter((value) => typeof value === 'string' && value.trim().length > 0)
+      : typeof parsedContents.flowPath === 'string' && parsedContents.flowPath.trim().length > 0
+        ? [parsedContents.flowPath.trim()]
+        : [defaultFlowPath];
+    const flowKeys = Array.isArray(parsedContents.flowKeys)
+      ? parsedContents.flowKeys.filter((value) => typeof value === 'string' && value.trim().length > 0)
+      : typeof parsedContents.flowKey === 'string' && parsedContents.flowKey.trim().length > 0
+        ? [parsedContents.flowKey.trim()]
+        : [];
     return {
       createdAt: typeof parsedContents.createdAt === 'string' ? parsedContents.createdAt : null,
       expectationSource: 'run_metadata',
       expectedScreenshots: Array.isArray(parsedContents.expectedScreenshots)
         ? parsedContents.expectedScreenshots.map((value) => normalizeScreenshotName(value)).filter(Boolean)
         : [],
-      flowPath:
-        typeof parsedContents.flowPath === 'string' && parsedContents.flowPath.trim().length > 0
-          ? parsedContents.flowPath.trim()
-          : defaultFlowPath,
+      flowKey: flowKeys[0] ?? null,
+      flowKeys,
+      flowPath: flowPaths[0] ?? defaultFlowPath,
+      flowPaths,
       runName: typeof parsedContents.runName === 'string' ? parsedContents.runName : runName,
     };
   } catch (error) {
@@ -123,27 +133,96 @@ async function getRunExpectations(runName) {
     createdAt: null,
     expectationSource: 'default_flow',
     expectedScreenshots: await parseExpectedScreenshotsFromFlow(defaultFlowPath),
+    flowKey: null,
+    flowKeys: [],
     flowPath: defaultFlowPath,
+    flowPaths: [defaultFlowPath],
     runName,
   };
 }
 
-function buildRunSummary(expectedScreenshots, actualImages) {
+function buildComparisonImageNames(expectedScreenshots, baselineImageNames) {
+  const orderedNames = [];
+  const seenNames = new Set();
+
+  for (const name of [...expectedScreenshots, ...baselineImageNames]) {
+    if (seenNames.has(name)) {
+      continue;
+    }
+
+    seenNames.add(name);
+    orderedNames.push(name);
+  }
+
+  return orderedNames;
+}
+
+function buildOrderedReviewImageNames(expectedScreenshots, baselineImageNames, actualImages) {
+  const orderedNames = buildComparisonImageNames(expectedScreenshots, baselineImageNames);
+  const seenNames = new Set(orderedNames);
+
+  for (const name of actualImages) {
+    if (seenNames.has(name)) {
+      continue;
+    }
+
+    seenNames.add(name);
+    orderedNames.push(name);
+  }
+
+  return orderedNames;
+}
+
+function buildRunSummary(expectedScreenshots, baselineImageNames, actualImages) {
   const expectedSet = new Set(expectedScreenshots);
+  const baselineSet = new Set(baselineImageNames);
+  const comparisonNames = buildComparisonImageNames(expectedScreenshots, baselineImageNames);
   const actualSet = new Set(actualImages);
+  const missingArtifactNames = comparisonNames.filter((name) => !actualSet.has(name));
   const missingExpectedNames = expectedScreenshots.filter((name) => !actualSet.has(name));
-  const unexpectedNames = actualImages.filter((name) => !expectedSet.has(name));
+  const missingBaselineNames = baselineImageNames.filter((name) => !actualSet.has(name));
+  const baselineOnlyNames = baselineImageNames.filter((name) => !expectedSet.has(name));
+  const unexpectedNames = actualImages.filter((name) => !expectedSet.has(name) && !baselineSet.has(name));
 
   return {
     actualCount: actualImages.length,
+    baselineCount: baselineImageNames.length,
+    baselineOnlyCount: baselineOnlyNames.length,
+    comparisonCount: comparisonNames.length,
     expectedCount: expectedScreenshots.length,
-    hasRegression: missingExpectedNames.length > 0,
+    hasRegression: missingArtifactNames.length > 0,
+    matchedComparisonCount: comparisonNames.length - missingArtifactNames.length,
     matchedExpectedCount: expectedScreenshots.length - missingExpectedNames.length,
+    missingArtifactCount: missingArtifactNames.length,
+    missingArtifactNames,
+    missingBaselineCount: missingBaselineNames.length,
+    missingBaselineNames,
     missingExpectedCount: missingExpectedNames.length,
     missingExpectedNames,
     unexpectedCount: unexpectedNames.length,
     unexpectedNames,
   };
+}
+
+async function getRunUpdatedAt(runName) {
+  const candidatePaths = [
+    path.join(artifactsDir, runName, 'screenshots'),
+    path.join(artifactsDir, runName, 'run.json'),
+    path.join(artifactsDir, runName),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      const candidateStats = await stat(candidatePath);
+      return candidateStats.mtime.toISOString();
+    } catch (error) {
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  return new Date(0).toISOString();
 }
 
 async function listImageFiles(directory) {
@@ -162,33 +241,45 @@ async function listImageFiles(directory) {
   }
 }
 
-async function listArtifactRuns() {
-  const entries = await readdir(artifactsDir, { withFileTypes: true });
+async function listArtifactRuns(baselineSet) {
+  const safeBaselineSet = normalizeBaselineSet(baselineSet) ?? defaultBaselineSet;
+  const baselineImageNames = await listImageFiles(path.join(baselinesDir, safeBaselineSet));
+  let entries = [];
+
+  try {
+    entries = await readdir(artifactsDir, { withFileTypes: true });
+  } catch (error) {
+    if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
   const runs = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
       .map(async (entry) => {
         const screenshotsDir = path.join(artifactsDir, entry.name, 'screenshots');
         const images = await listImageFiles(screenshotsDir);
-
-        if (images.length === 0) {
-          return null;
-        }
-
         const expectations = await getRunExpectations(entry.name);
-        const summary = buildRunSummary(expectations.expectedScreenshots, images);
-        const screenshotsStat = await stat(screenshotsDir);
+        const summary = buildRunSummary(expectations.expectedScreenshots, baselineImageNames, images);
         return {
+          baselineScreenshotCount: summary.baselineCount,
           expectationSource: expectations.expectationSource,
           expectedScreenshotCount: summary.expectedCount,
+          flowKey: expectations.flowKey,
+          flowKeys: expectations.flowKeys,
           flowPath: expectations.flowPath,
+          flowPaths: expectations.flowPaths,
           hasRegression: summary.hasRegression,
+          matchedArtifactCount: summary.matchedComparisonCount,
           matchedExpectedCount: summary.matchedExpectedCount,
+          missingArtifactCount: summary.missingArtifactCount,
           missingExpectedCount: summary.missingExpectedCount,
           name: entry.name,
+          reviewScreenshotCount: summary.comparisonCount,
           screenshotCount: images.length,
           unexpectedCount: summary.unexpectedCount,
-          updatedAt: screenshotsStat.mtime.toISOString(),
+          updatedAt: await getRunUpdatedAt(entry.name),
         };
       }),
   );
@@ -213,32 +304,26 @@ async function getRunDetails(runName, baselineSet) {
 
   const safeBaselineSet = normalizeBaselineSet(baselineSet) ?? defaultBaselineSet;
   const screenshotsDir = path.join(artifactsDir, runName, 'screenshots');
+  const baselineImageNames = await listImageFiles(path.join(baselinesDir, safeBaselineSet));
   const actualImageNames = await listImageFiles(screenshotsDir);
   const expectations = await getRunExpectations(runName);
   const expectedSet = new Set(expectations.expectedScreenshots);
+  const baselineSetNames = new Set(baselineImageNames);
   const actualSet = new Set(actualImageNames);
-  const orderedImageNames = [
-    ...expectations.expectedScreenshots,
-    ...actualImageNames.filter((name) => !expectedSet.has(name)),
-  ];
-  const summary = buildRunSummary(expectations.expectedScreenshots, actualImageNames);
+  const comparisonSet = new Set(buildComparisonImageNames(expectations.expectedScreenshots, baselineImageNames));
+  const orderedImageNames = buildOrderedReviewImageNames(
+    expectations.expectedScreenshots,
+    baselineImageNames,
+    actualImageNames,
+  );
+  const summary = buildRunSummary(expectations.expectedScreenshots, baselineImageNames, actualImageNames);
 
   const images = await Promise.all(
     orderedImageNames.map(async (name) => {
-      const baselinePath = path.join(baselinesDir, safeBaselineSet, name);
-      let baselineExists = false;
-
-      try {
-        const baselineStats = await stat(baselinePath);
-        baselineExists = baselineStats.isFile();
-      } catch (error) {
-        if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') {
-          throw error;
-        }
-      }
+      const baselineExists = baselineSetNames.has(name);
 
       return {
-        artifactMissing: expectedSet.has(name) && !actualSet.has(name),
+        artifactMissing: comparisonSet.has(name) && !actualSet.has(name),
         name,
         artifactUrl: actualSet.has(name)
           ? `/files/artifacts/${encodeURIComponent(runName)}/${encodeURIComponent(name)}`
@@ -248,8 +333,9 @@ async function getRunDetails(runName, baselineSet) {
           : null,
         hasArtifact: actualSet.has(name),
         hasBaseline: baselineExists,
+        isBaselineOnly: baselineSetNames.has(name) && !expectedSet.has(name),
         isExpected: expectedSet.has(name),
-        isUnexpected: !expectedSet.has(name),
+        isUnexpected: !comparisonSet.has(name),
       };
     }),
   );
@@ -258,7 +344,10 @@ async function getRunDetails(runName, baselineSet) {
     run: runName,
     baselineSet: safeBaselineSet,
     expectationSource: expectations.expectationSource,
+    flowKey: expectations.flowKey,
+    flowKeys: expectations.flowKeys,
     flowPath: expectations.flowPath,
+    flowPaths: expectations.flowPaths,
     images,
     summary,
   };
@@ -367,7 +456,8 @@ const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? '/', `http://${request.headers.host ?? `localhost:${port}`}`);
 
     if (request.method === 'GET' && requestUrl.pathname === '/api/overview') {
-      const [artifactRuns, baselineSets] = await Promise.all([listArtifactRuns(), listBaselineSets()]);
+      const baselineSet = requestUrl.searchParams.get('baselineSet');
+      const [artifactRuns, baselineSets] = await Promise.all([listArtifactRuns(baselineSet), listBaselineSets()]);
       await sendJson(response, 200, {
         artifactRuns,
         baselineSets,

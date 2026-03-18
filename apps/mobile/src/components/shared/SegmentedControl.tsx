@@ -18,6 +18,7 @@ interface SegmentedControlProps<T extends string> {
   options: readonly SegmentedControlOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  getOptionTestID?: (value: T, index: number) => string | undefined;
   fill?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
   segmentStyle?: StyleProp<ViewStyle>;
@@ -44,6 +45,7 @@ export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  getOptionTestID,
   fill = true,
   containerStyle,
   segmentStyle,
@@ -101,7 +103,7 @@ export function SegmentedControl<T extends string>({
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {options.map((option) => {
+      {options.map((option, index) => {
         const isActive = option.value === value;
         const badgeCount = option.badgeCount ?? 0;
 
@@ -119,6 +121,7 @@ export function SegmentedControl<T extends string>({
               isActive ? [styles.segmentActive, activeSegmentStyle] : null,
               pressed && !isActive ? { opacity: 0.75 } : null,
             ]}
+            testID={getOptionTestID?.(option.value, index)}
           >
             <Text style={[styles.label, labelStyle, isActive ? [styles.labelActive, activeLabelStyle] : null]}>
               {option.label}

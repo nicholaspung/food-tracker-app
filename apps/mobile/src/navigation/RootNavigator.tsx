@@ -114,13 +114,19 @@ export type RootStackParamList = {
         preselectedMenuItemId?: string;
         preselectedMenuItemName?: string;
         sourceListItemId?: string;
+        editVisitId?: string;
         returnToStep?: 0 | 1 | 2;
       }
     | undefined;
-  CreateVisitAddRestaurant: undefined;
+  CreateVisitAddRestaurant:
+    | {
+        editVisitId?: string;
+      }
+    | undefined;
   CreateVisitAddMenuItem: {
     restaurantId: string;
     restaurantName: string;
+    editVisitId?: string;
   };
   CreateVisitEditMenuItem: {
     menuItemId: string;
@@ -419,7 +425,7 @@ export function RootNavigator() {
                   name="CreateVisitEditMenuItem"
                   options={{ headerShown: false }}
                 />
-                <Stack.Screen component={EditVisitScreen} name="EditVisit" options={{ title: 'Edit Visit' }} />
+                <Stack.Screen component={EditVisitScreen} name="EditVisit" options={{ headerShown: false }} />
                 <Stack.Screen component={QuickTrackScreen} name="QuickTrack" options={{ headerShown: false }} />
                 <Stack.Screen
                   component={EditQuickTrackScreen}

@@ -21,6 +21,7 @@ apps/marketing/.verify-dist/
 backend/myapp
 .cache/
 
+
 # VPS SSH script (contains sensitive server info)
 scripts/ssh-vps.sh
 

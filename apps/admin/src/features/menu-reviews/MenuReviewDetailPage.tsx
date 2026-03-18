@@ -21,7 +21,6 @@ export function MenuReviewDetailPage() {
   const [adminNotes, setAdminNotes] = useState('');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
-  const [draftDescription, setDraftDescription] = useState('');
   const [draftVisibility, setDraftVisibility] = useState<MenuItemRecord['visibility']>('friends');
   const [actionError, setActionError] = useState<string | null>(null);
   const [menuItemError, setMenuItemError] = useState<string | null>(null);
@@ -75,7 +74,6 @@ export function MenuReviewDetailPage() {
 
       return updateMenuItem(editingItemId, {
         name: draftName.trim(),
-        description: draftDescription.trim(),
         visibility: draftVisibility ?? 'friends',
       });
     },
@@ -123,7 +121,6 @@ export function MenuReviewDetailPage() {
 
     setEditingItemId(item.id);
     setDraftName(item.name);
-    setDraftDescription(item.description?.trim() ?? '');
     setDraftVisibility(item.visibility ?? 'friends');
     setMenuItemError(null);
   };
@@ -280,7 +277,6 @@ export function MenuReviewDetailPage() {
                           ) : null}
                         </div>
                       </div>
-                      <span className="text-muted">{item.description?.trim() || 'No description.'}</span>
 
                       {canEditMenuItems && editingItemId === item.id ? (
                         <div className="menu-item-editor">
@@ -294,20 +290,6 @@ export function MenuReviewDetailPage() {
                                 setMenuItemError(null);
                               }}
                               value={draftName}
-                            />
-                          </div>
-
-                          <div className="field">
-                            <label htmlFor={`menu-item-description-${item.id}`}>Description</label>
-                            <textarea
-                              className="textarea menu-item-textarea"
-                              id={`menu-item-description-${item.id}`}
-                              onChange={(event) => {
-                                setDraftDescription(event.target.value);
-                                setMenuItemError(null);
-                              }}
-                              placeholder="Optional description"
-                              value={draftDescription}
                             />
                           </div>
 

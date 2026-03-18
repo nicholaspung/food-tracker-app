@@ -250,6 +250,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
         onPress: handleBack,
       }}
       subtitle="Update your list name, description, and whether it stays private or is shared with friends."
+      testID="edit-restaurant-list-screen"
       title="Edit List"
     >
       <View style={styles.body}>

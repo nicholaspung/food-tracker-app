@@ -65,6 +65,7 @@ export interface UpdateVisitInput {
   restaurantName?: string;
   items?: VisitItem[];
   visitedAt?: string;
+  visibility?: 'friends' | 'private';
 }
 
 export interface CreateQuickTrackInput {
@@ -1514,6 +1515,10 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
         updatePayload.visitDate = updates.visitedAt;
       }
 
+      if (updates.visibility) {
+        updatePayload.visibility = updates.visibility;
+      }
+
       const updatedVisit =
         Object.keys(updatePayload).length > 0
           ? await pb.collection('visits').update<VisitCollectionRecord>(visitId, updatePayload, {
@@ -1568,6 +1573,7 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
     {
       hasRestaurantNameUpdate: updates.restaurantName !== undefined,
       hasVisitedAtUpdate: updates.visitedAt !== undefined,
+      hasVisibilityUpdate: updates.visibility !== undefined,
       hasItemsUpdate: updates.items !== undefined,
       itemCount: updates.items?.length,
     },

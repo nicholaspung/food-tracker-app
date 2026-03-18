@@ -1393,7 +1393,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                                 <Pressable
                                                   accessibilityLabel="Edit visit"
                                                   onPress={() => {
-                                                    navigation.navigate('EditVisit', { visitId: visit.id });
+                                                    navigation.push('CreateVisit', {
+                                                      editVisitId: visit.id,
+                                                      returnToStep: 2,
+                                                    });
                                                   }}
                                                   style={styles.compactActionButton}
                                                 >

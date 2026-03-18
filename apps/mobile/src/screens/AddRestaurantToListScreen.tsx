@@ -670,6 +670,7 @@ export function AddRestaurantToListScreen({
           ? "Select menu items you recommend and add an optional note."
           : "Search for a restaurant you've visited."
       }
+      testID={selectedRestaurant ? "add-restaurant-to-list-detail-screen" : "add-restaurant-to-list-screen"}
       title={
         selectedRestaurant
           ? `Add ${selectedRestaurant.name}`
@@ -762,7 +763,7 @@ export function AddRestaurantToListScreen({
           !listItemsQuery.isError &&
           filteredRestaurants.length > 0 ? (
             <View style={styles.cardList}>
-              {filteredRestaurants.map((restaurant) => {
+              {filteredRestaurants.map((restaurant, restaurantIndex) => {
                 const availableItemCount = restaurant.foodItems.filter(
                   (item) => !existingFoodItemIds.has(item.id),
                 ).length;
@@ -787,6 +788,7 @@ export function AddRestaurantToListScreen({
                       onPress={() => {
                         handleSelectRestaurant(restaurant);
                       }}
+                      testID={`add-restaurant-option-${restaurantIndex}`}
                     >
                       <View style={styles.restaurantHeaderRow}>
                         <View style={styles.restaurantTitleWrap}>

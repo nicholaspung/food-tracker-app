@@ -1313,6 +1313,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                 navigation.navigate('EditRestaurantList', { listId });
               }}
               style={styles.headerIconButton}
+              testID="list-detail-edit-button"
             >
               <Ionicons color={theme.colors.text.primary} name="create-outline" size={16} />
             </Pressable>
@@ -1323,6 +1324,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                 disabled={isDeletingList}
                 onPress={confirmDeleteList}
                 style={styles.headerIconButton}
+                testID="list-detail-delete-button"
               >
                 <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
               </Pressable>
@@ -1331,6 +1333,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         ) : undefined
       }
       subtitle={subtitle}
+      testID="list-detail-screen"
       title={list.name}
     >
       <View style={styles.container}>
@@ -1444,7 +1447,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                   {group.items.length === 0 ? (
                     <Text style={styles.emptyItemsText}>No items added yet.</Text>
                   ) : isOwner ? (
-                    ownerDisplayItems.map((item) => {
+                    ownerDisplayItems.map((item, itemIndex) => {
                       const sourceRating = item.source;
                       const userRating = item.user;
                       const itemPhotoEntries = buildOwnerItemPhotoEntries(item);
@@ -1468,6 +1471,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                                   openPhotoViewer(itemPhotoEntries);
                                 }}
                                 style={styles.itemPhotoWrap}
+                                testID={`list-detail-photo-button-${groupIndex}-${itemIndex}`}
                               >
                                 <Image source={{ uri: itemPrimaryPhotoUrl }} style={styles.itemPhotoThumb} />
                                 {itemPhotoEntries.length > 1 ? (
@@ -1656,6 +1660,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         onConfirm={() => {
           void deleteList();
         }}
+        testID="delete-list-confirmation-modal"
         title="Delete List?"
         visible={isDeleteConfirmVisible}
       />

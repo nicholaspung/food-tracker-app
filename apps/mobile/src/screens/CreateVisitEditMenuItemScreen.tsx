@@ -20,6 +20,7 @@ type CreateVisitEditMenuItemScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'CreateVisitEditMenuItem'
 >;
+const MENU_ITEM_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['private', 'friends'];
 
 interface MenuItemRecord {
   id: string;
@@ -28,7 +29,7 @@ interface MenuItemRecord {
 }
 
 function normalizeMenuItemVisibility(value?: string): VisibilityOptionValue {
-  if (value === 'private' || value === 'public') {
+  if (value === 'private') {
     return value;
   }
 
@@ -175,7 +176,7 @@ export function CreateVisitEditMenuItemScreen({
         ) : null}
 
         <Card style={styles.formCard}>
-          <Text tone="secondary">Update item details and visibility for this restaurant.</Text>
+          <Text tone="secondary">Update the item name and visibility for this restaurant.</Text>
 
           <Input
             autoCapitalize="words"
@@ -189,15 +190,18 @@ export function CreateVisitEditMenuItemScreen({
             <Text variant="label">Visibility</Text>
             <VisibilityOptionSelector
               onChange={(nextVisibility) => {
+                const resolvedVisibility: VisibilityOptionValue =
+                  nextVisibility === 'private' ? 'private' : 'friends';
                 trackObservabilityEvent('CREATE_VISIT_EDIT_MENU_ITEM_VISIBILITY_CHANGED', {
                   source: 'CreateVisitEditMenuItemScreen',
                   restaurantId,
                   menuItemId,
                   previousVisibility: visibility,
-                  nextVisibility,
+                  nextVisibility: resolvedVisibility,
                 });
-                setVisibility(nextVisibility);
+                setVisibility(resolvedVisibility);
               }}
+              options={MENU_ITEM_VISIBILITY_OPTIONS}
               value={visibility}
             />
           </View>
