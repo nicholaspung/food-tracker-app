@@ -2,11 +2,13 @@ const state = {
   artifactRuns: [],
   baselineSets: [],
   baselineSet: 'current',
+  currentBaselinePayload: null,
   currentImageIndex: 0,
   currentRunPayload: null,
   isDeletingRun: false,
   modalAction: null,
   selectedRun: null,
+  viewMode: 'compare',
 };
 
 const elements = {
@@ -36,6 +38,7 @@ const elements = {
   selectedRunMeta: document.querySelector('#selected-run-meta'),
   selectedRunName: document.querySelector('#selected-run-name'),
   statusMessage: document.querySelector('#status-message'),
+  viewModeButton: document.querySelector('#view-mode-button'),
 };
 
 function setStatus(message) {
@@ -55,7 +58,9 @@ function getSelectedRunSummary() {
 }
 
 function getCurrentImages() {
-  return state.currentRunPayload?.images ?? [];
+  return state.viewMode === 'baseline'
+    ? state.currentBaselinePayload?.images ?? []
+    : state.currentRunPayload?.images ?? [];
 }
 
 function getCurrentImage() {
@@ -144,6 +149,10 @@ function renderSelectedRunPanel() {
   elements.selectedRunFlow.textContent = formatFlowLabel(selectedRun);
 }
 
+function updateViewModeButton() {
+  elements.viewModeButton.textContent = state.viewMode === 'baseline' ? 'View Compare' : 'View Baselines';
+}
+
 function openActionModal(config) {
   state.modalAction = config.onConfirm;
   elements.actionModalTitle.textContent = config.title;
@@ -229,9 +238,11 @@ function renderRunList() {
     `;
     button.addEventListener('click', () => {
       state.selectedRun = run.name;
-      state.currentImageIndex = 0;
       renderRunList();
-      void loadRun();
+      if (state.viewMode === 'compare') {
+        state.currentImageIndex = 0;
+        void loadRun();
+      }
     });
     elements.runList.append(button);
   }
@@ -257,14 +268,19 @@ function updateCarouselControls() {
 }
 
 function createImageCard(image) {
+  const isBaselineMode = state.viewMode === 'baseline';
   const fragment = elements.imageCardTemplate.content.cloneNode(true);
   const card = fragment.querySelector('.image-card');
+  const comparisonGrid = fragment.querySelector('.comparison-grid');
   const imageCardHeader = fragment.querySelector('.image-card-header');
   const imageName = fragment.querySelector('.image-name');
+  const artifactPanel = fragment.querySelector('.artifact-panel');
   const artifactWrap = fragment.querySelector('.artifact-wrap');
   const artifactImage = fragment.querySelector('.artifact-image');
+  const baselinePanel = fragment.querySelector('.baseline-panel');
   const baselineWrap = fragment.querySelector('.baseline-wrap');
   const baselineImage = fragment.querySelector('.baseline-image');
+  const baselineEmptyState = baselinePanel.querySelector('.empty-state');
   const artifactEmptyState = fragment.querySelector('.artifact-empty-state');
   const promoteButton = fragment.querySelector('.promote-button');
   const flags = document.createElement('div');
@@ -272,23 +288,32 @@ function createImageCard(image) {
   imageName.textContent = image.name;
   flags.className = 'image-flags';
 
-  if (image.artifactMissing) {
+  if (isBaselineMode) {
+    card.classList.add('image-card-baseline-mode');
+    artifactPanel.remove();
+    promoteButton.remove();
+    comparisonGrid.classList.add('baseline-only-grid');
+    baselinePanel.querySelector('h4').textContent = 'Baseline';
+    baselineEmptyState.textContent = 'No baseline image in this set yet.';
+  }
+
+  if (!isBaselineMode && image.artifactMissing) {
     artifactWrap.classList.add('is-empty');
     artifactEmptyState.textContent = 'Review screenshot missing from artifact run.';
     flags.append(createStatusPill('Missing Artifact', 'danger'));
     card.classList.add('image-card-regression');
-  } else if (image.isUnexpected) {
+  } else if (!isBaselineMode && image.isUnexpected) {
     flags.append(createStatusPill('Unexpected Artifact', 'warning'));
   }
 
-  if (image.isBaselineOnly) {
+  if (!isBaselineMode && image.isBaselineOnly) {
     flags.append(createStatusPill('Baseline Only', 'neutral'));
   }
 
-  if (image.artifactUrl) {
+  if (!isBaselineMode && image.artifactUrl) {
     artifactImage.alt = `${image.name} artifact`;
     artifactImage.src = `${image.artifactUrl}?t=${Date.now()}`;
-  } else {
+  } else if (!isBaselineMode) {
     artifactWrap.classList.add('is-empty');
   }
 
@@ -297,11 +322,21 @@ function createImageCard(image) {
     baselineImage.src = `${image.baselineUrl}?t=${Date.now()}`;
   } else {
     baselineWrap.classList.add('is-empty');
-    flags.append(createStatusPill('No Baseline', 'neutral'));
+    if (!isBaselineMode) {
+      flags.append(createStatusPill('No Baseline', 'neutral'));
+    }
   }
 
   if (flags.childElementCount > 0) {
-    imageCardHeader.insertBefore(flags, promoteButton);
+    if (isBaselineMode) {
+      imageCardHeader.append(flags);
+    } else {
+      imageCardHeader.insertBefore(flags, promoteButton);
+    }
+  }
+
+  if (isBaselineMode) {
+    return card;
   }
 
   if (!image.hasArtifact) {
@@ -397,7 +432,7 @@ async function deleteSelectedRun() {
     closeActionModal();
     setStatus(`Deleted artifact run ${selectedRun.name}.`);
     await refreshOverview();
-    await loadRun();
+    await loadCurrentView();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : 'Could not delete artifact run.');
   } finally {
@@ -430,6 +465,7 @@ async function loadRun(options = {}) {
   }
 
   state.currentRunPayload = payload;
+  state.currentBaselinePayload = null;
   elements.currentRunTitle.textContent = `${payload.run} -> baselines/${payload.baselineSet}`;
   renderRegressionAlert(payload.summary);
 
@@ -472,6 +508,40 @@ async function loadRun(options = {}) {
   setStatus(`Loaded ${payload.images.length} screenshots.`);
 }
 
+async function loadBaselineImages(options = {}) {
+  setStatus(`Loading baselines/${state.baselineSet}...`);
+
+  const response = await fetch(`/api/baselines?baselineSet=${encodeURIComponent(state.baselineSet)}`);
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.error || 'Could not load baselines.');
+  }
+
+  state.currentBaselinePayload = payload;
+  state.currentRunPayload = null;
+  elements.currentRunTitle.textContent = `Baselines/${payload.baselineSet}`;
+  renderRegressionAlert(null);
+
+  if (payload.images.length === 0) {
+    state.currentImageIndex = 0;
+    elements.imageGrid.innerHTML = '';
+    updateCarouselControls();
+    setStatus(`No baseline screenshots are available in baselines/${payload.baselineSet}.`);
+    return;
+  }
+
+  if (options.focusImageName) {
+    const nextImageIndex = payload.images.findIndex((image) => image.name === options.focusImageName);
+    state.currentImageIndex = nextImageIndex >= 0 ? nextImageIndex : 0;
+  } else {
+    clampCurrentImageIndex();
+  }
+
+  renderCurrentImageCard();
+  setStatus(`Loaded ${payload.summary.baselineCount} baseline screenshot${payload.summary.baselineCount === 1 ? '' : 's'}.`);
+}
+
 async function refreshOverview() {
   const response = await fetch(`/api/overview?baselineSet=${encodeURIComponent(state.baselineSet)}`);
   const payload = await response.json();
@@ -499,6 +569,22 @@ async function refreshOverview() {
   renderRunList();
 }
 
+async function loadCurrentView(options = {}) {
+  if (state.viewMode === 'baseline') {
+    await loadBaselineImages(options);
+    return;
+  }
+
+  await loadRun(options);
+}
+
+async function toggleViewMode() {
+  state.viewMode = state.viewMode === 'baseline' ? 'compare' : 'baseline';
+  state.currentImageIndex = 0;
+  updateViewModeButton();
+  await loadCurrentView();
+}
+
 function showPreviousImage() {
   if (state.currentImageIndex <= 0) {
     return;
@@ -519,6 +605,8 @@ function showNextImage() {
 }
 
 async function bootstrap() {
+  updateViewModeButton();
+
   elements.baselineSetSelect.addEventListener('change', () => {
     const nextValue = normalizeBaselineSetName(elements.baselineSetSelect.value);
     if (!nextValue) {
@@ -529,7 +617,7 @@ async function bootstrap() {
     state.baselineSet = nextValue;
     void (async () => {
       await refreshOverview();
-      await loadRun();
+      await loadCurrentView();
     })().catch((error) => {
       setStatus(error instanceof Error ? error.message : 'Could not load run.');
     });
@@ -562,7 +650,7 @@ async function bootstrap() {
         renderBaselineSetOptions();
         closeActionModal();
         try {
-          await loadRun();
+          await loadCurrentView();
         } catch (error) {
           setStatus(error instanceof Error ? error.message : 'Could not load run.');
         }
@@ -574,9 +662,15 @@ async function bootstrap() {
     void (async () => {
       setStatus('Refreshing...');
       await refreshOverview();
-      await loadRun();
+      await loadCurrentView();
     })().catch((error) => {
       setStatus(error instanceof Error ? error.message : 'Could not refresh review UI.');
+    });
+  });
+
+  elements.viewModeButton.addEventListener('click', () => {
+    void toggleViewMode().catch((error) => {
+      setStatus(error instanceof Error ? error.message : 'Could not switch review mode.');
     });
   });
 
@@ -602,7 +696,7 @@ async function bootstrap() {
 
   try {
     await refreshOverview();
-    await loadRun();
+    await loadCurrentView();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : 'Could not load review UI.');
   }

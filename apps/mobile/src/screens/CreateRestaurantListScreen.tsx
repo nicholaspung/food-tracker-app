@@ -150,7 +150,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
       <View style={styles.body}>
         <PageErrorToast errorMessage={errorMessage} title="Could not create list" />
 
-        <Card style={styles.formCard} tone="muted">
+        <Card style={styles.formCard} tone="default">
           <Input
             autoCapitalize="words"
             label="List name"

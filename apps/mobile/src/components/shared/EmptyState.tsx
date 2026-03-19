@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { trackObservabilityEvent } from '../../observability';
 import { useTheme } from '../../theme';
 import { Button, Card, Text } from '../../ui';
+import type { CardProps } from '../../ui';
 
 export interface EmptyStateProps {
   title: string;
@@ -12,9 +13,18 @@ export interface EmptyStateProps {
   actionLabel?: string;
   onAction?: () => void;
   fill?: boolean;
+  tone?: CardProps['tone'];
 }
 
-export function EmptyState({ title, description, icon, actionLabel, onAction, fill = false }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  description,
+  icon,
+  actionLabel,
+  onAction,
+  fill = false,
+  tone = 'muted',
+}: EmptyStateProps) {
   const theme = useTheme();
   const lastShownKeyRef = useRef<string | null>(null);
   const hasAction = Boolean(actionLabel && onAction);
@@ -72,7 +82,7 @@ export function EmptyState({ title, description, icon, actionLabel, onAction, fi
   });
 
   return (
-    <Card style={fill ? styles.cardFill : undefined} tone="muted">
+    <Card style={fill ? styles.cardFill : undefined} tone={tone}>
       <View style={[styles.content, fill && styles.contentFill]}>
         {icon ? <View>{icon}</View> : null}
         <Text variant="titleMd">{title}</Text>

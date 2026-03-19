@@ -2208,6 +2208,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         variant: 'secondary',
       }}
       subtitle={screenSubtitle}
+      testID={isEditMode ? 'edit-bill-screen' : 'create-bill-screen'}
       title={screenTitle}
     >
       {!isEditMode ? (

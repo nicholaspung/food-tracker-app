@@ -7,7 +7,7 @@ RUN_NAME="${RUN_NAME:-$(date +%Y%m%d-%H%M%S)}"
 OUTPUT_DIR="$ROOT_DIR/apps/mobile/e2e/artifacts/$RUN_NAME"
 ENV_FILE="${SCREENSHOT_ENV_FILE:-$ROOT_DIR/apps/mobile/e2e/.env.local}"
 
-FLOW_KEYS=("core-review" "lists-review")
+FLOW_KEYS=("core-review" "lists-review" "bills-review")
 declare -a SELECTED_FLOW_KEYS=()
 declare -a SELECTED_FLOW_PATHS=()
 
@@ -18,6 +18,9 @@ resolve_flow_path() {
       ;;
     lists-review)
       printf '%s\n' "apps/mobile/e2e/maestro/flows/lists-review-part-1.yaml"
+      ;;
+    bills-review)
+      printf '%s\n' "apps/mobile/e2e/maestro/flows/bills-review.yaml"
       ;;
     *)
       return 1
@@ -31,11 +34,12 @@ Available screenshot flows:
   - all
   - core-review
   - lists-review
+  - bills-review
 
 You can select multiple flows by separating values with commas or spaces.
 Examples:
   pnpm mobile:screenshots -- all
-  pnpm mobile:screenshots -- core-review lists-review
+  pnpm mobile:screenshots -- core-review lists-review bills-review
   pnpm mobile:screenshots -- core-review,lists-review
 EOF
 }
@@ -83,6 +87,7 @@ prompt_for_flow_selection() {
   echo "  1. all" >&2
   echo "  2. core-review" >&2
   echo "  3. lists-review" >&2
+  echo "  4. bills-review" >&2
   printf "Enter selection [core-review]: " >&2
 
   local response
@@ -101,6 +106,9 @@ prompt_for_flow_selection() {
       ;;
     3)
       printf '%s\n' "lists-review"
+      ;;
+    4)
+      printf '%s\n' "bills-review"
       ;;
     *)
       printf '%s\n' "$response"

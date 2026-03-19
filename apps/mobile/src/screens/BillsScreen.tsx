@@ -115,6 +115,8 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
       <View style={styles.body}>
         <Card style={styles.filterCard}>
           <SegmentedControl
+            getOptionAccessibilityLabel={(value) => `Bills filter ${value}`}
+            getOptionTestID={(value) => `bills-filter-${value}`}
             onChange={(nextFilter) => {
               trackObservabilityEvent('BILLS_FILTER_CHANGED', {
                 source: 'BillsScreen',
@@ -163,6 +165,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
                   ? 'No unpaid bills right now.'
                   : 'No bills found for this filter.'
             }
+            tone="default"
             title={activeFilter === 'all' ? 'No bills yet' : 'No matching bills'}
           />
         ) : null}
@@ -208,6 +211,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
                     }}
                     rightAccessory={<StatusPill label={statusLabel} tone={statusTone} />}
                     subtitle={summaryLabel}
+                    testID={`bills-row-${activeFilter}-${index}`}
                     title={bill.title}
                   />
                 );

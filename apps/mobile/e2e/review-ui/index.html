@@ -14,7 +14,7 @@
             <h1>Screenshot Review</h1>
             <button id="refresh-button" class="secondary-button refresh-button" type="button">Refresh</button>
           </div>
-          <p>Pick an artifact run, compare images, and move approved files into a baseline set.</p>
+          <p>Pick an artifact run to compare images, or switch to baseline view to browse a baseline set.</p>
         </div>
 
         <label class="field">
@@ -65,6 +65,7 @@
             <div id="regression-alert" class="regression-alert is-hidden"></div>
           </div>
           <div class="carousel-toolbar">
+            <button id="view-mode-button" class="secondary-button" type="button">View Baselines</button>
             <button id="prev-image-button" class="secondary-button" type="button" disabled>Back</button>
             <p id="carousel-position" class="carousel-position">0 of 0</p>
             <button id="next-image-button" class="secondary-button" type="button" disabled>Next</button>
@@ -85,7 +86,7 @@
         </div>
 
         <div class="comparison-grid">
-          <section class="preview-panel">
+          <section class="preview-panel artifact-panel">
             <h4>Artifact</h4>
             <div class="screen-frame artifact-wrap">
               <img class="artifact-image" alt="" loading="lazy" />
@@ -93,7 +94,7 @@
             </div>
           </section>
 
-          <section class="preview-panel">
+          <section class="preview-panel baseline-panel">
             <h4>Baseline</h4>
             <div class="screen-frame baseline-wrap">
               <img class="baseline-image" alt="" loading="lazy" />

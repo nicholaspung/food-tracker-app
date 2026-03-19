@@ -277,6 +277,10 @@ select {
   margin-top: 0;
 }
 
+.carousel-toolbar #view-mode-button {
+  min-width: 132px;
+}
+
 .carousel-position {
   min-width: 72px;
   margin: 0;
@@ -319,6 +323,11 @@ select {
 
 .image-card-regression {
   border-color: rgba(143, 46, 22, 0.22);
+}
+
+.image-card-baseline-mode .comparison-grid {
+  grid-template-columns: 1fr;
+  justify-items: center;
 }
 
 .image-card-header {
@@ -375,6 +384,10 @@ select {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
+}
+
+.image-card-baseline-mode .preview-panel {
+  max-width: min(100%, 720px);
 }
 
 .preview-panel h4 {

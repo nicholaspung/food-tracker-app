@@ -19,6 +19,7 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   getOptionTestID?: (value: T, index: number) => string | undefined;
+  getOptionAccessibilityLabel?: (value: T, index: number) => string | undefined;
   fill?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
   segmentStyle?: StyleProp<ViewStyle>;
@@ -46,6 +47,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   getOptionTestID,
+  getOptionAccessibilityLabel,
   fill = true,
   containerStyle,
   segmentStyle,
@@ -92,6 +94,8 @@ export function SegmentedControl<T extends string>({
       fontSize: 14,
       fontWeight: '600',
       lineHeight: 18,
+      flexShrink: 1,
+      textAlign: 'center',
     },
     labelActive: {
       color: theme.colors.text.primary,
@@ -109,6 +113,8 @@ export function SegmentedControl<T extends string>({
 
         return (
           <Pressable
+            accessible
+            accessibilityLabel={getOptionAccessibilityLabel?.(option.value, index)}
             accessibilityRole="button"
             key={option.value}
             onPress={() => {

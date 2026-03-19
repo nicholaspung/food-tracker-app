@@ -10,6 +10,20 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.4',
+    date: '2026-03-18',
+    title: 'Safer List Item Deletion & Bills E2E Coverage',
+    summary:
+      'Removing an item from a restaurant list now asks for confirmation before deleting, so you can no longer accidentally remove a rating with a single tap.',
+    features: [],
+    improvements: [
+      'Removing a bookmarked item or rating from a restaurant list now shows a confirmation dialog before deleting — tap "Delete Item" to confirm or "Keep Item" to cancel.',
+      'Form cards on the Create and Edit Restaurant List screens now use the default card style for a cleaner look.',
+      'Segmented control labels now wrap and center correctly when text is long.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.3',
     date: '2026-03-17',
     title: 'Improved Visit Editing & Menu Item Simplification',

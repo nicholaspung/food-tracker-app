@@ -12,6 +12,7 @@ Available named flows:
 
 - `core-review`: onboarding, login, profile, legal/settings, feedback, logout
 - `lists-review`: login, More, list screens, photo viewer, edit/delete list states, and friend lists
+- `bills-review`: More tab bills/tips screens, bill filters, create bill, bill detail, and edit bill
 
 ## Setup
 
@@ -38,13 +39,15 @@ If you run `pnpm mobile:screenshots` in an interactive terminal, it will prompt 
 - `all`
 - `core-review`
 - `lists-review`
+- `bills-review`
 
 You can also pass one or more flow names explicitly:
 
 ```bash
 pnpm mobile:screenshots -- core-review
 pnpm mobile:screenshots -- lists-review
-pnpm mobile:screenshots -- core-review lists-review
+pnpm mobile:screenshots -- bills-review
+pnpm mobile:screenshots -- core-review lists-review bills-review
 pnpm mobile:screenshots -- all
 ```
 
@@ -54,6 +57,9 @@ Flow aliases:
 
 - `core-review` -> `apps/mobile/e2e/maestro/flows/core-review.yaml`
 - `lists-review` -> `apps/mobile/e2e/maestro/flows/lists-review-part-1.yaml`
+- `bills-review` -> `apps/mobile/e2e/maestro/flows/bills-review.yaml`
+
+`bills-review` assumes the app is already on the More tab. It is intended to run immediately after `lists-review`, and `pnpm mobile:screenshots -- all` runs them in that order.
 
 `core-review` captures:
 
@@ -93,6 +99,21 @@ Flow aliases:
 - `31-delete-list-confirmation`
 - `32-friend-lists`
 - `33-friend-list-detail`
+
+`bills-review` captures:
+
+- `34-tip-calculator`
+- `35-bills-you-owe`
+- `36-bills-all`
+- `37-bills-youre-owed`
+- `38-bills-settled`
+- `39-create-bill`
+- `40-create-bill-lower`
+- `41-bill-detail`
+- `42-bill-detail-bottom`
+- `43-edit-bill`
+- `44-edit-bill-items-tax`
+- `45-edit-bill-final-owed`
 
 ## Review Website
 

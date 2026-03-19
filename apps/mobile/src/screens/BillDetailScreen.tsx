@@ -568,6 +568,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                   navigation.navigate('CreateBill', { billId: bill.id });
                 }}
                 style={styles.headerEditButton}
+                testID="bill-detail-edit-button"
               >
                 <Ionicons color={theme.colors.text.primary} name="create-outline" size={16} />
               </Pressable>
@@ -581,6 +582,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         ) : null
       }
       subtitle={bill ? formatBillCreatedLabel(bill.createdAt) : undefined}
+      testID="bill-detail-screen"
       title={bill?.title ?? 'Bill Detail'}
     >
       <View style={styles.body}>

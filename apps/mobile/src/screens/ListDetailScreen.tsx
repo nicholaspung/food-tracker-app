@@ -131,6 +131,25 @@ interface SaveBookmarkTarget {
   sourceNote?: string;
 }
 
+type PendingDeleteListItem =
+  | {
+      kind: 'source';
+      itemName: string;
+      listItemId: string;
+      foodItemId: string;
+    }
+  | {
+      kind: 'user-linked';
+      itemName: string;
+      listItemId: string;
+    }
+  | {
+      kind: 'user-standalone';
+      itemName: string;
+      listItemId: string;
+      foodItemId: string;
+    };
+
 function formatMonthYearLabel(value: string | undefined): string | null {
   if (!value) {
     return null;
@@ -185,6 +204,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<PendingDeleteListItem | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
   const [saveBookmarkTarget, setSaveBookmarkTarget] = useState<SaveBookmarkTarget | null>(null);
   const [selectedSaveListIds, setSelectedSaveListIds] = useState<Set<string>>(new Set());
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
@@ -977,9 +998,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
   };
 
-  const handleRemoveSourceRating = async (input: { listItemId: string; foodItemId: string }) => {
+  const handleRemoveSourceRating = async (input: { listItemId: string; foodItemId: string }): Promise<boolean> => {
     if (!isOwner) {
-      return;
+      return false;
     }
 
     trackObservabilityEvent('LIST_DETAIL_SOURCE_RATING_REMOVE_TAPPED', {
@@ -1002,7 +1023,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
         ]);
         showQueuedOfflineAlert('List update');
-        return;
+        return true;
       }
 
       await queueWrite('list.restaurant.remove.source');
@@ -1017,15 +1038,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
       ]);
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
       setErrorMessage(message);
+      return false;
     }
   };
 
-  const handleRemoveUserRating = async (listItemId: string) => {
+  const handleRemoveUserRating = async (listItemId: string): Promise<boolean> => {
     if (!isOwner) {
-      return;
+      return false;
     }
 
     trackObservabilityEvent('LIST_DETAIL_USER_RATING_REMOVE_TAPPED', {
@@ -1044,7 +1067,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
         ]);
         showQueuedOfflineAlert('List update');
-        return;
+        return true;
       }
 
       await queueWrite('list.restaurant.remove.user');
@@ -1055,9 +1078,56 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
       ]);
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
       setErrorMessage(message);
+      return false;
+    }
+  };
+
+  const confirmDeleteItem = (item: PendingDeleteListItem) => {
+    if (!isOwner) {
+      return;
+    }
+
+    setPendingDeleteItem(item);
+  };
+
+  const closeDeleteItemModal = () => {
+    if (isDeletingItem) {
+      return;
+    }
+
+    setPendingDeleteItem(null);
+  };
+
+  const handleConfirmDeleteItem = async () => {
+    if (!pendingDeleteItem || isDeletingItem) {
+      return;
+    }
+
+    setIsDeletingItem(true);
+
+    try {
+      const didDelete =
+        pendingDeleteItem.kind === 'source'
+          ? await handleRemoveSourceRating({
+              listItemId: pendingDeleteItem.listItemId,
+              foodItemId: pendingDeleteItem.foodItemId,
+            })
+          : pendingDeleteItem.kind === 'user-linked'
+            ? await handleRemoveUserRating(pendingDeleteItem.listItemId)
+            : await handleRemoveSourceRating({
+                listItemId: pendingDeleteItem.listItemId,
+                foodItemId: pendingDeleteItem.foodItemId,
+              });
+
+      if (didDelete) {
+        setPendingDeleteItem(null);
+      }
+    } finally {
+      setIsDeletingItem(false);
     }
   };
 
@@ -1388,6 +1458,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                 ? 'Use Add Visit Ratings to List to save your first restaurant.'
                 : 'No restaurants have been added to this list yet.'
             }
+            tone="default"
             title="No restaurants yet"
           />
         ) : (
@@ -1518,7 +1589,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                                   accessibilityLabel={`Remove bookmarked rating for ${item.name}`}
                                   accessibilityRole="button"
                                   onPress={() => {
-                                    void handleRemoveSourceRating({
+                                    confirmDeleteItem({
+                                      kind: 'source',
+                                      itemName: item.name,
                                       listItemId: sourceRating.listItemId,
                                       foodItemId: sourceRating.foodItemId,
                                     });
@@ -1545,11 +1618,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                                 accessibilityRole="button"
                                 onPress={() => {
                                   if (userRating.kind === 'linked') {
-                                    void handleRemoveUserRating(userRating.listItemId);
+                                    confirmDeleteItem({
+                                      kind: 'user-linked',
+                                      itemName: item.name,
+                                      listItemId: userRating.listItemId,
+                                    });
                                     return;
                                   }
 
-                                  void handleRemoveSourceRating({
+                                  confirmDeleteItem({
+                                    kind: 'user-standalone',
+                                    itemName: item.name,
                                     listItemId: userRating.listItemId,
                                     foodItemId: userRating.foodItemId,
                                   });
@@ -1663,6 +1742,27 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         testID="delete-list-confirmation-modal"
         title="Delete List?"
         visible={isDeleteConfirmVisible}
+      />
+
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Item"
+        confirmLabel="Delete Item"
+        confirmLoadingLabel="Deleting..."
+        description={
+          pendingDeleteItem
+            ? pendingDeleteItem.kind === 'source'
+              ? `Delete "${pendingDeleteItem.itemName}" from this list?`
+              : `Delete your rating for "${pendingDeleteItem.itemName}" from this list?`
+            : 'Delete this item from the list?'
+        }
+        loading={isDeletingItem}
+        onCancel={closeDeleteItemModal}
+        onConfirm={() => {
+          void handleConfirmDeleteItem();
+        }}
+        testID="delete-list-item-confirmation-modal"
+        title={pendingDeleteItem?.kind === 'source' ? 'Delete Bookmarked Item?' : 'Delete Rating?'}
+        visible={Boolean(pendingDeleteItem)}
       />
 
       <Modal

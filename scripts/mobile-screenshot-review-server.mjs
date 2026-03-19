@@ -290,7 +290,16 @@ async function listArtifactRuns(baselineSet) {
 }
 
 async function listBaselineSets() {
-  const entries = await readdir(baselinesDir, { withFileTypes: true });
+  let entries = [];
+
+  try {
+    entries = await readdir(baselinesDir, { withFileTypes: true });
+  } catch (error) {
+    if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
   return entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
     .map((entry) => entry.name)
@@ -350,6 +359,23 @@ async function getRunDetails(runName, baselineSet) {
     flowPaths: expectations.flowPaths,
     images,
     summary,
+  };
+}
+
+async function getBaselineDetails(baselineSet) {
+  const safeBaselineSet = normalizeBaselineSet(baselineSet) ?? defaultBaselineSet;
+  const baselineImageNames = await listImageFiles(path.join(baselinesDir, safeBaselineSet));
+
+  return {
+    baselineSet: safeBaselineSet,
+    images: baselineImageNames.map((name) => ({
+      baselineUrl: `/files/baselines/${encodeURIComponent(safeBaselineSet)}/${encodeURIComponent(name)}`,
+      hasBaseline: true,
+      name,
+    })),
+    summary: {
+      baselineCount: baselineImageNames.length,
+    },
   };
 }
 
@@ -481,6 +507,13 @@ const server = createServer(async (request, response) => {
         return;
       }
 
+      await sendJson(response, 200, details);
+      return;
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/api/baselines') {
+      const baselineSet = requestUrl.searchParams.get('baselineSet');
+      const details = await getBaselineDetails(baselineSet);
       await sendJson(response, 200, details);
       return;
     }
