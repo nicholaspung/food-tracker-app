@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -19,6 +19,7 @@ import { Card, Input, Text } from '../ui';
 type CreateVisitAddRestaurantScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateVisitAddRestaurant'>;
 
 type RestaurantVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
+const RESTAURANT_VISIBILITY_OPTIONS: readonly RestaurantVisibility[] = ['friends', 'private'];
 
 function resolveDefaultRestaurantVisibility(): RestaurantVisibility {
   return resolveDefaultRestaurantVisibilityFromAuth();
@@ -39,8 +40,6 @@ export function CreateVisitAddRestaurantScreen({
   const [visibility, setVisibility] = useState<RestaurantVisibility>(resolveDefaultRestaurantVisibility());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const visibilityOptions = useMemo<RestaurantVisibility[]>(() => ['private', 'friends'], []);
 
   const styles = StyleSheet.create({
     body: {
@@ -185,7 +184,7 @@ export function CreateVisitAddRestaurantScreen({
           <View style={styles.visibilitySection}>
             <Text variant="label">Visibility</Text>
             <VisibilityOptionSelector
-              options={visibilityOptions}
+              options={RESTAURANT_VISIBILITY_OPTIONS}
               onChange={(nextVisibility) => {
                 if (nextVisibility === 'private' || nextVisibility === 'friends') {
                   trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_VISIBILITY_CHANGED', {

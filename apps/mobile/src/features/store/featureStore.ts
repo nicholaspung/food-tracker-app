@@ -1998,14 +1998,20 @@ export async function updateRestaurantList(
         payload.visibility = normalizeListVisibility(updates.visibility);
       }
 
+      const existingRecord = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+        expand: 'user',
+      });
+
+      if (existingRecord.isDefault === true && Object.keys(payload).length > 0) {
+        throw new Error('The Saved list cannot be edited.');
+      }
+
       const updatedRecord =
         Object.keys(payload).length > 0
           ? await pb.collection('restaurant_lists').update<RestaurantListCollectionRecord>(listId, payload, {
               expand: 'user',
             })
-          : await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
-              expand: 'user',
-            });
+          : existingRecord;
 
       return mapRestaurantListCollectionRecord(updatedRecord);
     },

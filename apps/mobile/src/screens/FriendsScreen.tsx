@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
@@ -8,7 +8,9 @@ import QRCode from 'react-native-qrcode-svg';
 
 import { FriendListItemCard } from '../components/friends';
 import {
+  ConfirmDestructiveModal,
   EmptyState,
+  HeaderAccessoryButton,
   SegmentedControl,
   Skeleton,
   StatusPill,
@@ -16,7 +18,7 @@ import {
   TabRootScreenScaffold,
   type SegmentedControlOption,
 } from '../components/shared';
-import { inviteFriend, listFriends, markFriendInviteAccepted, removeFriend } from '../features';
+import { listFriends, markFriendInviteAccepted, removeFriend, type FriendRecord } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -25,12 +27,12 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Text } from '../ui';
+import { Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 
-type MainTab = 'my-code' | 'friends-list' | 'add-friend';
+type MainTab = 'my-code' | 'friends-list';
 type FriendsSubTab = 'friends' | 'requests' | 'sent';
 type FriendRemoveOperationName = 'friend.remove' | 'friend.request.reject' | 'friend.request.cancel';
 
@@ -42,10 +44,6 @@ const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
   {
     label: 'Friends',
     value: 'friends-list',
-  },
-  {
-    label: 'Add Friend',
-    value: 'add-friend',
   },
 ];
 
@@ -67,7 +65,7 @@ function formatDate(value: string): string {
   return date.toLocaleDateString();
 }
 
-export function FriendsScreen({ navigation }: FriendsScreenProps) {
+export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -84,9 +82,9 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
 
   const [mainTab, setMainTab] = useState<MainTab>('friends-list');
   const [friendsSubTab, setFriendsSubTab] = useState<FriendsSubTab>('friends');
-  const [friendCode, setFriendCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+  const [pendingRemoveFriend, setPendingRemoveFriend] = useState<FriendRecord | null>(null);
 
   const { acceptedFriends, pendingReceived, pendingSent } = useMemo(() => {
     const friends = friendsQuery.data ?? [];
@@ -126,6 +124,26 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     ],
     [acceptedFriends.length, pendingReceived.length, pendingSent.length],
   );
+
+  useEffect(() => {
+    if (!route.params?.initialSection && !route.params?.initialFriendsSubTab) {
+      return;
+    }
+
+    if (route.params.initialSection) {
+      setMainTab(route.params.initialSection);
+    }
+
+    if (route.params.initialFriendsSubTab) {
+      setMainTab('friends-list');
+      setFriendsSubTab(route.params.initialFriendsSubTab);
+    }
+
+    navigation.setParams({
+      initialSection: undefined,
+      initialFriendsSubTab: undefined,
+    });
+  }, [navigation, route.params]);
 
   const styles = StyleSheet.create({
     screenContent: {
@@ -203,13 +221,6 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       paddingHorizontal: theme.spacing.sm,
       textAlign: 'center',
     },
-    rowActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    rowAction: {
-      flex: 1,
-    },
     cardTitle: {
       fontSize: 18,
       fontWeight: '700',
@@ -218,15 +229,12 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     cardsList: {
       gap: theme.spacing.sm,
     },
+    iconAction: {
+      padding: 2,
+    },
     textAction: {
       paddingHorizontal: theme.spacing.xs,
       paddingVertical: theme.spacing.xxs,
-    },
-    textActionDanger: {
-      color: theme.colors.text.danger,
-      fontSize: 15,
-      fontWeight: '600',
-      lineHeight: 20,
     },
     textActionMuted: {
       color: theme.colors.text.secondary,
@@ -310,59 +318,38 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
         await queueFeatureOutbox(operationName, { friendId });
         await invalidateFriends();
         showQueuedOfflineAlert('Friend action');
-        return;
+        return true;
       }
 
       await queueWrite(operationName);
       await removeFriend(friendId);
       await invalidateFriends();
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update this friend entry.';
       setErrorMessage(message);
+      return false;
     } finally {
       setIsMutating(false);
     }
   };
 
-  const handleSendRequest = async () => {
-    const normalizedCode = friendCode.trim().toUpperCase();
-    if (!normalizedCode) {
-      setErrorMessage('Friend code is required.');
+  const closeRemoveModal = () => {
+    if (isMutating) {
       return;
     }
 
-    if (normalizedCode === myFriendCode) {
-      setErrorMessage('You cannot add yourself as a friend.');
+    setPendingRemoveFriend(null);
+  };
+
+  const handleConfirmRemoveFriend = async () => {
+    if (!pendingRemoveFriend) {
       return;
     }
 
-    setErrorMessage(null);
-    setIsMutating(true);
-
-    try {
-      if (!isOnline) {
-        await queueFeatureOutbox('friend.request.send', { code: normalizedCode });
-        setFriendCode('');
-        setMainTab('friends-list');
-        setFriendsSubTab('sent');
-        await invalidateFriends();
-        showQueuedOfflineAlert('Friend request');
-        return;
-      }
-
-      await queueWrite('friend.request.send');
-      await inviteFriend({
-        code: normalizedCode,
-      });
-      setFriendCode('');
-      setMainTab('friends-list');
-      setFriendsSubTab('sent');
-      await invalidateFriends();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not send friend request.';
-      setErrorMessage(message);
-    } finally {
-      setIsMutating(false);
+    const removed = await handleRemove(pendingRemoveFriend.id, 'friend.remove');
+    if (removed) {
+      setPendingRemoveFriend(null);
     }
   };
 
@@ -420,6 +407,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
         return (
           <EmptyState
             description="Add friends to compare visits and food ratings."
+            tone="default"
             title="No friends yet"
           />
         );
@@ -437,14 +425,17 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
               tone="info"
               rightContent={
                 <Pressable
+                  accessibilityLabel={`Remove friend ${friend.name}`}
                   accessibilityRole="button"
                   disabled={isMutating}
                   onPress={() => {
-                    void handleRemove(friend.id, 'friend.remove');
+                    setErrorMessage(null);
+                    setPendingRemoveFriend(friend);
                   }}
-                  style={styles.textAction}
+                  style={styles.iconAction}
+                  testID={`friend-remove-button-${friend.id}`}
                 >
-                  <Text style={styles.textActionDanger}>Remove</Text>
+                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
                 </Pressable>
               }
             />
@@ -455,7 +446,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
 
     if (friendsSubTab === 'requests') {
       if (pendingReceived.length === 0) {
-        return <EmptyState description="Incoming requests appear here." title="No pending requests" />;
+        return <EmptyState description="Incoming requests appear here." tone="default" title="No pending requests" />;
       }
 
       return (
@@ -499,7 +490,7 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
     }
 
     if (pendingSent.length === 0) {
-      return <EmptyState description="Requests you send will show up here." title="No sent requests" />;
+      return <EmptyState description="Requests you send will show up here." tone="default" title="No sent requests" />;
     }
 
     return (
@@ -540,7 +531,22 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
       scrollUnderlayColor={theme.colors.background.muted}
       testID="friends-screen"
     >
-      <TabBrandHeader showBrand={false} subtitle={friendSummary} title="Friends" titleVariant="displayLg" />
+      <TabBrandHeader
+        rightAccessory={
+          <HeaderAccessoryButton
+            accessibilityLabel="Add friend"
+            label="Add Friend"
+            onPress={() => {
+              navigation.navigate('AddFriend');
+            }}
+            testID="friends-add-friend-button"
+          />
+        }
+        showBrand={false}
+        subtitle={friendSummary}
+        title="Friends"
+        titleVariant="displayLg"
+      />
 
       <View style={styles.mainTabsSection}>
         <SegmentedControl onChange={setMainTab} options={MAIN_TAB_OPTIONS} value={mainTab} />
@@ -592,44 +598,6 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
           </Card>
         ) : null}
 
-        {mainTab === 'add-friend' ? (
-          <Card>
-            <Text style={styles.cardTitle}>Add Friend</Text>
-            <Text style={styles.cardDescription}>Enter a friend code or scan a QR code to send a request.</Text>
-            <Input
-              autoCapitalize="characters"
-              autoCorrect={false}
-              keyboardType="ascii-capable"
-              label="Friend Code"
-              maxLength={8}
-              onChangeText={(value) => {
-                const sanitized = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-                setFriendCode(sanitized);
-              }}
-              placeholder="Enter 8-character code"
-              value={friendCode}
-            />
-            <View style={styles.rowActions}>
-              <Button
-                disabled={!friendCode.trim() || isMutating}
-                label={isMutating ? 'Sending...' : 'Send Request'}
-                onPress={() => {
-                  void handleSendRequest();
-                }}
-                style={styles.rowAction}
-              />
-              <Button
-                label="Scan QR"
-                onPress={() => {
-                  navigation.navigate('QRScanner');
-                }}
-                style={styles.rowAction}
-                variant="secondary"
-              />
-            </View>
-          </Card>
-        ) : null}
-
         {mainTab === 'friends-list' ? (
           <>
             <SegmentedControl onChange={setFriendsSubTab} options={friendsSubTabOptions} value={friendsSubTab} />
@@ -638,6 +606,26 @@ export function FriendsScreen({ navigation }: FriendsScreenProps) {
           </>
         ) : null}
       </View>
+
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Friend"
+        confirmLabel="Remove Friend"
+        confirmLoadingLabel="Removing..."
+        description={
+          pendingRemoveFriend
+            ? `Remove ${pendingRemoveFriend.name} from your friends list? This action cannot be undone.`
+            : 'Remove this friend from your friends list? This action cannot be undone.'
+        }
+        disabled={!pendingRemoveFriend}
+        loading={isMutating}
+        onCancel={closeRemoveModal}
+        onConfirm={() => {
+          void handleConfirmRemoveFriend();
+        }}
+        testID="friend-remove-confirm-modal"
+        title="Remove Friend?"
+        visible={pendingRemoveFriend !== null}
+      />
     </TabRootScreenScaffold>
   );
 }

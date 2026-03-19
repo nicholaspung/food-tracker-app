@@ -33,12 +33,14 @@ const DEFAULT_ERROR_TITLE = 'Something went wrong';
 const ENTER_ANIMATION_MS = 180;
 const EXIT_ANIMATION_MS = 140;
 const HIDDEN_Y_OFFSET = -24;
+const AUTO_DISMISS_MS = 5000;
 
 export function ErrorToastProvider({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
   const [toast, setToast] = useState<ErrorToastState | null>(null);
   const nextToastIdRef = useRef(0);
   const lastTrackedToastIdRef = useRef<number | null>(null);
+  const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const translateY = useRef(new Animated.Value(HIDDEN_Y_OFFSET)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -58,6 +60,11 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
   }, [opacity, translateY]);
 
   const dismissError = useCallback(() => {
+    if (dismissTimeoutRef.current) {
+      clearTimeout(dismissTimeoutRef.current);
+      dismissTimeoutRef.current = null;
+    }
+
     if (toast) {
       trackObservabilityEvent('ERROR_TOAST_DISMISSED', {
         hasAction: Boolean(toast.actionLabel && toast.onAction),
@@ -121,7 +128,18 @@ export function ErrorToastProvider({ children }: { children: React.ReactNode }) 
     translateY.setValue(HIDDEN_Y_OFFSET);
     opacity.setValue(0);
     animateIn();
-  }, [animateIn, opacity, toast, translateY]);
+
+    dismissTimeoutRef.current = setTimeout(() => {
+      dismissError();
+    }, AUTO_DISMISS_MS);
+
+    return () => {
+      if (dismissTimeoutRef.current) {
+        clearTimeout(dismissTimeoutRef.current);
+        dismissTimeoutRef.current = null;
+      }
+    };
+  }, [animateIn, dismissError, opacity, toast, translateY]);
 
   const handleActionPress = useCallback(() => {
     if (!toast?.onAction) {

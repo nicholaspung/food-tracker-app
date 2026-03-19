@@ -33,6 +33,7 @@ import {
   EditRestaurantListScreen,
   EditQuickTrackScreen,
   CreateFeedbackScreen,
+  AddFriendScreen,
   EditVisitScreen,
   FeedbackScreen,
   FeedbackDetailScreen,
@@ -152,7 +153,13 @@ export type RootStackParamList = {
   AddRestaurantToList: { listId: string };
   Notes: undefined;
   NoteEditor: { noteId?: string } | undefined;
-  Friends: undefined;
+  Friends:
+    | {
+        initialSection?: 'my-code' | 'friends-list';
+        initialFriendsSubTab?: 'friends' | 'requests' | 'sent';
+      }
+    | undefined;
+  AddFriend: undefined;
   Profile: undefined;
   About: undefined;
   TermsOfService: undefined;
@@ -209,6 +216,7 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'EditQuickTrack',
   'ProcessPhotos',
   'Friends',
+  'AddFriend',
   'QRScanner',
   'Profile',
   'About',
@@ -430,7 +438,7 @@ export function RootNavigator() {
                 <Stack.Screen
                   component={EditQuickTrackScreen}
                   name="EditQuickTrack"
-                  options={{ title: 'Edit Quick Track' }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   component={PhotoProcessingScreen}
@@ -457,6 +465,7 @@ export function RootNavigator() {
                 <Stack.Screen component={NotesScreen} name="Notes" options={{ headerShown: false }} />
                 <Stack.Screen component={NoteEditorScreen} name="NoteEditor" options={{ headerShown: false }} />
                 <Stack.Screen component={FriendsScreen} name="Friends" options={{ headerShown: false }} />
+                <Stack.Screen component={AddFriendScreen} name="AddFriend" options={{ headerShown: false }} />
                 <Stack.Screen component={ProfileScreen} name="Profile" options={{ headerShown: false }} />
                 <Stack.Screen component={AboutScreen} name="About" options={{ headerShown: false }} />
                 <Stack.Screen

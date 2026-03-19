@@ -20,7 +20,7 @@ type CreateVisitAddMenuItemScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'CreateVisitAddMenuItem'
 >;
-const MENU_ITEM_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['private', 'friends'];
+const MENU_ITEM_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
 
 interface MenuItemRecord {
   id: string;

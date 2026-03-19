@@ -86,6 +86,15 @@
 - Surface request failures with `ErrorState` and/or `PageErrorToast` depending on page context.
 - Clear stale error text before retrying submissions.
 
+## Destructive Action Pattern
+
+- Any destructive action triggered from a delete/trash icon must open `/Users/developer/programming/food-tracker-app/apps/mobile/src/components/shared/ConfirmDestructiveModal.tsx` before the mutation runs.
+- Prefer `ConfirmDestructiveModal` over ad-hoc `Alert.alert(...)` prompts for delete flows so destructive confirmation UX stays consistent across screens.
+- When a delete icon is pressed, stage the pending record in screen state first, then execute the delete only from the modal confirm action.
+- Use explicit destructive copy in the modal title, description, and confirm label (`Delete Visit`, `Delete Note`, `Delete Item`, etc.) so the user knows exactly what will be removed.
+- Preserve loading/disabled states while the delete mutation is in flight, and keep deletion errors surfaced through the screen's existing error presentation (`PageErrorToast`, `ErrorState`, or equivalent).
+- Non-destructive inline removals inside draft/form composition flows should still be treated as destructive when they are triggered by a trash icon and remove user-entered data.
+
 ## Mobile Rating Color Standard
 
 - Canonical rating palette lives in `/Users/developer/programming/food-tracker-app/apps/mobile/src/lib/ratingConstants.ts` via `getRatingColor`.
@@ -111,5 +120,6 @@
 - Core browse screens preserve cached-data rendering on offline/refetch failure (blocking errors only when no cached data exists).
 - Online-only flows show explicit offline messaging and disabled controls.
 - Loading, empty, and error states are covered on async screens.
+- Delete/trash icon actions open `ConfirmDestructiveModal` before deleting, with clear confirm/cancel copy and in-flight disabled/loading handling.
 - Rating UI still uses `getRatingColor`, `getRatingLabel`, and `RatingPill` conventions.
 - Run relevant checks for touched mobile code: `pnpm mobile:lint` and `pnpm mobile:typecheck`.

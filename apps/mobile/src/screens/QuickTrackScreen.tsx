@@ -682,7 +682,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           <Text variant="label">Visibility</Text>
           <VisibilityOptionSelector
             onChange={handleVisibilityChange}
-            options={['private', 'friends']}
+            options={['friends', 'private']}
             value={visibility}
           />
         </Card>

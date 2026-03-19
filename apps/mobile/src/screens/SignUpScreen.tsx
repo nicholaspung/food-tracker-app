@@ -133,6 +133,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         name: trimmedName,
         email: trimmedEmail,
         inviteCode: trimmedInviteCode,
+        defaultListVisibility: 'friends',
         defaultVisitVisibility: 'friends',
         defaultRestaurantVisibility: 'friends',
         password,

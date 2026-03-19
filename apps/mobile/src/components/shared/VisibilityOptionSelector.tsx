@@ -7,6 +7,7 @@ import { Text } from '../../ui';
 import { StatusPill, type StatusPillTone } from './StatusPill';
 
 export type VisibilityOptionValue = 'private' | 'friends' | 'public';
+export type VisibilityLabelPreset = 'default' | 'personal';
 
 type VisibilityTone = 'secondary' | 'info' | 'success';
 
@@ -22,6 +23,7 @@ interface VisibilityOptionSelectorProps {
   options?: readonly VisibilityOptionValue[];
   disabled?: boolean;
   communityLabel?: string;
+  labelPreset?: VisibilityLabelPreset;
   labelOverrides?: Partial<Record<VisibilityOptionValue, string>>;
   optionDescriptions?: Partial<Record<VisibilityOptionValue, string>>;
   optionBadgeLabels?: Partial<Record<VisibilityOptionValue, string>>;
@@ -34,11 +36,12 @@ export function getVisibilityOptionMeta(
   value: VisibilityOptionValue,
   communityLabel = 'Community',
   labelOverrides?: Partial<Record<VisibilityOptionValue, string>>,
+  labelPreset: VisibilityLabelPreset = 'default',
 ): VisibilityOptionMeta {
   if (value === 'private') {
     return {
       icon: 'lock-closed-outline',
-      label: labelOverrides?.private ?? 'Private',
+      label: labelOverrides?.private ?? (labelPreset === 'personal' ? 'Only me' : 'Private'),
       tone: 'secondary',
     };
   }
@@ -46,14 +49,14 @@ export function getVisibilityOptionMeta(
   if (value === 'public') {
     return {
       icon: 'earth-outline',
-      label: labelOverrides?.public ?? communityLabel,
+      label: labelOverrides?.public ?? (labelPreset === 'personal' ? 'Everyone' : communityLabel),
       tone: 'success',
     };
   }
 
   return {
     icon: 'people-outline',
-    label: labelOverrides?.friends ?? 'Friends',
+    label: labelOverrides?.friends ?? (labelPreset === 'personal' ? 'Friends only' : 'Friends'),
     tone: 'info',
   };
 }
@@ -66,6 +69,7 @@ export function VisibilityOptionSelector({
   options = DEFAULT_OPTIONS,
   disabled = false,
   communityLabel,
+  labelPreset,
   labelOverrides,
   optionDescriptions,
   optionBadgeLabels,
@@ -75,7 +79,9 @@ export function VisibilityOptionSelector({
 }: VisibilityOptionSelectorProps) {
   const theme = useTheme();
   const isSegmentedVariant = variant === 'segmented';
+  const isPersonalSegmentedLayout = isSegmentedVariant && options.length === 2;
   const isCompactLayout = isSegmentedVariant && options.length >= 3;
+  const resolvedLabelPreset = labelPreset ?? (isPersonalSegmentedLayout ? 'personal' : 'default');
 
   const resolveToneTokens = (tone: VisibilityTone) => {
     if (tone === 'info') {
@@ -105,11 +111,11 @@ export function VisibilityOptionSelector({
     containerSegmented: {
       backgroundColor: theme.colors.background.muted,
       borderColor: theme.colors.border.default,
-      borderRadius: 12,
+      borderRadius: isPersonalSegmentedLayout ? theme.radii.lg + theme.spacing.xxs : 12,
       borderWidth: 1,
       flexDirection: 'row',
-      gap: 4,
-      padding: 4,
+      gap: isPersonalSegmentedLayout ? theme.spacing.xxs : 4,
+      padding: isPersonalSegmentedLayout ? theme.spacing.xxs : 4,
     },
     containerCards: {
       gap: theme.spacing.xs,
@@ -119,16 +125,20 @@ export function VisibilityOptionSelector({
     },
     segmentedOption: {
       alignItems: 'center',
-      borderRadius: 9,
+      borderRadius: isPersonalSegmentedLayout ? theme.radii.lg : 9,
       borderWidth: 1,
       flex: 1,
       flexDirection: 'row',
-      gap: isCompactLayout ? 4 : 6,
+      gap: isPersonalSegmentedLayout ? 6 : isCompactLayout ? 4 : 6,
       justifyContent: 'center',
-      minHeight: 38,
+      minHeight: isPersonalSegmentedLayout ? 46 : 38,
       minWidth: 0,
-      paddingHorizontal: isCompactLayout ? theme.spacing.xxs : theme.spacing.xs,
-      paddingVertical: 7,
+      paddingHorizontal: isPersonalSegmentedLayout
+        ? theme.spacing.sm
+        : isCompactLayout
+          ? theme.spacing.xxs
+          : theme.spacing.xs,
+      paddingVertical: isPersonalSegmentedLayout ? theme.spacing.xs : 7,
     },
     segmentedOptionInactive: {
       borderColor: 'transparent',
@@ -143,9 +153,9 @@ export function VisibilityOptionSelector({
       shadowRadius: 1,
     },
     segmentedOptionLabel: {
-      fontSize: 13,
+      fontSize: isPersonalSegmentedLayout ? 14 : 13,
       fontWeight: '600',
-      lineHeight: 18,
+      lineHeight: isPersonalSegmentedLayout ? 18 : 18,
       flexShrink: 1,
       minWidth: 0,
     },
@@ -229,10 +239,22 @@ export function VisibilityOptionSelector({
     >
       {options.map((option) => {
         const isActive = option === value;
-        const optionMeta = getVisibilityOptionMeta(option, communityLabel, labelOverrides);
+        const optionMeta = getVisibilityOptionMeta(option, communityLabel, labelOverrides, resolvedLabelPreset);
         const toneTokens = resolveToneTokens(optionMeta.tone);
-        const optionTextColor = isActive ? toneTokens.activeText : theme.colors.text.secondary;
-        const optionIconColor = isActive ? toneTokens.activeText : theme.colors.text.muted;
+        const optionTextColor =
+          isSegmentedVariant && isPersonalSegmentedLayout
+            ? isActive
+              ? theme.colors.text.info
+              : theme.colors.text.secondary
+            : isActive
+              ? toneTokens.activeText
+              : theme.colors.text.secondary;
+        const optionIconColor =
+          isSegmentedVariant && isPersonalSegmentedLayout
+            ? optionTextColor
+            : isActive
+              ? toneTokens.activeText
+              : theme.colors.text.muted;
         const optionDescription = optionDescriptions?.[option];
         const optionBadgeLabel = optionBadgeLabels?.[option];
         const optionBadgeTone = optionBadgeTones?.[option] ?? 'info';
@@ -252,13 +274,20 @@ export function VisibilityOptionSelector({
                 isActive
                   ? [
                       styles.segmentedOptionActiveBase,
-                      { backgroundColor: toneTokens.activeBackground, borderColor: toneTokens.activeBorder },
+                      {
+                        backgroundColor: isPersonalSegmentedLayout
+                          ? theme.colors.status.infoBg
+                          : toneTokens.activeBackground,
+                        borderColor: isPersonalSegmentedLayout
+                          ? theme.colors.border.info
+                          : toneTokens.activeBorder,
+                      },
                     ]
                   : styles.segmentedOptionInactive,
                 pressed && !disabled ? { opacity: 0.75 } : null,
               ]}
             >
-              <Ionicons color={optionIconColor} name={optionMeta.icon} size={13} />
+              <Ionicons color={optionIconColor} name={optionMeta.icon} size={isPersonalSegmentedLayout ? 16 : 13} />
               <Text
                 style={[
                   styles.segmentedOptionLabel,

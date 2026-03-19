@@ -173,6 +173,10 @@ export function resolveDefaultRestaurantVisibilityFromAuth(): 'private' | 'frien
   return pb.authStore.record?.defaultRestaurantVisibility === 'private' ? 'private' : 'friends';
 }
 
+export function resolveDefaultListVisibilityFromAuth(): 'private' | 'friends' {
+  return pb.authStore.record?.defaultListVisibility === 'private' ? 'private' : 'friends';
+}
+
 export function buildPocketBaseFileUrl(input: {
   collectionId?: string;
   collectionName: string;

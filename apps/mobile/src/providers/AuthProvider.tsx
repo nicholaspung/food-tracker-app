@@ -51,6 +51,7 @@ const SCREENSHOT_REVIEW_AUTH_RECORD: RecordModel = {
   isAdmin: true,
   isSubscriber: true,
   isBetaUser: true,
+  defaultListVisibility: 'friends',
   defaultVisitVisibility: 'friends',
   defaultRestaurantVisibility: 'friends',
   created: '2026-01-01T12:00:00.000Z',

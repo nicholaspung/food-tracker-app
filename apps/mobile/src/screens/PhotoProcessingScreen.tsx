@@ -2341,7 +2341,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               <View>
                 <Text variant="label">Visibility</Text>
                 <VisibilityOptionSelector
-                  labelOverrides={{ friends: 'Friends only', private: 'Only me' }}
                   onChange={(value) => {
                     if (value === 'friends' || value === 'private') {
                       updateCurrentQuickTrackForm({ visibility: value });
@@ -2495,7 +2494,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             <Card style={styles.reviewCard}>
               <Text variant="label">Visit Visibility</Text>
               <VisibilityOptionSelector
-                labelOverrides={{ friends: 'Friends only', private: 'Only me' }}
                 onChange={(value) => {
                   if (value === 'friends' || value === 'private') {
                     setVisitVisibility(value);

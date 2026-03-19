@@ -1,8 +1,8 @@
 import { useRef } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { useTheme } from '../../theme';
-import { Text, useKeyboardAwareScroll } from '../../ui';
+import { Text } from '../../ui';
 import { FilterChipGroup, type FilterChipOption } from './FilterChipGroup';
 import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl';
 
@@ -47,7 +47,6 @@ export function FeedHeaderControls({
 }: FeedHeaderControlsProps) {
   const theme = useTheme();
   const searchInputRef = useRef<TextInput>(null);
-  const { clearFocusedInput, scrollToFocusedInput } = useKeyboardAwareScroll();
 
   const styles = StyleSheet.create({
     container: {
@@ -205,16 +204,16 @@ export function FeedHeaderControls({
       <View style={styles.searchRow}>
         <View style={styles.searchField}>
           <TextInput
+            blurOnSubmit
             onChangeText={onSearchQueryChange}
-            onBlur={() => {
-              clearFocusedInput(searchInputRef.current);
-            }}
-            onFocus={() => {
-              scrollToFocusedInput(searchInputRef.current);
+            onSubmitEditing={() => {
+              searchInputRef.current?.blur();
+              Keyboard.dismiss();
             }}
             placeholder="Search restaurants, food, notes..."
             placeholderTextColor={theme.colors.text.muted}
             ref={searchInputRef}
+            returnKeyType="done"
             style={styles.searchInput}
             value={searchQuery}
           />

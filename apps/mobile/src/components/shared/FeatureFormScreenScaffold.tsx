@@ -4,7 +4,6 @@ import { Keyboard, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { useTheme } from '../../theme';
-import { KeyboardAwareScrollProvider } from '../../ui/KeyboardAwareScrollContext';
 import { Button, Screen } from '../../ui';
 import { ScreenHeader } from './ScreenHeader';
 
@@ -150,12 +149,7 @@ export function FeatureFormScreenScaffold({
           ref={resolvedScrollViewRef}
           style={styles.bodyScroll}
         >
-          <KeyboardAwareScrollProvider
-            extraKeyboardOffset={shouldShowFooter ? footerHeight + theme.spacing.xl : theme.spacing.xxl}
-            scrollViewRef={resolvedScrollViewRef}
-          >
-            {children}
-          </KeyboardAwareScrollProvider>
+          {children}
         </ScrollView>
 
         {shouldShowFooter ? (

@@ -2756,7 +2756,6 @@ export function CreateVisitScreen({
             <View style={styles.visibilitySection}>
               <Text variant="label">Visibility</Text>
               <VisibilityOptionSelector
-                labelOverrides={{ friends: "Friends only", private: "Only me" }}
                 onChange={handleVisitVisibilityChange}
                 options={["friends", "private"]}
                 value={visitVisibility}

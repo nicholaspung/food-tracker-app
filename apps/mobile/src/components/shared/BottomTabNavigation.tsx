@@ -29,7 +29,7 @@ export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList
     'EditQuickTrack',
     'ProcessPhotos',
   ],
-  Friends: ['Friends', 'QRScanner'],
+  Friends: ['Friends', 'AddFriend', 'QRScanner'],
   Misc: [
     'Misc',
     'Lists',

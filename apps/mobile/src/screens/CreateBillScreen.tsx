@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ConfirmDestructiveModal,
   FeatureFormScreenScaffold,
   OptionList,
   OptionListInlineBody,
@@ -312,6 +313,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [isEditHydrated, setIsEditHydrated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<DraftBillItem | null>(null);
 
   const friendsQuery = useQuery({
     queryKey: ['feature', 'friends'],
@@ -2414,7 +2416,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                         <Pressable
                           accessibilityLabel={`Remove ${item.name}`}
                           onPress={() => {
-                            removeItem(item.id);
+                            setPendingDeleteItem(item);
                           }}
                           style={styles.removeItemButton}
                         >
@@ -2899,6 +2901,29 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       </Card>
 
       <PageErrorToast errorMessage={errorMessage} title={errorToastTitle} />
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Item"
+        confirmLabel="Delete Item"
+        description={
+          pendingDeleteItem?.name?.trim()
+            ? `Delete "${pendingDeleteItem.name}" from this bill?`
+            : 'Delete this item from the bill?'
+        }
+        disabled={!pendingDeleteItem}
+        onCancel={() => {
+          setPendingDeleteItem(null);
+        }}
+        onConfirm={() => {
+          if (!pendingDeleteItem) {
+            return;
+          }
+
+          removeItem(pendingDeleteItem.id);
+          setPendingDeleteItem(null);
+        }}
+        title="Delete Bill Item?"
+        visible={pendingDeleteItem !== null}
+      />
     </FeatureFormScreenScaffold>
   );
 }

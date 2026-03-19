@@ -1,22 +1,77 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
-import { getQuickTrackById, updateQuickTrack } from '../features';
+import {
+  CurrentLocationButton,
+  EmptyState,
+  ErrorState,
+  FeatureFormScreenScaffold,
+  LocalDatePickerField,
+  OptionList,
+  OptionListRow,
+  PageErrorToast,
+  RatingLegend,
+  RatingSelector,
+  Skeleton,
+  VisibilityOptionSelector,
+  type VisibilityOptionValue,
+} from '../components/shared';
+import { getQuickTrackById, resolveDefaultVisitVisibilityFromAuth, updateQuickTrack } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import {
+  formatDateToLocalDateString,
+  getTodayLocalDateString,
+  isValidLocalDate,
+  localDateStringToUTC,
+} from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { Input } from '../ui';
-import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { useTheme } from '../theme';
+import { Button, Card, Input, Text } from '../ui';
 
 type EditQuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'EditQuickTrack'>;
+type QuickTrackVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
+
+const ITEM_CATEGORIES = [
+  { value: 'convenience_store', label: 'Convenience Store' },
+  { value: 'packaged_food', label: 'Packaged Food' },
+  { value: 'homemade', label: 'Homemade' },
+  { value: 'recipe', label: 'Recipe' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+type ItemCategory = (typeof ITEM_CATEGORIES)[number]['value'];
+
+function normalizeQuickTrackDate(value: string | undefined): string {
+  if (!value) {
+    return getTodayLocalDateString();
+  }
+
+  const normalizedValue = value.includes(' ') ? value.replace(' ', 'T') : value;
+  const parsedDate = new Date(normalizedValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return getTodayLocalDateString();
+  }
+
+  return formatDateToLocalDateString(parsedDate);
+}
+
+function normalizeItemCategory(value: string | undefined): ItemCategory | null {
+  const matchingCategory = ITEM_CATEGORIES.find((category) => category.value === value);
+  return matchingCategory?.value ?? null;
+}
 
 export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreenProps) {
   const { quickTrackId } = route.params;
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -27,10 +82,18 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
     queryFn: () => getQuickTrackById(quickTrackId),
   });
 
-  const [restaurantName, setRestaurantName] = useState('');
   const [itemName, setItemName] = useState('');
-  const [rating, setRating] = useState('4');
+  const [rating, setRating] = useState(3);
   const [notes, setNotes] = useState('');
+  const [itemCategory, setItemCategory] = useState<ItemCategory | null>(null);
+  const [locationText, setLocationText] = useState('');
+  const [visibility, setVisibility] = useState<QuickTrackVisibility>(resolveDefaultVisitVisibilityFromAuth());
+  const [itemDate, setItemDate] = useState(getTodayLocalDateString());
+  const [latitude, setLatitude] = useState<number | undefined>(undefined);
+  const [longitude, setLongitude] = useState<number | undefined>(undefined);
+  const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
+  const [isCapturingLocation, setIsCapturingLocation] = useState(false);
+  const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -39,31 +102,162 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       return;
     }
 
-    setRestaurantName(quickTrackQuery.data.restaurantName);
     setItemName(quickTrackQuery.data.itemName);
-    setRating(quickTrackQuery.data.rating.toString());
+    setRating(quickTrackQuery.data.rating);
     setNotes(quickTrackQuery.data.notes ?? '');
+    setItemCategory(normalizeItemCategory(quickTrackQuery.data.itemCategory));
+    setLocationText(quickTrackQuery.data.locationText ?? '');
+    setVisibility(quickTrackQuery.data.visibility ?? resolveDefaultVisitVisibilityFromAuth());
+    setItemDate(normalizeQuickTrackDate(quickTrackQuery.data.itemDate));
   }, [quickTrackQuery.data]);
 
+  const styles = StyleSheet.create({
+    body: {
+      gap: theme.spacing.md,
+      paddingBottom: theme.spacing.sm,
+    },
+    sectionCard: {
+      gap: theme.spacing.sm,
+    },
+    notesInput: {
+      minHeight: 100,
+      textAlignVertical: 'top',
+    },
+    categorySelectorRow: {
+      backgroundColor: theme.colors.background.muted,
+      borderBottomColor: theme.colors.border.default,
+    },
+    categorySelectorRowExpanded: {
+      backgroundColor: theme.colors.status.warningBg,
+      borderBottomColor: theme.colors.status.warningBorder,
+    },
+    categorySelectorTitle: {
+      color: theme.colors.text.primary,
+      fontWeight: '700',
+    },
+    categorySelectorSubtitle: {
+      color: theme.colors.text.muted,
+    },
+    categorySelectorSubtitleSelected: {
+      color: theme.colors.text.warning,
+    },
+    categoryOptionSelectedRow: {
+      backgroundColor: theme.colors.status.warningBg,
+    },
+    categoryOptionSelectedLabel: {
+      color: theme.colors.text.warning,
+    },
+    categoryClearLabel: {
+      color: theme.colors.text.muted,
+    },
+    categoryPlaceholder: {
+      color: theme.colors.text.muted,
+    },
+    locationRow: {
+      alignItems: 'flex-start',
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+    },
+    locationInput: {
+      flex: 1,
+    },
+  });
+
+  const selectedCategoryLabel = useMemo(() => {
+    if (!itemCategory) {
+      return 'Select category';
+    }
+
+    return ITEM_CATEGORIES.find((category) => category.value === itemCategory)?.label ?? 'Select category';
+  }, [itemCategory]);
+
+  const canSubmit = useMemo(() => {
+    return itemName.trim().length > 0 && !isSubmitting;
+  }, [isSubmitting, itemName]);
+
+  const hasCapturedCoordinates =
+    typeof latitude === 'number' && typeof longitude === 'number';
+  const coordinateLabel = hasCapturedCoordinates
+    ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+    : null;
+
+  const handleVisibilityChange = (value: VisibilityOptionValue) => {
+    if (value === 'private' || value === 'friends') {
+      setVisibility(value);
+    }
+  };
+
+  const handleCaptureLocation = async () => {
+    trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURE_STARTED', {
+      source: 'EditQuickTrackScreen',
+      quickTrackId,
+    });
+    setErrorMessage(null);
+    setLocationPermissionNeedsSettings(false);
+    setIsCapturingLocation(true);
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
+          canAskAgain: permission.canAskAgain,
+          source: 'EditQuickTrackScreen',
+          quickTrackId,
+        });
+        setLocationPermissionNeedsSettings(permission.canAskAgain === false);
+        setErrorMessage(
+          permission.canAskAgain === false
+            ? 'Location permission is blocked. Enable it in settings.'
+            : 'Location permission is required to capture your coordinates.',
+        );
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const capturedLatitude = position.coords.latitude;
+      const capturedLongitude = position.coords.longitude;
+
+      setLatitude(capturedLatitude);
+      setLongitude(capturedLongitude);
+      setLocationText(`${capturedLatitude.toFixed(6)}, ${capturedLongitude.toFixed(6)}`);
+      trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURED', {
+        source: 'EditQuickTrackScreen',
+        quickTrackId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not capture your location.';
+      setErrorMessage(message);
+      trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURE_FAILED', {
+        source: 'EditQuickTrackScreen',
+        quickTrackId,
+        error: message,
+      });
+    } finally {
+      setIsCapturingLocation(false);
+    }
+  };
+
   const handleSave = async () => {
-    if (!restaurantName.trim() || !itemName.trim()) {
+    const trimmedItemName = itemName.trim();
+    if (!trimmedItemName) {
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_VALIDATION_FAILED', {
         source: 'EditQuickTrackScreen',
         quickTrackId,
-        reason: 'missing_restaurant_or_item',
+        reason: 'missing_item',
       });
-      setErrorMessage('Restaurant and item are required.');
+      setErrorMessage('Item name is required.');
       return;
     }
 
-    const parsedRating = Number(rating);
-    if (Number.isNaN(parsedRating) || parsedRating <= 0 || parsedRating > 5) {
+    if (!isValidLocalDate(itemDate)) {
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_VALIDATION_FAILED', {
         source: 'EditQuickTrackScreen',
         quickTrackId,
-        reason: 'invalid_rating',
+        reason: 'invalid_item_date',
       });
-      setErrorMessage('Rating must be between 1 and 5.');
+      setErrorMessage('Please choose a valid date.');
       return;
     }
 
@@ -73,15 +267,22 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       quickTrackId,
       isOnline,
       hasNotes: notes.trim().length > 0,
+      hasLocation: locationText.trim().length > 0,
+      visibility,
     });
     setIsSubmitting(true);
 
     try {
       const quickTrackUpdateInput = {
-        restaurantName,
-        itemName,
-        rating: parsedRating,
-        notes: notes.trim() || undefined,
+        itemName: trimmedItemName,
+        rating,
+        notes,
+        itemCategory,
+        locationText,
+        visibility,
+        itemDate: localDateStringToUTC(itemDate),
+        latitude,
+        longitude,
       };
 
       if (!isOnline) {
@@ -98,9 +299,10 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
           source: 'EditQuickTrackScreen',
           quickTrackId,
           queued: true,
+          visibility,
         });
         showQueuedOfflineAlert('Quick track update');
-        navigation.navigate('Home');
+        handleBackPress();
         return;
       }
 
@@ -115,8 +317,9 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
         source: 'EditQuickTrackScreen',
         quickTrackId,
         queued: false,
+        visibility,
       });
-      navigation.navigate('Home');
+      handleBackPress();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update quick track.';
       setErrorMessage(message);
@@ -156,6 +359,8 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       >
         <Skeleton height={20} />
         <Skeleton height={20} />
+        <Skeleton height={20} />
+        <Skeleton height={20} />
       </FeatureFormScreenScaffold>
     );
   }
@@ -169,10 +374,11 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
           disabled: true,
           onPress: () => {},
         }}
-        secondaryAction={{
+      secondaryAction={{
           label: 'Cancel',
           onPress: handleBackPress,
         }}
+        subtitle="Update the saved details for this quick-track item."
         title="Edit Quick Track"
       >
         <ErrorState
@@ -195,10 +401,11 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
           disabled: true,
           onPress: () => {},
         }}
-        secondaryAction={{
+      secondaryAction={{
           label: 'Cancel',
           onPress: handleBackPress,
         }}
+        subtitle="Update the saved details for this quick-track item."
         title="Edit Quick Track"
       >
         <EmptyState
@@ -218,7 +425,7 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       onBackPress={handleBackPress}
       primaryAction={{
         label: 'Save Changes',
-        disabled: isSubmitting,
+        disabled: !canSubmit,
         loading: isSubmitting,
         onPress: () => {
           void handleSave();
@@ -226,16 +433,152 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       }}
       secondaryAction={{
         label: 'Cancel',
+        disabled: isSubmitting,
         onPress: handleBackPress,
       }}
+      subtitle="Update the saved details for this quick-track item."
       title="Edit Quick Track"
     >
-      <Input label="Restaurant" onChangeText={setRestaurantName} value={restaurantName} />
-      <Input label="Item" onChangeText={setItemName} value={itemName} />
-      <Input keyboardType="decimal-pad" label="Rating (1-5)" onChangeText={setRating} value={rating} />
-      <Input label="Notes" onChangeText={setNotes} value={notes} />
+      <View style={styles.body}>
+        <PageErrorToast errorMessage={errorMessage} title="Could not save quick track" />
 
-      <PageErrorToast errorMessage={errorMessage} title="Could not save" />
+        <Card style={styles.sectionCard}>
+          <LocalDatePickerField
+            label="Date"
+            modalTitle="Select item date"
+            onChange={setItemDate}
+            value={itemDate}
+          />
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <Text variant="label">Visibility</Text>
+          <VisibilityOptionSelector
+            onChange={handleVisibilityChange}
+            options={['friends', 'private']}
+            value={visibility}
+          />
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <Input
+            autoCapitalize="words"
+            label="Item Name *"
+            onChangeText={setItemName}
+            placeholder="e.g., Chocolate Bar, Coffee, Homemade Pasta"
+            value={itemName}
+          />
+        </Card>
+
+        <RatingLegend initiallyExpanded={false} persistenceKey="ui.quickTrack.ratingGuide.expanded" />
+
+        <Card style={styles.sectionCard}>
+          <Text variant="label">Rating *</Text>
+          <RatingSelector
+            onChange={setRating}
+            value={rating}
+          />
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <Text variant="label">Category (Optional)</Text>
+          <OptionList>
+            <OptionListRow
+              chevron={isCategoryExpanded ? 'up' : 'down'}
+              iconName="pricetag-outline"
+              isLast={!isCategoryExpanded}
+              onPress={() => {
+                setIsCategoryExpanded((currentValue) => !currentValue);
+              }}
+              style={[styles.categorySelectorRow, isCategoryExpanded ? styles.categorySelectorRowExpanded : undefined]}
+              subtitle={itemCategory ? 'Selected category' : 'Tap to choose a category'}
+              subtitleStyle={itemCategory ? styles.categorySelectorSubtitleSelected : styles.categorySelectorSubtitle}
+              title={selectedCategoryLabel}
+              titleStyle={!itemCategory ? styles.categoryPlaceholder : styles.categorySelectorTitle}
+            />
+
+            {isCategoryExpanded ? (
+              ITEM_CATEGORIES.map((category, index) => {
+                const isSelected = itemCategory === category.value;
+                const isLastOption = index === ITEM_CATEGORIES.length - 1;
+
+                return (
+                  <OptionListRow
+                    chevron={false}
+                    isLast={isLastOption && !itemCategory}
+                    key={category.value}
+                    onPress={() => {
+                      setItemCategory(category.value);
+                      setIsCategoryExpanded(false);
+                    }}
+                    rightAccessory={
+                      isSelected ? <Ionicons color={theme.colors.text.warning} name="checkmark-circle" size={16} /> : undefined
+                    }
+                    style={isSelected ? styles.categoryOptionSelectedRow : undefined}
+                    title={category.label}
+                    titleStyle={isSelected ? styles.categoryOptionSelectedLabel : undefined}
+                  />
+                );
+              })
+            ) : null}
+            {isCategoryExpanded && itemCategory ? (
+              <OptionListRow
+                chevron={false}
+                isLast
+                onPress={() => {
+                  setItemCategory(null);
+                  setIsCategoryExpanded(false);
+                }}
+                title="Clear Category"
+                titleStyle={styles.categoryClearLabel}
+              />
+            ) : null}
+          </OptionList>
+
+          <Text variant="label">Location (Optional)</Text>
+          <View style={styles.locationRow}>
+            <Input
+              containerStyle={styles.locationInput}
+              onChangeText={setLocationText}
+              placeholder="e.g., Trader Joe's, Home Kitchen"
+              value={locationText}
+            />
+            <CurrentLocationButton
+              accessibilityLabel="Capture current location"
+              captured={hasCapturedCoordinates}
+              disabled={isSubmitting}
+              loading={isCapturingLocation}
+              onPress={() => {
+                void handleCaptureLocation();
+              }}
+              variant="icon"
+            />
+          </View>
+          {coordinateLabel ? (
+            <Text tone="success" variant="bodySm">
+              Location updated from GPS: {coordinateLabel}
+            </Text>
+          ) : null}
+          {locationPermissionNeedsSettings ? (
+            <Button
+              label="Open Settings"
+              onPress={() => {
+                void Linking.openSettings();
+              }}
+              variant="secondary"
+            />
+          ) : null}
+
+          <Input
+            inputStyle={styles.notesInput}
+            label="Notes (Optional)"
+            multiline
+            onChangeText={setNotes}
+            placeholder="Any additional thoughts or details..."
+            value={notes}
+          />
+        </Card>
+      </View>
     </FeatureFormScreenScaffold>
   );
 }

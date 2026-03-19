@@ -1371,7 +1371,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     <FeatureDetailScreenScaffold
       onBackPress={handleBack}
       rightAccessory={
-        isOwner ? (
+        isOwner && !list.isDefault ? (
           <View style={styles.headerRightRow}>
             <Pressable
               accessibilityLabel="Edit list"
@@ -1387,18 +1387,16 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             >
               <Ionicons color={theme.colors.text.primary} name="create-outline" size={16} />
             </Pressable>
-            {!list.isDefault ? (
-              <Pressable
-                accessibilityLabel="Delete list"
-                accessibilityRole="button"
-                disabled={isDeletingList}
-                onPress={confirmDeleteList}
-                style={styles.headerIconButton}
-                testID="list-detail-delete-button"
-              >
-                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
-              </Pressable>
-            ) : null}
+            <Pressable
+              accessibilityLabel="Delete list"
+              accessibilityRole="button"
+              disabled={isDeletingList}
+              onPress={confirmDeleteList}
+              style={styles.headerIconButton}
+              testID="list-detail-delete-button"
+            >
+              <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
+            </Pressable>
           </View>
         ) : undefined
       }

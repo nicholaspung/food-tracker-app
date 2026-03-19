@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 import { useTheme } from '../theme';
-import { KeyboardAwareScrollProvider } from './KeyboardAwareScrollContext';
 
 interface ScreenProps {
   edges?: Edge[];
@@ -63,18 +62,16 @@ export function Screen({
   });
 
   const body = scroll ? (
-    <KeyboardAwareScrollProvider extraKeyboardOffset={theme.spacing.xl} scrollViewRef={scrollViewRef}>
-      <ScrollView
-        automaticallyAdjustKeyboardInsets={keyboardAware}
-        contentContainerStyle={[styles.scrollContent, styles.content, contentStyle]}
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        keyboardShouldPersistTaps="handled"
-        ref={scrollViewRef}
-        style={[styles.keyboardContainer, scrollStyle]}
-      >
-        {children}
-      </ScrollView>
-    </KeyboardAwareScrollProvider>
+    <ScrollView
+      automaticallyAdjustKeyboardInsets={keyboardAware}
+      contentContainerStyle={[styles.scrollContent, styles.content, contentStyle]}
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      keyboardShouldPersistTaps="handled"
+      ref={scrollViewRef}
+      style={[styles.keyboardContainer, scrollStyle]}
+    >
+      {children}
+    </ScrollView>
   ) : (
     <View style={[styles.nonScrollContent, styles.content, contentStyle]}>{children}</View>
   );

@@ -23,6 +23,8 @@ appId: com.anonymous.yummy-recs-mobile
     id: login-submit-button
 - assertVisible:
     id: home-screen
+- assertVisible:
+    id: tab-Home
 - takeScreenshot: 21-home
 
 - tapOn:

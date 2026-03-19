@@ -10,6 +10,26 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.5',
+    date: '2026-03-18',
+    title: 'Add Friend Screen, Richer Quick Track Editing & Default List Visibility',
+    summary:
+      'Adding friends now has its own dedicated screen. Quick Track editing gets a full upgrade with category, date, location, and visibility fields. Settings gains a new Default List Visibility preference. Deleting visits and quick tracks now shows a confirmation dialog.',
+    features: [
+      'New Add Friend screen: enter a friend code or scan a QR code from a dedicated flow, accessible via an "Add Friend" button in the Friends header.',
+      'Quick Track edit screen now includes category, date, GPS location capture, and visibility (private or friends) — all the fields available when creating a new quick track.',
+      'Default List Visibility setting in Settings lets you choose whether new restaurant lists default to private or friends-visible.',
+    ],
+    improvements: [
+      'Deleting a visit or quick track from the home feed now shows a confirmation dialog instead of a native alert, matching the style used elsewhere in the app.',
+      'Removing a friend now shows a confirmation dialog before removing them from your list.',
+      'QR Scanner screen shows your own friend code at the top so you can share it while scanning.',
+      'Numeric inputs on iOS now show an inline "Done" button to dismiss the keyboard without switching to a different field.',
+      '"Add Friend" tab removed from the Friends segmented control — use the new Add Friend button in the header instead.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.4',
     date: '2026-03-18',
     title: 'Safer List Item Deletion & Bills E2E Coverage',

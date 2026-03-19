@@ -2,6 +2,7 @@ export * from './AccessDeniedScreen';
 export * from './AddRestaurantToListScreen';
 export * from './AddVisitScreen';
 export * from './AboutScreen';
+export * from './AddFriendScreen';
 export * from './BillDetailScreen';
 export * from './BillsScreen';
 export * from './CreateBillScreen';

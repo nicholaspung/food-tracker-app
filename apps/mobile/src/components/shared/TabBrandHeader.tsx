@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 
@@ -11,6 +12,7 @@ export interface TabBrandHeaderProps {
   subtitle?: string;
   showBrand?: boolean;
   brandLabel?: string;
+  rightAccessory?: ReactNode;
   style?: StyleProp<ViewStyle>;
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
@@ -27,6 +29,7 @@ export function TabBrandHeader({
   subtitle,
   showBrand = true,
   brandLabel = APP_NAME,
+  rightAccessory,
   style,
   titleStyle,
   subtitleStyle,
@@ -67,6 +70,14 @@ export function TabBrandHeader({
     subtitle: {
       color: theme.colors.text.muted,
     },
+    titleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+    },
+    titleWrap: {
+      flex: 1,
+    },
   });
 
   return (
@@ -81,9 +92,14 @@ export function TabBrandHeader({
           </Text>
         </View>
       ) : null}
-      <Text style={titleStyle} variant={titleVariant}>
-        {title}
-      </Text>
+      <View style={styles.titleRow}>
+        <View style={styles.titleWrap}>
+          <Text style={titleStyle} variant={titleVariant}>
+            {title}
+          </Text>
+        </View>
+        {rightAccessory}
+      </View>
       {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}
     </View>
   );

@@ -2,9 +2,10 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { RecordModel } from 'pocketbase';
 
 import { BackHeaderScreenScaffold, EmptyState, SectionCard, Skeleton, VisibilityOptionSelector } from '../components/shared';
-import { getCollectionRecord, updateCollectionRecord } from '../features';
+import { getCollectionRecord, saveAuthRecord, updateCollectionRecord } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -16,15 +17,18 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 type VisitVisibility = 'friends' | 'private';
 type RestaurantVisibility = 'private' | 'friends';
+type ListVisibility = 'private' | 'friends';
 
 interface UserSettingsRecord {
   defaultVisitVisibility?: unknown;
   defaultRestaurantVisibility?: unknown;
+  defaultListVisibility?: unknown;
 }
 
 interface UserSettings {
   visitVisibility: VisitVisibility;
   restaurantVisibility: RestaurantVisibility;
+  listVisibility: ListVisibility;
 }
 
 function normalizeVisitVisibility(value: unknown): VisitVisibility {
@@ -41,10 +45,15 @@ function normalizeRestaurantVisibility(
   return 'friends';
 }
 
+function normalizeListVisibility(value: unknown): ListVisibility {
+  return value === 'private' ? 'private' : 'friends';
+}
+
 function mapUserSettings(record: UserSettingsRecord): UserSettings {
   return {
     visitVisibility: normalizeVisitVisibility(record.defaultVisitVisibility),
     restaurantVisibility: normalizeRestaurantVisibility(record.defaultRestaurantVisibility),
+    listVisibility: normalizeListVisibility(record.defaultListVisibility),
   };
 }
 
@@ -55,6 +64,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const queryClient = useQueryClient();
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>('friends');
   const [restaurantVisibility, setRestaurantVisibility] = useState<RestaurantVisibility>('private');
+  const [listVisibility, setListVisibility] = useState<ListVisibility>('friends');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -89,6 +99,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
     setVisitVisibility(settingsQuery.data.visitVisibility);
     setRestaurantVisibility(settingsQuery.data.restaurantVisibility);
+    setListVisibility(settingsQuery.data.listVisibility);
   }, [settingsQuery.data]);
 
   const hasPendingChanges = useMemo(() => {
@@ -98,9 +109,10 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
     return (
       visitVisibility !== settingsQuery.data.visitVisibility ||
-      restaurantVisibility !== settingsQuery.data.restaurantVisibility
+      restaurantVisibility !== settingsQuery.data.restaurantVisibility ||
+      listVisibility !== settingsQuery.data.listVisibility
     );
-  }, [restaurantVisibility, settingsQuery.data, visitVisibility]);
+  }, [listVisibility, restaurantVisibility, settingsQuery.data, visitVisibility]);
 
   const handleSaveSettings = async () => {
     if (!user?.id) {
@@ -119,6 +131,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       userId: user.id,
       visitVisibility,
       restaurantVisibility,
+      listVisibility,
       hasPendingChanges,
     });
     setIsSaving(true);
@@ -126,12 +139,14 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     try {
       await queueWrite('settings.visibility.save');
 
-      const updatedRecord = await updateCollectionRecord<UserSettingsRecord>('users', user.id, {
+      const updatedRecord = await updateCollectionRecord<RecordModel & UserSettingsRecord>('users', user.id, {
+        defaultListVisibility: listVisibility,
         defaultRestaurantVisibility: restaurantVisibility,
         defaultVisitVisibility: visitVisibility,
       });
 
       const nextSettings = mapUserSettings(updatedRecord);
+      saveAuthRecord(updatedRecord);
       queryClient.setQueryData(['feature', 'settings', user.id], nextSettings);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'settings', user.id] });
       trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
@@ -139,6 +154,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         userId: user.id,
         visitVisibility,
         restaurantVisibility,
+        listVisibility,
       });
       setSuccessMessage('Settings saved successfully.');
     } catch (error) {
@@ -176,6 +192,17 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     setRestaurantVisibility(value);
   };
 
+  const handleSelectListVisibility = (value: ListVisibility) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    trackObservabilityEvent('SETTINGS_LIST_VISIBILITY_CHANGED', {
+      source: 'SettingsScreen',
+      previousValue: listVisibility,
+      nextValue: value,
+    });
+    setListVisibility(value);
+  };
+
   const visitVisibilityDescriptions = useMemo(
     () =>
       ({
@@ -194,13 +221,22 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     [],
   );
 
+  const listVisibilityDescriptions = useMemo(
+    () =>
+      ({
+        private: 'Only you can see lists you create.',
+        friends: 'Friends can see lists you create.',
+      }) as const,
+    [],
+  );
+
   if (!user?.id) {
     return (
       <BackHeaderScreenScaffold
         onBackPress={() => {
           navigation.navigate('Profile');
         }}
-        subtitle="Set defaults for new visits and restaurants"
+        subtitle="Set defaults for new visits, restaurants, and lists"
         testID="settings-screen"
         title="Settings"
       >
@@ -220,7 +256,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       onBackPress={() => {
         navigation.navigate('Profile');
       }}
-      subtitle="Set defaults for new visits and restaurants"
+      subtitle="Set defaults for new visits, restaurants, and lists"
       testID="settings-screen"
       title="Settings"
     >
@@ -288,6 +324,25 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
                   optionDescriptions={restaurantVisibilityDescriptions}
                   options={['private', 'friends']}
                   value={restaurantVisibility}
+                  variant="cards"
+                />
+              </View>
+            </SectionCard>
+
+            <SectionCard
+              description="Choose who can see lists you create by default. You can change this on each list later."
+              title="Default List Visibility"
+            >
+              <View style={styles.optionList}>
+                <VisibilityOptionSelector
+                  onChange={(selectedValue) => {
+                    if (selectedValue === 'private' || selectedValue === 'friends') {
+                      handleSelectListVisibility(selectedValue);
+                    }
+                  }}
+                  optionDescriptions={listVisibilityDescriptions}
+                  options={['private', 'friends']}
+                  value={listVisibility}
                   variant="cards"
                 />
               </View>

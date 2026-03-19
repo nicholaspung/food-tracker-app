@@ -9,7 +9,7 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { createRestaurantList, type RestaurantListRecord } from '../features';
+import { createRestaurantList, resolveDefaultListVisibilityFromAuth, type RestaurantListRecord } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -21,7 +21,11 @@ import { Card, Input, Text } from '../ui';
 
 type CreateRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateRestaurantList'>;
 type ListVisibility = RestaurantListRecord['visibility'];
-const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['private', 'friends'];
+const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
+
+function resolveDefaultListVisibility(): ListVisibility {
+  return resolveDefaultListVisibilityFromAuth();
+}
 
 export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListScreenProps) {
   const theme = useTheme();
@@ -32,7 +36,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [visibility, setVisibility] = useState<ListVisibility>('private');
+  const [visibility, setVisibility] = useState<ListVisibility>(resolveDefaultListVisibility());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 

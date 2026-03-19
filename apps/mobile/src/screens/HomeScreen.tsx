@@ -1,10 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  ConfirmDestructiveModal,
   EmptyState,
   FeedHeaderControls,
   PhotoViewerModal,
@@ -75,6 +76,17 @@ interface QuickTrackFeedItem extends BaseFeedItem {
 }
 
 type FeedItem = VisitFeedItem | QuickTrackFeedItem;
+type PendingDeleteTarget =
+  | {
+      id: string;
+      kind: 'visit';
+      itemName: string;
+    }
+  | {
+      id: string;
+      kind: 'quick-track';
+      itemName: string;
+    };
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
 
 interface GroupedDay {
@@ -168,6 +180,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [friendSuggestion, setFriendSuggestion] = useState<PendingFriendSuggestion | null>(null);
   const [friendSuggestionErrorMessage, setFriendSuggestionErrorMessage] = useState<string | null>(null);
   const [isApplyingFriendSuggestion, setIsApplyingFriendSuggestion] = useState(false);
+  const [pendingDeleteTarget, setPendingDeleteTarget] = useState<PendingDeleteTarget | null>(null);
+  const [isDeletingTarget, setIsDeletingTarget] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
 
   const visitsQuery = useQuery({
     queryKey: ['feature', 'visits'],
@@ -500,21 +515,22 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
 
-  const promptDeleteQuickTrack = useCallback(
-    (quickTrackId: string) => {
-      Alert.alert('Delete quick track?', 'This will permanently remove the quick-track item.', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void handleDeleteQuickTrack(quickTrackId);
-          },
-        },
-      ]);
-    },
-    [handleDeleteQuickTrack],
-  );
+  const promptDeleteQuickTrack = useCallback((quickTrackId: string, itemName: string) => {
+    setDeleteErrorMessage(null);
+    setPendingDeleteTarget({
+      id: quickTrackId,
+      itemName,
+      kind: 'quick-track',
+    });
+  }, []);
+
+  const closeDeleteModal = useCallback(() => {
+    if (isDeletingTarget) {
+      return;
+    }
+
+    setPendingDeleteTarget(null);
+  }, [isDeletingTarget]);
 
   const handleDeleteVisit = useCallback(
     async (visitId: string) => {
@@ -532,21 +548,43 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
 
-  const promptDeleteVisit = useCallback(
-    (visitId: string) => {
-      Alert.alert('Delete visit?', 'This removes the visit and all associated items/photos.', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void handleDeleteVisit(visitId);
-          },
-        },
-      ]);
-    },
-    [handleDeleteVisit],
-  );
+  const promptDeleteVisit = useCallback((visitId: string, itemName: string) => {
+    setDeleteErrorMessage(null);
+    setPendingDeleteTarget({
+      id: visitId,
+      itemName,
+      kind: 'visit',
+    });
+  }, []);
+
+  const confirmDeleteTarget = useCallback(async () => {
+    if (!pendingDeleteTarget || isDeletingTarget) {
+      return;
+    }
+
+    setIsDeletingTarget(true);
+
+    try {
+      if (pendingDeleteTarget.kind === 'visit') {
+        await handleDeleteVisit(pendingDeleteTarget.id);
+      } else {
+        await handleDeleteQuickTrack(pendingDeleteTarget.id);
+      }
+
+      setPendingDeleteTarget(null);
+      setDeleteErrorMessage(null);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : pendingDeleteTarget.kind === 'visit'
+            ? 'Could not delete visit.'
+            : 'Could not delete quick track.';
+      setDeleteErrorMessage(message);
+    } finally {
+      setIsDeletingTarget(false);
+    }
+  }, [handleDeleteQuickTrack, handleDeleteVisit, isDeletingTarget, pendingDeleteTarget]);
 
   const handleSharePhoto = useCallback(
     ({
@@ -860,7 +898,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       paddingVertical: theme.spacing.sm,
     },
     entryCardQuickTrack: {
-      backgroundColor: colors.screenBackground,
+      backgroundColor: colors.surface,
     },
     entryTopRow: {
       alignItems: 'flex-start',
@@ -973,6 +1011,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       flexDirection: 'row',
       gap: theme.spacing.xs,
       padding: theme.spacing.xs,
+    },
+    foodItemRowQuickTrack: {
+      backgroundColor: colors.surface,
     },
     photoWrap: {
       position: 'relative',
@@ -1205,6 +1246,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             void visitPhotosQuery.refetch();
           }}
         />
+        <PageErrorToast errorMessage={deleteErrorMessage} title="Delete failed" />
         <PageErrorToast errorMessage={friendSuggestionErrorMessage} title="Friend suggestion unavailable" />
         {friendSuggestion ? (
           <View style={styles.infoCard}>
@@ -1405,7 +1447,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                                 <Pressable
                                                   accessibilityLabel="Delete visit"
                                                   onPress={() => {
-                                                    promptDeleteVisit(visit.id);
+                                                    promptDeleteVisit(visit.id, visit.restaurantName);
                                                   }}
                                                   style={[styles.compactActionButton, styles.compactActionDanger]}
                                                 >
@@ -1570,7 +1612,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                               <Pressable
                                                 accessibilityLabel="Delete quick track"
                                                 onPress={() => {
-                                                  promptDeleteQuickTrack(quickTrack.id);
+                                                  promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
                                                 }}
                                                 style={[styles.compactActionButton, styles.compactActionDanger]}
                                               >
@@ -1581,7 +1623,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                         </View>
                                       ) : null}
 
-                                      <View style={styles.foodItemRow}>
+                                      <View style={[styles.foodItemRow, styles.foodItemRowQuickTrack]}>
                                         {quickTrackThumb ? (
                                           <Pressable
                                             accessibilityLabel={`View photos for ${quickTrack.itemName}`}
@@ -1675,6 +1717,28 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         onRequestClose={closePhotoViewer}
         urls={photoViewerUrls}
         visible={photoViewerVisible}
+      />
+      <ConfirmDestructiveModal
+        cancelLabel={pendingDeleteTarget?.kind === 'visit' ? 'Keep Visit' : 'Keep Quick Track'}
+        confirmLabel={pendingDeleteTarget?.kind === 'visit' ? 'Delete Visit' : 'Delete Quick Track'}
+        confirmLoadingLabel="Deleting..."
+        description={
+          pendingDeleteTarget?.kind === 'visit'
+            ? pendingDeleteTarget.itemName.trim()
+              ? `Delete your visit for "${pendingDeleteTarget.itemName}"? This removes the visit and all associated items/photos.`
+              : 'Delete this visit? This removes the visit and all associated items/photos.'
+            : pendingDeleteTarget?.itemName?.trim()
+              ? `Delete "${pendingDeleteTarget.itemName}"? This will permanently remove the quick-track item.`
+              : 'Delete this quick track? This will permanently remove the quick-track item.'
+        }
+        disabled={!pendingDeleteTarget}
+        loading={isDeletingTarget}
+        onCancel={closeDeleteModal}
+        onConfirm={() => {
+          void confirmDeleteTarget();
+        }}
+        title={pendingDeleteTarget?.kind === 'visit' ? 'Delete Visit?' : 'Delete Quick Track?'}
+        visible={pendingDeleteTarget !== null}
       />
     </TabRootScreenScaffold>
   );
