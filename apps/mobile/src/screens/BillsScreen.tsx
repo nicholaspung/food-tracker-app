@@ -115,7 +115,6 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
       <View style={styles.body}>
         <Card style={styles.filterCard}>
           <SegmentedControl
-            getOptionAccessibilityLabel={(value) => `Bills filter ${value}`}
             getOptionTestID={(value) => `bills-filter-${value}`}
             onChange={(nextFilter) => {
               trackObservabilityEvent('BILLS_FILTER_CHANGED', {

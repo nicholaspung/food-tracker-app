@@ -114,8 +114,9 @@ export function SegmentedControl<T extends string>({
         return (
           <Pressable
             accessible
-            accessibilityLabel={getOptionAccessibilityLabel?.(option.value, index)}
+            accessibilityLabel={getOptionAccessibilityLabel?.(option.value, index) ?? option.label}
             accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
             key={option.value}
             onPress={() => {
               onChange(option.value);

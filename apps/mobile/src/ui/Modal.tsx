@@ -10,6 +10,8 @@ interface ModalAction {
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
+  accessibilityLabel?: string;
+  testID?: string;
 }
 
 export interface ModalProps {
@@ -73,20 +75,24 @@ export function Modal({
             <View style={styles.actions}>
               {secondaryAction ? (
                 <Button
+                  accessibilityLabel={secondaryAction.accessibilityLabel}
                   disabled={secondaryAction.disabled}
                   label={secondaryAction.label}
                   onPress={secondaryAction.onPress}
                   style={styles.actionButton}
+                  testID={secondaryAction.testID}
                   variant="secondary"
                 />
               ) : null}
               {primaryAction ? (
                 <Button
+                  accessibilityLabel={primaryAction.accessibilityLabel}
                   disabled={primaryAction.disabled}
                   label={primaryAction.label}
                   loading={primaryAction.loading}
                   onPress={primaryAction.onPress}
                   style={styles.actionButton}
+                  testID={primaryAction.testID}
                 />
               ) : null}
             </View>

@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.6',
+    date: '2026-03-19',
+    title: 'Accessibility & E2E Test Coverage Improvements',
+    summary:
+      'Behind-the-scenes accessibility and developer tooling improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Segmented controls (e.g. Bills filter, Friends tabs) now correctly report their selected state to screen readers, and fall back to the visible label when no custom accessibility label is set.',
+      'Modal action buttons (confirm and cancel) now expose accessibility labels and test identifiers, making confirmation dialogs more reliable for assistive technology and automated tests.',
+      'New friends-review Maestro flow covers 6 screens end-to-end: Friends tab, Requests, Sent, My Code sub-tabs, Add Friend screen, and QR Scanner.',
+      'E2E tap targets in the lists flow now use stable testID selectors instead of button text, reducing flakiness when label text changes.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.5',
     date: '2026-03-18',
     title: 'Add Friend Screen, Richer Quick Track Editing & Default List Visibility',

@@ -121,7 +121,8 @@ appId: com.anonymous.yummy-recs-mobile
     id: delete-list-confirmation-modal
 - takeScreenshot: 31-delete-list-confirmation
 
-- tapOn: Keep List
+- tapOn:
+    id: delete-list-confirmation-modal-cancel-button
 - assertVisible:
     id: list-detail-screen
 

@@ -13,6 +13,7 @@ Available named flows:
 - `core-review`: onboarding, login, profile, legal/settings, feedback, logout
 - `lists-review`: login, More, list screens, photo viewer, edit/delete list states, and friend lists
 - `bills-review`: More tab bills/tips screens, bill filters, create bill, bill detail, and edit bill
+- `friends-review`: More-to-Friends tab handoff, friend sub-tabs, my code, add friend, and QR scanner
 
 ## Setup
 
@@ -40,6 +41,7 @@ If you run `pnpm mobile:screenshots` in an interactive terminal, it will prompt 
 - `core-review`
 - `lists-review`
 - `bills-review`
+- `friends-review`
 
 You can also pass one or more flow names explicitly:
 
@@ -47,7 +49,8 @@ You can also pass one or more flow names explicitly:
 pnpm mobile:screenshots -- core-review
 pnpm mobile:screenshots -- lists-review
 pnpm mobile:screenshots -- bills-review
-pnpm mobile:screenshots -- core-review lists-review bills-review
+pnpm mobile:screenshots -- friends-review
+pnpm mobile:screenshots -- core-review lists-review bills-review friends-review
 pnpm mobile:screenshots -- all
 ```
 
@@ -58,8 +61,11 @@ Flow aliases:
 - `core-review` -> `apps/mobile/e2e/maestro/flows/core-review.yaml`
 - `lists-review` -> `apps/mobile/e2e/maestro/flows/lists-review-part-1.yaml`
 - `bills-review` -> `apps/mobile/e2e/maestro/flows/bills-review.yaml`
+- `friends-review` -> `apps/mobile/e2e/maestro/flows/friends-review.yaml`
 
 `bills-review` assumes the app is already on the More tab. It is intended to run immediately after `lists-review`, and `pnpm mobile:screenshots -- all` runs them in that order.
+
+`friends-review` assumes the app is already back on the More tab after `bills-review`, and `pnpm mobile:screenshots -- all` runs it after the bills flow.
 
 `core-review` captures:
 
@@ -114,6 +120,15 @@ Flow aliases:
 - `43-edit-bill`
 - `44-edit-bill-items-tax`
 - `45-edit-bill-final-owed`
+
+`friends-review` captures:
+
+- `46-friends`
+- `47-friends-requests`
+- `48-friends-sent`
+- `49-friends-my-code`
+- `50-add-friend`
+- `51-scan-qr`
 
 ## Review Website
 

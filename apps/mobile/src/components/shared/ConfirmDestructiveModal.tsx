@@ -28,21 +28,27 @@ export function ConfirmDestructiveModal({
   testID,
 }: ConfirmDestructiveModalProps) {
   const isPrimaryDisabled = disabled || loading;
+  const cancelButtonTestID = testID ? `${testID}-cancel-button` : undefined;
+  const confirmButtonTestID = testID ? `${testID}-confirm-button` : undefined;
 
   return (
     <Modal
       description={description}
       onRequestClose={onCancel}
       primaryAction={{
+        accessibilityLabel: confirmLabel,
         disabled: isPrimaryDisabled,
         label: loading && confirmLoadingLabel ? confirmLoadingLabel : confirmLabel,
         loading,
         onPress: onConfirm,
+        testID: confirmButtonTestID,
       }}
       secondaryAction={{
+        accessibilityLabel: cancelLabel,
         disabled: loading,
         label: cancelLabel,
         onPress: onCancel,
+        testID: cancelButtonTestID,
       }}
       testID={testID}
       title={title}
