@@ -25,6 +25,17 @@
           </div>
         </label>
 
+        <label class="field">
+          <span>Environment Filter</span>
+          <select id="env-filter-select">
+            <option value="all">All Environments</option>
+            <option value="local">Local</option>
+            <option value="beta">Beta</option>
+            <option value="production">Production</option>
+            <option value="unknown">Unclassified</option>
+          </select>
+        </label>
+
         <div class="sidebar-section selected-run-section">
           <div class="section-heading">
             <h2>Selected Run</h2>
@@ -44,6 +55,7 @@
               </button>
             </div>
             <p id="selected-run-meta" class="meta">Choose an artifact run to inspect it.</p>
+            <div id="selected-run-environment" class="selected-run-badges"></div>
             <p id="selected-run-flow" class="meta"></p>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
+import { env } from '../config/env';
 import { createCollectionRecord, sendApiRequest } from '../features';
 import { getErrorMessage } from '../lib/errorUtils';
 import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
@@ -25,6 +26,7 @@ interface InviteCodeInviterResponse {
 
 export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const theme = useTheme();
+  const isScreenshotReviewMode = env.isScreenshotReviewMode;
   const prefilledInviteCode =
     route.params?.inviteCode?.trim() ?? route.params?.code?.trim() ?? '';
   const [name, setName] = useState('');
@@ -206,7 +208,13 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         />
 
         <Card style={styles.formCard}>
-          <Input label="Name" onChangeText={setName} placeholder="Your name" value={name} />
+          <Input
+            label="Name"
+            onChangeText={setName}
+            placeholder="Your name"
+            testID="signup-name-input"
+            value={name}
+          />
           <Input
             autoCapitalize="none"
             autoCorrect={false}
@@ -214,6 +222,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             label="Email"
             onChangeText={setEmail}
             placeholder="you@example.com"
+            testID="signup-email-input"
             value={email}
           />
           <Input
@@ -222,24 +231,31 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             label="Invite Code"
             onChangeText={setInviteCode}
             placeholder="Enter invite code"
+            testID="signup-invite-code-input"
             value={inviteCode}
           />
           <Input
             autoCapitalize="none"
+            autoComplete={isScreenshotReviewMode ? 'off' : 'new-password'}
             autoCorrect={false}
             label="Password"
             onChangeText={setPassword}
             placeholder="Create password"
-            secureTextEntry
+            secureTextEntry={!isScreenshotReviewMode}
+            testID="signup-password-input"
+            textContentType={isScreenshotReviewMode ? 'none' : 'newPassword'}
             value={password}
           />
           <Input
             autoCapitalize="none"
+            autoComplete={isScreenshotReviewMode ? 'off' : 'new-password'}
             autoCorrect={false}
             label="Confirm Password"
             onChangeText={setPasswordConfirm}
             placeholder="Repeat password"
-            secureTextEntry
+            secureTextEntry={!isScreenshotReviewMode}
+            testID="signup-confirm-password-input"
+            textContentType={isScreenshotReviewMode ? 'none' : 'newPassword'}
             value={passwordConfirm}
           />
 

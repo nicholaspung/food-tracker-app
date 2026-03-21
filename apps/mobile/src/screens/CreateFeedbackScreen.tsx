@@ -166,6 +166,7 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
             onChangeText={setSubject}
             placeholder="Bug, idea, request"
             returnKeyType="next"
+            testID="create-feedback-subject-input"
             value={subject}
           />
           <Input
@@ -174,6 +175,7 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
             multiline
             onChangeText={setMessage}
             placeholder="Tell us what happened"
+            testID="create-feedback-message-input"
             value={message}
           />
         </Card>

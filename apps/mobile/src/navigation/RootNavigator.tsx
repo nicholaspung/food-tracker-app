@@ -296,10 +296,13 @@ export function RootNavigator() {
   const previousRouteNameRef = useRef<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+    const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEventName, () => {
       setIsKeyboardVisible(true);
     });
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+    const hideSubscription = Keyboard.addListener(hideEventName, () => {
       setIsKeyboardVisible(false);
     });
 
@@ -349,11 +352,11 @@ export function RootNavigator() {
     previousRouteNameRef.current = typedRouteName;
   };
 
-  const showBottomTabs =
+  const hasBottomTabsRoute =
     status === 'authenticated' &&
     !!currentRouteName &&
-    ROUTES_WITH_TABS.includes(currentRouteName) &&
-    !isKeyboardVisible;
+    ROUTES_WITH_TABS.includes(currentRouteName);
+  const showBottomTabs = hasBottomTabsRoute && !isKeyboardVisible;
 
   const bottomPadding = Math.max(6, Math.min(insets.bottom, 10));
   const tabBarHeight = TAB_BAR_BASE_HEIGHT + bottomPadding;
@@ -388,7 +391,7 @@ export function RootNavigator() {
       theme={navigationTheme}
     >
       <View style={styles.container}>
-        <View style={[styles.navigatorBody, showBottomTabs ? { paddingBottom: tabBarHeight } : null]}>
+        <View style={[styles.navigatorBody, hasBottomTabsRoute ? { paddingBottom: tabBarHeight } : null]}>
           <Stack.Navigator
             screenOptions={{
               animation: 'none',
@@ -532,10 +535,11 @@ export function RootNavigator() {
             )}
           </Stack.Navigator>
         </View>
-        {showBottomTabs ? (
+        {hasBottomTabsRoute ? (
           <BottomTabNavigation
             bottomPadding={bottomPadding}
             currentRouteName={currentRouteName}
+            hidden={!showBottomTabs}
             onNavigate={handleTabPress}
           />
         ) : null}

@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -100,6 +100,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const queueWrite = useQueuedWrite();
   const { isOnline } = useConnectivity();
   const messagesScrollRef = useRef<ScrollView>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const feedbackId = route.params.feedbackId;
 
   const [draftMessage, setDraftMessage] = useState('');
@@ -116,6 +117,18 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     queryFn: () => listFeedbackMessages(feedbackId),
     refetchInterval: 3000,
   });
+  const latestMessageId = messagesQuery.data?.[messagesQuery.data.length - 1]?.id;
+
+  const scheduleScrollToLatestMessage = (animated = true, delay = 0) => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      scrollTimeoutRef.current = null;
+      messagesScrollRef.current?.scrollToEnd({ animated });
+    }, delay);
+  };
 
   useEffect(() => {
     if (!feedbackQuery.data) {
@@ -146,12 +159,30 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   }, [feedbackId, feedbackQuery.data, queryClient]);
 
   useEffect(() => {
-    if (!messagesQuery.data || messagesQuery.data.length === 0) {
+    if (!latestMessageId) {
       return;
     }
 
-    messagesScrollRef.current?.scrollToEnd({ animated: true });
-  }, [messagesQuery.data]);
+    scheduleScrollToLatestMessage(true);
+  }, [latestMessageId]);
+
+  useEffect(() => {
+    const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const keyboardScrollDelay = Platform.OS === 'ios' ? 0 : 16;
+    const keyboardScrollAnimated = Platform.OS === 'ios';
+
+    const showSubscription = Keyboard.addListener(showEventName, () => {
+      scheduleScrollToLatestMessage(keyboardScrollAnimated, keyboardScrollDelay);
+    });
+
+    return () => {
+      showSubscription.remove();
+
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const styles = StyleSheet.create({
     bodyRoot: {
@@ -376,6 +407,8 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
             />
 
             <ScrollView
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.messagesContent}
               ref={messagesScrollRef}
               style={styles.messagesContainer}
@@ -446,6 +479,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
                   multiline
                   onChangeText={setDraftMessage}
                   placeholder="Type your message..."
+                  testID="feedback-detail-message-input"
                   value={draftMessage}
                 />
                 <Button

@@ -93,6 +93,7 @@ export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) 
             label="Email"
             onChangeText={setEmail}
             placeholder="you@example.com"
+            testID="forgot-password-email-input"
             value={email}
           />
 

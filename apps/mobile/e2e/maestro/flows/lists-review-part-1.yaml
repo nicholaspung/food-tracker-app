@@ -1,31 +1,7 @@
 appId: com.anonymous.yummy-recs-mobile
 ---
 - assertVisible:
-    id: onboarding-screen
-
-- tapOn:
-    id: onboarding-sign-in-button
-- assertVisible:
-    id: login-screen
-- takeScreenshot: 20-login
-
-- tapOn:
-    id: login-email-input
-- eraseText
-- inputText: ${LOGIN_EMAIL}
-
-- tapOn:
-    id: login-password-input
-- eraseText
-- inputText: ${LOGIN_PASSWORD}
-
-- tapOn:
-    id: login-submit-button
-- assertVisible:
-    id: home-screen
-- assertVisible:
-    id: tab-Home
-- takeScreenshot: 21-home
+    id: profile-screen
 
 - tapOn:
     id: tab-Misc

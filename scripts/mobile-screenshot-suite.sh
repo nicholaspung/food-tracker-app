@@ -5,16 +5,85 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_NAME="${RUN_NAME:-$(date +%Y%m%d-%H%M%S)}"
 OUTPUT_DIR="$ROOT_DIR/apps/mobile/e2e/artifacts/$RUN_NAME"
+DEBUG_OUTPUT_DIR="$OUTPUT_DIR/debug"
 ENV_FILE="${SCREENSHOT_ENV_FILE:-$ROOT_DIR/apps/mobile/e2e/.env.local}"
 
-FLOW_KEYS=("core-review" "lists-review" "bills-review" "friends-review")
+# Reuse the app environment defaults so screenshot metadata matches the selected target.
+# This only fills unset endpoint variables; explicit overrides still win.
+source "$ROOT_DIR/scripts/app-env.sh"
+
+FLOW_KEYS=("sign-in-review" "profile-review" "lists-review" "bills-review" "friends-review" "sign-out-review")
 declare -a SELECTED_FLOW_KEYS=()
 declare -a SELECTED_FLOW_PATHS=()
+declare -a RAW_SELECTIONS=()
+
+normalize_optional_app_env() {
+  local raw_value="${1:-}"
+  local normalized_value
+
+  normalized_value="$(printf '%s' "$raw_value" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+
+  case "$normalized_value" in
+    "")
+      return 1
+      ;;
+    local|dev|development)
+      printf 'local\n'
+      ;;
+    beta|preview)
+      printf 'beta\n'
+      ;;
+    prod|production)
+      printf 'production\n'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+populate_environment_defaults() {
+  local target_env="${1:-}"
+  if [ -z "$target_env" ]; then
+    return
+  fi
+
+  local custom_api_base_url="${EXPO_PUBLIC_API_BASE_URL:-}"
+  local custom_pocketbase_url="${EXPO_PUBLIC_POCKETBASE_URL:-}"
+  local custom_app_web_url="${EXPO_PUBLIC_APP_WEB_URL:-}"
+  local custom_admin_url="${EXPO_PUBLIC_ADMIN_URL:-}"
+  local custom_marketing_url="${EXPO_PUBLIC_MARKETING_URL:-}"
+  local custom_posthog_host="${EXPO_PUBLIC_POSTHOG_HOST:-}"
+
+  load_food_tracker_env "$target_env"
+
+  if [ -n "$custom_api_base_url" ]; then
+    export EXPO_PUBLIC_API_BASE_URL="$custom_api_base_url"
+  fi
+  if [ -n "$custom_pocketbase_url" ]; then
+    export EXPO_PUBLIC_POCKETBASE_URL="$custom_pocketbase_url"
+  fi
+  if [ -n "$custom_app_web_url" ]; then
+    export EXPO_PUBLIC_APP_WEB_URL="$custom_app_web_url"
+  fi
+  if [ -n "$custom_admin_url" ]; then
+    export EXPO_PUBLIC_ADMIN_URL="$custom_admin_url"
+  fi
+  if [ -n "$custom_marketing_url" ]; then
+    export EXPO_PUBLIC_MARKETING_URL="$custom_marketing_url"
+  fi
+  if [ -n "$custom_posthog_host" ]; then
+    export EXPO_PUBLIC_POSTHOG_HOST="$custom_posthog_host"
+  fi
+}
 
 resolve_flow_path() {
   case "$1" in
-    core-review)
-      printf '%s\n' "apps/mobile/e2e/maestro/flows/core-review.yaml"
+    sign-in-review)
+      printf '%s\n' "apps/mobile/e2e/maestro/flows/sign-in-review.yaml"
+      ;;
+    profile-review)
+      printf '%s\n' "apps/mobile/e2e/maestro/flows/profile-review.yaml"
       ;;
     lists-review)
       printf '%s\n' "apps/mobile/e2e/maestro/flows/lists-review-part-1.yaml"
@@ -24,6 +93,9 @@ resolve_flow_path() {
       ;;
     friends-review)
       printf '%s\n' "apps/mobile/e2e/maestro/flows/friends-review.yaml"
+      ;;
+    sign-out-review)
+      printf '%s\n' "apps/mobile/e2e/maestro/flows/sign-out-review.yaml"
       ;;
     *)
       return 1
@@ -35,31 +107,66 @@ print_flow_selection_help() {
   cat <<'EOF'
 Available screenshot flows:
   - all
-  - core-review
+  - sign-in-review
+  - profile-review
   - lists-review
   - bills-review
   - friends-review
+  - sign-out-review
 
 You can select multiple flows by separating values with commas or spaces.
 Examples:
+  pnpm mobile:screenshots --env beta -- all
   pnpm mobile:screenshots -- all
-  pnpm mobile:screenshots -- core-review lists-review bills-review friends-review
-  pnpm mobile:screenshots -- core-review,lists-review
+  pnpm mobile:screenshots -- sign-in-review profile-review lists-review bills-review friends-review sign-out-review
+  pnpm mobile:screenshots -- sign-in-review,profile-review
+
+Optional environment metadata:
+  --env <local|beta|production>
+
+Environment can also be provided by:
+  SCREENSHOT_APP_ENV
+  EXPO_PUBLIC_APP_ENV
+  FOOD_TRACKER_ENV
 EOF
 }
 
 normalize_selection_tokens() {
+  local normalized_token
   local raw_value
   for raw_value in "$@"; do
     raw_value="${raw_value//,/ }"
     # shellcheck disable=SC2086
-    for token in $raw_value; do
-      token="$(printf '%s' "$token" | tr '[:upper:]' '[:lower:]')"
-      if [ "$token" = "--" ]; then
-        continue
-      fi
-      if [ -n "$token" ]; then
-        printf '%s\n' "$token"
+    for normalized_token in $raw_value; do
+      normalized_token="$(printf '%s' "$normalized_token" | tr '[:upper:]' '[:lower:]')"
+      case "$normalized_token" in
+        --)
+          continue
+          ;;
+        1)
+          normalized_token="all"
+          ;;
+        2)
+          normalized_token="sign-in-review"
+          ;;
+        3)
+          normalized_token="profile-review"
+          ;;
+        4)
+          normalized_token="lists-review"
+          ;;
+        5)
+          normalized_token="bills-review"
+          ;;
+        6)
+          normalized_token="friends-review"
+          ;;
+        7)
+          normalized_token="sign-out-review"
+          ;;
+      esac
+      if [ -n "$normalized_token" ]; then
+        printf '%s\n' "$normalized_token"
       fi
     done
   done
@@ -89,39 +196,22 @@ prompt_for_flow_selection() {
 
   echo "Select screenshot flow(s):" >&2
   echo "  1. all" >&2
-  echo "  2. core-review" >&2
-  echo "  3. lists-review" >&2
-  echo "  4. bills-review" >&2
-  echo "  5. friends-review" >&2
-  printf "Enter selection [core-review]: " >&2
+  echo "  2. sign-in-review" >&2
+  echo "  3. profile-review" >&2
+  echo "  4. lists-review" >&2
+  echo "  5. bills-review" >&2
+  echo "  6. friends-review" >&2
+  echo "  7. sign-out-review" >&2
+  printf "Enter selection [all]: " >&2
 
   local response
   IFS= read -r response < "$prompt_input"
   if [ -z "${response// }" ]; then
-    printf '%s\n' "core-review"
+    printf '%s\n' "all"
     return
   fi
 
-  case "$(printf '%s' "$response" | tr '[:upper:]' '[:lower:]')" in
-    1)
-      printf '%s\n' "all"
-      ;;
-    2)
-      printf '%s\n' "core-review"
-      ;;
-    3)
-      printf '%s\n' "lists-review"
-      ;;
-    4)
-      printf '%s\n' "bills-review"
-      ;;
-    5)
-      printf '%s\n' "friends-review"
-      ;;
-    *)
-      printf '%s\n' "$response"
-      ;;
-  esac
+  printf '%s\n' "$response"
 }
 
 if [ -f "$ENV_FILE" ]; then
@@ -134,13 +224,63 @@ fi
 
 SCREENSHOT_LOGIN_EMAIL="${SCREENSHOT_LOGIN_EMAIL:-${MAESTRO_LOGIN_EMAIL:-${LOGIN_EMAIL:-}}}"
 SCREENSHOT_LOGIN_PASSWORD="${SCREENSHOT_LOGIN_PASSWORD:-${MAESTRO_LOGIN_PASSWORD:-${LOGIN_PASSWORD:-}}}"
+REQUESTED_SCREENSHOT_ENV_RAW=""
 
-RAW_SELECTIONS=("$@")
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --env)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for --env. Use local, beta, or production." >&2
+        exit 1
+      fi
+      REQUESTED_SCREENSHOT_ENV_RAW="$2"
+      shift 2
+      ;;
+    --env=*)
+      REQUESTED_SCREENSHOT_ENV_RAW="${1#*=}"
+      shift
+      ;;
+    *)
+      RAW_SELECTIONS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+SCREENSHOT_APP_ENV_SOURCE="unknown"
+SCREENSHOT_APP_ENV_RAW=""
+
+if [ -n "$REQUESTED_SCREENSHOT_ENV_RAW" ]; then
+  SCREENSHOT_APP_ENV_RAW="$REQUESTED_SCREENSHOT_ENV_RAW"
+  SCREENSHOT_APP_ENV_SOURCE="cli"
+elif [ -n "${SCREENSHOT_APP_ENV:-}" ]; then
+  SCREENSHOT_APP_ENV_RAW="$SCREENSHOT_APP_ENV"
+  SCREENSHOT_APP_ENV_SOURCE="SCREENSHOT_APP_ENV"
+elif [ -n "${EXPO_PUBLIC_APP_ENV:-}" ]; then
+  SCREENSHOT_APP_ENV_RAW="$EXPO_PUBLIC_APP_ENV"
+  SCREENSHOT_APP_ENV_SOURCE="EXPO_PUBLIC_APP_ENV"
+elif [ -n "${FOOD_TRACKER_ENV:-}" ]; then
+  SCREENSHOT_APP_ENV_RAW="$FOOD_TRACKER_ENV"
+  SCREENSHOT_APP_ENV_SOURCE="FOOD_TRACKER_ENV"
+fi
+
+SCREENSHOT_APP_ENV=""
+if [ -n "$SCREENSHOT_APP_ENV_RAW" ]; then
+  if ! SCREENSHOT_APP_ENV="$(normalize_optional_app_env "$SCREENSHOT_APP_ENV_RAW")"; then
+    echo "Invalid screenshot environment: $SCREENSHOT_APP_ENV_RAW" >&2
+    echo "Use local, beta, or production." >&2
+    exit 1
+  fi
+  populate_environment_defaults "$SCREENSHOT_APP_ENV"
+fi
+export SCREENSHOT_APP_ENV
+export SCREENSHOT_APP_ENV_SOURCE
+
 if [ "${#RAW_SELECTIONS[@]}" -eq 0 ]; then
   if [ -t 0 ] || [ -r /dev/tty ]; then
     RAW_SELECTIONS=("$(prompt_for_flow_selection)")
   else
-    RAW_SELECTIONS=("core-review")
+    RAW_SELECTIONS=("all")
   fi
 fi
 
@@ -150,7 +290,7 @@ while IFS= read -r normalized_token; do
 done < <(normalize_selection_tokens "${RAW_SELECTIONS[@]}")
 
 if [ "${#NORMALIZED_SELECTIONS[@]}" -eq 0 ]; then
-  NORMALIZED_SELECTIONS=("core-review")
+  NORMALIZED_SELECTIONS=("all")
 fi
 
 EXPAND_ALL=false
@@ -231,6 +371,29 @@ done
 EXPECTED_SCREENSHOTS_JSON="$(
   node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)));' "${EXPECTED_SCREENSHOTS[@]}"
 )"
+SCREENSHOT_METADATA_JSON="$(
+  node -e '
+const valueOrNull = (value) => {
+  const trimmed = String(value ?? "").trim();
+  return trimmed ? trimmed : null;
+};
+
+process.stdout.write(
+  JSON.stringify({
+    endpoints: {
+      adminUrl: valueOrNull(process.env.EXPO_PUBLIC_ADMIN_URL),
+      apiBaseUrl: valueOrNull(process.env.EXPO_PUBLIC_API_BASE_URL),
+      appWebUrl: valueOrNull(process.env.EXPO_PUBLIC_APP_WEB_URL),
+      marketingUrl: valueOrNull(process.env.EXPO_PUBLIC_MARKETING_URL),
+      pocketbaseUrl: valueOrNull(process.env.EXPO_PUBLIC_POCKETBASE_URL),
+      posthogHost: valueOrNull(process.env.EXPO_PUBLIC_POSTHOG_HOST),
+    },
+    environment: valueOrNull(process.env.SCREENSHOT_APP_ENV),
+    environmentSource: valueOrNull(process.env.SCREENSHOT_APP_ENV_SOURCE),
+  }),
+);
+'
+)"
 
 if [ "$REQUIRES_LOGIN" = "true" ]; then
   if [ -z "${SCREENSHOT_LOGIN_EMAIL:-}" ] || [ -z "${SCREENSHOT_LOGIN_PASSWORD:-}" ]; then
@@ -242,6 +405,7 @@ if [ "$REQUIRES_LOGIN" = "true" ]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+mkdir -p "$DEBUG_OUTPUT_DIR"
 
 FLOW_KEYS_JSON="$(
   node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)));' "${SELECTED_FLOW_KEYS[@]}"
@@ -258,8 +422,12 @@ const runName = process.argv[2];
 const flowPaths = JSON.parse(process.argv[3]);
 const flowKeys = JSON.parse(process.argv[4]);
 const expectedScreenshots = JSON.parse(process.argv[5]);
+const screenshotMetadata = JSON.parse(process.argv[6]);
 const payload = {
   createdAt: new Date().toISOString(),
+  endpoints: screenshotMetadata.endpoints ?? {},
+  environment: screenshotMetadata.environment ?? null,
+  environmentSource: screenshotMetadata.environmentSource ?? null,
   expectedScreenshots,
   flowKey: flowKeys.length === 1 ? flowKeys[0] : null,
   flowKeys,
@@ -269,11 +437,16 @@ const payload = {
 };
 
 fs.writeFileSync(path.join(outputDir, "run.json"), `${JSON.stringify(payload, null, 2)}\n`);
-' "$OUTPUT_DIR" "$RUN_NAME" "$FLOW_PATHS_JSON" "$FLOW_KEYS_JSON" "$EXPECTED_SCREENSHOTS_JSON"
+' "$OUTPUT_DIR" "$RUN_NAME" "$FLOW_PATHS_JSON" "$FLOW_KEYS_JSON" "$EXPECTED_SCREENSHOTS_JSON" "$SCREENSHOT_METADATA_JSON"
 
 echo "Running mobile screenshot review flow(s)"
 echo "Output: $OUTPUT_DIR"
 echo "Assumes your normal dev build is already open in the simulator."
+if [ -n "$SCREENSHOT_APP_ENV" ]; then
+  echo "Environment: $SCREENSHOT_APP_ENV ($SCREENSHOT_APP_ENV_SOURCE)"
+else
+  echo "Environment: unclassified"
+fi
 for index in "${!SELECTED_FLOW_PATHS[@]}"; do
   echo "  - ${SELECTED_FLOW_KEYS[$index]} -> ${SELECTED_FLOW_PATHS[$index]}"
 done
@@ -312,7 +485,11 @@ if ! command -v maestro >/dev/null 2>&1; then
 fi
 
 cd "$ROOT_DIR"
-MAESTRO_ARGS=(test --test-output-dir "$OUTPUT_DIR")
+MAESTRO_ARGS=(test --test-output-dir "$OUTPUT_DIR" --debug-output "$DEBUG_OUTPUT_DIR" --flatten-debug-output)
+
+if [ -n "$SCREENSHOT_APP_ENV" ]; then
+  MAESTRO_ARGS+=(-e "SCREENSHOT_APP_ENV=$SCREENSHOT_APP_ENV")
+fi
 
 if [ -n "${SCREENSHOT_LOGIN_EMAIL:-}" ]; then
   MAESTRO_ARGS+=(-e "LOGIN_EMAIL=$SCREENSHOT_LOGIN_EMAIL")

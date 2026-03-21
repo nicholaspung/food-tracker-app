@@ -1,0 +1,117 @@
+appId: com.anonymous.yummy-recs-mobile
+---
+- assertVisible:
+    id: onboarding-screen
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 01-onboarding
+
+- tapOn:
+    id: onboarding-create-account-button
+- assertVisible:
+    id: signup-screen
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: 02-create-account
+
+- tapOn:
+    id: signup-name-input
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: 02a-create-account-name-keyboard
+- tapOn:
+    text: Email
+
+- tapOn:
+    id: signup-email-input
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: 02b-create-account-email-keyboard
+- tapOn:
+    text: Invite Code
+
+- tapOn:
+    id: signup-invite-code-input
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: 02c-create-account-invite-code-keyboard
+- tapOn:
+    text: Password
+
+- tapOn:
+    id: signup-password-input
+    retryTapIfNoChange: true
+- waitForAnimationToEnd:
+    timeout: 1600
+- takeScreenshot: 02d-create-account-password-keyboard
+- tapOn:
+    text: Confirm Password
+
+- tapOn:
+    id: signup-confirm-password-input
+    retryTapIfNoChange: true
+- waitForAnimationToEnd:
+    timeout: 1600
+- takeScreenshot: 02e-create-account-confirm-password-keyboard
+- tapOn:
+    point: "50%,16%"
+- waitForAnimationToEnd:
+    timeout: 800
+
+- scrollUntilVisible:
+    element:
+      id: signup-login-instead-button
+    direction: DOWN
+- tapOn:
+    id: signup-login-instead-button
+- assertVisible:
+    id: login-screen
+- waitForAnimationToEnd:
+    timeout: 1200
+- takeScreenshot: 03-login
+
+- tapOn:
+    id: login-forgot-password-button
+- assertVisible:
+    id: forgot-password-screen
+- waitForAnimationToEnd:
+    timeout: 1200
+- takeScreenshot: 04-forgot-password
+
+- tapOn:
+    id: forgot-password-email-input
+    retryTapIfNoChange: true
+- waitForAnimationToEnd:
+    timeout: 1200
+- takeScreenshot: 04a-forgot-password-email-keyboard
+
+- tapOn:
+    text: Forgot Password
+- scrollUntilVisible:
+    element:
+      id: screen-back-button
+    direction: UP
+- tapOn:
+    id: screen-back-button
+- assertVisible:
+    id: login-screen
+
+- tapOn:
+    id: login-email-input
+- eraseText
+- inputText: ${LOGIN_EMAIL}
+
+- tapOn:
+    id: login-password-input
+- eraseText
+- inputText: ${LOGIN_PASSWORD}
+
+- tapOn:
+    id: login-submit-button
+- assertVisible:
+    id: home-screen
+- assertVisible:
+    id: tab-Home
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: 05-home

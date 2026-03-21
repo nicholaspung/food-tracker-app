@@ -1,19 +1,21 @@
 # Mobile Screenshot Review
 
-This setup supports named screenshot review flows and multi-flow runs.
+This setup supports named screenshot review flows, multi-flow runs, and environment-aware run metadata.
 
 It assumes:
 
-- you run your normal local stack with `pnpm dev`
 - the iOS simulator is already open in your current dev build
 - the app starts on the first onboarding screen
+- you start the mobile app in the same target environment you want the screenshot run to represent
 
 Available named flows:
 
-- `core-review`: onboarding, login, profile, legal/settings, feedback, logout
-- `lists-review`: login, More, list screens, photo viewer, edit/delete list states, and friend lists
+- `sign-in-review`: onboarding, create-account, login, forgot-password, and authenticated home handoff
+- `profile-review`: profile, legal/settings, and feedback screens after sign-in
+- `lists-review`: More tab, list screens, photo viewer, edit/delete list states, and friend lists
 - `bills-review`: More tab bills/tips screens, bill filters, create bill, bill detail, and edit bill
 - `friends-review`: More-to-Friends tab handoff, friend sub-tabs, my code, add friend, and QR scanner
+- `sign-out-review`: profile logout handoff back to onboarding
 
 ## Setup
 
@@ -28,54 +30,103 @@ SCREENSHOT_LOGIN_PASSWORD="your-password"
 
 ## Run
 
+For local development:
+
 ```bash
 pnpm dev
-pnpm mobile:screenshots
+pnpm mobile:screenshots --env local
 ```
 
 Each run is written to `apps/mobile/e2e/artifacts/<timestamp>/`.
 
+For beta or production-targeted review, start the app in that environment first, then run screenshots with the matching `--env` label:
+
+```bash
+pnpm mobile:start:beta
+pnpm mobile:screenshots --env beta -- all
+
+pnpm mobile:start:production
+pnpm mobile:screenshots --env production -- all
+```
+
+The screenshot suite stores the selected environment in `run.json` alongside endpoint metadata such as API and PocketBase base URLs. This is intended to classify the target backend environment for the run.
+
+Environment metadata priority:
+
+1. `--env <local|beta|production>`
+2. `SCREENSHOT_APP_ENV`
+3. `EXPO_PUBLIC_APP_ENV`
+4. `FOOD_TRACKER_ENV`
+
+If none of those are set, the run is left unclassified.
+
+Important: environment-classified runs tell you what the app shows when pointed at the selected backend environment. They do not automatically prove parity with every preview or production release binary difference.
+
 If you run `pnpm mobile:screenshots` in an interactive terminal, it will prompt you to choose:
 
 - `all`
-- `core-review`
+- `sign-in-review`
+- `profile-review`
 - `lists-review`
 - `bills-review`
 - `friends-review`
+- `sign-out-review`
+
+Interactive prompt input also accepts multiple selections, including numeric shortcuts such as `2,3` or `2 3`.
 
 You can also pass one or more flow names explicitly:
 
 ```bash
-pnpm mobile:screenshots -- core-review
-pnpm mobile:screenshots -- lists-review
-pnpm mobile:screenshots -- bills-review
-pnpm mobile:screenshots -- friends-review
-pnpm mobile:screenshots -- core-review lists-review bills-review friends-review
-pnpm mobile:screenshots -- all
+pnpm mobile:screenshots --env local -- profile-review
+pnpm mobile:screenshots --env beta -- sign-in-review
+pnpm mobile:screenshots --env production -- lists-review
+pnpm mobile:screenshots --env production -- bills-review
+pnpm mobile:screenshots --env beta -- friends-review
+pnpm mobile:screenshots --env local -- sign-out-review
+pnpm mobile:screenshots --env beta -- sign-in-review profile-review lists-review bills-review friends-review sign-out-review
+pnpm mobile:screenshots --env local -- all
 ```
 
 ## Flow
 
 Flow aliases:
 
-- `core-review` -> `apps/mobile/e2e/maestro/flows/core-review.yaml`
+- `sign-in-review` -> `apps/mobile/e2e/maestro/flows/sign-in-review.yaml`
+- `profile-review` -> `apps/mobile/e2e/maestro/flows/profile-review.yaml`
 - `lists-review` -> `apps/mobile/e2e/maestro/flows/lists-review-part-1.yaml`
 - `bills-review` -> `apps/mobile/e2e/maestro/flows/bills-review.yaml`
 - `friends-review` -> `apps/mobile/e2e/maestro/flows/friends-review.yaml`
+- `sign-out-review` -> `apps/mobile/e2e/maestro/flows/sign-out-review.yaml`
+
+`profile-review` assumes the app is already signed in on Home. It is intended to run immediately after `sign-in-review`, and `pnpm mobile:screenshots -- all` runs them in that order.
+
+`lists-review` assumes the app is already on Profile. It is intended to run immediately after `profile-review`, and `pnpm mobile:screenshots -- all` runs them in that order.
 
 `bills-review` assumes the app is already on the More tab. It is intended to run immediately after `lists-review`, and `pnpm mobile:screenshots -- all` runs them in that order.
 
 `friends-review` assumes the app is already back on the More tab after `bills-review`, and `pnpm mobile:screenshots -- all` runs it after the bills flow.
 
-`core-review` captures:
+`sign-out-review` assumes the app is already on Friends. It is intended to run immediately after `friends-review`, and `pnpm mobile:screenshots -- all` runs it after the friends flow.
+
+`sign-in-review` captures:
 
 - `01-onboarding`
 - `02-create-account`
+- `02a-create-account-name-keyboard`
+- `02b-create-account-email-keyboard`
+- `02c-create-account-invite-code-keyboard`
+- `02d-create-account-password-keyboard`
+- `02e-create-account-confirm-password-keyboard`
 - `03-login`
 - `04-forgot-password`
+- `04a-forgot-password-email-keyboard`
 - `05-home`
+
+`profile-review` captures:
+
 - `06-profile`
 - `07-profile-edit-account-name`
+- `07a-profile-edit-account-name-keyboard`
 - `08-profile-account-details-collapsed`
 - `09-profile-invite-codes`
 - `10-profile-delete-account`
@@ -84,15 +135,16 @@ Flow aliases:
 - `13-terms-of-service`
 - `14-privacy-policy`
 - `15-settings`
+- `15a-settings-default-list-visibility`
 - `16-feedback-list`
 - `17-create-feedback`
+- `17a-create-feedback-subject-keyboard`
+- `17b-create-feedback-message-keyboard`
 - `18-feedback-detail`
-- `19-onboarding-logged-out`
+- `18a-feedback-detail-message-keyboard`
 
 `lists-review` captures:
 
-- `20-login`
-- `21-home`
 - `22-more`
 - `23-lists-list`
 - `24-add-list`
@@ -130,6 +182,10 @@ Flow aliases:
 - `50-add-friend`
 - `51-scan-qr`
 
+`sign-out-review` captures:
+
+- `19-onboarding-logged-out`
+
 ## Review Website
 
 Run the local review site with:
@@ -143,9 +199,19 @@ Then open `http://localhost:4174`.
 What it does:
 
 - reads artifact runs from `apps/mobile/e2e/artifacts/<run>/screenshots/`
+- reads run metadata from `apps/mobile/e2e/artifacts/<run>/run.json`
 - shows artifact images beside any existing baseline image
+- shows each run's classified environment and lets you filter runs by environment
+- defaults beta and production runs to matching baseline sets when `baselines/beta/` or `baselines/production/` exist
 - lets you move an approved artifact image into `apps/mobile/e2e/baselines/<set>/`
 
 The move is local filesystem state, not just UI state. Once promoted, the image is removed from the artifact run and becomes the baseline file for that filename.
 
 `apps/mobile/e2e/baselines/` is intentionally gitignored. Promoted baseline screenshots stay local unless you explicitly share them out of band.
+
+Recommended baseline layout:
+
+- `apps/mobile/e2e/baselines/current/` for existing shared screenshots
+- `apps/mobile/e2e/baselines/local/` for local/dev-targeted runs
+- `apps/mobile/e2e/baselines/beta/` for beta-targeted runs
+- `apps/mobile/e2e/baselines/production/` for production-targeted runs

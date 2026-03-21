@@ -13,6 +13,7 @@ export type BottomTabRoute = 'Home' | 'AddVisit' | 'Friends' | 'Misc' | 'Profile
 interface BottomTabNavigationProps {
   currentRouteName?: keyof RootStackParamList;
   bottomPadding: number;
+  hidden?: boolean;
   onNavigate: (route: BottomTabRoute) => void;
 }
 
@@ -106,6 +107,7 @@ const TABS: {
 export function BottomTabNavigation({
   currentRouteName,
   bottomPadding,
+  hidden = false,
   onNavigate,
 }: BottomTabNavigationProps) {
   const theme = useTheme();
@@ -137,6 +139,9 @@ export function BottomTabNavigation({
       },
       shadowOpacity: 0.08,
       shadowRadius: 4,
+    },
+    containerHidden: {
+      opacity: 0,
     },
     row: {
       alignItems: 'center',
@@ -185,7 +190,13 @@ export function BottomTabNavigation({
   });
 
   return (
-    <View style={styles.container}>
+    <View
+      pointerEvents={hidden ? 'none' : 'auto'}
+      style={[
+        styles.container,
+        hidden ? styles.containerHidden : null,
+      ]}
+    >
       <View style={styles.row}>
         {TABS.map((tab) => {
           const isActive = !!currentRouteName && TAB_ACTIVE_ROUTES[tab.route].includes(currentRouteName);

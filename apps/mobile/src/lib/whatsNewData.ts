@@ -10,6 +10,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.7',
+    date: '2026-03-20',
+    title: 'Smoother Keyboard Handling & E2E Flow Refactor',
+    summary:
+      'Typing in feedback and sign-up screens is now smoother — the bottom tab bar no longer jumps when the keyboard appears, and the feedback chat automatically scrolls to keep new messages visible.',
+    features: [],
+    improvements: [
+      'Bottom tab bar stays in place when the keyboard opens — it fades out and becomes non-interactive instead of unmounting, so the rest of the screen no longer shifts up and down.',
+      'On iOS the tab bar responds to keyboard appearance earlier (keyboardWillShow/Hide instead of keyboardDidShow/Hide), eliminating the brief layout jump when the keyboard animates in.',
+      'Feedback chat automatically scrolls to the latest message when the keyboard opens, so the compose area stays in view.',
+      'Feedback chat supports interactive keyboard dismissal — swipe down through the message list to dismiss the keyboard on iOS.',
+      'testID props added to sign-up (name, email, invite code, password, confirm password), forgot-password (email), create-feedback (subject, message), and feedback-detail (message) inputs for automated E2E tests.',
+      'E2E screenshot suite split into focused flows: sign-in-review, profile-review, and sign-out-review replace the single core-review flow, and lists-review now starts from the already-authenticated state.',
+      'Screenshot suite script gains environment normalization and auto-loading of app-env defaults so runs against beta or production environments require fewer manual overrides.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.6',
     date: '2026-03-19',
     title: 'Accessibility & E2E Test Coverage Improvements',

@@ -1,10 +1,15 @@
+const KNOWN_ENVIRONMENTS = new Set(['local', 'beta', 'production']);
+
 const state = {
   artifactRuns: [],
+  baselineSelectionMode: 'auto',
+  baselineSet: '',
   baselineSets: [],
-  baselineSet: 'current',
   currentBaselinePayload: null,
   currentImageIndex: 0,
   currentRunPayload: null,
+  defaultBaselineSet: 'current',
+  envFilter: 'all',
   isDeletingRun: false,
   modalAction: null,
   selectedRun: null,
@@ -25,6 +30,7 @@ const elements = {
   carouselPosition: document.querySelector('#carousel-position'),
   currentRunTitle: document.querySelector('#current-run-title'),
   deleteRunButton: document.querySelector('#delete-run-button'),
+  envFilterSelect: document.querySelector('#env-filter-select'),
   imageCardTemplate: document.querySelector('#image-card-template'),
   imageGrid: document.querySelector('#image-grid'),
   nextImageButton: document.querySelector('#next-image-button'),
@@ -34,6 +40,7 @@ const elements = {
   runCount: document.querySelector('#run-count'),
   runList: document.querySelector('#run-list'),
   selectedRunCard: document.querySelector('#selected-run-card'),
+  selectedRunEnvironment: document.querySelector('#selected-run-environment'),
   selectedRunFlow: document.querySelector('#selected-run-flow'),
   selectedRunMeta: document.querySelector('#selected-run-meta'),
   selectedRunName: document.querySelector('#selected-run-name'),
@@ -53,8 +60,102 @@ function normalizeBaselineSetName(value) {
   return value.trim().replace(/^\/+|\/+$/g, '');
 }
 
+function normalizeRunEnvironment(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+  return KNOWN_ENVIRONMENTS.has(normalizedValue) ? normalizedValue : null;
+}
+
+function getEnvironmentLabel(environment) {
+  switch (environment) {
+    case 'local':
+      return 'Local';
+    case 'beta':
+      return 'Beta';
+    case 'production':
+      return 'Production';
+    default:
+      return 'Unclassified';
+  }
+}
+
+function getEnvironmentTone(environment) {
+  switch (environment) {
+    case 'local':
+      return 'info';
+    case 'beta':
+      return 'warning';
+    case 'production':
+      return 'success';
+    default:
+      return 'neutral';
+  }
+}
+
+function getRunEnvironmentKey(run) {
+  return normalizeRunEnvironment(run?.environment) ?? 'unknown';
+}
+
+function getVisibleArtifactRuns() {
+  if (state.envFilter === 'all') {
+    return state.artifactRuns;
+  }
+
+  return state.artifactRuns.filter((run) => getRunEnvironmentKey(run) === state.envFilter);
+}
+
 function getSelectedRunSummary() {
   return state.artifactRuns.find((run) => run.name === state.selectedRun) ?? null;
+}
+
+function ensureSelectedRunForCurrentFilter() {
+  const visibleRuns = getVisibleArtifactRuns();
+
+  if (!state.selectedRun && visibleRuns.length > 0) {
+    state.selectedRun = visibleRuns[0].name;
+    return;
+  }
+
+  if (state.selectedRun && !visibleRuns.some((run) => run.name === state.selectedRun)) {
+    state.selectedRun = visibleRuns[0]?.name ?? null;
+    state.currentImageIndex = 0;
+  }
+}
+
+function syncAutoBaselineSetFromSelection() {
+  if (state.baselineSelectionMode !== 'auto') {
+    return;
+  }
+
+  const selectedRun = getSelectedRunSummary();
+  state.baselineSet =
+    (selectedRun?.preferredBaselineSet ?? selectedRun?.comparisonBaselineSet ?? state.baselineSet) ||
+    state.defaultBaselineSet;
+}
+
+function buildOverviewUrl() {
+  const params = new URLSearchParams();
+
+  if (state.baselineSelectionMode === 'manual' && state.baselineSet) {
+    params.set('baselineSet', state.baselineSet);
+  }
+
+  const queryString = params.toString();
+  return queryString ? `/api/overview?${queryString}` : '/api/overview';
+}
+
+function buildRunUrl() {
+  const params = new URLSearchParams();
+  params.set('run', state.selectedRun);
+
+  if (state.baselineSelectionMode === 'manual' && state.baselineSet) {
+    params.set('baselineSet', state.baselineSet);
+  }
+
+  return `/api/run?${params.toString()}`;
 }
 
 function getCurrentImages() {
@@ -88,7 +189,8 @@ function formatRunMeta(run) {
     : `${run.screenshotCount} screenshots`;
   const missingLabel = missingArtifactCount > 0 ? ` | ${missingArtifactCount} missing` : '';
   const unexpectedLabel = run.unexpectedCount > 0 ? ` | ${run.unexpectedCount} extra` : '';
-  return `${countLabel}${missingLabel}${unexpectedLabel} | ${updatedLabel}`;
+  const baselineLabel = run.comparisonBaselineSet ? ` | baseline: ${run.comparisonBaselineSet}` : '';
+  return `${countLabel}${missingLabel}${unexpectedLabel}${baselineLabel} | ${updatedLabel}`;
 }
 
 function formatFlowLabel(run) {
@@ -129,6 +231,17 @@ function renderRegressionAlert(summary) {
   elements.regressionAlert.textContent = `Regression alert: ${missingLabel}${baselineOnlyLabel}`;
 }
 
+function createStatusPill(label, tone) {
+  const pill = document.createElement('span');
+  pill.className = `status-pill status-pill-${tone}`;
+  pill.textContent = label;
+  return pill;
+}
+
+function createEnvironmentPill(environmentKey) {
+  return createStatusPill(getEnvironmentLabel(environmentKey), getEnvironmentTone(environmentKey));
+}
+
 function renderSelectedRunPanel() {
   const selectedRun = getSelectedRunSummary();
   const hasSelectedRun = Boolean(selectedRun);
@@ -136,6 +249,7 @@ function renderSelectedRunPanel() {
   elements.selectedRunCard.classList.toggle('is-empty', !hasSelectedRun);
   elements.deleteRunButton.disabled = !hasSelectedRun || state.isDeletingRun;
   elements.deleteRunButton.textContent = state.isDeletingRun ? 'Deleting...' : 'Delete';
+  elements.selectedRunEnvironment.innerHTML = '';
 
   if (!selectedRun) {
     elements.selectedRunName.textContent = 'No run selected';
@@ -146,6 +260,7 @@ function renderSelectedRunPanel() {
 
   elements.selectedRunName.textContent = selectedRun.name;
   elements.selectedRunMeta.textContent = formatRunMeta(selectedRun);
+  elements.selectedRunEnvironment.append(createEnvironmentPill(getRunEnvironmentKey(selectedRun)));
   elements.selectedRunFlow.textContent = formatFlowLabel(selectedRun);
 }
 
@@ -196,11 +311,12 @@ async function submitActionModal() {
 }
 
 function renderBaselineSetOptions() {
-  const baselineOptions = new Set(['current', ...state.baselineSets]);
+  const baselineOptions = new Set([state.defaultBaselineSet, ...state.baselineSets]);
   if (state.baselineSet) {
     baselineOptions.add(state.baselineSet);
   }
 
+  const selectedBaselineSet = state.baselineSet || state.defaultBaselineSet;
   const optionValues = [...baselineOptions].sort((left, right) =>
     left.localeCompare(right, undefined, { numeric: true }),
   );
@@ -210,51 +326,64 @@ function renderBaselineSetOptions() {
     const option = document.createElement('option');
     option.value = optionValue;
     option.textContent = optionValue;
-    option.selected = optionValue === state.baselineSet;
+    option.selected = optionValue === selectedBaselineSet;
     elements.baselineSetSelect.append(option);
   }
 }
 
 function renderRunList() {
-  elements.runList.innerHTML = '';
-  elements.runCount.textContent = `${state.artifactRuns.length} runs`;
+  const visibleRuns = getVisibleArtifactRuns();
 
-  if (state.artifactRuns.length === 0) {
+  elements.runList.innerHTML = '';
+  elements.runCount.textContent =
+    state.envFilter === 'all'
+      ? `${visibleRuns.length} runs`
+      : `${visibleRuns.length} of ${state.artifactRuns.length} runs`;
+
+  if (visibleRuns.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'meta';
-    empty.textContent = 'No artifact runs found.';
+    empty.textContent =
+      state.artifactRuns.length === 0
+        ? 'No artifact runs found.'
+        : 'No artifact runs match the selected environment filter.';
     elements.runList.append(empty);
     renderSelectedRunPanel();
     return;
   }
 
-  for (const run of state.artifactRuns) {
+  for (const run of visibleRuns) {
     const button = document.createElement('button');
+    const header = document.createElement('div');
+    const name = document.createElement('span');
+    const meta = document.createElement('span');
+
     button.type = 'button';
     button.className = `run-button${run.name === state.selectedRun ? ' active' : ''}`;
-    button.innerHTML = `
-      <span class="run-button-name">${run.name}</span>
-      <span class="run-button-meta">${formatRunMeta(run)}</span>
-    `;
+    header.className = 'run-button-header';
+    name.className = 'run-button-name';
+    meta.className = 'run-button-meta';
+
+    name.textContent = run.name;
+    meta.textContent = formatRunMeta(run);
+    header.append(name, createEnvironmentPill(getRunEnvironmentKey(run)));
+    button.append(header, meta);
+
     button.addEventListener('click', () => {
       state.selectedRun = run.name;
+      state.currentImageIndex = 0;
+      syncAutoBaselineSetFromSelection();
+      renderBaselineSetOptions();
       renderRunList();
-      if (state.viewMode === 'compare') {
-        state.currentImageIndex = 0;
-        void loadRun();
-      }
+      void loadCurrentView().catch((error) => {
+        setStatus(error instanceof Error ? error.message : 'Could not load run.');
+      });
     });
+
     elements.runList.append(button);
   }
 
   renderSelectedRunPanel();
-}
-
-function createStatusPill(label, tone) {
-  const pill = document.createElement('span');
-  pill.className = `status-pill status-pill-${tone}`;
-  pill.textContent = label;
-  return pill;
 }
 
 function updateCarouselControls() {
@@ -455,9 +584,7 @@ async function loadRun(options = {}) {
 
   setStatus(`Loading ${state.selectedRun}...`);
 
-  const response = await fetch(
-    `/api/run?run=${encodeURIComponent(state.selectedRun)}&baselineSet=${encodeURIComponent(state.baselineSet)}`,
-  );
+  const response = await fetch(buildRunUrl());
   const payload = await response.json();
 
   if (!response.ok) {
@@ -466,6 +593,8 @@ async function loadRun(options = {}) {
 
   state.currentRunPayload = payload;
   state.currentBaselinePayload = null;
+  state.baselineSet = payload.baselineSet || state.baselineSet || state.defaultBaselineSet;
+  renderBaselineSetOptions();
   elements.currentRunTitle.textContent = `${payload.run} -> baselines/${payload.baselineSet}`;
   renderRegressionAlert(payload.summary);
 
@@ -509,6 +638,11 @@ async function loadRun(options = {}) {
 }
 
 async function loadBaselineImages(options = {}) {
+  if (!state.baselineSet) {
+    state.baselineSet = state.defaultBaselineSet;
+    renderBaselineSetOptions();
+  }
+
   setStatus(`Loading baselines/${state.baselineSet}...`);
 
   const response = await fetch(`/api/baselines?baselineSet=${encodeURIComponent(state.baselineSet)}`);
@@ -520,6 +654,8 @@ async function loadBaselineImages(options = {}) {
 
   state.currentBaselinePayload = payload;
   state.currentRunPayload = null;
+  state.baselineSet = payload.baselineSet || state.baselineSet;
+  renderBaselineSetOptions();
   elements.currentRunTitle.textContent = `Baselines/${payload.baselineSet}`;
   renderRegressionAlert(null);
 
@@ -543,7 +679,7 @@ async function loadBaselineImages(options = {}) {
 }
 
 async function refreshOverview() {
-  const response = await fetch(`/api/overview?baselineSet=${encodeURIComponent(state.baselineSet)}`);
+  const response = await fetch(buildOverviewUrl());
   const payload = await response.json();
 
   if (!response.ok) {
@@ -552,19 +688,9 @@ async function refreshOverview() {
 
   state.artifactRuns = payload.artifactRuns;
   state.baselineSets = payload.baselineSets;
-  if (!state.baselineSet) {
-    state.baselineSet = payload.defaultBaselineSet;
-  }
-
-  if (!state.selectedRun && state.artifactRuns.length > 0) {
-    state.selectedRun = state.artifactRuns[0].name;
-  }
-
-  if (state.selectedRun && !state.artifactRuns.some((run) => run.name === state.selectedRun)) {
-    state.selectedRun = state.artifactRuns[0]?.name ?? null;
-    state.currentImageIndex = 0;
-  }
-
+  state.defaultBaselineSet = payload.defaultBaselineSet || 'current';
+  ensureSelectedRunForCurrentFilter();
+  syncAutoBaselineSetFromSelection();
   renderBaselineSetOptions();
   renderRunList();
 }
@@ -614,11 +740,24 @@ async function bootstrap() {
       return;
     }
 
+    state.baselineSelectionMode = 'manual';
     state.baselineSet = nextValue;
     void (async () => {
       await refreshOverview();
       await loadCurrentView();
     })().catch((error) => {
+      setStatus(error instanceof Error ? error.message : 'Could not load run.');
+    });
+  });
+
+  elements.envFilterSelect.addEventListener('change', () => {
+    state.envFilter = elements.envFilterSelect.value;
+    state.currentImageIndex = 0;
+    ensureSelectedRunForCurrentFilter();
+    syncAutoBaselineSetFromSelection();
+    renderBaselineSetOptions();
+    renderRunList();
+    void loadCurrentView().catch((error) => {
       setStatus(error instanceof Error ? error.message : 'Could not load run.');
     });
   });
@@ -631,8 +770,8 @@ async function bootstrap() {
       confirmVariant: 'primary',
       input: {
         label: 'Baseline folder name',
-        initialValue: state.baselineSet || 'current',
-        placeholder: 'current',
+        initialValue: state.baselineSet || state.defaultBaselineSet,
+        placeholder: state.defaultBaselineSet,
       },
       onConfirm: async (inputValue) => {
         const nextValue = normalizeBaselineSetName(inputValue);
@@ -646,10 +785,12 @@ async function bootstrap() {
           state.baselineSets.sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
         }
 
+        state.baselineSelectionMode = 'manual';
         state.baselineSet = nextValue;
         renderBaselineSetOptions();
         closeActionModal();
         try {
+          await refreshOverview();
           await loadCurrentView();
         } catch (error) {
           setStatus(error instanceof Error ? error.message : 'Could not load run.');

@@ -157,6 +157,13 @@ select {
   color: #35291e;
 }
 
+.run-button-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .run-button-meta {
   display: block;
   margin-top: 4px;
@@ -229,6 +236,13 @@ select {
   margin: 0 0 6px;
   font-weight: 700;
   color: #35291e;
+}
+
+.selected-run-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
 }
 
 .icon-button,
@@ -368,6 +382,16 @@ select {
 .status-pill-neutral {
   background: rgba(118, 90, 66, 0.1);
   color: #6f5a47;
+}
+
+.status-pill-info {
+  background: rgba(48, 111, 158, 0.12);
+  color: #2c628d;
+}
+
+.status-pill-success {
+  background: rgba(33, 117, 79, 0.12);
+  color: #1f6a48;
 }
 
 .comparison-grid {

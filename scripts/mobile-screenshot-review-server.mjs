@@ -14,7 +14,7 @@ const staticDir = path.join(rootDir, 'apps/mobile/e2e/review-ui');
 const host = process.env.SCREENSHOT_REVIEW_HOST?.trim() || '127.0.0.1';
 const port = Number.parseInt(process.env.SCREENSHOT_REVIEW_PORT ?? '4174', 10);
 const defaultBaselineSet = process.env.SCREENSHOT_BASELINE_SET?.trim() || 'current';
-const defaultFlowPath = process.env.SCREENSHOT_REVIEW_FLOW?.trim() || 'apps/mobile/e2e/maestro/flows/core-review.yaml';
+const defaultFlowPath = process.env.SCREENSHOT_REVIEW_FLOW?.trim() || 'apps/mobile/e2e/maestro/flows/profile-review.yaml';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const MIME_BY_EXTENSION = {
@@ -28,6 +28,7 @@ const MIME_BY_EXTENSION = {
   '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
 };
+const KNOWN_ENVIRONMENTS = new Set(['local', 'beta', 'production']);
 
 function isSafePathSegment(value) {
   return typeof value === 'string' && value.length > 0 && value === path.basename(value) && !value.startsWith('.');
@@ -39,6 +40,27 @@ function normalizeBaselineSet(value) {
   }
 
   return value;
+}
+
+function normalizeRunEnvironment(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+  return KNOWN_ENVIRONMENTS.has(normalizedValue) ? normalizedValue : null;
+}
+
+function normalizeRunEndpoints(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, entryValue]) => typeof entryValue === 'string' && entryValue.trim().length > 0)
+      .map(([key, entryValue]) => [key, entryValue.trim()]),
+  );
 }
 
 function normalizeScreenshotName(value) {
@@ -104,6 +126,12 @@ async function readRunMetadata(runName) {
         : [];
     return {
       createdAt: typeof parsedContents.createdAt === 'string' ? parsedContents.createdAt : null,
+      endpoints: normalizeRunEndpoints(parsedContents.endpoints),
+      environment: normalizeRunEnvironment(parsedContents.environment),
+      environmentSource:
+        typeof parsedContents.environmentSource === 'string' && parsedContents.environmentSource.trim().length > 0
+          ? parsedContents.environmentSource.trim()
+          : null,
       expectationSource: 'run_metadata',
       expectedScreenshots: Array.isArray(parsedContents.expectedScreenshots)
         ? parsedContents.expectedScreenshots.map((value) => normalizeScreenshotName(value)).filter(Boolean)
@@ -125,12 +153,23 @@ async function readRunMetadata(runName) {
 
 async function getRunExpectations(runName) {
   const metadata = await readRunMetadata(runName);
-  if (metadata && metadata.expectedScreenshots.length > 0) {
-    return metadata;
+  if (metadata) {
+    if (metadata.expectedScreenshots.length > 0) {
+      return metadata;
+    }
+
+    return {
+      ...metadata,
+      expectationSource: 'default_flow',
+      expectedScreenshots: await parseExpectedScreenshotsFromFlow(defaultFlowPath),
+    };
   }
 
   return {
     createdAt: null,
+    endpoints: {},
+    environment: null,
+    environmentSource: null,
     expectationSource: 'default_flow',
     expectedScreenshots: await parseExpectedScreenshotsFromFlow(defaultFlowPath),
     flowKey: null,
@@ -241,10 +280,35 @@ async function listImageFiles(directory) {
   }
 }
 
+function resolvePreferredBaselineSet(environment, availableBaselineSets) {
+  if (environment && availableBaselineSets.includes(environment)) {
+    return environment;
+  }
+
+  return defaultBaselineSet;
+}
+
+function resolveComparisonBaselineSet(requestedBaselineSet, environment, availableBaselineSets) {
+  const normalizedRequestedBaselineSet = normalizeBaselineSet(requestedBaselineSet);
+  if (normalizedRequestedBaselineSet) {
+    return normalizedRequestedBaselineSet;
+  }
+
+  return resolvePreferredBaselineSet(environment, availableBaselineSets);
+}
+
 async function listArtifactRuns(baselineSet) {
-  const safeBaselineSet = normalizeBaselineSet(baselineSet) ?? defaultBaselineSet;
-  const baselineImageNames = await listImageFiles(path.join(baselinesDir, safeBaselineSet));
+  const baselineSets = await listBaselineSets();
+  const baselineImagesBySet = new Map();
   let entries = [];
+
+  const getBaselineImageNames = async (setName) => {
+    if (!baselineImagesBySet.has(setName)) {
+      baselineImagesBySet.set(setName, await listImageFiles(path.join(baselinesDir, setName)));
+    }
+
+    return baselineImagesBySet.get(setName) ?? [];
+  };
 
   try {
     entries = await readdir(artifactsDir, { withFileTypes: true });
@@ -261,9 +325,20 @@ async function listArtifactRuns(baselineSet) {
         const screenshotsDir = path.join(artifactsDir, entry.name, 'screenshots');
         const images = await listImageFiles(screenshotsDir);
         const expectations = await getRunExpectations(entry.name);
+        const preferredBaselineSet = resolvePreferredBaselineSet(expectations.environment, baselineSets);
+        const comparisonBaselineSet = resolveComparisonBaselineSet(
+          baselineSet,
+          expectations.environment,
+          baselineSets,
+        );
+        const baselineImageNames = await getBaselineImageNames(comparisonBaselineSet);
         const summary = buildRunSummary(expectations.expectedScreenshots, baselineImageNames, images);
         return {
           baselineScreenshotCount: summary.baselineCount,
+          comparisonBaselineSet,
+          endpoints: expectations.endpoints,
+          environment: expectations.environment,
+          environmentSource: expectations.environmentSource,
           expectationSource: expectations.expectationSource,
           expectedScreenshotCount: summary.expectedCount,
           flowKey: expectations.flowKey,
@@ -276,6 +351,7 @@ async function listArtifactRuns(baselineSet) {
           missingArtifactCount: summary.missingArtifactCount,
           missingExpectedCount: summary.missingExpectedCount,
           name: entry.name,
+          preferredBaselineSet,
           reviewScreenshotCount: summary.comparisonCount,
           screenshotCount: images.length,
           unexpectedCount: summary.unexpectedCount,
@@ -311,11 +387,13 @@ async function getRunDetails(runName, baselineSet) {
     return null;
   }
 
-  const safeBaselineSet = normalizeBaselineSet(baselineSet) ?? defaultBaselineSet;
+  const baselineSets = await listBaselineSets();
   const screenshotsDir = path.join(artifactsDir, runName, 'screenshots');
-  const baselineImageNames = await listImageFiles(path.join(baselinesDir, safeBaselineSet));
   const actualImageNames = await listImageFiles(screenshotsDir);
   const expectations = await getRunExpectations(runName);
+  const preferredBaselineSet = resolvePreferredBaselineSet(expectations.environment, baselineSets);
+  const comparisonBaselineSet = resolveComparisonBaselineSet(baselineSet, expectations.environment, baselineSets);
+  const baselineImageNames = await listImageFiles(path.join(baselinesDir, comparisonBaselineSet));
   const expectedSet = new Set(expectations.expectedScreenshots);
   const baselineSetNames = new Set(baselineImageNames);
   const actualSet = new Set(actualImageNames);
@@ -338,7 +416,7 @@ async function getRunDetails(runName, baselineSet) {
           ? `/files/artifacts/${encodeURIComponent(runName)}/${encodeURIComponent(name)}`
           : null,
         baselineUrl: baselineExists
-          ? `/files/baselines/${encodeURIComponent(safeBaselineSet)}/${encodeURIComponent(name)}`
+          ? `/files/baselines/${encodeURIComponent(comparisonBaselineSet)}/${encodeURIComponent(name)}`
           : null,
         hasArtifact: actualSet.has(name),
         hasBaseline: baselineExists,
@@ -351,13 +429,17 @@ async function getRunDetails(runName, baselineSet) {
 
   return {
     run: runName,
-    baselineSet: safeBaselineSet,
+    baselineSet: comparisonBaselineSet,
+    endpoints: expectations.endpoints,
+    environment: expectations.environment,
+    environmentSource: expectations.environmentSource,
     expectationSource: expectations.expectationSource,
     flowKey: expectations.flowKey,
     flowKeys: expectations.flowKeys,
     flowPath: expectations.flowPath,
     flowPaths: expectations.flowPaths,
     images,
+    preferredBaselineSet,
     summary,
   };
 }
