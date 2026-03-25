@@ -10,6 +10,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.9',
+    date: '2026-03-25',
+    title: 'iOS Native Project & Build Configuration',
+    summary:
+      'Behind-the-scenes infrastructure update. No user-facing changes.',
+    features: [],
+    improvements: [
+      'iOS native project (YummyRecs.xcodeproj) added to source control, enabling reproducible native builds without requiring a local prebuild step.',
+      'Root-level Expo and TypeScript configuration files added for consistent tooling across the monorepo.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.8',
     date: '2026-03-24',
     title: 'Keyboard Handling Overhaul & E2E Test Coverage',
