@@ -147,31 +147,66 @@ Flow aliases:
 
 - `22-more`
 - `23-lists-list`
+- `23a-lists-search-keyboard`
 - `24-add-list`
+- `24a-add-list-name-keyboard`
+- `24b-add-list-description-keyboard`
 - `25-primary-list-detail`
 - `26-add-visit-ratings-to-list`
 - `27-add-restaurant-to-list-detail`
+- `27a-add-restaurant-to-list-note-keyboard`
 - `28-secondary-list-detail`
 - `29-full-photo`
 - `30-edit-list`
+- `30a-edit-list-name-keyboard`
+- `30b-edit-list-description-keyboard`
 - `31-delete-list-confirmation`
 - `32-friend-lists`
+- `32a-friend-lists-search-keyboard`
 - `33-friend-list-detail`
 
 `bills-review` captures:
 
 - `34-tip-calculator`
+- `34a-tip-calculator-subtotal-keyboard`
+- `34b-tip-calculator-taxes-keyboard`
+- `34c-tip-calculator-tip-percentage-keyboard`
+- `34d-tip-calculator-specific-amount`
+- `34e-tip-calculator-tip-amount-keyboard`
 - `35-bills-you-owe`
 - `36-bills-all`
 - `37-bills-youre-owed`
 - `38-bills-settled`
 - `39-create-bill`
+- `39a-create-bill-name-keyboard`
+- `39b-create-bill-total-bill-price-keyboard`
+- `39c-create-bill-custom`
+- `39d-create-bill-custom-name-keyboard`
+- `39e-create-bill-item-name-keyboard`
+- `39f-create-bill-item-price-keyboard`
+- `39g-create-bill-tax-keyboard`
+- `39h-create-bill-fees-keyboard`
+- `39i-create-bill-tip-keyboard`
+- `39j-create-bill-final-price-keyboard`
+- `39k-create-bill-manual`
+- `39l-create-bill-manual-name-keyboard`
+- `39m-create-bill-manual-total-bill-price-keyboard`
 - `40-create-bill-lower`
+- `40a-create-bill-manual-owed-amount-keyboard`
 - `41-bill-detail`
 - `42-bill-detail-bottom`
 - `43-edit-bill`
+- `43a-edit-bill-name-keyboard`
+- `43b-edit-bill-item-name-keyboard`
+- `43c-edit-bill-item-price-keyboard`
 - `44-edit-bill-items-tax`
+- `44a-edit-bill-tax-keyboard`
+- `44b-edit-bill-fees-keyboard`
+- `44c-edit-bill-custom-tip-keyboard`
+- `44d-edit-bill-custom-tip-split-0-keyboard`
+- `44e-edit-bill-custom-tip-split-1-keyboard`
 - `45-edit-bill-final-owed`
+- `45a-edit-bill-final-price-keyboard`
 
 `friends-review` captures:
 

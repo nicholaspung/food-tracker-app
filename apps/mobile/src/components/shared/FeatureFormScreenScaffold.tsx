@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Keyboard, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import type { StyleProp, ViewStyle } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
+import type { ScrollView, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useTheme } from '../../theme';
 import { Button, Screen } from '../../ui';
@@ -25,10 +26,12 @@ export interface FeatureFormScreenScaffoldProps {
   backAccessibilityLabel?: string;
   keyboardAware?: boolean;
   scrollViewRef?: RefObject<ScrollView | null>;
+  scrollViewProps?: Omit<ScrollViewProps, 'ref' | 'contentContainerStyle' | 'style'>;
   bodyStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
   primaryAction: FeatureFormAction;
   secondaryAction?: FeatureFormAction;
+  hideFooterWhenKeyboardVisible?: boolean;
   testID?: string;
 }
 
@@ -46,6 +49,7 @@ export function FeatureFormScreenScaffold({
   backAccessibilityLabel,
   keyboardAware = true,
   scrollViewRef,
+  scrollViewProps,
   bodyStyle,
   children,
   primaryAction,
@@ -56,25 +60,6 @@ export function FeatureFormScreenScaffold({
   const internalScrollViewRef = useRef<ScrollView | null>(null);
   const resolvedScrollViewRef = scrollViewRef ?? internalScrollViewRef;
   const [footerHeight, setFooterHeight] = useState(theme.sizes.buttonHeight + theme.spacing.xl);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const shouldShowFooter = !keyboardAware || !isKeyboardVisible;
-
-  useEffect(() => {
-    const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSubscription = Keyboard.addListener(showEventName, () => {
-      setIsKeyboardVisible(true);
-    });
-    const hideSubscription = Keyboard.addListener(hideEventName, () => {
-      setIsKeyboardVisible(false);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   const styles = StyleSheet.create({
     screenContent: {
@@ -120,7 +105,7 @@ export function FeatureFormScreenScaffold({
       background="surface"
       contentStyle={styles.screenContent}
       edges={['top']}
-      keyboardAware={keyboardAware}
+      keyboardAware={false}
       padded={false}
       scroll={false}
       testID={testID}
@@ -135,54 +120,55 @@ export function FeatureFormScreenScaffold({
       />
       {headerBottomContent ? <View style={styles.headerBottom}>{headerBottomContent}</View> : null}
       <View style={styles.bodyContainer}>
-        <ScrollView
-          automaticallyAdjustKeyboardInsets={keyboardAware}
+        <KeyboardAwareScrollView
+          automaticallyAdjustKeyboardInsets={false}
+          bottomOffset={keyboardAware ? theme.spacing.sm : 0}
           contentContainerStyle={[
             styles.bodyContent,
             {
-              paddingBottom: (shouldShowFooter ? footerHeight : theme.spacing.none) + theme.spacing.lg,
+              paddingBottom: footerHeight + theme.spacing.lg,
             },
             bodyStyle,
           ]}
+          enabled={keyboardAware}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
+          {...scrollViewProps}
           ref={resolvedScrollViewRef}
           style={styles.bodyScroll}
         >
           {children}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
-        {shouldShowFooter ? (
-          <View
-            onLayout={(event) => {
-              const nextFooterHeight = event.nativeEvent.layout.height;
+        <View
+          onLayout={(event) => {
+            const nextFooterHeight = event.nativeEvent.layout.height;
 
-              setFooterHeight((currentFooterHeight) =>
-                currentFooterHeight === nextFooterHeight ? currentFooterHeight : nextFooterHeight,
-              );
-            }}
-            style={styles.footer}
-          >
-            {secondaryAction ? (
-              <Button
-                disabled={secondaryAction.disabled}
-                label={secondaryAction.label}
-                loading={secondaryAction.loading}
-                onPress={secondaryAction.onPress}
-                style={styles.footerAction}
-                variant={secondaryAction.variant ?? 'secondary'}
-              />
-            ) : null}
+            setFooterHeight((currentFooterHeight) =>
+              currentFooterHeight === nextFooterHeight ? currentFooterHeight : nextFooterHeight,
+            );
+          }}
+          style={styles.footer}
+        >
+          {secondaryAction ? (
             <Button
-              disabled={primaryAction.disabled}
-              label={primaryAction.label}
-              loading={primaryAction.loading}
-              onPress={primaryAction.onPress}
+              disabled={secondaryAction.disabled}
+              label={secondaryAction.label}
+              loading={secondaryAction.loading}
+              onPress={secondaryAction.onPress}
               style={styles.footerAction}
-              variant={primaryAction.variant ?? 'primary'}
+              variant={secondaryAction.variant ?? 'secondary'}
             />
-          </View>
-        ) : null}
+          ) : null}
+          <Button
+            disabled={primaryAction.disabled}
+            label={primaryAction.label}
+            loading={primaryAction.loading}
+            onPress={primaryAction.onPress}
+            style={styles.footerAction}
+            variant={primaryAction.variant ?? 'primary'}
+          />
+        </View>
       </View>
     </Screen>
   );

@@ -12,6 +12,26 @@ appId: com.anonymous.yummy-recs-mobile
 - assertVisible:
     id: tip-calculator-screen
 - takeScreenshot: 34-tip-calculator
+- tapOn:
+    id: tip-mode-custom
+    retryTapIfNoChange: true
+- waitForAnimationToEnd:
+    timeout: 2500
+- scrollUntilVisible:
+    element:
+      id: tip-custom-amount
+    direction: DOWN
+- assertVisible:
+    id: tip-custom-amount
+- takeScreenshot: 34d-tip-calculator-specific-amount
+- tapOn:
+    text: Tip Mode
+- waitForAnimationToEnd:
+    timeout: 1000
+- scrollUntilVisible:
+    element:
+      id: screen-back-button
+    direction: UP
 
 - tapOn:
     id: screen-back-button
@@ -53,6 +73,20 @@ appId: com.anonymous.yummy-recs-mobile
     id: bills-create-button
 - assertVisible: Split Type
 - takeScreenshot: 39-create-bill
+- tapOn:
+    id: bill-split-mode-custom
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 39c-create-bill-custom
+- scrollUntilVisible:
+    element:
+      id: bill-split-mode-manual
+    direction: UP
+- tapOn:
+    id: bill-split-mode-manual
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 39k-create-bill-manual
 
 - scrollUntilVisible:
     element:
@@ -60,6 +94,10 @@ appId: com.anonymous.yummy-recs-mobile
     direction: DOWN
 - assertVisible: Total Bill Price
 - takeScreenshot: 40-create-bill-lower
+- scrollUntilVisible:
+    element:
+      id: screen-back-button
+    direction: UP
 
 - tapOn:
     id: screen-back-button
@@ -85,8 +123,7 @@ appId: com.anonymous.yummy-recs-mobile
     direction: UP
 - assertVisible: Summary
 - tapOn:
-    point: "74%,12%"
-    retryTapIfNoChange: true
+    id: bill-detail-edit-button
 - assertVisible: Bill Name
 - takeScreenshot: 43-edit-bill
 
@@ -103,6 +140,10 @@ appId: com.anonymous.yummy-recs-mobile
     direction: DOWN
 - assertVisible: Payer & Owed Amounts
 - takeScreenshot: 45-edit-bill-final-owed
+- scrollUntilVisible:
+    element:
+      id: screen-back-button
+    direction: UP
 
 - tapOn:
     id: screen-back-button

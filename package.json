@@ -33,7 +33,9 @@
     "mobile:screenshots": "bash scripts/mobile-screenshot-suite.sh",
     "mobile:screenshots:review": "node scripts/mobile-screenshot-review-server.mjs",
     "mobile:typecheck": "pnpm --filter @food-tracker/mobile typecheck",
-    "mobile:test": "pnpm --filter @food-tracker/mobile test"
+    "mobile:test": "pnpm --filter @food-tracker/mobile test",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "devDependencies": {
     "browser-sync": "^3.0.3",
@@ -41,5 +43,9 @@
     "concurrently": "^8.2.2",
     "start-server-and-test": "^2.1.2"
   },
-  "dependencies": {}
+  "dependencies": {
+    "expo": "~54.0.33",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  }
 }

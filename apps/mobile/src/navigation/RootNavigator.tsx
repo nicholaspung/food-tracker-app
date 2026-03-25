@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import {
   DefaultTheme,
   NavigationContainer,
@@ -292,25 +292,7 @@ export function RootNavigator() {
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const [currentRouteName, setCurrentRouteName] = useState<keyof RootStackParamList>();
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const previousRouteNameRef = useRef<keyof RootStackParamList | null>(null);
-
-  useEffect(() => {
-    const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEventName = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSubscription = Keyboard.addListener(showEventName, () => {
-      setIsKeyboardVisible(true);
-    });
-    const hideSubscription = Keyboard.addListener(hideEventName, () => {
-      setIsKeyboardVisible(false);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -356,7 +338,6 @@ export function RootNavigator() {
     status === 'authenticated' &&
     !!currentRouteName &&
     ROUTES_WITH_TABS.includes(currentRouteName);
-  const showBottomTabs = hasBottomTabsRoute && !isKeyboardVisible;
 
   const bottomPadding = Math.max(6, Math.min(insets.bottom, 10));
   const tabBarHeight = TAB_BAR_BASE_HEIGHT + bottomPadding;
@@ -539,7 +520,6 @@ export function RootNavigator() {
           <BottomTabNavigation
             bottomPadding={bottomPadding}
             currentRouteName={currentRouteName}
-            hidden={!showBottomTabs}
             onNavigate={handleTabPress}
           />
         ) : null}

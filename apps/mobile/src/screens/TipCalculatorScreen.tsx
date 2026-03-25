@@ -128,7 +128,9 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
               handleMoneyInput(value, setSubtotal);
             }}
             placeholder="0.00"
+            showInlineKeyboardDismissButton={false}
             testID="tip-subtotal"
+            useDefaultReturnKeyType={false}
             value={subtotal}
           />
           <Input
@@ -138,7 +140,9 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
               handleMoneyInput(value, setTaxes);
             }}
             placeholder="0.00"
+            showInlineKeyboardDismissButton={false}
             testID="tip-taxes"
+            useDefaultReturnKeyType={false}
             value={taxes}
           />
 
@@ -153,6 +157,7 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
         <Card>
           <Text variant="label">Tip Mode</Text>
           <SegmentedControl
+            getOptionTestID={(value) => `tip-mode-${value}`}
             onChange={(nextTipMode: TipMode) => {
               trackObservabilityEvent('TIP_CALCULATOR_TIP_MODE_CHANGED', {
                 source: 'TipCalculatorScreen',
@@ -194,7 +199,9 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
                 label="Tip Percentage"
                 onChangeText={handlePercentInput}
                 placeholder="18"
+                showInlineKeyboardDismissButton={false}
                 testID="tip-percentage"
+                useDefaultReturnKeyType={false}
                 value={tipPercent}
               />
             </>
@@ -206,7 +213,9 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
                 handleMoneyInput(value, setCustomTipAmount);
               }}
               placeholder="0.00"
+              showInlineKeyboardDismissButton={false}
               testID="tip-custom-amount"
+              useDefaultReturnKeyType={false}
               value={customTipAmount}
             />
           )}

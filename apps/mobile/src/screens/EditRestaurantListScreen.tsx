@@ -292,6 +292,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
             label="List name"
             onChangeText={setName}
             placeholder="List name"
+            testID="edit-list-name-input"
             value={name}
           />
           <Input
@@ -300,6 +301,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
             multiline
             onChangeText={setDescription}
             placeholder="Optional description"
+            testID="edit-list-description-input"
             value={description}
           />
           <Text variant="label">Visibility</Text>

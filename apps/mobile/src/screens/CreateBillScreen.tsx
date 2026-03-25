@@ -330,6 +330,10 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     () => (friendsQuery.data ?? []).filter((friend) => friend.status === 'friend'),
     [friendsQuery.data],
   );
+  const billNumericInputProps = {
+    showInlineKeyboardDismissButton: false,
+    useDefaultReturnKeyType: false,
+  } as const;
   const shouldShowFriendSearch = acceptedFriends.length > 5;
   const isEqualSplitMode = splitMode === 'equal';
   const isCustomSplitMode = splitMode === 'custom';
@@ -2220,6 +2224,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             <Text style={styles.sectionTitle}>Split Type</Text>
           </View>
           <SegmentedControl
+            getOptionTestID={(value) => `bill-split-mode-${value}`}
             onChange={(value: CreateBillSplitMode) => {
               trackObservabilityEvent('CREATE_BILL_SPLIT_MODE_CHANGED', {
                 source: 'CreateBillScreen',
@@ -2253,6 +2258,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <Input
           onChangeText={setBillTitle}
           placeholder="Dinner at Nori"
+          testID="bill-name-input"
           value={billTitle}
         />
       </Card>
@@ -2332,6 +2338,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             keyboardType="decimal-pad"
             onChangeText={setEqualTotalInput}
             placeholder="0.00"
+            testID="bill-total-bill-price-input"
+            {...billNumericInputProps}
             value={equalTotalInput}
           />
           <Text style={styles.sectionHint}>
@@ -2357,6 +2365,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             containerStyle={styles.itemNameInput}
             onChangeText={setDraftItemName}
             placeholder="Item name"
+            testID="bill-item-name-input"
             value={draftItemName}
           />
           <Input
@@ -2364,6 +2373,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             keyboardType="decimal-pad"
             onChangeText={setDraftItemPrice}
             placeholder="0.00"
+            testID="bill-item-price-input"
+            {...billNumericInputProps}
             value={draftItemPrice}
           />
           <Pressable
@@ -2580,6 +2591,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                                       );
                                     }}
                                     placeholder="0.00"
+                                    {...billNumericInputProps}
                                     value={getAdvancedSplitRawValue(split, item.advancedSplitType)}
                                   />
                                 </View>
@@ -2620,6 +2632,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               label="Tax"
               onChangeText={setTaxInput}
               placeholder="0.00"
+              testID="bill-tax-input"
+              {...billNumericInputProps}
               value={taxInput}
             />
             <Input
@@ -2628,6 +2642,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               label="Fees"
               onChangeText={setFeesInput}
               placeholder="0.00"
+              testID="bill-fees-input"
+              {...billNumericInputProps}
               value={feesInput}
             />
             {!isCustomTipEnabled ? (
@@ -2637,6 +2653,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                 label="Tip"
                 onChangeText={setTipInput}
                 placeholder="0.00"
+                testID="bill-tip-input"
+                {...billNumericInputProps}
                 value={tipInput}
               />
             ) : null}
@@ -2646,6 +2664,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             <Pressable
               accessibilityRole="button"
               onPress={enableCustomTipSplit}
+              testID="bill-enable-custom-tip-button"
               style={styles.customTipToggle}
             >
               <Text style={styles.customTipToggleLabel}>Custom tip</Text>
@@ -2657,6 +2676,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                 <Pressable
                   accessibilityRole="button"
                   onPress={disableCustomTipSplit}
+                  testID="bill-disable-custom-tip-button"
                   style={styles.customTipToggle}
                 >
                   <Text style={styles.customTipToggleLabel}>Cancel custom tip</Text>
@@ -2668,6 +2688,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                 label="Tip"
                 onChangeText={setTipInput}
                 placeholder="0.00"
+                testID="bill-custom-tip-input"
+                {...billNumericInputProps}
                 value={tipInput}
               />
 
@@ -2687,7 +2709,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                 />
               </View>
 
-              {participants.map((participant) => {
+              {participants.map((participant, participantIndex) => {
                 const split = customTipSplits.find((entry) => entry.participantId === participant.id);
                 if (!split) {
                   return null;
@@ -2719,6 +2741,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                           updateCustomTipSplitValue(participant.id, value);
                         }}
                         placeholder="0.00"
+                        testID={`bill-custom-tip-split-input-${participantIndex}`}
+                        {...billNumericInputProps}
                         value={getAdvancedSplitRawValue(split, customTipSplitType)}
                       />
                     </View>
@@ -2749,6 +2773,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             label="Final Price"
             onChangeText={setFinalTotalInput}
             placeholder="0.00"
+            testID="bill-final-price-input"
+            {...billNumericInputProps}
             value={finalTotalInput}
           />
 
@@ -2841,7 +2867,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                 ? 'Enter each person\'s share. Values must add up to the total bill price.'
                 : 'Amounts are calculated from item assignments, tax, tip, and fees.'}
           </Text>
-          {owedAmountEntries.map((entry) => {
+          {owedAmountEntries.map((entry, index) => {
             const isPayer = entry.participant.id === payerParticipantId;
             return (
               <View key={entry.participant.id} style={styles.owedRow}>
@@ -2865,6 +2891,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                       }));
                     }}
                     placeholder="0.00"
+                    testID={`bill-owed-amount-input-${index}`}
+                    {...billNumericInputProps}
                     value={entry.inputValue}
                   />
                 ) : (

@@ -26,6 +26,7 @@
       "runtimeVersion": "1.0.0"
     },
     "android": {
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/brand-logo.png",
         "backgroundColor": "#F4EFEA"

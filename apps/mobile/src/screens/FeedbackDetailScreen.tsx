@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useKeyboardState } from 'react-native-keyboard-controller';
 
 import {
   EmptyState,
@@ -102,6 +103,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const messagesScrollRef = useRef<ScrollView>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const feedbackId = route.params.feedbackId;
+  const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
 
   const [draftMessage, setDraftMessage] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
@@ -119,7 +121,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   });
   const latestMessageId = messagesQuery.data?.[messagesQuery.data.length - 1]?.id;
 
-  const scheduleScrollToLatestMessage = (animated = true, delay = 0) => {
+  const scheduleScrollToLatestMessage = useCallback((animated = true, delay = 0) => {
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
@@ -128,7 +130,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       scrollTimeoutRef.current = null;
       messagesScrollRef.current?.scrollToEnd({ animated });
     }, delay);
-  };
+  }, []);
 
   useEffect(() => {
     if (!feedbackQuery.data) {
@@ -164,25 +166,22 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     }
 
     scheduleScrollToLatestMessage(true);
-  }, [latestMessageId]);
+  }, [latestMessageId, scheduleScrollToLatestMessage]);
 
   useEffect(() => {
-    const showEventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const keyboardScrollDelay = Platform.OS === 'ios' ? 0 : 16;
     const keyboardScrollAnimated = Platform.OS === 'ios';
 
-    const showSubscription = Keyboard.addListener(showEventName, () => {
+    if (isKeyboardVisible) {
       scheduleScrollToLatestMessage(keyboardScrollAnimated, keyboardScrollDelay);
-    });
+    }
 
     return () => {
-      showSubscription.remove();
-
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, []);
+  }, [isKeyboardVisible, scheduleScrollToLatestMessage]);
 
   const styles = StyleSheet.create({
     bodyRoot: {

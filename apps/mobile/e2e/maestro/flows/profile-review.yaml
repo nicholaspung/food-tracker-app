@@ -18,25 +18,27 @@ appId: com.anonymous.yummy-recs-mobile
 - takeScreenshot: 07-profile-edit-account-name
 
 - tapOn:
-    id: profile-account-name-input
-- waitForAnimationToEnd:
-    timeout: 1200
-- takeScreenshot: 07a-profile-edit-account-name-keyboard
-
-- tapOn:
     id: profile-cancel-edit-account-name-button
 - tapOn:
     id: profile-account-details-toggle
-- takeScreenshot: 08-profile-account-details-collapsed
-
+- waitForAnimationToEnd:
+    timeout: 1200
 - scrollUntilVisible:
     element:
       id: profile-invite-codes-toggle
     direction: DOWN
+- takeScreenshot: 08-profile-account-details-collapsed
+
 - tapOn:
     id: profile-invite-codes-toggle
 - assertVisible:
     id: profile-invite-codes-panel
+- waitForAnimationToEnd:
+    timeout: 1200
+- scrollUntilVisible:
+    element:
+      text: Share Invite
+    direction: DOWN
 - takeScreenshot: 09-profile-invite-codes
 
 - tapOn:
@@ -148,18 +150,6 @@ appId: com.anonymous.yummy-recs-mobile
     id: create-feedback-screen
 - takeScreenshot: 17-create-feedback
 
-- tapOn:
-    id: create-feedback-subject-input
-- waitForAnimationToEnd:
-    timeout: 1200
-- takeScreenshot: 17a-create-feedback-subject-keyboard
-
-- tapOn:
-    id: create-feedback-message-input
-- waitForAnimationToEnd:
-    timeout: 1200
-- takeScreenshot: 17b-create-feedback-message-keyboard
-
 - scrollUntilVisible:
     element:
       id: screen-back-button
@@ -174,12 +164,6 @@ appId: com.anonymous.yummy-recs-mobile
 - assertVisible:
     id: feedback-detail-screen
 - takeScreenshot: 18-feedback-detail
-
-- tapOn:
-    id: feedback-detail-message-input
-- waitForAnimationToEnd:
-    timeout: 1200
-- takeScreenshot: 18a-feedback-detail-message-keyboard
 
 - scrollUntilVisible:
     element:

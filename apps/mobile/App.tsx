@@ -3,6 +3,7 @@ import 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { SyncStatusBanner } from './src/components/SyncStatusBanner';
@@ -38,11 +39,13 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <AppProviders>
-            <AppShell />
-          </AppProviders>
-        </ThemeProvider>
+        <KeyboardProvider>
+          <ThemeProvider>
+            <AppProviders>
+              <AppShell />
+            </AppProviders>
+          </ThemeProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

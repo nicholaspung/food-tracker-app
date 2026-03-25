@@ -950,17 +950,20 @@ export function AddRestaurantToListScreen({
           </View>
 
           <View style={styles.section}>
-            <Input
-              label="General note (optional)"
-              maxLength={300}
-              multiline
-              onChangeText={(value) => {
-                setNote(value);
-                setNoteDirty(true);
-              }}
-              placeholder="Why do you recommend this restaurant?"
-              value={note}
-            />
+            <View>
+              <Input
+                label="General note (optional)"
+                maxLength={300}
+                multiline
+                onChangeText={(value) => {
+                  setNote(value);
+                  setNoteDirty(true);
+                }}
+                placeholder="Why do you recommend this restaurant?"
+                testID="add-restaurant-note-input"
+                value={note}
+              />
+            </View>
             <Text tone="muted">{`${note.length}/300`}</Text>
           </View>
         </>

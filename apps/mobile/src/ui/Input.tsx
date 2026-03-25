@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 
+import { env } from '../config/env';
 import { useTheme } from '../theme';
 import { Text } from './Text';
 
@@ -12,6 +13,8 @@ export interface InputProps extends Omit<TextInputProps, 'style'> {
   errorText?: string | null;
   containerStyle?: StyleProp<ViewStyle>;
   inputStyle?: StyleProp<TextStyle>;
+  showInlineKeyboardDismissButton?: boolean;
+  useDefaultReturnKeyType?: boolean;
 }
 
 const INLINE_DISMISS_KEYBOARD_TYPES = new Set<NonNullable<TextInputProps['keyboardType']>>([
@@ -27,6 +30,8 @@ export function Input({
   errorText,
   containerStyle,
   inputStyle,
+  showInlineKeyboardDismissButton = true,
+  useDefaultReturnKeyType = true,
   onBlur,
   onFocus,
   ...props
@@ -35,12 +40,22 @@ export function Input({
   const inputRef = useRef<TextInput>(null);
   const [isFocused, setIsFocused] = useState(false);
   const isMultiline = props.multiline === true;
+  const isScreenshotReviewMode = env.isScreenshotReviewMode;
+  const isNumericInput = INLINE_DISMISS_KEYBOARD_TYPES.has(props.keyboardType ?? 'default');
+  const shouldDisableAutofill = isScreenshotReviewMode || isNumericInput;
+  const resolvedAutoComplete = props.autoComplete ?? (shouldDisableAutofill ? 'off' : undefined);
+  const resolvedImportantForAutofill = props.importantForAutofill ?? (shouldDisableAutofill ? 'no' : undefined);
+  const resolvedTextContentType =
+    props.textContentType ?? (Platform.OS === 'ios' && shouldDisableAutofill ? 'none' : undefined);
+  const resolvedReturnKeyType =
+    props.returnKeyType ?? (useDefaultReturnKeyType && !isMultiline ? 'done' : undefined);
   const shouldShowInlineDismissButton =
     Platform.OS === 'ios' &&
     isFocused &&
     !isMultiline &&
     props.editable !== false &&
-    INLINE_DISMISS_KEYBOARD_TYPES.has(props.keyboardType ?? 'default');
+    isNumericInput &&
+    showInlineKeyboardDismissButton;
 
   const styles = StyleSheet.create({
     container: {
@@ -94,9 +109,12 @@ export function Input({
         <TextInput
           blurOnSubmit={props.blurOnSubmit ?? !isMultiline}
           placeholderTextColor={theme.colors.text.muted}
-          returnKeyType={props.returnKeyType ?? (!isMultiline ? 'done' : undefined)}
+          returnKeyType={resolvedReturnKeyType}
           {...props}
+          autoComplete={resolvedAutoComplete}
+          importantForAutofill={resolvedImportantForAutofill}
           ref={inputRef}
+          textContentType={resolvedTextContentType}
           onBlur={(event) => {
             setIsFocused(false);
             onBlur?.(event);

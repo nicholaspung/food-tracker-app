@@ -160,6 +160,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
             label="List name"
             onChangeText={setName}
             placeholder="Best pizza spots"
+            testID="create-list-name-input"
             value={name}
           />
           <Input
@@ -168,6 +169,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
             multiline
             onChangeText={setDescription}
             placeholder="Optional description"
+            testID="create-list-description-input"
             value={description}
           />
           <Text variant="label">Visibility</Text>

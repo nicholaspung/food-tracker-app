@@ -10,6 +10,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.8',
+    date: '2026-03-24',
+    title: 'Keyboard Handling Overhaul & E2E Test Coverage',
+    summary:
+      'Keyboard behaviour is now smoother and more consistent across the entire app. Form action buttons stay visible at all times, and on Android the screen pans up with the keyboard instead of resizing.',
+    features: [],
+    improvements: [
+      'Switched to react-native-keyboard-controller throughout the app for more reliable, animation-friendly keyboard handling.',
+      'Form action buttons (Save, Create, etc.) are now always visible — they no longer disappear when the keyboard opens.',
+      'On Android the screen pans up when the keyboard appears instead of shrinking the layout, matching the behaviour already familiar to iOS users.',
+      'Feedback chat scroll-to-latest now reacts to keyboard state changes via a reactive hook rather than one-time event listeners, so it works correctly across all keyboard interactions.',
+      'Numeric inputs (bill amounts, tip fields, etc.) now suppress autofill and password managers, preventing unwanted suggestions on these fields.',
+      'Tab bar no longer hides when the keyboard opens — keyboard-aware scrolling handles the overlap instead.',
+      'testID props added to bill (name, total, item name/price, tax, fees, tip, final price, split amounts), add-restaurant note, create/edit list (name, description), lists search, and tip calculator segmented control for automated E2E tests.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.7',
     date: '2026-03-20',
     title: 'Smoother Keyboard Handling & E2E Flow Refactor',

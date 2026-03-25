@@ -75,8 +75,11 @@ appId: com.anonymous.yummy-recs-mobile
     id: photo-viewer-close-button
 - takeScreenshot: 29-full-photo
 
+- waitForAnimationToEnd:
+    timeout: 1200
 - tapOn:
     id: photo-viewer-close-button
+    retryTapIfNoChange: true
 - assertVisible:
     id: list-detail-screen
 

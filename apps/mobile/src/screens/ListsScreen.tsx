@@ -605,6 +605,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           containerStyle={styles.searchField}
           onChangeText={setSearchQuery}
           placeholder="Search lists..."
+          testID="lists-search-input"
           value={searchQuery}
         />
         {hasSearch ? (
