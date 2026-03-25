@@ -35,10 +35,6 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-    defaults:
-      run:
-        working-directory: apps/mobile
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -75,10 +71,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint mobile app
-        run: pnpm lint
+        run: pnpm mobile:lint
 
       - name: Typecheck mobile app
-        run: pnpm typecheck
+        run: pnpm mobile:typecheck
 
       - name: Detect preview release type
         id: release_type
@@ -109,6 +105,7 @@ jobs:
       - name: Publish preview OTA update
         if: steps.release_type.outputs.publish_mode == 'ota'
         run: |
+          cd apps/mobile
           eas update \
             --channel preview \
             --environment preview \
@@ -118,6 +115,7 @@ jobs:
       - name: Trigger preview build
         if: steps.release_type.outputs.publish_mode == 'build'
         run: |
+          cd apps/mobile
           eas build \
             --platform all \
             --profile preview \

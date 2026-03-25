@@ -10,6 +10,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.10',
+    date: '2026-03-25',
+    title: 'Monorepo Build & CI Reliability Improvements',
+    summary:
+      'Behind-the-scenes build tooling and CI improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'Metro bundler now resolves React and React Native to their actual installed locations rather than hardcoded paths, preventing duplicate-module errors in complex monorepo layouts.',
+      'Root-level app.config.js and metro.config.js added so Expo and Metro tooling work correctly when invoked from the workspace root.',
+      'Root package.json gains a main field pointing to the mobile entry point for consistent workspace resolution.',
+      'CI workflow lint and typecheck steps now use workspace-root scripts (mobile:lint, mobile:typecheck) instead of relying on a per-step working-directory override, making the pipeline easier to extend.',
+      'EAS update and build steps now explicitly cd into apps/mobile before running, ensuring EAS CLI picks up the correct project configuration regardless of where the workflow step starts.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.9',
     date: '2026-03-25',
     title: 'iOS Native Project & Build Configuration',
