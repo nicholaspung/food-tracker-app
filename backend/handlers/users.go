@@ -57,6 +57,27 @@ func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 		})
 	})
 
+	se.Router.GET("/api/admin/record-counts", func(e *core.RequestEvent) error {
+		if err := requireAdmin(e); err != nil {
+			return err
+		}
+
+		recordType, definition, err := resolveAdminRecordTypeCountsDefinition(
+			e.Request.URL.Query().Get("recordType"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		summary, err := summarizeAdminRecordTypeCounts(app, recordType, definition)
+		if err != nil {
+			log.Printf("Admin record count summary failed for %q: %v", recordType, err)
+			return apis.NewApiError(500, "failed to load record counts", err)
+		}
+
+		return e.JSON(200, summary)
+	})
+
 	se.Router.GET("/api/admin/users/lookup", func(e *core.RequestEvent) error {
 		if err := requireAdmin(e); err != nil {
 			return err

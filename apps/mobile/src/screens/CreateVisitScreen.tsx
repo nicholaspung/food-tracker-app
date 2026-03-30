@@ -1019,12 +1019,18 @@ export function CreateVisitScreen({
       flex: 1,
     },
     menuItemRow: {
+      alignItems: "stretch",
       borderColor: theme.colors.border.subtle,
       borderRadius: theme.radii.md,
       borderWidth: 1,
+      flexDirection: "row",
       gap: theme.spacing.xs,
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.sm,
+    },
+    menuItemMainButton: {
+      flex: 1,
+      gap: theme.spacing.xs,
     },
     menuItemRowSelected: {
       backgroundColor: theme.colors.status.successBg,
@@ -1033,7 +1039,6 @@ export function CreateVisitScreen({
     menuItemHeaderRow: {
       alignItems: "center",
       flexDirection: "row",
-      justifyContent: "space-between",
     },
     menuItemNameWrap: {
       flex: 1,
@@ -1042,7 +1047,6 @@ export function CreateVisitScreen({
     menuItemMetaRow: {
       alignItems: "center",
       flexDirection: "row",
-      justifyContent: "space-between",
     },
     menuItemBadgeRow: {
       alignItems: "center",
@@ -1050,10 +1054,26 @@ export function CreateVisitScreen({
       flexWrap: "wrap",
       gap: theme.spacing.xs,
     },
+    menuItemActionsColumn: {
+      alignItems: "flex-end",
+      gap: theme.spacing.xs,
+      justifyContent: "space-between",
+    },
+    menuItemSelectButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 24,
+      minWidth: 24,
+      padding: theme.spacing.xxs,
+    },
     menuItemEditButton: {
       alignItems: "center",
       flexDirection: "row",
       gap: theme.spacing.xxs,
+      justifyContent: "center",
+      minHeight: 44,
+      minWidth: 44,
+      paddingHorizontal: theme.spacing.xs,
       paddingVertical: theme.spacing.xxs,
     },
     itemCard: {
@@ -1295,10 +1315,14 @@ export function CreateVisitScreen({
     );
   };
 
-  const renderRestaurantItem = ({
-    restaurant,
-    distance,
-  }: RestaurantWithDistance) => {
+  const renderRestaurantItem = (
+    {
+      restaurant,
+      distance,
+    }: RestaurantWithDistance,
+    index: number,
+    source: "search" | "saved",
+  ) => {
     const isSelected = selectedRestaurantId === restaurant.id;
 
     return (
@@ -1309,6 +1333,7 @@ export function CreateVisitScreen({
           handleSelectRestaurant(restaurant);
         }}
         style={isSelected ? styles.selectedRestaurantItem : undefined}
+        testID={`create-visit-${source}-restaurant-option-${index}`}
         title={restaurant.name}
         trailing={renderRestaurantTrailing(restaurant)}
       />
@@ -1374,42 +1399,65 @@ export function CreateVisitScreen({
     }
   };
 
-  const renderMenuItemCard = (menuItem: MenuItemRecord) => {
+  const renderMenuItemCard = (menuItem: MenuItemRecord, index: number) => {
     const isSelected = isMenuItemSelected(menuItem);
     const visibility = normalizeMenuItemVisibility(menuItem.visibility);
     const isUserCreated = menuItem.createdBy === currentUserId;
 
     return (
-      <Pressable
-        onPress={() => {
-          toggleMenuItemSelection(menuItem);
-        }}
+      <View
         style={[
           styles.menuItemRow,
           isSelected ? styles.menuItemRowSelected : null,
         ]}
       >
-        <View style={styles.menuItemHeaderRow}>
-          <View style={styles.menuItemNameWrap}>
-            <Text variant="label">{menuItem.name}</Text>
+        <Pressable
+          onPress={() => {
+            toggleMenuItemSelection(menuItem);
+          }}
+          style={styles.menuItemMainButton}
+          testID={`create-visit-menu-item-option-${index}`}
+        >
+          <View style={styles.menuItemHeaderRow}>
+            <View style={styles.menuItemNameWrap}>
+              <Text variant="label">{menuItem.name}</Text>
+            </View>
           </View>
-          <Ionicons
-            color={
-              isSelected ? theme.colors.text.success : theme.colors.text.muted
-            }
-            name={isSelected ? "checkmark-circle" : "ellipse-outline"}
-            size={20}
-          />
-        </View>
 
-        <View style={styles.menuItemMetaRow}>
-          <View style={styles.menuItemBadgeRow}>
-            <VisibilityBadge value={visibility} />
+          <View style={styles.menuItemMetaRow}>
+            <View style={styles.menuItemBadgeRow}>
+              <VisibilityBadge value={visibility} />
+            </View>
           </View>
+        </Pressable>
+
+        <View collapsable={false} style={styles.menuItemActionsColumn}>
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={12}
+            onPress={() => {
+              toggleMenuItemSelection(menuItem);
+            }}
+            style={styles.menuItemSelectButton}
+            testID={`create-visit-menu-item-select-button-${index}`}
+          >
+            <Ionicons
+              color={
+                isSelected ? theme.colors.text.success : theme.colors.text.muted
+              }
+              name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+              size={20}
+            />
+          </Pressable>
 
           {isUserCreated ? (
             <Pressable
+              accessibilityHint="Opens the edit menu item screen"
+              accessibilityLabel={`Edit ${menuItem.name}`}
               accessibilityRole="button"
+              accessible
+              collapsable={false}
+              hitSlop={12}
               onPress={(event) => {
                 event.stopPropagation();
                 navigation.navigate("CreateVisitEditMenuItem", {
@@ -1420,19 +1468,24 @@ export function CreateVisitScreen({
                 });
               }}
               style={styles.menuItemEditButton}
+              testID={`create-visit-menu-item-edit-button-${index}`}
             >
               <Ionicons
                 color={theme.colors.text.secondary}
                 name="pencil-outline"
                 size={14}
               />
-              <Text tone="secondary" variant="bodySm">
+              <Text
+                testID={`create-visit-menu-item-edit-label-${index}`}
+                tone="secondary"
+                variant="bodySm"
+              >
                 Edit
               </Text>
             </Pressable>
           ) : null}
         </View>
-      </Pressable>
+      </View>
     );
   };
 
@@ -2226,6 +2279,7 @@ export function CreateVisitScreen({
       scrollViewRef={scrollViewRef}
       secondaryAction={secondaryAction}
       subtitle={headerSubtitle}
+      testID={isEditMode ? "edit-visit-screen" : "create-visit-screen"}
       title={isEditMode ? "Edit Restaurant Visit" : "Track Restaurant Visit"}
     >
       <PageErrorToast
@@ -2270,6 +2324,7 @@ export function CreateVisitScreen({
                   setIsSearchExpanded((currentValue) => !currentValue);
                 }}
                 style={styles.searchHeaderButton}
+                testID="create-visit-search-toggle"
               >
                 <Text tone="secondary" variant="bodySm">
                   {isSearchExpanded ? "Collapse" : "Expand"}
@@ -2359,6 +2414,7 @@ export function CreateVisitScreen({
                     });
                   }}
                   style={styles.inlineLink}
+                  testID="create-visit-add-restaurant-link"
                 >
                   <Text tone="brand">Add new restaurant</Text>
                 </Pressable>
@@ -2427,7 +2483,9 @@ export function CreateVisitScreen({
                       title="No food places found"
                     />
                   ) : (
-                    displayedNearbyRestaurants.map(renderRestaurantItem)
+                    displayedNearbyRestaurants.map((restaurant, index) =>
+                      renderRestaurantItem(restaurant, index, "search"),
+                    )
                   )}
                 </Card>
               </View>
@@ -2465,7 +2523,9 @@ export function CreateVisitScreen({
                     title="No restaurants yet"
                   />
                 ) : (
-                  displayedSavedRestaurants.map(renderRestaurantItem)
+                  displayedSavedRestaurants.map((restaurant, index) =>
+                    renderRestaurantItem(restaurant, index, "saved"),
+                  )
                 )}
               </Card>
             </View>
@@ -2501,7 +2561,7 @@ export function CreateVisitScreen({
                     mode: "menu_scan",
                     restaurantId: selectedRestaurantId ?? undefined,
                     restaurantName: restaurantName.trim() || undefined,
-                    autoStartSourcePicker: true,
+                    autoStartSourcePicker: false,
                   });
                 }}
                 style={[
@@ -2509,6 +2569,7 @@ export function CreateVisitScreen({
                   styles.quickActionsPrimaryButton,
                   !isOnline ? { opacity: 0.55 } : null,
                 ]}
+                testID="create-visit-scan-menu-photo-button"
               >
                 <Ionicons
                   color={theme.colors.text.primary}
@@ -2522,10 +2583,12 @@ export function CreateVisitScreen({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Show item entry tip"
+                hitSlop={12}
                 onPress={() => {
                   setIsTipPopoverVisible((visible) => !visible);
                 }}
                 style={styles.tipIconButton}
+                testID="create-visit-tip-button"
               >
                 <Ionicons
                   color={theme.colors.text.warning}
@@ -2540,6 +2603,7 @@ export function CreateVisitScreen({
                   event.stopPropagation();
                 }}
                 style={styles.tipPopover}
+                testID="create-visit-tip-popover"
               >
                 <View style={styles.tipPopoverArrow} />
                 <View style={styles.tipPopoverHeaderRow}>
@@ -2554,10 +2618,12 @@ export function CreateVisitScreen({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Close tip"
+                    hitSlop={12}
                     onPress={() => {
                       setIsTipPopoverVisible(false);
                     }}
                     style={styles.tipPopoverClose}
+                    testID="create-visit-tip-close-button"
                   >
                     <Ionicons
                       color={theme.colors.text.secondary}
@@ -2590,6 +2656,7 @@ export function CreateVisitScreen({
                 styles.menuActionButton,
                 !selectedRestaurantId ? { opacity: 0.55 } : null,
               ]}
+              testID="create-visit-add-menu-item-button"
             >
               <Ionicons
                 color={theme.colors.text.primary}
@@ -2692,7 +2759,7 @@ export function CreateVisitScreen({
                       <View style={styles.menuItemDividerLine} />
                     </View>
                   ) : null}
-                  {renderMenuItemCard(menuItem)}
+                  {renderMenuItemCard(menuItem, index)}
                 </View>
               ))
             )}
@@ -2763,15 +2830,16 @@ export function CreateVisitScreen({
             </View>
           </Card>
 
-          <RatingLegend initiallyExpanded />
+          <RatingLegend initiallyExpanded persistenceKey={null} />
 
-          {draftItems.map((item) => (
+          {draftItems.map((item, index) => (
             <Card key={item.id} style={styles.itemCard}>
               <Text variant="label">{item.name}</Text>
               <RatingSelector
                 onChange={(value) => {
                   updateDraftItem(item.id, { rating: value });
                 }}
+                testIDPrefix={`create-visit-rating-${index}`}
                 value={item.rating}
               />
               <Input

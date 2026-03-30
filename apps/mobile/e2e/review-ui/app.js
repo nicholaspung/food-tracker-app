@@ -29,7 +29,6 @@ const elements = {
   baselineSetSelect: document.querySelector('#baseline-set-select'),
   carouselPosition: document.querySelector('#carousel-position'),
   currentRunTitle: document.querySelector('#current-run-title'),
-  deleteRunButton: document.querySelector('#delete-run-button'),
   envFilterSelect: document.querySelector('#env-filter-select'),
   imageCardTemplate: document.querySelector('#image-card-template'),
   imageGrid: document.querySelector('#image-grid'),
@@ -39,11 +38,6 @@ const elements = {
   regressionAlert: document.querySelector('#regression-alert'),
   runCount: document.querySelector('#run-count'),
   runList: document.querySelector('#run-list'),
-  selectedRunCard: document.querySelector('#selected-run-card'),
-  selectedRunEnvironment: document.querySelector('#selected-run-environment'),
-  selectedRunFlow: document.querySelector('#selected-run-flow'),
-  selectedRunMeta: document.querySelector('#selected-run-meta'),
-  selectedRunName: document.querySelector('#selected-run-name'),
   statusMessage: document.querySelector('#status-message'),
   viewModeButton: document.querySelector('#view-mode-button'),
 };
@@ -242,26 +236,15 @@ function createEnvironmentPill(environmentKey) {
   return createStatusPill(getEnvironmentLabel(environmentKey), getEnvironmentTone(environmentKey));
 }
 
-function renderSelectedRunPanel() {
-  const selectedRun = getSelectedRunSummary();
-  const hasSelectedRun = Boolean(selectedRun);
-
-  elements.selectedRunCard.classList.toggle('is-empty', !hasSelectedRun);
-  elements.deleteRunButton.disabled = !hasSelectedRun || state.isDeletingRun;
-  elements.deleteRunButton.textContent = state.isDeletingRun ? 'Deleting...' : 'Delete';
-  elements.selectedRunEnvironment.innerHTML = '';
-
-  if (!selectedRun) {
-    elements.selectedRunName.textContent = 'No run selected';
-    elements.selectedRunMeta.textContent = 'Choose an artifact run to inspect it.';
-    elements.selectedRunFlow.textContent = '';
-    return;
-  }
-
-  elements.selectedRunName.textContent = selectedRun.name;
-  elements.selectedRunMeta.textContent = formatRunMeta(selectedRun);
-  elements.selectedRunEnvironment.append(createEnvironmentPill(getRunEnvironmentKey(selectedRun)));
-  elements.selectedRunFlow.textContent = formatFlowLabel(selectedRun);
+function selectRun(runName) {
+  state.selectedRun = runName;
+  state.currentImageIndex = 0;
+  syncAutoBaselineSetFromSelection();
+  renderBaselineSetOptions();
+  renderRunList();
+  void loadCurrentView().catch((error) => {
+    setStatus(error instanceof Error ? error.message : 'Could not load run.');
+  });
 }
 
 function updateViewModeButton() {
@@ -348,42 +331,62 @@ function renderRunList() {
         ? 'No artifact runs found.'
         : 'No artifact runs match the selected environment filter.';
     elements.runList.append(empty);
-    renderSelectedRunPanel();
     return;
   }
 
   for (const run of visibleRuns) {
+    const card = document.createElement('article');
     const button = document.createElement('button');
     const header = document.createElement('div');
     const name = document.createElement('span');
     const meta = document.createElement('span');
+    const flow = document.createElement('p');
+    const actions = document.createElement('div');
+    const deleteButton = document.createElement('button');
+    const isActive = run.name === state.selectedRun;
 
+    card.className = `run-card${isActive ? ' active' : ''}`;
     button.type = 'button';
-    button.className = `run-button${run.name === state.selectedRun ? ' active' : ''}`;
+    button.className = 'run-button';
+    button.disabled = state.isDeletingRun;
     header.className = 'run-button-header';
     name.className = 'run-button-name';
     meta.className = 'run-button-meta';
+    flow.className = 'run-button-flow';
+    actions.className = 'run-card-actions';
+    deleteButton.type = 'button';
+    deleteButton.className = 'delete-inline-button';
+    deleteButton.textContent = state.isDeletingRun && isActive ? 'Deleting...' : 'Delete';
+    deleteButton.disabled = state.isDeletingRun;
+    deleteButton.title = `Delete artifact run ${run.name}`;
+    deleteButton.setAttribute('aria-label', `Delete artifact run ${run.name}`);
 
     name.textContent = run.name;
     meta.textContent = formatRunMeta(run);
+    flow.textContent = formatFlowLabel(run);
     header.append(name, createEnvironmentPill(getRunEnvironmentKey(run)));
     button.append(header, meta);
 
     button.addEventListener('click', () => {
-      state.selectedRun = run.name;
-      state.currentImageIndex = 0;
-      syncAutoBaselineSetFromSelection();
-      renderBaselineSetOptions();
-      renderRunList();
-      void loadCurrentView().catch((error) => {
-        setStatus(error instanceof Error ? error.message : 'Could not load run.');
-      });
+      selectRun(run.name);
     });
 
-    elements.runList.append(button);
-  }
+    card.append(button);
 
-  renderSelectedRunPanel();
+    if (isActive) {
+      if (flow.textContent) {
+        card.append(flow);
+      }
+
+      deleteButton.addEventListener('click', () => {
+        openDeleteModal(run.name);
+      });
+      actions.append(deleteButton);
+      card.append(actions);
+    }
+
+    elements.runList.append(card);
+  }
 }
 
 function updateCarouselControls() {
@@ -522,34 +525,33 @@ function renderCurrentImageCard() {
   elements.imageGrid.append(createImageCard(currentImage));
 }
 
-function openDeleteModal() {
-  const selectedRun = getSelectedRunSummary();
-  if (!selectedRun) {
+function openDeleteModal(runName = state.selectedRun) {
+  const run = state.artifactRuns.find((artifactRun) => artifactRun.name === runName) ?? null;
+  if (!run) {
     return;
   }
 
   openActionModal({
     title: 'Delete artifact run?',
-    message: `Delete ${selectedRun.name}? This removes the artifact folder and all screenshots in it.`,
+    message: `Delete ${run.name}? This removes the artifact folder and all screenshots in it.`,
     confirmLabel: 'Delete Run',
     confirmVariant: 'danger',
     onConfirm: async () => {
-      await deleteSelectedRun();
+      await deleteRun(run.name);
     },
   });
 }
 
-async function deleteSelectedRun() {
-  const selectedRun = getSelectedRunSummary();
-  if (!selectedRun || state.isDeletingRun) {
+async function deleteRun(runName) {
+  if (!runName || state.isDeletingRun) {
     return;
   }
 
   state.isDeletingRun = true;
-  renderSelectedRunPanel();
+  renderRunList();
 
   try {
-    const response = await fetch(`/api/run?run=${encodeURIComponent(selectedRun.name)}`, {
+    const response = await fetch(`/api/run?run=${encodeURIComponent(runName)}`, {
       method: 'DELETE',
     });
     const payload = await response.json();
@@ -559,14 +561,14 @@ async function deleteSelectedRun() {
     }
 
     closeActionModal();
-    setStatus(`Deleted artifact run ${selectedRun.name}.`);
+    setStatus(`Deleted artifact run ${runName}.`);
     await refreshOverview();
     await loadCurrentView();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : 'Could not delete artifact run.');
   } finally {
     state.isDeletingRun = false;
-    renderSelectedRunPanel();
+    renderRunList();
   }
 }
 
@@ -818,7 +820,6 @@ async function bootstrap() {
   elements.prevImageButton.addEventListener('click', showPreviousImage);
   elements.nextImageButton.addEventListener('click', showNextImage);
 
-  elements.deleteRunButton.addEventListener('click', openDeleteModal);
   elements.actionModalCancel.addEventListener('click', closeActionModal);
   elements.actionModal.addEventListener('click', (event) => {
     if (event.target === elements.actionModal) {

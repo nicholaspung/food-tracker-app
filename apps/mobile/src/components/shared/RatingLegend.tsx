@@ -9,7 +9,7 @@ import { resolveRatingColor } from './RatingSelector';
 
 interface RatingLegendProps {
     initiallyExpanded?: boolean;
-    persistenceKey?: string;
+    persistenceKey?: string | null;
 }
 
 const DEFAULT_PERSISTENCE_KEY = 'ui.ratingGuide.expanded';
@@ -22,6 +22,10 @@ export function RatingLegend({
     const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
 
     useEffect(() => {
+        if (!persistenceKey) {
+            return;
+        }
+
         let isMounted = true;
 
         const loadPreference = async () => {
@@ -47,7 +51,9 @@ export function RatingLegend({
     const handleToggle = () => {
         setIsExpanded((prev) => {
             const next = !prev;
-            void AsyncStorage.setItem(persistenceKey, next ? '1' : '0');
+            if (persistenceKey) {
+                void AsyncStorage.setItem(persistenceKey, next ? '1' : '0');
+            }
             return next;
         });
     };
@@ -71,7 +77,7 @@ export function RatingLegend({
 
     return (
         <Card style={dynamicStyles.card}>
-            <Pressable onPress={handleToggle} style={styles.header}>
+            <Pressable onPress={handleToggle} style={styles.header} testID="rating-legend-toggle">
                 <Text variant="label">Rating Guide</Text>
                 <Text tone="muted">{isExpanded ? '▲' : '▼'}</Text>
             </Pressable>

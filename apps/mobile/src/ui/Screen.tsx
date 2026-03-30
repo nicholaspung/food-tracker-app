@@ -6,7 +6,12 @@ import {
 } from 'react-native-keyboard-controller';
 import type { Edge } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  StyleProp,
+  ViewStyle,
+} from 'react-native';
 
 import { useTheme } from '../theme';
 
@@ -21,6 +26,8 @@ interface ScreenProps {
   scrollStyle?: StyleProp<ViewStyle>;
   scrollUnderlayColor?: string;
   scrollUnderlayTopInset?: number;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  scrollEventThrottle?: number;
   testID?: string;
 }
 
@@ -38,6 +45,8 @@ export function Screen({
   scrollStyle,
   scrollUnderlayColor,
   scrollUnderlayTopInset = 0,
+  onScroll,
+  scrollEventThrottle = 16,
   testID,
 }: PropsWithChildren<ScreenProps>) {
   const theme = useTheme();
@@ -71,6 +80,8 @@ export function Screen({
       enabled={keyboardAware}
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       keyboardShouldPersistTaps="handled"
+      onScroll={onScroll}
+      scrollEventThrottle={scrollEventThrottle}
       style={[styles.keyboardContainer, scrollStyle]}
     >
       {children}

@@ -95,10 +95,6 @@ select {
   margin-top: 24px;
 }
 
-.selected-run-section {
-  margin-top: 28px;
-}
-
 .section-heading {
   display: flex;
   align-items: center;
@@ -118,6 +114,7 @@ select {
   gap: 10px;
 }
 
+.run-card,
 .run-button,
 .primary-button,
 .secondary-button,
@@ -129,17 +126,24 @@ select {
   transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
 
+.run-card {
+  border: 1px solid rgba(118, 90, 66, 0.16);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.run-card.active {
+  border-color: #d46f00;
+  background: rgba(212, 111, 0, 0.08);
+}
+
 .run-button {
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(118, 90, 66, 0.16);
-  background: #fff;
+  border: 0;
+  background: transparent;
   padding: 12px 14px;
-}
-
-.run-button.active {
-  border-color: #d46f00;
-  background: rgba(212, 111, 0, 0.08);
 }
 
 .run-button:hover,
@@ -169,6 +173,12 @@ select {
   margin-top: 4px;
   font-size: 0.92rem;
   color: #7b6653;
+}
+
+.run-button-flow {
+  margin: 0;
+  padding: 0 14px 12px;
+  color: #6f5a47;
 }
 
 .primary-button,
@@ -207,6 +217,7 @@ select {
 .secondary-button:disabled,
 .danger-button:disabled,
 .primary-button:disabled,
+.run-button:disabled,
 .icon-button:disabled,
 .delete-inline-button:disabled {
   cursor: default;
@@ -214,35 +225,10 @@ select {
   transform: none;
 }
 
-.selected-run-card {
-  border: 1px solid rgba(118, 90, 66, 0.16);
-  border-radius: 14px;
-  background: #fff;
-  padding: 14px;
-}
-
-.selected-run-card.is-empty {
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.selected-run-card-header {
+.run-card-actions {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.selected-run-name {
-  margin: 0 0 6px;
-  font-weight: 700;
-  color: #35291e;
-}
-
-.selected-run-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 10px 0 0;
+  justify-content: flex-end;
+  padding: 0 14px 14px;
 }
 
 .icon-button,

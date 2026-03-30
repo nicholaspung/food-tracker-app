@@ -1,5 +1,10 @@
 import type { ReactNode } from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  StyleProp,
+  ViewStyle,
+} from 'react-native';
 import { useWindowDimensions } from 'react-native';
 
 import { Screen } from '../../ui';
@@ -10,6 +15,8 @@ export interface TabRootScreenScaffoldProps {
   scrollUnderlayColor: string;
   scrollUnderlayTopInset?: number;
   keyboardAware?: boolean;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  scrollEventThrottle?: number;
   testID?: string;
 }
 
@@ -23,6 +30,8 @@ export function TabRootScreenScaffold({
   scrollUnderlayColor,
   scrollUnderlayTopInset,
   keyboardAware = true,
+  onScroll,
+  scrollEventThrottle,
   testID,
 }: TabRootScreenScaffoldProps) {
   const { height } = useWindowDimensions();
@@ -34,8 +43,10 @@ export function TabRootScreenScaffold({
       contentStyle={contentStyle}
       edges={['top']}
       keyboardAware={keyboardAware}
+      onScroll={onScroll}
       padded={false}
       scroll
+      scrollEventThrottle={scrollEventThrottle}
       scrollUnderlayColor={scrollUnderlayColor}
       scrollUnderlayTopInset={resolvedScrollUnderlayTopInset}
       testID={testID}

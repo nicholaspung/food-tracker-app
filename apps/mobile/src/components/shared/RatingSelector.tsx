@@ -13,9 +13,10 @@ export function resolveRatingColor(theme: Theme, rating: number): string {
 interface RatingSelectorProps {
   value: number;
   onChange: (value: number) => void;
+  testIDPrefix?: string;
 }
 
-export function RatingSelector({ value, onChange }: RatingSelectorProps) {
+export function RatingSelector({ value, onChange, testIDPrefix }: RatingSelectorProps) {
   const theme = useTheme();
   const selectedOption = RATING_OPTIONS.find((o) => o.value === value);
 
@@ -43,6 +44,7 @@ export function RatingSelector({ value, onChange }: RatingSelectorProps) {
                 isSelected && [styles.buttonSelected, dynamicStyles.buttonSelected],
                 !isSelected && styles.buttonUnselected,
               ]}
+              testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
             >
               <Text style={[styles.buttonText, dynamicStyles.buttonText]}>{option.value}</Text>
             </Pressable>

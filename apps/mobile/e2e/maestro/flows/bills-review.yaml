@@ -90,7 +90,7 @@ appId: com.anonymous.yummy-recs-mobile
 
 - scrollUntilVisible:
     element:
-      text: Payer & Owed Amounts
+      id: bill-payer-owed-section
     direction: DOWN
 - assertVisible: Total Bill Price
 - takeScreenshot: 40-create-bill-lower
@@ -136,9 +136,10 @@ appId: com.anonymous.yummy-recs-mobile
 
 - scrollUntilVisible:
     element:
-      text: Final Price
+      id: bill-payer-owed-section
     direction: DOWN
-- assertVisible: Payer & Owed Amounts
+- assertVisible:
+    id: bill-payer-owed-section
 - takeScreenshot: 45-edit-bill-final-owed
 - scrollUntilVisible:
     element:

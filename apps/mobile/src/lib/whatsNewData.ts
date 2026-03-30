@@ -10,6 +10,26 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.11',
+    date: '2026-03-29',
+    title: 'Beta Feed, Richer Feed Cards & Menu Item UX',
+    summary:
+      'Admin users can now preview a new Beta feed on the Home screen — a combined, chronological view of your own and friends\' activity with rich card layouts, photo carousels, and inline actions. Menu item selection in the visit wizard also got a cleaner, more tappable layout.',
+    features: [
+      'Beta feed tab on the Home screen (admin only): a unified chronological view of your own and friends\' visits and quick tracks, sorted newest-first with infinite scroll pagination.',
+      'Rich Beta feed cards: each visit card shows a swipeable photo carousel, per-item rating bands, and inline share / edit / delete actions. Quick track cards show the photo, category chip, notes, and rating at a glance.',
+    ],
+    improvements: [
+      'Menu item rows in the visit creation wizard now separate the main tap area from the select and edit buttons, making it easier to tap the right target — especially on small screens.',
+      'Edit button on menu items now meets the 44 pt minimum tap target and exposes a clear accessibility label for screen readers.',
+      'Confirmation modals can now display custom content below the description, enabling richer delete confirmations in future flows.',
+      'Admin dashboard gains a Record Counts page for monitoring collection sizes.',
+      'New add-visit-review Maestro E2E flow added to cover the visit creation wizard end-to-end.',
+      'testID props added to restaurant search results, menu item select/edit buttons, home feed mode tabs, and rating selector buttons for more reliable E2E tests.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.10',
     date: '2026-03-25',
     title: 'Monorepo Build & CI Reliability Improvements',

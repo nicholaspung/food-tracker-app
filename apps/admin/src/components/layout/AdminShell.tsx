@@ -11,6 +11,7 @@ const navItems = [
   { to: '/access-controls', label: 'Access Controls', icon: '⌘' },
   { to: '/moderation', label: 'Moderation', icon: '⚑' },
   { to: '/users', label: 'Users', icon: '◎' },
+  { to: '/record-counts', label: 'Record Counts', icon: '#' },
   { to: '/audit-trail', label: 'Audit Trail', icon: '≡' },
 ];
 

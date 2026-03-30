@@ -1,3 +1,5 @@
+import type { PropsWithChildren } from 'react';
+
 import { Modal } from '../../ui';
 
 export interface ConfirmDestructiveModalProps {
@@ -26,7 +28,8 @@ export function ConfirmDestructiveModal({
   onConfirm,
   onCancel,
   testID,
-}: ConfirmDestructiveModalProps) {
+  children,
+}: PropsWithChildren<ConfirmDestructiveModalProps>) {
   const isPrimaryDisabled = disabled || loading;
   const cancelButtonTestID = testID ? `${testID}-cancel-button` : undefined;
   const confirmButtonTestID = testID ? `${testID}-confirm-button` : undefined;
@@ -53,6 +56,8 @@ export function ConfirmDestructiveModal({
       testID={testID}
       title={title}
       visible={visible}
-    />
+    >
+      {children}
+    </Modal>
   );
 }

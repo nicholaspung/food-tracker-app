@@ -1,6 +1,13 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -8,11 +15,14 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   FeedHeaderControls,
+  HomeBetaQuickTrackFeedCard,
+  HomeBetaVisitFeedCard,
   PhotoViewerModal,
   Skeleton,
   TabRootScreenScaffold,
   type FeedModeValue,
   type FeedTypeFilterValue,
+  type HomeBetaFeedPhotoRecord,
 } from '../components/shared';
 import {
   buildPocketBaseFileUrl,
@@ -47,14 +57,7 @@ type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type FeedMode = FeedModeValue;
 type TypeFilter = FeedTypeFilterValue;
 
-interface VisitPhotoRecord {
-  id: string;
-  food_item?: string;
-  photo: string;
-  collectionId?: string;
-  collectionName?: string;
-  created: string;
-}
+type VisitPhotoRecord = HomeBetaFeedPhotoRecord;
 
 interface BaseFeedItem {
   id: string;
@@ -116,6 +119,19 @@ const dayFormatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
 });
 
+const entryDateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
+
+const entryTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+const BETA_FEED_PAGE_SIZE = 20;
+
 function toDayKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -161,9 +177,37 @@ function formatQuickTrackLocationLabel(value: string): string {
   return `${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)}`;
 }
 
+function formatEntryDateLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return entryDateFormatter.format(date).toUpperCase();
+}
+
+function formatEntryTimeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return entryTimeFormatter.format(date).toUpperCase();
+}
+
+function getMonthSortKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value.slice(0, 7);
+  }
+
+  return toMonthKey(date);
+}
+
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
+  const canViewBetaFeed = Boolean(user?.isAdmin);
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -172,6 +216,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [visibleBetaCount, setVisibleBetaCount] = useState(BETA_FEED_PAGE_SIZE);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -183,6 +228,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [pendingDeleteTarget, setPendingDeleteTarget] = useState<PendingDeleteTarget | null>(null);
   const [isDeletingTarget, setIsDeletingTarget] = useState(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+  const lastBetaLoadTriggerCountRef = useRef<number | null>(null);
+  const effectiveFeedMode: FeedMode =
+    !canViewBetaFeed && feedMode === 'beta' ? 'mine' : feedMode;
 
   const visitsQuery = useQuery({
     queryKey: ['feature', 'visits'],
@@ -297,9 +345,32 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
   const mineFeed = useMemo(() => combinedFeed.filter((item) => !item.isFriend), [combinedFeed]);
   const friendFeed = useMemo(() => combinedFeed.filter((item) => item.isFriend), [combinedFeed]);
+  const betaFeed = useMemo(
+    () =>
+      [...combinedFeed].sort((left, right) => {
+        const leftMonthKey = getMonthSortKey(left.eventAt);
+        const rightMonthKey = getMonthSortKey(right.eventAt);
+
+        if (leftMonthKey !== rightMonthKey) {
+          return rightMonthKey.localeCompare(leftMonthKey);
+        }
+
+        if (left.isFriend !== right.isFriend) {
+          return left.isFriend ? -1 : 1;
+        }
+
+        return right.eventAt.localeCompare(left.eventAt);
+      }),
+    [combinedFeed],
+  );
 
   const filteredFeed = useMemo(() => {
-    const activeFeed = feedMode === 'friends' ? friendFeed : mineFeed;
+    const activeFeed =
+      effectiveFeedMode === 'friends'
+        ? friendFeed
+        : effectiveFeedMode === 'beta'
+          ? betaFeed
+          : mineFeed;
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return activeFeed.filter((item) => {
@@ -317,7 +388,12 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
       return item.searchText.includes(normalizedQuery);
     });
-  }, [feedMode, friendFeed, mineFeed, searchQuery, typeFilter]);
+  }, [betaFeed, effectiveFeedMode, friendFeed, mineFeed, searchQuery, typeFilter]);
+
+  const betaVisibleFeed = useMemo(
+    () => filteredFeed.slice(0, visibleBetaCount),
+    [filteredFeed, visibleBetaCount],
+  );
 
   const groupedMonths = useMemo<GroupedMonth[]>(() => {
     const monthMap = new Map<
@@ -388,6 +464,12 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   }, [filteredFeed]);
 
   useEffect(() => {
+    if (!canViewBetaFeed && feedMode === 'beta') {
+      setFeedMode('mine');
+    }
+  }, [canViewBetaFeed, feedMode]);
+
+  useEffect(() => {
     if (groupedMonths.length === 0) {
       setExpandedMonths(new Set());
       setExpandedDays(new Set());
@@ -415,6 +497,17 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     });
   }, [groupedMonths]);
 
+  useEffect(() => {
+    setVisibleBetaCount(BETA_FEED_PAGE_SIZE);
+    lastBetaLoadTriggerCountRef.current = null;
+  }, [effectiveFeedMode, searchQuery, typeFilter]);
+
+  useEffect(() => {
+    if (effectiveFeedMode !== 'beta' || visibleBetaCount >= filteredFeed.length) {
+      lastBetaLoadTriggerCountRef.current = null;
+    }
+  }, [effectiveFeedMode, filteredFeed.length, visibleBetaCount]);
+
   const filteredVisitCount = useMemo(
     () => filteredFeed.filter((entry) => entry.source === 'visit').length,
     [filteredFeed],
@@ -424,14 +517,21 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const mineQuickTrackCount = mineFeed.length - mineVisitCount;
   const friendVisitCount = useMemo(() => friendFeed.filter((entry) => entry.source === 'visit').length, [friendFeed]);
   const friendQuickTrackCount = friendFeed.length - friendVisitCount;
-  const activeFeed = feedMode === 'friends' ? friendFeed : mineFeed;
+  const betaVisitCount = useMemo(() => betaFeed.filter((entry) => entry.source === 'visit').length, [betaFeed]);
+  const betaQuickTrackCount = betaFeed.length - betaVisitCount;
+  const activeFeed =
+    effectiveFeedMode === 'friends'
+      ? friendFeed
+      : effectiveFeedMode === 'beta'
+        ? betaFeed
+        : mineFeed;
 
   const summaryText = useMemo(() => {
     if (searchQuery.trim()) {
       return `Found ${filteredFeed.length} items (${filteredVisitCount} visits, ${filteredQuickTrackCount} quick items)`;
     }
 
-    if (feedMode === 'friends') {
+    if (effectiveFeedMode === 'friends') {
       if (friendFeed.length === 0) {
         return 'No friend ratings yet';
       }
@@ -439,6 +539,17 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       return [
         formatCount(friendVisitCount, 'friend visit', 'friend visits'),
         formatCount(friendQuickTrackCount, 'friend quick item', 'friend quick items'),
+      ].join(' • ');
+    }
+
+    if (effectiveFeedMode === 'beta') {
+      if (betaFeed.length === 0) {
+        return 'No activity in beta feed yet';
+      }
+
+      return [
+        formatCount(betaVisitCount, 'visit', 'visits'),
+        formatCount(betaQuickTrackCount, 'quick item', 'quick items'),
       ].join(' • ');
     }
 
@@ -451,13 +562,16 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       formatCount(mineQuickTrackCount, 'quick item', 'quick items'),
     ].join(' • ');
   }, [
-    feedMode,
+    effectiveFeedMode,
     filteredFeed.length,
     filteredQuickTrackCount,
     filteredVisitCount,
     friendFeed.length,
     friendQuickTrackCount,
     friendVisitCount,
+    betaFeed.length,
+    betaQuickTrackCount,
+    betaVisitCount,
     mineFeed.length,
     mineQuickTrackCount,
     mineVisitCount,
@@ -705,12 +819,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   };
 
   const handleFeedModeChange = useCallback((nextMode: FeedMode) => {
+    const nextAllowedMode =
+      !canViewBetaFeed && nextMode === 'beta' ? 'mine' : nextMode;
     trackObservabilityEvent('HOME_FEED_MODE_SELECTED', {
-      feedMode: nextMode,
+      feedMode: nextAllowedMode,
       source: 'HomeScreen',
     });
-    setFeedMode(nextMode);
-  }, []);
+    setFeedMode(nextAllowedMode);
+  }, [canViewBetaFeed]);
 
   const handleTypeFilterChange = useCallback((nextFilter: TypeFilter) => {
     trackObservabilityEvent('HOME_TYPE_FILTER_SELECTED', {
@@ -719,6 +835,36 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     });
     setTypeFilter(nextFilter);
   }, []);
+
+  const handleBetaFeedScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (effectiveFeedMode !== 'beta') {
+        return;
+      }
+
+      if (visibleBetaCount >= filteredFeed.length) {
+        return;
+      }
+
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const isNearBottom =
+        contentOffset.y + layoutMeasurement.height >= contentSize.height - 240;
+
+      if (!isNearBottom) {
+        return;
+      }
+
+      if (lastBetaLoadTriggerCountRef.current === visibleBetaCount) {
+        return;
+      }
+
+      lastBetaLoadTriggerCountRef.current = visibleBetaCount;
+      setVisibleBetaCount((previousValue) =>
+        Math.min(filteredFeed.length, previousValue + BETA_FEED_PAGE_SIZE),
+      );
+    },
+    [effectiveFeedMode, filteredFeed.length, visibleBetaCount],
+  );
 
   const handleDismissFriendSuggestion = useCallback(() => {
     setFriendSuggestionErrorMessage(null);
@@ -803,6 +949,18 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       paddingBottom: theme.spacing.sm,
       paddingHorizontal: theme.spacing.sm,
       paddingTop: theme.spacing.sm,
+    },
+    betaFeed: {
+      gap: theme.spacing.md,
+    },
+    deleteConfirmationModalSentinel: {
+      backgroundColor: colors.surface,
+      height: 2,
+      left: 0,
+      position: 'absolute',
+      top: 0,
+      width: 2,
+      zIndex: 1,
     },
     monthSection: {
       gap: theme.spacing.xs,
@@ -1201,12 +1359,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
+      onScroll={handleBetaFeedScroll}
+      scrollEventThrottle={16}
       scrollUnderlayColor={colors.screenBackground}
       testID="home-screen"
     >
       <View style={styles.header}>
         <FeedHeaderControls
-          feedMode={feedMode}
+          feedMode={effectiveFeedMode}
           filtersExpanded={filtersExpanded}
           onClearSearch={() => {
             setSearchQuery('');
@@ -1216,6 +1376,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           onToggleFilters={handleToggleFilters}
           onTypeFilterChange={handleTypeFilterChange}
           searchQuery={searchQuery}
+          showBetaTab={canViewBetaFeed}
           summaryText={summaryText}
           typeFilter={typeFilter}
         />
@@ -1277,7 +1438,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasBlockingFeedError && feedMode === 'friends' && friendFeed.length === 0 ? (
+        {!isLoading &&
+        !hasBlockingFeedError &&
+        effectiveFeedMode === 'friends' &&
+        friendFeed.length === 0 ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>No friend activity yet</Text>
             <Text style={styles.infoDescription}>
@@ -1296,7 +1460,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasBlockingFeedError && feedMode === 'mine' && mineFeed.length === 0 ? (
+        {!isLoading && !hasBlockingFeedError && effectiveFeedMode === 'mine' && mineFeed.length === 0 ? (
           <EmptyState
             actionLabel="Create your first entry"
             description="Start with Add Visit or Quick Track."
@@ -1305,6 +1469,18 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
               navigation.navigate('AddVisit');
             }}
             title="No ratings yet"
+          />
+        ) : null}
+
+        {!isLoading && !hasBlockingFeedError && effectiveFeedMode === 'beta' && betaFeed.length === 0 ? (
+          <EmptyState
+            actionLabel="Create your first entry"
+            description="Start with Add Visit or Quick Track to preview the beta feed."
+            fill
+            onAction={() => {
+              navigation.navigate('AddVisit');
+            }}
+            title="No beta feed entries yet"
           />
         ) : null}
 
@@ -1329,7 +1505,100 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         ) : null}
 
         {!isLoading && !hasBlockingFeedError && filteredFeed.length > 0
-          ? groupedMonths.map((month) => {
+          ? effectiveFeedMode === 'beta'
+            ? (
+                <View style={styles.betaFeed}>
+                  {betaVisibleFeed.map((feedItem) => {
+                    const ownerLabel =
+                      feedItem.friendName?.trim() ||
+                      (feedItem.isFriend ? 'Unknown User' : user?.name?.trim() || 'You');
+                    const dateLabel = formatEntryDateLabel(feedItem.eventAt);
+                    const timeLabel = formatEntryTimeLabel(feedItem.eventAt);
+
+                    if (feedItem.source === 'visit') {
+                      const { visit } = feedItem;
+                      const restaurantMeta = [visit.restaurantLocation, visit.restaurantCuisineType]
+                        .filter((value) => value && value.trim().length > 0)
+                        .join(' • ');
+                      const shareableVisitItems = buildVisitShareItems(visit);
+                      const showVisitShare = !feedItem.isFriend && shareableVisitItems.length > 1;
+
+                      return (
+                        <HomeBetaVisitFeedCard
+                          dateLabel={dateLabel}
+                          key={feedItem.id}
+                          onDelete={
+                            !feedItem.isFriend
+                              ? () => {
+                                  promptDeleteVisit(visit.id, visit.restaurantName);
+                                }
+                              : undefined
+                          }
+                          onEdit={
+                            !feedItem.isFriend
+                              ? () => {
+                                  navigation.push('CreateVisit', {
+                                    editVisitId: visit.id,
+                                    returnToStep: 2,
+                                  });
+                                }
+                              : undefined
+                          }
+                          onOpenPhotoViewer={openPhotoViewer}
+                          onSharePhoto={handleSharePhoto}
+                          onShareVisit={showVisitShare ? () => handleShareVisit(visit) : undefined}
+                          ownerLabel={ownerLabel}
+                          photosByFoodItem={photosByFoodItem}
+                          restaurantMetaLabel={restaurantMeta}
+                          timeLabel={timeLabel}
+                          visit={visit}
+                        />
+                      );
+                    }
+
+                    const quickTrack = feedItem.quickTrack;
+                    const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
+                    const quickTrackLocationLabel = quickTrack.locationText
+                      ? formatQuickTrackLocationLabel(quickTrack.locationText)
+                      : undefined;
+                    const quickTrackCategoryLabel = quickTrack.itemCategory
+                      ? formatCategoryLabel(quickTrack.itemCategory)
+                      : undefined;
+
+                    return (
+                      <HomeBetaQuickTrackFeedCard
+                        categoryLabel={quickTrackCategoryLabel}
+                        dateLabel={dateLabel}
+                        key={feedItem.id}
+                        locationLabel={quickTrackLocationLabel}
+                        onDelete={
+                          !feedItem.isFriend
+                            ? () => {
+                                promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
+                              }
+                            : undefined
+                        }
+                        onEdit={
+                          !feedItem.isFriend
+                            ? () => {
+                                navigation.navigate('EditQuickTrack', {
+                                  quickTrackId: quickTrack.id,
+                                });
+                              }
+                            : undefined
+                        }
+                        onOpenPhotoViewer={openPhotoViewer}
+                        onSharePhoto={handleSharePhoto}
+                        ownerLabel={ownerLabel}
+                        photos={quickTrackPhotos}
+                        quickTrack={quickTrack}
+                        timeLabel={timeLabel}
+                      />
+                    );
+                  })}
+                </View>
+              )
+            : groupedMonths.map((month, monthIndex) => {
               const isMonthExpanded = expandedMonths.has(month.monthKey);
 
               return (
@@ -1354,7 +1623,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
                   {isMonthExpanded ? (
                     <View style={styles.monthContent}>
-                      {month.days.map((day) => {
+                      {month.days.map((day, dayIndex) => {
                         const isDayExpanded = expandedDays.has(day.dayKey);
 
                         return (
@@ -1374,7 +1643,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
                             {isDayExpanded ? (
                               <View style={styles.entries}>
-                                {day.entries.map((feedItem) => {
+                                {day.entries.map((feedItem, entryIndex) => {
                                   const timeLabel = new Date(feedItem.eventAt).toLocaleTimeString([], {
                                     hour: 'numeric',
                                     minute: '2-digit',
@@ -1441,6 +1710,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                                     });
                                                   }}
                                                   style={styles.compactActionButton}
+                                                  testID={
+                                                    monthIndex === 0 && dayIndex === 0 && entryIndex === 0
+                                                      ? 'home-first-visit-edit-button'
+                                                      : undefined
+                                                  }
                                                 >
                                                   <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
                                                 </Pressable>
@@ -1450,6 +1724,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                                     promptDeleteVisit(visit.id, visit.restaurantName);
                                                   }}
                                                   style={[styles.compactActionButton, styles.compactActionDanger]}
+                                                  testID={
+                                                    monthIndex === 0 && dayIndex === 0 && entryIndex === 0
+                                                      ? 'home-first-visit-delete-button'
+                                                      : undefined
+                                                  }
                                                 >
                                                   <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
                                                 </Pressable>
@@ -1737,9 +2016,23 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         onConfirm={() => {
           void confirmDeleteTarget();
         }}
+        testID={
+          pendingDeleteTarget?.kind === 'visit'
+            ? 'home-delete-visit-confirmation-modal'
+            : 'home-delete-quick-track-confirmation-modal'
+        }
         title={pendingDeleteTarget?.kind === 'visit' ? 'Delete Visit?' : 'Delete Quick Track?'}
         visible={pendingDeleteTarget !== null}
-      />
+      >
+        {pendingDeleteTarget?.kind === 'visit' ? (
+          <View
+            collapsable={false}
+            pointerEvents="none"
+            style={styles.deleteConfirmationModalSentinel}
+            testID="home-delete-confirmation-open"
+          />
+        ) : null}
+      </ConfirmDestructiveModal>
     </TabRootScreenScaffold>
   );
 }

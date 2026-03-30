@@ -13,6 +13,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { MenuReviewDetailPage } from '@/features/menu-reviews/MenuReviewDetailPage';
 import { MenuReviewsPage } from '@/features/menu-reviews/MenuReviewsPage';
 import { ModerationPage } from '@/features/moderation/ModerationPage';
+import { RecordTypeCountsPage } from '@/features/records/RecordTypeCountsPage';
 import { RequireAdminRoute } from '@/features/auth/RequireAdminRoute';
 import { AccessControlsPage } from '@/features/users/AccessControlsPage';
 import { UserDetailPage } from '@/features/users/UserDetailPage';
@@ -59,6 +60,10 @@ const shellRoutes = {
         {
           path: '/users',
           element: <UsersPage />,
+        },
+        {
+          path: '/record-counts',
+          element: <RecordTypeCountsPage />,
         },
         {
           path: '/users/:userId',

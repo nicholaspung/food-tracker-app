@@ -12,7 +12,7 @@ ENV_FILE="${SCREENSHOT_ENV_FILE:-$ROOT_DIR/apps/mobile/e2e/.env.local}"
 # This only fills unset endpoint variables; explicit overrides still win.
 source "$ROOT_DIR/scripts/app-env.sh"
 
-FLOW_KEYS=("sign-in-review" "profile-review" "lists-review" "bills-review" "friends-review" "sign-out-review")
+FLOW_KEYS=("sign-in-review" "profile-review" "lists-review" "bills-review" "friends-review" "add-visit-review" "sign-out-review")
 declare -a SELECTED_FLOW_KEYS=()
 declare -a SELECTED_FLOW_PATHS=()
 declare -a RAW_SELECTIONS=()
@@ -94,6 +94,9 @@ resolve_flow_path() {
     friends-review)
       printf '%s\n' "apps/mobile/e2e/maestro/flows/friends-review.yaml"
       ;;
+    add-visit-review)
+      printf '%s\n' "apps/mobile/e2e/maestro/flows/add-visit-review.yaml"
+      ;;
     sign-out-review)
       printf '%s\n' "apps/mobile/e2e/maestro/flows/sign-out-review.yaml"
       ;;
@@ -112,13 +115,14 @@ Available screenshot flows:
   - lists-review
   - bills-review
   - friends-review
+  - add-visit-review
   - sign-out-review
 
 You can select multiple flows by separating values with commas or spaces.
 Examples:
   pnpm mobile:screenshots --env beta -- all
   pnpm mobile:screenshots -- all
-  pnpm mobile:screenshots -- sign-in-review profile-review lists-review bills-review friends-review sign-out-review
+  pnpm mobile:screenshots -- sign-in-review profile-review lists-review bills-review friends-review add-visit-review sign-out-review
   pnpm mobile:screenshots -- sign-in-review,profile-review
 
 Optional environment metadata:
@@ -162,6 +166,9 @@ normalize_selection_tokens() {
           normalized_token="friends-review"
           ;;
         7)
+          normalized_token="add-visit-review"
+          ;;
+        8)
           normalized_token="sign-out-review"
           ;;
       esac
@@ -201,7 +208,8 @@ prompt_for_flow_selection() {
   echo "  4. lists-review" >&2
   echo "  5. bills-review" >&2
   echo "  6. friends-review" >&2
-  echo "  7. sign-out-review" >&2
+  echo "  7. add-visit-review" >&2
+  echo "  8. sign-out-review" >&2
   printf "Enter selection [all]: " >&2
 
   local response

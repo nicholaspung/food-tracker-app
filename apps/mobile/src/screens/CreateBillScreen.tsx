@@ -2762,7 +2762,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
       {isCustomSplitMode ? (
         <Card style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
+          <View style={styles.sectionTitleRow} testID="bill-final-price-section">
             <Ionicons color={theme.colors.text.secondary} name="receipt-outline" size={16} />
             <Text style={styles.sectionTitle}>Final Price</Text>
             <StatusPill label="Optional" tone="muted" />
@@ -2789,7 +2789,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       ) : null}
 
       <Card style={styles.sectionCard}>
-        <View style={styles.sectionTitleRow}>
+        <View style={styles.sectionTitleRow} testID="bill-payer-owed-section">
           <Ionicons color={theme.colors.text.secondary} name="wallet-outline" size={16} />
           <Text style={styles.sectionTitle}>Payer & Owed Amounts</Text>
         </View>

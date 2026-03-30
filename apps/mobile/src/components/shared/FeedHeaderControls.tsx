@@ -6,12 +6,13 @@ import { Text } from '../../ui';
 import { FilterChipGroup, type FilterChipOption } from './FilterChipGroup';
 import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl';
 
-export type FeedModeValue = 'mine' | 'friends';
+export type FeedModeValue = 'mine' | 'friends' | 'beta';
 export type FeedTypeFilterValue = 'all' | 'visits' | 'quick-track';
 
 const FEED_MODE_OPTIONS: readonly SegmentedControlOption<FeedModeValue>[] = [
   { label: 'Mine', value: 'mine' },
   { label: 'Friends', value: 'friends' },
+  { label: 'Beta', value: 'beta' },
 ];
 
 const TYPE_FILTER_OPTIONS: readonly FilterChipOption<FeedTypeFilterValue>[] = [
@@ -23,6 +24,7 @@ const TYPE_FILTER_OPTIONS: readonly FilterChipOption<FeedTypeFilterValue>[] = [
 interface FeedHeaderControlsProps {
   summaryText: string;
   feedMode: FeedModeValue;
+  showBetaTab?: boolean;
   onFeedModeChange: (value: FeedModeValue) => void;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
@@ -36,6 +38,7 @@ interface FeedHeaderControlsProps {
 export function FeedHeaderControls({
   summaryText,
   feedMode,
+  showBetaTab = false,
   onFeedModeChange,
   searchQuery,
   onSearchQueryChange,
@@ -47,6 +50,9 @@ export function FeedHeaderControls({
 }: FeedHeaderControlsProps) {
   const theme = useTheme();
   const searchInputRef = useRef<TextInput>(null);
+  const feedModeOptions = showBetaTab
+    ? FEED_MODE_OPTIONS
+    : FEED_MODE_OPTIONS.filter((option) => option.value !== 'beta');
 
   const styles = StyleSheet.create({
     container: {
@@ -71,7 +77,7 @@ export function FeedHeaderControls({
     },
     segmentButton: {
       borderRadius: 8,
-      minWidth: 60,
+      minWidth: 54,
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: 7,
     },
@@ -191,9 +197,10 @@ export function FeedHeaderControls({
           activeSegmentStyle={styles.segmentButtonActive}
           containerStyle={styles.segmentedControl}
           fill={false}
+          getOptionTestID={(value) => `home-feed-mode-${value}`}
           labelStyle={styles.segmentLabel}
           onChange={onFeedModeChange}
-          options={FEED_MODE_OPTIONS}
+          options={feedModeOptions}
           segmentStyle={styles.segmentButton}
           value={feedMode}
         />

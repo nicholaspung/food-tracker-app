@@ -15,6 +15,7 @@ Available named flows:
 - `lists-review`: More tab, list screens, photo viewer, edit/delete list states, and friend lists
 - `bills-review`: More tab bills/tips screens, bill filters, create bill, bill detail, and edit bill
 - `friends-review`: More-to-Friends tab handoff, friend sub-tabs, my code, add friend, and QR scanner
+- `add-visit-review`: Add tab restaurant-visit flow, menu-scan/manual-item entry, ratings, save/edit/delete-confirm states, and home feed toggles
 - `sign-out-review`: profile logout handoff back to onboarding
 
 ## Setup
@@ -70,6 +71,7 @@ If you run `pnpm mobile:screenshots` in an interactive terminal, it will prompt 
 - `lists-review`
 - `bills-review`
 - `friends-review`
+- `add-visit-review`
 - `sign-out-review`
 
 Interactive prompt input also accepts multiple selections, including numeric shortcuts such as `2,3` or `2 3`.
@@ -82,8 +84,9 @@ pnpm mobile:screenshots --env beta -- sign-in-review
 pnpm mobile:screenshots --env production -- lists-review
 pnpm mobile:screenshots --env production -- bills-review
 pnpm mobile:screenshots --env beta -- friends-review
+pnpm mobile:screenshots --env beta -- add-visit-review
 pnpm mobile:screenshots --env local -- sign-out-review
-pnpm mobile:screenshots --env beta -- sign-in-review profile-review lists-review bills-review friends-review sign-out-review
+pnpm mobile:screenshots --env beta -- sign-in-review profile-review lists-review bills-review friends-review add-visit-review sign-out-review
 pnpm mobile:screenshots --env local -- all
 ```
 
@@ -96,6 +99,7 @@ Flow aliases:
 - `lists-review` -> `apps/mobile/e2e/maestro/flows/lists-review-part-1.yaml`
 - `bills-review` -> `apps/mobile/e2e/maestro/flows/bills-review.yaml`
 - `friends-review` -> `apps/mobile/e2e/maestro/flows/friends-review.yaml`
+- `add-visit-review` -> `apps/mobile/e2e/maestro/flows/add-visit-review.yaml`
 - `sign-out-review` -> `apps/mobile/e2e/maestro/flows/sign-out-review.yaml`
 
 `profile-review` assumes the app is already signed in on Home. It is intended to run immediately after `sign-in-review`, and `pnpm mobile:screenshots -- all` runs them in that order.
@@ -106,7 +110,9 @@ Flow aliases:
 
 `friends-review` assumes the app is already back on the More tab after `bills-review`, and `pnpm mobile:screenshots -- all` runs it after the bills flow.
 
-`sign-out-review` assumes the app is already on Friends. It is intended to run immediately after `friends-review`, and `pnpm mobile:screenshots -- all` runs it after the friends flow.
+`add-visit-review` assumes the app is already on Friends after `friends-review`. It is intended to run immediately after `friends-review`, and it returns to Friends at the end so `sign-out-review` can continue cleanly.
+
+`sign-out-review` assumes the app is already back on Friends. It is intended to run immediately after `add-visit-review`, and `pnpm mobile:screenshots -- all` runs it after the add-visit flow.
 
 `sign-in-review` captures:
 
