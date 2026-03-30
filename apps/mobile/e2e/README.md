@@ -16,6 +16,8 @@ Available named flows:
 - `bills-review`: More tab bills/tips screens, bill filters, create bill, bill detail, and edit bill
 - `friends-review`: More-to-Friends tab handoff, friend sub-tabs, my code, add friend, and QR scanner
 - `add-visit-review`: Add tab restaurant-visit flow, menu-scan/manual-item entry, ratings, save/edit/delete-confirm states, and home feed toggles
+- `add-quick-track-review`: Add tab quick-track flow, rating guide states, and quick rating selections
+- `notes-review`: Add tab notes entry, notes list filters, edit, and delete-confirm states
 - `sign-out-review`: profile logout handoff back to onboarding
 
 ## Setup
@@ -72,6 +74,8 @@ If you run `pnpm mobile:screenshots` in an interactive terminal, it will prompt 
 - `bills-review`
 - `friends-review`
 - `add-visit-review`
+- `add-quick-track-review`
+- `notes-review`
 - `sign-out-review`
 
 Interactive prompt input also accepts multiple selections, including numeric shortcuts such as `2,3` or `2 3`.
@@ -85,8 +89,10 @@ pnpm mobile:screenshots --env production -- lists-review
 pnpm mobile:screenshots --env production -- bills-review
 pnpm mobile:screenshots --env beta -- friends-review
 pnpm mobile:screenshots --env beta -- add-visit-review
+pnpm mobile:screenshots --env beta -- add-quick-track-review
+pnpm mobile:screenshots --env beta -- notes-review
 pnpm mobile:screenshots --env local -- sign-out-review
-pnpm mobile:screenshots --env beta -- sign-in-review profile-review lists-review bills-review friends-review add-visit-review sign-out-review
+pnpm mobile:screenshots --env beta -- sign-in-review profile-review lists-review bills-review friends-review add-visit-review add-quick-track-review notes-review sign-out-review
 pnpm mobile:screenshots --env local -- all
 ```
 
@@ -100,6 +106,8 @@ Flow aliases:
 - `bills-review` -> `apps/mobile/e2e/maestro/flows/bills-review.yaml`
 - `friends-review` -> `apps/mobile/e2e/maestro/flows/friends-review.yaml`
 - `add-visit-review` -> `apps/mobile/e2e/maestro/flows/add-visit-review.yaml`
+- `add-quick-track-review` -> `apps/mobile/e2e/maestro/flows/add-quick-track-review.yaml`
+- `notes-review` -> `apps/mobile/e2e/maestro/flows/notes-review.yaml`
 - `sign-out-review` -> `apps/mobile/e2e/maestro/flows/sign-out-review.yaml`
 
 `profile-review` assumes the app is already signed in on Home. It is intended to run immediately after `sign-in-review`, and `pnpm mobile:screenshots -- all` runs them in that order.
@@ -110,9 +118,13 @@ Flow aliases:
 
 `friends-review` assumes the app is already back on the More tab after `bills-review`, and `pnpm mobile:screenshots -- all` runs it after the bills flow.
 
-`add-visit-review` assumes the app is already on Friends after `friends-review`. It is intended to run immediately after `friends-review`, and it returns to Friends at the end so `sign-out-review` can continue cleanly.
+`add-visit-review` assumes the app is already on Friends after `friends-review`. It is intended to run immediately after `friends-review`, and it ends on Home so `add-quick-track-review` can continue cleanly.
 
-`sign-out-review` assumes the app is already back on Friends. It is intended to run immediately after `add-visit-review`, and `pnpm mobile:screenshots -- all` runs it after the add-visit flow.
+`add-quick-track-review` assumes the app is already on Home after `add-visit-review`. It is intended to run immediately after `add-visit-review`, and it returns to the Add tab so `notes-review` can continue cleanly.
+
+`notes-review` assumes the app is already on the Add tab after `add-quick-track-review`. It is intended to run immediately after `add-quick-track-review`, and it returns to Friends so `sign-out-review` can continue cleanly.
+
+`sign-out-review` assumes the app is already back on Friends. It is intended to run immediately after `notes-review`, and `pnpm mobile:screenshots -- all` runs it after the notes flow.
 
 `sign-in-review` captures:
 
@@ -222,6 +234,55 @@ Flow aliases:
 - `49-friends-my-code`
 - `50-add-friend`
 - `51-scan-qr`
+
+`add-visit-review` captures:
+
+- `52-add-tab`
+- `53-track-restaurant-visit`
+- `54-track-visit-search-expanded`
+- `55-add-new-restaurant`
+- `56-first-your-restaurant`
+- `57-scan-menu-photo`
+- `58-after-menu-scan-cancel`
+- `59-after-items-cancel`
+- `60-item-entry-tip`
+- `61-add-menu-item`
+- `62-after-add-menu-item-cancel`
+- `63-selected-menu-item-rating`
+- `64-rating-guide-expanded`
+- `65-rating-1`
+- `66-rating-2`
+- `67-rating-4`
+- `68-rating-5`
+- `69-home-new-visit`
+- `70-edit-visit`
+- `71-edit-visit-lower`
+- `72-edit-visit-items`
+- `73-edit-visit-restaurant`
+- `74-delete-visit-confirmation`
+- `75-home-friends`
+- `76-home-mine`
+
+`add-quick-track-review` captures:
+
+- `77-add-tab-quick-track`
+- `78-quick-track-item`
+- `79-quick-track-rating-guide`
+- `80-quick-track-rating-guide-expanded`
+- `81-quick-track-rating-1`
+- `82-quick-track-rating-2`
+- `83-quick-track-rating-4`
+- `84-quick-track-rating-5`
+
+`notes-review` captures:
+
+- `85-log-note`
+- `86-manage-notes`
+- `87-add-note`
+- `88-notes-used`
+- `89-notes-all`
+- `90-edit-note`
+- `91-delete-note-confirmation`
 
 `sign-out-review` captures:
 

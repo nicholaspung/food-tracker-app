@@ -610,6 +610,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         onPress: handleCancel,
       }}
       subtitle="Quickly rate any item without a restaurant."
+      testID="quick-track-screen"
       title="Quick Track Item"
     >
       <View style={styles.body}>
@@ -748,6 +749,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           <Text variant="label">Rating *</Text>
           <RatingSelector
             onChange={setRating}
+            testIDPrefix="quick-track-rating"
             value={rating}
           />
         </Card>

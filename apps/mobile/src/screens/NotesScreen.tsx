@@ -529,6 +529,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         onConfirm={() => {
           void handleDelete();
         }}
+        testID="delete-note-confirmation-modal"
         visible={pendingDeleteNote !== null}
         title="Delete Note?"
       />

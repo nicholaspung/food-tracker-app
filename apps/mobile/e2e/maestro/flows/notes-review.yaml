@@ -1,0 +1,69 @@
+appId: com.anonymous.yummy-recs-mobile
+---
+- assertVisible:
+    id: add-visit-selector
+
+- tapOn:
+    id: add-option-log-note
+- assertVisible:
+    id: note-editor-screen
+- takeScreenshot: 85-log-note
+
+- tapOn: Cancel
+- assertVisible:
+    id: add-visit-selector
+
+- tapOn:
+    id: add-option-manage-notes
+- assertVisible:
+    id: notes-create-button
+- takeScreenshot: 86-manage-notes
+
+- tapOn:
+    id: notes-create-button
+- assertVisible:
+    id: note-editor-screen
+- takeScreenshot: 87-add-note
+
+- tapOn: Cancel
+- assertVisible:
+    id: notes-create-button
+
+- tapOn:
+    text: "^Used$"
+    retryTapIfNoChange: true
+- assertVisible:
+    text: Edit note
+    index: 0
+- takeScreenshot: 88-notes-used
+
+- tapOn:
+    text: "^All$"
+    retryTapIfNoChange: true
+- assertVisible:
+    text: Edit note
+    index: 0
+- takeScreenshot: 89-notes-all
+
+- tapOn:
+    text: Edit note
+    index: 0
+- assertVisible:
+    id: note-editor-screen
+- takeScreenshot: 90-edit-note
+
+- tapOn: Cancel
+- assertVisible:
+    id: notes-create-button
+
+- tapOn:
+    text: Delete note
+    index: 0
+- assertVisible:
+    id: delete-note-confirmation-modal
+- takeScreenshot: 91-delete-note-confirmation
+
+- tapOn:
+    id: delete-note-confirmation-modal-cancel-button
+- assertVisible:
+    id: notes-create-button

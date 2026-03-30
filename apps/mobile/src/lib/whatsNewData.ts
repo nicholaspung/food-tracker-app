@@ -10,6 +10,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.12',
+    date: '2026-03-29',
+    title: 'Quick Track & Notes E2E Test Coverage',
+    summary:
+      'Behind-the-scenes testing improvements. No user-facing changes.',
+    features: [],
+    improvements: [
+      'New add-quick-track-review Maestro E2E flow covers the quick track entry screen, rating guide toggle, and all rating selections end-to-end.',
+      'New notes-review Maestro E2E flow covers the notes list, create/edit note screens, tab filters (Used / All), and delete confirmation.',
+      'testID props added to the Quick Track screen and its rating selector buttons for reliable E2E targeting.',
+      'testID added to the delete-note confirmation modal for reliable E2E targeting.',
+      'Screenshot suite updated to include the two new flows in the full "all" run and interactive selector.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.11',
     date: '2026-03-29',
     title: 'Beta Feed, Richer Feed Cards & Menu Item UX',
