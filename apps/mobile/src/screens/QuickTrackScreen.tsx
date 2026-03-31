@@ -10,10 +10,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CurrentLocationButton,
   FeatureFormScreenScaffold,
-  LocalDatePickerField,
   OptionList,
   OptionListRow,
   PageErrorToast,
+  PhotoDetectedDateField,
   PhotoAttachmentRow,
   PhotoSourceActionCards,
   PhotoViewerModal,
@@ -150,10 +150,10 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const [locationText, setLocationText] = useState('');
   const [visibility, setVisibility] = useState<QuickTrackVisibility>(resolveDefaultQuickTrackVisibility());
   const [itemDate, setItemDate] = useState(getTodayLocalDateString());
+  const [detectedItemDateValue, setDetectedItemDateValue] = useState<string | null>(null);
   const [photo, setPhoto] = useState<VisitPhotoUploadInput | null>(null);
   const [latitude, setLatitude] = useState<number | undefined>(undefined);
   const [longitude, setLongitude] = useState<number | undefined>(undefined);
-  const [isItemDateAutoFilled, setIsItemDateAutoFilled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
@@ -264,13 +264,13 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       return;
     }
 
-    setItemDate(formatDateToLocalDateString(captureDate));
-    setIsItemDateAutoFilled(true);
+    const nextDetectedDateValue = formatDateToLocalDateString(captureDate);
+    setItemDate(nextDetectedDateValue);
+    setDetectedItemDateValue(nextDetectedDateValue);
   }, []);
 
   const handleItemDateChange = (value: string) => {
     setItemDate(value);
-    setIsItemDateAutoFilled(false);
   };
 
   useEffect(() => {
@@ -458,6 +458,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         throw new Error('Could not read the selected image.');
       }
 
+      setDetectedItemDateValue(null);
       await applyPhotoCaptureDate(selectedAsset);
       setIsPhotoViewerVisible(false);
       setPhoto(nextPhoto);
@@ -667,11 +668,8 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         ) : null}
 
         <Card style={styles.sectionCard}>
-          <LocalDatePickerField
-            helperText={
-              isItemDateAutoFilled ? 'Auto-set from a selected photo date. You can still change it.' : undefined
-            }
-            highlighted={isItemDateAutoFilled}
+          <PhotoDetectedDateField
+            detectedDateValue={detectedItemDateValue}
             label="Date"
             modalTitle="Select item date"
             onChange={handleItemDateChange}
@@ -722,6 +720,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
                 }}
                 onRemove={() => {
                   setIsPhotoViewerVisible(false);
+                  setDetectedItemDateValue(null);
                   setPhoto(null);
                 }}
                 uri={photo.uri}
@@ -742,7 +741,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
 
         <RatingLegend
           initiallyExpanded={!hasRatedBefore}
-          persistenceKey="ui.quickTrack.ratingGuide.expanded"
         />
 
         <Card style={styles.sectionCard}>

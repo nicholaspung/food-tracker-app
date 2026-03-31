@@ -470,7 +470,7 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
           />
         </Card>
 
-        <RatingLegend initiallyExpanded={false} persistenceKey="ui.quickTrack.ratingGuide.expanded" />
+        <RatingLegend initiallyExpanded={false} />
 
         <Card style={styles.sectionCard}>
           <Text variant="label">Rating *</Text>

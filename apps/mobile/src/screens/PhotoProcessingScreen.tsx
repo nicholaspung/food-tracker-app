@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Linking, Pressable, StyleSheet, View } from 'react-native';
@@ -12,13 +13,20 @@ import {
   LinearProgressBar,
   LoadingState,
   PageErrorToast,
+  PhotoDetectedDateField,
   PhotoSourceActionCards,
   RatingLegend,
   RatingSelector,
   ScreenHeader,
+  SegmentedControl,
   StepProgressBar,
   UpgradePromptCard,
   VisibilityOptionSelector,
+  VisitMenuItemOptionRow,
+  VisitMetadataCard,
+  VisitRestaurantOptionTrailing,
+  VisitRestaurantSearchSection,
+  type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
   createCollectionRecord,
@@ -31,6 +39,7 @@ import {
   parseMenuImage,
   parseLimitExceededError,
   resolveDefaultVisitVisibilityFromAuth,
+  updateCollectionRecord,
   useMonthlyUsage,
   type RestaurantRecord,
   type VisitPhotoUploadInput,
@@ -44,15 +53,28 @@ import {
   isValidLocalDate,
   localDateStringToUTC,
 } from '../lib/dateFormatting';
-import { calculateDistance, formatDistance } from '../lib/googlePlaces';
+import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import {
+  geocodeLocation,
+  searchAndCacheNearbyRestaurants,
+  searchAndCacheRestaurantsByText,
+} from '../lib/googlePlaces';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import {
+  buildVisitRestaurantDescription,
+  dedupeVisitRestaurants,
+  matchesVisitRestaurantSearch,
+  prioritizeSelectedVisitRestaurant,
+  withVisitRestaurantDistance,
+  type VisitRestaurantWithDistance,
+} from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { shouldShowOfflineUsageWarning } from './usageUiRules';
+import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from './usageUiRules';
 import { useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Screen, Text } from '../ui';
+import { Button, Card, Input, Screen, Text } from '../ui';
 
 type PhotoProcessingScreenProps = NativeStackScreenProps<RootStackParamList, 'ProcessPhotos'>;
 type ScanSource = 'camera' | 'gallery';
@@ -78,8 +100,10 @@ interface DraftPhotoAsset {
 interface RestaurantPhotoForm {
   restaurantId: string;
   restaurantName: string;
+  menuItemId: string;
   menuItemName: string;
   rating: number;
+  description: string;
   notes: string;
   date: string;
 }
@@ -98,12 +122,17 @@ interface MenuItemRecord {
   id: string;
   restaurant: string;
   name: string;
+  description?: string;
+  createdBy?: string;
+  visibility?: 'private' | 'friends' | 'public';
 }
 
 interface CreatedMenuItemRecord {
   id: string;
   name: string;
 }
+
+type MenuItemMode = 'existing' | 'create';
 
 const PROGRESS_FLOW_TAIL: { label: string }[] = [{ label: 'Upload' }, { label: 'Process' }, { label: 'Review' }];
 const QUICK_TRACK_CATEGORIES: { value: QuickTrackCategory; label: string }[] = [
@@ -115,6 +144,7 @@ const QUICK_TRACK_CATEGORIES: { value: QuickTrackCategory; label: string }[] = [
 ];
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
+const FREE_SEARCH_WARNING_THRESHOLD = 2;
 
 function buildScannedItemNames(seedLabel: string): string[] {
   const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
@@ -209,20 +239,6 @@ function inferImageMimeType(uri: string): string {
   }
 
   return 'image/jpeg';
-}
-
-function parseExifDate(rawValue: unknown): Date | null {
-  if (typeof rawValue !== 'string' || !rawValue.trim()) {
-    return null;
-  }
-
-  const normalized = rawValue.trim().replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
-  const parsed = new Date(normalized);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return parsed;
 }
 
 function parseExifRational(rawValue: unknown): number | null {
@@ -344,36 +360,8 @@ function formatCoordinatesForDisplay(coordinates: PhotoCoordinates): string {
   return `${latitude}${latitudeDirection}, ${longitude}${longitudeDirection}`;
 }
 
-function buildRestaurantDescription(restaurant: RestaurantRecord, distanceMiles: number | null): string {
-  const parts = [restaurant.location, restaurant.cuisineType].filter(Boolean);
-  if (distanceMiles !== null) {
-    parts.push(`${formatDistance(distanceMiles)} away`);
-  }
-
-  return parts.join(' • ') || 'Restaurant';
-}
-
-function extractCaptureDate(asset: ImagePicker.ImagePickerAsset): Date | null {
-  const creationTime = (asset as ImagePicker.ImagePickerAsset & { creationTime?: number }).creationTime;
-  if (typeof creationTime === 'number' && Number.isFinite(creationTime)) {
-    const parsed = new Date(creationTime);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed;
-    }
-  }
-
-  if (asset.exif && typeof asset.exif === 'object') {
-    const exif = asset.exif as Record<string, unknown>;
-    const exifDate =
-      parseExifDate(exif.DateTimeOriginal) ??
-      parseExifDate(exif.DateTimeDigitized) ??
-      parseExifDate(exif.DateTime);
-    if (exifDate) {
-      return exifDate;
-    }
-  }
-
-  return null;
+function normalizeSelectionLabel(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function resolveDefaultQuickTrackVisibility(): 'friends' | 'private' {
@@ -387,8 +375,10 @@ function buildDefaultRestaurantForm(
   return {
     restaurantId: previousForm?.restaurantId ?? '',
     restaurantName: previousForm?.restaurantName ?? '',
+    menuItemId: '',
     menuItemName: '',
     rating: 3,
+    description: '',
     notes: '',
     date: photo.captureDate ? formatDateToLocalDateString(photo.captureDate) : getTodayLocalDateString(),
   };
@@ -935,6 +925,10 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     viewAsTier: usagePreviewTier,
   });
   const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
+  const currentUserId = getAuthenticatedUserIdOrNull();
+  const placesQueriesRemaining = isDisplayFreeUser
+    ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
+    : null;
 
   const [step, setStep] = useState<GeneralPhotoStep>('choice');
   const [processType, setProcessType] = useState<ProcessType | null>(null);
@@ -942,9 +936,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [restaurantForms, setRestaurantForms] = useState<Record<string, RestaurantPhotoForm>>({});
   const [quickTrackForms, setQuickTrackForms] = useState<Record<string, QuickTrackPhotoForm>>({});
-  const [dateMetadataHintDismissedByPhotoId, setDateMetadataHintDismissedByPhotoId] = useState<
-    Record<string, boolean>
-  >({});
   const [locationMetadataHintDismissedByPhotoId, setLocationMetadataHintDismissedByPhotoId] = useState<
     Record<string, boolean>
   >({});
@@ -952,13 +943,44 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     resolveDefaultQuickTrackVisibility(),
   );
   const [restaurantSearchQuery, setRestaurantSearchQuery] = useState('');
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [manualLocation, setManualLocation] = useState('');
+  const [showNearbyPlaces, setShowNearbyPlaces] = useState(false);
+  const [referenceCoords, setReferenceCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [searchResults, setSearchResults] = useState<RestaurantRecord[]>([]);
+  const [nearbyResults, setNearbyResults] = useState<RestaurantRecord[]>([]);
+  const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
+  const [isSearchingRestaurants, setIsSearchingRestaurants] = useState(false);
+  const [isSearchingNearbyRestaurants, setIsSearchingNearbyRestaurants] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
+  const [menuItemMode, setMenuItemMode] = useState<MenuItemMode>('existing');
+  const [newMenuItemName, setNewMenuItemName] = useState('');
+  const [isEditingMenuItemInline, setIsEditingMenuItemInline] = useState(false);
+  const [editingMenuItemName, setEditingMenuItemName] = useState('');
+  const [isUpdatingMenuItem, setIsUpdatingMenuItem] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSelectingSource, setIsSelectingSource] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [permissionNeedsSettings, setPermissionNeedsSettings] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
+
+  const createVisitSearchUi = resolveCreateVisitSearchUi({
+    isFreeTier: isDisplayFreeUser,
+    enforceQuota: shouldEnforceUsageLimitsClientSide,
+    placesQueriesRemaining,
+    isOnline,
+    isSearching: isSearchingRestaurants || isSearchingNearbyRestaurants || isGettingLocation,
+  });
+  const isPlacesQuotaReached = createVisitSearchUi.isQuotaReached;
+  const compactSearchLabel = createVisitSearchUi.compactLabel;
+  const expandedSearchLabel = createVisitSearchUi.expandedLabel;
+  const shouldShowPlacesUpgradePrompt =
+    isDisplayFreeUser &&
+    typeof placesQueriesRemaining === 'number' &&
+    placesQueriesRemaining <= FREE_SEARCH_WARNING_THRESHOLD;
 
   const currentPhoto = photos[currentPhotoIndex] ?? null;
   const currentRestaurantForm = currentPhoto ? restaurantForms[currentPhoto.id] : undefined;
@@ -1043,76 +1065,138 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
   useEffect(() => {
     if (step === 'process' && processType === 'restaurant') {
-      setMenuItemSearchQuery(currentRestaurantForm?.menuItemName ?? '');
+      setMenuItemSearchQuery('');
+      setNewMenuItemName('');
+      setIsEditingMenuItemInline(false);
+      setEditingMenuItemName('');
     }
-  }, [currentPhoto?.id, currentRestaurantForm?.menuItemName, processType, step]);
+  }, [currentPhoto?.id, processType, step]);
 
-  const filteredRestaurants = useMemo(() => {
-    const normalizedQuery = restaurantSearchQuery.trim().toLowerCase();
-    const photoCoordinates = currentPhoto?.captureCoordinates ?? null;
-    const restaurants = restaurantsQuery.data ?? [];
-    const rankedRestaurants = restaurants.map((restaurant) => {
-      if (
-        !photoCoordinates ||
-        typeof restaurant.latitude !== 'number' ||
-        typeof restaurant.longitude !== 'number'
-      ) {
-        return { restaurant, distanceMiles: null };
-      }
+  useEffect(() => {
+    if (step === 'process' && processType === 'restaurant') {
+      setMenuItemMode('existing');
+    }
+  }, [currentPhoto?.id, processType, step]);
 
-      return {
-        restaurant,
-        distanceMiles: calculateDistance(
-          photoCoordinates.latitude,
-          photoCoordinates.longitude,
-          restaurant.latitude,
-          restaurant.longitude,
-        ),
-      };
-    });
+  const effectiveReferenceCoords = useMemo(() => {
+    if (referenceCoords) {
+      return referenceCoords;
+    }
 
-    return rankedRestaurants
-      .filter(({ restaurant }) => {
-        if (!normalizedQuery) {
-          return true;
-        }
+    if (!currentPhoto?.captureCoordinates) {
+      return null;
+    }
 
-        const matchesName = restaurant.name.toLowerCase().includes(normalizedQuery);
-        const matchesLocation = (restaurant.location ?? '').toLowerCase().includes(normalizedQuery);
-        const matchesCuisine = (restaurant.cuisineType ?? '').toLowerCase().includes(normalizedQuery);
-        return matchesName || matchesLocation || matchesCuisine;
-      })
-      .sort((left, right) => {
-        if (left.distanceMiles === null && right.distanceMiles === null) {
-          return left.restaurant.name.localeCompare(right.restaurant.name);
-        }
+    return {
+      lat: currentPhoto.captureCoordinates.latitude,
+      lng: currentPhoto.captureCoordinates.longitude,
+    };
+  }, [currentPhoto?.captureCoordinates, referenceCoords]);
 
-        if (left.distanceMiles === null) {
-          return 1;
-        }
+  const displayedSavedRestaurants = useMemo(() => {
+    const filtered = (restaurantsQuery.data ?? []).filter((restaurant) =>
+      matchesVisitRestaurantSearch(restaurant, restaurantSearchQuery),
+    );
+    return prioritizeSelectedVisitRestaurant(
+      withVisitRestaurantDistance(filtered, effectiveReferenceCoords),
+      currentRestaurantForm?.restaurantId ?? null,
+    ).slice(0, 12);
+  }, [currentRestaurantForm?.restaurantId, effectiveReferenceCoords, restaurantSearchQuery, restaurantsQuery.data]);
 
-        if (right.distanceMiles === null) {
-          return -1;
-        }
-
-        if (left.distanceMiles === right.distanceMiles) {
-          return left.restaurant.name.localeCompare(right.restaurant.name);
-        }
-
-        return left.distanceMiles - right.distanceMiles;
-      })
-      .slice(0, 12);
-  }, [currentPhoto?.captureCoordinates, restaurantSearchQuery, restaurantsQuery.data]);
+  const displayedNearbyRestaurants = useMemo(() => {
+    const combined = dedupeVisitRestaurants([...nearbyResults, ...searchResults]);
+    const filtered = combined.filter((restaurant) =>
+      matchesVisitRestaurantSearch(restaurant, restaurantSearchQuery),
+    );
+    return prioritizeSelectedVisitRestaurant(
+      withVisitRestaurantDistance(filtered, effectiveReferenceCoords),
+      currentRestaurantForm?.restaurantId ?? null,
+    ).slice(0, 12);
+  }, [
+    currentRestaurantForm?.restaurantId,
+    effectiveReferenceCoords,
+    nearbyResults,
+    restaurantSearchQuery,
+    searchResults,
+  ]);
 
   const filteredMenuItems = useMemo(() => {
-    const normalizedQuery = menuItemSearchQuery.trim().toLowerCase();
+    const normalizedQuery = normalizeSelectionLabel(menuItemSearchQuery);
     const menuItems = menuItemsQuery.data ?? [];
     if (!normalizedQuery) {
-      return menuItems.slice(0, 10);
+      return menuItems;
     }
 
-    return menuItems.filter((item) => item.name.toLowerCase().includes(normalizedQuery)).slice(0, 10);
+    return menuItems.filter((item) => normalizeSelectionLabel(item.name).includes(normalizedQuery));
   }, [menuItemSearchQuery, menuItemsQuery.data]);
+
+  const selectedMenuItem = useMemo(() => {
+    const menuItems = menuItemsQuery.data ?? [];
+    if (!currentRestaurantForm?.menuItemName && !currentRestaurantForm?.menuItemId) {
+      return null;
+    }
+
+    return (
+      menuItems.find((item) => item.id === currentRestaurantForm?.menuItemId) ??
+      menuItems.find(
+        (item) => normalizeSelectionLabel(item.name) === normalizeSelectionLabel(currentRestaurantForm?.menuItemName ?? ''),
+      ) ??
+      null
+    );
+  }, [currentRestaurantForm?.menuItemId, currentRestaurantForm?.menuItemName, menuItemsQuery.data]);
+
+  const displayedMenuItems = useMemo(() => {
+    const normalizedQuery = normalizeSelectionLabel(menuItemSearchQuery);
+    const normalizedSelectedName = normalizeSelectionLabel(selectedMenuItem?.name ?? '');
+    if (selectedMenuItem && (!normalizedQuery || normalizedQuery === normalizedSelectedName)) {
+      return [selectedMenuItem];
+    }
+
+    const selected: MenuItemRecord[] = [];
+    const unselected: MenuItemRecord[] = [];
+
+    for (const item of filteredMenuItems) {
+      const isSelected =
+        (currentRestaurantForm?.menuItemId
+          ? item.id === currentRestaurantForm.menuItemId
+          : normalizeSelectionLabel(item.name) === normalizeSelectionLabel(currentRestaurantForm?.menuItemName ?? ''));
+
+      if (isSelected) {
+        selected.push(item);
+      } else {
+        unselected.push(item);
+      }
+    }
+
+    return [...selected, ...unselected];
+  }, [
+    currentRestaurantForm?.menuItemId,
+    currentRestaurantForm?.menuItemName,
+    filteredMenuItems,
+    menuItemSearchQuery,
+    selectedMenuItem,
+  ]);
+
+  const selectedRestaurant = useMemo(() => {
+    const selectedRestaurantId = currentRestaurantForm?.restaurantId;
+    if (!selectedRestaurantId) {
+      return null;
+    }
+
+    const restaurants = dedupeVisitRestaurants([...(restaurantsQuery.data ?? []), ...searchResults, ...nearbyResults]);
+    return restaurants.find((restaurant) => restaurant.id === selectedRestaurantId) ?? null;
+  }, [currentRestaurantForm?.restaurantId, nearbyResults, restaurantsQuery.data, searchResults]);
+
+  const matchingMenuItemByName = useMemo(() => {
+    const normalizedName = normalizeSelectionLabel(newMenuItemName);
+    if (!normalizedName) {
+      return null;
+    }
+
+    return (
+      (menuItemsQuery.data ?? []).find((item) => normalizeSelectionLabel(item.name) === normalizedName) ?? null
+    );
+  }, [menuItemsQuery.data, newMenuItemName]);
 
   const restaurantReviewGroups = useMemo(() => {
     const groups = new Map<
@@ -1204,17 +1288,319 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     });
   };
 
-  const appendAssets = (assets: ImagePicker.ImagePickerAsset[]) => {
+  const dismissCurrentPhotoLocationHint = () => {
+    if (!currentPhoto?.captureCoordinates) {
+      return;
+    }
+
+    setLocationMetadataHintDismissedByPhotoId((current) => {
+      if (current[currentPhoto.id]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [currentPhoto.id]: true,
+      };
+    });
+  };
+
+  const clearRestaurantSearchState = () => {
+    setShowNearbyPlaces(false);
+    setNearbyResults([]);
+    setSearchResults([]);
+    setSearchErrorMessage(null);
+    setLocationPermissionNeedsSettings(false);
+  };
+
+  const handleSearchByText = async (collapseAfterSearch = false) => {
+    if (!isOnline) {
+      setSearchErrorMessage('Google Places search requires internet connection.');
+      return;
+    }
+
+    if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+      trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'client_estimate',
+        limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
+        metric: 'places_queries',
+        remaining: placesQueriesRemaining,
+        source: 'PhotoProcessingScreen',
+        used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
+      });
+      setSearchErrorMessage('Monthly food place search limit reached.');
+      return;
+    }
+
+    const trimmedQuery = restaurantSearchQuery.trim();
+    const trimmedLocation = manualLocation.trim();
+    if (!trimmedQuery && !trimmedLocation) {
+      setSearchErrorMessage('Enter a place name/type or a location to search.');
+      return;
+    }
+
+    if (collapseAfterSearch) {
+      setIsSearchExpanded(false);
+    }
+
+    setIsSearchingRestaurants(true);
+    setShowNearbyPlaces(true);
+    setSearchErrorMessage(null);
+    setLocationPermissionNeedsSettings(false);
+    dismissCurrentPhotoLocationHint();
+
+    let didAttemptPlacesQuery = false;
+
+    try {
+      let nextReferenceCoords = effectiveReferenceCoords;
+      if (trimmedLocation) {
+        nextReferenceCoords = await geocodeLocation(trimmedLocation);
+      }
+
+      setReferenceCoords(nextReferenceCoords);
+      didAttemptPlacesQuery = true;
+      const results = await searchAndCacheRestaurantsByText({
+        query: trimmedQuery || 'food',
+        location: trimmedLocation || undefined,
+        radius: 5000,
+      });
+
+      setSearchResults(results);
+      await restaurantsQuery.refetch();
+    } catch (error) {
+      const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'PhotoProcessingScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
+
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
+          ? error.message
+          : 'Could not search restaurants.';
+      setSearchErrorMessage(message);
+    } finally {
+      setIsSearchingRestaurants(false);
+      if (didAttemptPlacesQuery) {
+        await queryClient.invalidateQueries({
+          queryKey: ['feature', 'usage', 'monthly'],
+        });
+      }
+    }
+  };
+
+  const handleSearchNearby = async () => {
+    if (!isOnline) {
+      setSearchErrorMessage('Nearby search requires internet connection.');
+      return;
+    }
+
+    if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+      trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'client_estimate',
+        limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
+        metric: 'places_queries',
+        remaining: placesQueriesRemaining,
+        source: 'PhotoProcessingScreen',
+        used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
+      });
+      setSearchErrorMessage('Monthly food place search limit reached.');
+      return;
+    }
+
+    setShowNearbyPlaces(true);
+    setSearchErrorMessage(null);
+    setLocationPermissionNeedsSettings(false);
+    setIsGettingLocation(true);
+    dismissCurrentPhotoLocationHint();
+
+    let didAttemptPlacesQuery = false;
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        setLocationPermissionNeedsSettings(permission.canAskAgain === false);
+        setSearchErrorMessage(
+          permission.canAskAgain === false
+            ? 'Location permission is blocked. Enable it in device settings.'
+            : 'Location permission is required to find nearby places.',
+        );
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const coords = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+      setReferenceCoords(coords);
+
+      setIsSearchingNearbyRestaurants(true);
+      didAttemptPlacesQuery = true;
+      const results = await searchAndCacheNearbyRestaurants({
+        latitude: coords.lat,
+        longitude: coords.lng,
+        radius: 5000,
+      });
+
+      setNearbyResults(results);
+      await restaurantsQuery.refetch();
+    } catch (error) {
+      const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'PhotoProcessingScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
+
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
+          ? error.message
+          : 'Could not load nearby restaurants.';
+      setSearchErrorMessage(message);
+    } finally {
+      setIsGettingLocation(false);
+      setIsSearchingNearbyRestaurants(false);
+      if (didAttemptPlacesQuery) {
+        await queryClient.invalidateQueries({
+          queryKey: ['feature', 'usage', 'monthly'],
+        });
+      }
+    }
+  };
+
+  const handleSelectRestaurant = (restaurant: RestaurantRecord) => {
+    const isChangingRestaurant =
+      Boolean(currentRestaurantForm?.restaurantId) && currentRestaurantForm?.restaurantId !== restaurant.id;
+
+    updateCurrentRestaurantForm({
+      restaurantId: restaurant.id,
+      restaurantName: restaurant.name,
+      ...(isChangingRestaurant
+        ? {
+            menuItemId: '',
+            menuItemName: '',
+            rating: 3,
+            description: '',
+            notes: '',
+          }
+        : {}),
+    });
+    setMenuItemSearchQuery('');
+    setNewMenuItemName('');
+    setMenuItemMode('existing');
+    setIsEditingMenuItemInline(false);
+    setEditingMenuItemName('');
+    setErrorMessage(null);
+    setSearchErrorMessage(null);
+  };
+
+  const clearSelectedMenuItem = () => {
+    updateCurrentRestaurantForm({
+      menuItemId: '',
+      menuItemName: '',
+      rating: 3,
+      description: '',
+      notes: '',
+    });
+    setMenuItemSearchQuery('');
+    setNewMenuItemName('');
+    setMenuItemMode('existing');
+    setIsEditingMenuItemInline(false);
+    setEditingMenuItemName('');
+    setErrorMessage(null);
+  };
+
+  const handleSelectMenuItem = (menuItem: MenuItemRecord) => {
+    const isAlreadySelected =
+      currentRestaurantForm?.menuItemId === menuItem.id ||
+      (!currentRestaurantForm?.menuItemId &&
+        normalizeSelectionLabel(currentRestaurantForm?.menuItemName ?? '') === normalizeSelectionLabel(menuItem.name));
+
+    if (isAlreadySelected) {
+      clearSelectedMenuItem();
+      return;
+    }
+
+    const isChangingMenuItem =
+      currentRestaurantForm?.menuItemId !== menuItem.id &&
+      normalizeSelectionLabel(currentRestaurantForm?.menuItemName ?? '') !== normalizeSelectionLabel(menuItem.name);
+
+    updateCurrentRestaurantForm({
+      menuItemId: menuItem.id,
+      menuItemName: menuItem.name,
+      ...(isChangingMenuItem
+        ? {
+            rating: 3,
+            description: '',
+            notes: '',
+          }
+        : {}),
+    });
+    setMenuItemSearchQuery(menuItem.name);
+    setNewMenuItemName('');
+    setMenuItemMode('existing');
+    setIsEditingMenuItemInline(false);
+    setEditingMenuItemName(menuItem.name);
+    setErrorMessage(null);
+  };
+
+  const buildRestaurantSearchOption = (
+    { restaurant, distance }: VisitRestaurantWithDistance,
+    source: 'search' | 'saved',
+  ): VisitRestaurantSearchOption => {
+    const isSelected = currentRestaurantForm?.restaurantId === restaurant.id;
+
+    return {
+      description: buildVisitRestaurantDescription(restaurant, distance),
+      key: `${source}-${restaurant.id}`,
+      onPress: () => {
+        handleSelectRestaurant(restaurant);
+      },
+      selected: isSelected,
+      title: restaurant.name,
+      trailing: <VisitRestaurantOptionTrailing restaurant={restaurant} selected={isSelected} />,
+    };
+  };
+
+  const appendAssets = async (assets: ImagePicker.ImagePickerAsset[]) => {
     if (assets.length === 0) {
       return;
     }
+
+    const resolvedAssets = await Promise.all(
+      assets.map(async (asset) => ({
+        asset,
+        captureDate: await resolvePhotoCaptureDate(asset),
+        captureCoordinates: extractCaptureCoordinates(asset),
+      })),
+    );
 
     setPhotos((current) => {
       const existingUris = new Set(current.map((photo) => photo.uri));
       const nextPhotos = [...current];
       const timestamp = Date.now();
 
-      assets.forEach((asset, index) => {
+      resolvedAssets.forEach(({ asset, captureDate, captureCoordinates }, index) => {
         if (!asset.uri || existingUris.has(asset.uri)) {
           return;
         }
@@ -1224,8 +1610,8 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           uri: asset.uri,
           name: asset.fileName?.trim() || buildDraftPhotoName(asset.uri),
           mimeType: asset.mimeType || inferImageMimeType(asset.uri),
-          captureDate: extractCaptureDate(asset),
-          captureCoordinates: extractCaptureCoordinates(asset),
+          captureDate,
+          captureCoordinates,
         });
         existingUris.add(asset.uri);
       });
@@ -1295,7 +1681,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           photoSource: source,
           source: 'PhotoProcessingScreen',
         });
-        appendAssets(pickerResult.assets);
+        await appendAssets(pickerResult.assets);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not select images.';
         trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_FAILED', {
@@ -1332,15 +1718,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       delete next[photoId];
       return next;
     });
-    setDateMetadataHintDismissedByPhotoId((current) => {
-      if (!current[photoId]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[photoId];
-      return next;
-    });
     setLocationMetadataHintDismissedByPhotoId((current) => {
       if (!current[photoId]) {
         return current;
@@ -1358,7 +1735,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     }
 
     if (!form.menuItemName.trim()) {
-      return 'Enter a menu item name before continuing.';
+      return 'Select a menu item before continuing.';
     }
 
     if (form.rating < 1 || form.rating > 5) {
@@ -1457,6 +1834,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         items: visitGroup.items.map((entry) => ({
           name: entry.form.menuItemName.trim(),
           rating: entry.form.rating,
+          description: entry.form.description.trim() || undefined,
           notes: entry.form.notes.trim() || undefined,
           photos: [buildPhotoUploadInput(entry.photo)],
         })),
@@ -1597,7 +1975,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     }
   };
 
-  const createMenuItem = async () => {
+  const handleCreateMenuItem = async () => {
     if (!currentRestaurantForm?.restaurantId) {
       setErrorMessage('Select a restaurant before adding a menu item.');
       return;
@@ -1608,13 +1986,28 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       return;
     }
 
-    const currentUserId = getAuthenticatedUserIdOrNull();
     if (!currentUserId) {
       setErrorMessage('Please sign in again to continue.');
       return;
     }
 
-    const menuItemName = menuItemSearchQuery.trim() || currentRestaurantForm.menuItemName.trim();
+    if (matchingMenuItemByName) {
+      const isMatchingItemSelected =
+        currentRestaurantForm?.menuItemId === matchingMenuItemByName.id ||
+        (!currentRestaurantForm?.menuItemId &&
+          normalizeSelectionLabel(currentRestaurantForm?.menuItemName ?? '') ===
+            normalizeSelectionLabel(matchingMenuItemByName.name));
+
+      if (isMatchingItemSelected) {
+        setMenuItemMode('existing');
+        setNewMenuItemName('');
+        return;
+      }
+      handleSelectMenuItem(matchingMenuItemByName);
+      return;
+    }
+
+    const menuItemName = newMenuItemName.trim();
     if (!menuItemName) {
       setErrorMessage('Enter a menu item name first.');
       return;
@@ -1639,15 +2032,82 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         queryKey: ['feature', 'menuItems', currentRestaurantForm.restaurantId],
       });
 
-      updateCurrentRestaurantForm({
-        menuItemName: createdItem.name,
-      });
-      setMenuItemSearchQuery(createdItem.name);
+      handleSelectMenuItem(createdItem);
+      setMenuItemMode('existing');
+      setNewMenuItemName('');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not add menu item.';
       setErrorMessage(message);
     } finally {
       setIsCreatingMenuItem(false);
+    }
+  };
+
+  const handleSaveInlineMenuItemEdit = async () => {
+    if (!selectedMenuItem || !currentRestaurantForm?.restaurantId) {
+      return;
+    }
+
+    if (!isOnline) {
+      setErrorMessage('Editing menu items requires internet connection.');
+      return;
+    }
+
+    const trimmedName = editingMenuItemName.trim();
+    if (!trimmedName) {
+      setErrorMessage('Enter a menu item name first.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsUpdatingMenuItem(true);
+
+    try {
+      await updateCollectionRecord('menu_items', selectedMenuItem.id, {
+        name: trimmedName,
+      });
+
+      queryClient.setQueryData<MenuItemRecord[]>(
+        ['feature', 'menuItems', currentRestaurantForm.restaurantId],
+        (currentItems) =>
+          currentItems?.map((item) =>
+            item.id === selectedMenuItem.id ? { ...item, name: trimmedName } : item,
+          ) ?? currentItems,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ['feature', 'menuItems', currentRestaurantForm.restaurantId],
+      });
+
+      setRestaurantForms((current) => {
+        const next: Record<string, RestaurantPhotoForm> = {};
+        for (const [photoId, form] of Object.entries(current)) {
+          const matchesById = form.menuItemId === selectedMenuItem.id;
+          const matchesByLegacyName =
+            !form.menuItemId &&
+            form.restaurantId === currentRestaurantForm.restaurantId &&
+            normalizeSelectionLabel(form.menuItemName) === normalizeSelectionLabel(selectedMenuItem.name);
+
+          next[photoId] =
+            matchesById || matchesByLegacyName
+              ? {
+                  ...form,
+                  menuItemId: selectedMenuItem.id,
+                  menuItemName: trimmedName,
+                }
+              : form;
+        }
+
+        return next;
+      });
+      setMenuItemSearchQuery(trimmedName);
+      setNewMenuItemName('');
+      setEditingMenuItemName(trimmedName);
+      setIsEditingMenuItemInline(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not update menu item.';
+      setErrorMessage(message);
+    } finally {
+      setIsUpdatingMenuItem(false);
     }
   };
 
@@ -1718,6 +2178,47 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     sectionCard: {
       gap: theme.spacing.sm,
     },
+    listCard: {
+      gap: theme.spacing.xs,
+    },
+    statusCard: {
+      gap: theme.spacing.xs,
+    },
+    searchHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+    },
+    searchHeaderTitle: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+    },
+    searchHeaderButton: {
+      alignItems: 'center',
+      borderColor: theme.colors.border.default,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: theme.spacing.xxs,
+      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: theme.spacing.xxs,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+    },
+    locationField: {
+      flex: 1,
+    },
+    locationInput: {
+      height: theme.sizes.inputMinHeight,
+      minHeight: theme.sizes.inputMinHeight,
+    },
+    locationAction: {
+      alignSelf: 'flex-end',
+      minWidth: 96,
+    },
     listSection: {
       gap: theme.spacing.xs,
     },
@@ -1732,23 +2233,18 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.xs,
     },
-    menuSuggestionTitle: {
+    menuModeControl: {
       marginTop: theme.spacing.xxs,
     },
-    createMenuItemButton: {
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      minHeight: theme.sizes.secondaryButtonHeight,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
+    menuSearchInput: {
+      marginTop: theme.spacing.xxs,
     },
-    metadataActionButton: {
-      alignSelf: 'flex-start',
+    inlineEditorActions: {
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+    },
+    inlineEditorAction: {
+      flex: 1,
     },
     notesInput: {
       minHeight: 96,
@@ -1844,8 +2340,20 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setCurrentPhotoIndex(0);
               setRestaurantForms({});
               setQuickTrackForms({});
-              setDateMetadataHintDismissedByPhotoId({});
               setLocationMetadataHintDismissedByPhotoId({});
+              setRestaurantSearchQuery('');
+              setManualLocation('');
+              setShowNearbyPlaces(false);
+              setReferenceCoords(null);
+              setSearchResults([]);
+              setNearbyResults([]);
+              setSearchErrorMessage(null);
+              setLocationPermissionNeedsSettings(false);
+              setMenuItemSearchQuery('');
+              setMenuItemMode('existing');
+              setNewMenuItemName('');
+              setIsEditingMenuItemInline(false);
+              setEditingMenuItemName('');
               setErrorMessage(null);
             }}
             title="Restaurant Visit"
@@ -1864,8 +2372,20 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setCurrentPhotoIndex(0);
               setRestaurantForms({});
               setQuickTrackForms({});
-              setDateMetadataHintDismissedByPhotoId({});
               setLocationMetadataHintDismissedByPhotoId({});
+              setRestaurantSearchQuery('');
+              setManualLocation('');
+              setShowNearbyPlaces(false);
+              setReferenceCoords(null);
+              setSearchResults([]);
+              setNearbyResults([]);
+              setSearchErrorMessage(null);
+              setLocationPermissionNeedsSettings(false);
+              setMenuItemSearchQuery('');
+              setMenuItemMode('existing');
+              setNewMenuItemName('');
+              setIsEditingMenuItemInline(false);
+              setEditingMenuItemName('');
               setErrorMessage(null);
             }}
             title="Quick Track Items"
@@ -2018,23 +2538,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
   if (step === 'process' && processType && currentPhoto) {
     const isLastPhoto = currentPhotoIndex === photos.length - 1;
-    const captureDateLabel = currentPhoto.captureDate
-      ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(currentPhoto.captureDate)
-      : null;
     const captureDateValue = currentPhoto.captureDate ? formatDateToLocalDateString(currentPhoto.captureDate) : null;
     const captureCoordinatesLabel = currentPhoto.captureCoordinates
       ? formatCoordinatesForDisplay(currentPhoto.captureCoordinates)
       : null;
-    const showDateMetadataHint =
-      Boolean(captureDateValue) && !dateMetadataHintDismissedByPhotoId[currentPhoto.id];
     const showLocationMetadataHint =
       Boolean(captureCoordinatesLabel) && !locationMetadataHintDismissedByPhotoId[currentPhoto.id];
-    const selectedRestaurant = (restaurantsQuery.data ?? []).find(
-      (restaurant) => restaurant.id === currentRestaurantForm?.restaurantId,
-    );
-    const hasMatchingMenuItem = (menuItemsQuery.data ?? []).some(
-      (item) => item.name.trim().toLowerCase() === menuItemSearchQuery.trim().toLowerCase(),
-    );
 
     return (
       <FeatureFormScreenScaffold
@@ -2079,219 +2588,299 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
         <Card style={styles.photoPreviewCard}>
           <Image source={{ uri: currentPhoto.uri }} style={styles.largePhotoPreview} />
-          <Text tone="secondary" variant="bodySm">
-            {currentPhoto.name}
-          </Text>
-          {captureDateLabel ? (
-            <Text tone="secondary" variant="bodySm">
-              Captured: {captureDateLabel}
-            </Text>
-          ) : null}
         </Card>
 
         {processType === 'restaurant' ? (
           <>
-            <Card style={styles.sectionCard}>
-              <Text variant="label">Restaurant</Text>
-              {showLocationMetadataHint ? (
-                <Text tone="info" variant="bodySm">
-                  Location data grabbed from image metadata: {captureCoordinatesLabel}. Nearby restaurants are shown
-                  first.
-                </Text>
-              ) : null}
-              <Input
-                autoCapitalize="words"
-                onChangeText={(value) => {
-                  setRestaurantSearchQuery(value);
-                  if (currentPhoto.captureCoordinates) {
-                    setLocationMetadataHintDismissedByPhotoId((current) => {
-                      if (current[currentPhoto.id]) {
-                        return current;
-                      }
-                      return {
-                        ...current,
-                        [currentPhoto.id]: true,
-                      };
-                    });
-                  }
-                }}
-                placeholder="Search restaurants..."
-                value={restaurantSearchQuery}
-              />
-              {selectedRestaurant ? (
-                <View style={styles.selectedHint}>
-                  <Ionicons color={theme.colors.text.success} name="checkmark-circle" size={15} />
-                  <Text tone="success">Selected: {selectedRestaurant.name}</Text>
-                </View>
-              ) : null}
-              {restaurantsQuery.isLoading ? <LoadingState label="Loading restaurants..." /> : null}
-              {restaurantsQuery.isError ? <Text tone="danger">Could not load restaurants.</Text> : null}
-              <View style={styles.listSection}>
-                {filteredRestaurants.map(({ restaurant, distanceMiles }) => {
-                  const description = buildRestaurantDescription(restaurant, distanceMiles);
-                  const isSelected = currentRestaurantForm?.restaurantId === restaurant.id;
-                  return (
-                    <ListItem
-                      description={description}
-                      key={restaurant.id}
-                      onPress={() => {
-                        updateCurrentRestaurantForm({
-                          restaurantId: restaurant.id,
-                          restaurantName: restaurant.name,
-                        });
-                        setMenuItemSearchQuery('');
-                        setErrorMessage(null);
-                      }}
-                      style={
-                        isSelected
-                          ? {
-                              backgroundColor: theme.colors.status.successBg,
-                              borderColor: theme.colors.status.successBorder,
-                            }
-                          : undefined
-                      }
-                      title={restaurant.name}
-                      trailing={
-                        isSelected ? (
-                          <Ionicons color={theme.colors.text.success} name="checkmark-circle" size={18} />
-                        ) : undefined
-                      }
-                    />
-                  );
-                })}
-              </View>
-              {!restaurantsQuery.isLoading && filteredRestaurants.length === 0 ? (
-                <Text tone="secondary">No restaurants found for that search.</Text>
-              ) : null}
-            </Card>
+            <VisitMetadataCard
+              detectedDateValue={captureDateValue}
+              dateLabel="Visit Date"
+              dateModalTitle="Select visit date"
+              dateValue={currentRestaurantForm?.date ?? getTodayLocalDateString()}
+              onDateChange={(value) => {
+                updateCurrentRestaurantForm({ date: value });
+              }}
+              onVisibilityChange={(value) => {
+                if (value === 'friends' || value === 'private') {
+                  setVisitVisibility(value);
+                }
+              }}
+              visibilityValue={visitVisibility}
+            />
 
-            <Card style={styles.sectionCard}>
-              <Text variant="label">Menu Item</Text>
-              <Input
-                autoCapitalize="words"
-                label="Item name"
-                onChangeText={(value) => {
-                  updateCurrentRestaurantForm({ menuItemName: value });
-                  setMenuItemSearchQuery(value);
-                }}
-                placeholder="Enter or select item name"
-                value={currentRestaurantForm?.menuItemName ?? ''}
-              />
-              <Text style={styles.menuSuggestionTitle} tone="secondary" variant="bodySm">
-                Suggestions
-              </Text>
-              {menuItemsQuery.isLoading ? <LoadingState label="Loading menu items..." /> : null}
-              {menuItemsQuery.isError ? <Text tone="danger">Could not load menu items.</Text> : null}
-              <View style={styles.listSection}>
-                {filteredMenuItems.map((menuItem) => {
-                  const isSelected = menuItem.name === (currentRestaurantForm?.menuItemName ?? '');
-                  return (
-                    <ListItem
-                      description="Menu item"
-                      key={menuItem.id}
-                      onPress={() => {
-                        updateCurrentRestaurantForm({ menuItemName: menuItem.name });
-                        setMenuItemSearchQuery(menuItem.name);
-                        setErrorMessage(null);
-                      }}
-                      style={
-                        isSelected
-                          ? {
-                              backgroundColor: theme.colors.status.successBg,
-                              borderColor: theme.colors.status.successBorder,
-                            }
-                          : undefined
-                      }
-                      title={menuItem.name}
-                      trailing={
-                        isSelected ? (
-                          <Ionicons color={theme.colors.text.success} name="checkmark-circle" size={18} />
-                        ) : undefined
-                      }
-                    />
-                  );
-                })}
-              </View>
-              {currentRestaurantForm?.restaurantId &&
-              menuItemSearchQuery.trim() &&
-              !hasMatchingMenuItem &&
-              isOnline ? (
+            <VisitRestaurantSearchSection
+              connectivityWarningMessage={
+                !isOnline ? 'Google Places search requires internet connection.' : null
+              }
+              currentLocationDisabled={
+                !isOnline ||
+                isGettingLocation ||
+                isSearchingNearbyRestaurants ||
+                (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+              }
+              currentLocationLoading={isGettingLocation || isSearchingNearbyRestaurants}
+              headerAccessory={
                 <Pressable
                   accessibilityRole="button"
-                  disabled={isCreatingMenuItem}
                   onPress={() => {
-                    void createMenuItem();
+                    setIsSearchExpanded((currentValue) => !currentValue);
                   }}
-                  style={[styles.createMenuItemButton, isCreatingMenuItem ? { opacity: 0.55 } : null]}
+                  style={styles.searchHeaderButton}
+                  testID="process-photos-search-toggle"
                 >
-                  <Ionicons color={theme.colors.text.secondary} name="add-outline" size={16} />
-                  <Text>{isCreatingMenuItem ? 'Adding...' : 'Add as New Menu Item'}</Text>
-                </Pressable>
-              ) : null}
-            </Card>
-
-            <Card style={styles.sectionCard}>
-              <Text variant="label">Rating</Text>
-              <RatingSelector
-                onChange={(value) => {
-                  updateCurrentRestaurantForm({ rating: value });
-                }}
-                value={currentRestaurantForm?.rating ?? 3}
-              />
-              <Input
-                label="Date (YYYY-MM-DD)"
-                onChangeText={(value) => {
-                  updateCurrentRestaurantForm({ date: value });
-                  if (captureDateValue && value !== captureDateValue) {
-                    setDateMetadataHintDismissedByPhotoId((current) => {
-                      if (current[currentPhoto.id]) {
-                        return current;
-                      }
-                      return {
-                        ...current,
-                        [currentPhoto.id]: true,
-                      };
-                    });
-                  }
-                }}
-                placeholder="YYYY-MM-DD"
-                value={currentRestaurantForm?.date ?? getTodayLocalDateString()}
-              />
-              {showDateMetadataHint ? (
-                <>
                   <Text tone="secondary" variant="bodySm">
-                    Date data grabbed from image metadata.
+                    {isSearchExpanded ? 'Collapse' : 'Expand'}
                   </Text>
-                </>
-              ) : null}
-              {captureDateValue ? (
-                <Button
-                  label="Use Photo Date"
-                  onPress={() => {
-                    updateCurrentRestaurantForm({ date: captureDateValue });
-                    setDateMetadataHintDismissedByPhotoId((current) => ({
-                      ...current,
-                      [currentPhoto.id]: false,
-                    }));
-                    setErrorMessage(null);
-                  }}
-                  style={styles.metadataActionButton}
-                  variant="secondary"
-                />
-              ) : null}
-              <Input
-                inputStyle={styles.notesInput}
-                label="Notes"
-                multiline
-                onChangeText={(value) => {
-                  updateCurrentRestaurantForm({ notes: value });
-                }}
-                placeholder="Optional notes"
-                value={currentRestaurantForm?.notes ?? ''}
-              />
-            </Card>
+                  <Ionicons
+                    color={theme.colors.text.secondary}
+                    name={isSearchExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                    size={14}
+                  />
+                </Pressable>
+              }
+              locationMetadataHintText={
+                showLocationMetadataHint
+                  ? `Using screenshot location metadata: ${captureCoordinatesLabel}. Nearby saved restaurants are shown first.`
+                  : null
+              }
+              locationPermissionNeedsSettings={locationPermissionNeedsSettings}
+              manualLocation={manualLocation}
+              onClearSearchResults={clearRestaurantSearchState}
+              onManualLocationChange={(value) => {
+                setManualLocation(value);
+                dismissCurrentPhotoLocationHint();
+              }}
+              onOpenLocationSettings={() => {
+                void Linking.openSettings();
+              }}
+              onSearchPress={() => {
+                void handleSearchByText(true);
+              }}
+              onSearchQueryChange={(value) => {
+                setRestaurantSearchQuery(value);
+                dismissCurrentPhotoLocationHint();
+              }}
+              onUseCurrentLocationPress={() => {
+                void handleSearchNearby();
+              }}
+              quotaWarningMessage={
+                isOnline && isPlacesQuotaReached
+                  ? shouldEnforceUsageLimitsClientSide
+                    ? 'Monthly food place search limit reached.'
+                    : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
+                  : null
+              }
+              savedOptions={displayedSavedRestaurants.map((restaurant) =>
+                buildRestaurantSearchOption(restaurant, 'saved'),
+              )}
+              savedResultsErrorMessage={restaurantsQuery.isError ? 'Could not load restaurants.' : null}
+              savedResultsLoading={restaurantsQuery.isLoading}
+              searchButtonDisabled={createVisitSearchUi.isSearchDisabled}
+              searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
+              searchButtonLoading={isSearchingRestaurants}
+              searchErrorMessage={searchErrorMessage}
+              searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
+              searchQuery={restaurantSearchQuery}
+              searchResultsOptions={displayedNearbyRestaurants.map((restaurant) =>
+                buildRestaurantSearchOption(restaurant, 'search'),
+              )}
+              selectedRestaurantName={selectedRestaurant?.name ?? null}
+              showSearchResults={showNearbyPlaces}
+              upgradePromptDescription={
+                shouldShowPlacesUpgradePrompt
+                  ? isPlacesQuotaReached
+                    ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
+                    : `Only ${placesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
+                  : null
+              }
+              upgradePromptTitle={
+                shouldShowPlacesUpgradePrompt
+                  ? isPlacesQuotaReached
+                    ? 'Free limit reached'
+                    : 'You are close to your free limit'
+                  : null
+              }
+            />
 
-            <RatingLegend persistenceKey="ui.processPhotos.ratingGuide.expanded" />
+            {selectedRestaurant ? (
+              <Card style={styles.sectionCard}>
+                <Text variant="label">Menu Item</Text>
+                <Text tone="secondary" variant="bodySm">
+                  Select an existing item for {selectedRestaurant.name}, or create one if it is missing.
+                </Text>
+
+                <SegmentedControl
+                  containerStyle={styles.menuModeControl}
+                  onChange={setMenuItemMode}
+                  options={[
+                    { label: 'Existing Items', value: 'existing' },
+                    { label: 'Create New', value: 'create' },
+                  ]}
+                  value={menuItemMode}
+                />
+
+                {menuItemMode === 'existing' ? (
+                  <>
+                    <Input
+                      autoCapitalize="words"
+                      containerStyle={styles.menuSearchInput}
+                      onChangeText={setMenuItemSearchQuery}
+                      placeholder="Search menu items..."
+                      value={menuItemSearchQuery}
+                    />
+                    {menuItemsQuery.isLoading ? <LoadingState label="Loading menu items..." /> : null}
+                    {menuItemsQuery.isError ? <Text tone="danger">Could not load menu items.</Text> : null}
+                    {!menuItemsQuery.isLoading && !menuItemsQuery.isError ? (
+                      displayedMenuItems.length === 0 ? (
+                        <EmptyState
+                          description={
+                            menuItemSearchQuery.trim()
+                              ? 'No matching items found. Try another search or create a new one.'
+                              : 'No menu items yet. Create one to continue.'
+                          }
+                          title="No menu items available"
+                        />
+                      ) : (
+                        <View style={styles.listSection}>
+                          {displayedMenuItems.map((menuItem) => {
+                            const isSelected =
+                              (currentRestaurantForm?.menuItemId
+                                ? menuItem.id === currentRestaurantForm.menuItemId
+                                : normalizeSelectionLabel(menuItem.name) ===
+                                  normalizeSelectionLabel(currentRestaurantForm?.menuItemName ?? ''));
+                            const isSelectedUserCreated =
+                              isSelected && menuItem.createdBy === currentUserId;
+                            return (
+                              <View key={menuItem.id} style={styles.listSection}>
+                                <VisitMenuItemOptionRow
+                                  description={menuItem.description}
+                                  name={menuItem.name}
+                                  onEditPress={
+                                    isSelectedUserCreated
+                                      ? () => {
+                                          const nextValue = !isEditingMenuItemInline;
+                                          setIsEditingMenuItemInline(nextValue);
+                                          setEditingMenuItemName(menuItem.name);
+                                        }
+                                      : undefined
+                                  }
+                                  onPress={() => {
+                                    handleSelectMenuItem(menuItem);
+                                  }}
+                                  selected={isSelected}
+                                  visibility={menuItem.visibility}
+                                />
+                                {isSelectedUserCreated && isEditingMenuItemInline ? (
+                                  <Card style={styles.sectionCard}>
+                                    <Input
+                                      autoCapitalize="words"
+                                      label="Edit Menu Item"
+                                      onChangeText={setEditingMenuItemName}
+                                      placeholder="Menu item name"
+                                      value={editingMenuItemName}
+                                    />
+                                    <View style={styles.inlineEditorActions}>
+                                      <Button
+                                        disabled={!editingMenuItemName.trim() || isUpdatingMenuItem || !isOnline}
+                                        label="Save"
+                                        loading={isUpdatingMenuItem}
+                                        onPress={() => {
+                                          void handleSaveInlineMenuItemEdit();
+                                        }}
+                                        style={styles.inlineEditorAction}
+                                      />
+                                      <Button
+                                        label="Cancel"
+                                        onPress={() => {
+                                          setIsEditingMenuItemInline(false);
+                                          setEditingMenuItemName(menuItem.name);
+                                          setErrorMessage(null);
+                                        }}
+                                        style={styles.inlineEditorAction}
+                                        variant="secondary"
+                                      />
+                                    </View>
+                                  </Card>
+                                ) : null}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Input
+                      autoCapitalize="words"
+                      label="Menu Item Name"
+                      onChangeText={setNewMenuItemName}
+                      placeholder="Enter a menu item name"
+                      value={newMenuItemName}
+                    />
+                    {matchingMenuItemByName ? (
+                      <Text tone="secondary" variant="bodySm">
+                        That menu item already exists for this restaurant. Select it instead of creating a duplicate.
+                      </Text>
+                    ) : null}
+                    {!isOnline && !matchingMenuItemByName ? (
+                      <Text tone="warning">You are offline. Connect to create a new menu item.</Text>
+                    ) : null}
+                    <Button
+                      disabled={
+                        !newMenuItemName.trim() ||
+                        isCreatingMenuItem ||
+                        (!isOnline && !matchingMenuItemByName)
+                      }
+                      label={
+                        matchingMenuItemByName
+                          ? 'Select Existing Item'
+                          : isCreatingMenuItem
+                            ? 'Creating...'
+                            : 'Create Menu Item'
+                      }
+                      loading={isCreatingMenuItem}
+                      onPress={() => {
+                        void handleCreateMenuItem();
+                      }}
+                    />
+                  </>
+                )}
+              </Card>
+            ) : null}
+
+            {currentRestaurantForm?.menuItemName.trim() ? (
+              <>
+                <RatingLegend initiallyExpanded />
+                <Card style={styles.sectionCard}>
+                  <Text variant="label">{currentRestaurantForm.menuItemName}</Text>
+                  <RatingSelector
+                    onChange={(value) => {
+                      updateCurrentRestaurantForm({ rating: value });
+                    }}
+                    value={currentRestaurantForm?.rating ?? 3}
+                  />
+                  <Input
+                    label="Description"
+                    onChangeText={(value) => {
+                      updateCurrentRestaurantForm({ description: value });
+                    }}
+                    placeholder="Optional description or modification"
+                    value={currentRestaurantForm?.description ?? ''}
+                  />
+                  <Input
+                    inputStyle={styles.notesInput}
+                    label="Notes"
+                    multiline
+                    onChangeText={(value) => {
+                      updateCurrentRestaurantForm({ notes: value });
+                    }}
+                    placeholder="Optional notes"
+                    value={currentRestaurantForm?.notes ?? ''}
+                  />
+                </Card>
+              </>
+            ) : null}
           </>
         ) : (
           <>
@@ -2350,47 +2939,15 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                   value={currentQuickTrackForm?.visibility ?? resolveDefaultQuickTrackVisibility()}
                 />
               </View>
-              <Input
-                label="Date (YYYY-MM-DD)"
-                onChangeText={(value) => {
+              <PhotoDetectedDateField
+                detectedDateValue={captureDateValue}
+                label="Date"
+                modalTitle="Select item date"
+                onChange={(value) => {
                   updateCurrentQuickTrackForm({ date: value });
-                  if (captureDateValue && value !== captureDateValue) {
-                    setDateMetadataHintDismissedByPhotoId((current) => {
-                      if (current[currentPhoto.id]) {
-                        return current;
-                      }
-                      return {
-                        ...current,
-                        [currentPhoto.id]: true,
-                      };
-                    });
-                  }
                 }}
-                placeholder="YYYY-MM-DD"
                 value={currentQuickTrackForm?.date ?? getTodayLocalDateString()}
               />
-              {showDateMetadataHint ? (
-                <>
-                  <Text tone="secondary" variant="bodySm">
-                    Date data grabbed from image metadata.
-                  </Text>
-                </>
-              ) : null}
-              {captureDateValue ? (
-                <Button
-                  label="Use Photo Date"
-                  onPress={() => {
-                    updateCurrentQuickTrackForm({ date: captureDateValue });
-                    setDateMetadataHintDismissedByPhotoId((current) => ({
-                      ...current,
-                      [currentPhoto.id]: false,
-                    }));
-                    setErrorMessage(null);
-                  }}
-                  style={styles.metadataActionButton}
-                  variant="secondary"
-                />
-              ) : null}
               <Input
                 label="Location (Optional)"
                 onChangeText={(value) => {
@@ -2411,7 +2968,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               />
             </Card>
 
-            <RatingLegend persistenceKey="ui.processPhotos.quickTrack.ratingGuide.expanded" />
+            <RatingLegend />
           </>
         )}
       </FeatureFormScreenScaffold>
@@ -2493,15 +3050,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           <>
             <Card style={styles.reviewCard}>
               <Text variant="label">Visit Visibility</Text>
-              <VisibilityOptionSelector
-                onChange={(value) => {
-                  if (value === 'friends' || value === 'private') {
-                    setVisitVisibility(value);
-                  }
-                }}
-                options={['friends', 'private']}
-                value={visitVisibility}
-              />
+              <Text tone="secondary">{visitVisibility === 'private' ? 'Private' : 'Friends'}</Text>
             </Card>
 
             {restaurantReviewGroups.map((group) => (
@@ -2516,6 +3065,11 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                       <Text tone="secondary" variant="bodySm">
                         Rating {item.form.rating}/5
                       </Text>
+                      {item.form.description.trim() ? (
+                        <Text tone="secondary" variant="bodySm">
+                          {item.form.description.trim()}
+                        </Text>
+                      ) : null}
                       {item.form.notes.trim() ? (
                         <Text tone="secondary" variant="bodySm">
                           {item.form.notes.trim()}

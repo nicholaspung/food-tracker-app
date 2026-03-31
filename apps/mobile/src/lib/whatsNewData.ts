@@ -10,6 +10,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.13',
+    date: '2026-03-30',
+    title: 'Photo Processing Restaurant Search & Menu Item Picker',
+    summary:
+      'The photo scanning flow now lets you search for restaurants and pick existing menu items — the same experience you get when logging a visit manually. Auto-detected photo dates also show a clearer hint across all entry screens.',
+    features: [
+      'Restaurant search in the photo processing flow: search nearby or by name, use your current location, or pick from your saved restaurants — just like the visit wizard.',
+      'Existing menu item picker in the photo processing flow: choose a menu item already on file instead of always typing a new one.',
+      'Menu item descriptions are now visible when selecting items during visit creation.',
+    ],
+    improvements: [
+      'Auto-detected date from photo metadata now shows a helper note ("Auto-set from photo date. You can still change it.") on Quick Track and photo processing screens.',
+      'Removing a photo on the Quick Track screen now correctly clears the auto-detected date.',
+      'Rating guide on the Edit Quick Track screen no longer remembers its expanded/collapsed state between sessions.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.12',
     date: '2026-03-29',
     title: 'Quick Track & Notes E2E Test Coverage',

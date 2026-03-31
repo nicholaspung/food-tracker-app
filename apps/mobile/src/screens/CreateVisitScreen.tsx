@@ -13,11 +13,9 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  CurrentLocationButton,
   EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
-  LocalDatePickerField,
   LoadingState,
   PageErrorToast,
   PhotoAttachmentRow,
@@ -27,8 +25,11 @@ import {
   RatingSelector,
   StepProgressBar,
   UpgradePromptCard,
-  VisibilityBadge,
-  VisibilityOptionSelector,
+  VisitMenuItemOptionRow,
+  VisitMetadataCard,
+  VisitRestaurantOptionTrailing,
+  VisitRestaurantSearchSection,
+  type VisitRestaurantSearchOption,
   type VisibilityOptionValue,
 } from '../components/shared';
 import {
@@ -50,8 +51,6 @@ import {
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import {
-  calculateDistance,
-  formatDistance,
   geocodeLocation,
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
@@ -64,13 +63,21 @@ import {
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import {
+  buildVisitRestaurantDescription,
+  dedupeVisitRestaurants,
+  matchesVisitRestaurantSearch,
+  prioritizeSelectedVisitRestaurant,
+  withVisitRestaurantDistance,
+  type VisitRestaurantWithDistance,
+} from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from './usageUiRules';
 import { useTheme } from '../theme';
-import { Button, Card, Input, ListItem, Text } from '../ui';
+import { Card, Input, Text } from '../ui';
 
 type CreateVisitScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -96,11 +103,6 @@ interface DraftVisitItemPhoto {
   mimeType: string;
 }
 
-interface RestaurantWithDistance {
-  restaurant: RestaurantRecord;
-  distance: number | null;
-}
-
 interface FriendshipRecord {
   id: string;
   user: string;
@@ -117,6 +119,7 @@ interface MenuItemRecord {
   id: string;
   restaurant: string;
   name: string;
+  description?: string;
   createdBy?: string;
   visibility?: "private" | "friends" | "public";
   isFromOCR?: boolean;
@@ -128,18 +131,6 @@ interface MenuReviewRequestRecord {
   id: string;
   restaurant: string;
   status: "pending" | "reviewed" | "dismissed";
-}
-
-type MenuItemVisibility = "private" | "friends" | "public";
-
-function normalizeMenuItemVisibility(
-  value: MenuItemRecord["visibility"],
-): MenuItemVisibility {
-  if (value === "private" || value === "public") {
-    return value;
-  }
-
-  return "friends";
 }
 
 function resolveDefaultVisitVisibility(): VisitVisibility {
@@ -172,121 +163,6 @@ function buildDraftPhotoName(uri: string): string {
   return `visit-item-${Date.now()}.jpg`;
 }
 
-function matchesRestaurantSearch(
-  restaurant: RestaurantRecord,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return (
-    restaurant.name.toLowerCase().includes(normalizedQuery) ||
-    (restaurant.location ?? "").toLowerCase().includes(normalizedQuery) ||
-    (restaurant.city ?? "").toLowerCase().includes(normalizedQuery) ||
-    (restaurant.cuisineType ?? "").toLowerCase().includes(normalizedQuery)
-  );
-}
-
-function dedupeRestaurants(
-  restaurants: RestaurantRecord[],
-): RestaurantRecord[] {
-  const map = new Map<string, RestaurantRecord>();
-  for (const restaurant of restaurants) {
-    if (!map.has(restaurant.id)) {
-      map.set(restaurant.id, restaurant);
-    }
-  }
-  return Array.from(map.values());
-}
-
-function withDistance(
-  restaurants: RestaurantRecord[],
-  referenceCoords: { lat: number; lng: number } | null,
-): RestaurantWithDistance[] {
-  return restaurants
-    .map((restaurant) => {
-      if (
-        !referenceCoords ||
-        typeof restaurant.latitude !== "number" ||
-        typeof restaurant.longitude !== "number"
-      ) {
-        return { restaurant, distance: null };
-      }
-
-      return {
-        restaurant,
-        distance: calculateDistance(
-          referenceCoords.lat,
-          referenceCoords.lng,
-          restaurant.latitude,
-          restaurant.longitude,
-        ),
-      };
-    })
-    .sort((left, right) => {
-      if (left.distance === null && right.distance === null) {
-        return left.restaurant.name.localeCompare(right.restaurant.name);
-      }
-
-      if (left.distance === null) {
-        return 1;
-      }
-
-      if (right.distance === null) {
-        return -1;
-      }
-
-      return left.distance - right.distance;
-    });
-}
-
-function prioritizeSelectedRestaurant(
-  restaurants: RestaurantWithDistance[],
-  selectedRestaurantId: string | null,
-): RestaurantWithDistance[] {
-  if (!selectedRestaurantId) {
-    return restaurants;
-  }
-
-  const selected = restaurants.find(
-    ({ restaurant }) => restaurant.id === selectedRestaurantId,
-  );
-  if (!selected) {
-    return restaurants;
-  }
-
-  return [
-    selected,
-    ...restaurants.filter(
-      ({ restaurant }) => restaurant.id !== selectedRestaurantId,
-    ),
-  ];
-}
-
-function buildRestaurantDescription(
-  restaurant: RestaurantRecord,
-  distance: number | null,
-): string {
-  const parts: string[] = [];
-
-  const location = restaurant.location ?? restaurant.city;
-  if (location) {
-    parts.push(location);
-  }
-
-  if (restaurant.cuisineType) {
-    parts.push(restaurant.cuisineType);
-  }
-
-  if (distance !== null) {
-    parts.push(formatDistance(distance));
-  }
-
-  return parts.join(" • ") || "Restaurant";
-}
-
 function normalizeSelectionLabel(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -297,29 +173,6 @@ function formatVisitCount(count: number): string {
 
 function formatFriendCount(count: number): string {
   return `${count} ${count === 1 ? "friend" : "friends"}`;
-}
-
-function getVisibilityIcon(
-  restaurant: RestaurantRecord,
-): {
-  name: keyof typeof Ionicons.glyphMap;
-  tone: "secondary" | "info" | "success";
-} | null {
-  const visibility =
-    restaurant.visibility ?? (restaurant.isGooglePlace ? "public" : undefined);
-  if (visibility === "private") {
-    return { name: "lock-closed-outline", tone: "secondary" };
-  }
-
-  if (visibility === "friends") {
-    return { name: "people-outline", tone: "info" };
-  }
-
-  if (visibility === "public") {
-    return { name: "earth-outline", tone: "success" };
-  }
-
-  return null;
 }
 
 const WIZARD_STEPS = [
@@ -416,7 +269,7 @@ export function CreateVisitScreen({
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
   const [draftItems, setDraftItems] = useState<DraftVisitItem[]>([]);
   const [visitDate, setVisitDate] = useState(getTodayLocalDateString());
-  const [isVisitDateAutoFilled, setIsVisitDateAutoFilled] = useState(false);
+  const [detectedVisitDateValue, setDetectedVisitDateValue] = useState<string | null>(null);
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>(
     resolveDefaultVisitVisibility,
   );
@@ -622,7 +475,7 @@ export function CreateVisitScreen({
         ? hydratedVisitDate
         : getTodayLocalDateString(),
     );
-    setIsVisitDateAutoFilled(false);
+    setDetectedVisitDateValue(null);
     setVisitVisibility(
       editVisitQuery.data.visibility === "private" ? "private" : "friends",
     );
@@ -659,17 +512,17 @@ export function CreateVisitScreen({
 
   const filteredSavedRestaurants = useMemo(() => {
     return (restaurantsQuery.data ?? []).filter((restaurant) =>
-      matchesRestaurantSearch(restaurant, restaurantSearchQuery),
+      matchesVisitRestaurantSearch(restaurant, restaurantSearchQuery),
     );
   }, [restaurantSearchQuery, restaurantsQuery.data]);
 
   const displayedNearbyRestaurants = useMemo(() => {
-    const combined = dedupeRestaurants([...nearbyResults, ...searchResults]);
+    const combined = dedupeVisitRestaurants([...nearbyResults, ...searchResults]);
     const filtered = combined.filter((restaurant) =>
-      matchesRestaurantSearch(restaurant, restaurantSearchQuery),
+      matchesVisitRestaurantSearch(restaurant, restaurantSearchQuery),
     );
-    return prioritizeSelectedRestaurant(
-      withDistance(filtered, referenceCoords),
+    return prioritizeSelectedVisitRestaurant(
+      withVisitRestaurantDistance(filtered, referenceCoords),
       selectedRestaurantId,
     );
   }, [
@@ -681,8 +534,8 @@ export function CreateVisitScreen({
   ]);
 
   const displayedSavedRestaurants = useMemo(() => {
-    return prioritizeSelectedRestaurant(
-      withDistance(filteredSavedRestaurants, referenceCoords),
+    return prioritizeSelectedVisitRestaurant(
+      withVisitRestaurantDistance(filteredSavedRestaurants, referenceCoords),
       selectedRestaurantId,
     );
   }, [filteredSavedRestaurants, referenceCoords, selectedRestaurantId]);
@@ -1018,64 +871,6 @@ export function CreateVisitScreen({
       borderTopWidth: 1,
       flex: 1,
     },
-    menuItemRow: {
-      alignItems: "stretch",
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    menuItemMainButton: {
-      flex: 1,
-      gap: theme.spacing.xs,
-    },
-    menuItemRowSelected: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-    },
-    menuItemHeaderRow: {
-      alignItems: "center",
-      flexDirection: "row",
-    },
-    menuItemNameWrap: {
-      flex: 1,
-      paddingRight: theme.spacing.xs,
-    },
-    menuItemMetaRow: {
-      alignItems: "center",
-      flexDirection: "row",
-    },
-    menuItemBadgeRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.xs,
-    },
-    menuItemActionsColumn: {
-      alignItems: "flex-end",
-      gap: theme.spacing.xs,
-      justifyContent: "space-between",
-    },
-    menuItemSelectButton: {
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: 24,
-      minWidth: 24,
-      padding: theme.spacing.xxs,
-    },
-    menuItemEditButton: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-      justifyContent: "center",
-      minHeight: 44,
-      minWidth: 44,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xxs,
-    },
     itemCard: {
       gap: theme.spacing.sm,
     },
@@ -1236,7 +1031,7 @@ export function CreateVisitScreen({
     restaurant: RestaurantRecord,
     distance: number | null,
   ) => {
-    const base = buildRestaurantDescription(restaurant, distance);
+    const base = buildVisitRestaurantDescription(restaurant, distance);
     const stats = getRestaurantStats(restaurant.id);
 
     return (
@@ -1274,70 +1069,32 @@ export function CreateVisitScreen({
     );
   };
 
-  const resolveVisibilityIconColor = (
-    tone: "secondary" | "info" | "success",
-  ): string => {
-    if (tone === "info") {
-      return theme.colors.text.info;
-    }
-
-    if (tone === "success") {
-      return theme.colors.text.success;
-    }
-
-    return theme.colors.text.secondary;
-  };
-
-  const renderRestaurantTrailing = (restaurant: RestaurantRecord) => {
-    const visibilityIcon = getVisibilityIcon(restaurant);
-    const showSelected = selectedRestaurantId === restaurant.id;
-    if (!visibilityIcon && !showSelected) {
-      return undefined;
-    }
-
-    return (
-      <View style={styles.listTrailing}>
-        {visibilityIcon ? (
-          <Ionicons
-            color={resolveVisibilityIconColor(visibilityIcon.tone)}
-            name={visibilityIcon.name}
-            size={16}
-          />
-        ) : null}
-        {showSelected ? (
-          <Ionicons
-            color={theme.colors.text.success}
-            name="checkmark-circle"
-            size={18}
-          />
-        ) : null}
-      </View>
-    );
-  };
-
-  const renderRestaurantItem = (
+  const buildRestaurantOption = (
     {
       restaurant,
       distance,
-    }: RestaurantWithDistance,
+    }: VisitRestaurantWithDistance,
     index: number,
     source: "search" | "saved",
-  ) => {
+  ): VisitRestaurantSearchOption => {
     const isSelected = selectedRestaurantId === restaurant.id;
 
-    return (
-      <ListItem
-        description={renderRestaurantListDescription(restaurant, distance)}
-        key={restaurant.id}
-        onPress={() => {
-          handleSelectRestaurant(restaurant);
-        }}
-        style={isSelected ? styles.selectedRestaurantItem : undefined}
-        testID={`create-visit-${source}-restaurant-option-${index}`}
-        title={restaurant.name}
-        trailing={renderRestaurantTrailing(restaurant)}
-      />
-    );
+    return {
+      description: renderRestaurantListDescription(restaurant, distance),
+      key: restaurant.id,
+      onPress: () => {
+        handleSelectRestaurant(restaurant);
+      },
+      selected: isSelected,
+      testID: `create-visit-${source}-restaurant-option-${index}`,
+      title: restaurant.name,
+      trailing: (
+        <VisitRestaurantOptionTrailing
+          restaurant={restaurant}
+          selected={isSelected}
+        />
+      ),
+    };
   };
 
   const toggleMenuItemSelection = (menuItem: MenuItemRecord) => {
@@ -1401,91 +1158,33 @@ export function CreateVisitScreen({
 
   const renderMenuItemCard = (menuItem: MenuItemRecord, index: number) => {
     const isSelected = isMenuItemSelected(menuItem);
-    const visibility = normalizeMenuItemVisibility(menuItem.visibility);
     const isUserCreated = menuItem.createdBy === currentUserId;
 
     return (
-      <View
-        style={[
-          styles.menuItemRow,
-          isSelected ? styles.menuItemRowSelected : null,
-        ]}
-      >
-        <Pressable
-          onPress={() => {
-            toggleMenuItemSelection(menuItem);
-          }}
-          style={styles.menuItemMainButton}
-          testID={`create-visit-menu-item-option-${index}`}
-        >
-          <View style={styles.menuItemHeaderRow}>
-            <View style={styles.menuItemNameWrap}>
-              <Text variant="label">{menuItem.name}</Text>
-            </View>
-          </View>
-
-          <View style={styles.menuItemMetaRow}>
-            <View style={styles.menuItemBadgeRow}>
-              <VisibilityBadge value={visibility} />
-            </View>
-          </View>
-        </Pressable>
-
-        <View collapsable={false} style={styles.menuItemActionsColumn}>
-          <Pressable
-            accessibilityRole="button"
-            hitSlop={12}
-            onPress={() => {
-              toggleMenuItemSelection(menuItem);
-            }}
-            style={styles.menuItemSelectButton}
-            testID={`create-visit-menu-item-select-button-${index}`}
-          >
-            <Ionicons
-              color={
-                isSelected ? theme.colors.text.success : theme.colors.text.muted
-              }
-              name={isSelected ? "checkmark-circle" : "ellipse-outline"}
-              size={20}
-            />
-          </Pressable>
-
-          {isUserCreated ? (
-            <Pressable
-              accessibilityHint="Opens the edit menu item screen"
-              accessibilityLabel={`Edit ${menuItem.name}`}
-              accessibilityRole="button"
-              accessible
-              collapsable={false}
-              hitSlop={12}
-              onPress={(event) => {
-                event.stopPropagation();
+      <VisitMenuItemOptionRow
+        description={menuItem.description}
+        editButtonTestID={isUserCreated ? `create-visit-menu-item-edit-button-${index}` : undefined}
+        name={menuItem.name}
+        onEditPress={
+          isUserCreated
+            ? () => {
                 navigation.navigate("CreateVisitEditMenuItem", {
                   menuItemId: menuItem.id,
                   restaurantId: menuItem.restaurant,
                   initialName: menuItem.name,
-                  initialVisibility: visibility,
+                  initialVisibility: menuItem.visibility,
                 });
-              }}
-              style={styles.menuItemEditButton}
-              testID={`create-visit-menu-item-edit-button-${index}`}
-            >
-              <Ionicons
-                color={theme.colors.text.secondary}
-                name="pencil-outline"
-                size={14}
-              />
-              <Text
-                testID={`create-visit-menu-item-edit-label-${index}`}
-                tone="secondary"
-                variant="bodySm"
-              >
-                Edit
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
+              }
+            : undefined
+        }
+        onPress={() => {
+          toggleMenuItemSelection(menuItem);
+        }}
+        optionTestID={`create-visit-menu-item-option-${index}`}
+        selectButtonTestID={`create-visit-menu-item-select-button-${index}`}
+        selected={isSelected}
+        visibility={menuItem.visibility}
+      />
     );
   };
 
@@ -1711,7 +1410,6 @@ export function CreateVisitScreen({
 
   const handleVisitDateChange = (value: string) => {
     setVisitDate(value);
-    setIsVisitDateAutoFilled(false);
   };
 
   const applyPhotoCaptureDateToVisit = useCallback(
@@ -1721,8 +1419,9 @@ export function CreateVisitScreen({
         return;
       }
 
-      setVisitDate(formatDateToLocalDateString(captureDate));
-      setIsVisitDateAutoFilled(true);
+      const nextDetectedDateValue = formatDateToLocalDateString(captureDate);
+      setVisitDate(nextDetectedDateValue);
+      setDetectedVisitDateValue(nextDetectedDateValue);
     },
     [],
   );
@@ -2297,27 +1996,34 @@ export function CreateVisitScreen({
 
       {step === 0 ? (
         <>
-          {restaurantName.trim() ? (
-            <View style={styles.selectedHint}>
-              <Ionicons
-                color={theme.colors.text.success}
-                name="checkmark-circle"
-                size={16}
-              />
-              <Text tone="success">Selected: {restaurantName}</Text>
-            </View>
-          ) : null}
-
-          <Card style={styles.sectionCard}>
-            <View style={styles.searchHeader}>
-              <View style={styles.searchHeaderTitle}>
-                <Ionicons
-                  color={theme.colors.text.info}
-                  name="search-outline"
-                  size={18}
-                />
-                <Text variant="label">Search for food places</Text>
-              </View>
+          <VisitRestaurantSearchSection
+            connectivityWarningMessage={
+              !isOnline ? "Google Places search requires internet connection." : null
+            }
+            currentLocationDisabled={
+              !isOnline ||
+              isGettingLocation ||
+              isSearchingNearby ||
+              (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
+            }
+            currentLocationLoading={isGettingLocation || isSearchingNearby}
+            footerContent={
+              isSearchExpanded ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    navigation.navigate("CreateVisitAddRestaurant", {
+                      editVisitId,
+                    });
+                  }}
+                  style={styles.inlineLink}
+                  testID="create-visit-add-restaurant-link"
+                >
+                  <Text tone="brand">Add new restaurant</Text>
+                </Pressable>
+              ) : null
+            }
+            headerAccessory={
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -2331,205 +2037,75 @@ export function CreateVisitScreen({
                 </Text>
                 <Ionicons
                   color={theme.colors.text.secondary}
-                  name={
-                    isSearchExpanded
-                      ? "chevron-up-outline"
-                      : "chevron-down-outline"
-                  }
+                  name={isSearchExpanded ? "chevron-up-outline" : "chevron-down-outline"}
                   size={14}
                 />
               </Pressable>
-            </View>
-
-            {!isSearchExpanded ? (
-              <View style={styles.compactSearchRow}>
-                <Input
-                  autoCapitalize="words"
-                  containerStyle={styles.compactSearchField}
-                  onChangeText={setRestaurantSearchQuery}
-                  placeholder="Place name or type"
-                  value={restaurantSearchQuery}
-                />
-                <Button
-                  disabled={createVisitSearchUi.isSearchDisabled}
-                  label={isSearching ? "Searching..." : compactSearchLabel}
-                  loading={isSearching}
-                  onPress={() => {
-                    void handleSearchByText(true);
-                  }}
-                  style={styles.compactSearchButton}
-                />
-              </View>
-            ) : (
-              <>
-                <Input
-                  autoCapitalize="words"
-                  label="Place name or type"
-                  onChangeText={setRestaurantSearchQuery}
-                  placeholder="e.g., Starbucks, cafe, bakery"
-                  value={restaurantSearchQuery}
-                />
-
-                <View style={styles.row}>
-                  <Input
-                    autoCapitalize="words"
-                    containerStyle={styles.locationField}
-                    inputStyle={styles.locationInput}
-                    label="Location (city, zip, or address)"
-                    onChangeText={setManualLocation}
-                    placeholder="e.g., 90210, Los Angeles"
-                    value={manualLocation}
-                  />
-                  <CurrentLocationButton
-                    accessibilityLabel="Use current location"
-                    disabled={
-                      !isOnline ||
-                      isGettingLocation ||
-                      isSearchingNearby ||
-                      (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)
-                    }
-                    loading={isGettingLocation || isSearchingNearby}
-                    onPress={() => {
-                      void handleSearchNearby();
-                    }}
-                    style={styles.locationAction}
-                    variant="inline"
-                  />
-                </View>
-
-                <Button
-                  disabled={createVisitSearchUi.isSearchDisabled}
-                  label={isSearching ? "Searching..." : expandedSearchLabel}
-                  loading={isSearching}
-                  onPress={() => {
-                    void handleSearchByText(true);
-                  }}
-                />
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    navigation.navigate("CreateVisitAddRestaurant", {
-                      editVisitId,
-                    });
-                  }}
-                  style={styles.inlineLink}
-                  testID="create-visit-add-restaurant-link"
-                >
-                  <Text tone="brand">Add new restaurant</Text>
-                </Pressable>
-              </>
-            )}
-
-            {!isOnline ? (
-              <Text tone="warning">
-                Google Places search requires internet connection.
-              </Text>
-            ) : isPlacesQuotaReached ? (
-              <Text tone="warning">
-                {shouldEnforceUsageLimitsClientSide
+            }
+            isSearchResultsLoading={isSearching || isSearchingNearby || isGettingLocation}
+            locationPermissionNeedsSettings={locationPermissionNeedsSettings}
+            manualLocation={manualLocation}
+            onClearSearchResults={clearSearchState}
+            onManualLocationChange={setManualLocation}
+            onOpenLocationSettings={() => {
+              void Linking.openSettings();
+            }}
+            onRetrySavedResults={() => {
+              void restaurantsQuery.refetch();
+            }}
+            onSavedResultsLayout={(event) => {
+              setRestaurantListAnchorY(event.nativeEvent.layout.y);
+            }}
+            onSearchPress={() => {
+              void handleSearchByText(true);
+            }}
+            onSearchQueryChange={setRestaurantSearchQuery}
+            onSearchResultsLayout={(event) => {
+              setRestaurantListAnchorY(event.nativeEvent.layout.y);
+            }}
+            onUseCurrentLocationPress={() => {
+              void handleSearchNearby();
+            }}
+            quotaWarningMessage={
+              isOnline && isPlacesQuotaReached
+                ? shouldEnforceUsageLimitsClientSide
                   ? "Monthly food place search limit reached."
-                  : "Monthly food place search limit reached in preview mode. Admin access is still allowed."}
-              </Text>
-            ) : null}
-
-            {shouldShowPlacesUpgradePrompt ? (
-              <UpgradePromptCard
-                description={
-                  isPlacesQuotaReached
-                    ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
-                    : `Only ${placesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
-                }
-                title={
-                  isPlacesQuotaReached ? 'Free limit reached' : 'You are close to your free limit'
-                }
-              />
-            ) : null}
-          </Card>
-
-          {searchErrorMessage ? (
-          <Card style={styles.statusCard}>
-            <Text tone="danger">{searchErrorMessage}</Text>
-            {locationPermissionNeedsSettings ? (
-              <Button
-                label="Open Settings"
-                onPress={() => {
-                  void Linking.openSettings();
-                }}
-                variant="secondary"
-              />
-            ) : null}
-          </Card>
-        ) : null}
-
-          {showNearbyPlaces ? (
-            <>
-              {isSearching || isSearchingNearby || isGettingLocation ? (
-                <Card style={styles.statusCard} tone="muted">
-                  <LoadingState label="Looking up nearby food places..." />
-                </Card>
-              ) : null}
-
-              <View
-                onLayout={(event) => {
-                  setRestaurantListAnchorY(event.nativeEvent.layout.y);
-                }}
-              >
-                <Card style={styles.listCard}>
-                  <Text variant="label">Search Results</Text>
-                  {displayedNearbyRestaurants.length === 0 ? (
-                    <EmptyState
-                      description="Try a different query or location."
-                      title="No food places found"
-                    />
-                  ) : (
-                    displayedNearbyRestaurants.map((restaurant, index) =>
-                      renderRestaurantItem(restaurant, index, "search"),
-                    )
-                  )}
-                </Card>
-              </View>
-
-              <Button
-                label="Clear Search Results"
-                onPress={clearSearchState}
-                variant="secondary"
-              />
-            </>
-          ) : null}
-
-          {!showNearbyPlaces ? (
-            <View
-              onLayout={(event) => {
-                setRestaurantListAnchorY(event.nativeEvent.layout.y);
-              }}
-            >
-                <Card style={styles.listCard}>
-                  <Text variant="label">Your restaurants</Text>
-                  {restaurantsQuery.isLoading ? (
-                    <LoadingState label="Loading restaurants..." />
-                  ) : restaurantsQuery.isError ? (
-                    <PageErrorToast
-                      errorMessage="Could not load your restaurants."
-                    title="Restaurant list unavailable"
-                    actionLabel="Retry"
-                    onAction={() => {
-                      void restaurantsQuery.refetch();
-                    }}
-                  />
-                ) : displayedSavedRestaurants.length === 0 ? (
-                  <EmptyState
-                    description="Search nearby places or add a new restaurant to start."
-                    title="No restaurants yet"
-                  />
-                ) : (
-                  displayedSavedRestaurants.map((restaurant, index) =>
-                    renderRestaurantItem(restaurant, index, "saved"),
-                  )
-                )}
-              </Card>
-            </View>
-          ) : null}
+                  : "Monthly food place search limit reached in preview mode. Admin access is still allowed."
+                : null
+            }
+            savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
+              buildRestaurantOption(restaurant, index, "saved"),
+            )}
+            savedResultsErrorMessage={
+              restaurantsQuery.isError ? "Could not load your restaurants." : null
+            }
+            savedResultsLoading={restaurantsQuery.isLoading}
+            searchButtonDisabled={createVisitSearchUi.isSearchDisabled}
+            searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
+            searchButtonLoading={isSearching}
+            searchErrorMessage={searchErrorMessage}
+            searchInputsMode={isSearchExpanded ? "full" : "compact"}
+            searchQuery={restaurantSearchQuery}
+            searchResultsOptions={displayedNearbyRestaurants.map((restaurant, index) =>
+              buildRestaurantOption(restaurant, index, "search"),
+            )}
+            selectedRestaurantName={restaurantName.trim() || null}
+            showSearchResults={showNearbyPlaces}
+            upgradePromptDescription={
+              shouldShowPlacesUpgradePrompt
+                ? isPlacesQuotaReached
+                  ? "You have reached this month's free search limit. Subscriber accounts have higher limits for place search."
+                  : `Only ${placesQueriesRemaining} food place searches left this month. Subscriber accounts have higher limits for place search.`
+                : null
+            }
+            upgradePromptTitle={
+              shouldShowPlacesUpgradePrompt
+                ? isPlacesQuotaReached
+                  ? "Free limit reached"
+                  : "You are close to your free limit"
+                : null
+            }
+          />
         </>
       ) : null}
 
@@ -2808,29 +2384,17 @@ export function CreateVisitScreen({
             </Card>
           ) : null}
 
-          <Card style={styles.metadataCard}>
-            <LocalDatePickerField
-              helperText={
-                isVisitDateAutoFilled ? "Auto-set from a selected photo date. You can still change it." : undefined
-              }
-              highlighted={isVisitDateAutoFilled}
-              label="Visit Date"
-              modalTitle="Select visit date"
-              onChange={handleVisitDateChange}
-              value={visitDate}
-            />
+          <VisitMetadataCard
+            detectedDateValue={detectedVisitDateValue}
+            dateLabel="Visit Date"
+            dateModalTitle="Select visit date"
+            dateValue={visitDate}
+            onDateChange={handleVisitDateChange}
+            onVisibilityChange={handleVisitVisibilityChange}
+            visibilityValue={visitVisibility}
+          />
 
-            <View style={styles.visibilitySection}>
-              <Text variant="label">Visibility</Text>
-              <VisibilityOptionSelector
-                onChange={handleVisitVisibilityChange}
-                options={["friends", "private"]}
-                value={visitVisibility}
-              />
-            </View>
-          </Card>
-
-          <RatingLegend initiallyExpanded persistenceKey={null} />
+          <RatingLegend initiallyExpanded />
 
           {draftItems.map((item, index) => (
             <Card key={item.id} style={styles.itemCard}>

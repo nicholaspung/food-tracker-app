@@ -1,0 +1,167 @@
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, View } from 'react-native';
+
+import { useTheme } from '../../theme';
+import { Text } from '../../ui';
+import { VisibilityBadge } from './VisibilityBadge';
+
+type MenuItemVisibility = 'private' | 'friends' | 'public';
+
+interface VisitMenuItemOptionRowProps {
+  name: string;
+  description?: string;
+  visibility?: MenuItemVisibility;
+  selected: boolean;
+  onPress: () => void;
+  onEditPress?: () => void;
+  optionTestID?: string;
+  selectButtonTestID?: string;
+  editButtonTestID?: string;
+}
+
+function normalizeMenuItemVisibility(value: MenuItemVisibility | undefined): MenuItemVisibility {
+  if (value === 'private' || value === 'public') {
+    return value;
+  }
+
+  return 'friends';
+}
+
+export function VisitMenuItemOptionRow({
+  name,
+  description,
+  visibility,
+  selected,
+  onPress,
+  onEditPress,
+  optionTestID,
+  selectButtonTestID,
+  editButtonTestID,
+}: VisitMenuItemOptionRowProps) {
+  const theme = useTheme();
+  const resolvedVisibility = normalizeMenuItemVisibility(visibility);
+  const trimmedDescription = description?.trim() || '';
+
+  const styles = StyleSheet.create({
+    container: {
+      alignItems: 'stretch',
+      borderColor: theme.colors.border.subtle,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.sm,
+    },
+    containerSelected: {
+      backgroundColor: theme.colors.status.successBg,
+      borderColor: theme.colors.status.successBorder,
+    },
+    mainButton: {
+      flex: 1,
+      gap: theme.spacing.xs,
+    },
+    headerRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+    },
+    nameWrap: {
+      flex: 1,
+      paddingRight: theme.spacing.xs,
+    },
+    metaRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+    },
+    badgeRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xs,
+    },
+    actionsColumn: {
+      alignItems: 'flex-end',
+      gap: theme.spacing.xs,
+      justifyContent: 'space-between',
+    },
+    selectButton: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 24,
+      minWidth: 24,
+      padding: theme.spacing.xxs,
+    },
+    editButton: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.spacing.xxs,
+      justifyContent: 'center',
+      minHeight: 44,
+      minWidth: 44,
+      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: theme.spacing.xxs,
+    },
+  });
+
+  return (
+    <View style={[styles.container, selected ? styles.containerSelected : null]}>
+      <Pressable onPress={onPress} style={styles.mainButton} testID={optionTestID}>
+        <View style={styles.headerRow}>
+          <View style={styles.nameWrap}>
+            <Text variant="label">{name}</Text>
+          </View>
+        </View>
+
+        {trimmedDescription ? (
+          <Text numberOfLines={2} tone="secondary" variant="bodySm">
+            {trimmedDescription}
+          </Text>
+        ) : null}
+
+        <View style={styles.metaRow}>
+          <View style={styles.badgeRow}>
+            <VisibilityBadge value={resolvedVisibility} />
+          </View>
+        </View>
+      </Pressable>
+
+      <View collapsable={false} style={styles.actionsColumn}>
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={12}
+          onPress={onPress}
+          style={styles.selectButton}
+          testID={selectButtonTestID}
+        >
+          <Ionicons
+            color={selected ? theme.colors.text.success : theme.colors.text.muted}
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={20}
+          />
+        </Pressable>
+
+        {onEditPress ? (
+          <Pressable
+            accessibilityHint="Opens menu item edit options"
+            accessibilityLabel={`Edit ${name}`}
+            accessibilityRole="button"
+            accessible
+            collapsable={false}
+            hitSlop={12}
+            onPress={(event) => {
+              event.stopPropagation();
+              onEditPress();
+            }}
+            style={styles.editButton}
+            testID={editButtonTestID}
+          >
+            <Ionicons color={theme.colors.text.secondary} name="pencil-outline" size={14} />
+            <Text tone="secondary" variant="bodySm">
+              Edit
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
