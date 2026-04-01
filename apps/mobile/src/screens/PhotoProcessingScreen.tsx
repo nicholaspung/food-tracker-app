@@ -9,11 +9,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   EmptyState,
   FeatureFormScreenScaffold,
+  HomeFeedVisitEntryCard,
   IconActionCard,
   LinearProgressBar,
   LoadingState,
   PageErrorToast,
   PhotoDetectedDateField,
+  PhotoViewerModal,
   PhotoSourceActionCards,
   RatingLegend,
   RatingSelector,
@@ -26,6 +28,7 @@ import {
   VisitMetadataCard,
   VisitRestaurantOptionTrailing,
   VisitRestaurantSearchSection,
+  type HomeFeedPhotoRecord,
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
@@ -42,6 +45,7 @@ import {
   updateCollectionRecord,
   useMonthlyUsage,
   type RestaurantRecord,
+  type VisitRecord,
   type VisitPhotoUploadInput,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
@@ -145,11 +149,52 @@ const QUICK_TRACK_CATEGORIES: { value: QuickTrackCategory; label: string }[] = [
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
+const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
+const reviewEntryTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+interface ReviewVisitCardData {
+  id: string;
+  visit: VisitRecord;
+  photosByFoodItem: Map<string, HomeFeedPhotoRecord[]>;
+  footerLabel: string;
+}
 
 function buildScannedItemNames(seedLabel: string): string[] {
   const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
   const base = normalized || 'Scanned Item';
   return [`${base} #1`, `${base} #2`, `${base} #3`];
+}
+
+function formatReviewEntryDateLabel(value: string, fallbackDate: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return formatLocalDateLabel(fallbackDate);
+  }
+
+  return reviewEntryDateFormatter.format(date);
+}
+
+function formatReviewEntryTimeLabel(value: string): string | undefined {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return reviewEntryTimeFormatter.format(date);
+}
+
+function formatReviewEntryFooterLabel(value: string, fallbackDate: string): string {
+  const dateLabel = formatReviewEntryDateLabel(value, fallbackDate);
+  const timeLabel = formatReviewEntryTimeLabel(value);
+
+  return timeLabel ? `${dateLabel} • ${timeLabel}` : dateLabel;
 }
 
 function parseCsvFirstColumn(line: string): string {
@@ -966,6 +1011,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [permissionNeedsSettings, setPermissionNeedsSettings] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
+  const [reviewPhotoViewerVisible, setReviewPhotoViewerVisible] = useState(false);
+  const [reviewPhotoViewerUrls, setReviewPhotoViewerUrls] = useState<string[]>([]);
+  const [reviewPhotoViewerInitialIndex, setReviewPhotoViewerInitialIndex] = useState(0);
 
   const createVisitSearchUi = resolveCreateVisitSearchUi({
     isFreeTier: isDisplayFreeUser,
@@ -1244,6 +1292,81 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       })
       .filter((entry): entry is { photo: DraftPhotoAsset; form: QuickTrackPhotoForm } => Boolean(entry));
   }, [photos, quickTrackForms]);
+
+  const reviewVisitCards = useMemo<ReviewVisitCardData[]>(() => {
+    return restaurantReviewGroups.map((group, groupIndex) => {
+      const representativeTimestamp =
+        group.items.find((entry) => entry.photo.captureDate)?.photo.captureDate?.toISOString() ?? null;
+      const eventAt = representativeTimestamp ?? localDateStringToUTC(group.date);
+      const footerLabel = formatReviewEntryFooterLabel(eventAt, group.date);
+      const visitItems = group.items.map((entry, itemIndex) => ({
+        id: `review-visit-item-${groupIndex}-${itemIndex}-${entry.photo.id}`,
+        name: entry.form.menuItemName.trim(),
+        rating: entry.form.rating,
+        description: entry.form.description.trim() || undefined,
+        notes: entry.form.notes.trim() || undefined,
+      }));
+      const photosByFoodItem = new Map<string, HomeFeedPhotoRecord[]>();
+
+      group.items.forEach((entry, itemIndex) => {
+        const visitItemId = visitItems[itemIndex]?.id;
+        if (!visitItemId) {
+          return;
+        }
+
+        photosByFoodItem.set(visitItemId, [
+          {
+            id: entry.photo.id,
+            food_item: visitItemId,
+            photo: entry.photo.name,
+            uri: entry.photo.uri,
+            created: entry.photo.captureDate?.toISOString() ?? eventAt,
+          },
+        ]);
+      });
+
+      const visit: VisitRecord = {
+        id: `review-visit-${groupIndex}-${group.date}`,
+        restaurantName: group.restaurantName,
+        visitedAt: eventAt,
+        items: visitItems,
+        source: 'visit',
+        userId: currentUserId ?? undefined,
+        userName: user?.name?.trim() || undefined,
+        visibility: visitVisibility,
+        createdAt: eventAt,
+        updatedAt: eventAt,
+      };
+
+      return {
+        id: visit.id,
+        visit,
+        photosByFoodItem,
+        footerLabel,
+      };
+    });
+  }, [currentUserId, restaurantReviewGroups, user?.name, visitVisibility]);
+
+  const openReviewPhotoViewer = useCallback(
+    (reviewPhotos: HomeFeedPhotoRecord[], initialIndex = 0) => {
+      const urls = reviewPhotos
+        .map((photo) => photo.uri?.trim())
+        .filter((value): value is string => Boolean(value));
+      if (urls.length === 0) {
+        return;
+      }
+
+      const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
+      setReviewPhotoViewerUrls(urls);
+      setReviewPhotoViewerInitialIndex(boundedIndex);
+      setReviewPhotoViewerVisible(true);
+    },
+    [],
+  );
+
+  const closeReviewPhotoViewer = useCallback(() => {
+    setReviewPhotoViewerVisible(false);
+  }, []);
 
   const estimatedFreeMonthlyPhotoTotal = (monthlyUsage.snapshot?.usage.photoUploads ?? 0) + photos.length;
   const estimatedFreeMonthlyPhotoRemaining = Math.max(
@@ -2266,6 +2389,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       backgroundColor: theme.colors.status.infoBg,
       borderColor: theme.colors.status.infoBorder,
     },
+    reviewFeedList: {
+      gap: theme.spacing.md,
+    },
     reviewCard: {
       gap: theme.spacing.sm,
     },
@@ -3053,33 +3179,17 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               <Text tone="secondary">{visitVisibility === 'private' ? 'Private' : 'Friends'}</Text>
             </Card>
 
-            {restaurantReviewGroups.map((group) => (
-              <Card key={`${group.restaurantName}_${group.date}`} style={styles.reviewCard}>
-                <Text variant="label">{group.restaurantName}</Text>
-                <Text tone="secondary">Date: {formatLocalDateLabel(group.date)}</Text>
-                {group.items.map((item) => (
-                  <View key={item.photo.id} style={styles.reviewItemRow}>
-                    <Image source={{ uri: item.photo.uri }} style={styles.reviewThumb} />
-                    <View style={styles.reviewTextWrap}>
-                      <Text>{item.form.menuItemName}</Text>
-                      <Text tone="secondary" variant="bodySm">
-                        Rating {item.form.rating}/5
-                      </Text>
-                      {item.form.description.trim() ? (
-                        <Text tone="secondary" variant="bodySm">
-                          {item.form.description.trim()}
-                        </Text>
-                      ) : null}
-                      {item.form.notes.trim() ? (
-                        <Text tone="secondary" variant="bodySm">
-                          {item.form.notes.trim()}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
-              </Card>
-            ))}
+            <View style={styles.reviewFeedList}>
+              {reviewVisitCards.map((reviewVisitCard) => (
+                <HomeFeedVisitEntryCard
+                  footerLabel={reviewVisitCard.footerLabel}
+                  getPhotosForItem={(itemId) => reviewVisitCard.photosByFoodItem.get(itemId) ?? []}
+                  key={reviewVisitCard.id}
+                  onOpenPhotoViewer={openReviewPhotoViewer}
+                  visit={reviewVisitCard.visit}
+                />
+              ))}
+            </View>
           </>
         ) : (
           quickTrackReviewEntries.map((entry) => (
@@ -3114,6 +3224,13 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             </Card>
           ))
         )}
+
+        <PhotoViewerModal
+          initialIndex={reviewPhotoViewerInitialIndex}
+          onRequestClose={closeReviewPhotoViewer}
+          urls={reviewPhotoViewerUrls}
+          visible={reviewPhotoViewerVisible}
+        />
       </FeatureFormScreenScaffold>
     );
   }

@@ -17,6 +17,7 @@ export * from './FormResultBanner';
 export * from './FormScaffold';
 export * from './HeaderAccessoryButton';
 export * from './HomeBetaFeedCard';
+export * from './HomeFeedVisitEntryCard';
 export * from './IconActionCard';
 export * from './LoadingOverlay';
 export * from './LoadingState';

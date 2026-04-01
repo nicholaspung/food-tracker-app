@@ -10,6 +10,20 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.14',
+    date: '2026-03-31',
+    title: 'Richer Photo Scan Review & App Store Compliance',
+    summary:
+      'The review step in the photo scanning flow now shows the same rich visit card you see on your home feed — complete with photo thumbnails you can tap to view full-screen, per-item ratings, and timestamps from the original photo date.',
+    features: [],
+    improvements: [
+      'Photo scan review cards now display photo thumbnails for each menu item, matching the home feed card style.',
+      'Tap any photo thumbnail in the review step to open a full-screen photo viewer before submitting.',
+      'Review cards now show the date and time derived from the photo\'s capture date rather than just the local date.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.13',
     date: '2026-03-30',
     title: 'Photo Processing Restaurant Search & Menu Item Picker',

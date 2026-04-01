@@ -17,6 +17,7 @@ import {
   FeedHeaderControls,
   HomeBetaQuickTrackFeedCard,
   HomeBetaVisitFeedCard,
+  HomeFeedVisitEntryCard,
   PhotoViewerModal,
   Skeleton,
   TabRootScreenScaffold,
@@ -1658,170 +1659,50 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                     const showVisitShare = !feedItem.isFriend && shareableVisitItems.length > 1;
 
                                     return (
-                                      <View key={feedItem.id} style={styles.entryCard}>
-                                        <View style={styles.entryTopRow}>
-                                          <Text numberOfLines={2} style={styles.entryTitle}>
-                                            {visit.restaurantName}
-                                          </Text>
-                                          <View style={styles.entryTopRight}>
-                                            <View style={styles.badgesRow}>
-                                              {feedItem.isFriend && feedItem.friendName ? (
-                                                <View style={styles.friendBadge}>
-                                                  <Text numberOfLines={1} style={styles.friendBadgeLabel}>
-                                                    {feedItem.friendName}
-                                                  </Text>
-                                                </View>
-                                              ) : null}
-                                              <View style={[styles.sourceBadge, styles.sourceBadgeVisit]}>
-                                                <Text style={styles.sourceBadgeLabel}>Visit</Text>
-                                              </View>
-                                            </View>
-                                          </View>
-                                        </View>
-
-                                        {restaurantMeta || !feedItem.isFriend ? (
-                                          <View style={styles.restaurantMetaRow}>
-                                            {restaurantMeta ? (
-                                              <Text numberOfLines={1} style={[styles.restaurantMeta, styles.restaurantMetaInline]}>
-                                                {restaurantMeta}
-                                              </Text>
-                                            ) : (
-                                              <View style={styles.restaurantMetaInline} />
-                                            )}
-                                            {!feedItem.isFriend ? (
-                                              <View style={styles.compactActions}>
-                                                {showVisitShare ? (
-                                                  <Pressable
-                                                    accessibilityLabel="Share visit"
-                                                    onPress={() => {
-                                                      handleShareVisit(visit);
-                                                    }}
-                                                    style={styles.compactActionButton}
-                                                  >
-                                                    <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
-                                                  </Pressable>
-                                                ) : null}
-                                                <Pressable
-                                                  accessibilityLabel="Edit visit"
-                                                  onPress={() => {
-                                                    navigation.push('CreateVisit', {
-                                                      editVisitId: visit.id,
-                                                      returnToStep: 2,
-                                                    });
-                                                  }}
-                                                  style={styles.compactActionButton}
-                                                  testID={
-                                                    monthIndex === 0 && dayIndex === 0 && entryIndex === 0
-                                                      ? 'home-first-visit-edit-button'
-                                                      : undefined
-                                                  }
-                                                >
-                                                  <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
-                                                </Pressable>
-                                                <Pressable
-                                                  accessibilityLabel="Delete visit"
-                                                  onPress={() => {
-                                                    promptDeleteVisit(visit.id, visit.restaurantName);
-                                                  }}
-                                                  style={[styles.compactActionButton, styles.compactActionDanger]}
-                                                  testID={
-                                                    monthIndex === 0 && dayIndex === 0 && entryIndex === 0
-                                                      ? 'home-first-visit-delete-button'
-                                                      : undefined
-                                                  }
-                                                >
-                                                  <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
-                                                </Pressable>
-                                              </View>
-                                            ) : null}
-                                          </View>
-                                        ) : null}
-
-                                        {visit.items.length > 0 ? (
-                                          <View style={styles.foodItemsList}>
-                                            {visit.items.map((item) => {
-                                              const itemPhotos = photosByFoodItem.get(item.id) ?? [];
-                                              const primaryPhoto = itemPhotos[0];
-                                              const thumbnailUrl = primaryPhoto
-                                                ? buildPocketBaseFileUrl({
-                                                    collectionId: primaryPhoto.collectionId,
-                                                    collectionName: primaryPhoto.collectionName ?? 'visit_photos',
-                                                    recordId: primaryPhoto.id,
-                                                    filename: primaryPhoto.photo,
-                                                    thumb: '100x100',
-                                                  })
-                                                : null;
-
-                                              return (
-                                                <View key={item.id} style={styles.foodItemRow}>
-                                                  {thumbnailUrl ? (
-                                                    <Pressable
-                                                      accessibilityLabel={`View photos for ${item.name}`}
-                                                      onPress={() => {
-                                                        openPhotoViewer(itemPhotos);
-                                                      }}
-                                                      style={styles.photoWrap}
-                                                    >
-                                                      <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
-                                                      {itemPhotos.length > 1 ? (
-                                                        <View style={styles.photoCountBadge}>
-                                                          <Text style={styles.photoCountText}>+{itemPhotos.length - 1}</Text>
-                                                        </View>
-                                                      ) : null}
-                                                    </Pressable>
-                                                  ) : null}
-
-                                                  <View style={styles.foodItemContent}>
-                                                    <Text numberOfLines={2} style={styles.foodItemName}>
-                                                      {item.name}
-                                                    </Text>
-                                                    {item.notes ? (
-                                                      <Text numberOfLines={2} style={styles.foodItemNotes}>
-                                                        "{item.notes}"
-                                                      </Text>
-                                                    ) : null}
-                                                  </View>
-
-                                                  <View style={styles.foodItemRight}>
-                                                    <View style={styles.ratingRow}>
-                                                      <View
-                                                        style={[
-                                                          styles.ratingDot,
-                                                          { backgroundColor: getRatingColor(theme, item.rating) },
-                                                        ]}
-                                                      />
-                                                      <Text style={styles.ratingLabel}>{getRatingLabel(item.rating)}</Text>
-                                                    </View>
-                                                    {primaryPhoto ? (
-                                                      <Pressable
-                                                        accessibilityLabel={`Share ${item.name}`}
-                                                        onPress={() => {
-                                                          handleSharePhoto({
-                                                            itemName: item.name,
-                                                            photo: primaryPhoto,
-                                                            rating: item.rating,
-                                                            restaurantName: visit.restaurantName,
-                                                            visitDate: visit.visitedAt || visit.createdAt,
-                                                          });
-                                                        }}
-                                                        style={styles.compactActionButton}
-                                                      >
-                                                        <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
-                                                      </Pressable>
-                                                    ) : null}
-                                                  </View>
-                                                </View>
-                                              );
-                                            })}
-                                          </View>
-                                        ) : (
-                                          <Text style={styles.entryMeta}>No items recorded</Text>
-                                        )}
-
-                                        <Text style={styles.entryMeta}>
-                                          {timeLabel}
-                                        </Text>
-                                      </View>
+                                      <HomeFeedVisitEntryCard
+                                        deleteTestID={
+                                          monthIndex === 0 && dayIndex === 0 && entryIndex === 0
+                                            ? 'home-first-visit-delete-button'
+                                            : undefined
+                                        }
+                                        editTestID={
+                                          monthIndex === 0 && dayIndex === 0 && entryIndex === 0
+                                            ? 'home-first-visit-edit-button'
+                                            : undefined
+                                        }
+                                        footerLabel={timeLabel}
+                                        friendName={feedItem.isFriend ? feedItem.friendName : undefined}
+                                        getPhotosForItem={(itemId) => photosByFoodItem.get(itemId) ?? []}
+                                        key={feedItem.id}
+                                        onDelete={
+                                          !feedItem.isFriend
+                                            ? () => {
+                                                promptDeleteVisit(visit.id, visit.restaurantName);
+                                              }
+                                            : undefined
+                                        }
+                                        onEdit={
+                                          !feedItem.isFriend
+                                            ? () => {
+                                                navigation.push('CreateVisit', {
+                                                  editVisitId: visit.id,
+                                                  returnToStep: 2,
+                                                });
+                                              }
+                                            : undefined
+                                        }
+                                        onOpenPhotoViewer={openPhotoViewer}
+                                        onSharePhoto={handleSharePhoto}
+                                        onShareVisit={
+                                          !feedItem.isFriend && showVisitShare
+                                            ? () => {
+                                                handleShareVisit(visit);
+                                              }
+                                            : undefined
+                                        }
+                                        restaurantMetaLabel={restaurantMeta}
+                                        visit={visit}
+                                      />
                                     );
                                   }
 
