@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -8,27 +7,19 @@ import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  CurrentLocationButton,
   FeatureFormScreenScaffold,
-  OptionList,
-  OptionListRow,
   PageErrorToast,
-  PhotoDetectedDateField,
   PhotoAttachmentRow,
   PhotoSourceActionCards,
   PhotoViewerModal,
-  RatingLegend,
-  RatingSelector,
+  QuickTrackFormFields,
   UpgradePromptCard,
-  VisibilityOptionSelector,
-  type VisibilityOptionValue,
 } from '../components/shared';
 import {
   createQuickTrack,
   formatLimitExceededMessage,
   getNoteById,
   parseLimitExceededError,
-  resolveDefaultVisitVisibilityFromAuth,
   useMonthlyUsage,
   type VisitPhotoUploadInput,
 } from '../features';
@@ -36,36 +27,28 @@ import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import {
   formatDateToLocalDateString,
-  getTodayLocalDateString,
-  isValidLocalDate,
-  localDateStringToUTC,
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import {
+  buildCreateQuickTrackInput,
+  buildDefaultQuickTrackForm,
+  validateQuickTrackForm,
+  type QuickTrackFormValues,
+} from '../lib/quickTrackForm';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Text } from '../ui';
+import { Button, Card, Text } from '../ui';
 
 type QuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'QuickTrack'>;
 
 const QUICK_TRACK_RATED_BEFORE_KEY = 'ui.quickTrack.hasRatedBefore';
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
-
-const ITEM_CATEGORIES = [
-  { value: 'convenience_store', label: 'Convenience Store' },
-  { value: 'packaged_food', label: 'Packaged Food' },
-  { value: 'homemade', label: 'Homemade' },
-  { value: 'recipe', label: 'Recipe' },
-  { value: 'other', label: 'Other' },
-] as const;
-
-type ItemCategory = (typeof ITEM_CATEGORIES)[number]['value'];
 type PhotoSource = 'camera' | 'gallery';
-type QuickTrackVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
 
 function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
   if (!asset.uri) {
@@ -105,10 +88,6 @@ function buildDraftPhotoName(uri: string): string {
   return `quick-track-${Date.now()}.jpg`;
 }
 
-function resolveDefaultQuickTrackVisibility(): QuickTrackVisibility {
-  return resolveDefaultVisitVisibilityFromAuth();
-}
-
 export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -143,17 +122,9 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     enabled: Boolean(sourceNoteId),
   });
 
-  const [itemName, setItemName] = useState('');
-  const [rating, setRating] = useState(3);
-  const [notes, setNotes] = useState('');
-  const [itemCategory, setItemCategory] = useState<ItemCategory | null>(null);
-  const [locationText, setLocationText] = useState('');
-  const [visibility, setVisibility] = useState<QuickTrackVisibility>(resolveDefaultQuickTrackVisibility());
-  const [itemDate, setItemDate] = useState(getTodayLocalDateString());
+  const [form, setForm] = useState<QuickTrackFormValues>(() => buildDefaultQuickTrackForm());
   const [detectedItemDateValue, setDetectedItemDateValue] = useState<string | null>(null);
   const [photo, setPhoto] = useState<VisitPhotoUploadInput | null>(null);
-  const [latitude, setLatitude] = useState<number | undefined>(undefined);
-  const [longitude, setLongitude] = useState<number | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
@@ -163,10 +134,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const [photoPermissionNeedsSettings, setPhotoPermissionNeedsSettings] = useState(false);
   const [didApplyNotePrefill, setDidApplyNotePrefill] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const selectedCategoryLabel = itemCategory
-    ? ITEM_CATEGORIES.find((category) => category.value === itemCategory)?.label ?? 'Select category'
-    : 'Select category';
 
   useEffect(() => {
     let isMounted = true;
@@ -193,10 +160,13 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       return;
     }
 
-    setNotes((currentNotes) => (currentNotes.trim() ? currentNotes : linkedNoteQuery.data?.content ?? ''));
-    setLocationText((currentLocation) =>
-      currentLocation.trim() ? currentLocation : linkedNoteQuery.data?.locationText ?? '',
-    );
+    setForm((currentForm) => ({
+      ...currentForm,
+      notes: currentForm.notes.trim() ? currentForm.notes : linkedNoteQuery.data?.content ?? '',
+      locationText: currentForm.locationText.trim()
+        ? currentForm.locationText
+        : linkedNoteQuery.data?.locationText ?? '',
+    }));
     setDidApplyNotePrefill(true);
   }, [didApplyNotePrefill, linkedNoteQuery.data]);
 
@@ -207,51 +177,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     },
     sectionCard: {
       gap: theme.spacing.sm,
-    },
-    photoSection: {
-      gap: theme.spacing.sm,
-    },
-    locationRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    locationInput: {
-      flex: 1,
-    },
-    notesInput: {
-      minHeight: 100,
-      textAlignVertical: 'top',
-    },
-    categorySelectorRow: {
-      backgroundColor: theme.colors.background.muted,
-      borderBottomColor: theme.colors.border.default,
-    },
-    categorySelectorRowExpanded: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderBottomColor: theme.colors.status.warningBorder,
-    },
-    categorySelectorTitle: {
-      color: theme.colors.text.primary,
-      fontWeight: '700',
-    },
-    categorySelectorSubtitle: {
-      color: theme.colors.text.muted,
-    },
-    categorySelectorSubtitleSelected: {
-      color: theme.colors.text.warning,
-    },
-    categoryOptionSelectedRow: {
-      backgroundColor: theme.colors.status.warningBg,
-    },
-    categoryOptionSelectedLabel: {
-      color: theme.colors.text.warning,
-    },
-    categoryClearLabel: {
-      color: theme.colors.text.muted,
-    },
-    categoryPlaceholder: {
-      color: theme.colors.text.muted,
     },
     linkedNoteCard: {
       gap: theme.spacing.xs,
@@ -265,13 +190,12 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     }
 
     const nextDetectedDateValue = formatDateToLocalDateString(captureDate);
-    setItemDate(nextDetectedDateValue);
+    setForm((currentForm) => ({
+      ...currentForm,
+      date: nextDetectedDateValue,
+    }));
     setDetectedItemDateValue(nextDetectedDateValue);
   }, []);
-
-  const handleItemDateChange = (value: string) => {
-    setItemDate(value);
-  };
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -320,12 +244,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     };
   }, [applyPhotoCaptureDate]);
 
-  const handleVisibilityChange = (value: VisibilityOptionValue) => {
-    if (value === 'private' || value === 'friends') {
-      setVisibility(value);
-    }
-  };
-
   const handleCaptureLocation = async () => {
     trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURE_STARTED', {
       source: 'QuickTrackScreen',
@@ -357,9 +275,12 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       const capturedLongitude = position.coords.longitude;
       const coordinateText = `${capturedLatitude.toFixed(6)}, ${capturedLongitude.toFixed(6)}`;
 
-      setLatitude(capturedLatitude);
-      setLongitude(capturedLongitude);
-      setLocationText(coordinateText);
+      setForm((currentForm) => ({
+        ...currentForm,
+        latitude: capturedLatitude,
+        longitude: capturedLongitude,
+        locationText: coordinateText,
+      }));
       trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURED', {
         source: 'QuickTrackScreen',
       });
@@ -478,13 +399,9 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   };
 
   const handleCreate = async () => {
-    if (!itemName.trim()) {
-      setErrorMessage('Item name is required.');
-      return;
-    }
-
-    if (!isValidLocalDate(itemDate)) {
-      setErrorMessage('Please choose a valid date.');
+    const validationMessage = validateQuickTrackForm(form);
+    if (validationMessage) {
+      setErrorMessage(validationMessage);
       return;
     }
 
@@ -514,19 +431,10 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     setIsSubmitting(true);
 
     try {
-      const quickTrackInput = {
-        itemName,
-        rating,
-        notes: notes.trim() || undefined,
-        itemCategory: itemCategory ?? undefined,
-        locationText: locationText.trim() || undefined,
-        visibility,
-        itemDate: localDateStringToUTC(itemDate),
-        latitude,
-        longitude,
+      const quickTrackInput = buildCreateQuickTrackInput(form, {
         photo: photo ?? undefined,
         sourceNoteId,
-      };
+      });
 
       if (!isOnline) {
         await queueFeatureOutbox('quick-track.create', quickTrackInput);
@@ -587,19 +495,13 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     navigation.navigate('AddVisit');
   };
 
-  const hasCapturedCoordinates =
-    typeof latitude === 'number' && typeof longitude === 'number';
-  const coordinateLabel = hasCapturedCoordinates
-    ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
-    : null;
-
   return (
     <FeatureFormScreenScaffold
       keyboardAware
       onBackPress={handleCancel}
       primaryAction={{
         label: 'Save Item',
-        disabled: isSubmitting || !itemName.trim(),
+        disabled: isSubmitting || !form.itemName.trim(),
         loading: isSubmitting,
         onPress: () => {
           void handleCreate();
@@ -667,188 +569,73 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           </Card>
         ) : null}
 
-        <Card style={styles.sectionCard}>
-          <PhotoDetectedDateField
-            detectedDateValue={detectedItemDateValue}
-            label="Date"
-            modalTitle="Select item date"
-            onChange={handleItemDateChange}
-            value={itemDate}
-          />
-        </Card>
-
-        <Card style={styles.sectionCard}>
-          <Text variant="label">Visibility</Text>
-          <VisibilityOptionSelector
-            onChange={handleVisibilityChange}
-            options={['friends', 'private']}
-            value={visibility}
-          />
-        </Card>
-
-        <Card style={styles.sectionCard}>
-          <Input
-            autoCapitalize="words"
-            label="Item Name *"
-            onChangeText={setItemName}
-            placeholder="e.g., Chocolate Bar, Coffee, Homemade Pasta"
-            value={itemName}
-          />
-
-          <View style={styles.photoSection}>
-            <Text variant="label">Photo (Optional)</Text>
-            <PhotoSourceActionCards
-              cameraSubtitle="Camera"
-              cameraTitle="Take Photo"
-              disabled={isSubmitting}
-              gallerySubtitle="Photo Library"
-              galleryTitle="Upload Image"
-              onCameraPress={() => {
-                void handlePhotoPick('camera');
-              }}
-              onGalleryPress={() => {
-                void handlePhotoPick('gallery');
-              }}
-            />
-
-            {photo ? (
-              <PhotoAttachmentRow
-                accessibilityLabel="View attached photo full screen"
-                name={photo.name}
-                onPress={() => {
-                  setIsPhotoViewerVisible(true);
+        <QuickTrackFormFields
+          detectedDateValue={detectedItemDateValue}
+          disabled={isSubmitting}
+          isCapturingLocation={isCapturingLocation}
+          isCategoryExpanded={isCategoryExpanded}
+          locationPermissionNeedsSettings={locationPermissionNeedsSettings}
+          onCaptureLocation={() => {
+            void handleCaptureLocation();
+          }}
+          onCategoryExpandedChange={setIsCategoryExpanded}
+          onChange={(updates) => {
+            setForm((currentForm) => ({
+              ...currentForm,
+              ...updates,
+            }));
+          }}
+          onOpenLocationSettings={() => {
+            void Linking.openSettings();
+          }}
+          photoSection={
+            <>
+              <Text variant="label">Photo (Optional)</Text>
+              <PhotoSourceActionCards
+                cameraSubtitle="Camera"
+                cameraTitle="Take Photo"
+                disabled={isSubmitting}
+                gallerySubtitle="Photo Library"
+                galleryTitle="Upload Image"
+                onCameraPress={() => {
+                  void handlePhotoPick('camera');
                 }}
-                onRemove={() => {
-                  setIsPhotoViewerVisible(false);
-                  setDetectedItemDateValue(null);
-                  setPhoto(null);
+                onGalleryPress={() => {
+                  void handlePhotoPick('gallery');
                 }}
-                uri={photo.uri}
               />
-            ) : null}
 
-            {photoPermissionNeedsSettings ? (
-              <Button
-                label="Open Settings"
-                onPress={() => {
-                  void Linking.openSettings();
-                }}
-                variant="secondary"
-              />
-            ) : null}
-          </View>
-        </Card>
+              {photo ? (
+                <PhotoAttachmentRow
+                  accessibilityLabel="View attached photo full screen"
+                  name={photo.name}
+                  onPress={() => {
+                    setIsPhotoViewerVisible(true);
+                  }}
+                  onRemove={() => {
+                    setIsPhotoViewerVisible(false);
+                    setDetectedItemDateValue(null);
+                    setPhoto(null);
+                  }}
+                  uri={photo.uri}
+                />
+              ) : null}
 
-        <RatingLegend
-          initiallyExpanded={!hasRatedBefore}
+              {photoPermissionNeedsSettings ? (
+                <Button
+                  label="Open Settings"
+                  onPress={() => {
+                    void Linking.openSettings();
+                  }}
+                  variant="secondary"
+                />
+              ) : null}
+            </>
+          }
+          ratingLegendInitiallyExpanded={!hasRatedBefore}
+          ratingTestIDPrefix="quick-track-rating"
+          value={form}
         />
-
-        <Card style={styles.sectionCard}>
-          <Text variant="label">Rating *</Text>
-          <RatingSelector
-            onChange={setRating}
-            testIDPrefix="quick-track-rating"
-            value={rating}
-          />
-        </Card>
-
-        <Card style={styles.sectionCard}>
-          <Text variant="label">Category (Optional)</Text>
-          <OptionList>
-            <OptionListRow
-              chevron={isCategoryExpanded ? 'up' : 'down'}
-              iconName="pricetag-outline"
-              isLast={!isCategoryExpanded}
-              onPress={() => {
-                setIsCategoryExpanded((currentValue) => !currentValue);
-              }}
-              style={[styles.categorySelectorRow, isCategoryExpanded ? styles.categorySelectorRowExpanded : undefined]}
-              subtitle={itemCategory ? 'Selected category' : 'Tap to choose a category'}
-              subtitleStyle={itemCategory ? styles.categorySelectorSubtitleSelected : styles.categorySelectorSubtitle}
-              title={selectedCategoryLabel}
-              titleStyle={!itemCategory ? styles.categoryPlaceholder : styles.categorySelectorTitle}
-            />
-
-            {isCategoryExpanded ? (
-              ITEM_CATEGORIES.map((category, index) => {
-                const isSelected = itemCategory === category.value;
-                const isLastOption = index === ITEM_CATEGORIES.length - 1;
-
-                return (
-                  <OptionListRow
-                    chevron={false}
-                    isLast={isLastOption && !itemCategory}
-                    key={category.value}
-                    onPress={() => {
-                      setItemCategory(category.value);
-                      setIsCategoryExpanded(false);
-                    }}
-                    rightAccessory={
-                      isSelected ? <Ionicons color={theme.colors.text.warning} name="checkmark-circle" size={16} /> : undefined
-                    }
-                    style={isSelected ? styles.categoryOptionSelectedRow : undefined}
-                    title={category.label}
-                    titleStyle={isSelected ? styles.categoryOptionSelectedLabel : undefined}
-                  />
-                );
-              })
-            ) : null}
-            {isCategoryExpanded && itemCategory ? (
-              <OptionListRow
-                chevron={false}
-                isLast
-                onPress={() => {
-                  setItemCategory(null);
-                  setIsCategoryExpanded(false);
-                }}
-                title="Clear Category"
-                titleStyle={styles.categoryClearLabel}
-              />
-            ) : null}
-          </OptionList>
-
-          <Text variant="label">Location (Optional)</Text>
-          <View style={styles.locationRow}>
-            <Input
-              containerStyle={styles.locationInput}
-              onChangeText={setLocationText}
-              placeholder="e.g., Trader Joe's, Home Kitchen"
-              value={locationText}
-            />
-            <CurrentLocationButton
-              accessibilityLabel="Capture current location"
-              captured={hasCapturedCoordinates}
-              loading={isCapturingLocation}
-              onPress={() => {
-                void handleCaptureLocation();
-              }}
-              variant="icon"
-            />
-          </View>
-          {coordinateLabel ? (
-            <Text tone="success" variant="bodySm">
-              Location updated from GPS: {coordinateLabel}
-            </Text>
-          ) : null}
-          {locationPermissionNeedsSettings ? (
-            <Button
-              label="Open Settings"
-              onPress={() => {
-                void Linking.openSettings();
-              }}
-              variant="secondary"
-            />
-          ) : null}
-
-          <Input
-            inputStyle={styles.notesInput}
-            label="Notes (Optional)"
-            multiline
-            onChangeText={setNotes}
-            placeholder="Any additional thoughts or details..."
-            value={notes}
-          />
-        </Card>
       </View>
       <PhotoViewerModal
         onRequestClose={() => {

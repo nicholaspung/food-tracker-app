@@ -3,27 +3,27 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Image, Keyboard, Linking, Pressable, StyleSheet, View, type ScrollView } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
   FeatureFormScreenScaffold,
   HomeFeedVisitEntryCard,
+  HomeQuickTrackEntryCard,
   IconActionCard,
   LinearProgressBar,
   LoadingState,
   PageErrorToast,
-  PhotoDetectedDateField,
   PhotoViewerModal,
   PhotoSourceActionCards,
+  QuickTrackFormFields,
   RatingLegend,
   RatingSelector,
   ScreenHeader,
   SegmentedControl,
   StepProgressBar,
   UpgradePromptCard,
-  VisibilityOptionSelector,
   VisitMenuItemOptionRow,
   VisitMetadataCard,
   VisitRestaurantOptionTrailing,
@@ -41,8 +41,8 @@ import {
   listRestaurants,
   parseMenuImage,
   parseLimitExceededError,
-  resolveDefaultVisitVisibilityFromAuth,
   updateCollectionRecord,
+  type QuickTrackRecord,
   useMonthlyUsage,
   type RestaurantRecord,
   type VisitRecord,
@@ -58,6 +58,13 @@ import {
   localDateStringToUTC,
 } from '../lib/dateFormatting';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import {
+  buildCreateQuickTrackInput,
+  buildDefaultQuickTrackForm,
+  resolveDefaultQuickTrackVisibility,
+  validateQuickTrackForm,
+  type QuickTrackFormValues,
+} from '../lib/quickTrackForm';
 import {
   geocodeLocation,
   searchAndCacheNearbyRestaurants,
@@ -85,7 +92,6 @@ type ScanSource = 'camera' | 'gallery';
 type MenuScanPhase = 'choose' | 'processing' | 'success' | 'error';
 type ProcessType = 'restaurant' | 'quickTrack';
 type GeneralPhotoStep = 'choice' | 'upload' | 'process' | 'review';
-type QuickTrackCategory = 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
 
 interface PhotoCoordinates {
   latitude: number;
@@ -112,16 +118,6 @@ interface RestaurantPhotoForm {
   date: string;
 }
 
-interface QuickTrackPhotoForm {
-  itemName: string;
-  category: QuickTrackCategory | '';
-  rating: number;
-  locationText: string;
-  notes: string;
-  visibility: 'friends' | 'private';
-  date: string;
-}
-
 interface MenuItemRecord {
   id: string;
   restaurant: string;
@@ -139,13 +135,6 @@ interface CreatedMenuItemRecord {
 type MenuItemMode = 'existing' | 'create';
 
 const PROGRESS_FLOW_TAIL: { label: string }[] = [{ label: 'Upload' }, { label: 'Process' }, { label: 'Review' }];
-const QUICK_TRACK_CATEGORIES: { value: QuickTrackCategory; label: string }[] = [
-  { value: 'convenience_store', label: 'Convenience Store' },
-  { value: 'packaged_food', label: 'Packaged Food' },
-  { value: 'homemade', label: 'Homemade' },
-  { value: 'recipe', label: 'Recipe' },
-  { value: 'other', label: 'Other' },
-];
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
@@ -164,6 +153,13 @@ interface ReviewVisitCardData {
   visit: VisitRecord;
   photosByFoodItem: Map<string, HomeFeedPhotoRecord[]>;
   footerLabel: string;
+}
+
+interface ReviewQuickTrackCardData {
+  id: string;
+  quickTrack: QuickTrackRecord;
+  photos: HomeFeedPhotoRecord[];
+  entryMeta: string;
 }
 
 function buildScannedItemNames(seedLabel: string): string[] {
@@ -409,10 +405,6 @@ function normalizeSelectionLabel(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function resolveDefaultQuickTrackVisibility(): 'friends' | 'private' {
-  return resolveDefaultVisitVisibilityFromAuth();
-}
-
 function buildDefaultRestaurantForm(
   photo: DraftPhotoAsset,
   previousForm: RestaurantPhotoForm | undefined,
@@ -425,21 +417,6 @@ function buildDefaultRestaurantForm(
     rating: 3,
     description: '',
     notes: '',
-    date: photo.captureDate ? formatDateToLocalDateString(photo.captureDate) : getTodayLocalDateString(),
-  };
-}
-
-function buildDefaultQuickTrackForm(
-  photo: DraftPhotoAsset,
-  previousForm: QuickTrackPhotoForm | undefined,
-): QuickTrackPhotoForm {
-  return {
-    itemName: '',
-    category: previousForm?.category ?? '',
-    rating: 3,
-    locationText: previousForm?.locationText ?? '',
-    notes: '',
-    visibility: previousForm?.visibility ?? resolveDefaultQuickTrackVisibility(),
     date: photo.captureDate ? formatDateToLocalDateString(photo.captureDate) : getTodayLocalDateString(),
   };
 }
@@ -980,7 +957,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [photos, setPhotos] = useState<DraftPhotoAsset[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [restaurantForms, setRestaurantForms] = useState<Record<string, RestaurantPhotoForm>>({});
-  const [quickTrackForms, setQuickTrackForms] = useState<Record<string, QuickTrackPhotoForm>>({});
+  const [quickTrackForms, setQuickTrackForms] = useState<Record<string, QuickTrackFormValues>>({});
   const [locationMetadataHintDismissedByPhotoId, setLocationMetadataHintDismissedByPhotoId] = useState<
     Record<string, boolean>
   >({});
@@ -999,6 +976,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [isSearchingNearbyRestaurants, setIsSearchingNearbyRestaurants] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
+  const [isCapturingQuickTrackLocation, setIsCapturingQuickTrackLocation] = useState(false);
+  const [quickTrackLocationPermissionNeedsSettings, setQuickTrackLocationPermissionNeedsSettings] = useState(false);
+  const [isQuickTrackCategoryExpanded, setIsQuickTrackCategoryExpanded] = useState(false);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [menuItemMode, setMenuItemMode] = useState<MenuItemMode>('existing');
   const [newMenuItemName, setNewMenuItemName] = useState('');
@@ -1014,6 +994,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [reviewPhotoViewerVisible, setReviewPhotoViewerVisible] = useState(false);
   const [reviewPhotoViewerUrls, setReviewPhotoViewerUrls] = useState<string[]>([]);
   const [reviewPhotoViewerInitialIndex, setReviewPhotoViewerInitialIndex] = useState(0);
+  const processStepScrollViewRef = useRef<ScrollView | null>(null);
 
   const createVisitSearchUi = resolveCreateVisitSearchUi({
     isFreeTier: isDisplayFreeUser,
@@ -1106,7 +1087,10 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
       return {
         ...current,
-        [currentPhoto.id]: buildDefaultQuickTrackForm(currentPhoto, previousForm),
+        [currentPhoto.id]: buildDefaultQuickTrackForm({
+          captureDate: currentPhoto.captureDate,
+          previousForm,
+        }),
       };
     });
   }, [currentPhoto, currentPhotoIndex, photos, processType, step]);
@@ -1125,6 +1109,34 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       setMenuItemMode('existing');
     }
   }, [currentPhoto?.id, processType, step]);
+
+  useEffect(() => {
+    if (step !== 'process' || processType !== 'quickTrack') {
+      setIsQuickTrackCategoryExpanded(false);
+      setQuickTrackLocationPermissionNeedsSettings(false);
+      return;
+    }
+
+    setIsQuickTrackCategoryExpanded(false);
+    setQuickTrackLocationPermissionNeedsSettings(false);
+  }, [currentPhoto?.id, processType, step]);
+
+  const scrollProcessStepToTop = useCallback(() => {
+    processStepScrollViewRef.current?.scrollTo({
+      y: 0,
+      animated: false,
+    });
+  }, []);
+
+  const goToProcessPhoto = useCallback(
+    (nextIndex: number) => {
+      Keyboard.dismiss();
+      scrollProcessStepToTop();
+      setCurrentPhotoIndex(nextIndex);
+      setErrorMessage(null);
+    },
+    [scrollProcessStepToTop],
+  );
 
   const effectiveReferenceCoords = useMemo(() => {
     if (referenceCoords) {
@@ -1290,8 +1302,44 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
         return { photo, form };
       })
-      .filter((entry): entry is { photo: DraftPhotoAsset; form: QuickTrackPhotoForm } => Boolean(entry));
+      .filter((entry): entry is { photo: DraftPhotoAsset; form: QuickTrackFormValues } => Boolean(entry));
   }, [photos, quickTrackForms]);
+
+  const reviewQuickTrackCards = useMemo<ReviewQuickTrackCardData[]>(() => {
+    return quickTrackReviewEntries.map((entry, index) => {
+      const eventAt = entry.photo.captureDate?.toISOString() ?? localDateStringToUTC(entry.form.date);
+      const locationText = entry.form.locationText.trim() || undefined;
+
+      return {
+        id: `review-quick-track-${entry.photo.id}-${index}`,
+        quickTrack: {
+          id: entry.photo.id,
+          restaurantName: locationText ?? 'Quick Track',
+          locationText,
+          itemCategory: entry.form.category || undefined,
+          itemName: entry.form.itemName.trim(),
+          rating: entry.form.rating,
+          notes: entry.form.notes.trim() || undefined,
+          userId: currentUserId ?? undefined,
+          userName: user?.name?.trim() || undefined,
+          visibility: entry.form.visibility,
+          itemDate: eventAt,
+          createdAt: eventAt,
+          updatedAt: eventAt,
+        },
+        photos: [
+          {
+            id: entry.photo.id,
+            food_item: entry.photo.id,
+            photo: entry.photo.name,
+            uri: entry.photo.uri,
+            created: eventAt,
+          },
+        ],
+        entryMeta: formatReviewEntryFooterLabel(eventAt, entry.form.date),
+      };
+    });
+  }, [currentUserId, quickTrackReviewEntries, user?.name]);
 
   const reviewVisitCards = useMemo<ReviewVisitCardData[]>(() => {
     return restaurantReviewGroups.map((group, groupIndex) => {
@@ -1394,13 +1442,17 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     });
   };
 
-  const updateCurrentQuickTrackForm = (updates: Partial<QuickTrackPhotoForm>) => {
+  const updateCurrentQuickTrackForm = (updates: Partial<QuickTrackFormValues>) => {
     if (!currentPhoto) {
       return;
     }
 
     setQuickTrackForms((current) => {
-      const currentForm = current[currentPhoto.id] ?? buildDefaultQuickTrackForm(currentPhoto, undefined);
+      const currentForm =
+        current[currentPhoto.id] ??
+        buildDefaultQuickTrackForm({
+          captureDate: currentPhoto.captureDate,
+        });
       return {
         ...current,
         [currentPhoto.id]: {
@@ -1409,6 +1461,64 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         },
       };
     });
+  };
+
+  const handleCaptureCurrentQuickTrackLocation = async () => {
+    if (!currentPhoto) {
+      return;
+    }
+
+    trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_CAPTURE_STARTED', {
+      photoId: currentPhoto.id,
+      source: 'PhotoProcessingScreen',
+    });
+    setErrorMessage(null);
+    setQuickTrackLocationPermissionNeedsSettings(false);
+    setIsCapturingQuickTrackLocation(true);
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
+          canAskAgain: permission.canAskAgain,
+          photoId: currentPhoto.id,
+          source: 'PhotoProcessingScreen',
+        });
+        setQuickTrackLocationPermissionNeedsSettings(permission.canAskAgain === false);
+        setErrorMessage(
+          permission.canAskAgain === false
+            ? 'Location permission is blocked. Enable it in settings.'
+            : 'Location permission is required to capture your coordinates.',
+        );
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+
+      updateCurrentQuickTrackForm({
+        latitude,
+        longitude,
+        locationText: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+      });
+      trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_CAPTURED', {
+        photoId: currentPhoto.id,
+        source: 'PhotoProcessingScreen',
+      });
+    } catch (error) {
+      trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_CAPTURE_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        photoId: currentPhoto.id,
+        source: 'PhotoProcessingScreen',
+      });
+      setErrorMessage(error instanceof Error ? error.message : 'Could not capture your location.');
+    } finally {
+      setIsCapturingQuickTrackLocation(false);
+    }
   };
 
   const dismissCurrentPhotoLocationHint = () => {
@@ -1872,22 +1982,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     return null;
   };
 
-  const validateQuickTrackForm = (form: QuickTrackPhotoForm): string | null => {
-    if (!form.itemName.trim()) {
-      return 'Item name is required.';
-    }
-
-    if (form.rating < 1 || form.rating > 5) {
-      return 'Rating must be between 1 and 5.';
-    }
-
-    if (!isValidLocalDate(form.date.trim())) {
-      return 'Date must use YYYY-MM-DD format.';
-    }
-
-    return null;
-  };
-
   const handleProcessNext = () => {
     if (!currentPhoto || !processType) {
       return;
@@ -1896,7 +1990,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     const validationMessage =
       processType === 'restaurant'
         ? validateRestaurantForm(currentRestaurantForm ?? buildDefaultRestaurantForm(currentPhoto, undefined))
-        : validateQuickTrackForm(currentQuickTrackForm ?? buildDefaultQuickTrackForm(currentPhoto, undefined));
+        : validateQuickTrackForm(
+            currentQuickTrackForm ??
+              buildDefaultQuickTrackForm({
+                captureDate: currentPhoto.captureDate,
+              }),
+          );
 
     if (validationMessage) {
       setErrorMessage(validationMessage);
@@ -1905,7 +2004,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
     setErrorMessage(null);
     if (currentPhotoIndex < photos.length - 1) {
-      setCurrentPhotoIndex((index) => index + 1);
+      goToProcessPhoto(currentPhotoIndex + 1);
       return;
     }
 
@@ -1992,16 +2091,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         throw new Error(`Photo ${index + 1}: ${validationMessage}`);
       }
 
-      const quickTrackInput = {
-        itemName: form.itemName.trim(),
-        rating: form.rating,
-        itemCategory: form.category || undefined,
-        notes: form.notes.trim() || undefined,
-        locationText: form.locationText.trim() || undefined,
-        visibility: form.visibility,
-        itemDate: localDateStringToUTC(form.date),
+      const quickTrackInput = buildCreateQuickTrackInput(form, {
         photo: buildPhotoUploadInput(photo),
-      };
+      });
 
       if (!isOnline) {
         await queueFeatureOutbox('quick-track.create', quickTrackInput);
@@ -2373,41 +2465,11 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       minHeight: 96,
       textAlignVertical: 'top',
     },
-    categoryWrap: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    categoryChip: {
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    categoryChipSelected: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.status.infoBorder,
-    },
     reviewFeedList: {
       gap: theme.spacing.md,
     },
     reviewCard: {
       gap: theme.spacing.sm,
-    },
-    reviewItemRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    reviewThumb: {
-      borderRadius: theme.radii.sm,
-      height: 48,
-      width: 48,
-    },
-    reviewTextWrap: {
-      flex: 1,
-      gap: 2,
     },
   });
 
@@ -2475,6 +2537,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setNearbyResults([]);
               setSearchErrorMessage(null);
               setLocationPermissionNeedsSettings(false);
+              setIsCapturingQuickTrackLocation(false);
+              setQuickTrackLocationPermissionNeedsSettings(false);
+              setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
               setMenuItemMode('existing');
               setNewMenuItemName('');
@@ -2507,6 +2572,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setNearbyResults([]);
               setSearchErrorMessage(null);
               setLocationPermissionNeedsSettings(false);
+              setIsCapturingQuickTrackLocation(false);
+              setQuickTrackLocationPermissionNeedsSettings(false);
+              setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
               setMenuItemMode('existing');
               setNewMenuItemName('');
@@ -2673,15 +2741,16 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
     return (
       <FeatureFormScreenScaffold
+        key={`process-photo-${processType}-${currentPhoto.id}`}
         headerBottomCompact
         headerBottomContent={progressHeaderContent}
         keyboardAware
         onBackPress={() => {
           if (currentPhotoIndex > 0) {
-            setCurrentPhotoIndex((index) => index - 1);
-            setErrorMessage(null);
+            goToProcessPhoto(currentPhotoIndex - 1);
             return;
           }
+          Keyboard.dismiss();
           setStep('upload');
           setErrorMessage(null);
         }}
@@ -2689,14 +2758,18 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           label: isLastPhoto ? 'Review' : 'Next Photo',
           onPress: handleProcessNext,
         }}
+        scrollViewProps={{
+          contentOffset: { x: 0, y: 0 },
+        }}
+        scrollViewRef={processStepScrollViewRef}
         secondaryAction={{
           label: currentPhotoIndex > 0 ? 'Previous' : 'Back to Upload',
           onPress: () => {
             if (currentPhotoIndex > 0) {
-              setCurrentPhotoIndex((index) => index - 1);
-              setErrorMessage(null);
+              goToProcessPhoto(currentPhotoIndex - 1);
               return;
             }
+            Keyboard.dismiss();
             setStep('upload');
             setErrorMessage(null);
           },
@@ -3010,91 +3083,26 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           </>
         ) : (
           <>
-            <Card style={styles.sectionCard}>
-              <Input
-                autoCapitalize="words"
-                label="Item Name"
-                onChangeText={(value) => {
-                  updateCurrentQuickTrackForm({ itemName: value });
-                }}
-                placeholder="Item name"
-                value={currentQuickTrackForm?.itemName ?? ''}
-              />
-
-              <Text variant="label">Category (Optional)</Text>
-              <View style={styles.categoryWrap}>
-                {QUICK_TRACK_CATEGORIES.map((category) => {
-                  const isSelected = currentQuickTrackForm?.category === category.value;
-                  return (
-                    <Pressable
-                      accessibilityRole="button"
-                      key={category.value}
-                      onPress={() => {
-                        updateCurrentQuickTrackForm({
-                          category: isSelected ? '' : category.value,
-                        });
-                      }}
-                      style={[styles.categoryChip, isSelected ? styles.categoryChipSelected : null]}
-                    >
-                      <Text tone={isSelected ? 'info' : 'secondary'} variant="bodySm">
-                        {category.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </Card>
-
-            <Card style={styles.sectionCard}>
-              <Text variant="label">Rating</Text>
-              <RatingSelector
-                onChange={(value) => {
-                  updateCurrentQuickTrackForm({ rating: value });
-                }}
-                value={currentQuickTrackForm?.rating ?? 3}
-              />
-              <View>
-                <Text variant="label">Visibility</Text>
-                <VisibilityOptionSelector
-                  onChange={(value) => {
-                    if (value === 'friends' || value === 'private') {
-                      updateCurrentQuickTrackForm({ visibility: value });
-                    }
-                  }}
-                  options={['friends', 'private']}
-                  value={currentQuickTrackForm?.visibility ?? resolveDefaultQuickTrackVisibility()}
-                />
-              </View>
-              <PhotoDetectedDateField
-                detectedDateValue={captureDateValue}
-                label="Date"
-                modalTitle="Select item date"
-                onChange={(value) => {
-                  updateCurrentQuickTrackForm({ date: value });
-                }}
-                value={currentQuickTrackForm?.date ?? getTodayLocalDateString()}
-              />
-              <Input
-                label="Location (Optional)"
-                onChangeText={(value) => {
-                  updateCurrentQuickTrackForm({ locationText: value });
-                }}
-                placeholder="Where was this item from?"
-                value={currentQuickTrackForm?.locationText ?? ''}
-              />
-              <Input
-                inputStyle={styles.notesInput}
-                label="Notes"
-                multiline
-                onChangeText={(value) => {
-                  updateCurrentQuickTrackForm({ notes: value });
-                }}
-                placeholder="Optional notes"
-                value={currentQuickTrackForm?.notes ?? ''}
-              />
-            </Card>
-
-            <RatingLegend />
+            <QuickTrackFormFields
+              detectedDateValue={captureDateValue}
+              isCapturingLocation={isCapturingQuickTrackLocation}
+              isCategoryExpanded={isQuickTrackCategoryExpanded}
+              locationPermissionNeedsSettings={quickTrackLocationPermissionNeedsSettings}
+              onCaptureLocation={() => {
+                void handleCaptureCurrentQuickTrackLocation();
+              }}
+              onCategoryExpandedChange={setIsQuickTrackCategoryExpanded}
+              onChange={updateCurrentQuickTrackForm}
+              onOpenLocationSettings={() => {
+                void Linking.openSettings();
+              }}
+              value={
+                currentQuickTrackForm ??
+                buildDefaultQuickTrackForm({
+                  captureDate: currentPhoto.captureDate,
+                })
+              }
+            />
           </>
         )}
       </FeatureFormScreenScaffold>
@@ -3192,36 +3200,14 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             </View>
           </>
         ) : (
-          quickTrackReviewEntries.map((entry) => (
-            <Card key={entry.photo.id} style={styles.reviewCard}>
-              <View style={styles.reviewItemRow}>
-                <Image source={{ uri: entry.photo.uri }} style={styles.reviewThumb} />
-                <View style={styles.reviewTextWrap}>
-                  <Text variant="label">{entry.form.itemName}</Text>
-                  <Text tone="secondary" variant="bodySm">
-                    Rating {entry.form.rating}/5
-                  </Text>
-                  {entry.form.category ? (
-                    <Text tone="secondary" variant="bodySm">
-                      Category: {QUICK_TRACK_CATEGORIES.find((cat) => cat.value === entry.form.category)?.label}
-                    </Text>
-                  ) : null}
-                  {entry.form.locationText.trim() ? (
-                    <Text tone="secondary" variant="bodySm">
-                      Location: {entry.form.locationText.trim()}
-                    </Text>
-                  ) : null}
-                  {entry.form.notes.trim() ? (
-                    <Text tone="secondary" variant="bodySm">
-                      {entry.form.notes.trim()}
-                    </Text>
-                  ) : null}
-                  <Text tone="secondary" variant="bodySm">
-                    Date: {formatLocalDateLabel(entry.form.date)}
-                  </Text>
-                </View>
-              </View>
-            </Card>
+          reviewQuickTrackCards.map((entry) => (
+            <HomeQuickTrackEntryCard
+              entryMeta={entry.entryMeta}
+              key={entry.id}
+              onOpenPhotoViewer={openReviewPhotoViewer}
+              photos={entry.photos}
+              quickTrack={entry.quickTrack}
+            />
           ))
         )}
 

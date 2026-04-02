@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.15',
+    date: '2026-04-01',
+    title: 'Richer Quick Track Review & Shared Form Experience',
+    summary:
+      'The Quick Track review step in the photo scanning flow now shows the same rich card you see on your home feed. GPS location capture is also now available when logging a quick track from a photo, and the form is consistent across all entry points.',
+    features: [
+      'GPS location capture is now available in the photo scanning Quick Track flow — tap "Use My Location" to auto-fill your coordinates, just like on the main Quick Track screen.',
+    ],
+    improvements: [
+      'Quick Track review cards in the photo scan flow now display the same rich home feed card style, with photo thumbnail, category chip, rating, notes, and entry timestamp.',
+      'Navigating between photos in the photo processing step now scrolls back to the top and dismisses the keyboard automatically.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.14',
     date: '2026-03-31',
     title: 'Richer Photo Scan Review & App Store Compliance',
