@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.16',
+    date: '2026-04-02',
+    title: 'Under-the-Hood Build Improvements',
+    summary:
+      'No visible changes this release — just internal build infrastructure improvements to keep the app reliable and easier to maintain.',
+    features: [],
+    improvements: [
+      'Refactored the iOS build script into a dedicated file for easier maintenance.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.15',
     date: '2026-04-01',
     title: 'Richer Quick Track Review & Shared Form Experience',
