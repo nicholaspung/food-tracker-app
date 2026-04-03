@@ -41,23 +41,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.1
-
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+          package-manager-cache: false
 
-      - name: Set up Expo and EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
 
       - name: Verify Expo token
         run: |
@@ -66,6 +60,12 @@ jobs:
             echo "If you stored it as an environment secret, it must be attached to the 'beta' GitHub environment."
             exit 1
           fi
+
+      - name: Verify toolchain
+        run: |
+          node --version
+          pnpm --version
+          eas --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

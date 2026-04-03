@@ -1,4 +1,4 @@
-appId: com.anonymous.yummy-recs-mobile
+appId: com.yummyrecs.mobile
 ---
 - assertVisible:
     id: add-visit-selector

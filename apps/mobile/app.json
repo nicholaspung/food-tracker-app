@@ -14,7 +14,7 @@
       "shortName": "Yummy Recs"
     },
     "ios": {
-      "bundleIdentifier": "com.anonymous.yummy-recs-mobile",
+      "bundleIdentifier": "com.yummyrecs.mobile",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -30,6 +30,7 @@
       "runtimeVersion": "1.0.0"
     },
     "android": {
+      "package": "com.yummyrecs.mobile",
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/brand-logo.png",

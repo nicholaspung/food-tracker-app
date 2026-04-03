@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>yummyrecs</string>
-          <string>com.anonymous.yummy-recs-mobile</string>
+          <string>com.yummyrecs.mobile</string>
         </array>
       </dict>
       <dict>

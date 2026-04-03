@@ -33,6 +33,7 @@ backend/pb_data_beta/
 # Logs
 *.log
 logs/
+.local/
 
 # OS files
 .DS_Store

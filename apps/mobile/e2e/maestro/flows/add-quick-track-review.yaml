@@ -1,4 +1,4 @@
-appId: com.anonymous.yummy-recs-mobile
+appId: com.yummyrecs.mobile
 ---
 - tapOn:
     id: tab-AddVisit

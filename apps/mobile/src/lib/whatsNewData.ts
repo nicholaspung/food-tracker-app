@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.17',
+    date: '2026-04-02',
+    title: 'App Store Submission Ready',
+    summary:
+      'No visible changes in this release — the app has been given its official bundle identifier and is now configured for App Store and Google Play submission.',
+    features: [],
+    improvements: [
+      'App bundle identifier updated to the official com.yummyrecs.mobile across iOS and Android.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.16',
     date: '2026-04-02',
     title: 'Under-the-Hood Build Improvements',
