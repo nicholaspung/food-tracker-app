@@ -2,11 +2,9 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"image/jpeg"
-	"io"
 	"log"
 	"mime"
 	"os"
@@ -33,6 +31,14 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
 
+		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricHEICConversions, 1); err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to consume HEIC conversion usage for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
+		}
+
 		// Parse multipart form
 		if err := e.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
 			return apis.NewBadRequestError("failed to parse multipart form", err)
@@ -44,11 +50,14 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError("image file is required", err)
 		}
 		defer file.Close()
+		if err := validateUploadedImage(header, allowedHEICExtensions); err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
 
 		log.Printf("Converting HEIC file: %s, size: %d bytes", header.Filename, header.Size)
 
 		// Read the file into memory
-		heicData, err := io.ReadAll(file)
+		heicData, err := readUploadedFileWithLimit(file, maxImageUploadBytes)
 		if err != nil {
 			return apis.NewApiError(500, "failed to read file", err)
 		}
@@ -114,18 +123,22 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError("image file is required", err)
 		}
 		defer file.Close()
+		if err := validateUploadedImage(header, allowedImageExtensions); err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
 
 		log.Printf("Parsing menu image with Gemini: %s, size: %d bytes", header.Filename, header.Size)
 
 		// Read file into memory
-		imageData, err := io.ReadAll(file)
+		imageData, err := readUploadedFileWithLimit(file, maxImageUploadBytes)
 		if err != nil {
 			return apis.NewApiError(500, "failed to read image file", err)
 		}
 
 		// Initialize Gemini client
-		ctx := context.Background()
-		client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey))
+		ctx, cancel := requestContextWithTimeout(e, geminiRequestTimeout)
+		defer cancel()
+		client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey), option.WithHTTPClient(geminiHTTPClient))
 		if err != nil {
 			log.Printf("Failed to create Gemini client: %v", err)
 			return apis.NewApiError(500, "failed to initialize Gemini API", err)
@@ -298,6 +311,14 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
 
+		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricMenuScans, 1); err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to consume restaurant-name scan usage for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
+		}
+
 		// Get Gemini API key from environment
 		geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 		if geminiAPIKey == "" {
@@ -316,18 +337,22 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			return apis.NewBadRequestError("image file is required", err)
 		}
 		defer file.Close()
+		if err := validateUploadedImage(header, allowedImageExtensions); err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
 
 		log.Printf("Finding restaurant name with Gemini: %s, size: %d bytes", header.Filename, header.Size)
 
 		// Read file into memory
-		imageData, err := io.ReadAll(file)
+		imageData, err := readUploadedFileWithLimit(file, maxImageUploadBytes)
 		if err != nil {
 			return apis.NewApiError(500, "failed to read image file", err)
 		}
 
 		// Initialize Gemini client
-		ctx := context.Background()
-		client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey))
+		ctx, cancel := requestContextWithTimeout(e, geminiRequestTimeout)
+		defer cancel()
+		client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey), option.WithHTTPClient(geminiHTTPClient))
 		if err != nil {
 			log.Printf("Failed to create Gemini client: %v", err)
 			return apis.NewApiError(500, "failed to initialize Gemini API", err)

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -18,14 +18,15 @@ import {
   createDefaultRestaurantList,
   deleteRestaurantList,
   getRestaurantListById,
-  listCollectionRecords,
-  listMyBookmarkedListItemLinks,
-  listRestaurantLists,
-  listRestaurantListItems,
+  listMyBookmarkedListItemLinksForFoodItemIds,
+  listRestaurantListsPage,
+  listRestaurantListItemsPage,
+  listVisitPhotosForFoodItemIds,
   moveRestaurantListRestaurant,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
+  type VisitPhotoRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -40,23 +41,6 @@ import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
-
-interface VisitPhotoRecord {
-  id: string;
-  food_item?: string;
-  user?: string;
-  photo: string;
-  collectionId?: string;
-  collectionName?: string;
-  created: string;
-  expand?: {
-    user?: {
-      id?: string;
-      name?: string;
-      email?: string;
-    };
-  };
-}
 
 interface GroupedBookmarkedItem {
   key: string;
@@ -221,34 +205,60 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     queryFn: () => getRestaurantListById(listId),
   });
 
-  const listItemsQuery = useQuery({
-    queryKey: ['feature', 'restaurantListItems', listId],
-    queryFn: () => listRestaurantListItems(listId),
+  const listItemsQuery = useInfiniteQuery({
+    queryKey: ['feature', 'restaurantListItems', listId, 'paginated'],
+    queryFn: ({ pageParam }) => listRestaurantListItemsPage(listId, { page: pageParam, pageSize: 20 }),
     enabled: !!listQuery.data,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
 
-  const myListsQuery = useQuery({
-    queryKey: ['feature', 'restaurantLists', 'my'],
-    queryFn: () => listRestaurantLists({ scope: 'my' }),
+  const myListsQuery = useInfiniteQuery({
+    queryKey: ['feature', 'restaurantLists', 'my', 'paginated'],
+    queryFn: ({ pageParam }) => listRestaurantListsPage({ scope: 'my', page: pageParam, pageSize: 20 }),
     enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
-  });
-
-  const myBookmarkedLinksQuery = useQuery({
-    queryKey: ['feature', 'myBookmarkedListItemLinks'],
-    queryFn: listMyBookmarkedListItemLinks,
-    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
-  });
-
-  const visitPhotosQuery = useQuery({
-    queryKey: ['feature', 'visitPhotos'],
-    queryFn: () => listCollectionRecords<VisitPhotoRecord>('visit_photos', { sort: '-created', expand: 'user' }),
-    enabled: Boolean(listQuery.data),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
 
   const list = listQuery.data;
   const isOwner = Boolean(list && user?.id && list.userId === user.id);
-  const myLists = useMemo(() => myListsQuery.data ?? [], [myListsQuery.data]);
-  const listItems = listItemsQuery.data;
+  const listItems = useMemo(
+    () => listItemsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [listItemsQuery.data],
+  );
+  const hasBlockingListItemsError =
+    listItemsQuery.isError && (!listItemsQuery.data || listItemsQuery.data.pages.length === 0);
+  const hasListItemsRefreshError = !hasBlockingListItemsError && listItemsQuery.isError;
+  const visibleFoodItemIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const listItem of listItems ?? []) {
+      const bookmarkedItems = Array.isArray(listItem.bookmarkedItems) ? listItem.bookmarkedItems : [];
+      for (const item of bookmarkedItems) {
+        ids.add(item.id);
+        if (item.userFoodItemId) {
+          ids.add(item.userFoodItemId);
+        }
+      }
+    }
+
+    return Array.from(ids);
+  }, [listItems]);
+
+  const myBookmarkedLinksQuery = useQuery({
+    queryKey: ['feature', 'myBookmarkedListItemLinks', ...visibleFoodItemIds],
+    queryFn: () => listMyBookmarkedListItemLinksForFoodItemIds(visibleFoodItemIds),
+    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id) && visibleFoodItemIds.length > 0,
+  });
+
+  const visitPhotosQuery = useQuery({
+    queryKey: ['feature', 'visitPhotos', 'foodItems', ...visibleFoodItemIds],
+    queryFn: () => listVisitPhotosForFoodItemIds(visibleFoodItemIds),
+    enabled: Boolean(listQuery.data) && visibleFoodItemIds.length > 0,
+  });
+
+  const myLists = useMemo(() => myListsQuery.data?.pages.flatMap((page) => page.items) ?? [], [myListsQuery.data]);
   const savedListIdsByFoodItemId = useMemo(() => {
     const mapping = new Map<string, Set<string>>();
     for (const link of myBookmarkedLinksQuery.data ?? []) {
@@ -878,7 +888,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const subtitle = useMemo(() => {
     const restaurantCount = groupedRestaurants.length;
-    const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
+    const countLabel = `${restaurantCount}${listItemsQuery.hasNextPage ? '+' : ''} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
     if (!list) {
       return countLabel;
     }
@@ -892,7 +902,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     const ownerName = list.ownerName ?? 'Unknown user';
     const baseLabel = `${ownerName}'s list · ${countLabel}`;
     return descriptionLabel ? `${baseLabel}\n${descriptionLabel}` : baseLabel;
-  }, [groupedRestaurants.length, isOwner, list]);
+  }, [groupedRestaurants.length, isOwner, list, listItemsQuery.hasNextPage]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -1340,7 +1350,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     );
   }
 
-  if (listQuery.isError || listItemsQuery.isError) {
+  if (listQuery.isError || hasBlockingListItemsError) {
     return (
       <FeatureDetailScreenScaffold onBackPress={handleBack} title="List">
         <ErrorState
@@ -1406,6 +1416,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     >
       <View style={styles.container}>
         <PageErrorToast errorMessage={errorMessage} title="List update failed" />
+        <PageErrorToast
+          actionLabel="Retry"
+          errorMessage={hasListItemsRefreshError ? 'Could not refresh all list items. Showing saved data.' : null}
+          onAction={() => {
+            void listItemsQuery.refetch();
+          }}
+          title="List items unavailable"
+        />
         <PageErrorToast
           actionLabel="Retry"
           errorMessage={!isOwner && myListsQuery.isError ? 'Could not load your lists.' : null}
@@ -1488,7 +1506,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                           <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
                         </Pressable>
                       ) : null}
-                      {groupIndex < groupedRestaurants.length - 1 ? (
+                      {groupIndex < groupedRestaurants.length - 1 || listItemsQuery.hasNextPage ? (
                         <Pressable
                           accessibilityLabel={`Move ${group.restaurantName} down`}
                           accessibilityRole="button"
@@ -1713,6 +1731,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             );
           })
         )}
+
+        {groupedRestaurants.length > 0 && listItemsQuery.hasNextPage ? (
+          <Button
+            label={listItemsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more restaurants'}
+            loading={listItemsQuery.isFetchingNextPage}
+            onPress={() => {
+              void listItemsQuery.fetchNextPage();
+            }}
+            variant="secondary"
+          />
+        ) : null}
       </View>
 
       <PhotoViewerModal
@@ -1870,6 +1899,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         ) : (
           <Text style={styles.saveListSectionTitle}>No additional lists yet. Use quick save or create a list.</Text>
         )}
+
+        {!isOwner && myListsQuery.hasNextPage ? (
+          <Button
+            label={myListsQuery.isFetchingNextPage ? 'Loading more lists...' : 'Load more lists'}
+            loading={myListsQuery.isFetchingNextPage}
+            onPress={() => {
+              void myListsQuery.fetchNextPage();
+            }}
+            variant="secondary"
+          />
+        ) : null}
 
         {saveModalError ? <Text style={styles.saveModalError}>{saveModalError}</Text> : null}
       </Modal>

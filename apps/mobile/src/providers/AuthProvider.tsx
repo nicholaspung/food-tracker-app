@@ -41,21 +41,30 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const SCREENSHOT_REVIEW_AUTH_RECORD: RecordModel = {
-  collectionId: 'users',
-  collectionName: 'users',
-  id: 'screenshot-review-user',
-  email: 'screenshots@yummyrecs.local',
-  name: 'Screenshot Review',
-  verified: true,
-  isAdmin: true,
-  isSubscriber: true,
-  isBetaUser: true,
-  defaultListVisibility: 'friends',
-  defaultVisitVisibility: 'friends',
-  defaultRestaurantVisibility: 'friends',
-  created: '2026-01-01T12:00:00.000Z',
-};
+const SCREENSHOT_REVIEW_AUTH_TOKEN = 'screenshot-review-mode';
+
+function createScreenshotReviewAuthRecord(): RecordModel | null {
+  if (!__DEV__) {
+    return null;
+  }
+
+  return {
+    collectionId: 'users',
+    collectionName: 'users',
+    id: 'screenshot-review-user',
+    email: 'screenshots@yummyrecs.local',
+    name: 'Screenshot Review',
+    friendCode: 'LOCAL000',
+    verified: true,
+    isAdmin: true,
+    isSubscriber: true,
+    isBetaUser: true,
+    defaultListVisibility: 'friends',
+    defaultVisitVisibility: 'friends',
+    defaultRestaurantVisibility: 'friends',
+    created: '2026-01-01T12:00:00.000Z',
+  };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -266,25 +275,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         if (env.isScreenshotReviewMode) {
-          const screenshotReviewUser = normalizeAuthUser(SCREENSHOT_REVIEW_AUTH_RECORD);
+          const screenshotReviewAuthRecord = createScreenshotReviewAuthRecord();
+          const screenshotReviewUser = normalizeAuthUser(screenshotReviewAuthRecord);
 
-          pb.authStore.save('screenshot-review-mode', SCREENSHOT_REVIEW_AUTH_RECORD);
+          if (!screenshotReviewAuthRecord || !screenshotReviewUser) {
+            logger.warn('[AuthProvider] Screenshot review mode is only available in development bundles.');
+          } else {
+            pb.authStore.save(SCREENSHOT_REVIEW_AUTH_TOKEN, screenshotReviewAuthRecord);
 
-          if (isMounted && screenshotReviewUser) {
-            setActualUser(screenshotReviewUser);
-            setStatus('authenticated');
-            setAuthError(null);
-            identifyObservabilityUser(screenshotReviewUser);
+            if (isMounted) {
+              setActualUser(screenshotReviewUser);
+              setStatus('authenticated');
+              setAuthError(null);
+              identifyObservabilityUser(screenshotReviewUser);
+            }
+
+            trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
+              durationMs: Date.now() - restoreStartedAt,
+              hadPersistedToken,
+              hasValidSession: true,
+              refreshFailed: false,
+              source: 'AuthProvider',
+            });
+            return;
           }
-
-          trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
-            durationMs: Date.now() - restoreStartedAt,
-            hadPersistedToken,
-            hasValidSession: true,
-            refreshFailed: false,
-            source: 'AuthProvider',
-          });
-          return;
         }
 
         await authStore.waitUntilReady();

@@ -1,6 +1,12 @@
 import { Platform } from 'react-native';
 
-export type AppEnvironment = 'local' | 'beta' | 'production';
+import {
+  type AppEnvironment,
+  type EnvSource,
+  normalizeAppEnvironment,
+  readOptionalEnvValue,
+  resolveScreenshotReviewMode,
+} from './envUtils';
 
 interface MobileEnvironmentDefaults {
   adminUrl: string;
@@ -50,8 +56,6 @@ export interface MobileEnv {
   posthogHost: string;
 }
 
-type EnvSource = Record<string, string | undefined>;
-
 const expoPublicEnv: EnvSource = {
   EXPO_PUBLIC_APP_ENV: process.env.EXPO_PUBLIC_APP_ENV,
   EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL,
@@ -63,35 +67,6 @@ const expoPublicEnv: EnvSource = {
   EXPO_PUBLIC_POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST,
   EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: process.env.EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE,
 };
-
-function readOptionalEnvValue(value: string | undefined): string | undefined {
-  const trimmedValue = value?.trim();
-  return trimmedValue ? trimmedValue : undefined;
-}
-
-function readBooleanEnvValue(value: string | undefined): boolean {
-  const normalizedValue = value?.trim().toLowerCase();
-  return normalizedValue === '1' || normalizedValue === 'true' || normalizedValue === 'yes';
-}
-
-function normalizeAppEnvironment(value: string | undefined): AppEnvironment | null {
-  const normalizedValue = value?.trim().toLowerCase();
-
-  switch (normalizedValue) {
-    case 'local':
-    case 'dev':
-    case 'development':
-      return 'local';
-    case 'beta':
-    case 'preview':
-      return 'beta';
-    case 'prod':
-    case 'production':
-      return 'production';
-    default:
-      return null;
-  }
-}
 
 function resolveCurrentOrigin(): string | undefined {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.origin) {
@@ -138,7 +113,15 @@ export function resolveAppEnvironment(source?: EnvSource, currentOrigin?: string
   return explicitEnvironment ?? 'local';
 }
 
-export function loadMobileEnv(source?: EnvSource, currentOrigin?: string): MobileEnv {
+interface LoadMobileEnvOptions {
+  isDevBuild?: boolean;
+}
+
+export function loadMobileEnv(
+  source?: EnvSource,
+  currentOrigin?: string,
+  options?: LoadMobileEnvOptions,
+): MobileEnv {
   const resolvedSource = source ?? expoPublicEnv;
   const environment = resolveAppEnvironment(resolvedSource, currentOrigin);
   const environmentDefaults = MOBILE_ENVIRONMENT_DEFAULTS[environment];
@@ -161,7 +144,9 @@ export function loadMobileEnv(source?: EnvSource, currentOrigin?: string): Mobil
     apiBaseUrl,
     appWebUrl,
     environment,
-    isScreenshotReviewMode: readBooleanEnvValue(resolvedSource.EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE),
+    isScreenshotReviewMode: resolveScreenshotReviewMode(resolvedSource, {
+      isDevBuild: options?.isDevBuild,
+    }),
     marketingUrl,
     pocketbaseUrl,
     posthogApiKey: readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POSTHOG_API_KEY) ?? '',

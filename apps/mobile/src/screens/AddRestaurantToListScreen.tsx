@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
@@ -13,9 +13,9 @@ import {
 } from '../components/shared';
 import {
   addRestaurantVisitRatingsToList,
-  listRestaurantListItems,
-  listRestaurantListItemLinks,
-  listVisits,
+  listRestaurantListItemLinksForRestaurantIds,
+  listRestaurantListNotesForRestaurantIds,
+  listVisitsPage,
   type VisitRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
@@ -27,7 +27,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Card, Input, Text } from '../ui';
+import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type AddRestaurantToListScreenProps = NativeStackScreenProps<
@@ -198,26 +198,50 @@ export function AddRestaurantToListScreen({
   const [noteDirty, setNoteDirty] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const trimmedSearchQuery = searchQuery.trim();
 
-  const visitsQuery = useQuery({
-    queryKey: ["feature", "visits"],
-    queryFn: listVisits,
+  const visitsQuery = useInfiniteQuery({
+    queryKey: ["feature", "visits", "mine", "paginated", trimmedSearchQuery],
+    queryFn: ({ pageParam }) =>
+      listVisitsPage({
+        scope: "mine",
+        page: pageParam,
+        pageSize: 20,
+        search: trimmedSearchQuery || undefined,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasNextPage ? lastPage.page + 1 : undefined,
   });
 
-  const listItemLinksQuery = useQuery({
-    queryKey: ["feature", "restaurantListItemLinks", listId],
-    queryFn: () => listRestaurantListItemLinks(listId),
-  });
-
-  const listItemsQuery = useQuery({
-    queryKey: ["feature", "restaurantListItems", listId],
-    queryFn: () => listRestaurantListItems(listId),
-  });
+  const loadedVisits = useMemo(
+    () => visitsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [visitsQuery.data],
+  );
+  const hasBlockingVisitsError =
+    visitsQuery.isError &&
+    (!visitsQuery.data || visitsQuery.data.pages.length === 0);
 
   const visitedRestaurants = useMemo(
-    () => buildVisitedRestaurants(visitsQuery.data ?? [], user?.id),
-    [user?.id, visitsQuery.data],
+    () => buildVisitedRestaurants(loadedVisits, user?.id),
+    [loadedVisits, user?.id],
   );
+  const visibleRestaurantIds = useMemo(
+    () => visitedRestaurants.map((restaurant) => restaurant.id),
+    [visitedRestaurants],
+  );
+
+  const listItemLinksQuery = useQuery({
+    queryKey: ["feature", "restaurantListItemLinks", listId, ...visibleRestaurantIds],
+    queryFn: () => listRestaurantListItemLinksForRestaurantIds(listId, visibleRestaurantIds),
+    enabled: visibleRestaurantIds.length > 0,
+  });
+
+  const restaurantNotesQuery = useQuery({
+    queryKey: ["feature", "restaurantListNotes", listId, ...visibleRestaurantIds],
+    queryFn: () => listRestaurantListNotesForRestaurantIds(listId, visibleRestaurantIds),
+    enabled: visibleRestaurantIds.length > 0,
+  });
 
   const existingRestaurantIds = useMemo(() => {
     return new Set(
@@ -240,23 +264,6 @@ export function AddRestaurantToListScreen({
     }
     return ids;
   }, [listItemLinksQuery.data]);
-
-  const filteredRestaurants = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return visitedRestaurants;
-    }
-
-    return visitedRestaurants.filter((restaurant) => {
-      return (
-        restaurant.name.toLowerCase().includes(normalizedQuery) ||
-        (restaurant.location?.toLowerCase().includes(normalizedQuery) ??
-          false) ||
-        (restaurant.cuisineType?.toLowerCase().includes(normalizedQuery) ??
-          false)
-      );
-    });
-  }, [searchQuery, visitedRestaurants]);
 
   const selectedRestaurant = useMemo(
     () =>
@@ -318,15 +325,15 @@ export function AddRestaurantToListScreen({
 
   const existingRestaurantNoteById = useMemo(() => {
     const noteByRestaurantId = new Map<string, string>();
-    for (const listItem of listItemsQuery.data ?? []) {
-      const trimmedNote = listItem.note?.trim();
-      if (!trimmedNote || noteByRestaurantId.has(listItem.restaurantId)) {
+    for (const restaurantNote of restaurantNotesQuery.data ?? []) {
+      const trimmedNote = restaurantNote.note.trim();
+      if (!trimmedNote || noteByRestaurantId.has(restaurantNote.restaurantId)) {
         continue;
       }
-      noteByRestaurantId.set(listItem.restaurantId, trimmedNote);
+      noteByRestaurantId.set(restaurantNote.restaurantId, trimmedNote);
     }
     return noteByRestaurantId;
-  }, [listItemsQuery.data]);
+  }, [restaurantNotesQuery.data]);
 
   const styles = StyleSheet.create({
     section: {
@@ -564,6 +571,9 @@ export function AddRestaurantToListScreen({
             queryKey: ["feature", "restaurantListItemLinks", listId],
           }),
           queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurantListNotes", listId],
+          }),
+          queryClient.invalidateQueries({
             queryKey: ["feature", "restaurantLists"],
           }),
         ]);
@@ -591,6 +601,9 @@ export function AddRestaurantToListScreen({
         }),
         queryClient.invalidateQueries({
           queryKey: ["feature", "restaurantListItemLinks", listId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["feature", "restaurantListNotes", listId],
         }),
         queryClient.invalidateQueries({
           queryKey: ["feature", "restaurantLists"],
@@ -685,7 +698,11 @@ export function AddRestaurantToListScreen({
       <PageErrorToast
         actionLabel="Retry"
         errorMessage={
-          visitsQuery.isError ? "Could not load your visits." : null
+          hasBlockingVisitsError
+            ? "Could not load your visits."
+            : visitsQuery.isError
+              ? "Could not refresh your visits. Showing saved data."
+              : null
         }
         onAction={() => {
           void visitsQuery.refetch();
@@ -707,10 +724,10 @@ export function AddRestaurantToListScreen({
       <PageErrorToast
         actionLabel="Retry"
         errorMessage={
-          listItemsQuery.isError ? "Could not load current notes for this list." : null
+          restaurantNotesQuery.isError ? "Could not load current notes for this list." : null
         }
         onAction={() => {
-          void listItemsQuery.refetch();
+          void restaurantNotesQuery.refetch();
         }}
         title="Notes unavailable"
       />
@@ -726,7 +743,7 @@ export function AddRestaurantToListScreen({
             value={searchQuery}
           />
 
-          {visitsQuery.isLoading || listItemLinksQuery.isLoading || listItemsQuery.isLoading ? (
+          {visitsQuery.isLoading || listItemLinksQuery.isLoading || restaurantNotesQuery.isLoading ? (
             <View style={styles.cardList}>
               <Skeleton height={90} />
               <Skeleton height={90} />
@@ -736,19 +753,19 @@ export function AddRestaurantToListScreen({
 
           {!visitsQuery.isLoading &&
           !listItemLinksQuery.isLoading &&
-          !listItemsQuery.isLoading &&
-          !visitsQuery.isError &&
+          !restaurantNotesQuery.isLoading &&
+          !hasBlockingVisitsError &&
           !listItemLinksQuery.isError &&
-          !listItemsQuery.isError &&
-          filteredRestaurants.length === 0 ? (
+          !restaurantNotesQuery.isError &&
+          visitedRestaurants.length === 0 ? (
             <EmptyState
               description={
-                searchQuery.trim()
+                trimmedSearchQuery
                   ? "No matching visited restaurants found."
                   : "Visit a restaurant and rate items first."
               }
               title={
-                searchQuery.trim()
+                trimmedSearchQuery
                   ? "No matching restaurants"
                   : "No visited restaurants yet"
               }
@@ -757,13 +774,13 @@ export function AddRestaurantToListScreen({
 
           {!visitsQuery.isLoading &&
           !listItemLinksQuery.isLoading &&
-          !listItemsQuery.isLoading &&
-          !visitsQuery.isError &&
+          !restaurantNotesQuery.isLoading &&
+          !hasBlockingVisitsError &&
           !listItemLinksQuery.isError &&
-          !listItemsQuery.isError &&
-          filteredRestaurants.length > 0 ? (
+          !restaurantNotesQuery.isError &&
+          visitedRestaurants.length > 0 ? (
             <View style={styles.cardList}>
-              {filteredRestaurants.map((restaurant, restaurantIndex) => {
+              {visitedRestaurants.map((restaurant, restaurantIndex) => {
                 const availableItemCount = restaurant.foodItems.filter(
                   (item) => !existingFoodItemIds.has(item.id),
                 ).length;
@@ -822,6 +839,20 @@ export function AddRestaurantToListScreen({
                   </Card>
                 );
               })}
+              {visitsQuery.hasNextPage ? (
+                <Button
+                  label={
+                    visitsQuery.isFetchingNextPage
+                      ? "Loading more restaurants..."
+                      : "Load more restaurants"
+                  }
+                  loading={visitsQuery.isFetchingNextPage}
+                  onPress={() => {
+                    void visitsQuery.fetchNextPage();
+                  }}
+                  variant="secondary"
+                />
+              ) : null}
             </View>
           ) : null}
         </>

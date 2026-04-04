@@ -140,6 +140,18 @@ func seedMonthlyUsage(
 	placesQueries int,
 	menuScans int,
 ) {
+	seedMonthlyUsageWithHEIC(t, app, userID, photoUploads, placesQueries, menuScans, 0)
+}
+
+func seedMonthlyUsageWithHEIC(
+	t *testing.T,
+	app core.App,
+	userID string,
+	photoUploads int,
+	placesQueries int,
+	menuScans int,
+	heicConversions int,
+) {
 	t.Helper()
 
 	monthKey := lib.CurrentUTCMonthKey()
@@ -169,6 +181,7 @@ func seedMonthlyUsage(
 	record.Set("photo_uploads", photoUploads)
 	record.Set("places_queries", placesQueries)
 	record.Set("menu_scans", menuScans)
+	record.Set("heic_conversions", heicConversions)
 
 	if saveErr := app.Save(record); saveErr != nil {
 		t.Fatalf("failed to save usage record: %v", saveErr)

@@ -10,6 +10,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.19',
+    date: '2026-04-04',
+    title: 'Infinite Scroll, Stable Friend Codes & Secure Auth',
+    summary:
+      'The home feed, lists, notes, and friends screens now load more as you scroll — no more waiting for everything to load at once. Friend codes are now permanent 8-character codes that never change. Your login credentials are also now stored in the secure iOS Keychain.',
+    features: [
+      'Infinite scroll on the home feed — your visits and quick tracks load page by page as you scroll down, so the app stays fast even with a large history.',
+      'Infinite scroll on the Lists, Notes, and Friends screens, as well as inside list detail views.',
+      'Friend codes are now permanent 8-character codes (e.g. AB3X7KQZ) stored in your account. Your code will stay the same forever — share it once and friends can always use it.',
+    ],
+    improvements: [
+      'Your login session is now stored in the iOS Keychain for better security, instead of plain AsyncStorage.',
+      'Previously loaded data is now cached on-device so screens feel instant when you reopen the app.',
+      'The "Add to List" screen now searches your visits as you type and loads them page by page.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.18',
     date: '2026-04-03',
     title: 'Report Content & Moderation Visibility',

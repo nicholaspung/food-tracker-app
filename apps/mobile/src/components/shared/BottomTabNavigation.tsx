@@ -114,7 +114,7 @@ export function BottomTabNavigation({
   const { data: friends = [] } = useQuery({
     queryKey: ['feature', 'friends'],
     queryFn: listFriends,
-    refetchInterval: 30000,
+    refetchOnReconnect: 'always',
   });
 
   const pendingInvitesCount = useMemo(

@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
@@ -9,12 +9,12 @@ import {
   HeaderAccessoryButton,
   Skeleton,
 } from '../components/shared';
-import { listFeedback } from '../features';
+import { listFeedbackPage } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useTheme } from '../theme';
-import { Text } from '../ui';
+import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'Feedback'>;
@@ -22,15 +22,24 @@ type FeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'Feedback'
 export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const theme = useTheme();
 
-  const feedbackQuery = useQuery({
-    queryKey: ['feature', 'feedback', 'all'],
-    queryFn: () => listFeedback({ status: 'all' }),
+  const feedbackQuery = useInfiniteQuery({
+    queryKey: ['feature', 'feedback', 'all', 'paginated'],
+    queryFn: ({ pageParam }) =>
+      listFeedbackPage({
+        status: 'all',
+        page: pageParam,
+        pageSize: 20,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const hasBlockingFeedbackError = feedbackQuery.isError && !feedbackQuery.data;
+  const hasBlockingFeedbackError =
+    feedbackQuery.isError && (!feedbackQuery.data || feedbackQuery.data.pages.length === 0);
   const hasFeedbackRefreshError = !hasBlockingFeedbackError && feedbackQuery.isError;
   const hasResolvedFeedback = feedbackQuery.isSuccess && !feedbackQuery.isFetching;
-  const displayedFeedback = feedbackQuery.data ?? [];
+  const displayedFeedback = feedbackQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const visibleFeedbackCount = displayedFeedback.length;
+  const totalFeedbackCount = feedbackQuery.data?.pages[0]?.totalItems ?? visibleFeedbackCount;
 
   const styles = StyleSheet.create({
     body: {
@@ -83,7 +92,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     >
       {feedbackQuery.isSuccess ? (
         <Text style={styles.countSummaryText}>
-          {visibleFeedbackCount} {visibleFeedbackCount === 1 ? 'feedback thread' : 'feedback threads'} total
+          {totalFeedbackCount} {totalFeedbackCount === 1 ? 'feedback thread' : 'feedback threads'} total
         </Text>
       ) : null}
 
@@ -160,6 +169,17 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
               );
             })
         : null}
+
+        {!feedbackQuery.isLoading && !hasBlockingFeedbackError && visibleFeedbackCount > 0 && feedbackQuery.hasNextPage ? (
+          <Button
+            label={feedbackQuery.isFetchingNextPage ? 'Loading more...' : 'Load more feedback'}
+            loading={feedbackQuery.isFetchingNextPage}
+            onPress={() => {
+              void feedbackQuery.fetchNextPage();
+            }}
+            variant="secondary"
+          />
+        ) : null}
       </View>
     </BackHeaderScreenScaffold>
   );

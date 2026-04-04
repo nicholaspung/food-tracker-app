@@ -41,7 +41,7 @@ Production is split into four pieces:
 Browser
   -> Caddy on :443
     -> yummyrecs.com / beta.yummyrecs.com served from marketing_build*
-    -> app.yummyrecs.com / beta.app.yummyrecs.com serve app web and proxy /api/* + /_/*
+    -> app.yummyrecs.com / beta.app.yummyrecs.com serve app web and proxy /api/*
     -> admin.yummyrecs.com / beta.admin.yummyrecs.com serve admin web and proxy /api/* + /_/*
 ```
 

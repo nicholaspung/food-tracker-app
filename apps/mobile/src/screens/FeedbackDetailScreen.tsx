@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 
 import {
@@ -13,7 +13,7 @@ import {
 } from '../components/shared';
 import {
   getFeedbackById,
-  listFeedbackMessages,
+  listFeedbackMessagesPage,
   markFeedbackAsRead,
   sendFeedbackMessage,
 } from '../features';
@@ -114,12 +114,29 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     queryFn: () => getFeedbackById(feedbackId),
   });
 
-  const messagesQuery = useQuery({
+  const messagesQuery = useInfiniteQuery({
     queryKey: ['feature', 'feedback-messages', feedbackId],
-    queryFn: () => listFeedbackMessages(feedbackId),
+    queryFn: ({ pageParam }) =>
+      listFeedbackMessagesPage(feedbackId, {
+        page: pageParam,
+        pageSize: 20,
+        order: 'desc',
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     refetchInterval: 3000,
   });
-  const latestMessageId = messagesQuery.data?.[messagesQuery.data.length - 1]?.id;
+  const displayedMessages = useMemo(() => {
+    const pages = messagesQuery.data?.pages ?? [];
+    return pages
+      .slice()
+      .reverse()
+      .flatMap((page) => [...page.items].reverse());
+  }, [messagesQuery.data]);
+  const hasBlockingMessagesError =
+    messagesQuery.isError && (!messagesQuery.data || messagesQuery.data.pages.length === 0);
+  const hasMessagesRefreshError = !hasBlockingMessagesError && messagesQuery.isError;
+  const latestMessageId = displayedMessages[displayedMessages.length - 1]?.id;
 
   const scheduleScrollToLatestMessage = useCallback((animated = true, delay = 0) => {
     if (scrollTimeoutRef.current) {
@@ -421,19 +438,36 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
               <PageErrorToast
                 actionLabel="Retry"
-                errorMessage={messagesQuery.isError ? 'Could not load messages for this feedback.' : null}
+                errorMessage={
+                  hasBlockingMessagesError
+                    ? 'Could not load messages for this feedback.'
+                    : hasMessagesRefreshError
+                      ? 'Could not refresh messages. Showing saved history.'
+                      : null
+                }
                 onAction={() => {
                   void messagesQuery.refetch();
                 }}
                 title="Messages unavailable"
               />
 
-              {!messagesQuery.isLoading && !messagesQuery.isError && (messagesQuery.data?.length ?? 0) === 0 ? (
+              {!messagesQuery.isLoading && !hasBlockingMessagesError && messagesQuery.hasNextPage ? (
+                <Button
+                  label={messagesQuery.isFetchingNextPage ? 'Loading older messages...' : 'Load older messages'}
+                  loading={messagesQuery.isFetchingNextPage}
+                  onPress={() => {
+                    void messagesQuery.fetchNextPage();
+                  }}
+                  variant="secondary"
+                />
+              ) : null}
+
+              {!messagesQuery.isLoading && !hasBlockingMessagesError && displayedMessages.length === 0 ? (
                 <EmptyState description="Start the conversation with support." title="No messages yet" />
               ) : null}
 
-              {!messagesQuery.isLoading && !messagesQuery.isError
-                ? (messagesQuery.data ?? []).map((messageItem) => {
+              {!messagesQuery.isLoading && !hasBlockingMessagesError
+                ? displayedMessages.map((messageItem) => {
                     const isMine = !messageItem.isAdminMessage;
 
                     return (

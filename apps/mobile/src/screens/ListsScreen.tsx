@@ -3,7 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
@@ -18,7 +18,7 @@ import { env } from '../config/env';
 import {
   createDefaultRestaurantList,
   getRestaurantListItemCounts,
-  listRestaurantLists,
+  listRestaurantListsPage,
   type RestaurantListRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
@@ -29,7 +29,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Card, Input, ListItem, Text } from '../ui';
+import { Button, Card, Input, ListItem, Text } from '../ui';
 
 type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
 
@@ -206,15 +206,32 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
   const hasTriedCreatingDefault = useRef(false);
+  const trimmedSearchQuery = searchQuery.trim();
 
-  const myListsQuery = useQuery({
-    queryKey: ['feature', 'restaurantLists', 'my'],
-    queryFn: () => listRestaurantLists({ scope: 'my' }),
+  const myListsQuery = useInfiniteQuery({
+    queryKey: ['feature', 'restaurantLists', 'my', 'paginated', trimmedSearchQuery],
+    queryFn: ({ pageParam }) =>
+      listRestaurantListsPage({
+        scope: 'my',
+        page: pageParam,
+        pageSize: 20,
+        search: trimmedSearchQuery || undefined,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
 
-  const friendsListsQuery = useQuery({
-    queryKey: ['feature', 'restaurantLists', 'friends'],
-    queryFn: () => listRestaurantLists({ scope: 'friends' }),
+  const friendsListsQuery = useInfiniteQuery({
+    queryKey: ['feature', 'restaurantLists', 'friends', 'paginated', trimmedSearchQuery],
+    queryFn: ({ pageParam }) =>
+      listRestaurantListsPage({
+        scope: 'friends',
+        page: pageParam,
+        pageSize: 20,
+        search: trimmedSearchQuery || undefined,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
 
   useEffect(() => {
@@ -224,6 +241,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   useEffect(() => {
     if (
       !user?.id ||
+      trimmedSearchQuery.length > 0 ||
       hasTriedCreatingDefault.current ||
       myListsQuery.isLoading ||
       (myListsQuery.isError && !myListsQuery.data)
@@ -235,7 +253,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       return;
     }
 
-    const hasDefault = (myListsQuery.data ?? []).some((list) => list.isDefault);
+    const myLists = myListsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+    const hasDefault = myLists.some((list) => list.isDefault);
     if (hasDefault) {
       return;
     }
@@ -264,6 +283,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     })();
   }, [
     user?.id,
+    trimmedSearchQuery,
     isCreatingDefaultList,
     myListsQuery.data,
     myListsQuery.isError,
@@ -274,13 +294,19 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     queueWrite,
   ]);
 
+  const myLists = useMemo(() => myListsQuery.data?.pages.flatMap((page) => page.items) ?? [], [myListsQuery.data]);
+  const friendLists = useMemo(
+    () => friendsListsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [friendsListsQuery.data],
+  );
   const activeQuery = activeTab === 'my' ? myListsQuery : friendsListsQuery;
-  const hasBlockingActiveQueryError = activeQuery.isError && !activeQuery.data;
+  const hasBlockingActiveQueryError =
+    activeQuery.isError && (!activeQuery.data || activeQuery.data.pages.length === 0);
   const hasActiveQueryRefreshError = !hasBlockingActiveQueryError && activeQuery.isError;
 
   const visibleLists = useMemo(
-    () => (activeTab === 'friends' ? friendsListsQuery.data ?? [] : myListsQuery.data ?? []),
-    [activeTab, friendsListsQuery.data, myListsQuery.data],
+    () => (activeTab === 'friends' ? friendLists : myLists),
+    [activeTab, friendLists, myLists],
   );
 
   const visibleListIds = useMemo(() => visibleLists.map((list) => list.id), [visibleLists]);
@@ -291,22 +317,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     enabled: visibleListIds.length > 0 && !activeQuery.isLoading && !hasBlockingActiveQueryError,
   });
 
-  const filteredLists = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return visibleLists;
-    }
-
-    return visibleLists.filter((list) => {
-      const ownerName = list.ownerName?.toLowerCase() ?? '';
-      return (
-        list.name.toLowerCase().includes(normalizedQuery) ||
-        (list.description?.toLowerCase().includes(normalizedQuery) ?? false) ||
-        ownerName.includes(normalizedQuery)
-      );
-    });
-  }, [searchQuery, visibleLists]);
-
   const tabOptions = useMemo<readonly SegmentedControlOption<ListTab>[]>(
     () =>
       TAB_DEFINITIONS.map((tab) => ({
@@ -314,16 +324,16 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         value: tab.value,
         badgeCount:
           tab.value === 'my'
-            ? (myListsQuery.data ?? []).length
+            ? (myListsQuery.data?.pages[0]?.totalItems ?? myLists.length)
             : tab.value === 'friends'
-              ? (friendsListsQuery.data ?? []).length
+              ? (friendsListsQuery.data?.pages[0]?.totalItems ?? friendLists.length)
               : 0,
       })),
-    [friendsListsQuery.data, myListsQuery.data],
+    [friendLists.length, friendsListsQuery.data, myLists.length, myListsQuery.data],
   );
 
   const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);
-  const hasSearch = searchQuery.trim().length > 0;
+  const hasSearch = trimmedSearchQuery.length > 0;
 
   const styles = StyleSheet.create({
     body: {
@@ -659,13 +669,23 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       ) : null}
 
       {!isLoading && !hasBlockingActiveQueryError
-        ? filteredLists.length === 0
+        ? visibleLists.length === 0
           ? hasSearch
             ? renderNoSearchResults()
             : renderEmptyState()
           : (
               <View style={styles.listsWrap}>
-                {filteredLists.map((list, index) => renderListCard(list, index))}
+                {visibleLists.map((list, index) => renderListCard(list, index))}
+                {activeQuery.hasNextPage ? (
+                  <Button
+                    label={activeQuery.isFetchingNextPage ? 'Loading more...' : 'Load more lists'}
+                    loading={activeQuery.isFetchingNextPage}
+                    onPress={() => {
+                      void activeQuery.fetchNextPage();
+                    }}
+                    variant="secondary"
+                  />
+                ) : null}
               </View>
             )
         : null}

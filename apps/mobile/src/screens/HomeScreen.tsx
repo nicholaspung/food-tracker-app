@@ -5,11 +5,10 @@ import {
   Pressable,
   StyleSheet,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsFocused } from '@react-navigation/native';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -34,9 +33,9 @@ import {
   deleteQuickTrack,
   deleteVisit,
   getAuthenticatedUserIdOrNull,
-  listCollectionRecords,
-  listQuickTracks,
-  listVisits,
+  listQuickTracksPage,
+  listVisitPhotosForFoodItemIds,
+  listVisitsPage,
   reportContent,
   type QuickTrackRecord,
   type VisitRecord,
@@ -55,7 +54,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Text } from '../ui';
+import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -148,6 +147,20 @@ const entryTimeFormatter = new Intl.DateTimeFormat('en-US', {
 
 const BETA_FEED_PAGE_SIZE = 20;
 
+interface HomeFeedCursor {
+  consumedQuickTracks: number;
+  consumedVisits: number;
+}
+
+interface HomeFeedPageResult {
+  items: FeedItem[];
+  consumedQuickTracks: number;
+  consumedVisits: number;
+  totalQuickTracks: number;
+  totalVisits: number;
+  hasNextPage: boolean;
+}
+
 function toDayKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -220,9 +233,105 @@ function getMonthSortKey(value: string): string {
   return toMonthKey(date);
 }
 
+function buildVisitFeedItem(visit: VisitRecord, currentUserId: string | null): VisitFeedItem {
+  return {
+    isFriend: !!visit.userId && !!currentUserId && visit.userId !== currentUserId,
+    friendName: visit.userName,
+    id: `visit_${visit.id}`,
+    eventAt: visit.visitedAt || visit.createdAt,
+    searchText: [
+      visit.restaurantName,
+      visit.restaurantLocation ?? '',
+      visit.restaurantCuisineType ?? '',
+      visit.items.map((item) => `${item.name} ${item.notes ?? ''}`).join(' '),
+    ]
+      .join(' ')
+      .toLowerCase(),
+    source: 'visit',
+    visit,
+  };
+}
+
+function buildQuickTrackFeedItem(quickTrack: QuickTrackRecord, currentUserId: string | null): QuickTrackFeedItem {
+  return {
+    isFriend: !!quickTrack.userId && !!currentUserId && quickTrack.userId !== currentUserId,
+    friendName: quickTrack.userName,
+    id: `quick_track_${quickTrack.id}`,
+    eventAt: quickTrack.itemDate || quickTrack.createdAt,
+    searchText: [
+      quickTrack.itemName,
+      quickTrack.restaurantName,
+      quickTrack.locationText ?? '',
+      quickTrack.itemCategory ?? '',
+      quickTrack.notes ?? '',
+    ]
+      .join(' ')
+      .toLowerCase(),
+    source: 'quick-track',
+    quickTrack,
+  };
+}
+
+async function loadFeedSourceWindow<T>(
+  consumedCount: number,
+  pageSize: number,
+  fetchPage: (page: number, pageSize: number) => Promise<{
+    items: T[];
+    totalItems: number;
+    hasNextPage: boolean;
+  }>,
+): Promise<{ items: T[]; totalItems: number }> {
+  let currentPage = Math.floor(consumedCount / pageSize) + 1;
+  let skipCount = consumedCount % pageSize;
+  let totalItems = 0;
+  const items: T[] = [];
+
+  while (items.length < pageSize) {
+    const pageResult = await fetchPage(currentPage, pageSize);
+    totalItems = pageResult.totalItems;
+
+    const nextItems = pageResult.items.slice(skipCount);
+    if (nextItems.length > 0) {
+      items.push(...nextItems);
+    }
+
+    if (!pageResult.hasNextPage || pageResult.items.length === 0) {
+      break;
+    }
+
+    currentPage += 1;
+    skipCount = 0;
+  }
+
+  return {
+    items: items.slice(0, pageSize),
+    totalItems,
+  };
+}
+
+function compareFeedItemsByEvent(left: FeedItem, right: FeedItem): number {
+  return right.eventAt.localeCompare(left.eventAt);
+}
+
+function compareBetaFeedItems(left: FeedItem, right: FeedItem): number {
+  const leftMonthKey = getMonthSortKey(left.eventAt);
+  const rightMonthKey = getMonthSortKey(right.eventAt);
+
+  if (leftMonthKey !== rightMonthKey) {
+    return rightMonthKey.localeCompare(leftMonthKey);
+  }
+
+  if (left.isFriend !== right.isFriend) {
+    return left.isFriend ? -1 : 1;
+  }
+
+  return right.eventAt.localeCompare(left.eventAt);
+}
+
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
+  const isFocused = useIsFocused();
   const canViewBetaFeed = Boolean(user?.isAdmin);
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
@@ -232,7 +341,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
-  const [visibleBetaCount, setVisibleBetaCount] = useState(BETA_FEED_PAGE_SIZE);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -249,36 +357,114 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [reportNotes, setReportNotes] = useState('');
   const [reportErrorMessage, setReportErrorMessage] = useState<string | null>(null);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
-  const lastBetaLoadTriggerCountRef = useRef<number | null>(null);
+  const hasHandledCurrentFocusRef = useRef(false);
   const effectiveFeedMode: FeedMode =
     !canViewBetaFeed && feedMode === 'beta' ? 'mine' : feedMode;
-
-  const visitsQuery = useQuery({
-    queryKey: ['feature', 'visits'],
-    queryFn: listVisits,
-  });
-
-  const quickTracksQuery = useQuery({
-    queryKey: ['feature', 'quickTracks'],
-    queryFn: listQuickTracks,
-  });
-
-  const visitPhotosQuery = useQuery({
-    queryKey: ['feature', 'visitPhotos'],
-    queryFn: async () => listCollectionRecords<VisitPhotoRecord>('visit_photos', { sort: '-created' }),
-  });
-
-  const isLoading = visitsQuery.isLoading || quickTracksQuery.isLoading;
-  const hasBlockingFeedError =
-    (visitsQuery.isError && !visitsQuery.data) || (quickTracksQuery.isError && !quickTracksQuery.data);
-  const hasFeedRefreshError =
-    !hasBlockingFeedError &&
-    (visitsQuery.isError || quickTracksQuery.isError || visitPhotosQuery.isError);
+  const feedScope = effectiveFeedMode === 'friends' ? 'friends' : effectiveFeedMode === 'beta' ? 'all' : 'mine';
+  const trimmedSearchQuery = searchQuery.trim();
   const currentUserId = getAuthenticatedUserIdOrNull();
-  const inviterDisplayName =
-    friendSuggestion?.inviterName?.trim() ||
-    friendSuggestion?.inviterEmail?.split('@')[0] ||
-    'your inviter';
+  const inviterDisplayName = friendSuggestion?.inviterDisplayName?.trim() || 'your inviter';
+
+  const homeFeedQuery = useInfiniteQuery({
+    queryKey: ['feature', 'homeFeed', 'paginated', feedScope, typeFilter, trimmedSearchQuery],
+    initialPageParam: {
+      consumedQuickTracks: 0,
+      consumedVisits: 0,
+    } satisfies HomeFeedCursor,
+    queryFn: async ({ pageParam }) => {
+      const shouldLoadVisits = typeFilter !== 'quick-track';
+      const shouldLoadQuickTracks = typeFilter !== 'visits';
+      const [visitWindow, quickTrackWindow] = await Promise.all([
+        shouldLoadVisits
+          ? loadFeedSourceWindow(pageParam.consumedVisits, BETA_FEED_PAGE_SIZE, (page, pageSize) =>
+              listVisitsPage({
+                scope: feedScope,
+                page,
+                pageSize,
+                search: trimmedSearchQuery || undefined,
+              }),
+            )
+          : Promise.resolve({ items: [], totalItems: 0 }),
+        shouldLoadQuickTracks
+          ? loadFeedSourceWindow(pageParam.consumedQuickTracks, BETA_FEED_PAGE_SIZE, (page, pageSize) =>
+              listQuickTracksPage({
+                scope: feedScope,
+                page,
+                pageSize,
+                search: trimmedSearchQuery || undefined,
+              }),
+            )
+          : Promise.resolve({ items: [], totalItems: 0 }),
+      ]);
+
+      const mergedItems = [
+        ...visitWindow.items.map((visit) => buildVisitFeedItem(visit, currentUserId)),
+        ...quickTrackWindow.items.map((quickTrack) => buildQuickTrackFeedItem(quickTrack, currentUserId)),
+      ].sort(compareFeedItemsByEvent);
+      const pageItems = mergedItems.slice(0, BETA_FEED_PAGE_SIZE);
+
+      let consumedVisits = pageParam.consumedVisits;
+      let consumedQuickTracks = pageParam.consumedQuickTracks;
+      for (const item of pageItems) {
+        if (item.source === 'visit') {
+          consumedVisits += 1;
+        } else {
+          consumedQuickTracks += 1;
+        }
+      }
+
+      return {
+        items: pageItems,
+        consumedQuickTracks,
+        consumedVisits,
+        totalQuickTracks: quickTrackWindow.totalItems,
+        totalVisits: visitWindow.totalItems,
+        hasNextPage:
+          consumedVisits < visitWindow.totalItems || consumedQuickTracks < quickTrackWindow.totalItems,
+      } satisfies HomeFeedPageResult;
+    },
+    getNextPageParam: (lastPage) =>
+      lastPage.hasNextPage
+        ? {
+            consumedQuickTracks: lastPage.consumedQuickTracks,
+            consumedVisits: lastPage.consumedVisits,
+          }
+        : undefined,
+  });
+
+  const loadedFeed = useMemo(
+    () => homeFeedQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [homeFeedQuery.data],
+  );
+  const activeFeed = useMemo(
+    () => (effectiveFeedMode === 'beta' ? [...loadedFeed].sort(compareBetaFeedItems) : loadedFeed),
+    [effectiveFeedMode, loadedFeed],
+  );
+  const visibleFoodItemIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const item of activeFeed) {
+      if (item.source === 'visit') {
+        for (const visitItem of item.visit.items) {
+          ids.add(visitItem.id);
+        }
+        continue;
+      }
+
+      ids.add(item.quickTrack.id);
+    }
+
+    return Array.from(ids);
+  }, [activeFeed]);
+  const visitPhotosQuery = useQuery({
+    queryKey: ['feature', 'visitPhotos', 'feedItems', ...visibleFoodItemIds],
+    queryFn: () => listVisitPhotosForFoodItemIds(visibleFoodItemIds),
+    enabled: visibleFoodItemIds.length > 0,
+  });
+
+  const isLoading = homeFeedQuery.isLoading;
+  const hasBlockingFeedError = homeFeedQuery.isError && (!homeFeedQuery.data || homeFeedQuery.data.pages.length === 0);
+  const hasFeedRefreshError = !hasBlockingFeedError && (homeFeedQuery.isError || visitPhotosQuery.isError);
 
   useEffect(() => {
     let isMounted = true;
@@ -323,75 +509,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     return map;
   }, [visitPhotosQuery.data]);
 
-  const combinedFeed = useMemo<FeedItem[]>(() => {
-    const visitFeed: FeedItem[] = (visitsQuery.data ?? []).map((visit) => ({
-      isFriend: !!visit.userId && !!currentUserId && visit.userId !== currentUserId,
-      friendName: visit.userName,
-      id: `visit_${visit.id}`,
-      eventAt: visit.visitedAt || visit.createdAt,
-      searchText: [
-        visit.restaurantName,
-        visit.restaurantLocation ?? '',
-        visit.restaurantCuisineType ?? '',
-        visit.items.map((item) => `${item.name} ${item.notes ?? ''}`).join(' '),
-      ]
-        .join(' ')
-        .toLowerCase(),
-      source: 'visit',
-      visit,
-    }));
-
-    const quickTrackFeed: FeedItem[] = (quickTracksQuery.data ?? []).map((quickTrack) => ({
-      isFriend: !!quickTrack.userId && !!currentUserId && quickTrack.userId !== currentUserId,
-      friendName: quickTrack.userName,
-      id: `quick_track_${quickTrack.id}`,
-      eventAt: quickTrack.itemDate || quickTrack.createdAt,
-      searchText: [
-        quickTrack.itemName,
-        quickTrack.restaurantName,
-        quickTrack.locationText ?? '',
-        quickTrack.itemCategory ?? '',
-        quickTrack.notes ?? '',
-      ]
-        .join(' ')
-        .toLowerCase(),
-      source: 'quick-track',
-      quickTrack,
-    }));
-
-    return [...visitFeed, ...quickTrackFeed].sort((left, right) =>
-      right.eventAt.localeCompare(left.eventAt),
-    );
-  }, [currentUserId, quickTracksQuery.data, visitsQuery.data]);
-
-  const mineFeed = useMemo(() => combinedFeed.filter((item) => !item.isFriend), [combinedFeed]);
-  const friendFeed = useMemo(() => combinedFeed.filter((item) => item.isFriend), [combinedFeed]);
-  const betaFeed = useMemo(
-    () =>
-      [...combinedFeed].sort((left, right) => {
-        const leftMonthKey = getMonthSortKey(left.eventAt);
-        const rightMonthKey = getMonthSortKey(right.eventAt);
-
-        if (leftMonthKey !== rightMonthKey) {
-          return rightMonthKey.localeCompare(leftMonthKey);
-        }
-
-        if (left.isFriend !== right.isFriend) {
-          return left.isFriend ? -1 : 1;
-        }
-
-        return right.eventAt.localeCompare(left.eventAt);
-      }),
-    [combinedFeed],
-  );
-
   const filteredFeed = useMemo(() => {
-    const activeFeed =
-      effectiveFeedMode === 'friends'
-        ? friendFeed
-        : effectiveFeedMode === 'beta'
-          ? betaFeed
-          : mineFeed;
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return activeFeed.filter((item) => {
@@ -409,12 +527,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
       return item.searchText.includes(normalizedQuery);
     });
-  }, [betaFeed, effectiveFeedMode, friendFeed, mineFeed, searchQuery, typeFilter]);
-
-  const betaVisibleFeed = useMemo(
-    () => filteredFeed.slice(0, visibleBetaCount),
-    [filteredFeed, visibleBetaCount],
-  );
+  }, [activeFeed, searchQuery, typeFilter]);
 
   const groupedMonths = useMemo<GroupedMonth[]>(() => {
     const monthMap = new Map<
@@ -519,84 +632,81 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   }, [groupedMonths]);
 
   useEffect(() => {
-    setVisibleBetaCount(BETA_FEED_PAGE_SIZE);
-    lastBetaLoadTriggerCountRef.current = null;
-  }, [effectiveFeedMode, searchQuery, typeFilter]);
-
-  useEffect(() => {
-    if (effectiveFeedMode !== 'beta' || visibleBetaCount >= filteredFeed.length) {
-      lastBetaLoadTriggerCountRef.current = null;
+    if (!isFocused) {
+      hasHandledCurrentFocusRef.current = false;
+      return;
     }
-  }, [effectiveFeedMode, filteredFeed.length, visibleBetaCount]);
+
+    if (hasHandledCurrentFocusRef.current) {
+      return;
+    }
+
+    if (homeFeedQuery.fetchStatus !== 'idle') {
+      return;
+    }
+
+    hasHandledCurrentFocusRef.current = true;
+    void homeFeedQuery.refetch();
+    if (visibleFoodItemIds.length > 0) {
+      void visitPhotosQuery.refetch();
+    }
+  }, [homeFeedQuery, isFocused, visibleFoodItemIds.length, visitPhotosQuery]);
 
   const filteredVisitCount = useMemo(
     () => filteredFeed.filter((entry) => entry.source === 'visit').length,
     [filteredFeed],
   );
   const filteredQuickTrackCount = filteredFeed.length - filteredVisitCount;
-  const mineVisitCount = useMemo(() => mineFeed.filter((entry) => entry.source === 'visit').length, [mineFeed]);
-  const mineQuickTrackCount = mineFeed.length - mineVisitCount;
-  const friendVisitCount = useMemo(() => friendFeed.filter((entry) => entry.source === 'visit').length, [friendFeed]);
-  const friendQuickTrackCount = friendFeed.length - friendVisitCount;
-  const betaVisitCount = useMemo(() => betaFeed.filter((entry) => entry.source === 'visit').length, [betaFeed]);
-  const betaQuickTrackCount = betaFeed.length - betaVisitCount;
-  const activeFeed =
-    effectiveFeedMode === 'friends'
-      ? friendFeed
-      : effectiveFeedMode === 'beta'
-        ? betaFeed
-        : mineFeed;
+  const totalVisitCount = homeFeedQuery.data?.pages[0]?.totalVisits ?? loadedFeed.filter((entry) => entry.source === 'visit').length;
+  const totalQuickTrackCount =
+    homeFeedQuery.data?.pages[0]?.totalQuickTracks ??
+    loadedFeed.filter((entry) => entry.source === 'quick-track').length;
+  const totalFeedCount = totalVisitCount + totalQuickTrackCount;
 
   const summaryText = useMemo(() => {
     if (searchQuery.trim()) {
-      return `Found ${filteredFeed.length} items (${filteredVisitCount} visits, ${filteredQuickTrackCount} quick items)`;
+      return `Showing ${filteredFeed.length} loaded matches (${filteredVisitCount} visits, ${filteredQuickTrackCount} quick items)`;
     }
 
     if (effectiveFeedMode === 'friends') {
-      if (friendFeed.length === 0) {
+      if (totalFeedCount === 0) {
         return 'No friend ratings yet';
       }
 
       return [
-        formatCount(friendVisitCount, 'friend visit', 'friend visits'),
-        formatCount(friendQuickTrackCount, 'friend quick item', 'friend quick items'),
+        formatCount(totalVisitCount, 'friend visit', 'friend visits'),
+        formatCount(totalQuickTrackCount, 'friend quick item', 'friend quick items'),
       ].join(' • ');
     }
 
     if (effectiveFeedMode === 'beta') {
-      if (betaFeed.length === 0) {
+      if (totalFeedCount === 0) {
         return 'No activity in beta feed yet';
       }
 
       return [
-        formatCount(betaVisitCount, 'visit', 'visits'),
-        formatCount(betaQuickTrackCount, 'quick item', 'quick items'),
+        formatCount(totalVisitCount, 'visit', 'visits'),
+        formatCount(totalQuickTrackCount, 'quick item', 'quick items'),
       ].join(' • ');
     }
 
-    if (mineFeed.length === 0) {
+    if (totalFeedCount === 0) {
       return 'No ratings yet';
     }
 
     return [
-      formatCount(mineVisitCount, 'visit', 'visits'),
-      formatCount(mineQuickTrackCount, 'quick item', 'quick items'),
+      formatCount(totalVisitCount, 'visit', 'visits'),
+      formatCount(totalQuickTrackCount, 'quick item', 'quick items'),
     ].join(' • ');
   }, [
     effectiveFeedMode,
     filteredFeed.length,
     filteredQuickTrackCount,
     filteredVisitCount,
-    friendFeed.length,
-    friendQuickTrackCount,
-    friendVisitCount,
-    betaFeed.length,
-    betaQuickTrackCount,
-    betaVisitCount,
-    mineFeed.length,
-    mineQuickTrackCount,
-    mineVisitCount,
     searchQuery,
+    totalFeedCount,
+    totalQuickTrackCount,
+    totalVisitCount,
   ]);
 
   const toggleMonth = useCallback(
@@ -638,14 +748,15 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     async (quickTrackId: string) => {
       if (!isOnline) {
         await queueFeatureOutbox('quick-track.delete', { quickTrackId });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
         showQueuedOfflineAlert('Quick track delete');
         return;
       }
 
       await queueWrite('quick-track.delete');
       await deleteQuickTrack(quickTrackId);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] });
     },
     [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
@@ -671,14 +782,15 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     async (visitId: string) => {
       if (!isOnline) {
         await queueFeatureOutbox('visit.delete', { visitId });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
+        await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
         showQueuedOfflineAlert('Visit delete');
         return;
       }
 
       await queueWrite('visit.delete');
       await deleteVisit(visitId);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] });
     },
     [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
@@ -762,8 +874,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       });
 
       closeReportModal();
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
       await queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not submit report.';
@@ -918,35 +1029,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     setTypeFilter(nextFilter);
   }, []);
 
-  const handleBetaFeedScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (effectiveFeedMode !== 'beta') {
-        return;
-      }
+  const handleLoadMoreFeed = useCallback(() => {
+    if (!homeFeedQuery.hasNextPage || homeFeedQuery.isFetchingNextPage) {
+      return;
+    }
 
-      if (visibleBetaCount >= filteredFeed.length) {
-        return;
-      }
-
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const isNearBottom =
-        contentOffset.y + layoutMeasurement.height >= contentSize.height - 240;
-
-      if (!isNearBottom) {
-        return;
-      }
-
-      if (lastBetaLoadTriggerCountRef.current === visibleBetaCount) {
-        return;
-      }
-
-      lastBetaLoadTriggerCountRef.current = visibleBetaCount;
-      setVisibleBetaCount((previousValue) =>
-        Math.min(filteredFeed.length, previousValue + BETA_FEED_PAGE_SIZE),
-      );
-    },
-    [effectiveFeedMode, filteredFeed.length, visibleBetaCount],
-  );
+    void homeFeedQuery.fetchNextPage();
+  }, [homeFeedQuery]);
 
   const handleDismissFriendSuggestion = useCallback(() => {
     setFriendSuggestionErrorMessage(null);
@@ -976,8 +1065,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       await clearPendingFriendSuggestion();
       setFriendSuggestion(null);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
       trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_SUCCEEDED', {
         source: 'HomeScreen',
       });
@@ -1441,8 +1529,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
-      onScroll={handleBetaFeedScroll}
-      scrollEventThrottle={16}
       scrollUnderlayColor={colors.screenBackground}
       testID="home-screen"
     >
@@ -1484,8 +1570,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           title="Feed unavailable"
           actionLabel="Retry"
           onAction={() => {
-            void visitsQuery.refetch();
-            void quickTracksQuery.refetch();
+            void homeFeedQuery.refetch();
             void visitPhotosQuery.refetch();
           }}
         />
@@ -1523,7 +1608,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         {!isLoading &&
         !hasBlockingFeedError &&
         effectiveFeedMode === 'friends' &&
-        friendFeed.length === 0 ? (
+        totalFeedCount === 0 ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>No friend activity yet</Text>
             <Text style={styles.infoDescription}>
@@ -1542,7 +1627,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasBlockingFeedError && effectiveFeedMode === 'mine' && mineFeed.length === 0 ? (
+        {!isLoading && !hasBlockingFeedError && effectiveFeedMode === 'mine' && totalFeedCount === 0 ? (
           <EmptyState
             actionLabel="Create your first entry"
             description="Start with Add Visit or Quick Track."
@@ -1554,7 +1639,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           />
         ) : null}
 
-        {!isLoading && !hasBlockingFeedError && effectiveFeedMode === 'beta' && betaFeed.length === 0 ? (
+        {!isLoading && !hasBlockingFeedError && effectiveFeedMode === 'beta' && totalFeedCount === 0 ? (
           <EmptyState
             actionLabel="Create your first entry"
             description="Start with Add Visit or Quick Track to preview the beta feed."
@@ -1590,7 +1675,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           ? effectiveFeedMode === 'beta'
             ? (
                 <View style={styles.betaFeed}>
-                  {betaVisibleFeed.map((feedItem) => {
+                  {filteredFeed.map((feedItem) => {
                     const ownerLabel =
                       feedItem.friendName?.trim() ||
                       (feedItem.isFriend ? 'Unknown User' : user?.name?.trim() || 'You');
@@ -1979,6 +2064,15 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
               );
             })
           : null}
+
+        {!isLoading && !hasBlockingFeedError && homeFeedQuery.hasNextPage ? (
+          <Button
+            label={homeFeedQuery.isFetchingNextPage ? 'Loading more...' : 'Load more activity'}
+            loading={homeFeedQuery.isFetchingNextPage}
+            onPress={handleLoadMoreFeed}
+            variant="secondary"
+          />
+        ) : null}
 
       </View>
 

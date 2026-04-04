@@ -67,6 +67,7 @@ import {
 } from '../lib/quickTrackForm';
 import {
   geocodeLocation,
+  mergeRestaurantSearchResults,
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
@@ -1537,7 +1538,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       });
 
       setSearchResults(results);
-      await restaurantsQuery.refetch();
+      queryClient.setQueryData<RestaurantRecord[]>(['feature', 'restaurants'], (current) =>
+        mergeRestaurantSearchResults(current, results),
+      );
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {
@@ -1626,7 +1629,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       });
 
       setNearbyResults(results);
-      await restaurantsQuery.refetch();
+      queryClient.setQueryData<RestaurantRecord[]>(['feature', 'restaurants'], (current) =>
+        mergeRestaurantSearchResults(current, results),
+      );
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {

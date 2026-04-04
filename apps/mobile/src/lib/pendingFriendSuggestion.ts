@@ -4,8 +4,7 @@ const PENDING_FRIEND_SUGGESTION_STORAGE_KEY = 'pending_friend_suggestion_v1';
 
 export interface PendingFriendSuggestion {
   inviterId: string;
-  inviterEmail: string;
-  inviterName?: string;
+  inviterDisplayName?: string;
   newUserEmail: string;
 }
 
@@ -18,11 +17,9 @@ function isPendingFriendSuggestion(value: unknown): value is PendingFriendSugges
   return (
     typeof candidate.inviterId === 'string' &&
     candidate.inviterId.trim().length > 0 &&
-    typeof candidate.inviterEmail === 'string' &&
-    candidate.inviterEmail.trim().length > 0 &&
     typeof candidate.newUserEmail === 'string' &&
     candidate.newUserEmail.trim().length > 0 &&
-    (candidate.inviterName === undefined || typeof candidate.inviterName === 'string')
+    (candidate.inviterDisplayName === undefined || typeof candidate.inviterDisplayName === 'string')
   );
 }
 

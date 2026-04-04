@@ -79,6 +79,7 @@
           "microphonePermission": false
         }
       ],
+      "expo-secure-store",
       "expo-localization",
       "posthog-react-native/expo",
       "expo-font"

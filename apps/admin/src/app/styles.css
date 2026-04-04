@@ -1318,6 +1318,64 @@ select.input {
   width: 100%;
 }
 
+.moderation-case-workspace {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.65fr);
+}
+
+.moderation-case-sidebar,
+.moderation-case-review-pane,
+.moderation-case-review-stack,
+.moderation-inline-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.moderation-case-list-item.active {
+  background: rgba(0, 113, 227, 0.1);
+  border-color: rgba(0, 113, 227, 0.24);
+  box-shadow: var(--shadow-sm);
+}
+
+.moderation-case-list-meta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.moderation-case-list-meta > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.moderation-case-list-meta strong {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.moderation-case-empty {
+  min-height: 320px;
+}
+
+.moderation-field-help {
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.moderation-field-help strong,
+.moderation-field-help span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .moderation-form-grid {
   display: grid;
   gap: 16px;
@@ -1918,7 +1976,9 @@ select.input {
   }
 
   .moderation-meta-grid,
-  .moderation-review-grid {
+  .moderation-review-grid,
+  .moderation-case-workspace,
+  .moderation-case-list-meta {
     grid-template-columns: 1fr;
   }
 

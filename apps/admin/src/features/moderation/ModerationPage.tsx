@@ -30,18 +30,7 @@ import type {
   ModerationRestaurantListItem,
 } from '@/lib/types';
 
-type ModerationQueueStatusFilter =
-  | 'all'
-  | 'active'
-  | 'open'
-  | 'under_review'
-  | 'reviewed'
-  | 'hidden'
-  | 'removed'
-  | 'restored'
-  | 'escalated';
-
-type ModerationQueueAssignmentFilter = 'all' | 'mine' | 'unassigned';
+type ModerationMainTab = 'queue' | 'cases' | 'lookup';
 
 type ModerationTargetContentType = 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'photo';
 
@@ -72,14 +61,49 @@ type AccountModerationFormState = {
   warningCount: string;
 };
 
-const contentActionOptions: Array<{ label: string; value: ModerationAction }> = [
-  { label: 'Hide', value: 'hide' },
-  { label: 'Quarantine', value: 'quarantine' },
-  { label: 'Mark reviewed', value: 'mark_reviewed' },
-  { label: 'Restore', value: 'restore' },
-  { label: 'Escalate', value: 'escalate' },
-  { label: 'Restrict visibility', value: 'restrict_visibility' },
-  { label: 'Soft remove', value: 'remove' },
+const contentActionOptions: Array<{ description: string; label: string; value: ModerationAction }> = [
+  {
+    label: 'Hide',
+    value: 'hide',
+    description:
+      'Sets the record moderation status to Hidden. The record stops showing in normal app surfaces until a moderator restores it, and the case is resolved as hidden.',
+  },
+  {
+    label: 'Quarantine',
+    value: 'quarantine',
+    description:
+      'Sets the record moderation status to Under Review. The record is pulled out of normal visible content while the case stays open for more moderator review.',
+  },
+  {
+    label: 'Mark reviewed',
+    value: 'mark_reviewed',
+    description:
+      'Sets the record moderation status to Reviewed. This treats the record as reviewed and allowed content, and the case is resolved as reviewed.',
+  },
+  {
+    label: 'Restore',
+    value: 'restore',
+    description:
+      'Sets the record moderation status back to Active. The record returns to normal visibility if no other rules are blocking it, and the case is resolved as restored.',
+  },
+  {
+    label: 'Escalate',
+    value: 'escalate',
+    description:
+      'Sets the record moderation status to Escalated. The case stays open for higher-attention follow-up, and the record remains out of normal visible content until another action is taken.',
+  },
+  {
+    label: 'Restrict visibility',
+    value: 'restrict_visibility',
+    description:
+      'For content that supports visibility, this changes visibility to Private and marks the record as Reviewed. The record stays available only to its owner instead of shared audiences, and the case is resolved as restricted visibility.',
+  },
+  {
+    label: 'Soft remove',
+    value: 'remove',
+    description:
+      'Sets the record moderation status to Removed. The record is treated as removed from the app but stays in storage and audit history unless it is permanently deleted later, and the case is resolved as removed.',
+  },
 ];
 
 const moderationReasonOptions: Array<{ label: string; value: ModerationReasonCode | '' }> = [
@@ -97,29 +121,37 @@ const moderationReasonOptions: Array<{ label: string; value: ModerationReasonCod
   { label: 'Other', value: 'other' },
 ];
 
-const moderationAppealOptions: Array<{ label: string; value: ModerationAppealState }> = [
-  { label: 'No appeal', value: 'none' },
-  { label: 'Requested', value: 'requested' },
-  { label: 'Approved', value: 'approved' },
-  { label: 'Denied', value: 'denied' },
+const moderationAppealOptions: Array<{ description: string; label: string; value: ModerationAppealState }> = [
+  {
+    label: 'No appeal',
+    value: 'none',
+    description:
+      'No appeal is recorded on the moderation case. This does not change the record by itself; it only leaves appeal tracking empty.',
+  },
+  {
+    label: 'Requested',
+    value: 'requested',
+    description:
+      'Records that the user asked for the moderation decision to be reconsidered. This does not restore or hide the record on its own; it only marks the case as having an open appeal.',
+  },
+  {
+    label: 'Approved',
+    value: 'approved',
+    description:
+      'Records that an appeal was approved. This does not automatically restore the record by itself; use Restore if the content should go back to normal visibility.',
+  },
+  {
+    label: 'Denied',
+    value: 'denied',
+    description:
+      'Records that an appeal was denied. This does not apply any extra record changes by itself; the current moderation action remains in effect until another action changes it.',
+  },
 ];
 
-const moderationQueueStatusOptions: Array<{ label: string; value: ModerationQueueStatusFilter }> = [
-  { label: 'Active queue', value: 'active' },
-  { label: 'All statuses', value: 'all' },
-  { label: 'Open', value: 'open' },
-  { label: 'Under review', value: 'under_review' },
-  { label: 'Reviewed', value: 'reviewed' },
-  { label: 'Hidden', value: 'hidden' },
-  { label: 'Removed', value: 'removed' },
-  { label: 'Restored', value: 'restored' },
-  { label: 'Escalated', value: 'escalated' },
-];
-
-const moderationQueueAssignmentOptions: Array<{ label: string; value: ModerationQueueAssignmentFilter }> = [
-  { label: 'Everyone', value: 'all' },
-  { label: 'Mine', value: 'mine' },
-  { label: 'Unassigned', value: 'unassigned' },
+const moderationMainTabs: Array<{ label: string; value: ModerationMainTab }> = [
+  { label: 'Moderation queue', value: 'queue' },
+  { label: 'Cases', value: 'cases' },
+  { label: 'Individual email lookups', value: 'lookup' },
 ];
 
 const userModerationStateOptions: Array<{
@@ -291,10 +323,6 @@ function sortModerationCasesForReview(cases: ModerationCase[]) {
 
     return rightPriority.updatedWeight - leftPriority.updatedWeight;
   });
-}
-
-function getDefaultFocusedCaseId(cases: ModerationCase[]) {
-  return sortModerationCasesForReview(cases)[0]?.id ?? null;
 }
 
 function buildContentModerationTargetFromCase(
@@ -640,6 +668,7 @@ function ReportedContentPreview({
   onModerateVisitItem,
   onOpenCarousel,
   profile,
+  showActions = true,
 }: {
   caseRecord: ModerationCase;
   deletingKey: string | null;
@@ -649,6 +678,7 @@ function ReportedContentPreview({
   onModerateVisitItem: (entry: ModerationFeedEntry, item: ModerationFeedItem) => void;
   onOpenCarousel: (photos: ModerationPhoto[], initialIndex: number) => void;
   profile: UserModerationProfile;
+  showActions?: boolean;
 }) {
   if (caseRecord.targetType === 'visit' || caseRecord.targetType === 'quick-track') {
     const entry = profile.feedEntries.find(
@@ -682,6 +712,7 @@ function ReportedContentPreview({
         }
         onModerateItem={(item) => onModerateVisitItem(entry, item)}
         onOpenCarousel={onOpenCarousel}
+        showActions={showActions}
       />
     );
   }
@@ -713,6 +744,7 @@ function ReportedContentPreview({
             subtitle: 'Restaurant list',
           })
         }
+        showActions={showActions}
       />
     );
   }
@@ -742,14 +774,16 @@ function ReportedContentPreview({
               {parentEntry?.restaurantName ? <span className="tag">Visit: {parentEntry.restaurantName}</span> : null}
             </div>
           </div>
-          <div className="moderation-inline-actions">
-            <button className="button ghost" onClick={() => onModerateVisitItem(parentEntry, item)} type="button">
-              Moderate visit item
-            </button>
-            <button className="button danger" disabled={deletingKey === `food-item:${item.id}`} onClick={() => onDelete('food-item', item.id, 'visit item')} type="button">
-              {deletingKey === `food-item:${item.id}` ? 'Deleting...' : 'Delete visit item'}
-            </button>
-          </div>
+          {showActions ? (
+            <div className="moderation-inline-actions">
+              <button className="button ghost" onClick={() => onModerateVisitItem(parentEntry, item)} type="button">
+                Moderate visit item
+              </button>
+              <button className="button danger" disabled={deletingKey === `food-item:${item.id}`} onClick={() => onDelete('food-item', item.id, 'visit item')} type="button">
+                {deletingKey === `food-item:${item.id}` ? 'Deleting...' : 'Delete visit item'}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="moderation-meta-grid">
@@ -798,14 +832,16 @@ function ReportedContentPreview({
               {item.userFoodItemName ? <span className="tag">Rated: {item.userFoodItemName}</span> : null}
             </div>
           </div>
-          <div className="moderation-inline-actions">
-            <button className="button ghost" onClick={() => parentList && onModerateListItem(parentList, item)} type="button">
-              Moderate list item
-            </button>
-            <button className="button danger" disabled={deletingKey === `list-item:${item.id}`} onClick={() => onDelete('list-item', item.id, 'list item')} type="button">
-              {deletingKey === `list-item:${item.id}` ? 'Deleting...' : 'Delete list item'}
-            </button>
-          </div>
+          {showActions ? (
+            <div className="moderation-inline-actions">
+              <button className="button ghost" onClick={() => parentList && onModerateListItem(parentList, item)} type="button">
+                Moderate list item
+              </button>
+              <button className="button danger" disabled={deletingKey === `list-item:${item.id}`} onClick={() => onDelete('list-item', item.id, 'list item')} type="button">
+                {deletingKey === `list-item:${item.id}` ? 'Deleting...' : 'Delete list item'}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="moderation-meta-grid">
@@ -844,25 +880,27 @@ function ReportedContentPreview({
               {photoContext.item?.name ? <span className="tag">{photoContext.item.name}</span> : null}
             </div>
           </div>
-          <div className="moderation-inline-actions">
-            <button
-              className="button ghost"
-              onClick={() =>
-                onModerate({
-                  contentType: 'photo',
-                  recordId: photo.id,
-                  title: photo.caption?.trim() || 'Visit photo',
-                  subtitle: 'Photo attached to a visit item',
-                })
-              }
-              type="button"
-            >
-              Moderate photo
-            </button>
-            <button className="button danger" disabled={deletingKey === `photo:${photo.id}`} onClick={() => onDelete('photo', photo.id, 'photo')} type="button">
-              {deletingKey === `photo:${photo.id}` ? 'Deleting...' : 'Delete photo'}
-            </button>
-          </div>
+          {showActions ? (
+            <div className="moderation-inline-actions">
+              <button
+                className="button ghost"
+                onClick={() =>
+                  onModerate({
+                    contentType: 'photo',
+                    recordId: photo.id,
+                    title: photo.caption?.trim() || 'Visit photo',
+                    subtitle: 'Photo attached to a visit item',
+                  })
+                }
+                type="button"
+              >
+                Moderate photo
+              </button>
+              <button className="button danger" disabled={deletingKey === `photo:${photo.id}`} onClick={() => onDelete('photo', photo.id, 'photo')} type="button">
+                {deletingKey === `photo:${photo.id}` ? 'Deleting...' : 'Delete photo'}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="moderation-photo-review-stage">
@@ -887,21 +925,17 @@ function ReportedContentPreview({
 function ModerationCaseCard({
   caseRecord,
   claimDisabled,
-  isFocused,
-  onFocusCase,
   onClaim,
   onRelease,
+  onReviewCase,
   releaseDisabled,
-  showReviewUserAction,
 }: {
   caseRecord: ModerationCase;
   claimDisabled: boolean;
-  isFocused?: boolean;
-  onFocusCase?: () => void;
   onClaim: () => void;
   onRelease: () => void;
+  onReviewCase?: () => void;
   releaseDisabled: boolean;
-  showReviewUserAction?: (user: AdminUser) => void;
 }) {
   const assignedAdmin = caseRecord.expand?.assignedAdmin;
   const targetUser = caseRecord.expand?.targetUser;
@@ -923,11 +957,6 @@ function ModerationCaseCard({
           </div>
         </div>
         <div className="moderation-inline-actions">
-          {onFocusCase ? (
-            <button className="button ghost" disabled={isFocused} onClick={onFocusCase} type="button">
-              {isFocused ? 'Focused' : 'Focus case'}
-            </button>
-          ) : null}
           {assignedAdmin ? (
             <button className="button ghost" disabled={releaseDisabled} onClick={onRelease} type="button">
               {releaseDisabled ? 'Releasing...' : 'Release'}
@@ -959,9 +988,9 @@ function ModerationCaseCard({
         </div>
       ) : null}
 
-      {targetUser && showReviewUserAction ? (
-        <button className="button ghost" onClick={() => showReviewUserAction(targetUser)} type="button">
-          Review {targetUser.email}
+      {targetUser && onReviewCase ? (
+        <button className="button ghost" onClick={onReviewCase} type="button">
+          Review case
         </button>
       ) : null}
     </article>
@@ -974,12 +1003,14 @@ function VisitItemRow({
   onDelete,
   onModerate,
   onPhotoClick,
+  showActions = true,
 }: {
   deletingKey: string | null;
   item: ModerationFeedItem;
   onDelete: () => void;
   onModerate: () => void;
   onPhotoClick?: (photoId: string) => void;
+  showActions?: boolean;
 }) {
   return (
     <div className="list-item moderation-subitem">
@@ -991,14 +1022,16 @@ function VisitItemRow({
             <ModerationBadge value={getContentModerationStatus(item.moderationStatus)} />
           </div>
         </div>
-        <div className="moderation-inline-actions">
-          <button className="button ghost" onClick={onModerate} type="button">
-            Moderate item
-          </button>
-          <button className="button danger" disabled={deletingKey === `food-item:${item.id}`} onClick={onDelete} type="button">
-            {deletingKey === `food-item:${item.id}` ? 'Deleting...' : 'Delete item'}
-          </button>
-        </div>
+        {showActions ? (
+          <div className="moderation-inline-actions">
+            <button className="button ghost" onClick={onModerate} type="button">
+              Moderate item
+            </button>
+            <button className="button danger" disabled={deletingKey === `food-item:${item.id}`} onClick={onDelete} type="button">
+              {deletingKey === `food-item:${item.id}` ? 'Deleting...' : 'Delete item'}
+            </button>
+          </div>
+        ) : null}
       </div>
       {item.notes?.trim() ? <span className="text-muted">"{item.notes.trim()}"</span> : null}
       {item.description?.trim() ? <span className="text-muted">{item.description.trim()}</span> : null}
@@ -1012,11 +1045,13 @@ function RestaurantListItemRow({
   item,
   onDelete,
   onModerate,
+  showActions = true,
 }: {
   deletingKey: string | null;
   item: ModerationRestaurantListItem;
   onDelete: () => void;
   onModerate: () => void;
+  showActions?: boolean;
 }) {
   return (
     <div className="list-item moderation-subitem">
@@ -1035,14 +1070,16 @@ function RestaurantListItemRow({
             ) : null}
           </div>
         </div>
-        <div className="moderation-inline-actions">
-          <button className="button ghost" onClick={onModerate} type="button">
-            Moderate item
-          </button>
-          <button className="button danger" disabled={deletingKey === `list-item:${item.id}`} onClick={onDelete} type="button">
-            {deletingKey === `list-item:${item.id}` ? 'Deleting...' : 'Delete item'}
-          </button>
-        </div>
+        {showActions ? (
+          <div className="moderation-inline-actions">
+            <button className="button ghost" onClick={onModerate} type="button">
+              Moderate item
+            </button>
+            <button className="button danger" disabled={deletingKey === `list-item:${item.id}`} onClick={onDelete} type="button">
+              {deletingKey === `list-item:${item.id}` ? 'Deleting...' : 'Delete item'}
+            </button>
+          </div>
+        ) : null}
       </div>
       {item.restaurantLocation?.trim() ? (
         <span className="text-muted">{item.restaurantLocation.trim()}</span>
@@ -1060,6 +1097,7 @@ function FeedEntryCard({
   onModerate,
   onModerateItem,
   onOpenCarousel,
+  showActions = true,
 }: {
   deletingKey: string | null;
   entry: ModerationFeedEntry;
@@ -1068,6 +1106,7 @@ function FeedEntryCard({
   onModerate: () => void;
   onModerateItem: (item: ModerationFeedItem) => void;
   onOpenCarousel: (photos: ModerationPhoto[], initialIndex: number) => void;
+  showActions?: boolean;
 }) {
   if (entry.contentType === 'quick-track') {
     return (
@@ -1083,14 +1122,16 @@ function FeedEntryCard({
               <ModerationBadge value={getContentModerationStatus(entry.moderationStatus)} />
             </div>
           </div>
-          <div className="moderation-inline-actions">
-            <button className="button ghost" onClick={onModerate} type="button">
-              Moderate quick track
-            </button>
-            <button className="button danger" disabled={deletingKey === `quick-track:${entry.id}`} onClick={onDelete} type="button">
-              {deletingKey === `quick-track:${entry.id}` ? 'Deleting...' : 'Delete quick track'}
-            </button>
-          </div>
+          {showActions ? (
+            <div className="moderation-inline-actions">
+              <button className="button ghost" onClick={onModerate} type="button">
+                Moderate quick track
+              </button>
+              <button className="button danger" disabled={deletingKey === `quick-track:${entry.id}`} onClick={onDelete} type="button">
+                {deletingKey === `quick-track:${entry.id}` ? 'Deleting...' : 'Delete quick track'}
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className="summary-list">
           <div className="summary-row">
@@ -1132,14 +1173,16 @@ function FeedEntryCard({
             <ModerationBadge value={getContentModerationStatus(entry.moderationStatus)} />
           </div>
         </div>
-        <div className="moderation-inline-actions">
-          <button className="button ghost" onClick={onModerate} type="button">
-            Moderate visit
-          </button>
-          <button className="button danger" disabled={deletingKey === `visit:${entry.id}`} onClick={onDelete} type="button">
-            {deletingKey === `visit:${entry.id}` ? 'Deleting...' : 'Delete visit'}
-          </button>
-        </div>
+        {showActions ? (
+          <div className="moderation-inline-actions">
+            <button className="button ghost" onClick={onModerate} type="button">
+              Moderate visit
+            </button>
+            <button className="button danger" disabled={deletingKey === `visit:${entry.id}`} onClick={onDelete} type="button">
+              {deletingKey === `visit:${entry.id}` ? 'Deleting...' : 'Delete visit'}
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="summary-list">
         {entry.restaurantLocation?.trim() ? (
@@ -1169,6 +1212,7 @@ function FeedEntryCard({
                   onOpenCarousel(visitPhotos, initialIndex);
                 }
               }}
+              showActions={showActions}
             />
           ))}
         </div>
@@ -1188,6 +1232,7 @@ function RestaurantListCard({
   onDeleteList,
   onModerateItem,
   onModerateList,
+  showActions = true,
 }: {
   deletingKey: string | null;
   list: ModerationRestaurantList;
@@ -1195,6 +1240,7 @@ function RestaurantListCard({
   onDeleteList: () => void;
   onModerateItem: (item: ModerationRestaurantListItem) => void;
   onModerateList: () => void;
+  showActions?: boolean;
 }) {
   const activityDisplay = getCreatedUpdatedDisplay(list.created, list.updated, {
     createdLabel: 'Created',
@@ -1213,14 +1259,16 @@ function RestaurantListCard({
             {list.isCollaborative ? <span className="tag">Collaborative</span> : null}
           </div>
         </div>
-        <div className="moderation-inline-actions">
-          <button className="button ghost" onClick={onModerateList} type="button">
-            Moderate list
-          </button>
-          <button className="button danger" disabled={deletingKey === `list:${list.id}`} onClick={onDeleteList} type="button">
-            {deletingKey === `list:${list.id}` ? 'Deleting...' : 'Delete list'}
-          </button>
-        </div>
+        {showActions ? (
+          <div className="moderation-inline-actions">
+            <button className="button ghost" onClick={onModerateList} type="button">
+              Moderate list
+            </button>
+            <button className="button danger" disabled={deletingKey === `list:${list.id}`} onClick={onDeleteList} type="button">
+              {deletingKey === `list:${list.id}` ? 'Deleting...' : 'Delete list'}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {list.description?.trim() ? <p className="text-muted">{list.description.trim()}</p> : null}
@@ -1239,6 +1287,7 @@ function RestaurantListCard({
               key={item.id}
               onDelete={() => onDeleteItem(item)}
               onModerate={() => onModerateItem(item)}
+              showActions={showActions}
             />
           ))}
         </div>
@@ -1247,6 +1296,216 @@ function RestaurantListCard({
           <span className="text-muted">This list has no saved items.</span>
         </div>
       )}
+    </article>
+  );
+}
+
+function ContentModerationFields({
+  draft,
+  idPrefix,
+  onChange,
+}: {
+  draft: ContentModerationDraft;
+  idPrefix: string;
+  onChange: (nextValue: ContentModerationDraft) => void;
+}) {
+  const selectedAction = contentActionOptions.find((option) => option.value === draft.action) ?? contentActionOptions[0];
+  const selectedAppealState =
+    moderationAppealOptions.find((option) => option.value === draft.appealState) ?? moderationAppealOptions[0];
+
+  return (
+    <>
+      <div className="moderation-form-grid">
+        <div className="field">
+          <label htmlFor={`${idPrefix}-action`}>Action</label>
+          <select
+            className="input"
+            id={`${idPrefix}-action`}
+            onChange={(event) => onChange({ ...draft, action: event.target.value as ModerationAction })}
+            value={draft.action}
+          >
+            {contentActionOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+              ))}
+            </select>
+          <div className="moderation-field-help">
+            <strong>{selectedAction.label}</strong>
+            <span className="text-muted">{selectedAction.description}</span>
+          </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor={`${idPrefix}-reason`}>Reason</label>
+          <select
+            className="input"
+            id={`${idPrefix}-reason`}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                reasonCode: event.target.value as ModerationReasonCode | '',
+              })
+            }
+            value={draft.reasonCode}
+          >
+            {moderationReasonOptions.map((option) => (
+              <option key={option.value || 'none'} value={option.value}>
+                {option.label}
+              </option>
+              ))}
+            </select>
+        </div>
+
+        <div className="field">
+          <label htmlFor={`${idPrefix}-appeal`}>Appeal state</label>
+          <select
+            className="input"
+            id={`${idPrefix}-appeal`}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                appealState: event.target.value as ModerationAppealState,
+              })
+            }
+            value={draft.appealState}
+          >
+            {moderationAppealOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+              ))}
+            </select>
+          <div className="moderation-field-help">
+            <strong>{selectedAppealState.label}</strong>
+            <span className="text-muted">{selectedAppealState.description}</span>
+            <span className="text-muted">
+              Appeal state only updates the moderation case record. It does not change the content visibility or status by
+              itself.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="field">
+        <label htmlFor={`${idPrefix}-note`}>Moderator note</label>
+        <textarea
+          className="input moderation-textarea"
+          id={`${idPrefix}-note`}
+          onChange={(event) => onChange({ ...draft, moderatorNote: event.target.value })}
+          placeholder="Internal context for other moderators"
+          value={draft.moderatorNote}
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor={`${idPrefix}-notice`}>User notice</label>
+        <textarea
+          className="input moderation-textarea"
+          id={`${idPrefix}-notice`}
+          onChange={(event) => onChange({ ...draft, userNotice: event.target.value })}
+          placeholder="Optional message shown to the user"
+          value={draft.userNotice}
+        />
+      </div>
+    </>
+  );
+}
+
+function InlineCaseModerationPanel({
+  draft,
+  onChange,
+  onSubmit,
+  submitting,
+  target,
+}: {
+  draft: ContentModerationDraft;
+  onChange: (nextValue: ContentModerationDraft) => void;
+  onSubmit: () => void;
+  submitting: boolean;
+  target: ContentModerationTarget;
+}) {
+  return (
+    <section className="detail-card moderation-inline-panel">
+      <div>
+        <p className="eyebrow">Moderation controls</p>
+        <h3 style={{ marginBottom: 4 }}>Take action on this record</h3>
+        <p className="text-muted" style={{ margin: 0 }}>
+          These controls apply to {target.title}.
+        </p>
+      </div>
+
+      <ContentModerationFields
+        draft={draft}
+        idPrefix={`inline-moderation-${target.recordId}`}
+        onChange={onChange}
+      />
+
+      <div className="moderation-inline-actions moderation-inline-actions-end">
+        <button className="button" disabled={submitting} onClick={onSubmit} type="button">
+          {submitting ? 'Saving...' : 'Save moderation action'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ModerationCaseListItem({
+  caseRecord,
+  actionDisabled,
+  actionLabel,
+  active = false,
+  onAction,
+  onSelect,
+}: {
+  caseRecord: ModerationCase;
+  actionDisabled?: boolean;
+  actionLabel?: string;
+  active?: boolean;
+  onAction?: () => void;
+  onSelect?: () => void;
+}) {
+  const targetUser = caseRecord.expand?.targetUser;
+  const reportCount = getReportCount(caseRecord);
+
+  return (
+    <article className={`record-overview-card moderation-case-list-item${active ? ' active' : ''}`}>
+      <div className="summary-row moderation-summary-row-top">
+        <div>
+          <p className="eyebrow">Case</p>
+          <strong>{caseRecord.targetLabel?.trim() || formatModerationLabel(caseRecord.targetType)}</strong>
+        </div>
+        <div className="tag-row tag-row-start">
+          <ModerationBadge value={caseRecord.status} />
+          <span className="tag">{formatModerationLabel(caseRecord.targetType)}</span>
+          {caseRecord.reasonCode ? <span className="tag">{formatModerationLabel(caseRecord.reasonCode)}</span> : null}
+          {reportCount > 0 ? <span className="tag">{reportCount} report{reportCount === 1 ? '' : 's'}</span> : null}
+        </div>
+      </div>
+
+      <div className="moderation-case-list-meta">
+        <div>
+          <span className="text-muted">Target user</span>
+          <strong>{targetUser?.email || 'Unknown user'}</strong>
+        </div>
+        <div>
+          <span className="text-muted">Latest report</span>
+          <strong>{formatDateTime(caseRecord.latestReportedAt || caseRecord.updated)}</strong>
+        </div>
+      </div>
+
+      <div className="moderation-inline-actions">
+        {onSelect ? (
+          <button className="button ghost" disabled={active} onClick={onSelect} type="button">
+            {active ? 'Selected' : 'Open case'}
+          </button>
+        ) : null}
+        {onAction && actionLabel ? (
+          <button className="button" disabled={actionDisabled} onClick={onAction} type="button">
+            {actionLabel}
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -1286,87 +1545,7 @@ function ContentModerationModal({
           </button>
         </div>
 
-        <div className="moderation-form-grid">
-          <div className="field">
-            <label htmlFor="moderation-action">Action</label>
-            <select
-              className="input"
-              id="moderation-action"
-              onChange={(event) => onChange({ ...draft, action: event.target.value as ModerationAction })}
-              value={draft.action}
-            >
-              {contentActionOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="moderation-reason">Reason</label>
-            <select
-              className="input"
-              id="moderation-reason"
-              onChange={(event) =>
-                onChange({
-                  ...draft,
-                  reasonCode: event.target.value as ModerationReasonCode | '',
-                })
-              }
-              value={draft.reasonCode}
-            >
-              {moderationReasonOptions.map((option) => (
-                <option key={option.value || 'none'} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="moderation-appeal">Appeal state</label>
-            <select
-              className="input"
-              id="moderation-appeal"
-              onChange={(event) =>
-                onChange({
-                  ...draft,
-                  appealState: event.target.value as ModerationAppealState,
-                })
-              }
-              value={draft.appealState}
-            >
-              {moderationAppealOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="field">
-          <label htmlFor="moderation-note">Moderator note</label>
-          <textarea
-            className="input moderation-textarea"
-            id="moderation-note"
-            onChange={(event) => onChange({ ...draft, moderatorNote: event.target.value })}
-            placeholder="Internal context for other moderators"
-            value={draft.moderatorNote}
-          />
-        </div>
-
-        <div className="field">
-          <label htmlFor="moderation-notice">User notice</label>
-          <textarea
-            className="input moderation-textarea"
-            id="moderation-notice"
-            onChange={(event) => onChange({ ...draft, userNotice: event.target.value })}
-            placeholder="Optional message shown to the user"
-            value={draft.userNotice}
-          />
-        </div>
+        <ContentModerationFields draft={draft} idPrefix="modal-moderation" onChange={onChange} />
 
         <div className="moderation-inline-actions moderation-inline-actions-end">
           <button className="button ghost" onClick={onClose} type="button">
@@ -1385,17 +1564,16 @@ export function ModerationPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEmail = searchParams.get('email') ?? '';
+  const [activeTab, setActiveTab] = useState<ModerationMainTab>(initialEmail ? 'lookup' : 'queue');
   const [emailInput, setEmailInput] = useState(initialEmail);
   const [selectedEmail, setSelectedEmail] = useState(normalizeEmail(initialEmail));
   const [carouselState, setCarouselState] = useState<{ initialIndex: number; photos: ModerationPhoto[] } | null>(null);
-  const [queueAssignment, setQueueAssignment] = useState<ModerationQueueAssignmentFilter>('all');
-  const [queueStatus, setQueueStatus] = useState<ModerationQueueStatusFilter>('active');
   const [focusedCaseId, setFocusedCaseId] = useState<string | null>(null);
-  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<ModerationWorkspaceTab>('history');
+  const [lookupWorkspaceTab, setLookupWorkspaceTab] = useState<ModerationWorkspaceTab>('history');
   const [accountForm, setAccountForm] = useState<AccountModerationFormState | null>(null);
   const [contentModerationDraft, setContentModerationDraft] = useState<ContentModerationDraft>(createDefaultContentModerationDraft);
   const [contentModerationTarget, setContentModerationTarget] = useState<ContentModerationTarget | null>(null);
+  const [caseModerationDraft, setCaseModerationDraft] = useState<ContentModerationDraft>(createDefaultContentModerationDraft);
 
   const lookupQuery = useQuery({
     enabled: Boolean(selectedEmail),
@@ -1416,37 +1594,40 @@ export function ModerationPage() {
   }, [profileQuery.data?.user]);
 
   useEffect(() => {
-    const moderationCases = profileQuery.data?.moderationCases ?? [];
+    setCaseModerationDraft(createDefaultContentModerationDraft());
+  }, [focusedCaseId]);
 
-    if (moderationCases.length === 0) {
-      setFocusedCaseId(null);
-      return;
-    }
-
-    setFocusedCaseId((current) => {
-      if (current && moderationCases.some((caseRecord) => caseRecord.id === current)) {
-        return current;
-      }
-
-      return getDefaultFocusedCaseId(moderationCases);
-    });
-  }, [profileQuery.data?.moderationCases]);
-
-  const moderationCasesQuery = useQuery({
-    queryKey: ['admin', 'moderation', 'cases', queueStatus, queueAssignment, lookupQuery.data?.id ?? 'all'],
+  const queueCasesQuery = useQuery({
+    queryKey: ['admin', 'moderation', 'cases', 'active', 'unassigned'],
     queryFn: () =>
       listModerationCases({
-        assignment: queueAssignment,
-        status: queueStatus,
-        userId: lookupQuery.data?.id,
+        assignment: 'unassigned',
+        status: 'active',
       }),
   });
 
+  const claimedCasesQuery = useQuery({
+    queryKey: ['admin', 'moderation', 'cases', 'active', 'mine'],
+    queryFn: () =>
+      listModerationCases({
+        assignment: 'mine',
+        status: 'active',
+      }),
+  });
+
+  useEffect(() => {
+    if (!focusedCaseId) {
+      return;
+    }
+
+    if (activeTab === 'cases' && claimedCasesQuery.data && !claimedCasesQuery.data.some((caseRecord) => caseRecord.id === focusedCaseId)) {
+      setFocusedCaseId(null);
+    }
+  }, [activeTab, claimedCasesQuery.data, focusedCaseId]);
+
   const refreshModerationData = async () => {
     await queryClient.invalidateQueries({ queryKey: ['admin', 'moderation', 'cases'] });
-    if (lookupQuery.data?.id) {
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'user-profile', lookupQuery.data.id] });
-    }
+    await queryClient.invalidateQueries({ queryKey: ['admin', 'user-profile'] });
     if (selectedEmail) {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'moderation', 'lookup', selectedEmail] });
     }
@@ -1468,28 +1649,43 @@ export function ModerationPage() {
       await refreshModerationData();
       setContentModerationTarget(null);
       setContentModerationDraft(createDefaultContentModerationDraft());
+      setCaseModerationDraft(createDefaultContentModerationDraft());
     },
   });
 
   const claimCaseMutation = useMutation({
-    mutationFn: claimModerationCase,
-    onSuccess: refreshModerationData,
+    mutationFn: (caseRecord: ModerationCase) => claimModerationCase(caseRecord.id),
+    onSuccess: async (_data, caseRecord) => {
+      await refreshModerationData();
+      const normalizedEmail = normalizeEmail(caseRecord.expand?.targetUser?.email ?? '');
+      if (normalizedEmail) {
+        setEmailInput(normalizedEmail);
+        setSelectedEmail(normalizedEmail);
+        setFocusedCaseId(caseRecord.id);
+        setActiveTab('cases');
+      }
+    },
   });
 
   const releaseCaseMutation = useMutation({
-    mutationFn: releaseModerationCase,
-    onSuccess: refreshModerationData,
+    mutationFn: (caseRecord: ModerationCase) => releaseModerationCase(caseRecord.id),
+    onSuccess: async (_data, caseRecord) => {
+      await refreshModerationData();
+      if (focusedCaseId === caseRecord.id) {
+        setFocusedCaseId(null);
+      }
+    },
   });
 
   const deletingKey = deleteMutation.variables
     ? `${deleteMutation.variables.contentType}:${deleteMutation.variables.recordId}`
     : null;
-
-  const orderedProfileCases = profileQuery.data ? sortModerationCasesForReview(profileQuery.data.moderationCases) : [];
-  const focusedCase =
-    orderedProfileCases.find((caseRecord) => caseRecord.id === focusedCaseId) ?? orderedProfileCases[0] ?? null;
-  const focusedModerationTarget =
-    focusedCase && profileQuery.data ? buildContentModerationTargetFromCase(focusedCase, profileQuery.data) : null;
+  const orderedLookupCases = profileQuery.data ? sortModerationCasesForReview(profileQuery.data.moderationCases) : [];
+  const selectedClaimedCase = claimedCasesQuery.data?.find((caseRecord) => caseRecord.id === focusedCaseId) ?? null;
+  const selectedCaseModerationTarget =
+    selectedClaimedCase && profileQuery.data ? buildContentModerationTargetFromCase(selectedClaimedCase, profileQuery.data) : null;
+  const orderedQueueCases = sortModerationCasesForReview(queueCasesQuery.data ?? []);
+  const orderedClaimedCases = sortModerationCasesForReview(claimedCasesQuery.data ?? []);
 
   const handleLookupSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1509,8 +1705,7 @@ export function ModerationPage() {
     setEmailInput('');
     setSelectedEmail('');
     setFocusedCaseId(null);
-    setWorkspaceCollapsed(false);
-    setWorkspaceTab('history');
+    setLookupWorkspaceTab('history');
     setSearchParams({});
     setCarouselState(null);
     setContentModerationTarget(null);
@@ -1555,6 +1750,23 @@ export function ModerationPage() {
     });
   };
 
+  const submitSelectedCaseModeration = () => {
+    if (!profileQuery.data?.user.id || !selectedCaseModerationTarget) {
+      return;
+    }
+
+    contentModerationMutation.mutate({
+      userId: profileQuery.data.user.id,
+      contentType: selectedCaseModerationTarget.contentType,
+      recordId: selectedCaseModerationTarget.recordId,
+      action: caseModerationDraft.action,
+      appealState: caseModerationDraft.appealState,
+      moderatorNote: caseModerationDraft.moderatorNote.trim() || undefined,
+      reasonCode: caseModerationDraft.reasonCode || undefined,
+      userNotice: caseModerationDraft.userNotice.trim() || undefined,
+    });
+  };
+
   const submitAccountModeration = (action?: ModerationAction) => {
     if (!profileQuery.data?.user.id || !accountForm) {
       return;
@@ -1575,12 +1787,27 @@ export function ModerationPage() {
     });
   };
 
-  const reviewCaseUser = (user: AdminUser) => {
-    const normalized = normalizeEmail(user.email);
+  const reviewModerationCase = (caseRecord: ModerationCase) => {
+    const normalized = normalizeEmail(caseRecord.expand?.targetUser?.email ?? '');
+    if (!normalized) {
+      return;
+    }
+
     setEmailInput(normalized);
     setSelectedEmail(normalized);
-    setWorkspaceCollapsed(false);
-    setSearchParams({ email: normalized });
+    setFocusedCaseId(caseRecord.id);
+    setActiveTab('cases');
+  };
+
+  const openLookupWorkspaceForCurrentEmail = () => {
+    if (!selectedEmail) {
+      return;
+    }
+
+    setEmailInput(selectedEmail);
+    setLookupWorkspaceTab('history');
+    setActiveTab('lookup');
+    setSearchParams({ email: selectedEmail });
   };
 
   const errorMessage =
@@ -1594,182 +1821,27 @@ export function ModerationPage() {
   return (
     <>
       <section className="panel">
-        <p className="eyebrow">User moderation</p>
-        <h2 style={{ marginBottom: 0 }}>Review one account at a time by exact email</h2>
+        <p className="eyebrow">Moderation workspace</p>
+        <h2 style={{ marginBottom: 4 }}>Queue, cases, and account lookups in one place</h2>
         <p className="text-muted" style={{ margin: 0 }}>
-          Moderators must enter an exact user email before any user content loads. The workspace now includes the
-          moderation queue, account controls, reversible content actions, and permanent delete as the last resort.
+          Claim new work from the queue, review your claimed cases record-by-record, or inspect a user directly by
+          exact email.
         </p>
-      </section>
-
-      <section className="panel">
-        <form className="moderation-lookup-form" onSubmit={handleLookupSubmit}>
-          <div className="field">
-            <label htmlFor="moderation-email">User email</label>
-            <input
-              autoComplete="off"
-              className="input"
-              id="moderation-email"
-              onChange={(event) => setEmailInput(event.target.value)}
-              placeholder="person@example.com"
-              type="email"
-              value={emailInput}
-            />
-          </div>
-          <div className="moderation-lookup-actions">
-            <button className="button" type="submit">
-              Load content
-            </button>
-            <button className="button ghost" onClick={clearLookup} type="button">
-              Clear
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="table-panel">
-        <div className="summary-row">
-          <div>
-            <p className="eyebrow">Moderation queue</p>
-            <h3 style={{ marginBottom: 4 }}>
-              {lookupQuery.data?.email ? `Cases for ${lookupQuery.data.email}` : 'Cases across all users'}
-            </h3>
-            <p className="text-muted" style={{ margin: 0 }}>
-              Claim work, review escalations, and jump directly into a user account.
-            </p>
-          </div>
-        </div>
-
-        <div className="moderation-form-grid">
-          <div className="field">
-            <label htmlFor="queue-status-filter">Status</label>
-            <select
-              className="input"
-              id="queue-status-filter"
-              onChange={(event) => setQueueStatus(event.target.value as ModerationQueueStatusFilter)}
-              value={queueStatus}
+        <div aria-label="Moderation workspace tabs" className="tab-bar" role="tablist">
+          {moderationMainTabs.map((tab) => (
+            <button
+              aria-selected={activeTab === tab.value}
+              className={`tab-button ${activeTab === tab.value ? 'active' : ''}`}
+              key={tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              role="tab"
+              type="button"
             >
-              {moderationQueueStatusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="queue-assignment-filter">Assignment</label>
-            <select
-              className="input"
-              id="queue-assignment-filter"
-              onChange={(event) => setQueueAssignment(event.target.value as ModerationQueueAssignmentFilter)}
-              value={queueAssignment}
-            >
-              {moderationQueueAssignmentOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              {tab.label}
+            </button>
+          ))}
         </div>
-
-        {moderationCasesQuery.isLoading ? (
-          <div className="state-panel">
-            <strong>Loading moderation cases...</strong>
-          </div>
-        ) : null}
-
-        {moderationCasesQuery.isError ? (
-          <div className="state-panel error">
-            <strong>Could not load moderation cases</strong>
-            <span className="text-muted">
-              {moderationCasesQuery.error instanceof Error
-                ? moderationCasesQuery.error.message
-                : 'The moderation queue request failed.'}
-            </span>
-          </div>
-        ) : null}
-
-        {moderationCasesQuery.data && moderationCasesQuery.data.length === 0 ? (
-          <div className="state-panel">
-            <strong>No cases found</strong>
-            <span className="text-muted">Adjust the filters or select a user with known moderation activity.</span>
-          </div>
-        ) : null}
-
-        {moderationCasesQuery.data && moderationCasesQuery.data.length > 0 ? (
-          <PaginatedCollection
-            items={moderationCasesQuery.data}
-            itemsPerPage={12}
-            resetKey={`${queueStatus}:${queueAssignment}`}
-          >
-            {(pageCases) => (
-              <div className="inline-list">
-                {pageCases.map((caseRecord) => {
-                  const isSelectedUserCase =
-                    Boolean(profileQuery.data?.user.id) && caseRecord.expand?.targetUser?.id === profileQuery.data?.user.id;
-
-                  return (
-                  <ModerationCaseCard
-                    caseRecord={caseRecord}
-                    claimDisabled={claimCaseMutation.isPending && claimCaseMutation.variables === caseRecord.id}
-                    isFocused={focusedCase?.id === caseRecord.id}
-                    key={caseRecord.id}
-                    onFocusCase={isSelectedUserCase ? () => setFocusedCaseId(caseRecord.id) : undefined}
-                    onClaim={() => claimCaseMutation.mutate(caseRecord.id)}
-                    onRelease={() => releaseCaseMutation.mutate(caseRecord.id)}
-                    releaseDisabled={releaseCaseMutation.isPending && releaseCaseMutation.variables === caseRecord.id}
-                    showReviewUserAction={isSelectedUserCase ? undefined : reviewCaseUser}
-                  />
-                  );
-                })}
-              </div>
-            )}
-          </PaginatedCollection>
-        ) : null}
       </section>
-
-      {!selectedEmail ? (
-        <section className="state-panel">
-          <strong>No account selected</strong>
-          <span className="text-muted">Enter an exact email address to review a user.</span>
-        </section>
-      ) : null}
-
-      {selectedEmail && lookupQuery.isLoading ? (
-        <section className="state-panel">
-          <strong>Looking up user...</strong>
-        </section>
-      ) : null}
-
-      {selectedEmail && lookupQuery.isError ? (
-        <section className="state-panel error">
-          <strong>Could not find that user</strong>
-          <span className="text-muted">
-            {lookupQuery.error instanceof Error
-              ? lookupQuery.error.message
-              : 'No user was found for that email address.'}
-          </span>
-        </section>
-      ) : null}
-
-      {selectedEmail && lookupQuery.data && profileQuery.isLoading ? (
-        <section className="state-panel">
-          <strong>Loading moderation workspace...</strong>
-        </section>
-      ) : null}
-
-      {selectedEmail && lookupQuery.data && profileQuery.isError ? (
-        <section className="state-panel error">
-          <strong>Could not load moderation content</strong>
-          <span className="text-muted">
-            {profileQuery.error instanceof Error
-              ? profileQuery.error.message
-              : 'The moderation workspace request failed.'}
-          </span>
-        </section>
-      ) : null}
 
       {errorMessage ? (
         <section className="state-panel error">
@@ -1778,120 +1850,234 @@ export function ModerationPage() {
         </section>
       ) : null}
 
-      {selectedEmail && lookupQuery.data && profileQuery.data && accountForm ? (
-        <>
-          <section className="panel">
-            <div className="summary-row moderation-summary-row-top">
-              <div>
-                <p className="eyebrow">Reviewing</p>
-                <h2 style={{ marginBottom: 6 }}>{profileQuery.data.user.email}</h2>
-                <div className="tag-row tag-row-start">
-                  <span className="tag">{profileQuery.data.user.name?.trim() || 'No display name'}</span>
-                  <ModerationBadge value={profileQuery.data.user.moderationState} />
-                  <ModerationBadge value={profileQuery.data.user.contentModerationMode} />
-                  <span className="tag">Warnings: {Math.trunc(profileQuery.data.user.warningCount ?? 0)}</span>
-                  {profileQuery.data.user.isAdmin ? <span className="tag">admin</span> : null}
-                  {profileQuery.data.user.isSubscriber ? <span className="tag">subscriber</span> : null}
-                  {profileQuery.data.user.isBetaUser ? <span className="tag">beta</span> : null}
+      {activeTab === 'queue' ? (
+        <section className="table-panel">
+          <div className="summary-row moderation-summary-row-top">
+            <div>
+              <p className="eyebrow">Moderation queue</p>
+              <h3 style={{ marginBottom: 4 }}>Unassigned cases ready to be claimed</h3>
+              <p className="text-muted" style={{ margin: 0 }}>
+                Claimed cases with no movement for three days return to this queue automatically.
+              </p>
+            </div>
+          </div>
+
+          {queueCasesQuery.isLoading ? (
+            <div className="state-panel">
+              <strong>Loading unassigned cases...</strong>
+            </div>
+          ) : null}
+
+          {queueCasesQuery.isError ? (
+            <div className="state-panel error">
+              <strong>Could not load the moderation queue</strong>
+              <span className="text-muted">
+                {queueCasesQuery.error instanceof Error
+                  ? queueCasesQuery.error.message
+                  : 'The moderation queue request failed.'}
+              </span>
+            </div>
+          ) : null}
+
+          {queueCasesQuery.data && queueCasesQuery.data.length === 0 ? (
+            <div className="state-panel">
+              <strong>No unassigned cases</strong>
+              <span className="text-muted">New reports will appear here when they need moderator attention.</span>
+            </div>
+          ) : null}
+
+          {queueCasesQuery.data && queueCasesQuery.data.length > 0 ? (
+            <PaginatedCollection items={orderedQueueCases} itemsPerPage={12} resetKey="queue">
+              {(pageCases) => (
+                <div className="inline-list">
+                  {pageCases.map((caseRecord) => (
+                    <ModerationCaseListItem
+                      actionDisabled={claimCaseMutation.isPending && claimCaseMutation.variables?.id === caseRecord.id}
+                      actionLabel={
+                        claimCaseMutation.isPending && claimCaseMutation.variables?.id === caseRecord.id
+                          ? 'Claiming...'
+                          : 'Claim case'
+                      }
+                      caseRecord={caseRecord}
+                      key={caseRecord.id}
+                      onAction={() => claimCaseMutation.mutate(caseRecord)}
+                    />
+                  ))}
                 </div>
-              </div>
-              <Link className="button ghost" to={`/users/${profileQuery.data.user.id}`}>
-                Open full user detail
-              </Link>
-            </div>
-          </section>
+              )}
+            </PaginatedCollection>
+          ) : null}
+        </section>
+      ) : null}
 
-          <section className="metric-grid">
-            <div className="metric-card">
-              <span className="text-muted">Feed entries</span>
-              <div className="metric-value">{profileQuery.data.feedEntries.length}</div>
+      {activeTab === 'cases' ? (
+        <section className="table-panel">
+          <div className="summary-row moderation-summary-row-top">
+            <div>
+              <p className="eyebrow">Cases</p>
+              <h3 style={{ marginBottom: 4 }}>Your claimed moderation work</h3>
+              <p className="text-muted" style={{ margin: 0 }}>
+                Select a claimed case on the left to review the exact reported record and moderate it.
+              </p>
             </div>
-            <div className="metric-card">
-              <span className="text-muted">Lists</span>
-              <div className="metric-value">{profileQuery.data.restaurantLists.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Cases</span>
-              <div className="metric-value">{profileQuery.data.moderationCases.length}</div>
-            </div>
-            <div className="metric-card">
-              <span className="text-muted">Photos</span>
-              <div className="metric-value">{profileQuery.data.recentPhotos.length}</div>
-            </div>
-          </section>
+          </div>
 
-          <section className="table-panel moderation-review-workspace">
-            <div className="summary-row moderation-summary-row-top">
+          <div className="moderation-case-workspace">
+            <aside className="detail-card moderation-case-sidebar">
               <div>
-                <p className="eyebrow">Reported content review</p>
-                <h3 style={{ marginBottom: 4 }}>
-                  {focusedCase
-                    ? focusedCase.targetLabel?.trim() || formatModerationLabel(focusedCase.targetType)
-                    : 'No active moderation case selected'}
-                </h3>
-                <p className="text-muted" style={{ margin: 0 }}>
-                  {focusedCase
-                    ? 'Start with the exact record that was reported, compare it with the attached report history, then take action.'
-                    : 'This account has no case selected yet. Use the queue or case history to pick one when moderation work exists.'}
-                </p>
+                <p className="eyebrow">Claimed cases</p>
+                <h3 style={{ marginBottom: 4 }}>Assigned to you</h3>
               </div>
-              <div className="moderation-inline-actions">
-                {focusedCase ? (
-                  focusedCase.expand?.assignedAdmin ? (
-                    <button
-                      className="button ghost"
-                      disabled={releaseCaseMutation.isPending && releaseCaseMutation.variables === focusedCase.id}
-                      onClick={() => releaseCaseMutation.mutate(focusedCase.id)}
-                      type="button"
-                    >
-                      {releaseCaseMutation.isPending && releaseCaseMutation.variables === focusedCase.id
-                        ? 'Releasing...'
-                        : 'Release case'}
-                    </button>
-                  ) : (
-                    <button
-                      className="button ghost"
-                      disabled={claimCaseMutation.isPending && claimCaseMutation.variables === focusedCase.id}
-                      onClick={() => claimCaseMutation.mutate(focusedCase.id)}
-                      type="button"
-                    >
-                      {claimCaseMutation.isPending && claimCaseMutation.variables === focusedCase.id
-                        ? 'Claiming...'
-                        : 'Claim case'}
-                    </button>
-                  )
-                ) : null}
-                {focusedModerationTarget ? (
-                  <button className="button" onClick={() => openContentModeration(focusedModerationTarget)} type="button">
-                    Moderate focused content
-                  </button>
-                ) : null}
-              </div>
-            </div>
 
-            {orderedProfileCases.length > 1 ? (
-              <div aria-label="Moderation cases for this user" className="tab-bar moderation-case-switcher" role="tablist">
-                {orderedProfileCases.map((caseRecord) => (
-                  <button
-                    aria-selected={focusedCase?.id === caseRecord.id}
-                    className={`tab-button ${focusedCase?.id === caseRecord.id ? 'active' : ''}`}
-                    key={caseRecord.id}
-                    onClick={() => setFocusedCaseId(caseRecord.id)}
-                    role="tab"
-                    type="button"
-                  >
-                    {(caseRecord.targetLabel?.trim() || formatModerationLabel(caseRecord.targetType)) +
-                      (getReportCount(caseRecord) > 0 ? ` (${getReportCount(caseRecord)})` : '')}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+              {claimedCasesQuery.isLoading ? (
+                <div className="state-panel">
+                  <strong>Loading claimed cases...</strong>
+                </div>
+              ) : null}
 
-            {focusedCase ? (
-              <div className="moderation-review-grid">
-                <div className="moderation-review-main">
+              {claimedCasesQuery.isError ? (
+                <div className="state-panel error">
+                  <strong>Could not load claimed cases</strong>
+                  <span className="text-muted">
+                    {claimedCasesQuery.error instanceof Error
+                      ? claimedCasesQuery.error.message
+                      : 'The claimed cases request failed.'}
+                  </span>
+                </div>
+              ) : null}
+
+              {claimedCasesQuery.data && claimedCasesQuery.data.length === 0 ? (
+                <div className="state-panel">
+                  <strong>No claimed cases</strong>
+                  <span className="text-muted">Claim a case from the moderation queue to start reviewing it here.</span>
+                </div>
+              ) : null}
+
+              {claimedCasesQuery.data && claimedCasesQuery.data.length > 0 ? (
+                <PaginatedCollection items={orderedClaimedCases} itemsPerPage={10} resetKey="claimed-cases">
+                  {(pageCases) => (
+                    <div className="inline-list">
+                      {pageCases.map((caseRecord) => (
+                        <ModerationCaseListItem
+                          active={focusedCaseId === caseRecord.id}
+                          caseRecord={caseRecord}
+                          key={caseRecord.id}
+                          onSelect={() => reviewModerationCase(caseRecord)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </PaginatedCollection>
+              ) : null}
+            </aside>
+
+            <div className="table-panel moderation-case-review-pane">
+              {!selectedClaimedCase ? (
+                <div className="state-panel moderation-case-empty">
+                  <strong>No case selected</strong>
+                  <span className="text-muted">Choose a claimed case from the list to review the reported record.</span>
+                </div>
+              ) : null}
+
+              {selectedClaimedCase && selectedEmail && lookupQuery.isLoading ? (
+                <div className="state-panel">
+                  <strong>Loading case owner...</strong>
+                </div>
+              ) : null}
+
+              {selectedClaimedCase && selectedEmail && lookupQuery.isError ? (
+                <div className="state-panel error">
+                  <strong>Could not load the case owner</strong>
+                  <span className="text-muted">
+                    {lookupQuery.error instanceof Error
+                      ? lookupQuery.error.message
+                      : 'The user lookup request failed.'}
+                  </span>
+                </div>
+              ) : null}
+
+              {selectedClaimedCase && lookupQuery.data && profileQuery.isLoading ? (
+                <div className="state-panel">
+                  <strong>Loading reported record...</strong>
+                </div>
+              ) : null}
+
+              {selectedClaimedCase && lookupQuery.data && profileQuery.isError ? (
+                <div className="state-panel error">
+                  <strong>Could not load the reported record</strong>
+                  <span className="text-muted">
+                    {profileQuery.error instanceof Error
+                      ? profileQuery.error.message
+                      : 'The moderation profile request failed.'}
+                  </span>
+                </div>
+              ) : null}
+
+              {selectedClaimedCase && lookupQuery.data && profileQuery.data ? (
+                <div className="moderation-case-review-stack">
+                  <div className="summary-row moderation-summary-row-top">
+                    <div>
+                      <p className="eyebrow">Selected case</p>
+                      <h3 style={{ marginBottom: 4 }}>
+                        {selectedClaimedCase.targetLabel?.trim() || formatModerationLabel(selectedClaimedCase.targetType)}
+                      </h3>
+                      <p className="text-muted" style={{ margin: 0 }}>
+                        Viewing the specific {formatModerationLabel(selectedClaimedCase.targetType).toLowerCase()} record
+                        {selectedClaimedCase.reasonCode
+                          ? ` reported for ${formatModerationLabel(selectedClaimedCase.reasonCode).toLowerCase()}`
+                          : ''}
+                        .
+                      </p>
+                    </div>
+                    <div className="moderation-inline-actions">
+                      <button className="button ghost" onClick={openLookupWorkspaceForCurrentEmail} type="button">
+                        Open email lookup
+                      </button>
+                      <button
+                        className="button ghost"
+                        disabled={releaseCaseMutation.isPending && releaseCaseMutation.variables?.id === selectedClaimedCase.id}
+                        onClick={() => releaseCaseMutation.mutate(selectedClaimedCase)}
+                        type="button"
+                      >
+                        {releaseCaseMutation.isPending && releaseCaseMutation.variables?.id === selectedClaimedCase.id
+                          ? 'Releasing...'
+                          : 'Release case'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="moderation-meta-grid">
+                    <ModerationMetaBlock
+                      label="Target user"
+                      value={selectedClaimedCase.expand?.targetUser?.email || profileQuery.data.user.email}
+                    />
+                    <ModerationMetaBlock label="Status" value={formatModerationLabel(selectedClaimedCase.status)} />
+                    <ModerationMetaBlock
+                      label="Reason"
+                      value={selectedClaimedCase.reasonCode ? formatModerationLabel(selectedClaimedCase.reasonCode) : 'No reason selected'}
+                    />
+                    <ModerationMetaBlock
+                      label="Latest report"
+                      value={formatDateTime(selectedClaimedCase.latestReportedAt || selectedClaimedCase.updated)}
+                    />
+                  </div>
+
+                  <div className="tag-row tag-row-start">
+                    <ModerationBadge value={selectedClaimedCase.status} />
+                    {selectedClaimedCase.action ? <ModerationBadge value={selectedClaimedCase.action} /> : null}
+                    <span className="tag">{formatModerationLabel(selectedClaimedCase.targetType)}</span>
+                    {selectedClaimedCase.reasonCode ? (
+                      <span className="tag">{formatModerationLabel(selectedClaimedCase.reasonCode)}</span>
+                    ) : null}
+                    {getReportCount(selectedClaimedCase) > 0 ? (
+                      <span className="tag">
+                        {getReportCount(selectedClaimedCase)} report{getReportCount(selectedClaimedCase) === 1 ? '' : 's'}
+                      </span>
+                    ) : null}
+                  </div>
+
                   <ReportedContentPreview
-                    caseRecord={focusedCase}
+                    caseRecord={selectedClaimedCase}
                     deletingKey={deletingKey}
                     onDelete={requestDelete}
                     onModerate={openContentModeration}
@@ -1915,102 +2101,170 @@ export function ModerationPage() {
                       setCarouselState({ photos, initialIndex });
                     }}
                     profile={profileQuery.data}
+                    showActions={false}
                   />
+
+                  <div>
+                    <p className="eyebrow">Report history</p>
+                    <ModerationReportHistory reports={selectedClaimedCase.reports ?? []} />
+                  </div>
+
+                  {selectedCaseModerationTarget ? (
+                    <InlineCaseModerationPanel
+                      draft={caseModerationDraft}
+                      onChange={setCaseModerationDraft}
+                      onSubmit={submitSelectedCaseModeration}
+                      submitting={contentModerationMutation.isPending}
+                      target={selectedCaseModerationTarget}
+                    />
+                  ) : (
+                    <div className="state-panel">
+                      <strong>No inline moderation controls available</strong>
+                      <span className="text-muted">
+                        This case type does not have a direct record-moderation target in the current admin UI.
+                      </span>
+                    </div>
+                  )}
                 </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
-                <aside className="detail-card moderation-review-sidebar">
-                  <div>
-                    <p className="eyebrow">Case details</p>
-                    <h3 style={{ marginBottom: 6 }}>{focusedCase.targetLabel?.trim() || formatModerationLabel(focusedCase.targetType)}</h3>
-                    <div className="tag-row tag-row-start">
-                      <ModerationBadge value={focusedCase.status} />
-                      {focusedCase.action ? <ModerationBadge value={focusedCase.action} /> : null}
-                      <span className="tag">{formatModerationLabel(focusedCase.targetType)}</span>
-                      {focusedCase.reasonCode ? <span className="tag">{formatModerationLabel(focusedCase.reasonCode)}</span> : null}
-                      {getReportCount(focusedCase) > 0 ? (
-                        <span className="tag">
-                          {getReportCount(focusedCase)} report{getReportCount(focusedCase) === 1 ? '' : 's'}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="moderation-meta-grid">
-                    <ModerationMetaBlock
-                      label="Target user"
-                      value={focusedCase.expand?.targetUser?.email || profileQuery.data.user.email}
-                    />
-                    <ModerationMetaBlock
-                      label="Assigned admin"
-                      value={focusedCase.expand?.assignedAdmin?.email || 'Unassigned'}
-                    />
-                    <ModerationMetaBlock label="Updated" value={formatDateTime(focusedCase.updated)} />
-                    <ModerationMetaBlock
-                      label="Latest report"
-                      value={focusedCase.latestReportedAt ? formatDateTime(focusedCase.latestReportedAt) : 'No reports yet'}
-                    />
-                  </div>
-
-                  {focusedCase.moderatorNote?.trim() ? (
-                    <div className="state-panel">
-                      <strong>Moderator note</strong>
-                      <span className="text-muted">{focusedCase.moderatorNote.trim()}</span>
-                    </div>
-                  ) : null}
-
-                  {focusedCase.userNotice?.trim() ? (
-                    <div className="state-panel">
-                      <strong>User notice</strong>
-                      <span className="text-muted">{focusedCase.userNotice.trim()}</span>
-                    </div>
-                  ) : null}
-
-                  <div>
-                    <p className="eyebrow">Reports</p>
-                    <ModerationReportHistory reports={focusedCase.reports ?? []} />
-                  </div>
-                </aside>
+      {activeTab === 'lookup' ? (
+        <>
+          <section className="panel">
+            <form className="moderation-lookup-form" onSubmit={handleLookupSubmit}>
+              <div className="field">
+                <label htmlFor="moderation-email">User email</label>
+                <input
+                  autoComplete="off"
+                  className="input"
+                  id="moderation-email"
+                  onChange={(event) => setEmailInput(event.target.value)}
+                  placeholder="person@example.com"
+                  type="email"
+                  value={emailInput}
+                />
               </div>
-            ) : (
-              <div className="state-panel">
-                <strong>No moderation cases recorded for this user.</strong>
-                <span className="text-muted">The rest of the account context is still available below if you need it.</span>
+              <div className="moderation-lookup-actions">
+                <button className="button" type="submit">
+                  Load content
+                </button>
+                <button className="button ghost" onClick={clearLookup} type="button">
+                  Clear
+                </button>
               </div>
-            )}
+            </form>
           </section>
 
-          <section className="table-panel moderation-context-panel">
-            <div className="summary-row moderation-summary-row-top">
-              <div>
-                <p className="eyebrow">Account context</p>
-                <h3 style={{ marginBottom: 4 }}>Everything else for this user</h3>
-                <p className="text-muted" style={{ margin: 0 }}>
-                  Switch between account controls, case history, full feed content, and shared lists when you need more context.
-                </p>
-              </div>
-              <button
-                className="button ghost"
-                onClick={() => setWorkspaceCollapsed((current) => !current)}
-                type="button"
-              >
-                {workspaceCollapsed ? 'Expand panels' : 'Collapse panels'}
-              </button>
-            </div>
+          {!selectedEmail ? (
+            <section className="state-panel">
+              <strong>No account selected</strong>
+              <span className="text-muted">Enter an exact email address to inspect a user account.</span>
+            </section>
+          ) : null}
 
-            {!workspaceCollapsed ? (
-              <>
-                <div aria-label="Moderation workspace tabs" className="tab-bar" role="tablist">
+          {selectedEmail && lookupQuery.isLoading ? (
+            <section className="state-panel">
+              <strong>Looking up user...</strong>
+            </section>
+          ) : null}
+
+          {selectedEmail && lookupQuery.isError ? (
+            <section className="state-panel error">
+              <strong>Could not find that user</strong>
+              <span className="text-muted">
+                {lookupQuery.error instanceof Error
+                  ? lookupQuery.error.message
+                  : 'No user was found for that email address.'}
+              </span>
+            </section>
+          ) : null}
+
+          {selectedEmail && lookupQuery.data && profileQuery.isLoading ? (
+            <section className="state-panel">
+              <strong>Loading user moderation workspace...</strong>
+            </section>
+          ) : null}
+
+          {selectedEmail && lookupQuery.data && profileQuery.isError ? (
+            <section className="state-panel error">
+              <strong>Could not load moderation content</strong>
+              <span className="text-muted">
+                {profileQuery.error instanceof Error
+                  ? profileQuery.error.message
+                  : 'The moderation workspace request failed.'}
+              </span>
+            </section>
+          ) : null}
+
+          {selectedEmail && lookupQuery.data && profileQuery.data && accountForm ? (
+            <>
+              <section className="panel">
+                <div className="summary-row moderation-summary-row-top">
+                  <div>
+                    <p className="eyebrow">Individual lookup</p>
+                    <h2 style={{ marginBottom: 6 }}>{profileQuery.data.user.email}</h2>
+                    <div className="tag-row tag-row-start">
+                      <span className="tag">{profileQuery.data.user.name?.trim() || 'No display name'}</span>
+                      <ModerationBadge value={profileQuery.data.user.moderationState} />
+                      <ModerationBadge value={profileQuery.data.user.contentModerationMode} />
+                      <span className="tag">Warnings: {Math.trunc(profileQuery.data.user.warningCount ?? 0)}</span>
+                      {profileQuery.data.user.isAdmin ? <span className="tag">admin</span> : null}
+                      {profileQuery.data.user.isSubscriber ? <span className="tag">subscriber</span> : null}
+                      {profileQuery.data.user.isBetaUser ? <span className="tag">beta</span> : null}
+                    </div>
+                  </div>
+                  <Link className="button ghost" to={`/users/${profileQuery.data.user.id}`}>
+                    Open full user detail
+                  </Link>
+                </div>
+              </section>
+
+              <section className="metric-grid">
+                <div className="metric-card">
+                  <span className="text-muted">Feed entries</span>
+                  <div className="metric-value">{profileQuery.data.feedEntries.length}</div>
+                </div>
+                <div className="metric-card">
+                  <span className="text-muted">Lists</span>
+                  <div className="metric-value">{profileQuery.data.restaurantLists.length}</div>
+                </div>
+                <div className="metric-card">
+                  <span className="text-muted">Cases</span>
+                  <div className="metric-value">{profileQuery.data.moderationCases.length}</div>
+                </div>
+                <div className="metric-card">
+                  <span className="text-muted">Photos</span>
+                  <div className="metric-value">{profileQuery.data.recentPhotos.length}</div>
+                </div>
+              </section>
+
+              <section className="table-panel moderation-context-panel">
+                <div className="summary-row moderation-summary-row-top">
+                  <div>
+                    <p className="eyebrow">User workspace</p>
+                    <h3 style={{ marginBottom: 4 }}>Moderation tools and account context</h3>
+                    <p className="text-muted" style={{ margin: 0 }}>
+                      Switch between account controls, case history, the user feed, and restaurant lists.
+                    </p>
+                  </div>
+                </div>
+
+                <div aria-label="Lookup workspace tabs" className="tab-bar" role="tablist">
                   {[
-                    { id: 'history', label: 'Case history', count: orderedProfileCases.length },
+                    { id: 'history', label: 'Case history', count: orderedLookupCases.length },
                     { id: 'account', label: 'Account actions', count: 1 },
                     { id: 'feed', label: 'Feed entries', count: profileQuery.data.feedEntries.length },
                     { id: 'lists', label: 'Lists', count: profileQuery.data.restaurantLists.length },
                   ].map((tab) => (
                     <button
-                      aria-selected={workspaceTab === tab.id}
-                      className={`tab-button ${workspaceTab === tab.id ? 'active' : ''}`}
+                      aria-selected={lookupWorkspaceTab === tab.id}
+                      className={`tab-button ${lookupWorkspaceTab === tab.id ? 'active' : ''}`}
                       key={tab.id}
-                      onClick={() => setWorkspaceTab(tab.id as ModerationWorkspaceTab)}
+                      onClick={() => setLookupWorkspaceTab(tab.id as ModerationWorkspaceTab)}
                       role="tab"
                       type="button"
                     >
@@ -2021,7 +2275,7 @@ export function ModerationPage() {
 
                 <div className="divider" />
 
-                {workspaceTab === 'account' ? (
+                {lookupWorkspaceTab === 'account' ? (
                   <div className="tab-panel">
                     <div className="tab-panel-heading">
                       <h3>Warnings, suspensions, and pre-review</h3>
@@ -2094,9 +2348,7 @@ export function ModerationPage() {
                           id="warning-count"
                           min={0}
                           onChange={(event) =>
-                            setAccountForm((current) =>
-                              current ? { ...current, warningCount: event.target.value } : current
-                            )
+                            setAccountForm((current) => (current ? { ...current, warningCount: event.target.value } : current))
                           }
                           type="number"
                           value={accountForm.warningCount}
@@ -2140,9 +2392,7 @@ export function ModerationPage() {
                         className="input moderation-textarea"
                         id="moderation-notice-text"
                         onChange={(event) =>
-                          setAccountForm((current) =>
-                            current ? { ...current, moderationNotice: event.target.value } : current
-                          )
+                          setAccountForm((current) => (current ? { ...current, moderationNotice: event.target.value } : current))
                         }
                         placeholder="Optional notice shown to the user"
                         value={accountForm.moderationNotice}
@@ -2155,9 +2405,7 @@ export function ModerationPage() {
                         className="input moderation-textarea"
                         id="moderation-notes-text"
                         onChange={(event) =>
-                          setAccountForm((current) =>
-                            current ? { ...current, moderationNotes: event.target.value } : current
-                          )
+                          setAccountForm((current) => (current ? { ...current, moderationNotes: event.target.value } : current))
                         }
                         placeholder="Internal notes about this account"
                         value={accountForm.moderationNotes}
@@ -2165,74 +2413,48 @@ export function ModerationPage() {
                     </div>
 
                     <div className="moderation-inline-actions moderation-wrap-actions">
-                      <button
-                        className="button"
-                        disabled={userModerationMutation.isPending}
-                        onClick={() => submitAccountModeration()}
-                        type="button"
-                      >
+                      <button className="button" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration()} type="button">
                         {userModerationMutation.isPending ? 'Saving...' : 'Save account moderation'}
                       </button>
-                      <button
-                        className="button ghost"
-                        disabled={userModerationMutation.isPending}
-                        onClick={() => submitAccountModeration('warn')}
-                        type="button"
-                      >
+                      <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('warn')} type="button">
                         Warn
                       </button>
-                      <button
-                        className="button ghost"
-                        disabled={userModerationMutation.isPending}
-                        onClick={() => submitAccountModeration('restrict')}
-                        type="button"
-                      >
+                      <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('restrict')} type="button">
                         Restrict
                       </button>
-                      <button
-                        className="button ghost"
-                        disabled={userModerationMutation.isPending}
-                        onClick={() => submitAccountModeration('ban')}
-                        type="button"
-                      >
+                      <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('ban')} type="button">
                         Ban
                       </button>
-                      <button
-                        className="button ghost"
-                        disabled={userModerationMutation.isPending}
-                        onClick={() => submitAccountModeration('restore')}
-                        type="button"
-                      >
+                      <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('restore')} type="button">
                         Restore
                       </button>
                     </div>
                   </div>
                 ) : null}
 
-                {workspaceTab === 'history' ? (
+                {lookupWorkspaceTab === 'history' ? (
                   <div className="tab-panel">
                     <div className="tab-panel-heading">
                       <h3>Open and resolved cases for this user</h3>
                     </div>
 
-                    {orderedProfileCases.length === 0 ? (
+                    {orderedLookupCases.length === 0 ? (
                       <div className="state-panel">
                         <span className="text-muted">No moderation cases have been recorded for this user yet.</span>
                       </div>
                     ) : (
-                      <PaginatedCollection items={orderedProfileCases} itemsPerPage={10}>
+                      <PaginatedCollection items={orderedLookupCases} itemsPerPage={10}>
                         {(pageCases) => (
                           <div className="inline-list">
                             {pageCases.map((caseRecord) => (
                               <ModerationCaseCard
                                 caseRecord={caseRecord}
-                                claimDisabled={claimCaseMutation.isPending && claimCaseMutation.variables === caseRecord.id}
-                                isFocused={focusedCase?.id === caseRecord.id}
+                                claimDisabled={claimCaseMutation.isPending && claimCaseMutation.variables?.id === caseRecord.id}
                                 key={caseRecord.id}
-                                onFocusCase={() => setFocusedCaseId(caseRecord.id)}
-                                onClaim={() => claimCaseMutation.mutate(caseRecord.id)}
-                                onRelease={() => releaseCaseMutation.mutate(caseRecord.id)}
-                                releaseDisabled={releaseCaseMutation.isPending && releaseCaseMutation.variables === caseRecord.id}
+                                onClaim={() => claimCaseMutation.mutate(caseRecord)}
+                                onRelease={() => releaseCaseMutation.mutate(caseRecord)}
+                                onReviewCase={() => reviewModerationCase(caseRecord)}
+                                releaseDisabled={releaseCaseMutation.isPending && releaseCaseMutation.variables?.id === caseRecord.id}
                               />
                             ))}
                           </div>
@@ -2242,7 +2464,7 @@ export function ModerationPage() {
                   </div>
                 ) : null}
 
-                {workspaceTab === 'feed' ? (
+                {lookupWorkspaceTab === 'feed' ? (
                   <div className="tab-panel">
                     <div className="tab-panel-heading">
                       <h3>What the user sees in the app</h3>
@@ -2285,9 +2507,7 @@ export function ModerationPage() {
                                     contentType: 'food-item',
                                     recordId: item.id,
                                     title: item.name,
-                                    subtitle: entry.restaurantName
-                                      ? `Visit item from ${entry.restaurantName}`
-                                      : 'Visit item',
+                                    subtitle: entry.restaurantName ? `Visit item from ${entry.restaurantName}` : 'Visit item',
                                   })
                                 }
                                 onOpenCarousel={(photos, initialIndex) => {
@@ -2302,7 +2522,7 @@ export function ModerationPage() {
                   </div>
                 ) : null}
 
-                {workspaceTab === 'lists' ? (
+                {lookupWorkspaceTab === 'lists' ? (
                   <div className="tab-panel">
                     <div className="tab-panel-heading">
                       <h3>Saved and shared list content</h3>
@@ -2347,9 +2567,9 @@ export function ModerationPage() {
                     )}
                   </div>
                 ) : null}
-              </>
-            ) : null}
-          </section>
+              </section>
+            </>
+          ) : null}
         </>
       ) : null}
 

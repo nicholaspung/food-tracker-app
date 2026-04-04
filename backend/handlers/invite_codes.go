@@ -2,13 +2,18 @@ package handlers
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/base32"
+	"errors"
 	"log"
 	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/lib"
 )
 
 // RegisterInviteCodeHandlers registers all invite code related endpoints
@@ -19,20 +24,31 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 		if inviteCode == "" {
 			return apis.NewBadRequestError("invite code is required", nil)
 		}
+		if len(inviteCode) > 32 {
+			return apis.NewBadRequestError("invite code is invalid", nil)
+		}
 
-		// Find the invite code
-		inviteCodeRecord, err := app.FindFirstRecordByFilter(
-			"invite_codes",
-			"LOWER(code) = LOWER({:code})",
-			map[string]any{"code": inviteCode},
-		)
+		var inviteLookup struct {
+			CreatedBy sql.NullString `db:"createdBy"`
+		}
 
-		if err != nil || inviteCodeRecord == nil {
+		err := app.DB().NewQuery(`
+			SELECT createdBy
+			FROM invite_codes
+			WHERE LOWER(code) = LOWER({:code})
+			LIMIT 1
+		`).
+			Bind(dbx.Params{"code": inviteCode}).
+			One(&inviteLookup)
+		if errors.Is(err, sql.ErrNoRows) {
 			return apis.NewNotFoundError("invite code not found", nil)
+		}
+		if err != nil {
+			return apis.NewApiError(500, "failed to look up invite code", err)
 		}
 
 		// Get the creator user ID
-		createdBy := inviteCodeRecord.GetString("createdBy")
+		createdBy := strings.TrimSpace(inviteLookup.CreatedBy.String)
 		if createdBy == "" {
 			// No creator (initial invite code)
 			return e.JSON(200, map[string]any{
@@ -50,9 +66,8 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 		return e.JSON(200, map[string]any{
 			"hasInviter": true,
 			"inviter": map[string]any{
-				"id":    inviterRecord.Id,
-				"email": inviterRecord.Email(),
-				"name":  inviterRecord.GetString("name"),
+				"id":          inviterRecord.Id,
+				"displayName": lib.ResolveUserDisplayName(inviterRecord),
 			},
 		})
 	})
@@ -64,51 +79,30 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
 
-		friendCode := e.Request.PathValue("code")
+		friendCode := lib.NormalizeFriendCode(e.Request.PathValue("code"))
 		if friendCode == "" {
 			return apis.NewBadRequestError("friend code is required", nil)
 		}
-
-		// Friend code is the first 8 chars of user ID (uppercase, alphanumeric only)
-		// We need to search all users to find matching ID
-		users, err := app.FindRecordsByFilter(
-			"users",
-			"", // no filter - we'll check IDs in Go
-			"",
-			0,
-			0,
-			nil,
-		)
-
-		if err != nil {
-			return apis.NewApiError(500, "failed to search users", err)
+		if len(friendCode) != lib.FriendCodeLength {
+			return apis.NewBadRequestError("friend code is invalid", nil)
 		}
 
-		// Find user whose ID matches the friend code
-		for _, user := range users {
-			// Generate friend code from user ID
-			cleanId := ""
-			for _, char := range user.Id {
-				if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
-					cleanId += string(char)
-				}
-			}
-			cleanId = strings.ToUpper(cleanId)
-			if len(cleanId) > 8 {
-				cleanId = cleanId[:8]
-			}
-
-			if cleanId == strings.ToUpper(friendCode) {
-				// Found matching user
-				return e.JSON(200, map[string]any{
-					"found": true,
-					"user": map[string]any{
-						"id":    user.Id,
-						"email": user.Email(),
-						"name":  user.GetString("name"),
-					},
-				})
-			}
+		user, err := app.FindFirstRecordByFilter(
+			"users",
+			"friendCode = {:code}",
+			map[string]any{"code": friendCode},
+		)
+		if err == nil && user != nil {
+			return e.JSON(200, map[string]any{
+				"found": true,
+				"user": map[string]any{
+					"id":          user.Id,
+					"displayName": lib.ResolveUserDisplayName(user),
+				},
+			})
+		}
+		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "no rows") {
+			return apis.NewApiError(500, "failed to search users", err)
 		}
 
 		// No matching user found

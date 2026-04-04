@@ -51,6 +51,22 @@ func TestPlacesEndpointsBlockFreeUsersAtMonthlyLimit(t *testing.T) {
 	if nearbyData["metric"] != "places_queries" {
 		t.Fatalf("expected places_queries metric, got %v", nearbyData["metric"])
 	}
+
+	geocodeResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/places/geocode",
+		token,
+		`{"location":"San Francisco, CA"}`,
+	)
+	if geocodeResponse.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 from /api/places/geocode, got %d, body=%s", geocodeResponse.Code, geocodeResponse.Body.String())
+	}
+	geocodeData := parseJSONMap(t, geocodeResponse.Body.Bytes())
+	if geocodeData["metric"] != "places_queries" {
+		t.Fatalf("expected places_queries metric, got %v", geocodeData["metric"])
+	}
 }
 
 func TestParseMenuConsumesAndEnforcesMonthlyLimit(t *testing.T) {
@@ -121,5 +137,59 @@ func TestParseMenuConsumesAndEnforcesMonthlyLimit(t *testing.T) {
 	)
 	if adminResponse.Code == http.StatusTooManyRequests {
 		t.Fatalf("expected admin not to be rate-limited, body=%s", adminResponse.Body.String())
+	}
+}
+
+func TestFindRestaurantNameBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "")
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterMenuParsingHandlers(se, app)
+	})
+
+	freeUser, freeToken := createAuthUser(t, server.app, false, false)
+	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 5)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/find-restaurant-name",
+		freeToken,
+		"",
+	)
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 from /api/find-restaurant-name, got %d, body=%s", response.Code, response.Body.String())
+	}
+
+	data := parseJSONMap(t, response.Body.Bytes())
+	if data["metric"] != "menu_scans" {
+		t.Fatalf("expected menu_scans metric, got %v", data["metric"])
+	}
+}
+
+func TestConvertHEICBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterMenuParsingHandlers(se, app)
+	})
+
+	freeUser, freeToken := createAuthUser(t, server.app, false, false)
+	seedMonthlyUsageWithHEIC(t, server.app, freeUser.Id, 0, 0, 0, 100)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/convert-heic",
+		freeToken,
+		"",
+	)
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 from /api/convert-heic, got %d, body=%s", response.Code, response.Body.String())
+	}
+
+	data := parseJSONMap(t, response.Body.Bytes())
+	if data["metric"] != "heic_conversions" {
+		t.Fatalf("expected heic_conversions metric, got %v", data["metric"])
 	}
 }

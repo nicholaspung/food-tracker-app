@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -16,7 +16,14 @@ import {
   StatusPill,
   type SegmentedControlOption,
 } from '../components/shared';
-import { buildPocketBaseFileUrl, deleteNote, listCollectionRecords, listNotes, type NoteRecord } from '../features';
+import {
+  buildPocketBaseFileUrl,
+  deleteNote,
+  listNotePhotosForNoteIds,
+  listNotesPage,
+  type NotePhotoRecord,
+  type NoteRecord,
+} from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -24,17 +31,22 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Card, Text } from '../ui';
+import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
 type NotesFilter = 'unused' | 'used' | 'all';
 
-interface NotePhotoRecord {
-  id: string;
-  note: string;
-  photo: string;
-  created: string;
+function resolveNoteStatusFilter(activeFilter: NotesFilter): 'all' | 'draft' | 'used' {
+  if (activeFilter === 'unused') {
+    return 'draft';
+  }
+
+  if (activeFilter === 'used') {
+    return 'used';
+  }
+
+  return 'all';
 }
 
 function buildNotePreview(content: string): string {
@@ -106,22 +118,47 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const noteStatusFilter = resolveNoteStatusFilter(activeFilter);
 
-  const notesQuery = useQuery({
-    queryKey: ['feature', 'notes'],
-    queryFn: listNotes,
+  const notesQuery = useInfiniteQuery({
+    queryKey: ['feature', 'notes', 'paginated', noteStatusFilter],
+    queryFn: ({ pageParam }) =>
+      listNotesPage({
+        page: pageParam,
+        pageSize: 20,
+        status: noteStatusFilter,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
+  const allNotesCountQuery = useQuery({
+    queryKey: ['feature', 'notes', 'count', 'all'],
+    queryFn: async () => (await listNotesPage({ page: 1, pageSize: 1, status: 'all' })).totalItems,
+  });
+  const unusedNotesCountQuery = useQuery({
+    queryKey: ['feature', 'notes', 'count', 'draft'],
+    queryFn: async () => (await listNotesPage({ page: 1, pageSize: 1, status: 'draft' })).totalItems,
+  });
+  const usedNotesCountQuery = useQuery({
+    queryKey: ['feature', 'notes', 'count', 'used'],
+    queryFn: async () => (await listNotesPage({ page: 1, pageSize: 1, status: 'used' })).totalItems,
+  });
+  const notes = useMemo(
+    () => notesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [notesQuery.data],
+  );
+  const visibleNoteIds = useMemo(() => notes.map((note) => note.id), [notes]);
 
   const notePhotosQuery = useQuery({
-    queryKey: ['feature', 'notePhotos'],
-    queryFn: async () => listCollectionRecords<NotePhotoRecord>('note_photos', { sort: 'created' }),
+    queryKey: ['feature', 'notePhotos', 'notes', ...visibleNoteIds],
+    queryFn: () => listNotePhotosForNoteIds(visibleNoteIds),
+    enabled: visibleNoteIds.length > 0,
   });
-  const hasBlockingNotesError = notesQuery.isError && !notesQuery.data;
+  const hasBlockingNotesError = notesQuery.isError && (!notesQuery.data || notesQuery.data.pages.length === 0);
   const hasNotesRefreshError = !hasBlockingNotesError && (notesQuery.isError || notePhotosQuery.isError);
-
-  const notes = useMemo(() => notesQuery.data ?? [], [notesQuery.data]);
-  const unusedCount = notes.filter((note) => note.status === 'draft').length;
-  const usedCount = notes.filter((note) => note.status === 'used').length;
+  const unusedCount = unusedNotesCountQuery.data ?? notes.filter((note) => note.status === 'draft').length;
+  const usedCount = usedNotesCountQuery.data ?? notes.filter((note) => note.status === 'used').length;
+  const allCount = allNotesCountQuery.data ?? notes.length;
 
   const notePhotosByNoteId = useMemo(() => {
     const map = new Map<string, NotePhotoRecord[]>();
@@ -137,19 +174,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     () => [
       { label: 'Unused', value: 'unused', badgeCount: unusedCount },
       { label: 'Used', value: 'used', badgeCount: usedCount },
-      { label: 'All', value: 'all', badgeCount: notes.length },
+      { label: 'All', value: 'all', badgeCount: allCount },
     ],
-    [notes.length, unusedCount, usedCount],
+    [allCount, unusedCount, usedCount],
   );
-
-  const filteredNotes = useMemo(() => {
-    if (activeFilter === 'all') {
-      return notes;
-    }
-
-    const targetStatus = activeFilter === 'unused' ? 'draft' : 'used';
-    return notes.filter((note) => note.status === targetStatus);
-  }, [activeFilter, notes]);
 
   const styles = StyleSheet.create({
     body: {
@@ -356,7 +384,9 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           actionLabel="Retry"
           onAction={() => {
             void notesQuery.refetch();
-            void notePhotosQuery.refetch();
+            if (visibleNoteIds.length > 0) {
+              void notePhotosQuery.refetch();
+            }
           }}
         />
 
@@ -373,13 +403,15 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
             description="Could not load notes."
             onRetry={() => {
               void notesQuery.refetch();
-              void notePhotosQuery.refetch();
+              if (visibleNoteIds.length > 0) {
+                void notePhotosQuery.refetch();
+              }
             }}
             title="Notes unavailable"
           />
         ) : null}
 
-        {!notesQuery.isLoading && !hasBlockingNotesError && filteredNotes.length === 0 ? (
+        {!notesQuery.isLoading && !hasBlockingNotesError && notes.length === 0 ? (
           <EmptyState
             actionLabel="Log a Note"
             description={
@@ -401,7 +433,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         ) : null}
 
         {!notesQuery.isLoading && !hasBlockingNotesError
-          ? filteredNotes.map((note) => {
+          ? notes.map((note) => {
               const location = buildNoteLocation(note);
               const notePhotos = notePhotosByNoteId.get(note.id) ?? [];
               const primaryPhoto = notePhotos[0];
@@ -510,6 +542,17 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
               );
             })
           : null}
+
+        {!notesQuery.isLoading && !hasBlockingNotesError && notes.length > 0 && notesQuery.hasNextPage ? (
+          <Button
+            label={notesQuery.isFetchingNextPage ? 'Loading more...' : 'Load more notes'}
+            loading={notesQuery.isFetchingNextPage}
+            onPress={() => {
+              void notesQuery.fetchNextPage();
+            }}
+            variant="secondary"
+          />
+        ) : null}
       </View>
 
       <PhotoViewerModal

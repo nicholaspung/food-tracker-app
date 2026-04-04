@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +9,7 @@ import (
 
 	"cloud.google.com/go/maps/places/apiv1"
 	"cloud.google.com/go/maps/places/apiv1/placespb"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"google.golang.org/api/option"
@@ -19,6 +19,309 @@ import (
 
 	"myapp/lib"
 )
+
+const googlePlacesCacheExpiration = 30 * 24 * time.Hour
+
+type placeResult struct {
+	PlaceID  string        `json:"place_id"`
+	Name     string        `json:"name"`
+	Vicinity string        `json:"vicinity"`
+	Types    []string      `json:"types,omitempty"`
+	Geometry placeGeometry `json:"geometry"`
+}
+
+type placeGeometry struct {
+	Location placeLocation `json:"location"`
+}
+
+type placeLocation struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
+type restaurantSearchResult struct {
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	City          string   `json:"city,omitempty"`
+	Location      string   `json:"location,omitempty"`
+	CuisineType   string   `json:"cuisineType,omitempty"`
+	Visibility    string   `json:"visibility,omitempty"`
+	Latitude      *float64 `json:"latitude,omitempty"`
+	Longitude     *float64 `json:"longitude,omitempty"`
+	PlaceID       string   `json:"placeId,omitempty"`
+	IsGooglePlace bool     `json:"isGooglePlace"`
+}
+
+type placesSearchResponse struct {
+	Places      []placeResult            `json:"places"`
+	Restaurants []restaurantSearchResult `json:"restaurants"`
+}
+
+func buildPlacesSearchResponse(
+	app core.App,
+	authRecord *core.Record,
+	googlePlaces []*placespb.Place,
+	useShortFormattedAddress bool,
+) (placesSearchResponse, error) {
+	placesResult := make([]placeResult, 0, len(googlePlaces))
+	for _, place := range googlePlaces {
+		if place == nil {
+			continue
+		}
+		placesResult = append(placesResult, mapGooglePlaceResult(place, useShortFormattedAddress))
+	}
+
+	restaurants, err := syncGooglePlaceRestaurants(app, authRecord, placesResult)
+	if err != nil {
+		return placesSearchResponse{}, err
+	}
+
+	return placesSearchResponse{
+		Places:      placesResult,
+		Restaurants: restaurants,
+	}, nil
+}
+
+func mapGooglePlaceResult(place *placespb.Place, useShortFormattedAddress bool) placeResult {
+	placeID := place.Id
+	if strings.HasPrefix(placeID, "places/") {
+		placeID = strings.TrimPrefix(placeID, "places/")
+	}
+
+	var lat, lng float64
+	if place.Location != nil {
+		lat = place.Location.Latitude
+		lng = place.Location.Longitude
+	}
+
+	displayName := ""
+	if place.DisplayName != nil {
+		displayName = strings.TrimSpace(place.DisplayName.Text)
+	}
+
+	vicinity := strings.TrimSpace(place.FormattedAddress)
+	if useShortFormattedAddress {
+		vicinity = strings.TrimSpace(place.ShortFormattedAddress)
+	}
+
+	return placeResult{
+		PlaceID:  placeID,
+		Name:     displayName,
+		Vicinity: vicinity,
+		Types:    place.Types,
+		Geometry: placeGeometry{
+			Location: placeLocation{
+				Lat: lat,
+				Lng: lng,
+			},
+		},
+	}
+}
+
+func syncGooglePlaceRestaurants(
+	app core.App,
+	authRecord *core.Record,
+	places []placeResult,
+) ([]restaurantSearchResult, error) {
+	if authRecord == nil || strings.TrimSpace(authRecord.Id) == "" {
+		return nil, apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	dedupedPlaces := dedupePlacesByID(places)
+	if len(dedupedPlaces) == 0 {
+		return []restaurantSearchResult{}, nil
+	}
+
+	restaurantsCollection, err := app.FindCollectionByNameOrId("restaurants")
+	if err != nil {
+		return nil, fmt.Errorf("resolve restaurants collection: %w", err)
+	}
+
+	existingByPlaceID, err := findRestaurantsByPlaceID(app, authRecord.Id, dedupedPlaces)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	results := make([]restaurantSearchResult, 0, len(dedupedPlaces))
+
+	for _, place := range dedupedPlaces {
+		existing := existingByPlaceID[place.PlaceID]
+		if existing != nil {
+			if isGooglePlaceCacheStale(existing.GetDateTime("googlePlaceCachedAt").Time()) {
+				applyGooglePlaceToRestaurantRecord(existing, authRecord.Id, place, now)
+				if err := app.Save(existing); err != nil {
+					log.Printf("Failed to update cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
+				}
+			}
+
+			results = append(results, mapRestaurantSearchResult(existing))
+			continue
+		}
+
+		if strings.TrimSpace(place.Name) == "" {
+			continue
+		}
+
+		record := core.NewRecord(restaurantsCollection)
+		applyGooglePlaceToRestaurantRecord(record, authRecord.Id, place, now)
+		if err := app.Save(record); err != nil {
+			log.Printf("Failed to create cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
+			continue
+		}
+
+		existingByPlaceID[place.PlaceID] = record
+		results = append(results, mapRestaurantSearchResult(record))
+	}
+
+	return results, nil
+}
+
+func dedupePlacesByID(places []placeResult) []placeResult {
+	deduped := make([]placeResult, 0, len(places))
+	seen := make(map[string]struct{}, len(places))
+
+	for _, place := range places {
+		placeID := strings.TrimSpace(place.PlaceID)
+		if placeID == "" {
+			continue
+		}
+		if _, exists := seen[placeID]; exists {
+			continue
+		}
+
+		seen[placeID] = struct{}{}
+		place.PlaceID = placeID
+		place.Name = strings.TrimSpace(place.Name)
+		place.Vicinity = strings.TrimSpace(place.Vicinity)
+		deduped = append(deduped, place)
+	}
+
+	return deduped
+}
+
+func findRestaurantsByPlaceID(
+	app core.App,
+	userID string,
+	places []placeResult,
+) (map[string]*core.Record, error) {
+	if len(places) == 0 {
+		return map[string]*core.Record{}, nil
+	}
+
+	params := dbx.Params{
+		"userId": userID,
+	}
+	clauses := make([]string, 0, len(places))
+	for index, place := range places {
+		paramKey := fmt.Sprintf("placeId%d", index)
+		clauses = append(clauses, fmt.Sprintf("placeId = {:%s}", paramKey))
+		params[paramKey] = place.PlaceID
+	}
+
+	filter := fmt.Sprintf("createdBy = {:userId} && (%s)", strings.Join(clauses, " || "))
+	records, err := app.FindRecordsByFilter("restaurants", filter, "-updated,-created", len(places)*2, 0, params)
+	if err != nil {
+		return nil, fmt.Errorf("find cached restaurants: %w", err)
+	}
+
+	result := make(map[string]*core.Record, len(records))
+	for _, record := range records {
+		placeID := strings.TrimSpace(record.GetString("placeId"))
+		if placeID == "" {
+			continue
+		}
+		if _, exists := result[placeID]; exists {
+			continue
+		}
+		result[placeID] = record
+	}
+
+	return result, nil
+}
+
+func applyGooglePlaceToRestaurantRecord(
+	record *core.Record,
+	userID string,
+	place placeResult,
+	cachedAt time.Time,
+) {
+	record.Set("name", place.Name)
+	record.Set("location", place.Vicinity)
+	record.Set("cuisineType", getCuisineFromTypes(place.Types))
+	record.Set("latitude", place.Geometry.Location.Lat)
+	record.Set("longitude", place.Geometry.Location.Lng)
+	record.Set("placeId", place.PlaceID)
+	record.Set("isGooglePlace", true)
+	record.Set("googlePlaceCachedAt", cachedAt)
+	record.Set("createdBy", userID)
+	record.Set("visibility", "public")
+}
+
+func mapRestaurantSearchResult(record *core.Record) restaurantSearchResult {
+	location := strings.TrimSpace(record.GetString("location"))
+
+	return restaurantSearchResult{
+		ID:            record.Id,
+		Name:          strings.TrimSpace(record.GetString("name")),
+		City:          location,
+		Location:      location,
+		CuisineType:   strings.TrimSpace(record.GetString("cuisineType")),
+		Visibility:    strings.TrimSpace(record.GetString("visibility")),
+		Latitude:      optionalRecordFloat(record, "latitude"),
+		Longitude:     optionalRecordFloat(record, "longitude"),
+		PlaceID:       strings.TrimSpace(record.GetString("placeId")),
+		IsGooglePlace: record.GetBool("isGooglePlace"),
+	}
+}
+
+func optionalRecordFloat(record *core.Record, fieldName string) *float64 {
+	if record == nil || record.Get(fieldName) == nil {
+		return nil
+	}
+
+	value := record.GetFloat(fieldName)
+	return &value
+}
+
+func isGooglePlaceCacheStale(cachedAt time.Time) bool {
+	if cachedAt.IsZero() {
+		return true
+	}
+
+	return time.Since(cachedAt.UTC()) > googlePlacesCacheExpiration
+}
+
+func getCuisineFromTypes(types []string) string {
+	cuisineMap := map[string]string{
+		"american_restaurant":      "American",
+		"bakery":                   "Bakery",
+		"cafe":                     "Cafe",
+		"chinese_restaurant":       "Chinese",
+		"coffee_shop":              "Coffee Shop",
+		"dessert_shop":             "Dessert",
+		"french_restaurant":        "French",
+		"indian_restaurant":        "Indian",
+		"italian_restaurant":       "Italian",
+		"japanese_restaurant":      "Japanese",
+		"korean_restaurant":        "Korean",
+		"mediterranean_restaurant": "Mediterranean",
+		"mexican_restaurant":       "Mexican",
+		"pizza_restaurant":         "Pizza",
+		"seafood_restaurant":       "Seafood",
+		"steak_house":              "Steakhouse",
+		"thai_restaurant":          "Thai",
+		"vietnamese_restaurant":    "Vietnamese",
+	}
+
+	for _, placeType := range types {
+		if cuisine, ok := cuisineMap[placeType]; ok {
+			return cuisine
+		}
+	}
+
+	return ""
+}
 
 // RegisterPlacesHandlers registers all Google Places API endpoints
 func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
@@ -48,10 +351,11 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 
-		// Default radius if not provided
-		if requestData.Radius == 0 {
-			requestData.Radius = 1500
+		radius, err := normalizePlacesRadius(requestData.Radius, 1500)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
 		}
+		requestData.Radius = radius
 
 		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricPlacesQueries, 1); err != nil {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
@@ -65,8 +369,9 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			requestData.Latitude, requestData.Longitude, requestData.Radius)
 
 		// Initialize new Places API client
-		ctx := context.Background()
-		placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey))
+		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
+		defer cancel()
+		placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey), option.WithHTTPClient(placesHTTPClient))
 		if err != nil {
 			log.Printf("Failed to create Places API client: %v", err)
 			return apis.NewApiError(500, "failed to initialize Google Places API", err)
@@ -128,48 +433,13 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			ResultCount: len(resp.Places),
 		})
 
-		// Transform results to match frontend PlaceResult interface
-		placesResult := make([]map[string]any, len(resp.Places))
-		for i, place := range resp.Places {
-			// Extract place ID (remove "places/" prefix if present)
-			placeID := place.Id
-			if strings.HasPrefix(placeID, "places/") {
-				placeID = strings.TrimPrefix(placeID, "places/")
-			}
-
-			// Extract location
-			var lat, lng float64
-			if place.Location != nil {
-				lat = place.Location.Latitude
-				lng = place.Location.Longitude
-			}
-
-			// Extract display name
-			displayName := ""
-			if place.DisplayName != nil {
-				displayName = place.DisplayName.Text
-			}
-
-			// Extract formatted address (use shortFormattedAddress as vicinity)
-			vicinity := place.ShortFormattedAddress
-
-			placesResult[i] = map[string]any{
-				"place_id": placeID,
-				"name":     displayName,
-				"vicinity": vicinity,
-				"types":    place.Types,
-				"geometry": map[string]any{
-					"location": map[string]any{
-						"lat": lat,
-						"lng": lng,
-					},
-				},
-			}
+		responsePayload, err := buildPlacesSearchResponse(e.App, authRecord, resp.Places, true)
+		if err != nil {
+			log.Printf("Failed to normalize nearby places: %v", err)
+			return apis.NewApiError(500, "failed to normalize nearby places", err)
 		}
 
-		return e.JSON(200, map[string]any{
-			"places": placesResult,
-		})
+		return e.JSON(200, responsePayload)
 	})
 
 	// Custom API endpoint: Search restaurants by text using Google Places (New API)
@@ -198,10 +468,25 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 
-		// Default radius if not provided
-		if requestData.Radius == 0 {
-			requestData.Radius = 5000
+		query, err := normalizeBoundedString(requestData.Query, "query", maxPlacesQueryLength)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
 		}
+		requestData.Query = query
+
+		if strings.TrimSpace(requestData.Location) != "" {
+			location, err := normalizeBoundedString(requestData.Location, "location", maxPlacesLocationLength)
+			if err != nil {
+				return apis.NewBadRequestError(err.Error(), nil)
+			}
+			requestData.Location = location
+		}
+
+		radius, err := normalizePlacesRadius(requestData.Radius, 5000)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		requestData.Radius = radius
 
 		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricPlacesQueries, 1); err != nil {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
@@ -215,8 +500,9 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			requestData.Query, requestData.Location, requestData.Radius)
 
 		// Initialize new Places API client
-		ctx := context.Background()
-		placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey))
+		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
+		defer cancel()
+		placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey), option.WithHTTPClient(placesHTTPClient))
 		if err != nil {
 			log.Printf("Failed to create Places API client: %v", err)
 			return apis.NewApiError(500, "failed to initialize Google Places API", err)
@@ -233,7 +519,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		// If location is provided, add location bias
 		if requestData.Location != "" {
 			// Use old Maps client for geocoding (Geocoding API is separate)
-			mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey))
+			mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey), maps.WithHTTPClient(geocodeHTTPClient))
 			if err == nil {
 				geocodeReq := &maps.GeocodingRequest{
 					Address: requestData.Location,
@@ -302,48 +588,13 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			HasLocation: requestData.Location != "",
 		})
 
-		// Transform results to match frontend PlaceResult interface
-		placesResult := make([]map[string]any, len(resp.Places))
-		for i, place := range resp.Places {
-			// Extract place ID (remove "places/" prefix if present)
-			placeID := place.Id
-			if strings.HasPrefix(placeID, "places/") {
-				placeID = strings.TrimPrefix(placeID, "places/")
-			}
-
-			// Extract location
-			var lat, lng float64
-			if place.Location != nil {
-				lat = place.Location.Latitude
-				lng = place.Location.Longitude
-			}
-
-			// Extract display name
-			displayName := ""
-			if place.DisplayName != nil {
-				displayName = place.DisplayName.Text
-			}
-
-			// Extract formatted address
-			formattedAddress := place.FormattedAddress
-
-			placesResult[i] = map[string]any{
-				"place_id": placeID,
-				"name":     displayName,
-				"vicinity": formattedAddress,
-				"types":    place.Types,
-				"geometry": map[string]any{
-					"location": map[string]any{
-						"lat": lat,
-						"lng": lng,
-					},
-				},
-			}
+		responsePayload, err := buildPlacesSearchResponse(e.App, authRecord, resp.Places, false)
+		if err != nil {
+			log.Printf("Failed to normalize text search places: %v", err)
+			return apis.NewApiError(500, "failed to normalize places", err)
 		}
 
-		return e.JSON(200, map[string]any{
-			"places": placesResult,
-		})
+		return e.JSON(200, responsePayload)
 	})
 
 	// Custom API endpoint: Geocode location using Google Maps
@@ -370,15 +621,26 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 
-		if requestData.Location == "" {
-			return apis.NewBadRequestError("location is required", nil)
+		location, err := normalizeBoundedString(requestData.Location, "location", maxPlacesLocationLength)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		requestData.Location = location
+
+		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricPlacesQueries, 1); err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to consume places query usage (geocode) for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
 		log.Printf("Geocoding location: %s", requestData.Location)
 
 		// Initialize Google Maps client
-		ctx := context.Background()
-		mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey))
+		ctx, cancel := requestContextWithTimeout(e, googleGeocodeRequestTimeout)
+		defer cancel()
+		mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey), maps.WithHTTPClient(geocodeHTTPClient))
 		if err != nil {
 			log.Printf("Failed to create Google Maps client: %v", err)
 			return apis.NewApiError(500, "failed to initialize Google Maps API", err)
@@ -430,8 +692,8 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			})
 		}
 
-		location := resp[0].Geometry.Location
-		log.Printf("Geocoded to: lat=%f, lng:%f", location.Lat, location.Lng)
+		geocodedLocation := resp[0].Geometry.Location
+		log.Printf("Geocoded to: lat=%f, lng:%f", geocodedLocation.Lat, geocodedLocation.Lng)
 
 		// Track successful API call
 		lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
@@ -444,8 +706,8 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 
 		return e.JSON(200, map[string]any{
 			"found": true,
-			"lat":   location.Lat,
-			"lng":   location.Lng,
+			"lat":   geocodedLocation.Lat,
+			"lng":   geocodedLocation.Lng,
 		})
 	})
 }

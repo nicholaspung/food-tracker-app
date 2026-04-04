@@ -1,43 +1,14 @@
 import type { RestaurantRecord } from '../features';
-import { logger } from './logger';
 import { pb } from './pocketbase';
 
-interface PlaceResult {
-  place_id: string;
-  name: string;
-  vicinity: string;
-  types?: string[];
-  geometry: {
-    location: {
-      lat: number;
-      lng: number;
-    };
-  };
-}
-
 interface PlacesApiResponse {
-  places?: PlaceResult[];
+  restaurants?: RestaurantRecord[];
 }
 
 interface GeocodeApiResponse {
   found?: boolean;
   lat?: number;
   lng?: number;
-}
-
-interface RestaurantCollectionRecord {
-  id: string;
-  name: string;
-  location?: string;
-  cuisineType?: string;
-  visibility?: 'private' | 'friends' | 'public';
-  latitude?: number;
-  longitude?: number;
-  placeId?: string;
-  isGooglePlace?: boolean;
-  googlePlaceCachedAt?: string;
-  created: string;
-  updated: string;
 }
 
 export interface NearbySearchParams {
@@ -52,14 +23,14 @@ export interface TextSearchParams {
   radius?: number;
 }
 
-const CACHE_EXPIRATION_MS = 30 * 24 * 60 * 60 * 1000;
+function normalizeRestaurantRecord(record: RestaurantRecord): RestaurantRecord {
+  const location = record.location?.trim() || undefined;
 
-function mapRestaurantRecord(record: RestaurantCollectionRecord): RestaurantRecord {
   return {
     id: record.id,
     name: record.name.trim(),
-    location: record.location?.trim() || undefined,
-    city: record.location?.trim() || undefined,
+    location,
+    city: record.city?.trim() || location,
     cuisineType: record.cuisineType?.trim() || undefined,
     visibility: record.visibility,
     latitude: typeof record.latitude === 'number' ? record.latitude : undefined,
@@ -67,19 +38,6 @@ function mapRestaurantRecord(record: RestaurantCollectionRecord): RestaurantReco
     placeId: record.placeId?.trim() || undefined,
     isGooglePlace: record.isGooglePlace === true,
   };
-}
-
-function isCacheStale(cachedAt: string | undefined): boolean {
-  if (!cachedAt) {
-    return true;
-  }
-
-  const cachedTimestamp = new Date(cachedAt).getTime();
-  if (Number.isNaN(cachedTimestamp)) {
-    return true;
-  }
-
-  return Date.now() - cachedTimestamp > CACHE_EXPIRATION_MS;
 }
 
 async function postPlacesRequest<ResponseType>(path: string, payload: object): Promise<ResponseType> {
@@ -100,102 +58,32 @@ async function postPlacesRequest<ResponseType>(path: string, payload: object): P
   return (await response.json()) as ResponseType;
 }
 
-function getCuisineFromTypes(types: string[] | undefined): string {
-  if (!types?.length) {
-    return '';
+function compareRestaurantRecords(left: RestaurantRecord, right: RestaurantRecord): number {
+  const nameComparison = left.name.localeCompare(right.name, undefined, {
+    sensitivity: 'base',
+  });
+  if (nameComparison !== 0) {
+    return nameComparison;
   }
 
-  const cuisineMap: Record<string, string> = {
-    american_restaurant: 'American',
-    bakery: 'Bakery',
-    cafe: 'Cafe',
-    chinese_restaurant: 'Chinese',
-    coffee_shop: 'Coffee Shop',
-    dessert_shop: 'Dessert',
-    french_restaurant: 'French',
-    indian_restaurant: 'Indian',
-    italian_restaurant: 'Italian',
-    japanese_restaurant: 'Japanese',
-    korean_restaurant: 'Korean',
-    mediterranean_restaurant: 'Mediterranean',
-    mexican_restaurant: 'Mexican',
-    pizza_restaurant: 'Pizza',
-    seafood_restaurant: 'Seafood',
-    steak_house: 'Steakhouse',
-    thai_restaurant: 'Thai',
-    vietnamese_restaurant: 'Vietnamese',
-  };
-
-  for (const type of types) {
-    const mapped = cuisineMap[type];
-    if (mapped) {
-      return mapped;
-    }
-  }
-
-  return '';
+  return left.id.localeCompare(right.id);
 }
 
-async function cacheGooglePlace(place: PlaceResult): Promise<RestaurantRecord> {
-  const user = pb.authStore.record;
-  if (!user?.id) {
-    throw new Error('User not authenticated.');
+export function mergeRestaurantSearchResults(
+  currentRestaurants: RestaurantRecord[] | undefined,
+  nextRestaurants: RestaurantRecord[],
+): RestaurantRecord[] {
+  const merged = new Map<string, RestaurantRecord>();
+
+  for (const restaurant of currentRestaurants ?? []) {
+    merged.set(restaurant.id, normalizeRestaurantRecord(restaurant));
   }
 
-  const now = new Date().toISOString();
-  const filter = pb.filter('createdBy = {:userId} && placeId = {:placeId}', {
-    userId: user.id,
-    placeId: place.place_id,
-  });
-
-  const existingRestaurants = await pb.collection('restaurants').getFullList<RestaurantCollectionRecord>({
-    filter,
-    sort: '-updated',
-  });
-
-  const payload = {
-    cuisineType: getCuisineFromTypes(place.types),
-    googlePlaceCachedAt: now,
-    isGooglePlace: true,
-    latitude: place.geometry.location.lat,
-    location: place.vicinity,
-    longitude: place.geometry.location.lng,
-    name: place.name,
-    placeId: place.place_id,
-  };
-
-  if (existingRestaurants.length > 0) {
-    const existing = existingRestaurants[0];
-
-    if (!isCacheStale(existing.googlePlaceCachedAt)) {
-      return mapRestaurantRecord(existing);
-    }
-
-    const updated = await pb.collection('restaurants').update<RestaurantCollectionRecord>(existing.id, payload);
-    return mapRestaurantRecord(updated);
+  for (const restaurant of nextRestaurants) {
+    merged.set(restaurant.id, normalizeRestaurantRecord(restaurant));
   }
 
-  const created = await pb.collection('restaurants').create<RestaurantCollectionRecord>({
-    ...payload,
-    createdBy: user.id,
-    visibility: 'public',
-  });
-  return mapRestaurantRecord(created);
-}
-
-async function cacheGooglePlaces(places: PlaceResult[]): Promise<RestaurantRecord[]> {
-  const cachedRestaurants: RestaurantRecord[] = [];
-
-  for (const place of places) {
-    try {
-      const cached = await cacheGooglePlace(place);
-      cachedRestaurants.push(cached);
-    } catch (error) {
-      logger.error('[GooglePlaces] Failed to cache place:', place.name, error);
-    }
-  }
-
-  return cachedRestaurants;
+  return Array.from(merged.values()).sort(compareRestaurantRecords);
 }
 
 export async function geocodeLocation(location: string): Promise<{ lat: number; lng: number } | null> {
@@ -221,7 +109,7 @@ export async function searchAndCacheNearbyRestaurants(params: NearbySearchParams
     radius: params.radius ?? 5000,
   });
 
-  return cacheGooglePlaces(response.places ?? []);
+  return (response.restaurants ?? []).map(normalizeRestaurantRecord);
 }
 
 export async function searchAndCacheRestaurantsByText(params: TextSearchParams): Promise<RestaurantRecord[]> {
@@ -231,7 +119,7 @@ export async function searchAndCacheRestaurantsByText(params: TextSearchParams):
     radius: params.radius ?? 5000,
   });
 
-  return cacheGooglePlaces(response.places ?? []);
+  return (response.restaurants ?? []).map(normalizeRestaurantRecord);
 }
 
 export function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {

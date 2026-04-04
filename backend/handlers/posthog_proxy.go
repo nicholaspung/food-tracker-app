@@ -88,7 +88,10 @@ func proxyPostHogRequest(re *core.RequestEvent, targetURL string) error {
 	defer re.Request.Body.Close()
 
 	// Create proxy request
-	proxyReq, err := http.NewRequest("POST", targetURL, bytes.NewReader(body))
+	ctx, cancel := requestContextWithTimeout(re, postHogProxyTimeout)
+	defer cancel()
+
+	proxyReq, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		log.Printf("[PostHog Proxy] Failed to create request: %v", err)
 		return re.JSON(http.StatusInternalServerError, map[string]string{
@@ -99,8 +102,7 @@ func proxyPostHogRequest(re *core.RequestEvent, targetURL string) error {
 	forwardPostHogRequestHeaders(re, proxyReq)
 
 	// Make request to PostHog
-	client := &http.Client{}
-	resp, err := client.Do(proxyReq)
+	resp, err := postHogHTTPClient.Do(proxyReq)
 	if err != nil {
 		log.Printf("[PostHog Proxy] Failed to proxy request: %v", err)
 		return re.JSON(http.StatusBadGateway, map[string]string{
@@ -140,7 +142,10 @@ func proxyPostHogRequestGET(re *core.RequestEvent, targetURL string) error {
 	}
 
 	// Create proxy request
-	proxyReq, err := http.NewRequest("GET", targetURL, nil)
+	ctx, cancel := requestContextWithTimeout(re, postHogProxyTimeout)
+	defer cancel()
+
+	proxyReq, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
 	if err != nil {
 		log.Printf("[PostHog Proxy] Failed to create GET request: %v", err)
 		return re.JSON(http.StatusInternalServerError, map[string]string{
@@ -151,8 +156,7 @@ func proxyPostHogRequestGET(re *core.RequestEvent, targetURL string) error {
 	forwardPostHogRequestHeaders(re, proxyReq)
 
 	// Make request to PostHog
-	client := &http.Client{}
-	resp, err := client.Do(proxyReq)
+	resp, err := postHogHTTPClient.Do(proxyReq)
 	if err != nil {
 		log.Printf("[PostHog Proxy] Failed to proxy GET request: %v", err)
 		return re.JSON(http.StatusBadGateway, map[string]string{

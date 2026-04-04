@@ -1,4 +1,9 @@
 import { loadMobileEnv, resolveAppEnvironment } from '../config/env';
+import {
+  assertSafeScreenshotReviewBuild,
+  resolveScreenshotReviewMode,
+  shouldEnforceScreenshotReviewBuildGuard,
+} from '../config/envUtils';
 
 describe('loadMobileEnv', () => {
   it('falls back to defaults when env values are missing', () => {
@@ -25,7 +30,7 @@ describe('loadMobileEnv', () => {
       EXPO_PUBLIC_POSTHOG_API_KEY: 'test_key',
       EXPO_PUBLIC_POSTHOG_HOST: 'https://analytics.yummyrecs.com',
       EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
-    });
+    }, undefined, { isDevBuild: true });
 
     expect(env.environment).toBe('beta');
     expect(env.adminUrl).toBe('https://admin.yummyrecs.com');
@@ -36,6 +41,19 @@ describe('loadMobileEnv', () => {
     expect(env.pocketbaseUrl).toBe('https://pb.yummyrecs.com');
     expect(env.posthogApiKey).toBe('test_key');
     expect(env.posthogHost).toBe('https://analytics.yummyrecs.com');
+  });
+
+  it('disables screenshot review mode outside development bundles', () => {
+    const env = loadMobileEnv(
+      {
+        EXPO_PUBLIC_APP_ENV: 'beta',
+        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
+      },
+      undefined,
+      { isDevBuild: false },
+    );
+
+    expect(env.isScreenshotReviewMode).toBe(false);
   });
 
   it('uses beta defaults when the app environment is beta', () => {
@@ -58,5 +76,61 @@ describe('resolveAppEnvironment', () => {
 
   it('infers beta from deployed beta origins', () => {
     expect(resolveAppEnvironment({}, 'https://beta.app.yummyrecs.com')).toBe('beta');
+  });
+});
+
+describe('resolveScreenshotReviewMode', () => {
+  it('only enables screenshot review mode in development bundles', () => {
+    expect(
+      resolveScreenshotReviewMode(
+        { EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true' },
+        { isDevBuild: true },
+      ),
+    ).toBe(true);
+
+    expect(
+      resolveScreenshotReviewMode(
+        { EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true' },
+        { isDevBuild: false },
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('assertSafeScreenshotReviewBuild', () => {
+  it('rejects screenshot review mode for beta CI builds', () => {
+    expect(() =>
+      assertSafeScreenshotReviewBuild({
+        CI: 'true',
+        EXPO_PUBLIC_APP_ENV: 'beta',
+        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
+      }),
+    ).toThrow(
+      'EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE must stay disabled for beta builds. Use screenshot review mode only from development bundles.',
+    );
+  });
+
+  it('allows screenshot review mode for local development starts', () => {
+    expect(() =>
+      assertSafeScreenshotReviewBuild({
+        EXPO_PUBLIC_APP_ENV: 'beta',
+        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
+        NODE_ENV: 'development',
+      }),
+    ).not.toThrow();
+  });
+
+  it('detects release-oriented build contexts', () => {
+    expect(
+      shouldEnforceScreenshotReviewBuildGuard({
+        EAS_BUILD_PROFILE: 'preview',
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldEnforceScreenshotReviewBuildGuard({
+        NODE_ENV: 'development',
+      }),
+    ).toBe(false);
   });
 });

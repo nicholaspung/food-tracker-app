@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -18,7 +19,7 @@ import {
   TabRootScreenScaffold,
   type SegmentedControlOption,
 } from '../components/shared';
-import { listFriends, markFriendInviteAccepted, removeFriend, type FriendRecord } from '../features';
+import { listFriendsPage, markFriendInviteAccepted, removeFriend, type FriendRecord } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -27,7 +28,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Card, Text } from '../ui';
+import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
@@ -47,7 +48,12 @@ const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
   },
 ];
 
-function generateFriendCode(userId: string | undefined): string {
+function generateFriendCode(userId: string | undefined, persistedFriendCode?: string): string {
+  const normalizedPersistedCode = persistedFriendCode?.trim().toUpperCase();
+  if (normalizedPersistedCode && normalizedPersistedCode.length === 8) {
+    return normalizedPersistedCode;
+  }
+
   if (!userId) {
     return 'LOCAL000';
   }
@@ -72,57 +78,101 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
-
-  const friendsQuery = useQuery({
-    queryKey: ['feature', 'friends'],
-    queryFn: listFriends,
-  });
-  const hasBlockingFriendsError = friendsQuery.isError && !friendsQuery.data;
-  const hasFriendsRefreshError = !hasBlockingFriendsError && friendsQuery.isError;
+  const isFocused = useIsFocused();
+  const hasHandledCurrentFocusRef = useRef(false);
 
   const [mainTab, setMainTab] = useState<MainTab>('friends-list');
   const [friendsSubTab, setFriendsSubTab] = useState<FriendsSubTab>('friends');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [pendingRemoveFriend, setPendingRemoveFriend] = useState<FriendRecord | null>(null);
+  const acceptedFriendsCountQuery = useQuery({
+    queryKey: ['feature', 'friends', 'count', 'friends'],
+    queryFn: async () => (await listFriendsPage({ section: 'friends', page: 1, pageSize: 1 })).totalItems,
+    refetchOnReconnect: 'always',
+  });
+  const pendingReceivedCountQuery = useQuery({
+    queryKey: ['feature', 'friends', 'count', 'requests'],
+    queryFn: async () => (await listFriendsPage({ section: 'requests', page: 1, pageSize: 1 })).totalItems,
+    enabled: mainTab === 'friends-list',
+    refetchOnReconnect: 'always',
+  });
+  const pendingSentCountQuery = useQuery({
+    queryKey: ['feature', 'friends', 'count', 'sent'],
+    queryFn: async () => (await listFriendsPage({ section: 'sent', page: 1, pageSize: 1 })).totalItems,
+    enabled: mainTab === 'friends-list',
+    refetchOnReconnect: 'always',
+  });
+  const friendsQuery = useInfiniteQuery({
+    queryKey: ['feature', 'friends', 'paginated', friendsSubTab],
+    queryFn: ({ pageParam }) =>
+      listFriendsPage({
+        section: friendsSubTab,
+        page: pageParam,
+        pageSize: 20,
+      }),
+    enabled: mainTab === 'friends-list',
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
+    refetchOnReconnect: 'always',
+  });
+  const { fetchStatus: friendsFetchStatus, refetch: refetchFriends } = friendsQuery;
+  const {
+    fetchStatus: acceptedFriendsCountFetchStatus,
+    refetch: refetchAcceptedFriendsCount,
+  } = acceptedFriendsCountQuery;
+  const {
+    fetchStatus: pendingReceivedCountFetchStatus,
+    refetch: refetchPendingReceivedCount,
+  } = pendingReceivedCountQuery;
+  const {
+    fetchStatus: pendingSentCountFetchStatus,
+    refetch: refetchPendingSentCount,
+  } = pendingSentCountQuery;
+  const visibleFriends = useMemo(
+    () => friendsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [friendsQuery.data],
+  );
+  const hasBlockingFriendsError =
+    mainTab === 'friends-list' && friendsQuery.isError && (!friendsQuery.data || friendsQuery.data.pages.length === 0);
+  const hasFriendsRefreshError = mainTab === 'friends-list' && !hasBlockingFriendsError && friendsQuery.isError;
+  const acceptedFriendsCount =
+    acceptedFriendsCountQuery.data ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
+  const pendingReceivedCount =
+    pendingReceivedCountQuery.data ?? (friendsSubTab === 'requests' ? visibleFriends.length : 0);
+  const pendingSentCount =
+    pendingSentCountQuery.data ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
 
-  const { acceptedFriends, pendingReceived, pendingSent } = useMemo(() => {
-    const friends = friendsQuery.data ?? [];
-
-    return {
-      acceptedFriends: friends.filter((friend) => friend.status === 'friend'),
-      pendingReceived: friends.filter((friend) => friend.status === 'pending_received'),
-      pendingSent: friends.filter((friend) => friend.status === 'pending_sent'),
-    };
-  }, [friendsQuery.data]);
-
-  const myFriendCode = useMemo(() => generateFriendCode(user?.id), [user?.id]);
+  const myFriendCode = useMemo(
+    () => generateFriendCode(user?.id, user?.friendCode),
+    [user?.friendCode, user?.id],
+  );
   const myFriendQrPayload = useMemo(
     () => `yummyrecs://friends/add?friendCode=${encodeURIComponent(myFriendCode)}`,
     [myFriendCode],
   );
 
-  const friendSummary = `${acceptedFriends.length} friend${acceptedFriends.length === 1 ? '' : 's'}`;
+  const friendSummary = `${acceptedFriendsCount} friend${acceptedFriendsCount === 1 ? '' : 's'}`;
   const friendsSubTabOptions = useMemo<readonly SegmentedControlOption<FriendsSubTab>[]>(
     () => [
       {
         label: 'Friends',
         value: 'friends',
-        badgeCount: acceptedFriends.length,
+        badgeCount: acceptedFriendsCount,
       },
       {
         label: 'Requests',
         value: 'requests',
-        badgeCount: pendingReceived.length,
+        badgeCount: pendingReceivedCount,
         badgeTone: 'alert',
       },
       {
         label: 'Sent',
         value: 'sent',
-        badgeCount: pendingSent.length,
+        badgeCount: pendingSentCount,
       },
     ],
-    [acceptedFriends.length, pendingReceived.length, pendingSent.length],
+    [acceptedFriendsCount, pendingReceivedCount, pendingSentCount],
   );
 
   useEffect(() => {
@@ -144,6 +194,50 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       initialFriendsSubTab: undefined,
     });
   }, [navigation, route.params]);
+
+  useEffect(() => {
+    if (!isFocused) {
+      hasHandledCurrentFocusRef.current = false;
+      return;
+    }
+
+    if (hasHandledCurrentFocusRef.current) {
+      return;
+    }
+
+    hasHandledCurrentFocusRef.current = true;
+
+    if (acceptedFriendsCountFetchStatus === 'idle') {
+      void refetchAcceptedFriendsCount();
+    }
+
+    if (mainTab !== 'friends-list') {
+      return;
+    }
+
+    if (pendingReceivedCountFetchStatus === 'idle') {
+      void refetchPendingReceivedCount();
+    }
+
+    if (pendingSentCountFetchStatus === 'idle') {
+      void refetchPendingSentCount();
+    }
+
+    if (friendsFetchStatus === 'idle') {
+      void refetchFriends();
+    }
+  }, [
+    acceptedFriendsCountFetchStatus,
+    friendsFetchStatus,
+    isFocused,
+    mainTab,
+    pendingReceivedCountFetchStatus,
+    pendingSentCountFetchStatus,
+    refetchAcceptedFriendsCount,
+    refetchFriends,
+    refetchPendingReceivedCount,
+    refetchPendingSentCount,
+  ]);
 
   const styles = StyleSheet.create({
     screenContent: {
@@ -402,8 +496,19 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       );
     }
 
+    const loadMoreButton = friendsQuery.hasNextPage ? (
+      <Button
+        label={friendsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more'}
+        loading={friendsQuery.isFetchingNextPage}
+        onPress={() => {
+          void friendsQuery.fetchNextPage();
+        }}
+        variant="secondary"
+      />
+    ) : null;
+
     if (friendsSubTab === 'friends') {
-      if (acceptedFriends.length === 0) {
+      if (visibleFriends.length === 0) {
         return (
           <EmptyState
             description="Add friends to compare visits and food ratings."
@@ -415,7 +520,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
       return (
         <View style={styles.cardsList}>
-          {acceptedFriends.map((friend) => (
+          {visibleFriends.map((friend) => (
             <FriendListItemCard
               iconColor={theme.colors.text.info}
               iconName="people-outline"
@@ -440,18 +545,19 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
               }
             />
           ))}
+          {loadMoreButton}
         </View>
       );
     }
 
     if (friendsSubTab === 'requests') {
-      if (pendingReceived.length === 0) {
+      if (visibleFriends.length === 0) {
         return <EmptyState description="Incoming requests appear here." tone="default" title="No pending requests" />;
       }
 
       return (
         <View style={styles.cardsList}>
-          {pendingReceived.map((friend) => (
+          {visibleFriends.map((friend) => (
             <FriendListItemCard
               iconColor={theme.colors.text.warning}
               iconName="person-add-outline"
@@ -485,17 +591,18 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
               }
             />
           ))}
+          {loadMoreButton}
         </View>
       );
     }
 
-    if (pendingSent.length === 0) {
+    if (visibleFriends.length === 0) {
       return <EmptyState description="Requests you send will show up here." tone="default" title="No sent requests" />;
     }
 
     return (
       <View style={styles.cardsList}>
-        {pendingSent.map((friend) => (
+        {visibleFriends.map((friend) => (
           <FriendListItemCard
             iconColor={theme.colors.text.secondary}
             iconName="time-outline"
@@ -520,6 +627,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
             }
           />
         ))}
+        {loadMoreButton}
       </View>
     );
   };

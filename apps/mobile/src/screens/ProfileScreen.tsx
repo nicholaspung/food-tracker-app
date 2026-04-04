@@ -25,7 +25,7 @@ import {
   deleteCollectionRecord,
   getAuthRecord,
   getProfile,
-  listFeedback,
+  listFeedbackPage,
   saveAuthRecord,
   sendApiRequest,
   updateCollectionRecord,
@@ -87,9 +87,11 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     queryFn: getProfile,
   });
 
-  const feedbackQuery = useQuery({
-    queryKey: ["feature", "feedback"],
-    queryFn: () => listFeedback({ status: "all" }),
+  const feedbackCountQuery = useQuery({
+    queryKey: ["feature", "feedback", "count", "active"],
+    queryFn: async () =>
+      (await listFeedbackPage({ status: "active", page: 1, pageSize: 1 }))
+        .totalItems,
   });
   const whatsNewSeenVersionQuery = useQuery({
     queryKey: WHATS_NEW_SEEN_QUERY_KEY,
@@ -167,11 +169,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     return user?.name?.trim() ?? "";
   }, [profileQuery.data?.displayName, user?.name]);
 
-  const unreadFeedbackCount = useMemo(() => {
-    return (feedbackQuery.data ?? []).reduce((count, feedbackItem) => {
-      return count + (feedbackItem.status !== "closed" ? 1 : 0);
-    }, 0);
-  }, [feedbackQuery.data]);
+  const unreadFeedbackCount = feedbackCountQuery.data ?? 0;
   const showWhatsNewDot = hasUnseenWhatsNew(whatsNewSeenVersionQuery.data);
   const appVersionLabel = formatAppVersionLabel();
 

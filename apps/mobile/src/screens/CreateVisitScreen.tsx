@@ -47,11 +47,13 @@ import {
   updateVisit,
   useMonthlyUsage,
   type RestaurantRecord,
+  type VisitRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import {
   geocodeLocation,
+  mergeRestaurantSearchResults,
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
@@ -137,6 +139,51 @@ function resolveDefaultVisitVisibility(): VisitVisibility {
   return resolveDefaultVisitVisibilityFromAuth();
 }
 
+function buildRestaurantStatsMap(
+  visits: VisitRecord[],
+  currentUserId: string,
+  friendIds: Set<string>,
+  restaurantIdByName: Map<string, string>,
+): Map<string, RestaurantStats> {
+  const stats = new Map<
+    string,
+    { userVisitCount: number; friendUserIds: Set<string> }
+  >();
+
+  for (const visit of visits) {
+    const restaurantId =
+      visit.restaurantId ??
+      (visit.restaurantName?.trim()
+        ? restaurantIdByName.get(visit.restaurantName.trim().toLowerCase())
+        : undefined);
+
+    if (!restaurantId) {
+      continue;
+    }
+
+    const current = stats.get(restaurantId) ?? {
+      userVisitCount: 0,
+      friendUserIds: new Set<string>(),
+    };
+    if (visit.userId === currentUserId) {
+      current.userVisitCount += 1;
+    } else if (visit.userId && friendIds.has(visit.userId)) {
+      current.friendUserIds.add(visit.userId);
+    }
+    stats.set(restaurantId, current);
+  }
+
+  const resolved = new Map<string, RestaurantStats>();
+  for (const [restaurantId, value] of stats.entries()) {
+    resolved.set(restaurantId, {
+      userVisitCount: value.userVisitCount,
+      friendCount: value.friendUserIds.size,
+    });
+  }
+
+  return resolved;
+}
+
 function inferImageMimeType(uri: string): string {
   const normalizedUri = uri.toLowerCase();
   if (normalizedUri.endsWith(".png")) {
@@ -218,10 +265,6 @@ export function CreateVisitScreen({
     queryKey: ["feature", "restaurants"],
     queryFn: listRestaurants,
   });
-  const visitsQuery = useQuery({
-    queryKey: ["feature", "visits", "restaurant-stats"],
-    queryFn: listVisits,
-  });
   const friendshipsQuery = useQuery({
     queryKey: [
       "feature",
@@ -288,6 +331,39 @@ export function CreateVisitScreen({
     null,
   );
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
+  const friendIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const friendship of friendshipsQuery.data ?? []) {
+      const otherId =
+        friendship.user === currentUserId ? friendship.friend : friendship.user;
+      if (otherId) {
+        ids.add(otherId);
+      }
+    }
+    return ids;
+  }, [currentUserId, friendshipsQuery.data]);
+  const restaurantIdByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const restaurant of restaurantsQuery.data ?? []) {
+      const normalizedName = restaurant.name.trim().toLowerCase();
+      if (!normalizedName || map.has(normalizedName)) {
+        continue;
+      }
+      map.set(normalizedName, restaurant.id);
+    }
+    return map;
+  }, [restaurantsQuery.data]);
+  const restaurantStatsQuery = useQuery({
+    queryKey: ["feature", "visits"],
+    queryFn: listVisits,
+    select: (visits: VisitRecord[]) =>
+      buildRestaurantStatsMap(
+        visits,
+        currentUserId,
+        friendIds,
+        restaurantIdByName,
+      ),
+  });
   const createVisitSearchUi = resolveCreateVisitSearchUi({
     isFreeTier: isDisplayFreeUser,
     enforceQuota: shouldEnforceUsageLimitsClientSide,
@@ -605,69 +681,6 @@ export function CreateVisitScreen({
       }),
     );
   }, [menuItemsQuery.data]);
-
-  const friendIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const friendship of friendshipsQuery.data ?? []) {
-      const otherId =
-        friendship.user === currentUserId ? friendship.friend : friendship.user;
-      if (otherId) {
-        ids.add(otherId);
-      }
-    }
-    return ids;
-  }, [currentUserId, friendshipsQuery.data]);
-
-  const restaurantIdByName = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const restaurant of restaurantsQuery.data ?? []) {
-      const normalizedName = restaurant.name.trim().toLowerCase();
-      if (!normalizedName || map.has(normalizedName)) {
-        continue;
-      }
-      map.set(normalizedName, restaurant.id);
-    }
-    return map;
-  }, [restaurantsQuery.data]);
-
-  const restaurantStatsMap = useMemo(() => {
-    const stats = new Map<
-      string,
-      { userVisitCount: number; friendUserIds: Set<string> }
-    >();
-    for (const visit of visitsQuery.data ?? []) {
-      const restaurantId =
-        visit.restaurantId ??
-        (visit.restaurantName?.trim()
-          ? restaurantIdByName.get(visit.restaurantName.trim().toLowerCase())
-          : undefined);
-
-      if (!restaurantId) {
-        continue;
-      }
-
-      const current = stats.get(restaurantId) ?? {
-        userVisitCount: 0,
-        friendUserIds: new Set<string>(),
-      };
-      if (visit.userId === currentUserId) {
-        current.userVisitCount += 1;
-      } else if (visit.userId && friendIds.has(visit.userId)) {
-        current.friendUserIds.add(visit.userId);
-      }
-      stats.set(restaurantId, current);
-    }
-
-    const resolved = new Map<string, RestaurantStats>();
-    for (const [restaurantId, value] of stats.entries()) {
-      resolved.set(restaurantId, {
-        userVisitCount: value.userVisitCount,
-        friendCount: value.friendUserIds.size,
-      });
-    }
-
-    return resolved;
-  }, [currentUserId, friendIds, restaurantIdByName, visitsQuery.data]);
 
   const styles = StyleSheet.create({
     sectionCard: {
@@ -1020,7 +1033,7 @@ export function CreateVisitScreen({
 
   const getRestaurantStats = (restaurantId: string): RestaurantStats => {
     return (
-      restaurantStatsMap.get(restaurantId) ?? {
+      restaurantStatsQuery.data?.get(restaurantId) ?? {
         userVisitCount: 0,
         friendCount: 0,
       }
@@ -1247,11 +1260,13 @@ export function CreateVisitScreen({
       });
 
       setSearchResults(results);
+      queryClient.setQueryData<RestaurantRecord[]>(["feature", "restaurants"], (current) =>
+        mergeRestaurantSearchResults(current, results),
+      );
       trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_COMPLETED", {
         resultCount: results.length,
         source: "CreateVisitScreen",
       });
-      await restaurantsQuery.refetch();
       if (collapseAfterSearch) {
         setTimeout(() => {
           scrollToRestaurantList();
@@ -1354,11 +1369,13 @@ export function CreateVisitScreen({
       });
 
       setNearbyResults(results);
+      queryClient.setQueryData<RestaurantRecord[]>(["feature", "restaurants"], (current) =>
+        mergeRestaurantSearchResults(current, results),
+      );
       trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_COMPLETED", {
         resultCount: results.length,
         source: "CreateVisitScreen",
       });
-      await restaurantsQuery.refetch();
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {

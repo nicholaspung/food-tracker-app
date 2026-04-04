@@ -10,6 +10,16 @@ interface CollectionListOptions {
   sort?: string;
   expand?: string;
   fields?: string;
+  pageSize?: number;
+}
+
+interface CollectionPageOptions {
+  filter?: string;
+  sort?: string;
+  expand?: string;
+  fields?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 interface CollectionGetOptions {
@@ -26,7 +36,51 @@ export async function listCollectionRecords<T>(
   collectionName: string,
   options?: CollectionListOptions,
 ): Promise<T[]> {
-  return pb.collection(collectionName).getFullList<T>(options);
+  const { pageSize = 100, ...listOptions } = options ?? {};
+  const normalizedPageSize = Number.isFinite(pageSize) ? Math.max(1, Math.floor(pageSize)) : 100;
+  const records: T[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await pb.collection(collectionName).getList<T>(page, normalizedPageSize, listOptions);
+    records.push(...response.items);
+
+    if (response.items.length === 0 || page >= response.totalPages) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return records;
+}
+
+export interface CollectionPageResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+}
+
+export async function listCollectionPage<T>(
+  collectionName: string,
+  options?: CollectionPageOptions,
+): Promise<CollectionPageResult<T>> {
+  const { page = 1, pageSize = 20, ...listOptions } = options ?? {};
+  const normalizedPage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+  const normalizedPageSize = Number.isFinite(pageSize) ? Math.max(1, Math.floor(pageSize)) : 20;
+  const response = await pb.collection(collectionName).getList<T>(normalizedPage, normalizedPageSize, listOptions);
+
+  return {
+    items: response.items,
+    page: response.page,
+    pageSize: response.perPage,
+    totalItems: response.totalItems,
+    totalPages: response.totalPages,
+    hasNextPage: response.page < response.totalPages,
+  };
 }
 
 export async function getCollectionRecord<T>(

@@ -19,8 +19,7 @@ interface InviteCodeInviterResponse {
   hasInviter?: boolean;
   inviter?: {
     id?: string;
-    email?: string;
-    name?: string;
+    displayName?: string;
   };
 }
 
@@ -112,14 +111,14 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         if (
           inviteLookup?.hasInviter &&
           typeof inviteLookup.inviter?.id === 'string' &&
-          inviteLookup.inviter.id.trim().length > 0 &&
-          typeof inviteLookup.inviter?.email === 'string' &&
-          inviteLookup.inviter.email.trim().length > 0
+          inviteLookup.inviter.id.trim().length > 0
         ) {
           pendingFriendSuggestion = {
             inviterId: inviteLookup.inviter.id,
-            inviterEmail: inviteLookup.inviter.email,
-            inviterName: inviteLookup.inviter.name,
+            inviterDisplayName:
+              typeof inviteLookup.inviter.displayName === 'string'
+                ? inviteLookup.inviter.displayName
+                : undefined,
             newUserEmail: trimmedEmail,
           };
         }

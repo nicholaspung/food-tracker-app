@@ -1,5 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { persistQueryClient } from '@tanstack/query-persist-client-core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -8,12 +6,11 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { logger } from '../lib/logger';
 import { initializeObservability, setObservabilityContext, trackObservabilityEvent } from '../observability';
 import { SplashScreen } from '../screens/SplashScreen';
+import { queryPersister, removeLegacyQueryCache, shouldPersistQuery } from './queryPersistence';
 import { AuthProvider } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { ErrorToastProvider } from './ErrorToastProvider';
 import { SyncProvider } from './SyncProvider';
-
-const QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v1';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,12 +19,6 @@ const queryClient = new QueryClient({
       retry: 1,
     },
   },
-});
-
-const queryPersister = createAsyncStoragePersister({
-  storage: AsyncStorage,
-  key: QUERY_CACHE_STORAGE_KEY,
-  throttleTime: 1000,
 });
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
@@ -54,13 +45,29 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     let isMounted = true;
     const restoreStartedAt = Date.now();
     let restoreFailed = false;
-    const [unsubscribe, restorePromise] = persistQueryClient({
-      queryClient,
-      persister: queryPersister,
-      maxAge: 1000 * 60 * 60 * 24,
-    });
+    let unsubscribe = () => {};
 
-    void restorePromise
+    const restorePersistedQueries = async () => {
+      try {
+        await removeLegacyQueryCache();
+      } catch (error) {
+        logger.warn('[AppProviders] Failed to remove legacy React Query cache:', error);
+      }
+
+      const [nextUnsubscribe, restorePromise] = persistQueryClient({
+        queryClient,
+        persister: queryPersister,
+        maxAge: 1000 * 60 * 60 * 24,
+        dehydrateOptions: {
+          shouldDehydrateQuery: shouldPersistQuery,
+        },
+      });
+
+      unsubscribe = nextUnsubscribe;
+      await restorePromise;
+    };
+
+    void restorePersistedQueries()
       .catch((error) => {
         restoreFailed = true;
         logger.warn('[AppProviders] Failed to restore persisted React Query cache:', error);
