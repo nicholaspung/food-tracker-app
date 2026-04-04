@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
+import type { SecureStoreOptions } from 'expo-secure-store';
+import type * as SecureStoreModule from 'expo-secure-store';
 import { BaseAuthStore, type RecordModel } from 'pocketbase';
 
 import { logger } from './logger';
@@ -9,12 +10,34 @@ interface PersistedAuthState {
   record: RecordModel | null;
 }
 
+type SecureStoreModuleType = typeof SecureStoreModule;
 const DEFAULT_AUTH_STORAGE_KEY = 'food_tracker_pb_auth';
 const AUTH_KEYCHAIN_SERVICE = 'food_tracker_mobile_auth';
-const AUTH_SECURE_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  keychainService: AUTH_KEYCHAIN_SERVICE,
-};
+
+let cachedSecureStoreModule: SecureStoreModuleType | null | undefined;
+
+function getSecureStoreModule(): SecureStoreModuleType | null {
+  if (cachedSecureStoreModule !== undefined) {
+    return cachedSecureStoreModule;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    cachedSecureStoreModule = require('expo-secure-store') as SecureStoreModuleType;
+  } catch (error) {
+    logger.warn('[AuthStore] expo-secure-store native module is unavailable, falling back to AsyncStorage:', error);
+    cachedSecureStoreModule = null;
+  }
+
+  return cachedSecureStoreModule;
+}
+
+function getSecureStoreOptions(secureStore: SecureStoreModuleType): SecureStoreOptions {
+  return {
+    keychainAccessible: secureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    keychainService: AUTH_KEYCHAIN_SERVICE,
+  };
+}
 
 export class SecureStoreAuthStore extends BaseAuthStore {
   private readonly storageKey: string;
@@ -74,9 +97,9 @@ export class SecureStoreAuthStore extends BaseAuthStore {
         record: this.record,
       } satisfies PersistedAuthState);
 
-      const secureStoreAvailable = await this.secureStoreAvailablePromise;
-      if (secureStoreAvailable) {
-        await SecureStore.setItemAsync(this.storageKey, serialized, AUTH_SECURE_STORE_OPTIONS);
+      const secureStore = await this.getSecureStoreIfAvailable();
+      if (secureStore) {
+        await secureStore.setItemAsync(this.storageKey, serialized, getSecureStoreOptions(secureStore));
         await AsyncStorage.removeItem(this.storageKey);
         return;
       }
@@ -88,19 +111,29 @@ export class SecureStoreAuthStore extends BaseAuthStore {
   }
 
   private async checkSecureStoreAvailability(): Promise<boolean> {
+    const secureStore = getSecureStoreModule();
+    if (!secureStore) {
+      return false;
+    }
+
     try {
-      return await SecureStore.isAvailableAsync();
+      return await secureStore.isAvailableAsync();
     } catch (error) {
       logger.warn('[AuthStore] Failed to determine SecureStore availability, falling back to AsyncStorage:', error);
       return false;
     }
   }
 
-  private async readPersistedStorage(): Promise<string | null> {
+  private async getSecureStoreIfAvailable(): Promise<SecureStoreModuleType | null> {
     const secureStoreAvailable = await this.secureStoreAvailablePromise;
+    return secureStoreAvailable ? getSecureStoreModule() : null;
+  }
 
-    if (secureStoreAvailable) {
-      const secureValue = await SecureStore.getItemAsync(this.storageKey, AUTH_SECURE_STORE_OPTIONS);
+  private async readPersistedStorage(): Promise<string | null> {
+    const secureStore = await this.getSecureStoreIfAvailable();
+
+    if (secureStore) {
+      const secureValue = await secureStore.getItemAsync(this.storageKey, getSecureStoreOptions(secureStore));
       if (secureValue) {
         await AsyncStorage.removeItem(this.storageKey);
         return secureValue;
@@ -112,8 +145,8 @@ export class SecureStoreAuthStore extends BaseAuthStore {
       return null;
     }
 
-    if (secureStoreAvailable) {
-      await SecureStore.setItemAsync(this.storageKey, legacyValue, AUTH_SECURE_STORE_OPTIONS);
+    if (secureStore) {
+      await secureStore.setItemAsync(this.storageKey, legacyValue, getSecureStoreOptions(secureStore));
       await AsyncStorage.removeItem(this.storageKey);
     }
 
@@ -121,10 +154,10 @@ export class SecureStoreAuthStore extends BaseAuthStore {
   }
 
   private async clearPersistedStorage(): Promise<void> {
-    const secureStoreAvailable = await this.secureStoreAvailablePromise;
+    const secureStore = await this.getSecureStoreIfAvailable();
 
-    if (secureStoreAvailable) {
-      await SecureStore.deleteItemAsync(this.storageKey, AUTH_SECURE_STORE_OPTIONS);
+    if (secureStore) {
+      await secureStore.deleteItemAsync(this.storageKey, getSecureStoreOptions(secureStore));
     }
 
     await AsyncStorage.removeItem(this.storageKey);

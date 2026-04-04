@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.20',
+    date: '2026-04-04',
+    title: 'Reliability & Stability Improvements',
+    summary:
+      'This release includes under-the-hood improvements to make the app more reliable. Login sessions now recover gracefully if the secure storage system is temporarily unavailable.',
+    features: [],
+    improvements: [
+      'Login session storage is now more resilient — if the iOS Keychain is unavailable on startup, the app automatically falls back to a safe alternative so you stay logged in.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.19',
     date: '2026-04-04',
     title: 'Infinite Scroll, Stable Friend Codes & Secure Auth',

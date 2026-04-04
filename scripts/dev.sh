@@ -12,12 +12,27 @@ declare -a BG_PIDS=()
 cleanup_ran=0
 
 ensure_workspace_deps() {
-  if [ -x "apps/admin/node_modules/.bin/vite" ] && [ -x "apps/mobile/node_modules/.bin/expo" ]; then
+  if workspace_bin_exists "vite" "apps/admin" && workspace_bin_exists "expo" "apps/mobile"; then
     return
   fi
 
   echo "Workspace dependencies are missing. Installing with pnpm..."
   pnpm install
+}
+
+workspace_bin_exists() {
+  local bin_name="$1"
+  local workspace_dir="$2"
+
+  if [ -x "$ROOT_DIR/node_modules/.bin/$bin_name" ]; then
+    return 0
+  fi
+
+  if [ -x "$ROOT_DIR/$workspace_dir/node_modules/.bin/$bin_name" ]; then
+    return 0
+  fi
+
+  return 1
 }
 
 ensure_port_available() {

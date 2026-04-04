@@ -81,4 +81,32 @@ describe('SecureStoreAuthStore', () => {
     expect(restoredStore.token).toBe('');
     expect(restoredStore.record).toBeNull();
   });
+
+  it('falls back to AsyncStorage when the SecureStore native module is unavailable', async () => {
+    jest.resetModules();
+    jest.doMock('expo-secure-store', () => {
+      throw new Error("Cannot find native module 'ExpoSecureStore'");
+    });
+
+    const { SecureStoreAuthStore: FallbackAuthStore } = await import('../lib/pocketbaseAuthStore');
+
+    const store = new FallbackAuthStore('test_auth_key_fallback');
+    await store.waitUntilReady();
+
+    store.save('fallback_jwt', {
+      id: 'user_fallback',
+      email: 'fallback@example.com',
+      verified: true,
+    } as never);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(await AsyncStorage.getItem('test_auth_key_fallback')).toContain('fallback_jwt');
+
+    const restoredStore = new FallbackAuthStore('test_auth_key_fallback');
+    await restoredStore.waitUntilReady();
+
+    expect(restoredStore.token).toBe('fallback_jwt');
+    expect(restoredStore.record?.id).toBe('user_fallback');
+  });
 });
