@@ -36,6 +36,7 @@ export * from './QuickTrackFormFields';
 export * from './RatingLegend';
 export * from './RatingPill';
 export * from './RatingSelector';
+export * from './ReportContentModal';
 export * from './RoleBadge';
 export * from './ScreenHeader';
 export * from './SegmentedControl';

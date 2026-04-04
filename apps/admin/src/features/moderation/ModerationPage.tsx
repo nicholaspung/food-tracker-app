@@ -13,6 +13,7 @@ import {
   moderateUserContent,
   releaseModerationCase,
   updateUserModeration,
+  type UserModerationProfile,
 } from '@/features/users/api';
 import { formatDateTime, getCreatedUpdatedDisplay } from '@/lib/formatters';
 import { pb } from '@/lib/pocketbase';
@@ -20,6 +21,7 @@ import type {
   ModerationAction,
   ModerationAppealState,
   ModerationCase,
+  ModerationCaseReport,
   ModerationFeedEntry,
   ModerationFeedItem,
   ModerationPhoto,
@@ -42,6 +44,8 @@ type ModerationQueueStatusFilter =
 type ModerationQueueAssignmentFilter = 'all' | 'mine' | 'unassigned';
 
 type ModerationTargetContentType = 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'photo';
+
+type ModerationWorkspaceTab = 'account' | 'history' | 'feed' | 'lists';
 
 type ContentModerationDraft = {
   action: ModerationAction;
@@ -256,6 +260,134 @@ function getModerationTone(value?: string) {
   }
 }
 
+function getReportCount(caseRecord: Pick<ModerationCase, 'reportCount' | 'reports'>) {
+  return typeof caseRecord.reportCount === 'number' ? caseRecord.reportCount : caseRecord.reports?.length ?? 0;
+}
+
+function getModerationCasePriority(caseRecord: ModerationCase) {
+  const actionableWeight = caseRecord.status === 'under_review' || caseRecord.status === 'open' ? 0 : 1;
+  const reportWeight = getReportCount(caseRecord) > 0 ? 0 : 1;
+  const updatedWeight = Date.parse(caseRecord.latestReportedAt || caseRecord.updated || caseRecord.created || '') || 0;
+
+  return {
+    actionableWeight,
+    reportWeight,
+    updatedWeight,
+  };
+}
+
+function sortModerationCasesForReview(cases: ModerationCase[]) {
+  return [...cases].sort((left, right) => {
+    const leftPriority = getModerationCasePriority(left);
+    const rightPriority = getModerationCasePriority(right);
+
+    if (leftPriority.actionableWeight !== rightPriority.actionableWeight) {
+      return leftPriority.actionableWeight - rightPriority.actionableWeight;
+    }
+
+    if (leftPriority.reportWeight !== rightPriority.reportWeight) {
+      return leftPriority.reportWeight - rightPriority.reportWeight;
+    }
+
+    return rightPriority.updatedWeight - leftPriority.updatedWeight;
+  });
+}
+
+function getDefaultFocusedCaseId(cases: ModerationCase[]) {
+  return sortModerationCasesForReview(cases)[0]?.id ?? null;
+}
+
+function buildContentModerationTargetFromCase(
+  caseRecord: ModerationCase,
+  profile: UserModerationProfile,
+): ContentModerationTarget | null {
+  switch (caseRecord.targetType) {
+    case 'visit': {
+      const entry = profile.feedEntries.find((candidate) => candidate.contentType === 'visit' && candidate.id === caseRecord.targetRecordId);
+
+      return {
+        contentType: 'visit',
+        recordId: caseRecord.targetRecordId,
+        title: entry?.restaurantName || caseRecord.targetLabel || 'Visit',
+        subtitle: 'Visit entry',
+      };
+    }
+    case 'quick-track': {
+      const entry = profile.feedEntries.find(
+        (candidate) => candidate.contentType === 'quick-track' && candidate.id === caseRecord.targetRecordId,
+      );
+
+      return {
+        contentType: 'quick-track',
+        recordId: caseRecord.targetRecordId,
+        title: entry?.itemName || caseRecord.targetLabel || 'Quick track',
+        subtitle: 'Quick track entry',
+      };
+    }
+    case 'food-item': {
+      const parentEntry = profile.feedEntries.find((entry) => entry.items?.some((item) => item.id === caseRecord.targetRecordId));
+      const item = parentEntry?.items?.find((candidate) => candidate.id === caseRecord.targetRecordId);
+
+      return {
+        contentType: 'food-item',
+        recordId: caseRecord.targetRecordId,
+        title: item?.name || caseRecord.targetLabel || 'Visit item',
+        subtitle: parentEntry?.restaurantName ? `Visit item from ${parentEntry.restaurantName}` : 'Visit item',
+      };
+    }
+    case 'list': {
+      const list = profile.restaurantLists.find((candidate) => candidate.id === caseRecord.targetRecordId);
+
+      return {
+        contentType: 'list',
+        recordId: caseRecord.targetRecordId,
+        title: list?.name || caseRecord.targetLabel || 'Restaurant list',
+        subtitle: 'Restaurant list',
+      };
+    }
+    case 'list-item': {
+      const parentList = profile.restaurantLists.find((list) => list.items.some((item) => item.id === caseRecord.targetRecordId));
+      const item = parentList?.items.find((candidate) => candidate.id === caseRecord.targetRecordId);
+
+      return {
+        contentType: 'list-item',
+        recordId: caseRecord.targetRecordId,
+        title: item?.restaurantName || caseRecord.targetLabel || 'List item',
+        subtitle: parentList?.name ? `Saved in ${parentList.name}` : 'List item',
+      };
+    }
+    case 'photo':
+      return {
+        contentType: 'photo',
+        recordId: caseRecord.targetRecordId,
+        title: caseRecord.targetLabel || 'Photo',
+        subtitle: 'Photo attached to user content',
+      };
+    default:
+      return null;
+  }
+}
+
+function findPhotoContext(feedEntries: ModerationFeedEntry[], photoId: string) {
+  for (const entry of feedEntries) {
+    if (entry.photos) {
+      const entryPhoto = entry.photos.find((photo) => photo.id === photoId);
+      if (entryPhoto) {
+        return { entry, item: null, photo: entryPhoto };
+      }
+    }
+
+    for (const item of entry.items ?? []) {
+      const itemPhoto = item.photos.find((photo) => photo.id === photoId);
+      if (itemPhoto) {
+        return { entry, item, photo: itemPhoto };
+      }
+    }
+  }
+
+  return null;
+}
+
 function ModerationBadge({
   value,
   fallback = 'Unknown',
@@ -446,9 +578,317 @@ function PhotoCarouselModal({
   );
 }
 
+function ModerationMetaBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="moderation-meta-block">
+      <span className="text-muted">{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ModerationReportHistory({
+  reports,
+}: {
+  reports: ModerationCaseReport[];
+}) {
+  if (reports.length === 0) {
+    return (
+      <div className="state-panel">
+        <span className="text-muted">No user reports are attached to this case yet.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="inline-list">
+      {reports.map((report) => {
+        const reporter = report.expand?.reporter;
+        const reporterLabel = reporter?.email || reporter?.name || 'Unknown reporter';
+
+        return (
+          <div className="list-item moderation-subitem moderation-report-row" key={report.id}>
+            <div className="summary-row moderation-summary-row-top">
+              <div>
+                <strong>{reporterLabel}</strong>
+                {report.notes?.trim() ? <p className="text-muted">{report.notes.trim()}</p> : null}
+              </div>
+              <div className="tag-row tag-row-start">
+                {report.reasonCode ? <span className="tag">{formatModerationLabel(report.reasonCode)}</span> : null}
+                <span className="tag">{formatDateTime(report.updated || report.created)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReportedContentPreview({
+  caseRecord,
+  deletingKey,
+  onDelete,
+  onModerate,
+  onModerateListItem,
+  onModerateVisitItem,
+  onOpenCarousel,
+  profile,
+}: {
+  caseRecord: ModerationCase;
+  deletingKey: string | null;
+  onDelete: (contentType: ModerationTargetContentType, recordId: string, label: string) => void;
+  onModerate: (target: ContentModerationTarget) => void;
+  onModerateListItem: (list: ModerationRestaurantList, item: ModerationRestaurantListItem) => void;
+  onModerateVisitItem: (entry: ModerationFeedEntry, item: ModerationFeedItem) => void;
+  onOpenCarousel: (photos: ModerationPhoto[], initialIndex: number) => void;
+  profile: UserModerationProfile;
+}) {
+  if (caseRecord.targetType === 'visit' || caseRecord.targetType === 'quick-track') {
+    const entry = profile.feedEntries.find(
+      (candidate) => candidate.contentType === caseRecord.targetType && candidate.id === caseRecord.targetRecordId,
+    );
+
+    if (!entry) {
+      return (
+        <div className="state-panel">
+          <strong>Reported record is not available in this profile snapshot.</strong>
+          <span className="text-muted">It may already be removed or no longer match the moderation filters.</span>
+        </div>
+      );
+    }
+
+    return (
+      <FeedEntryCard
+        deletingKey={deletingKey}
+        entry={entry}
+        onDelete={() =>
+          onDelete(entry.contentType, entry.id, entry.contentType === 'visit' ? 'visit' : 'quick track')
+        }
+        onDeleteItem={(item) => onDelete('food-item', item.id, 'visit item')}
+        onModerate={() =>
+          onModerate({
+            contentType: entry.contentType,
+            recordId: entry.id,
+            title: entry.contentType === 'visit' ? entry.restaurantName || 'Visit' : entry.itemName || 'Quick track',
+            subtitle: entry.contentType === 'visit' ? 'Visit entry' : 'Quick track entry',
+          })
+        }
+        onModerateItem={(item) => onModerateVisitItem(entry, item)}
+        onOpenCarousel={onOpenCarousel}
+      />
+    );
+  }
+
+  if (caseRecord.targetType === 'list') {
+    const list = profile.restaurantLists.find((candidate) => candidate.id === caseRecord.targetRecordId);
+
+    if (!list) {
+      return (
+        <div className="state-panel">
+          <strong>Reported list is not available in this profile snapshot.</strong>
+          <span className="text-muted">It may already be removed or archived.</span>
+        </div>
+      );
+    }
+
+    return (
+      <RestaurantListCard
+        deletingKey={deletingKey}
+        list={list}
+        onDeleteItem={(item) => onDelete('list-item', item.id, 'list item')}
+        onDeleteList={() => onDelete('list', list.id, 'list')}
+        onModerateItem={(item) => onModerateListItem(list, item)}
+        onModerateList={() =>
+          onModerate({
+            contentType: 'list',
+            recordId: list.id,
+            title: list.name,
+            subtitle: 'Restaurant list',
+          })
+        }
+      />
+    );
+  }
+
+  if (caseRecord.targetType === 'food-item') {
+    const parentEntry = profile.feedEntries.find((entry) => entry.items?.some((item) => item.id === caseRecord.targetRecordId));
+    const item = parentEntry?.items?.find((candidate) => candidate.id === caseRecord.targetRecordId);
+
+    if (!parentEntry || !item) {
+      return (
+        <div className="state-panel">
+          <strong>Reported visit item could not be found.</strong>
+          <span className="text-muted">The parent visit may already be gone from the loaded moderation profile.</span>
+        </div>
+      );
+    }
+
+    return (
+      <article className="detail-card moderation-entry moderation-review-card">
+        <div className="summary-row moderation-summary-row-top">
+          <div>
+            <p className="eyebrow">Reported visit item</p>
+            <h3 style={{ marginBottom: 6 }}>{item.name}</h3>
+            <div className="tag-row tag-row-start">
+              <span className="tag">{formatRating(item.rating)}</span>
+              <ModerationBadge value={getContentModerationStatus(item.moderationStatus)} />
+              {parentEntry?.restaurantName ? <span className="tag">Visit: {parentEntry.restaurantName}</span> : null}
+            </div>
+          </div>
+          <div className="moderation-inline-actions">
+            <button className="button ghost" onClick={() => onModerateVisitItem(parentEntry, item)} type="button">
+              Moderate visit item
+            </button>
+            <button className="button danger" disabled={deletingKey === `food-item:${item.id}`} onClick={() => onDelete('food-item', item.id, 'visit item')} type="button">
+              {deletingKey === `food-item:${item.id}` ? 'Deleting...' : 'Delete visit item'}
+            </button>
+          </div>
+        </div>
+
+        <div className="moderation-meta-grid">
+          {parentEntry?.restaurantName ? <ModerationMetaBlock label="Parent visit" value={parentEntry.restaurantName} /> : null}
+          <ModerationMetaBlock label="Created" value={formatDateTime(item.created)} />
+        </div>
+
+        {item.notes?.trim() ? <p className="text-muted">"{item.notes.trim()}"</p> : null}
+        {item.description?.trim() ? <p className="text-muted">{item.description.trim()}</p> : null}
+        <ModerationPhotoStrip
+          onPhotoClick={(photoId) => {
+            const initialIndex = item.photos.findIndex((photo) => photo.id === photoId);
+            if (initialIndex >= 0) {
+              onOpenCarousel(item.photos, initialIndex);
+            }
+          }}
+          photos={item.photos}
+        />
+      </article>
+    );
+  }
+
+  if (caseRecord.targetType === 'list-item') {
+    const parentList = profile.restaurantLists.find((list) => list.items.some((item) => item.id === caseRecord.targetRecordId));
+    const item = parentList?.items.find((candidate) => candidate.id === caseRecord.targetRecordId);
+
+    if (!item) {
+      return (
+        <div className="state-panel">
+          <strong>Reported list item could not be found.</strong>
+          <span className="text-muted">The list may already be removed or no longer included in this profile snapshot.</span>
+        </div>
+      );
+    }
+
+    return (
+      <article className="detail-card moderation-entry moderation-review-card">
+        <div className="summary-row moderation-summary-row-top">
+          <div>
+            <p className="eyebrow">Reported list item</p>
+            <h3 style={{ marginBottom: 6 }}>{item.restaurantName || 'Saved restaurant'}</h3>
+            <div className="tag-row tag-row-start">
+              <ModerationBadge value={getContentModerationStatus(item.moderationStatus)} />
+              {parentList?.name ? <span className="tag">List: {parentList.name}</span> : null}
+              {item.foodItemName ? <span className="tag">Saved: {item.foodItemName}</span> : null}
+              {item.userFoodItemName ? <span className="tag">Rated: {item.userFoodItemName}</span> : null}
+            </div>
+          </div>
+          <div className="moderation-inline-actions">
+            <button className="button ghost" onClick={() => parentList && onModerateListItem(parentList, item)} type="button">
+              Moderate list item
+            </button>
+            <button className="button danger" disabled={deletingKey === `list-item:${item.id}`} onClick={() => onDelete('list-item', item.id, 'list item')} type="button">
+              {deletingKey === `list-item:${item.id}` ? 'Deleting...' : 'Delete list item'}
+            </button>
+          </div>
+        </div>
+
+        <div className="moderation-meta-grid">
+          {parentList?.name ? <ModerationMetaBlock label="Parent list" value={parentList.name} /> : null}
+          <ModerationMetaBlock label="Created" value={formatDateTime(item.created)} />
+          {item.restaurantLocation?.trim() ? <ModerationMetaBlock label="Location" value={item.restaurantLocation.trim()} /> : null}
+        </div>
+
+        {item.note?.trim() ? <p className="text-muted">{item.note.trim()}</p> : null}
+      </article>
+    );
+  }
+
+  if (caseRecord.targetType === 'photo') {
+    const photoContext = findPhotoContext(profile.feedEntries, caseRecord.targetRecordId);
+    const photo = photoContext?.photo;
+
+    if (!photo) {
+      return (
+        <div className="state-panel">
+          <strong>Reported photo could not be found.</strong>
+          <span className="text-muted">The photo may already be removed from the user profile.</span>
+        </div>
+      );
+    }
+
+    return (
+      <article className="detail-card moderation-entry moderation-review-card">
+        <div className="summary-row moderation-summary-row-top">
+          <div>
+            <p className="eyebrow">Reported photo</p>
+            <h3 style={{ marginBottom: 6 }}>{photo.caption?.trim() || 'User photo upload'}</h3>
+            <div className="tag-row tag-row-start">
+              <ModerationBadge value={getContentModerationStatus(photo.moderationStatus)} />
+              {photoContext.entry?.restaurantName ? <span className="tag">{photoContext.entry.restaurantName}</span> : null}
+              {photoContext.item?.name ? <span className="tag">{photoContext.item.name}</span> : null}
+            </div>
+          </div>
+          <div className="moderation-inline-actions">
+            <button
+              className="button ghost"
+              onClick={() =>
+                onModerate({
+                  contentType: 'photo',
+                  recordId: photo.id,
+                  title: photo.caption?.trim() || 'Visit photo',
+                  subtitle: 'Photo attached to a visit item',
+                })
+              }
+              type="button"
+            >
+              Moderate photo
+            </button>
+            <button className="button danger" disabled={deletingKey === `photo:${photo.id}`} onClick={() => onDelete('photo', photo.id, 'photo')} type="button">
+              {deletingKey === `photo:${photo.id}` ? 'Deleting...' : 'Delete photo'}
+            </button>
+          </div>
+        </div>
+
+        <div className="moderation-photo-review-stage">
+          <img
+            alt={photo.caption?.trim() || 'Reported user photo'}
+            className="moderation-review-image"
+            src={buildPhotoUrl(photo)}
+          />
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <div className="state-panel">
+      <strong>No dedicated content preview is available for this case.</strong>
+      <span className="text-muted">This record can still be moderated from the case actions and account context below.</span>
+    </div>
+  );
+}
+
 function ModerationCaseCard({
   caseRecord,
   claimDisabled,
+  isFocused,
+  onFocusCase,
   onClaim,
   onRelease,
   releaseDisabled,
@@ -456,6 +896,8 @@ function ModerationCaseCard({
 }: {
   caseRecord: ModerationCase;
   claimDisabled: boolean;
+  isFocused?: boolean;
+  onFocusCase?: () => void;
   onClaim: () => void;
   onRelease: () => void;
   releaseDisabled: boolean;
@@ -463,10 +905,12 @@ function ModerationCaseCard({
 }) {
   const assignedAdmin = caseRecord.expand?.assignedAdmin;
   const targetUser = caseRecord.expand?.targetUser;
+  const reports = caseRecord.reports ?? [];
+  const reportCount = getReportCount(caseRecord);
 
   return (
     <article className="detail-card moderation-case-card">
-      <div className="summary-row">
+      <div className="summary-row moderation-summary-row-top">
         <div>
           <p className="eyebrow">Case</p>
           <h3 style={{ marginBottom: 6 }}>{caseRecord.targetLabel?.trim() || caseRecord.targetType}</h3>
@@ -475,9 +919,15 @@ function ModerationCaseCard({
             {caseRecord.action ? <ModerationBadge value={caseRecord.action} /> : null}
             <span className="tag">{formatModerationLabel(caseRecord.targetType)}</span>
             {caseRecord.reasonCode ? <span className="tag">{formatModerationLabel(caseRecord.reasonCode)}</span> : null}
+            {reportCount > 0 ? <span className="tag">{reportCount} report{reportCount === 1 ? '' : 's'}</span> : null}
           </div>
         </div>
         <div className="moderation-inline-actions">
+          {onFocusCase ? (
+            <button className="button ghost" disabled={isFocused} onClick={onFocusCase} type="button">
+              {isFocused ? 'Focused' : 'Focus case'}
+            </button>
+          ) : null}
           {assignedAdmin ? (
             <button className="button ghost" disabled={releaseDisabled} onClick={onRelease} type="button">
               {releaseDisabled ? 'Releasing...' : 'Release'}
@@ -490,23 +940,24 @@ function ModerationCaseCard({
         </div>
       </div>
 
-      <div className="summary-list">
-        <div className="summary-row">
-          <span className="text-muted">Target user</span>
-          <strong>{targetUser?.email || 'Unknown user'}</strong>
-        </div>
-        <div className="summary-row">
-          <span className="text-muted">Assigned admin</span>
-          <strong>{assignedAdmin?.email || 'Unassigned'}</strong>
-        </div>
-        <div className="summary-row">
-          <span className="text-muted">Updated</span>
-          <strong>{formatDateTime(caseRecord.updated)}</strong>
-        </div>
+      <div className="moderation-meta-grid">
+        <ModerationMetaBlock label="Target user" value={targetUser?.email || 'Unknown user'} />
+        <ModerationMetaBlock label="Assigned admin" value={assignedAdmin?.email || 'Unassigned'} />
+        <ModerationMetaBlock label="Updated" value={formatDateTime(caseRecord.updated)} />
+        {caseRecord.latestReportedAt ? (
+          <ModerationMetaBlock label="Latest report" value={formatDateTime(caseRecord.latestReportedAt)} />
+        ) : null}
       </div>
 
       {caseRecord.moderatorNote?.trim() ? <p className="text-muted">{caseRecord.moderatorNote.trim()}</p> : null}
       {caseRecord.userNotice?.trim() ? <p className="text-muted">User notice: {caseRecord.userNotice.trim()}</p> : null}
+
+      {reports.length > 0 ? (
+        <div>
+          <p className="eyebrow">Reports</p>
+          <ModerationReportHistory reports={reports} />
+        </div>
+      ) : null}
 
       {targetUser && showReviewUserAction ? (
         <button className="button ghost" onClick={() => showReviewUserAction(targetUser)} type="button">
@@ -532,7 +983,7 @@ function VisitItemRow({
 }) {
   return (
     <div className="list-item moderation-subitem">
-      <div className="summary-row">
+      <div className="summary-row moderation-summary-row-top">
         <div>
           <strong>{item.name}</strong>
           <div className="tag-row tag-row-start">
@@ -569,7 +1020,7 @@ function RestaurantListItemRow({
 }) {
   return (
     <div className="list-item moderation-subitem">
-      <div className="summary-row">
+      <div className="summary-row moderation-summary-row-top">
         <div>
           <strong>{item.restaurantName || 'Unknown restaurant'}</strong>
           <div className="tag-row tag-row-start">
@@ -621,7 +1072,7 @@ function FeedEntryCard({
   if (entry.contentType === 'quick-track') {
     return (
       <article className="detail-card moderation-entry">
-        <div className="summary-row">
+        <div className="summary-row moderation-summary-row-top">
           <div>
             <p className="eyebrow">Quick track</p>
             <h3 style={{ marginBottom: 6 }}>{entry.itemName || 'Unnamed quick track'}</h3>
@@ -671,7 +1122,7 @@ function FeedEntryCard({
 
   return (
     <article className="detail-card moderation-entry">
-      <div className="summary-row">
+      <div className="summary-row moderation-summary-row-top">
         <div>
           <p className="eyebrow">Visit</p>
           <h3 style={{ marginBottom: 6 }}>{entry.restaurantName || 'Unknown restaurant'}</h3>
@@ -751,7 +1202,7 @@ function RestaurantListCard({
 
   return (
     <article className="detail-card moderation-entry">
-      <div className="summary-row">
+      <div className="summary-row moderation-summary-row-top">
         <div>
           <p className="eyebrow">List</p>
           <h3 style={{ marginBottom: 6 }}>{list.name}</h3>
@@ -939,6 +1390,9 @@ export function ModerationPage() {
   const [carouselState, setCarouselState] = useState<{ initialIndex: number; photos: ModerationPhoto[] } | null>(null);
   const [queueAssignment, setQueueAssignment] = useState<ModerationQueueAssignmentFilter>('all');
   const [queueStatus, setQueueStatus] = useState<ModerationQueueStatusFilter>('active');
+  const [focusedCaseId, setFocusedCaseId] = useState<string | null>(null);
+  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<ModerationWorkspaceTab>('history');
   const [accountForm, setAccountForm] = useState<AccountModerationFormState | null>(null);
   const [contentModerationDraft, setContentModerationDraft] = useState<ContentModerationDraft>(createDefaultContentModerationDraft);
   const [contentModerationTarget, setContentModerationTarget] = useState<ContentModerationTarget | null>(null);
@@ -960,6 +1414,23 @@ export function ModerationPage() {
       setAccountForm(buildAccountModerationFormState(profileQuery.data.user));
     }
   }, [profileQuery.data?.user]);
+
+  useEffect(() => {
+    const moderationCases = profileQuery.data?.moderationCases ?? [];
+
+    if (moderationCases.length === 0) {
+      setFocusedCaseId(null);
+      return;
+    }
+
+    setFocusedCaseId((current) => {
+      if (current && moderationCases.some((caseRecord) => caseRecord.id === current)) {
+        return current;
+      }
+
+      return getDefaultFocusedCaseId(moderationCases);
+    });
+  }, [profileQuery.data?.moderationCases]);
 
   const moderationCasesQuery = useQuery({
     queryKey: ['admin', 'moderation', 'cases', queueStatus, queueAssignment, lookupQuery.data?.id ?? 'all'],
@@ -1014,6 +1485,12 @@ export function ModerationPage() {
     ? `${deleteMutation.variables.contentType}:${deleteMutation.variables.recordId}`
     : null;
 
+  const orderedProfileCases = profileQuery.data ? sortModerationCasesForReview(profileQuery.data.moderationCases) : [];
+  const focusedCase =
+    orderedProfileCases.find((caseRecord) => caseRecord.id === focusedCaseId) ?? orderedProfileCases[0] ?? null;
+  const focusedModerationTarget =
+    focusedCase && profileQuery.data ? buildContentModerationTargetFromCase(focusedCase, profileQuery.data) : null;
+
   const handleLookupSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -1031,6 +1508,9 @@ export function ModerationPage() {
     contentModerationMutation.reset();
     setEmailInput('');
     setSelectedEmail('');
+    setFocusedCaseId(null);
+    setWorkspaceCollapsed(false);
+    setWorkspaceTab('history');
     setSearchParams({});
     setCarouselState(null);
     setContentModerationTarget(null);
@@ -1099,6 +1579,7 @@ export function ModerationPage() {
     const normalized = normalizeEmail(user.email);
     setEmailInput(normalized);
     setSelectedEmail(normalized);
+    setWorkspaceCollapsed(false);
     setSearchParams({ email: normalized });
   };
 
@@ -1225,17 +1706,24 @@ export function ModerationPage() {
           >
             {(pageCases) => (
               <div className="inline-list">
-                {pageCases.map((caseRecord) => (
+                {pageCases.map((caseRecord) => {
+                  const isSelectedUserCase =
+                    Boolean(profileQuery.data?.user.id) && caseRecord.expand?.targetUser?.id === profileQuery.data?.user.id;
+
+                  return (
                   <ModerationCaseCard
                     caseRecord={caseRecord}
                     claimDisabled={claimCaseMutation.isPending && claimCaseMutation.variables === caseRecord.id}
+                    isFocused={focusedCase?.id === caseRecord.id}
                     key={caseRecord.id}
+                    onFocusCase={isSelectedUserCase ? () => setFocusedCaseId(caseRecord.id) : undefined}
                     onClaim={() => claimCaseMutation.mutate(caseRecord.id)}
                     onRelease={() => releaseCaseMutation.mutate(caseRecord.id)}
                     releaseDisabled={releaseCaseMutation.isPending && releaseCaseMutation.variables === caseRecord.id}
-                    showReviewUserAction={reviewCaseUser}
+                    showReviewUserAction={isSelectedUserCase ? undefined : reviewCaseUser}
                   />
-                ))}
+                  );
+                })}
               </div>
             )}
           </PaginatedCollection>
@@ -1293,7 +1781,7 @@ export function ModerationPage() {
       {selectedEmail && lookupQuery.data && profileQuery.data && accountForm ? (
         <>
           <section className="panel">
-            <div className="summary-row">
+            <div className="summary-row moderation-summary-row-top">
               <div>
                 <p className="eyebrow">Reviewing</p>
                 <h2 style={{ marginBottom: 6 }}>{profileQuery.data.user.email}</h2>
@@ -1332,305 +1820,535 @@ export function ModerationPage() {
             </div>
           </section>
 
-          <section className="detail-grid moderation-detail-grid">
-            <div className="inline-list">
-              <section className="table-panel">
-                <div className="summary-row">
-                  <div>
-                    <p className="eyebrow">Account actions</p>
-                    <h3 style={{ marginBottom: 4 }}>Warnings, suspensions, and pre-review</h3>
-                    <p className="text-muted" style={{ margin: 0 }}>
-                      Save the current account settings or use a quick action to warn, restrict, ban, or restore.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="moderation-form-grid">
-                  <div className="field">
-                    <label htmlFor="account-state">Moderation state</label>
-                    <select
-                      className="input"
-                      id="account-state"
-                      onChange={(event) =>
-                        setAccountForm((current) =>
-                          current
-                            ? {
-                                ...current,
-                                moderationState: event.target.value as NonNullable<AdminUser['moderationState']>,
-                              }
-                            : current,
-                        )
-                      }
-                      value={accountForm.moderationState}
+          <section className="table-panel moderation-review-workspace">
+            <div className="summary-row moderation-summary-row-top">
+              <div>
+                <p className="eyebrow">Reported content review</p>
+                <h3 style={{ marginBottom: 4 }}>
+                  {focusedCase
+                    ? focusedCase.targetLabel?.trim() || formatModerationLabel(focusedCase.targetType)
+                    : 'No active moderation case selected'}
+                </h3>
+                <p className="text-muted" style={{ margin: 0 }}>
+                  {focusedCase
+                    ? 'Start with the exact record that was reported, compare it with the attached report history, then take action.'
+                    : 'This account has no case selected yet. Use the queue or case history to pick one when moderation work exists.'}
+                </p>
+              </div>
+              <div className="moderation-inline-actions">
+                {focusedCase ? (
+                  focusedCase.expand?.assignedAdmin ? (
+                    <button
+                      className="button ghost"
+                      disabled={releaseCaseMutation.isPending && releaseCaseMutation.variables === focusedCase.id}
+                      onClick={() => releaseCaseMutation.mutate(focusedCase.id)}
+                      type="button"
                     >
-                      {userModerationStateOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-muted">{userModerationStateOptions.find((option) => option.value === accountForm.moderationState)?.description}</span>
-                  </div>
-
-                  <div className="field">
-                    <label htmlFor="account-mode">Content mode</label>
-                    <select
-                      className="input"
-                      id="account-mode"
-                      onChange={(event) =>
-                        setAccountForm((current) =>
-                          current
-                            ? {
-                                ...current,
-                                contentModerationMode: event.target.value as NonNullable<AdminUser['contentModerationMode']>,
-                              }
-                            : current,
-                        )
-                      }
-                      value={accountForm.contentModerationMode}
+                      {releaseCaseMutation.isPending && releaseCaseMutation.variables === focusedCase.id
+                        ? 'Releasing...'
+                        : 'Release case'}
+                    </button>
+                  ) : (
+                    <button
+                      className="button ghost"
+                      disabled={claimCaseMutation.isPending && claimCaseMutation.variables === focusedCase.id}
+                      onClick={() => claimCaseMutation.mutate(focusedCase.id)}
+                      type="button"
                     >
-                      {userContentModeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-muted">{userContentModeOptions.find((option) => option.value === accountForm.contentModerationMode)?.description}</span>
-                  </div>
+                      {claimCaseMutation.isPending && claimCaseMutation.variables === focusedCase.id
+                        ? 'Claiming...'
+                        : 'Claim case'}
+                    </button>
+                  )
+                ) : null}
+                {focusedModerationTarget ? (
+                  <button className="button" onClick={() => openContentModeration(focusedModerationTarget)} type="button">
+                    Moderate focused content
+                  </button>
+                ) : null}
+              </div>
+            </div>
 
-                  <div className="field">
-                    <label htmlFor="warning-count">Warning count</label>
-                    <input
-                      className="input"
-                      id="warning-count"
-                      min={0}
-                      onChange={(event) =>
-                        setAccountForm((current) => (current ? { ...current, warningCount: event.target.value } : current))
-                      }
-                      type="number"
-                      value={accountForm.warningCount}
-                    />
-                  </div>
+            {orderedProfileCases.length > 1 ? (
+              <div aria-label="Moderation cases for this user" className="tab-bar moderation-case-switcher" role="tablist">
+                {orderedProfileCases.map((caseRecord) => (
+                  <button
+                    aria-selected={focusedCase?.id === caseRecord.id}
+                    className={`tab-button ${focusedCase?.id === caseRecord.id ? 'active' : ''}`}
+                    key={caseRecord.id}
+                    onClick={() => setFocusedCaseId(caseRecord.id)}
+                    role="tab"
+                    type="button"
+                  >
+                    {(caseRecord.targetLabel?.trim() || formatModerationLabel(caseRecord.targetType)) +
+                      (getReportCount(caseRecord) > 0 ? ` (${getReportCount(caseRecord)})` : '')}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-                  <div className="field">
-                    <label htmlFor="posting-suspended-until">Posting suspended until</label>
-                    <input
-                      className="input"
-                      id="posting-suspended-until"
-                      onChange={(event) =>
-                        setAccountForm((current) =>
-                          current ? { ...current, postingSuspendedUntil: event.target.value } : current
-                        )
-                      }
-                      type="datetime-local"
-                      value={accountForm.postingSuspendedUntil}
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label htmlFor="photo-suspended-until">Photo uploads suspended until</label>
-                    <input
-                      className="input"
-                      id="photo-suspended-until"
-                      onChange={(event) =>
-                        setAccountForm((current) =>
-                          current ? { ...current, photoSuspendedUntil: event.target.value } : current
-                        )
-                      }
-                      type="datetime-local"
-                      value={accountForm.photoSuspendedUntil}
-                    />
-                  </div>
-                </div>
-
-                <div className="field">
-                  <label htmlFor="moderation-notice-text">User notice</label>
-                  <textarea
-                    className="input moderation-textarea"
-                    id="moderation-notice-text"
-                    onChange={(event) =>
-                      setAccountForm((current) => (current ? { ...current, moderationNotice: event.target.value } : current))
+            {focusedCase ? (
+              <div className="moderation-review-grid">
+                <div className="moderation-review-main">
+                  <ReportedContentPreview
+                    caseRecord={focusedCase}
+                    deletingKey={deletingKey}
+                    onDelete={requestDelete}
+                    onModerate={openContentModeration}
+                    onModerateListItem={(list, item) =>
+                      openContentModeration({
+                        contentType: 'list-item',
+                        recordId: item.id,
+                        title: item.restaurantName || 'List item',
+                        subtitle: `Saved in ${list.name}`,
+                      })
                     }
-                    placeholder="Optional notice shown to the user"
-                    value={accountForm.moderationNotice}
+                    onModerateVisitItem={(entry, item) =>
+                      openContentModeration({
+                        contentType: 'food-item',
+                        recordId: item.id,
+                        title: item.name,
+                        subtitle: entry.restaurantName ? `Visit item from ${entry.restaurantName}` : 'Visit item',
+                      })
+                    }
+                    onOpenCarousel={(photos, initialIndex) => {
+                      setCarouselState({ photos, initialIndex });
+                    }}
+                    profile={profileQuery.data}
                   />
                 </div>
 
-                <div className="field">
-                  <label htmlFor="moderation-notes-text">Moderator notes</label>
-                  <textarea
-                    className="input moderation-textarea"
-                    id="moderation-notes-text"
-                    onChange={(event) =>
-                      setAccountForm((current) => (current ? { ...current, moderationNotes: event.target.value } : current))
-                    }
-                    placeholder="Internal notes about this account"
-                    value={accountForm.moderationNotes}
-                  />
-                </div>
-
-                <div className="moderation-inline-actions moderation-wrap-actions">
-                  <button className="button" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration()} type="button">
-                    {userModerationMutation.isPending ? 'Saving...' : 'Save account moderation'}
-                  </button>
-                  <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('warn')} type="button">
-                    Warn
-                  </button>
-                  <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('restrict')} type="button">
-                    Restrict
-                  </button>
-                  <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('ban')} type="button">
-                    Ban
-                  </button>
-                  <button className="button ghost" disabled={userModerationMutation.isPending} onClick={() => submitAccountModeration('restore')} type="button">
-                    Restore
-                  </button>
-                </div>
-              </section>
-            </div>
-
-            <div className="inline-list">
-              <section className="table-panel">
-                <div className="summary-row">
+                <aside className="detail-card moderation-review-sidebar">
                   <div>
-                    <p className="eyebrow">Moderation history</p>
-                    <h3 style={{ marginBottom: 4 }}>Open and resolved cases for this user</h3>
+                    <p className="eyebrow">Case details</p>
+                    <h3 style={{ marginBottom: 6 }}>{focusedCase.targetLabel?.trim() || formatModerationLabel(focusedCase.targetType)}</h3>
+                    <div className="tag-row tag-row-start">
+                      <ModerationBadge value={focusedCase.status} />
+                      {focusedCase.action ? <ModerationBadge value={focusedCase.action} /> : null}
+                      <span className="tag">{formatModerationLabel(focusedCase.targetType)}</span>
+                      {focusedCase.reasonCode ? <span className="tag">{formatModerationLabel(focusedCase.reasonCode)}</span> : null}
+                      {getReportCount(focusedCase) > 0 ? (
+                        <span className="tag">
+                          {getReportCount(focusedCase)} report{getReportCount(focusedCase) === 1 ? '' : 's'}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
 
-                {profileQuery.data.moderationCases.length === 0 ? (
-                  <div className="state-panel">
-                    <span className="text-muted">No moderation cases have been recorded for this user yet.</span>
+                  <div className="moderation-meta-grid">
+                    <ModerationMetaBlock
+                      label="Target user"
+                      value={focusedCase.expand?.targetUser?.email || profileQuery.data.user.email}
+                    />
+                    <ModerationMetaBlock
+                      label="Assigned admin"
+                      value={focusedCase.expand?.assignedAdmin?.email || 'Unassigned'}
+                    />
+                    <ModerationMetaBlock label="Updated" value={formatDateTime(focusedCase.updated)} />
+                    <ModerationMetaBlock
+                      label="Latest report"
+                      value={focusedCase.latestReportedAt ? formatDateTime(focusedCase.latestReportedAt) : 'No reports yet'}
+                    />
                   </div>
-                ) : (
-                  <PaginatedCollection items={profileQuery.data.moderationCases} itemsPerPage={10}>
-                    {(pageCases) => (
-                      <div className="inline-list">
-                        {pageCases.map((caseRecord) => (
-                          <ModerationCaseCard
-                            caseRecord={caseRecord}
-                            claimDisabled={claimCaseMutation.isPending && claimCaseMutation.variables === caseRecord.id}
-                            key={caseRecord.id}
-                            onClaim={() => claimCaseMutation.mutate(caseRecord.id)}
-                            onRelease={() => releaseCaseMutation.mutate(caseRecord.id)}
-                            releaseDisabled={releaseCaseMutation.isPending && releaseCaseMutation.variables === caseRecord.id}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </PaginatedCollection>
-                )}
-              </section>
-            </div>
+
+                  {focusedCase.moderatorNote?.trim() ? (
+                    <div className="state-panel">
+                      <strong>Moderator note</strong>
+                      <span className="text-muted">{focusedCase.moderatorNote.trim()}</span>
+                    </div>
+                  ) : null}
+
+                  {focusedCase.userNotice?.trim() ? (
+                    <div className="state-panel">
+                      <strong>User notice</strong>
+                      <span className="text-muted">{focusedCase.userNotice.trim()}</span>
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <p className="eyebrow">Reports</p>
+                    <ModerationReportHistory reports={focusedCase.reports ?? []} />
+                  </div>
+                </aside>
+              </div>
+            ) : (
+              <div className="state-panel">
+                <strong>No moderation cases recorded for this user.</strong>
+                <span className="text-muted">The rest of the account context is still available below if you need it.</span>
+              </div>
+            )}
           </section>
 
-          <section className="detail-grid moderation-detail-grid">
-            <div className="inline-list">
-              <section className="table-panel">
-                <div className="summary-row">
-                  <div>
-                    <p className="eyebrow">Ratings feed</p>
-                    <h3 style={{ marginBottom: 0 }}>What the user sees in the app</h3>
-                  </div>
-                </div>
-
-                {profileQuery.data.feedEntries.length === 0 ? (
-                  <div className="state-panel">
-                    <span className="text-muted">No feed entries found for this user.</span>
-                  </div>
-                ) : (
-                  <PaginatedCollection items={profileQuery.data.feedEntries} itemsPerPage={8}>
-                    {(pageEntries) => (
-                      <div className="inline-list">
-                        {pageEntries.map((entry) => (
-                          <FeedEntryCard
-                            deletingKey={deletingKey}
-                            entry={entry}
-                            key={`${entry.contentType}:${entry.id}`}
-                            onDelete={() =>
-                              requestDelete(
-                                entry.contentType,
-                                entry.id,
-                                entry.contentType === 'visit' ? 'visit' : 'quick track',
-                              )
-                            }
-                            onModerate={() =>
-                              openContentModeration({
-                                contentType: entry.contentType,
-                                recordId: entry.id,
-                                title: entry.contentType === 'visit' ? entry.restaurantName || 'Visit' : entry.itemName || 'Quick track',
-                                subtitle: entry.contentType === 'visit' ? 'Visit entry' : 'Quick track entry',
-                              })
-                            }
-                            onDeleteItem={(item) => requestDelete('food-item', item.id, 'visit item')}
-                            onModerateItem={(item) =>
-                              openContentModeration({
-                                contentType: 'food-item',
-                                recordId: item.id,
-                                title: item.name,
-                                subtitle: 'Visit item',
-                              })
-                            }
-                            onOpenCarousel={(photos, initialIndex) => {
-                              setCarouselState({ photos, initialIndex });
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </PaginatedCollection>
-                )}
-              </section>
+          <section className="table-panel moderation-context-panel">
+            <div className="summary-row moderation-summary-row-top">
+              <div>
+                <p className="eyebrow">Account context</p>
+                <h3 style={{ marginBottom: 4 }}>Everything else for this user</h3>
+                <p className="text-muted" style={{ margin: 0 }}>
+                  Switch between account controls, case history, full feed content, and shared lists when you need more context.
+                </p>
+              </div>
+              <button
+                className="button ghost"
+                onClick={() => setWorkspaceCollapsed((current) => !current)}
+                type="button"
+              >
+                {workspaceCollapsed ? 'Expand panels' : 'Collapse panels'}
+              </button>
             </div>
 
-            <div className="inline-list">
-              <section className="table-panel">
-                <div className="summary-row">
-                  <div>
-                    <p className="eyebrow">Restaurant lists</p>
-                    <h3 style={{ marginBottom: 0 }}>Saved and shared list content</h3>
-                  </div>
+            {!workspaceCollapsed ? (
+              <>
+                <div aria-label="Moderation workspace tabs" className="tab-bar" role="tablist">
+                  {[
+                    { id: 'history', label: 'Case history', count: orderedProfileCases.length },
+                    { id: 'account', label: 'Account actions', count: 1 },
+                    { id: 'feed', label: 'Feed entries', count: profileQuery.data.feedEntries.length },
+                    { id: 'lists', label: 'Lists', count: profileQuery.data.restaurantLists.length },
+                  ].map((tab) => (
+                    <button
+                      aria-selected={workspaceTab === tab.id}
+                      className={`tab-button ${workspaceTab === tab.id ? 'active' : ''}`}
+                      key={tab.id}
+                      onClick={() => setWorkspaceTab(tab.id as ModerationWorkspaceTab)}
+                      role="tab"
+                      type="button"
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
                 </div>
 
-                {profileQuery.data.restaurantLists.length === 0 ? (
-                  <div className="state-panel">
-                    <span className="text-muted">No restaurant lists found for this user.</span>
-                  </div>
-                ) : (
-                  <PaginatedCollection items={profileQuery.data.restaurantLists} itemsPerPage={8}>
-                    {(pageLists) => (
-                      <div className="inline-list">
-                        {pageLists.map((list) => (
-                          <RestaurantListCard
-                            deletingKey={deletingKey}
-                            key={list.id}
-                            list={list}
-                            onDeleteItem={(item) => requestDelete('list-item', item.id, 'list item')}
-                            onDeleteList={() => requestDelete('list', list.id, 'list')}
-                            onModerateItem={(item) =>
-                              openContentModeration({
-                                contentType: 'list-item',
-                                recordId: item.id,
-                                title: item.restaurantName || 'List item',
-                                subtitle: `Saved in ${list.name}`,
-                              })
-                            }
-                            onModerateList={() =>
-                              openContentModeration({
-                                contentType: 'list',
-                                recordId: list.id,
-                                title: list.name,
-                                subtitle: 'Restaurant list',
-                              })
-                            }
-                          />
-                        ))}
+                <div className="divider" />
+
+                {workspaceTab === 'account' ? (
+                  <div className="tab-panel">
+                    <div className="tab-panel-heading">
+                      <h3>Warnings, suspensions, and pre-review</h3>
+                      <p className="text-muted" style={{ margin: 0 }}>
+                        Save the current account settings or use a quick action to warn, restrict, ban, or restore.
+                      </p>
+                    </div>
+
+                    <div className="moderation-form-grid">
+                      <div className="field">
+                        <label htmlFor="account-state">Moderation state</label>
+                        <select
+                          className="input"
+                          id="account-state"
+                          onChange={(event) =>
+                            setAccountForm((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    moderationState: event.target.value as NonNullable<AdminUser['moderationState']>,
+                                  }
+                                : current,
+                            )
+                          }
+                          value={accountForm.moderationState}
+                        >
+                          {userModerationStateOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-muted">
+                          {userModerationStateOptions.find((option) => option.value === accountForm.moderationState)?.description}
+                        </span>
                       </div>
+
+                      <div className="field">
+                        <label htmlFor="account-mode">Content mode</label>
+                        <select
+                          className="input"
+                          id="account-mode"
+                          onChange={(event) =>
+                            setAccountForm((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    contentModerationMode: event.target.value as NonNullable<AdminUser['contentModerationMode']>,
+                                  }
+                                : current,
+                            )
+                          }
+                          value={accountForm.contentModerationMode}
+                        >
+                          {userContentModeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-muted">
+                          {userContentModeOptions.find((option) => option.value === accountForm.contentModerationMode)?.description}
+                        </span>
+                      </div>
+
+                      <div className="field">
+                        <label htmlFor="warning-count">Warning count</label>
+                        <input
+                          className="input"
+                          id="warning-count"
+                          min={0}
+                          onChange={(event) =>
+                            setAccountForm((current) =>
+                              current ? { ...current, warningCount: event.target.value } : current
+                            )
+                          }
+                          type="number"
+                          value={accountForm.warningCount}
+                        />
+                      </div>
+
+                      <div className="field">
+                        <label htmlFor="posting-suspended-until">Posting suspended until</label>
+                        <input
+                          className="input"
+                          id="posting-suspended-until"
+                          onChange={(event) =>
+                            setAccountForm((current) =>
+                              current ? { ...current, postingSuspendedUntil: event.target.value } : current
+                            )
+                          }
+                          type="datetime-local"
+                          value={accountForm.postingSuspendedUntil}
+                        />
+                      </div>
+
+                      <div className="field">
+                        <label htmlFor="photo-suspended-until">Photo uploads suspended until</label>
+                        <input
+                          className="input"
+                          id="photo-suspended-until"
+                          onChange={(event) =>
+                            setAccountForm((current) =>
+                              current ? { ...current, photoSuspendedUntil: event.target.value } : current
+                            )
+                          }
+                          type="datetime-local"
+                          value={accountForm.photoSuspendedUntil}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="moderation-notice-text">User notice</label>
+                      <textarea
+                        className="input moderation-textarea"
+                        id="moderation-notice-text"
+                        onChange={(event) =>
+                          setAccountForm((current) =>
+                            current ? { ...current, moderationNotice: event.target.value } : current
+                          )
+                        }
+                        placeholder="Optional notice shown to the user"
+                        value={accountForm.moderationNotice}
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="moderation-notes-text">Moderator notes</label>
+                      <textarea
+                        className="input moderation-textarea"
+                        id="moderation-notes-text"
+                        onChange={(event) =>
+                          setAccountForm((current) =>
+                            current ? { ...current, moderationNotes: event.target.value } : current
+                          )
+                        }
+                        placeholder="Internal notes about this account"
+                        value={accountForm.moderationNotes}
+                      />
+                    </div>
+
+                    <div className="moderation-inline-actions moderation-wrap-actions">
+                      <button
+                        className="button"
+                        disabled={userModerationMutation.isPending}
+                        onClick={() => submitAccountModeration()}
+                        type="button"
+                      >
+                        {userModerationMutation.isPending ? 'Saving...' : 'Save account moderation'}
+                      </button>
+                      <button
+                        className="button ghost"
+                        disabled={userModerationMutation.isPending}
+                        onClick={() => submitAccountModeration('warn')}
+                        type="button"
+                      >
+                        Warn
+                      </button>
+                      <button
+                        className="button ghost"
+                        disabled={userModerationMutation.isPending}
+                        onClick={() => submitAccountModeration('restrict')}
+                        type="button"
+                      >
+                        Restrict
+                      </button>
+                      <button
+                        className="button ghost"
+                        disabled={userModerationMutation.isPending}
+                        onClick={() => submitAccountModeration('ban')}
+                        type="button"
+                      >
+                        Ban
+                      </button>
+                      <button
+                        className="button ghost"
+                        disabled={userModerationMutation.isPending}
+                        onClick={() => submitAccountModeration('restore')}
+                        type="button"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {workspaceTab === 'history' ? (
+                  <div className="tab-panel">
+                    <div className="tab-panel-heading">
+                      <h3>Open and resolved cases for this user</h3>
+                    </div>
+
+                    {orderedProfileCases.length === 0 ? (
+                      <div className="state-panel">
+                        <span className="text-muted">No moderation cases have been recorded for this user yet.</span>
+                      </div>
+                    ) : (
+                      <PaginatedCollection items={orderedProfileCases} itemsPerPage={10}>
+                        {(pageCases) => (
+                          <div className="inline-list">
+                            {pageCases.map((caseRecord) => (
+                              <ModerationCaseCard
+                                caseRecord={caseRecord}
+                                claimDisabled={claimCaseMutation.isPending && claimCaseMutation.variables === caseRecord.id}
+                                isFocused={focusedCase?.id === caseRecord.id}
+                                key={caseRecord.id}
+                                onFocusCase={() => setFocusedCaseId(caseRecord.id)}
+                                onClaim={() => claimCaseMutation.mutate(caseRecord.id)}
+                                onRelease={() => releaseCaseMutation.mutate(caseRecord.id)}
+                                releaseDisabled={releaseCaseMutation.isPending && releaseCaseMutation.variables === caseRecord.id}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </PaginatedCollection>
                     )}
-                  </PaginatedCollection>
-                )}
-              </section>
-            </div>
+                  </div>
+                ) : null}
+
+                {workspaceTab === 'feed' ? (
+                  <div className="tab-panel">
+                    <div className="tab-panel-heading">
+                      <h3>What the user sees in the app</h3>
+                    </div>
+
+                    {profileQuery.data.feedEntries.length === 0 ? (
+                      <div className="state-panel">
+                        <span className="text-muted">No feed entries found for this user.</span>
+                      </div>
+                    ) : (
+                      <PaginatedCollection items={profileQuery.data.feedEntries} itemsPerPage={8}>
+                        {(pageEntries) => (
+                          <div className="inline-list">
+                            {pageEntries.map((entry) => (
+                              <FeedEntryCard
+                                deletingKey={deletingKey}
+                                entry={entry}
+                                key={`${entry.contentType}:${entry.id}`}
+                                onDelete={() =>
+                                  requestDelete(
+                                    entry.contentType,
+                                    entry.id,
+                                    entry.contentType === 'visit' ? 'visit' : 'quick track',
+                                  )
+                                }
+                                onDeleteItem={(item) => requestDelete('food-item', item.id, 'visit item')}
+                                onModerate={() =>
+                                  openContentModeration({
+                                    contentType: entry.contentType,
+                                    recordId: entry.id,
+                                    title:
+                                      entry.contentType === 'visit'
+                                        ? entry.restaurantName || 'Visit'
+                                        : entry.itemName || 'Quick track',
+                                    subtitle: entry.contentType === 'visit' ? 'Visit entry' : 'Quick track entry',
+                                  })
+                                }
+                                onModerateItem={(item) =>
+                                  openContentModeration({
+                                    contentType: 'food-item',
+                                    recordId: item.id,
+                                    title: item.name,
+                                    subtitle: entry.restaurantName
+                                      ? `Visit item from ${entry.restaurantName}`
+                                      : 'Visit item',
+                                  })
+                                }
+                                onOpenCarousel={(photos, initialIndex) => {
+                                  setCarouselState({ photos, initialIndex });
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </PaginatedCollection>
+                    )}
+                  </div>
+                ) : null}
+
+                {workspaceTab === 'lists' ? (
+                  <div className="tab-panel">
+                    <div className="tab-panel-heading">
+                      <h3>Saved and shared list content</h3>
+                    </div>
+
+                    {profileQuery.data.restaurantLists.length === 0 ? (
+                      <div className="state-panel">
+                        <span className="text-muted">No restaurant lists found for this user.</span>
+                      </div>
+                    ) : (
+                      <PaginatedCollection items={profileQuery.data.restaurantLists} itemsPerPage={8}>
+                        {(pageLists) => (
+                          <div className="inline-list">
+                            {pageLists.map((list) => (
+                              <RestaurantListCard
+                                deletingKey={deletingKey}
+                                key={list.id}
+                                list={list}
+                                onDeleteItem={(item) => requestDelete('list-item', item.id, 'list item')}
+                                onDeleteList={() => requestDelete('list', list.id, 'list')}
+                                onModerateItem={(item) =>
+                                  openContentModeration({
+                                    contentType: 'list-item',
+                                    recordId: item.id,
+                                    title: item.restaurantName || 'List item',
+                                    subtitle: `Saved in ${list.name}`,
+                                  })
+                                }
+                                onModerateList={() =>
+                                  openContentModeration({
+                                    contentType: 'list',
+                                    recordId: list.id,
+                                    title: list.name,
+                                    subtitle: 'Restaurant list',
+                                  })
+                                }
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </PaginatedCollection>
+                    )}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </section>
         </>
       ) : null}

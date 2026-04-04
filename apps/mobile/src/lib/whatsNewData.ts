@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.18',
+    date: '2026-04-03',
+    title: 'Report Content & Moderation Visibility',
+    summary:
+      "You can now report visits and quick tracks from friends that violate community guidelines. Content that's been flagged for review will show an \"Under review\" badge so you know it's being looked at.",
+    features: [
+      'Report a friend\'s visit or quick track directly from the home feed — tap the "…" button and choose a reason (spam, harassment, hateful content, sexual content, violence, privacy issue, or other). You can also add optional notes.',
+      'Visits and quick tracks under moderation review now display an "Under review" badge on the home feed.',
+    ],
+    improvements: [
+      'Quick Track location is now a simple text field — type a place name or address. GPS coordinate capture has been removed.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.17',
     date: '2026-04-02',
     title: 'App Store Submission Ready',

@@ -1238,6 +1238,7 @@ select.input {
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .moderation-inline-actions-end {
@@ -1246,6 +1247,75 @@ select.input {
 
 .moderation-wrap-actions {
   margin-top: 10px;
+}
+
+.moderation-summary-row-top {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.moderation-meta-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.moderation-meta-block {
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.moderation-meta-block strong {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.moderation-review-workspace,
+.moderation-context-panel,
+.moderation-review-sidebar {
+  display: grid;
+  gap: 16px;
+}
+
+.moderation-case-switcher {
+  align-items: flex-start;
+}
+
+.moderation-review-grid {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.95fr);
+}
+
+.moderation-review-main {
+  min-width: 0;
+}
+
+.moderation-report-row {
+  gap: 10px;
+}
+
+.moderation-report-row p {
+  margin: 4px 0 0;
+}
+
+.moderation-photo-review-stage {
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 18px;
+  padding: 12px;
+}
+
+.moderation-review-image {
+  border-radius: 14px;
+  display: block;
+  max-height: 520px;
+  object-fit: contain;
+  width: 100%;
 }
 
 .moderation-form-grid {
@@ -1554,6 +1624,12 @@ select.input {
   word-break: break-word;
 }
 
+.moderation-case-card h3,
+.moderation-entry h3,
+.moderation-review-sidebar h3 {
+  line-height: 1.2;
+}
+
 .menu-item-editor {
   display: grid;
   gap: 12px;
@@ -1841,6 +1917,11 @@ select.input {
     grid-template-columns: 1fr;
   }
 
+  .moderation-meta-grid,
+  .moderation-review-grid {
+    grid-template-columns: 1fr;
+  }
+
   .moderation-modal-backdrop,
   .moderation-carousel-backdrop {
     padding: 12px;
@@ -1863,5 +1944,11 @@ select.input {
 
   .moderation-inline-actions {
     justify-content: flex-start;
+  }
+
+  .moderation-case-switcher {
+    overflow-x: auto;
+    padding-bottom: 4px;
+    flex-wrap: nowrap;
   }
 }

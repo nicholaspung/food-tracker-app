@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, StyleSheet, View } from 'react-native';
@@ -129,8 +128,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
-  const [isCapturingLocation, setIsCapturingLocation] = useState(false);
-  const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
   const [photoPermissionNeedsSettings, setPhotoPermissionNeedsSettings] = useState(false);
   const [didApplyNotePrefill, setDidApplyNotePrefill] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -243,58 +240,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       isMounted = false;
     };
   }, [applyPhotoCaptureDate]);
-
-  const handleCaptureLocation = async () => {
-    trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURE_STARTED', {
-      source: 'QuickTrackScreen',
-    });
-    setErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
-    setIsCapturingLocation(true);
-
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        trackObservabilityEvent('QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
-          source: 'QuickTrackScreen',
-        });
-        setLocationPermissionNeedsSettings(permission.canAskAgain === false);
-        setErrorMessage(
-          permission.canAskAgain === false
-            ? 'Location permission is blocked. Enable it in settings.'
-            : 'Location permission is required to capture your coordinates.',
-        );
-        return;
-      }
-
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const capturedLatitude = position.coords.latitude;
-      const capturedLongitude = position.coords.longitude;
-      const coordinateText = `${capturedLatitude.toFixed(6)}, ${capturedLongitude.toFixed(6)}`;
-
-      setForm((currentForm) => ({
-        ...currentForm,
-        latitude: capturedLatitude,
-        longitude: capturedLongitude,
-        locationText: coordinateText,
-      }));
-      trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURED', {
-        source: 'QuickTrackScreen',
-      });
-    } catch (error) {
-      trackObservabilityEvent('QUICK_TRACK_LOCATION_CAPTURE_FAILED', {
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        source: 'QuickTrackScreen',
-      });
-      setErrorMessage(error instanceof Error ? error.message : 'Could not capture your location.');
-    } finally {
-      setIsCapturingLocation(false);
-    }
-  };
 
   const handlePhotoPick = async (source: PhotoSource) => {
     trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_STARTED', {
@@ -571,22 +516,13 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
 
         <QuickTrackFormFields
           detectedDateValue={detectedItemDateValue}
-          disabled={isSubmitting}
-          isCapturingLocation={isCapturingLocation}
           isCategoryExpanded={isCategoryExpanded}
-          locationPermissionNeedsSettings={locationPermissionNeedsSettings}
-          onCaptureLocation={() => {
-            void handleCaptureLocation();
-          }}
           onCategoryExpandedChange={setIsCategoryExpanded}
           onChange={(updates) => {
             setForm((currentForm) => ({
               ...currentForm,
               ...updates,
             }));
-          }}
-          onOpenLocationSettings={() => {
-            void Linking.openSettings();
           }}
           photoSection={
             <>

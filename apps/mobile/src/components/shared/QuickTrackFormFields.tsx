@@ -5,8 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import type { QuickTrackFormValues } from '../../lib/quickTrackForm';
 import { QUICK_TRACK_CATEGORIES } from '../../lib/quickTrackForm';
 import { useTheme } from '../../theme';
-import { Button, Card, Input, Text } from '../../ui';
-import { CurrentLocationButton } from './CurrentLocationButton';
+import { Card, Input, Text } from '../../ui';
 import { OptionList, OptionListRow } from './OptionList';
 import { PhotoDetectedDateField } from './PhotoDetectedDateField';
 import { RatingLegend } from './RatingLegend';
@@ -20,13 +19,8 @@ interface QuickTrackFormFieldsProps {
   photoSection?: ReactNode;
   isCategoryExpanded: boolean;
   onCategoryExpandedChange: (expanded: boolean) => void;
-  onCaptureLocation?: () => void;
-  isCapturingLocation?: boolean;
-  locationPermissionNeedsSettings?: boolean;
-  onOpenLocationSettings?: () => void;
   ratingLegendInitiallyExpanded?: boolean;
   ratingTestIDPrefix?: string;
-  disabled?: boolean;
 }
 
 export function QuickTrackFormFields({
@@ -36,13 +30,8 @@ export function QuickTrackFormFields({
   photoSection,
   isCategoryExpanded,
   onCategoryExpandedChange,
-  onCaptureLocation,
-  isCapturingLocation = false,
-  locationPermissionNeedsSettings = false,
-  onOpenLocationSettings,
   ratingLegendInitiallyExpanded = false,
   ratingTestIDPrefix,
-  disabled = false,
 }: QuickTrackFormFieldsProps) {
   const theme = useTheme();
 
@@ -87,23 +76,10 @@ export function QuickTrackFormFields({
     categoryPlaceholder: {
       color: theme.colors.text.muted,
     },
-    locationRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    locationInput: {
-      flex: 1,
-    },
   });
 
   const selectedCategory = QUICK_TRACK_CATEGORIES.find((category) => category.value === value.category) ?? null;
   const selectedCategoryLabel = selectedCategory?.label ?? 'Select category';
-  const hasCapturedCoordinates =
-    typeof value.latitude === 'number' && typeof value.longitude === 'number';
-  const coordinateLabel = hasCapturedCoordinates
-    ? `${value.latitude!.toFixed(6)}, ${value.longitude!.toFixed(6)}`
-    : null;
 
   return (
     <>
@@ -217,41 +193,14 @@ export function QuickTrackFormFields({
           ) : null}
         </OptionList>
 
-        <Text variant="label">Location (Optional)</Text>
-        <View style={styles.locationRow}>
-          <Input
-            containerStyle={styles.locationInput}
-            onChangeText={(nextValue) => {
-              onChange({ locationText: nextValue });
-            }}
-            placeholder="e.g., Trader Joe's, Home Kitchen"
-            value={value.locationText}
-          />
-          {onCaptureLocation ? (
-            <CurrentLocationButton
-              accessibilityLabel="Capture current location"
-              captured={hasCapturedCoordinates}
-              loading={isCapturingLocation}
-              onPress={onCaptureLocation}
-              variant="icon"
-            />
-          ) : null}
-        </View>
-
-        {coordinateLabel ? (
-          <Text tone="success" variant="bodySm">
-            Location updated from GPS: {coordinateLabel}
-          </Text>
-        ) : null}
-
-        {locationPermissionNeedsSettings && onOpenLocationSettings ? (
-          <Button
-            disabled={disabled}
-            label="Open Settings"
-            onPress={onOpenLocationSettings}
-            variant="secondary"
-          />
-        ) : null}
+        <Input
+          label="Location (Optional)"
+          onChangeText={(nextValue) => {
+            onChange({ locationText: nextValue });
+          }}
+          placeholder="e.g., Trader Joe's, Home Kitchen"
+          value={value.locationText}
+        />
 
         <Input
           inputStyle={styles.notesInput}

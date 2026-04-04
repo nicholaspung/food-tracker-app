@@ -976,8 +976,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [isSearchingNearbyRestaurants, setIsSearchingNearbyRestaurants] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
-  const [isCapturingQuickTrackLocation, setIsCapturingQuickTrackLocation] = useState(false);
-  const [quickTrackLocationPermissionNeedsSettings, setQuickTrackLocationPermissionNeedsSettings] = useState(false);
   const [isQuickTrackCategoryExpanded, setIsQuickTrackCategoryExpanded] = useState(false);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [menuItemMode, setMenuItemMode] = useState<MenuItemMode>('existing');
@@ -1113,12 +1111,10 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   useEffect(() => {
     if (step !== 'process' || processType !== 'quickTrack') {
       setIsQuickTrackCategoryExpanded(false);
-      setQuickTrackLocationPermissionNeedsSettings(false);
       return;
     }
 
     setIsQuickTrackCategoryExpanded(false);
-    setQuickTrackLocationPermissionNeedsSettings(false);
   }, [currentPhoto?.id, processType, step]);
 
   const scrollProcessStepToTop = useCallback(() => {
@@ -1461,64 +1457,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         },
       };
     });
-  };
-
-  const handleCaptureCurrentQuickTrackLocation = async () => {
-    if (!currentPhoto) {
-      return;
-    }
-
-    trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_CAPTURE_STARTED', {
-      photoId: currentPhoto.id,
-      source: 'PhotoProcessingScreen',
-    });
-    setErrorMessage(null);
-    setQuickTrackLocationPermissionNeedsSettings(false);
-    setIsCapturingQuickTrackLocation(true);
-
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
-          photoId: currentPhoto.id,
-          source: 'PhotoProcessingScreen',
-        });
-        setQuickTrackLocationPermissionNeedsSettings(permission.canAskAgain === false);
-        setErrorMessage(
-          permission.canAskAgain === false
-            ? 'Location permission is blocked. Enable it in settings.'
-            : 'Location permission is required to capture your coordinates.',
-        );
-        return;
-      }
-
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const latitude = position.coords.latitude;
-      const longitude = position.coords.longitude;
-
-      updateCurrentQuickTrackForm({
-        latitude,
-        longitude,
-        locationText: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-      });
-      trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_CAPTURED', {
-        photoId: currentPhoto.id,
-        source: 'PhotoProcessingScreen',
-      });
-    } catch (error) {
-      trackObservabilityEvent('PHOTO_PROCESSING_QUICK_TRACK_LOCATION_CAPTURE_FAILED', {
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        photoId: currentPhoto.id,
-        source: 'PhotoProcessingScreen',
-      });
-      setErrorMessage(error instanceof Error ? error.message : 'Could not capture your location.');
-    } finally {
-      setIsCapturingQuickTrackLocation(false);
-    }
   };
 
   const dismissCurrentPhotoLocationHint = () => {
@@ -2537,8 +2475,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setNearbyResults([]);
               setSearchErrorMessage(null);
               setLocationPermissionNeedsSettings(false);
-              setIsCapturingQuickTrackLocation(false);
-              setQuickTrackLocationPermissionNeedsSettings(false);
               setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
               setMenuItemMode('existing');
@@ -2572,8 +2508,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setNearbyResults([]);
               setSearchErrorMessage(null);
               setLocationPermissionNeedsSettings(false);
-              setIsCapturingQuickTrackLocation(false);
-              setQuickTrackLocationPermissionNeedsSettings(false);
               setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
               setMenuItemMode('existing');
@@ -3085,17 +3019,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           <>
             <QuickTrackFormFields
               detectedDateValue={captureDateValue}
-              isCapturingLocation={isCapturingQuickTrackLocation}
               isCategoryExpanded={isQuickTrackCategoryExpanded}
-              locationPermissionNeedsSettings={quickTrackLocationPermissionNeedsSettings}
-              onCaptureLocation={() => {
-                void handleCaptureCurrentQuickTrackLocation();
-              }}
               onCategoryExpandedChange={setIsQuickTrackCategoryExpanded}
               onChange={updateCurrentQuickTrackForm}
-              onOpenLocationSettings={() => {
-                void Linking.openSettings();
-              }}
               value={
                 currentQuickTrackForm ??
                 buildDefaultQuickTrackForm({

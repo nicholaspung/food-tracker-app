@@ -1,3 +1,20 @@
+export type ModerationContentStatus =
+  | 'active'
+  | 'reviewed'
+  | 'under_review'
+  | 'hidden'
+  | 'removed'
+  | 'escalated';
+
+export type ContentReportReasonCode =
+  | 'spam'
+  | 'harassment'
+  | 'hate'
+  | 'sexual'
+  | 'violence'
+  | 'privacy'
+  | 'other';
+
 export interface VisitItem {
   id: string;
   name: string;
@@ -18,6 +35,7 @@ export interface VisitRecord {
   userId?: string;
   userName?: string;
   visibility?: 'friends' | 'private';
+  moderationStatus?: ModerationContentStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +52,7 @@ export interface QuickTrackRecord {
   userId?: string;
   userName?: string;
   visibility?: 'friends' | 'private';
+  moderationStatus?: ModerationContentStatus;
   itemDate?: string;
   createdAt: string;
   updatedAt: string;

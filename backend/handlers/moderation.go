@@ -190,7 +190,12 @@ func listModerationCases(
 }
 
 func serializeModerationCases(app core.App, records []*core.Record) ([]map[string]any, error) {
-	userIDs := make([]string, 0, len(records)*2)
+	reportRecords, err := findRecordsByRelationValues(app, "content_reports", "moderationCase", extractRecordIDs(records), "-updated,-created")
+	if err != nil {
+		return nil, err
+	}
+
+	userIDs := make([]string, 0, len(records)*2+len(reportRecords))
 	for _, record := range records {
 		if userID := strings.TrimSpace(record.GetString("targetUser")); userID != "" {
 			userIDs = append(userIDs, userID)
@@ -199,33 +204,43 @@ func serializeModerationCases(app core.App, records []*core.Record) ([]map[strin
 			userIDs = append(userIDs, adminID)
 		}
 	}
+	for _, reportRecord := range reportRecords {
+		if reporterID := strings.TrimSpace(reportRecord.GetString("reporter")); reporterID != "" {
+			userIDs = append(userIDs, reporterID)
+		}
+	}
 
 	users, err := findRecordsByIDs(app, "users", userIDs)
 	if err != nil {
 		return nil, err
 	}
 	usersByID := mapRecordsByID(users)
+	reportsByCaseID, latestReportedAtByCaseID := serializeCaseReports(reportRecords, usersByID)
 
 	result := make([]map[string]any, 0, len(records))
 	for _, record := range records {
 		targetUser := usersByID[record.GetString("targetUser")]
 		assignedAdmin := usersByID[record.GetString("assignedAdmin")]
+		caseReports := reportsByCaseID[record.Id]
 		result = append(result, map[string]any{
-			"id":              record.Id,
-			"targetType":      record.GetString("targetType"),
-			"targetRecordId":  record.GetString("targetRecordId"),
+			"id":               record.Id,
+			"targetType":       record.GetString("targetType"),
+			"targetRecordId":   record.GetString("targetRecordId"),
 			"targetCollection": record.GetString("targetCollection"),
-			"targetLabel":     record.GetString("targetLabel"),
-			"status":          record.GetString("status"),
-			"action":          record.GetString("action"),
-			"reasonCode":      record.GetString("reasonCode"),
-			"moderatorNote":   record.GetString("moderatorNote"),
-			"userNotice":      record.GetString("userNotice"),
-			"appealState":     record.GetString("appealState"),
-			"assignedAt":      record.GetString("assignedAt"),
-			"resolvedAt":      record.GetString("resolvedAt"),
-			"created":         record.GetString("created"),
-			"updated":         record.GetString("updated"),
+			"targetLabel":      record.GetString("targetLabel"),
+			"status":           record.GetString("status"),
+			"action":           record.GetString("action"),
+			"reasonCode":       record.GetString("reasonCode"),
+			"moderatorNote":    record.GetString("moderatorNote"),
+			"userNotice":       record.GetString("userNotice"),
+			"appealState":      record.GetString("appealState"),
+			"assignedAt":       record.GetString("assignedAt"),
+			"resolvedAt":       record.GetString("resolvedAt"),
+			"created":          record.GetString("created"),
+			"updated":          record.GetString("updated"),
+			"reportCount":      len(caseReports),
+			"latestReportedAt": latestReportedAtByCaseID[record.Id],
+			"reports":          caseReports,
 			"expand": map[string]any{
 				"targetUser":    serializeAdminUser(targetUser),
 				"assignedAdmin": serializeAdminUser(assignedAdmin),
@@ -234,4 +249,41 @@ func serializeModerationCases(app core.App, records []*core.Record) ([]map[strin
 	}
 
 	return result, nil
+}
+
+func serializeCaseReports(
+	records []*core.Record,
+	usersByID map[string]*core.Record,
+) (map[string][]map[string]any, map[string]string) {
+	reportsByCaseID := make(map[string][]map[string]any)
+	latestReportedAtByCaseID := make(map[string]string)
+
+	for _, record := range records {
+		caseID := strings.TrimSpace(record.GetString("moderationCase"))
+		if caseID == "" {
+			continue
+		}
+
+		reportedAt := strings.TrimSpace(record.GetString("updated"))
+		if reportedAt == "" {
+			reportedAt = strings.TrimSpace(record.GetString("created"))
+		}
+		if currentLatest := latestReportedAtByCaseID[caseID]; currentLatest == "" || reportedAt > currentLatest {
+			latestReportedAtByCaseID[caseID] = reportedAt
+		}
+
+		reporter := usersByID[record.GetString("reporter")]
+		reportsByCaseID[caseID] = append(reportsByCaseID[caseID], map[string]any{
+			"id":         record.Id,
+			"reasonCode": record.GetString("reasonCode"),
+			"notes":      record.GetString("notes"),
+			"created":    record.GetString("created"),
+			"updated":    record.GetString("updated"),
+			"expand": map[string]any{
+				"reporter": serializeAdminUser(reporter),
+			},
+		})
+	}
+
+	return reportsByCaseID, latestReportedAtByCaseID
 }

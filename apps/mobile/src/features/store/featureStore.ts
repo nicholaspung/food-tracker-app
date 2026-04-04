@@ -5,15 +5,18 @@ import { pb } from '../../lib/pocketbase';
 import { resolveEffectiveAdminFlag } from '../../lib/rolePreview';
 import { trackObservabilityEvent } from '../../observability';
 import { createLocalDomainStore } from './localDomainStore';
+import { sendApiRequest } from './pocketbaseGateway';
 import type {
   BillItemRecord,
   BillParticipantRecord,
   BillRecord,
+  ContentReportReasonCode,
   FeedbackMessageRecord,
   FeatureStore,
   FeedbackRecord,
   FriendRecord,
   FriendStatus,
+  ModerationContentStatus,
   NoteRecord,
   PhotoDraftAsset,
   PhotoProcessingDraft,
@@ -110,6 +113,19 @@ export interface UpdateRestaurantListInput {
 
 export interface ListRestaurantListsInput {
   scope?: 'my' | 'friends';
+}
+
+export interface ReportContentInput {
+  contentType: 'visit' | 'quick-track';
+  recordId: string;
+  reasonCode: ContentReportReasonCode;
+  notes?: string;
+}
+
+export interface ReportContentResult {
+  caseId: string;
+  reportId: string;
+  status: 'under_review';
 }
 
 export interface RestaurantListItemLinkRecord {
@@ -564,6 +580,7 @@ interface VisitCollectionRecord {
   user: string;
   visitDate: string;
   visibility?: 'friends' | 'private';
+  moderationStatus?: ModerationContentStatus;
   notes?: string;
   created: string;
   updated: string;
@@ -584,6 +601,7 @@ interface FoodItemCollectionRecord {
   user: string;
   isQuickTrack?: boolean;
   visibility?: 'friends' | 'private';
+  moderationStatus?: ModerationContentStatus;
   location_text?: string;
   latitude?: number;
   longitude?: number;
@@ -1164,6 +1182,7 @@ function mapVisitCollectionRecord(visit: VisitCollectionRecord, visitItems: Food
     userId: visit.user,
     userName: resolveExpandedUserName(visit.expand?.user),
     visibility: normalizeQuickTrackVisibility(visit.visibility),
+    moderationStatus: normalizeModerationContentStatus(visit.moderationStatus),
     createdAt: visit.created,
     updatedAt: visit.updated,
   };
@@ -1184,10 +1203,25 @@ function mapQuickTrackCollectionRecord(record: FoodItemCollectionRecord): QuickT
     userId: record.user,
     userName: resolveExpandedUserName(record.expand?.user),
     visibility: normalizeQuickTrackVisibility(record.visibility),
+    moderationStatus: normalizeModerationContentStatus(record.moderationStatus),
     itemDate: record.itemDate,
     createdAt: record.created,
     updatedAt: record.updated,
   };
+}
+
+function normalizeModerationContentStatus(value: unknown): ModerationContentStatus | undefined {
+  switch (value) {
+    case 'active':
+    case 'reviewed':
+    case 'under_review':
+    case 'hidden':
+    case 'removed':
+    case 'escalated':
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 function normalizeNoteStatus(status: unknown): NoteRecord['status'] {
@@ -3034,6 +3068,33 @@ export async function createFeedback(input: CreateFeedbackInput): Promise<Feedba
     {
       hasTitle: Boolean(input.title.trim()),
       descriptionLength: input.description.trim().length,
+    },
+  );
+}
+
+export async function reportContent(input: ReportContentInput): Promise<ReportContentResult> {
+  return trackFeatureMutation(
+    'content.report',
+    async () => {
+      const recordId = input.recordId.trim();
+      if (!recordId) {
+        throw new Error('Record ID is required.');
+      }
+
+      return sendApiRequest<ReportContentResult>('/api/content-reports', {
+        method: 'POST',
+        body: {
+          contentType: input.contentType,
+          recordId,
+          reasonCode: input.reasonCode,
+          notes: input.notes?.trim() || undefined,
+        },
+      });
+    },
+    {
+      contentType: input.contentType,
+      hasNotes: Boolean(input.notes?.trim()),
+      reasonCode: input.reasonCode,
     },
   );
 }

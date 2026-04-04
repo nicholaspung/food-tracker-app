@@ -19,7 +19,9 @@ import {
   HomeBetaVisitFeedCard,
   HomeFeedVisitEntryCard,
   PhotoViewerModal,
+  ReportContentModal,
   Skeleton,
+  StatusPill,
   TabRootScreenScaffold,
   type FeedModeValue,
   type FeedTypeFilterValue,
@@ -27,6 +29,7 @@ import {
 } from '../components/shared';
 import {
   buildPocketBaseFileUrl,
+  type ContentReportReasonCode,
   createFriendSuggestionAcceptance,
   deleteQuickTrack,
   deleteVisit,
@@ -34,6 +37,7 @@ import {
   listCollectionRecords,
   listQuickTracks,
   listVisits,
+  reportContent,
   type QuickTrackRecord,
   type VisitRecord,
 } from '../features';
@@ -81,6 +85,17 @@ interface QuickTrackFeedItem extends BaseFeedItem {
 
 type FeedItem = VisitFeedItem | QuickTrackFeedItem;
 type PendingDeleteTarget =
+  | {
+      id: string;
+      kind: 'visit';
+      itemName: string;
+    }
+  | {
+      id: string;
+      kind: 'quick-track';
+      itemName: string;
+    };
+type PendingReportTarget =
   | {
       id: string;
       kind: 'visit';
@@ -229,6 +244,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [pendingDeleteTarget, setPendingDeleteTarget] = useState<PendingDeleteTarget | null>(null);
   const [isDeletingTarget, setIsDeletingTarget] = useState(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+  const [pendingReportTarget, setPendingReportTarget] = useState<PendingReportTarget | null>(null);
+  const [reportReasonCode, setReportReasonCode] = useState<ContentReportReasonCode | null>(null);
+  const [reportNotes, setReportNotes] = useState('');
+  const [reportErrorMessage, setReportErrorMessage] = useState<string | null>(null);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const lastBetaLoadTriggerCountRef = useRef<number | null>(null);
   const effectiveFeedMode: FeedMode =
     !canViewBetaFeed && feedMode === 'beta' ? 'mine' : feedMode;
@@ -700,6 +720,67 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       setIsDeletingTarget(false);
     }
   }, [handleDeleteQuickTrack, handleDeleteVisit, isDeletingTarget, pendingDeleteTarget]);
+
+  const promptReportTarget = useCallback((target: PendingReportTarget) => {
+    setPendingReportTarget(target);
+    setReportReasonCode(null);
+    setReportNotes('');
+    setReportErrorMessage(null);
+  }, []);
+
+  const closeReportModal = useCallback(() => {
+    if (isSubmittingReport) {
+      return;
+    }
+
+    setPendingReportTarget(null);
+    setReportReasonCode(null);
+    setReportNotes('');
+    setReportErrorMessage(null);
+  }, [isSubmittingReport]);
+
+  const submitReport = useCallback(async () => {
+    if (!pendingReportTarget || !reportReasonCode || isSubmittingReport) {
+      return;
+    }
+
+    if (!isOnline) {
+      setReportErrorMessage('Connect to the internet to submit a report.');
+      return;
+    }
+
+    setReportErrorMessage(null);
+    setIsSubmittingReport(true);
+
+    try {
+      await queueWrite('content.report');
+      await reportContent({
+        contentType: pendingReportTarget.kind,
+        recordId: pendingReportTarget.id,
+        reasonCode: reportReasonCode,
+        notes: reportNotes.trim() || undefined,
+      });
+
+      closeReportModal();
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
+      await queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not submit report.';
+      setReportErrorMessage(message);
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  }, [
+    closeReportModal,
+    isOnline,
+    isSubmittingReport,
+    pendingReportTarget,
+    queryClient,
+    queueWrite,
+    reportNotes,
+    reportReasonCode,
+  ]);
 
   const handleSharePhoto = useCallback(
     ({
@@ -1692,6 +1773,17 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                             : undefined
                                         }
                                         onOpenPhotoViewer={openPhotoViewer}
+                                        onMoreActions={
+                                          feedItem.isFriend
+                                            ? () => {
+                                                promptReportTarget({
+                                                  id: visit.id,
+                                                  itemName: visit.restaurantName,
+                                                  kind: 'visit',
+                                                });
+                                              }
+                                            : undefined
+                                        }
                                         onSharePhoto={handleSharePhoto}
                                         onShareVisit={
                                           !feedItem.isFriend && showVisitShare
@@ -1700,6 +1792,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                               }
                                             : undefined
                                         }
+                                        moreActionsAccessibilityLabel="Report visit"
                                         restaurantMetaLabel={restaurantMeta}
                                         visit={visit}
                                       />
@@ -1738,6 +1831,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                                 </Text>
                                               </View>
                                             ) : null}
+                                            {!feedItem.isFriend && quickTrack.moderationStatus === 'under_review' ? (
+                                              <StatusPill label="Under review" tone="warning" />
+                                            ) : null}
                                             <View style={[styles.sourceBadge, styles.sourceBadgeQuickTrack]}>
                                               <Text style={[styles.sourceBadgeLabel, styles.sourceBadgeLabelQuickTrack]}>
                                                 Quick
@@ -1747,41 +1843,55 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                                         </View>
                                       </View>
 
-                                      {quickTrack.itemCategory || !feedItem.isFriend ? (
-                                        <View style={styles.quickTrackCategoryRow}>
-                                          {quickTrack.itemCategory ? (
-                                            <View style={styles.categoryBadge}>
-                                              <Text style={styles.categoryBadgeLabel}>
-                                                {formatCategoryLabel(quickTrack.itemCategory)}
-                                              </Text>
-                                            </View>
-                                          ) : (
-                                            <View />
-                                          )}
-                                          {!feedItem.isFriend ? (
-                                            <View style={styles.compactActions}>
-                                              <Pressable
-                                                accessibilityLabel="Edit quick track"
-                                                onPress={() => {
-                                                  navigation.navigate('EditQuickTrack', { quickTrackId: quickTrack.id });
-                                                }}
-                                                style={styles.compactActionButton}
-                                              >
-                                                <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
-                                              </Pressable>
-                                              <Pressable
-                                                accessibilityLabel="Delete quick track"
-                                                onPress={() => {
-                                                  promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
-                                                }}
-                                                style={[styles.compactActionButton, styles.compactActionDanger]}
-                                              >
-                                                <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
-                                              </Pressable>
-                                            </View>
-                                          ) : null}
-                                        </View>
-                                      ) : null}
+                                      <View style={styles.quickTrackCategoryRow}>
+                                        {quickTrack.itemCategory ? (
+                                          <View style={styles.categoryBadge}>
+                                            <Text style={styles.categoryBadgeLabel}>
+                                              {formatCategoryLabel(quickTrack.itemCategory)}
+                                            </Text>
+                                          </View>
+                                        ) : (
+                                          <View />
+                                        )}
+                                        {!feedItem.isFriend ? (
+                                          <View style={styles.compactActions}>
+                                            <Pressable
+                                              accessibilityLabel="Edit quick track"
+                                              onPress={() => {
+                                                navigation.navigate('EditQuickTrack', { quickTrackId: quickTrack.id });
+                                              }}
+                                              style={styles.compactActionButton}
+                                            >
+                                              <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
+                                            </Pressable>
+                                            <Pressable
+                                              accessibilityLabel="Delete quick track"
+                                              onPress={() => {
+                                                promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
+                                              }}
+                                              style={[styles.compactActionButton, styles.compactActionDanger]}
+                                            >
+                                              <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
+                                            </Pressable>
+                                          </View>
+                                        ) : (
+                                          <View style={styles.compactActions}>
+                                            <Pressable
+                                              accessibilityLabel="Report quick track"
+                                              onPress={() => {
+                                                promptReportTarget({
+                                                  id: quickTrack.id,
+                                                  itemName: quickTrack.itemName,
+                                                  kind: 'quick-track',
+                                                });
+                                              }}
+                                              style={styles.compactActionButton}
+                                            >
+                                              <Ionicons color={colors.textSecondary} name="ellipsis-horizontal" size={16} />
+                                            </Pressable>
+                                          </View>
+                                        )}
+                                      </View>
 
                                       <View style={[styles.foodItemRow, styles.foodItemRowQuickTrack]}>
                                         {quickTrackThumb ? (
@@ -1877,6 +1987,33 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         onRequestClose={closePhotoViewer}
         urls={photoViewerUrls}
         visible={photoViewerVisible}
+      />
+      <ReportContentModal
+        contentLabel={pendingReportTarget?.itemName?.trim() || (pendingReportTarget?.kind === 'visit' ? 'Visit' : 'Quick Track')}
+        contentType={pendingReportTarget?.kind ?? 'visit'}
+        errorMessage={reportErrorMessage}
+        isOnline={isOnline}
+        isSubmitting={isSubmittingReport}
+        notes={reportNotes}
+        onCancel={closeReportModal}
+        onChangeNotes={(value) => {
+          setReportNotes(value);
+          if (reportErrorMessage) {
+            setReportErrorMessage(null);
+          }
+        }}
+        onChangeReasonCode={(value) => {
+          setReportReasonCode(value);
+          if (reportErrorMessage) {
+            setReportErrorMessage(null);
+          }
+        }}
+        onSubmit={() => {
+          void submitReport();
+        }}
+        selectedReasonCode={reportReasonCode}
+        testID="home-report-content-modal"
+        visible={pendingReportTarget !== null}
       />
       <ConfirmDestructiveModal
         cancelLabel={pendingDeleteTarget?.kind === 'visit' ? 'Keep Visit' : 'Keep Quick Track'}

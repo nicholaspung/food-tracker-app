@@ -24,28 +24,28 @@ const (
 	ContentModerationModeNormal    = "normal"
 	ContentModerationModePreReview = "pre_review"
 
-	ModerationCaseStatusOpen               = "open"
-	ModerationCaseStatusUnderReview        = "under_review"
-	ModerationCaseStatusReviewed           = "reviewed"
-	ModerationCaseStatusHidden             = "hidden"
-	ModerationCaseStatusRemoved            = "removed"
-	ModerationCaseStatusRestored           = "restored"
-	ModerationCaseStatusEscalated          = "escalated"
+	ModerationCaseStatusOpen                 = "open"
+	ModerationCaseStatusUnderReview          = "under_review"
+	ModerationCaseStatusReviewed             = "reviewed"
+	ModerationCaseStatusHidden               = "hidden"
+	ModerationCaseStatusRemoved              = "removed"
+	ModerationCaseStatusRestored             = "restored"
+	ModerationCaseStatusEscalated            = "escalated"
 	ModerationCaseStatusRestrictedVisibility = "restricted_visibility"
-	ModerationCaseStatusWarned             = "warned"
-	ModerationCaseStatusRestricted         = "restricted"
-	ModerationCaseStatusBanned             = "banned"
+	ModerationCaseStatusWarned               = "warned"
+	ModerationCaseStatusRestricted           = "restricted"
+	ModerationCaseStatusBanned               = "banned"
 
-	ModerationActionMarkReviewed      = "mark_reviewed"
-	ModerationActionQuarantine        = "quarantine"
-	ModerationActionHide              = "hide"
-	ModerationActionRemove            = "remove"
-	ModerationActionRestore           = "restore"
-	ModerationActionEscalate          = "escalate"
+	ModerationActionMarkReviewed       = "mark_reviewed"
+	ModerationActionQuarantine         = "quarantine"
+	ModerationActionHide               = "hide"
+	ModerationActionRemove             = "remove"
+	ModerationActionRestore            = "restore"
+	ModerationActionEscalate           = "escalate"
 	ModerationActionRestrictVisibility = "restrict_visibility"
-	ModerationActionWarn              = "warn"
-	ModerationActionRestrict          = "restrict"
-	ModerationActionBan               = "ban"
+	ModerationActionWarn               = "warn"
+	ModerationActionRestrict           = "restrict"
+	ModerationActionBan                = "ban"
 
 	ModerationAppealStateNone      = "none"
 	ModerationAppealStateRequested = "requested"
@@ -54,18 +54,29 @@ const (
 )
 
 type ModerationCaseInput struct {
-	Action          string
-	AppealState     string
-	AssignedAdminID string
-	ModeratorNote   string
-	ReasonCode      string
-	Status          string
+	Action           string
+	AppealState      string
+	AssignedAdminID  string
+	ModeratorNote    string
+	ReasonCode       string
+	Status           string
 	TargetCollection string
-	TargetLabel     string
-	TargetRecordID  string
-	TargetType      string
-	TargetUserID    string
-	UserNotice      string
+	TargetLabel      string
+	TargetRecordID   string
+	TargetType       string
+	TargetUserID     string
+	UserNotice       string
+}
+
+type ContentReportInput struct {
+	ModerationCaseID string
+	Notes            string
+	ReasonCode       string
+	ReporterID       string
+	TargetCollection string
+	TargetRecordID   string
+	TargetType       string
+	TargetUserID     string
 }
 
 func IsVisibleContentModerationStatus(status string) bool {
@@ -145,7 +156,7 @@ func UpsertModerationCase(app core.App, input ModerationCaseInput) (*core.Record
 		"moderation_cases",
 		"targetType = {:targetType} && targetRecordId = {:targetRecordId}",
 		map[string]any{
-			"targetType":    targetType,
+			"targetType":     targetType,
 			"targetRecordId": targetRecordID,
 		},
 	)
@@ -182,6 +193,53 @@ func UpsertModerationCase(app core.App, input ModerationCaseInput) (*core.Record
 	} else {
 		record.Set("resolvedAt", "")
 	}
+
+	if err := app.Save(record); err != nil {
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func UpsertContentReport(app core.App, input ContentReportInput) (*core.Record, error) {
+	collection, err := app.FindCollectionByNameOrId("content_reports")
+	if err != nil {
+		return nil, err
+	}
+
+	reporterID := strings.TrimSpace(input.ReporterID)
+	targetType := strings.TrimSpace(input.TargetType)
+	targetRecordID := strings.TrimSpace(input.TargetRecordID)
+	if reporterID == "" || targetType == "" || targetRecordID == "" {
+		return nil, fmt.Errorf("reporter, target type, and target record id are required")
+	}
+
+	existing, err := app.FindFirstRecordByFilter(
+		"content_reports",
+		"reporter = {:reporter} && targetType = {:targetType} && targetRecordId = {:targetRecordId}",
+		map[string]any{
+			"reporter":       reporterID,
+			"targetType":     targetType,
+			"targetRecordId": targetRecordID,
+		},
+	)
+	if err != nil {
+		existing = nil
+	}
+
+	record := existing
+	if record == nil {
+		record = core.NewRecord(collection)
+		record.Set("reporter", reporterID)
+		record.Set("targetType", targetType)
+		record.Set("targetRecordId", targetRecordID)
+	}
+
+	record.Set("targetCollection", strings.TrimSpace(input.TargetCollection))
+	record.Set("targetUser", strings.TrimSpace(input.TargetUserID))
+	record.Set("moderationCase", strings.TrimSpace(input.ModerationCaseID))
+	record.Set("reasonCode", strings.TrimSpace(input.ReasonCode))
+	record.Set("notes", strings.TrimSpace(input.Notes))
 
 	if err := app.Save(record); err != nil {
 		return nil, err

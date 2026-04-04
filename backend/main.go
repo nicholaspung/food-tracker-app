@@ -75,6 +75,7 @@ func main() {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		// Register all API handlers
 		handlers.RegisterInviteCodeHandlers(se, app)
+		handlers.RegisterContentReportHandlers(se, app)
 		handlers.RegisterUserHandlers(se, app)
 		handlers.RegisterModerationHandlers(se, app)
 		handlers.RegisterFeedbackHandlers(se, app)

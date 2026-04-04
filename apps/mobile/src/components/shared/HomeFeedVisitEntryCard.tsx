@@ -8,6 +8,7 @@ import {
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { StatusPill } from './StatusPill';
 
 export interface HomeFeedPhotoRecord {
   id: string;
@@ -36,10 +37,13 @@ interface HomeFeedVisitEntryCardProps {
   onDelete?: () => void;
   onEdit?: () => void;
   onOpenPhotoViewer?: (photos: HomeFeedPhotoRecord[], initialIndex?: number) => void;
+  onMoreActions?: () => void;
   onSharePhoto?: (input: SharePhotoInput) => void;
   onShareVisit?: () => void;
+  moreActionsAccessibilityLabel?: string;
   editTestID?: string;
   deleteTestID?: string;
+  moreActionsTestID?: string;
 }
 
 function buildPhotoThumbnailUrl(photo: HomeFeedPhotoRecord): string {
@@ -66,10 +70,13 @@ export function HomeFeedVisitEntryCard({
   onDelete,
   onEdit,
   onOpenPhotoViewer,
+  onMoreActions,
   onSharePhoto,
   onShareVisit,
+  moreActionsAccessibilityLabel,
   editTestID,
   deleteTestID,
+  moreActionsTestID,
 }: HomeFeedVisitEntryCardProps) {
   const theme = useTheme();
 
@@ -262,7 +269,8 @@ export function HomeFeedVisitEntryCard({
     },
   });
 
-  const hasActions = Boolean(onShareVisit || onEdit || onDelete);
+  const hasActions = Boolean(onShareVisit || onEdit || onDelete || onMoreActions);
+  const showUnderReviewBadge = !friendName?.trim() && visit.moderationStatus === 'under_review';
 
   return (
     <View style={styles.entryCard}>
@@ -279,6 +287,7 @@ export function HomeFeedVisitEntryCard({
                 </Text>
               </View>
             ) : null}
+            {showUnderReviewBadge ? <StatusPill label="Under review" tone="warning" /> : null}
             <View style={styles.sourceBadge}>
               <Text style={styles.sourceBadgeLabel}>Visit</Text>
             </View>
@@ -324,6 +333,16 @@ export function HomeFeedVisitEntryCard({
                   testID={deleteTestID}
                 >
                   <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
+                </Pressable>
+              ) : null}
+              {onMoreActions ? (
+                <Pressable
+                  accessibilityLabel={moreActionsAccessibilityLabel ?? 'More actions'}
+                  onPress={onMoreActions}
+                  style={styles.compactActionButton}
+                  testID={moreActionsTestID}
+                >
+                  <Ionicons color={colors.textSecondary} name="ellipsis-horizontal" size={16} />
                 </Pressable>
               ) : null}
             </View>

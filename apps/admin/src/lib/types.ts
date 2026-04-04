@@ -250,9 +250,23 @@ export interface ModerationCase {
   resolvedAt?: string;
   created: string;
   updated: string;
+  reportCount?: number;
+  latestReportedAt?: string;
+  reports?: ModerationCaseReport[];
   expand?: {
     targetUser?: AdminUser;
     assignedAdmin?: AdminUser;
+  };
+}
+
+export interface ModerationCaseReport {
+  id: string;
+  reasonCode?: ModerationReasonCode;
+  notes?: string;
+  created: string;
+  updated: string;
+  expand?: {
+    reporter?: AdminUser;
   };
 }
 
