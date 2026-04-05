@@ -24,6 +24,7 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   formatDateToLocalDateString,
 } from '../lib/dateFormatting';
@@ -128,9 +129,18 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
-  const [photoPermissionNeedsSettings, setPhotoPermissionNeedsSettings] = useState(false);
   const [didApplyNotePrefill, setDidApplyNotePrefill] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const {
+    permissionNeedsSettings: photoPermissionNeedsSettings,
+    requestPermission: requestPhotoPickerPermission,
+    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
+  } = usePhotoPickerPermissions({
+    cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
+    cameraRequiredMessage: 'Camera permission is required to take a photo.',
+    galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
+    galleryRequiredMessage: 'Photo library permission is required to upload an image.',
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -247,7 +257,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       source: 'QuickTrackScreen',
     });
     setErrorMessage(null);
-    setPhotoPermissionNeedsSettings(false);
+    resetPhotoPermissionNeedsSettings();
 
     if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && estimatedFreePhotoRemaining === 0) {
       trackObservabilityEvent('USAGE_LIMIT_REACHED', {
@@ -263,23 +273,15 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     }
 
     try {
-      const permission =
-        source === 'camera'
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
+      const permission = await requestPhotoPickerPermission(source);
       if (!permission.granted) {
         trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
           canAskAgain: permission.canAskAgain,
           photoSource: source,
           source: 'QuickTrackScreen',
         });
-        setPhotoPermissionNeedsSettings(permission.canAskAgain === false);
-        throw new Error(
-          source === 'camera'
-            ? 'Camera permission is required to take a photo.'
-            : 'Photo library permission is required to upload an image.',
-        );
+        setErrorMessage(permission.message);
+        return;
       }
 
       const pickerResult =
@@ -332,6 +334,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         photoSource: source,
         source: 'QuickTrackScreen',
       });
+      resetPhotoPermissionNeedsSettings();
     } catch (error) {
       trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
         errorMessage: error instanceof Error ? error.message : String(error),

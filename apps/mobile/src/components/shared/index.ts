@@ -41,6 +41,7 @@ export * from './RoleBadge';
 export * from './ScreenHeader';
 export * from './SegmentedControl';
 export * from './SectionCard';
+export * from './SectionHeader';
 export * from './Skeleton';
 export * from './StaticContentSectionsScreen';
 export * from './StatusPill';

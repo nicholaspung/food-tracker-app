@@ -48,22 +48,92 @@ export const typographyTokens = {
   bodyLg: {
     fontSize: 16,
     lineHeight: 24,
-    fontWeight: "400",
+    fontWeight: '400',
+  },
+  bodyLgMedium: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: '500',
+  },
+  bodyLgBold: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  bodyLgTightMedium: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  bodyLgTightBold: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '700',
   },
   bodyMd: {
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: "400",
+    fontWeight: '400',
+  },
+  bodyMdMedium: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  bodyMdSemiBold: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  bodyMdBold: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
   },
   bodySm: {
     fontSize: 12,
     lineHeight: 18,
-    fontWeight: "400",
+    fontWeight: '400',
+  },
+  bodySmTight: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '400',
+  },
+  bodySmTightMedium: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+  bodySmTightSemiBold: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  bodySmTightBold: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
   },
   label: {
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "600",
+    fontWeight: '600',
+  },
+  labelStrong: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  labelMd: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  labelMdBold: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
   },
   sectionTitle: {
     fontSize: 18,
@@ -85,15 +155,30 @@ export const typographyTokens = {
     lineHeight: 16,
     fontWeight: '600',
   },
+  caption: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+  },
+  captionStrong: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
   meta: {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600',
   },
+  metaRegular: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '400',
+  },
   button: {
     fontSize: 16,
     lineHeight: 20,
-    fontWeight: "600",
+    fontWeight: '600',
   },
 } as const;
 
@@ -205,4 +290,4 @@ export const paletteTokens = {
 
 export type ThemeName = keyof typeof paletteTokens;
 
-export const defaultThemeName: ThemeName = "sunrise";
+export const defaultThemeName: ThemeName = 'sunrise';

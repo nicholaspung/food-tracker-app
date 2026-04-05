@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
@@ -17,6 +16,8 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
+import { parseCoordinateString } from '../lib/coordinates';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -69,21 +70,6 @@ interface ImagePickerModule {
 const CONTENT_MAX_LENGTH = 2000;
 const LOCATION_MAX_LENGTH = 200;
 const MAX_NOTE_PHOTOS = 20;
-
-function parseCoordinateString(value: string): { latitude: number; longitude: number } | null {
-  const match = value.trim().match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
-  if (!match) {
-    return null;
-  }
-
-  const latitude = Number(match[1]);
-  const longitude = Number(match[2]);
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-    return null;
-  }
-
-  return { latitude, longitude };
-}
 
 function inferMimeType(uri: string): string {
   const normalized = uri.toLowerCase();
@@ -147,7 +133,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPhotoSourcePickerOpen, setIsPhotoSourcePickerOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const {
+    captureLocation,
+    isCapturing: isGettingLocation,
+  } = useForegroundLocationCapture({
+    blockedPermissionMessage: 'Location permission is blocked. Enable it in device settings.',
+    defaultErrorMessage: 'Could not get current location.',
+    deniedPermissionMessage: 'Location permission is required to use GPS.',
+  });
 
   const existingPhotos = useMemo(() => {
     const deletedIds = new Set(photosToDelete);
@@ -334,44 +327,36 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     trackObservabilityEvent('NOTE_LOCATION_CAPTURE_STARTED', {
       source: 'NoteEditorScreen',
     });
-    setIsGettingLocation(true);
     setErrorMessage(null);
 
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        trackObservabilityEvent('NOTE_LOCATION_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
-          source: 'NoteEditorScreen',
-        });
-        setErrorMessage(
-          permission.canAskAgain === false
-            ? 'Location permission is blocked. Enable it in device settings.'
-            : 'Location permission is required to use GPS.',
-        );
-        return;
-      }
-
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      setLocationText(`${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`);
-      trackObservabilityEvent('NOTE_LOCATION_CAPTURED', {
+    const locationCapture = await captureLocation();
+    if (locationCapture.status === 'permission_denied') {
+      trackObservabilityEvent('NOTE_LOCATION_PERMISSION_DENIED', {
+        canAskAgain: locationCapture.canAskAgain,
         source: 'NoteEditorScreen',
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not get current location.';
-      trackObservabilityEvent('NOTE_LOCATION_CAPTURE_FAILED', {
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        source: 'NoteEditorScreen',
-      });
-      setErrorMessage(message);
-    } finally {
-      setIsGettingLocation(false);
+      setErrorMessage(locationCapture.message);
+      return;
     }
-  }, []);
+
+    if (locationCapture.status === 'error') {
+      trackObservabilityEvent('NOTE_LOCATION_CAPTURE_FAILED', {
+        errorMessage: locationCapture.message,
+        errorType:
+          locationCapture.error instanceof Error
+            ? locationCapture.error.name
+            : 'unknown_error',
+        source: 'NoteEditorScreen',
+      });
+      setErrorMessage(locationCapture.message);
+      return;
+    }
+
+    setLocationText(locationCapture.label);
+    trackObservabilityEvent('NOTE_LOCATION_CAPTURED', {
+      source: 'NoteEditorScreen',
+    });
+  }, [captureLocation]);
 
   const handleSave = useCallback(async () => {
     if (!content.trim()) {

@@ -10,6 +10,20 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.21',
+    date: '2026-04-04',
+    title: 'Polish & Under-the-Hood Improvements',
+    summary:
+      'This release focuses on code quality and visual consistency. Typography has been tightened up across the app, and Quick Track cards on the home feed now fully support the "Under review" badge and report/more-actions menu.',
+    features: [],
+    improvements: [
+      'Typography is now more consistent throughout the app — text sizes, weights, and line heights follow a unified design system.',
+      'Quick Track entries on the home feed now correctly show an "Under review" badge when flagged for moderation.',
+      'Quick Track entries on the home feed now show the "…" more-actions menu (matching the existing Visit card behaviour).',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.20',
     date: '2026-04-04',
     title: 'Reliability & Stability Improvements',

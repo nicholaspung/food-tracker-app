@@ -62,11 +62,9 @@ export function ScreenHeader({
     title: {
       color: theme.colors.text.primary,
       flexShrink: 1,
-      ...(isCompact ? theme.typography.titleMd : theme.typography.displayLg),
     },
     subtitle: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodyMd,
     },
     rightAccessory: {
       marginLeft: 'auto',
@@ -87,10 +85,16 @@ export function ScreenHeader({
             <Ionicons color={theme.colors.text.primary} name="chevron-back" size={isCompact ? 16 : 18} />
           </Pressable>
         ) : null}
-        <Text style={[styles.title, titleStyle]}>{title}</Text>
+        <Text style={[styles.title, titleStyle]} variant={isCompact ? 'titleMd' : 'displayLg'}>
+          {title}
+        </Text>
         {rightAccessory ? <View style={styles.rightAccessory}>{rightAccessory}</View> : null}
       </View>
-      {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}
+      {subtitle ? (
+        <Text style={[styles.subtitle, subtitleStyle]} tone="muted" variant="bodyMd">
+          {subtitle}
+        </Text>
+      ) : null}
     </View>
   );
 }

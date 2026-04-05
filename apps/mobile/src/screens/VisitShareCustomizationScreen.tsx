@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { buildPocketBaseFileUrl } from '../features';
-import { LoadingState } from '../components/shared';
+import { LoadingState, SectionHeader } from '../components/shared';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -177,14 +177,9 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
     },
     headerTitle: {
       color: theme.colors.text.inverse,
-      fontSize: 20,
-      fontWeight: '700',
-      lineHeight: 24,
     },
     headerSubtitle: {
       color: sharePalette.headerSubtitle,
-      fontSize: 13,
-      lineHeight: 18,
     },
     closeButton: {
       alignItems: 'center',
@@ -404,12 +399,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       paddingHorizontal: theme.spacing.md,
       paddingTop: theme.spacing.sm,
     },
-    sectionTitle: {
-      color: theme.colors.text.inverse,
-      fontSize: 13,
-      fontWeight: '600',
-      lineHeight: 18,
+    optionSectionHeader: {
       marginBottom: theme.spacing.xxs,
+    },
+    optionSectionTitle: {
       opacity: 0.9,
     },
     chipRow: {
@@ -432,17 +425,14 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
     },
     chipLabel: {
       color: sharePalette.chipLabel,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
+      ...theme.typography.bodySmTightSemiBold,
     },
     chipLabelActive: {
       color: theme.colors.text.inverse,
     },
     statusText: {
       color: sharePalette.statusText,
-      fontSize: 12,
-      lineHeight: 16,
+      ...theme.typography.bodySmTight,
       minHeight: 16,
       textAlign: 'center',
     },
@@ -462,8 +452,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: Math.max(theme.spacing.sm, insets.top + theme.spacing.xs) }]}>
         <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerTitle}>Share Visit</Text>
-          <Text numberOfLines={1} style={styles.headerSubtitle}>
+          <Text style={styles.headerTitle} variant="cardTitle">
+            Share Visit
+          </Text>
+          <Text numberOfLines={1} style={styles.headerSubtitle} variant="metaRegular">
             {previewItems.length} dish{previewItems.length === 1 ? '' : 'es'} from {restaurantName}
           </Text>
         </View>
@@ -697,7 +689,13 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
 
       <View style={[styles.optionPanel, { paddingBottom: Math.max(theme.spacing.sm, insets.bottom) }]}>
         <View>
-          <Text style={styles.sectionTitle}>Overlay style</Text>
+          <SectionHeader
+            style={styles.optionSectionHeader}
+            title="Overlay style"
+            titleStyle={styles.optionSectionTitle}
+            titleTone="inverse"
+            titleVariant="label"
+          />
           <View style={styles.chipRow}>
             {(['modern', 'rustic', 'minimal', 'neon'] as const).map((option) => {
               const isActive = shareTheme === option;
@@ -719,7 +717,13 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
         </View>
 
         <View>
-          <Text style={styles.sectionTitle}>Show overlays</Text>
+          <SectionHeader
+            style={styles.optionSectionHeader}
+            title="Show overlays"
+            titleStyle={styles.optionSectionTitle}
+            titleTone="inverse"
+            titleVariant="label"
+          />
           <View style={styles.chipRow}>
             {[
               { key: 'dish' as const, label: 'Dish Name', active: showDishNames, setValue: setShowDishNames },
@@ -739,7 +743,13 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
         </View>
 
         <View>
-          <Text style={styles.sectionTitle}>Show on badge</Text>
+          <SectionHeader
+            style={styles.optionSectionHeader}
+            title="Show on badge"
+            titleStyle={styles.optionSectionTitle}
+            titleTone="inverse"
+            titleVariant="label"
+          />
           <View style={styles.chipRow}>
             {[
               { key: 'rating' as const, label: 'Rating', active: showRating, setValue: setShowRating },

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { useTheme } from '../../theme';
 import { Card, ListItem, Text } from '../../ui';
+import { SectionHeader } from './SectionHeader';
 
 export interface DetailListItem {
   id: string;
@@ -23,10 +24,6 @@ export function DetailListScaffold({ title, subtitle, items, tone = 'default' }:
   const theme = useTheme();
 
   const styles = StyleSheet.create({
-    header: {
-      gap: theme.spacing.xxs,
-      marginBottom: theme.spacing.xs,
-    },
     rowValue: {
       flexShrink: 1,
       marginLeft: theme.spacing.sm,
@@ -36,10 +33,7 @@ export function DetailListScaffold({ title, subtitle, items, tone = 'default' }:
 
   return (
     <Card tone={tone}>
-      <View style={styles.header}>
-        <Text variant="label">{title}</Text>
-        {subtitle ? <Text tone="secondary">{subtitle}</Text> : null}
-      </View>
+      <SectionHeader description={subtitle} title={title} />
       {items.map((item) => (
         <ListItem
           key={item.id}

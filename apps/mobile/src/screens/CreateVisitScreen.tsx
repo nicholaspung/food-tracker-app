@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -51,6 +50,8 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
+import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   geocodeLocation,
   mergeRestaurantSearchResults,
@@ -306,7 +307,6 @@ export function CreateVisitScreen({
   );
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchingNearby, setIsSearchingNearby] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState("");
   const [menuReviewSubmitted, setMenuReviewSubmitted] = useState(false);
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
@@ -317,10 +317,6 @@ export function CreateVisitScreen({
     resolveDefaultVisitVisibility,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] =
-    useState(false);
-  const [photoPermissionNeedsSettings, setPhotoPermissionNeedsSettings] =
-    useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
@@ -330,6 +326,31 @@ export function CreateVisitScreen({
   const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
     null,
   );
+  const {
+    captureLocation,
+    isCapturing: isGettingLocation,
+    permissionNeedsSettings: locationPermissionNeedsSettings,
+    resetPermissionNeedsSettings: resetLocationPermissionNeedsSettings,
+  } = useForegroundLocationCapture({
+    blockedPermissionMessage:
+      "Location permission is blocked. Enable it in device settings.",
+    defaultErrorMessage: "Could not get current location.",
+    deniedPermissionMessage:
+      "Location permission is required to find nearby places.",
+  });
+  const {
+    permissionNeedsSettings: photoPermissionNeedsSettings,
+    requestPermission: requestPhotoPickerPermission,
+    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
+  } = usePhotoPickerPermissions({
+    cameraBlockedMessage:
+      "Camera permission is blocked. Enable it in device settings.",
+    cameraRequiredMessage: "Camera permission is required to take a photo.",
+    galleryBlockedMessage:
+      "Photo library permission is blocked. Enable it in device settings.",
+    galleryRequiredMessage:
+      "Photo library permission is required to upload an image.",
+  });
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
   const friendIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1006,7 +1027,7 @@ export function CreateVisitScreen({
     setNearbyResults([]);
     setSearchResults([]);
     setSearchErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
+    resetLocationPermissionNeedsSettings();
   };
 
   const scrollToRestaurantList = useCallback(() => {
@@ -1241,7 +1262,7 @@ export function CreateVisitScreen({
     setIsSearching(true);
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
+    resetLocationPermissionNeedsSettings();
     let didAttemptPlacesQuery = false;
 
     try {
@@ -1331,35 +1352,39 @@ export function CreateVisitScreen({
     });
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
-    setIsGettingLocation(true);
+    resetLocationPermissionNeedsSettings();
     let didAttemptPlacesQuery = false;
 
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        trackObservabilityEvent("CREATE_VISIT_LOCATION_PERMISSION_DENIED", {
-          canAskAgain: permission.canAskAgain,
-          source: "CreateVisitScreen",
-        });
-        setLocationPermissionNeedsSettings(permission.canAskAgain === false);
-        setSearchErrorMessage(
-          permission.canAskAgain === false
-            ? "Location permission is blocked. Enable it in device settings."
-            : "Location permission is required to find nearby places.",
-        );
-        return;
-      }
-
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+    const locationCapture = await captureLocation();
+    if (locationCapture.status === "permission_denied") {
+      trackObservabilityEvent("CREATE_VISIT_LOCATION_PERMISSION_DENIED", {
+        canAskAgain: locationCapture.canAskAgain,
+        source: "CreateVisitScreen",
       });
-      const coords = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      };
-      setReferenceCoords(coords);
+      setSearchErrorMessage(locationCapture.message);
+      return;
+    }
 
+    if (locationCapture.status === "error") {
+      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_FAILED", {
+        errorMessage: locationCapture.message,
+        errorType:
+          locationCapture.error instanceof Error
+            ? locationCapture.error.name
+            : "unknown_error",
+        source: "CreateVisitScreen",
+      });
+      setSearchErrorMessage(locationCapture.message);
+      return;
+    }
+
+    const coords = {
+      lat: locationCapture.coordinates.latitude,
+      lng: locationCapture.coordinates.longitude,
+    };
+    setReferenceCoords(coords);
+
+    try {
       setIsSearchingNearby(true);
       didAttemptPlacesQuery = true;
       const results = await searchAndCacheNearbyRestaurants({
@@ -1402,7 +1427,6 @@ export function CreateVisitScreen({
       });
       setSearchErrorMessage(message);
     } finally {
-      setIsGettingLocation(false);
       setIsSearchingNearby(false);
       if (didAttemptPlacesQuery) {
         await queryClient.invalidateQueries({
@@ -1467,7 +1491,7 @@ export function CreateVisitScreen({
       photoSource: source,
       source: "CreateVisitScreen",
     });
-    setPhotoPermissionNeedsSettings(false);
+    resetPhotoPermissionNeedsSettings();
 
     const targetItem = draftItems.find((item) => item.id === itemId);
     if (!targetItem) {
@@ -1492,28 +1516,14 @@ export function CreateVisitScreen({
       return;
     }
 
-    const permission =
-      source === "camera"
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
+    const permission = await requestPhotoPickerPermission(source);
     if (!permission.granted) {
-      const needsSettings = permission.canAskAgain === false;
       trackObservabilityEvent("CREATE_VISIT_PHOTO_PERMISSION_DENIED", {
         canAskAgain: permission.canAskAgain,
         photoSource: source,
         source: "CreateVisitScreen",
       });
-      setPhotoPermissionNeedsSettings(needsSettings);
-      setErrorMessage(
-        needsSettings
-          ? source === "camera"
-            ? "Camera permission is blocked. Enable it in device settings."
-            : "Photo library permission is blocked. Enable it in device settings."
-          : source === "camera"
-            ? "Camera permission is required to take a photo."
-            : "Photo library permission is required to upload an image.",
-      );
+      setErrorMessage(permission.message);
       return;
     }
 
@@ -1572,7 +1582,7 @@ export function CreateVisitScreen({
       photoSource: source,
       source: "CreateVisitScreen",
     });
-    setPhotoPermissionNeedsSettings(false);
+    resetPhotoPermissionNeedsSettings();
     setErrorMessage(null);
   };
 

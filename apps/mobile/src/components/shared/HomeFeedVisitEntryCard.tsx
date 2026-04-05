@@ -125,9 +125,7 @@ export function HomeFeedVisitEntryCard({
     entryTitle: {
       color: colors.textPrimary,
       flex: 1,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 22,
+      ...theme.typography.titleSm,
     },
     friendBadge: {
       backgroundColor: colors.accentSoft,
@@ -139,9 +137,7 @@ export function HomeFeedVisitEntryCard({
     },
     friendBadgeLabel: {
       color: colors.accent,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightBold,
     },
     sourceBadge: {
       backgroundColor: colors.screenBackground,
@@ -151,9 +147,7 @@ export function HomeFeedVisitEntryCard({
     },
     sourceBadgeLabel: {
       color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightBold,
       textTransform: 'uppercase',
     },
     restaurantMeta: {
@@ -220,9 +214,7 @@ export function HomeFeedVisitEntryCard({
     },
     photoCountText: {
       color: theme.colors.text.inverse,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
+      ...theme.typography.captionStrong,
     },
     foodItemContent: {
       flex: 1,
@@ -258,14 +250,11 @@ export function HomeFeedVisitEntryCard({
     },
     ratingLabel: {
       color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '500',
-      lineHeight: 16,
+      ...theme.typography.bodySmTightMedium,
     },
     entryMeta: {
       color: colors.textMuted,
-      ...theme.typography.bodySm,
-      lineHeight: 16,
+      ...theme.typography.bodySmTight,
     },
   });
 

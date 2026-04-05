@@ -2,10 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { buildPocketBaseFileUrl, type QuickTrackRecord } from '../../features';
+import { formatCoordinateText } from '../../lib/coordinates';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { useTheme } from '../../theme';
 import { Text } from '../../ui';
 import type { HomeFeedPhotoRecord } from './HomeFeedVisitEntryCard';
+import { StatusPill } from './StatusPill';
 
 interface SharePhotoInput {
   itemName: string;
@@ -22,36 +24,19 @@ interface HomeQuickTrackEntryCardProps {
   friendName?: string;
   onDelete?: () => void;
   onEdit?: () => void;
+  onMoreActions?: () => void;
   onOpenPhotoViewer?: (photos: HomeFeedPhotoRecord[], initialIndex?: number) => void;
   onSharePhoto?: (input: SharePhotoInput) => void;
+  moreActionsAccessibilityLabel?: string;
+  showUnderReviewBadge?: boolean;
 }
 
 function formatCategoryLabel(category: string): string {
   return category.replace(/_/g, ' ');
 }
 
-function parseCoordinateString(value: string): { latitude: number; longitude: number } | null {
-  const match = value.trim().match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
-  if (!match) {
-    return null;
-  }
-
-  const latitude = Number(match[1]);
-  const longitude = Number(match[2]);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  return { latitude, longitude };
-}
-
 function formatQuickTrackLocationLabel(value: string): string {
-  const coordinates = parseCoordinateString(value);
-  if (!coordinates) {
-    return value.trim();
-  }
-
-  return `${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)}`;
+  return formatCoordinateText(value, 4);
 }
 
 function buildPhotoThumbnailUrl(photo: HomeFeedPhotoRecord): string {
@@ -76,8 +61,11 @@ export function HomeQuickTrackEntryCard({
   friendName,
   onDelete,
   onEdit,
+  onMoreActions,
   onOpenPhotoViewer,
   onSharePhoto,
+  moreActionsAccessibilityLabel,
+  showUnderReviewBadge = false,
 }: HomeQuickTrackEntryCardProps) {
   const theme = useTheme();
 
@@ -116,9 +104,7 @@ export function HomeQuickTrackEntryCard({
     entryTitle: {
       color: colors.textPrimary,
       flex: 1,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 22,
+      ...theme.typography.titleSm,
     },
     entryTopRight: {
       alignItems: 'flex-end',
@@ -141,9 +127,7 @@ export function HomeQuickTrackEntryCard({
     },
     friendBadgeLabel: {
       color: colors.accent,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightBold,
     },
     sourceBadge: {
       backgroundColor: colors.accentSoft,
@@ -153,9 +137,7 @@ export function HomeQuickTrackEntryCard({
     },
     sourceBadgeLabel: {
       color: colors.accentSoftText,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightBold,
       textTransform: 'uppercase',
     },
     quickTrackCategoryRow: {
@@ -173,9 +155,7 @@ export function HomeQuickTrackEntryCard({
     },
     categoryBadgeLabel: {
       color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightSemiBold,
       textTransform: 'capitalize',
     },
     compactActions: {
@@ -224,9 +204,7 @@ export function HomeQuickTrackEntryCard({
     },
     photoCountText: {
       color: theme.colors.text.inverse,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
+      ...theme.typography.captionStrong,
     },
     foodItemContent: {
       flex: 1,
@@ -236,8 +214,7 @@ export function HomeQuickTrackEntryCard({
     },
     quickTrackMeta: {
       color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      lineHeight: 16,
+      ...theme.typography.bodySmTight,
     },
     quickTrackMetaInline: {
       flex: 1,
@@ -269,9 +246,7 @@ export function HomeQuickTrackEntryCard({
     },
     ratingLabel: {
       color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '500',
-      lineHeight: 16,
+      ...theme.typography.bodySmTightMedium,
     },
     ratingRow: {
       alignItems: 'center',
@@ -280,8 +255,7 @@ export function HomeQuickTrackEntryCard({
     },
     entryMeta: {
       color: colors.textMuted,
-      ...theme.typography.bodySm,
-      lineHeight: 16,
+      ...theme.typography.bodySmTight,
     },
   });
 
@@ -290,7 +264,7 @@ export function HomeQuickTrackEntryCard({
   const metaSource = quickTrack.locationText || quickTrack.restaurantName || '';
   const metaLabel = metaSource ? formatQuickTrackLocationLabel(metaSource) : '';
   const categoryLabel = quickTrack.itemCategory ? formatCategoryLabel(quickTrack.itemCategory) : null;
-  const showActions = Boolean(onEdit || onDelete);
+  const showActions = Boolean(onEdit || onDelete || onMoreActions);
 
   return (
     <View style={styles.entryCard}>
@@ -307,6 +281,7 @@ export function HomeQuickTrackEntryCard({
                 </Text>
               </View>
             ) : null}
+            {showUnderReviewBadge ? <StatusPill label="Under review" tone="warning" /> : null}
             <View style={styles.sourceBadge}>
               <Text style={styles.sourceBadgeLabel}>Quick</Text>
             </View>
@@ -337,6 +312,15 @@ export function HomeQuickTrackEntryCard({
                   style={[styles.compactActionButton, styles.compactActionDanger]}
                 >
                   <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
+                </Pressable>
+              ) : null}
+              {onMoreActions ? (
+                <Pressable
+                  accessibilityLabel={moreActionsAccessibilityLabel ?? 'More actions'}
+                  onPress={onMoreActions}
+                  style={styles.compactActionButton}
+                >
+                  <Ionicons color={colors.textSecondary} name="ellipsis-horizontal" size={16} />
                 </Pressable>
               ) : null}
             </View>

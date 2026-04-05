@@ -11,6 +11,7 @@ import {
   FeatureDetailScreenScaffold,
   PhotoViewerModal,
   RatingPill,
+  SectionHeader,
   Skeleton,
 } from '../components/shared';
 import {
@@ -529,9 +530,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     addBannerLabel: {
       color: theme.colors.button.primaryText,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 24,
+      ...theme.typography.bodyLgBold,
     },
     listCard: {
       gap: theme.spacing.sm,
@@ -551,15 +550,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     restaurantIndex: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodyLg,
-      fontWeight: '500',
-      lineHeight: 24,
+      ...theme.typography.bodyLgMedium,
     },
     restaurantTitle: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 24,
+      ...theme.typography.bodyLgBold,
     },
     locationRow: {
       alignItems: 'center',
@@ -576,12 +571,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       borderTopWidth: 1,
       gap: theme.spacing.xs,
       paddingTop: theme.spacing.sm,
-    },
-    sectionTitle: {
-      color: theme.colors.text.secondary,
-      fontSize: 13,
-      fontWeight: '700',
-      lineHeight: 18,
     },
     ownerItemCard: {
       backgroundColor: theme.colors.background.surface,
@@ -620,16 +609,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     itemPhotoCountText: {
       color: theme.colors.text.inverse,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 13,
+      ...theme.typography.bodySmTightBold,
     },
     ownerItemName: {
       color: theme.colors.text.primary,
       flex: 1,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 22,
+      ...theme.typography.titleSm,
     },
     ownerItemMetaRow: {
       alignItems: 'center',
@@ -686,15 +671,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     sourceUserText: {
       color: theme.colors.text.info,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightBold,
     },
     bookmarkedItemName: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyLg,
-      fontWeight: '500',
-      lineHeight: 20,
+      ...theme.typography.bodyLgTightMedium,
       flexShrink: 1,
     },
     metaDot: {
@@ -729,9 +710,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     iWentButtonLabel: {
       color: theme.colors.text.success,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightSemiBold,
     },
     reorderControls: {
       alignItems: 'center',
@@ -773,9 +752,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     noteText: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
       fontStyle: 'italic',
-      lineHeight: 20,
+      ...theme.typography.bodyMd,
     },
     ownerReviewRow: {
       alignItems: 'center',
@@ -790,9 +768,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     ownerReviewText: {
       color: theme.colors.text.info,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightSemiBold,
     },
     ownerReviewDate: {
       color: theme.colors.text.info,
@@ -814,19 +790,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     saveModalItemName: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 20,
+      ...theme.typography.bodyLgTightBold,
     },
     saveModalCaption: {
       color: theme.colors.text.secondary,
       ...theme.typography.label,
     },
-    saveListSectionTitle: {
-      color: theme.colors.text.secondary,
-      ...theme.typography.label,
-      fontWeight: '700',
-      lineHeight: 18,
+    saveListHeader: {
       marginTop: theme.spacing.xs,
     },
     saveListRows: {
@@ -863,9 +833,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     saveListName: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyMd,
-      fontWeight: '700',
-      lineHeight: 18,
+      ...theme.typography.labelMdBold,
     },
     saveListDescription: {
       color: theme.colors.text.muted,
@@ -873,9 +841,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     },
     saveListAlreadyLabel: {
       color: theme.colors.text.success,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 14,
+      ...theme.typography.bodySmTightSemiBold,
     },
     saveModalFooter: {
       marginTop: theme.spacing.sm,
@@ -1530,7 +1496,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                 </View>
 
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>{isOwner ? 'Bookmarked Items:' : 'Recommended Items:'}</Text>
+                  <SectionHeader
+                    title={isOwner ? 'Bookmarked Items' : 'Recommended Items'}
+                    titleTone="secondary"
+                  />
                   {group.items.length === 0 ? (
                     <Text style={styles.emptyItemsText}>No items added yet.</Text>
                   ) : isOwner ? (
@@ -1719,7 +1688,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
                 {group.notes.length > 0 ? (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Notes:</Text>
+                    <SectionHeader title="Notes" titleTone="secondary" />
                     {group.notes.map((note, noteIndex) => (
                       <Text key={`${group.restaurantId}-note-${noteIndex}`} style={styles.noteText}>
                         "{note}"
@@ -1852,7 +1821,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
         {nonDefaultLists.length > 0 ? (
           <>
-            <Text style={styles.saveListSectionTitle}>Or choose lists</Text>
+            <SectionHeader style={styles.saveListHeader} title="Or choose lists" titleTone="secondary" />
             <View style={styles.saveListRows}>
               {nonDefaultLists.map((targetList) => {
                 const alreadySavedInList = alreadySavedListIdsForTarget.has(targetList.id);
@@ -1897,7 +1866,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             </View>
           </>
         ) : (
-          <Text style={styles.saveListSectionTitle}>No additional lists yet. Use quick save or create a list.</Text>
+          <SectionHeader
+            style={styles.saveListHeader}
+            title="No additional lists yet. Use quick save or create a list."
+            titleTone="secondary"
+          />
         )}
 
         {!isOwner && myListsQuery.hasNextPage ? (

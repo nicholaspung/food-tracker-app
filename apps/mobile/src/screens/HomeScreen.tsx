@@ -1,12 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Image,
   Pressable,
   StyleSheet,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -17,10 +15,10 @@ import {
   HomeBetaQuickTrackFeedCard,
   HomeBetaVisitFeedCard,
   HomeFeedVisitEntryCard,
+  HomeQuickTrackEntryCard,
   PhotoViewerModal,
   ReportContentModal,
   Skeleton,
-  StatusPill,
   TabRootScreenScaffold,
   type FeedModeValue,
   type FeedTypeFilterValue,
@@ -42,13 +40,13 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { formatCoordinateText } from '../lib/coordinates';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import {
   clearPendingFriendSuggestion,
   getPendingFriendSuggestion,
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
-import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -182,28 +180,8 @@ function formatCategoryLabel(category: string): string {
   return category.replace(/_/g, ' ');
 }
 
-function parseCoordinateString(value: string): { latitude: number; longitude: number } | null {
-  const match = value.trim().match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
-  if (!match) {
-    return null;
-  }
-
-  const latitude = Number(match[1]);
-  const longitude = Number(match[2]);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  return { latitude, longitude };
-}
-
 function formatQuickTrackLocationLabel(value: string): string {
-  const coordinates = parseCoordinateString(value);
-  if (!coordinates) {
-    return value.trim();
-  }
-
-  return `${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)}`;
+  return formatCoordinateText(value, 4);
 }
 
 function formatEntryDateLabel(value: string): string {
@@ -1153,15 +1131,12 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     monthChevron: {
       color: colors.textMuted,
-      fontSize: 14,
-      fontWeight: '700',
+      ...theme.typography.labelMdBold,
       width: 12,
     },
     monthLabel: {
       color: colors.textPrimary,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 22,
+      ...theme.typography.titleSm,
     },
     monthCountWrap: {
       alignItems: 'flex-end',
@@ -1176,9 +1151,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     monthCountMeta: {
       color: colors.textMuted,
-      fontSize: 12,
-      fontWeight: '500',
-      lineHeight: 16,
+      ...theme.typography.bodySmTightMedium,
     },
     monthContent: {
       gap: theme.spacing.sm,
@@ -1196,278 +1169,20 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     dayChevron: {
       color: colors.textMuted,
-      fontSize: 12,
-      fontWeight: '700',
+      ...theme.typography.bodySmTightBold,
       width: 10,
     },
     dayLabel: {
       color: colors.textSecondary,
       flex: 1,
-      ...theme.typography.bodyMd,
-      fontWeight: '600',
-      lineHeight: 18,
+      ...theme.typography.labelMd,
     },
     dayCount: {
       color: colors.textMuted,
-      fontSize: 12,
-      fontWeight: '500',
-      lineHeight: 16,
+      ...theme.typography.bodySmTightMedium,
     },
     entries: {
       gap: theme.spacing.xs,
-    },
-    entryCard: {
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    entryCardQuickTrack: {
-      backgroundColor: colors.surface,
-    },
-    entryTopRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: theme.spacing.sm,
-    },
-    entryTopRight: {
-      alignItems: 'flex-end',
-      gap: theme.spacing.xs,
-    },
-    badgesRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-      justifyContent: 'flex-end',
-    },
-    entryTitle: {
-      color: colors.textPrimary,
-      flex: 1,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 22,
-    },
-    friendBadge: {
-      backgroundColor: colors.accentSoft,
-      borderColor: colors.accent,
-      borderRadius: 999,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    friendBadgeLabel: {
-      color: colors.accent,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 14,
-    },
-    restaurantMeta: {
-      color: colors.textMuted,
-      ...theme.typography.bodyMd,
-      lineHeight: 19,
-    },
-    restaurantMetaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-      marginTop: theme.spacing.xxs,
-    },
-    restaurantMetaInline: {
-      flex: 1,
-    },
-    sourceBadge: {
-      borderRadius: 999,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    sourceBadgeVisit: {
-      backgroundColor: colors.screenBackground,
-    },
-    sourceBadgeQuickTrack: {
-      backgroundColor: colors.accentSoft,
-    },
-    sourceBadgeLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '700',
-      lineHeight: 14,
-      textTransform: 'uppercase',
-    },
-    sourceBadgeLabelQuickTrack: {
-      color: colors.accentSoftText,
-    },
-    entryMeta: {
-      color: colors.textMuted,
-      ...theme.typography.bodySm,
-      lineHeight: 16,
-    },
-    compactActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    compactActionButton: {
-      alignItems: 'center',
-      borderColor: colors.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      height: 30,
-      justifyContent: 'center',
-      width: 30,
-    },
-    compactActionDanger: {
-      borderColor: colors.dangerBorder,
-    },
-    compactActionLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 16,
-    },
-    foodItemsList: {
-      gap: theme.spacing.xs,
-    },
-    foodItemRow: {
-      alignItems: 'flex-start',
-      backgroundColor: colors.screenBackground,
-      borderRadius: 10,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      padding: theme.spacing.xs,
-    },
-    foodItemRowQuickTrack: {
-      backgroundColor: colors.surface,
-    },
-    photoWrap: {
-      position: 'relative',
-    },
-    photoThumb: {
-      backgroundColor: colors.borderSubtle,
-      borderRadius: 8,
-      height: 56,
-      width: 56,
-    },
-    photoCountBadge: {
-      alignItems: 'center',
-      backgroundColor: colors.shadow,
-      borderRadius: theme.radii.pill,
-      justifyContent: 'center',
-      minWidth: 20,
-      paddingHorizontal: 4,
-      position: 'absolute',
-      left: 2,
-      top: 2,
-    },
-    photoCountText: {
-      color: theme.colors.text.inverse,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
-    },
-    foodItemContent: {
-      flex: 1,
-      gap: 2,
-      minHeight: 56,
-      justifyContent: 'center',
-    },
-    foodItemName: {
-      color: colors.textPrimary,
-      ...theme.typography.button,
-    },
-    quickTrackMeta: {
-      color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      lineHeight: 16,
-    },
-    quickTrackMetaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    quickTrackMetaInline: {
-      flex: 1,
-    },
-    quickTrackLocationIcon: {
-      marginTop: 1,
-    },
-    quickTrackCategoryRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: -4,
-    },
-    foodItemNotes: {
-      color: colors.textMuted,
-      ...theme.typography.label,
-      fontStyle: 'italic',
-      lineHeight: 18,
-    },
-    foodItemRight: {
-      alignItems: 'flex-end',
-      gap: 6,
-      minHeight: 56,
-      justifyContent: 'center',
-    },
-    ratingRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 6,
-    },
-    ratingDot: {
-      borderRadius: theme.radii.pill,
-      height: 10,
-      width: 10,
-    },
-    ratingLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '500',
-      lineHeight: 16,
-    },
-    categoryBadge: {
-      alignSelf: 'flex-start',
-      backgroundColor: colors.screenBackground,
-      borderRadius: 999,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    categoryBadgeLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 14,
-      textTransform: 'capitalize',
-    },
-    entryActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      marginTop: theme.spacing.xxs,
-    },
-    entryActionButton: {
-      alignItems: 'center',
-      borderColor: colors.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flex: 1,
-      justifyContent: 'center',
-      minHeight: 34,
-    },
-    entryActionDanger: {
-      borderColor: colors.dangerBorder,
-    },
-    entryActionLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.bodyMd,
-      fontWeight: '600',
-      lineHeight: 18,
-    },
-    entryActionDangerLabel: {
-      color: colors.dangerText,
     },
     infoCard: {
       backgroundColor: colors.surface,
@@ -1479,9 +1194,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     infoTitle: {
       color: colors.textPrimary,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 24,
+      ...theme.typography.bodyLgBold,
     },
     infoDescription: {
       color: colors.textSecondary,
@@ -1508,21 +1221,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       backgroundColor: colors.accent,
       borderColor: colors.accent,
     },
-    quickActionDanger: {
-      borderColor: colors.dangerBorder,
-    },
     quickActionLabel: {
       color: colors.textPrimary,
-      ...theme.typography.bodyMd,
-      fontWeight: '600',
-      lineHeight: 18,
+      ...theme.typography.labelMd,
       textAlign: 'center',
     },
     quickActionPrimaryLabel: {
       color: theme.colors.text.inverse,
-    },
-    quickActionDangerLabel: {
-      color: colors.dangerText,
     },
   });
 
@@ -1886,171 +1591,48 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
                                   const quickTrack = feedItem.quickTrack;
                                   const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
-                                  const quickTrackPhoto = quickTrackPhotos[0];
-                                  const quickTrackThumb = quickTrackPhoto
-                                    ? buildPocketBaseFileUrl({
-                                        collectionId: quickTrackPhoto.collectionId,
-                                        collectionName: quickTrackPhoto.collectionName ?? 'visit_photos',
-                                        recordId: quickTrackPhoto.id,
-                                        filename: quickTrackPhoto.photo,
-                                        thumb: '100x100',
-                                      })
-                                    : null;
-                                  const quickTrackMetaSource =
-                                    quickTrack.locationText || quickTrack.restaurantName || '';
-                                  const quickTrackMeta = quickTrackMetaSource || 'Quick Track';
-                                  const quickTrackMetaLabel = formatQuickTrackLocationLabel(quickTrackMetaSource);
 
                                   return (
-                                    <View key={feedItem.id} style={[styles.entryCard, styles.entryCardQuickTrack]}>
-                                      <View style={styles.entryTopRow}>
-                                        <Text numberOfLines={2} style={styles.entryTitle}>
-                                          {quickTrack.itemName}
-                                        </Text>
-                                        <View style={styles.entryTopRight}>
-                                          <View style={styles.badgesRow}>
-                                            {feedItem.isFriend && feedItem.friendName ? (
-                                              <View style={styles.friendBadge}>
-                                                <Text numberOfLines={1} style={styles.friendBadgeLabel}>
-                                                  {feedItem.friendName}
-                                                </Text>
-                                              </View>
-                                            ) : null}
-                                            {!feedItem.isFriend && quickTrack.moderationStatus === 'under_review' ? (
-                                              <StatusPill label="Under review" tone="warning" />
-                                            ) : null}
-                                            <View style={[styles.sourceBadge, styles.sourceBadgeQuickTrack]}>
-                                              <Text style={[styles.sourceBadgeLabel, styles.sourceBadgeLabelQuickTrack]}>
-                                                Quick
-                                              </Text>
-                                            </View>
-                                          </View>
-                                        </View>
-                                      </View>
-
-                                      <View style={styles.quickTrackCategoryRow}>
-                                        {quickTrack.itemCategory ? (
-                                          <View style={styles.categoryBadge}>
-                                            <Text style={styles.categoryBadgeLabel}>
-                                              {formatCategoryLabel(quickTrack.itemCategory)}
-                                            </Text>
-                                          </View>
-                                        ) : (
-                                          <View />
-                                        )}
-                                        {!feedItem.isFriend ? (
-                                          <View style={styles.compactActions}>
-                                            <Pressable
-                                              accessibilityLabel="Edit quick track"
-                                              onPress={() => {
-                                                navigation.navigate('EditQuickTrack', { quickTrackId: quickTrack.id });
-                                              }}
-                                              style={styles.compactActionButton}
-                                            >
-                                              <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
-                                            </Pressable>
-                                            <Pressable
-                                              accessibilityLabel="Delete quick track"
-                                              onPress={() => {
-                                                promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
-                                              }}
-                                              style={[styles.compactActionButton, styles.compactActionDanger]}
-                                            >
-                                              <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
-                                            </Pressable>
-                                          </View>
-                                        ) : (
-                                          <View style={styles.compactActions}>
-                                            <Pressable
-                                              accessibilityLabel="Report quick track"
-                                              onPress={() => {
-                                                promptReportTarget({
-                                                  id: quickTrack.id,
-                                                  itemName: quickTrack.itemName,
-                                                  kind: 'quick-track',
-                                                });
-                                              }}
-                                              style={styles.compactActionButton}
-                                            >
-                                              <Ionicons color={colors.textSecondary} name="ellipsis-horizontal" size={16} />
-                                            </Pressable>
-                                          </View>
-                                        )}
-                                      </View>
-
-                                      <View style={[styles.foodItemRow, styles.foodItemRowQuickTrack]}>
-                                        {quickTrackThumb ? (
-                                          <Pressable
-                                            accessibilityLabel={`View photos for ${quickTrack.itemName}`}
-                                            onPress={() => {
-                                              openPhotoViewer(quickTrackPhotos);
-                                            }}
-                                            style={styles.photoWrap}
-                                          >
-                                            <Image source={{ uri: quickTrackThumb }} style={styles.photoThumb} />
-                                            {quickTrackPhotos.length > 1 ? (
-                                              <View style={styles.photoCountBadge}>
-                                                <Text style={styles.photoCountText}>+{quickTrackPhotos.length - 1}</Text>
-                                              </View>
-                                            ) : null}
-                                          </Pressable>
-                                        ) : null}
-
-                                        <View style={styles.foodItemContent}>
-                                          {quickTrackMetaSource ? (
-                                            <View style={styles.quickTrackMetaRow}>
-                                              <Ionicons
-                                                color={colors.textMuted}
-                                                name="location-outline"
-                                                size={12}
-                                                style={styles.quickTrackLocationIcon}
-                                              />
-                                              <Text numberOfLines={1} style={[styles.quickTrackMeta, styles.quickTrackMetaInline]}>
-                                                {quickTrackMetaLabel}
-                                              </Text>
-                                            </View>
-                                          ) : null}
-                                          {quickTrack.notes ? (
-                                            <Text numberOfLines={2} style={styles.foodItemNotes}>
-                                              "{quickTrack.notes}"
-                                            </Text>
-                                          ) : null}
-                                        </View>
-
-                                        <View style={styles.foodItemRight}>
-                                          <View style={styles.ratingRow}>
-                                            <View
-                                              style={[
-                                                styles.ratingDot,
-                                                { backgroundColor: getRatingColor(theme, quickTrack.rating) },
-                                              ]}
-                                            />
-                                            <Text style={styles.ratingLabel}>{getRatingLabel(quickTrack.rating)}</Text>
-                                          </View>
-                                          {quickTrackPhoto ? (
-                                            <Pressable
-                                              accessibilityLabel={`Share ${quickTrack.itemName}`}
-                                              onPress={() => {
-                                                handleSharePhoto({
-                                                  itemName: quickTrack.itemName,
-                                                  photo: quickTrackPhoto,
-                                                  rating: quickTrack.rating,
-                                                  restaurantName: quickTrackMeta,
-                                                  visitDate: quickTrack.itemDate || quickTrack.createdAt,
-                                                });
-                                              }}
-                                              style={styles.compactActionButton}
-                                            >
-                                              <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
-                                            </Pressable>
-                                          ) : null}
-                                        </View>
-                                      </View>
-
-                                      <Text style={styles.entryMeta}>
-                                        {timeLabel}
-                                      </Text>
-                                    </View>
+                                    <HomeQuickTrackEntryCard
+                                      entryMeta={timeLabel}
+                                      friendName={feedItem.isFriend ? feedItem.friendName : undefined}
+                                      key={feedItem.id}
+                                      moreActionsAccessibilityLabel="Report quick track"
+                                      onDelete={
+                                        !feedItem.isFriend
+                                          ? () => {
+                                              promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
+                                            }
+                                          : undefined
+                                      }
+                                      onEdit={
+                                        !feedItem.isFriend
+                                          ? () => {
+                                              navigation.navigate('EditQuickTrack', {
+                                                quickTrackId: quickTrack.id,
+                                              });
+                                            }
+                                          : undefined
+                                      }
+                                      onMoreActions={
+                                        feedItem.isFriend
+                                          ? () => {
+                                              promptReportTarget({
+                                                id: quickTrack.id,
+                                                itemName: quickTrack.itemName,
+                                                kind: 'quick-track',
+                                              });
+                                            }
+                                          : undefined
+                                      }
+                                      onOpenPhotoViewer={openPhotoViewer}
+                                      onSharePhoto={handleSharePhoto}
+                                      photos={quickTrackPhotos}
+                                      quickTrack={quickTrack}
+                                      showUnderReviewBadge={
+                                        !feedItem.isFriend && quickTrack.moderationStatus === 'under_review'
+                                      }
+                                    />
                                   );
                                 })}
                               </View>

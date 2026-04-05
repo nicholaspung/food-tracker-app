@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
@@ -29,6 +28,8 @@ import {
   isValidLocalDate,
   localDateStringToUTC,
 } from '../lib/dateFormatting';
+import { formatCoordinateLabel } from '../lib/coordinates';
+import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -92,10 +93,18 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
   const [latitude, setLatitude] = useState<number | undefined>(undefined);
   const [longitude, setLongitude] = useState<number | undefined>(undefined);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
-  const [isCapturingLocation, setIsCapturingLocation] = useState(false);
-  const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    captureLocation,
+    isCapturing: isCapturingLocation,
+    permissionNeedsSettings: locationPermissionNeedsSettings,
+    resetPermissionNeedsSettings: resetLocationPermissionNeedsSettings,
+  } = useForegroundLocationCapture({
+    blockedPermissionMessage: 'Location permission is blocked. Enable it in settings.',
+    defaultErrorMessage: 'Could not capture your location.',
+    deniedPermissionMessage: 'Location permission is required to capture your coordinates.',
+  });
 
   useEffect(() => {
     if (!quickTrackQuery.data) {
@@ -178,7 +187,7 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
   const hasCapturedCoordinates =
     typeof latitude === 'number' && typeof longitude === 'number';
   const coordinateLabel = hasCapturedCoordinates
-    ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+    ? formatCoordinateLabel({ latitude, longitude }, 6)
     : null;
 
   const handleVisibilityChange = (value: VisibilityOptionValue) => {
@@ -193,50 +202,36 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       quickTrackId,
     });
     setErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
-    setIsCapturingLocation(true);
+    resetLocationPermissionNeedsSettings();
 
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
-          source: 'EditQuickTrackScreen',
-          quickTrackId,
-        });
-        setLocationPermissionNeedsSettings(permission.canAskAgain === false);
-        setErrorMessage(
-          permission.canAskAgain === false
-            ? 'Location permission is blocked. Enable it in settings.'
-            : 'Location permission is required to capture your coordinates.',
-        );
-        return;
-      }
-
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const capturedLatitude = position.coords.latitude;
-      const capturedLongitude = position.coords.longitude;
-
-      setLatitude(capturedLatitude);
-      setLongitude(capturedLongitude);
-      setLocationText(`${capturedLatitude.toFixed(6)}, ${capturedLongitude.toFixed(6)}`);
-      trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURED', {
+    const locationCapture = await captureLocation();
+    if (locationCapture.status === 'permission_denied') {
+      trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
+        canAskAgain: locationCapture.canAskAgain,
         source: 'EditQuickTrackScreen',
         quickTrackId,
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not capture your location.';
-      setErrorMessage(message);
+      setErrorMessage(locationCapture.message);
+      return;
+    }
+
+    if (locationCapture.status === 'error') {
+      setErrorMessage(locationCapture.message);
       trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURE_FAILED', {
         source: 'EditQuickTrackScreen',
         quickTrackId,
-        error: message,
+        error: locationCapture.message,
       });
-    } finally {
-      setIsCapturingLocation(false);
+      return;
     }
+
+    setLatitude(locationCapture.coordinates.latitude);
+    setLongitude(locationCapture.coordinates.longitude);
+    setLocationText(locationCapture.label);
+    trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURED', {
+      source: 'EditQuickTrackScreen',
+      quickTrackId,
+    });
   };
 
   const handleSave = async () => {
