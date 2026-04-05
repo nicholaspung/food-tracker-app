@@ -124,9 +124,6 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
     },
     overlayTitle: {
       color: theme.colors.text.primary,
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 22,
     },
     overlayText: {
       color: theme.colors.text.secondary,
@@ -275,7 +272,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
             />
             <View pointerEvents="box-none" style={styles.overlay}>
               <View style={styles.overlayTopCard}>
-                <Text style={styles.overlayTitle}>Scan friend QR code</Text>
+                <Text style={styles.overlayTitle} variant="sectionTitleTight">Scan friend QR code</Text>
                 <Text style={styles.overlayText}>
                   Point your camera at the invite QR. A valid code will be detected and sent automatically.
                 </Text>

@@ -49,15 +49,15 @@ export function RatingPill({
     },
     text: {
       color: textColor,
-      fontSize: size === 'md' ? 12 : 10,
-      fontWeight: '700',
-      lineHeight: size === 'md' ? 16 : 14,
     },
   });
 
   return (
     <View style={[styles.pill, style]}>
-      <Text style={[styles.text, labelStyle]}>
+      <Text
+        style={[styles.text, labelStyle]}
+        variant={size === 'md' ? 'bodySmTightBold' : 'microStrong'}
+      >
         {String(label ?? getRatingLabel(rating))}
       </Text>
     </View>

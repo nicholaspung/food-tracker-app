@@ -153,21 +153,8 @@ export function VisibilityOptionSelector({
       shadowRadius: 1,
     },
     segmentedOptionLabel: {
-      fontSize: isPersonalSegmentedLayout ? 14 : 13,
-      fontWeight: '600',
-      lineHeight: isPersonalSegmentedLayout ? 18 : 18,
       flexShrink: 1,
       minWidth: 0,
-    },
-    segmentedOptionLabelCompact: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
-    segmentedOptionLabelActive: {
-      fontWeight: '700',
-    },
-    segmentedOptionLabelInactive: {
-      color: theme.colors.text.secondary,
     },
     cardOption: {
       backgroundColor: theme.colors.background.surface,
@@ -218,14 +205,9 @@ export function VisibilityOptionSelector({
     },
     cardLabel: {
       color: theme.colors.text.primary,
-      fontSize: 15,
-      fontWeight: '700',
-      lineHeight: 20,
     },
     cardDescription: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
-      lineHeight: 18,
     },
   });
 
@@ -258,6 +240,17 @@ export function VisibilityOptionSelector({
         const optionDescription = optionDescriptions?.[option];
         const optionBadgeLabel = optionBadgeLabels?.[option];
         const optionBadgeTone = optionBadgeTones?.[option] ?? 'info';
+        const segmentedLabelVariant = isCompactLayout
+          ? isActive
+            ? 'bodySmTightBold'
+            : 'bodySmTightSemiBold'
+          : isPersonalSegmentedLayout
+            ? isActive
+              ? 'labelMdBold'
+              : 'labelMd'
+            : isActive
+              ? 'labelStrong'
+              : 'label';
 
         if (isSegmentedVariant) {
           return (
@@ -291,12 +284,11 @@ export function VisibilityOptionSelector({
               <Text
                 style={[
                   styles.segmentedOptionLabel,
-                  isCompactLayout ? styles.segmentedOptionLabelCompact : null,
-                  isActive ? styles.segmentedOptionLabelActive : styles.segmentedOptionLabelInactive,
                   { color: optionTextColor },
                 ]}
                 ellipsizeMode="tail"
                 numberOfLines={1}
+                variant={segmentedLabelVariant}
               >
                 {optionMeta.label}
               </Text>
@@ -326,12 +318,18 @@ export function VisibilityOptionSelector({
               <View style={styles.cardContent}>
                 <View style={styles.cardTitleRow}>
                   <Ionicons color={optionIconColor} name={optionMeta.icon} size={16} />
-                  <Text style={styles.cardLabel}>{optionMeta.label}</Text>
+                  <Text style={styles.cardLabel} variant="titleXs">
+                    {optionMeta.label}
+                  </Text>
                   {optionBadgeLabel ? (
                     <StatusPill label={optionBadgeLabel} tone={optionBadgeTone} uppercase variant="soft" />
                   ) : null}
                 </View>
-                {optionDescription ? <Text style={styles.cardDescription}>{optionDescription}</Text> : null}
+                {optionDescription ? (
+                  <Text style={styles.cardDescription} variant="metaRegular">
+                    {optionDescription}
+                  </Text>
+                ) : null}
               </View>
             </View>
           </Pressable>

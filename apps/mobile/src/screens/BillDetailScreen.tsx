@@ -241,9 +241,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     },
     sectionTitle: {
       color: theme.colors.text.primary,
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24,
     },
     statusActionCard: {
       gap: theme.spacing.sm,
@@ -260,8 +257,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     },
     statusActionHint: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
-      lineHeight: 18,
     },
     statusActionButton: {
       minHeight: 36,
@@ -278,22 +273,14 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     summaryLabel: {
       color: theme.colors.text.secondary,
       flex: 1,
-      fontSize: 16,
-      lineHeight: 22,
     },
     summaryLabelStrong: {
       color: theme.colors.text.primary,
-      fontWeight: '600',
     },
     summaryValue: {
       color: theme.colors.text.primary,
-      fontSize: 16,
-      lineHeight: 22,
       marginLeft: theme.spacing.sm,
       textAlign: 'right',
-    },
-    summaryValueStrong: {
-      fontWeight: '700',
     },
     list: {
       borderColor: theme.colors.border.subtle,
@@ -322,24 +309,15 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     },
     participantActionLabel: {
       color: theme.colors.text.success,
-      fontSize: 12,
-      fontWeight: '700',
-      lineHeight: 16,
     },
     participantActionLabelSecondary: {
       color: theme.colors.text.secondary,
-      fontWeight: '600',
     },
     itemPrice: {
       color: theme.colors.text.primary,
-      fontSize: 14,
-      fontWeight: '700',
-      lineHeight: 18,
     },
     sectionHint: {
       color: theme.colors.text.muted,
-      fontSize: 13,
-      lineHeight: 18,
     },
     destructiveButton: {
       backgroundColor: theme.colors.text.danger,
@@ -623,7 +601,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                 <View style={styles.statusActionRow}>
                   <View style={styles.statusActionCopy}>
                     <Text variant="label">{isBillSettled ? 'Bill settled' : 'Bill active'}</Text>
-                    <Text style={styles.statusActionHint}>
+                    <Text style={styles.statusActionHint} variant="metaRegular">
                       {isBillSettled
                         ? 'Reopen this bill to allow payment updates.'
                         : 'Settle this bill when all payments are complete.'}
@@ -645,64 +623,66 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
             <Card style={styles.sectionCard}>
               <View style={styles.sectionTitleRow}>
                 <Ionicons color={theme.colors.text.secondary} name="receipt-outline" size={18} />
-                <Text style={styles.sectionTitle}>Summary</Text>
+                <Text style={styles.sectionTitle} variant="sectionTitle">Summary</Text>
               </View>
 
               <View style={styles.summaryRows}>
                 <View style={styles.summaryRow}>
-                  <Text style={[styles.summaryLabel, styles.summaryLabelStrong]}>Total Amount</Text>
-                  <Text style={[styles.summaryValue, styles.summaryValueStrong]}>{formatCurrency(totals.total)}</Text>
+                  <Text style={[styles.summaryLabel, styles.summaryLabelStrong]} variant="titleSmSemiBold">
+                    Total Amount
+                  </Text>
+                  <Text style={styles.summaryValue} variant="titleSm">{formatCurrency(totals.total)}</Text>
                 </View>
 
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Tax</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(bill.tax)}</Text>
+                  <Text style={styles.summaryLabel} variant="bodyLgComfortable">Tax</Text>
+                  <Text style={styles.summaryValue} variant="bodyLgComfortable">{formatCurrency(bill.tax)}</Text>
                 </View>
 
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Tip</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(bill.tip)}</Text>
+                  <Text style={styles.summaryLabel} variant="bodyLgComfortable">Tip</Text>
+                  <Text style={styles.summaryValue} variant="bodyLgComfortable">{formatCurrency(bill.tip)}</Text>
                 </View>
 
                 {bill.fees > 0 ? (
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Fees</Text>
-                    <Text style={styles.summaryValue}>{formatCurrency(bill.fees)}</Text>
+                    <Text style={styles.summaryLabel} variant="bodyLgComfortable">Fees</Text>
+                    <Text style={styles.summaryValue} variant="bodyLgComfortable">{formatCurrency(bill.fees)}</Text>
                   </View>
                 ) : null}
 
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Split Type</Text>
-                  <Text style={styles.summaryValue}>
+                  <Text style={styles.summaryLabel} variant="bodyLgComfortable">Split Type</Text>
+                  <Text style={styles.summaryValue} variant="bodyLgComfortable">
                     {formatSplitTypeLabel(bill.splitMode, bill.extrasSplitMode)}
                   </Text>
                 </View>
 
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Participants</Text>
-                  <Text style={styles.summaryValue}>
+                  <Text style={styles.summaryLabel} variant="bodyLgComfortable">Participants</Text>
+                  <Text style={styles.summaryValue} variant="bodyLgComfortable">
                     {bill.participants.length} {bill.participants.length === 1 ? 'person' : 'people'}
                   </Text>
                 </View>
 
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Paid</Text>
-                  <Text style={styles.summaryValue}>
+                  <Text style={styles.summaryLabel} variant="bodyLgComfortable">Paid</Text>
+                  <Text style={styles.summaryValue} variant="bodyLgComfortable">
                     {paidCount} of {bill.participants.length}
                   </Text>
                 </View>
 
                 {customTipContributionTotal > 0 ? (
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Tip Allocation</Text>
-                    <Text style={styles.summaryValue}>Custom by participant</Text>
+                    <Text style={styles.summaryLabel} variant="bodyLgComfortable">Tip Allocation</Text>
+                    <Text style={styles.summaryValue} variant="bodyLgComfortable">Custom by participant</Text>
                   </View>
                 ) : null}
 
                 {billSummary.youAreOwed > 0 ? (
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>You're owed</Text>
-                    <Text style={[styles.summaryValue, { color: theme.colors.text.success, fontWeight: '700' }]}>
+                    <Text style={styles.summaryLabel} variant="bodyLgComfortable">You're owed</Text>
+                    <Text style={[styles.summaryValue, { color: theme.colors.text.success }]} variant="titleSm">
                       {formatCurrency(billSummary.youAreOwed)}
                     </Text>
                   </View>
@@ -710,8 +690,8 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
                 {billSummary.youOwe > 0 ? (
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>You owe</Text>
-                    <Text style={[styles.summaryValue, { color: theme.colors.text.warning, fontWeight: '700' }]}>
+                    <Text style={styles.summaryLabel} variant="bodyLgComfortable">You owe</Text>
+                    <Text style={[styles.summaryValue, { color: theme.colors.text.warning }]} variant="titleSm">
                       {formatCurrency(billSummary.youOwe)}
                     </Text>
                   </View>
@@ -726,7 +706,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
             <Card style={styles.sectionCard}>
               <View style={styles.sectionTitleRow}>
                 <Ionicons color={theme.colors.text.secondary} name="people-outline" size={18} />
-                <Text style={styles.sectionTitle}>Participants</Text>
+                <Text style={styles.sectionTitle} variant="sectionTitle">Participants</Text>
               </View>
 
               <OptionList style={styles.list}>
@@ -789,9 +769,11 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                           >
                             <Text
                               style={[
-                                styles.participantActionLabel,
-                                isMarkUnpaidAction ? styles.participantActionLabelSecondary : null,
+                                isMarkUnpaidAction
+                                  ? styles.participantActionLabelSecondary
+                                  : styles.participantActionLabel,
                               ]}
+                              variant={isMarkUnpaidAction ? 'bodySmTightSemiBold' : 'bodySmTightBold'}
                             >
                               {isUpdatingParticipant ? 'Updating...' : actionLabel}
                             </Text>
@@ -806,14 +788,16 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
               </OptionList>
 
               {isBillSettled ? (
-                <Text style={styles.sectionHint}>This bill is settled. Reopen it if you need to make updates.</Text>
+                <Text style={styles.sectionHint} variant="metaRegular">
+                  This bill is settled. Reopen it if you need to make updates.
+                </Text>
               ) : null}
             </Card>
 
             <Card style={styles.sectionCard}>
               <View style={styles.sectionTitleRow}>
                 <Ionicons color={theme.colors.text.secondary} name="cash-outline" size={18} />
-                <Text style={styles.sectionTitle}>Items</Text>
+                <Text style={styles.sectionTitle} variant="sectionTitle">Items</Text>
               </View>
 
               {bill.items.length > 0 ? (
@@ -844,7 +828,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                       <OptionListRow
                         isLast={index === bill.items.length - 1}
                         key={item.id}
-                        rightAccessory={<Text style={styles.itemPrice}>{formatCurrency(item.price)}</Text>}
+                        rightAccessory={<Text style={styles.itemPrice} variant="labelMdBold">{formatCurrency(item.price)}</Text>}
                         subtitle={assignmentText}
                         title={item.itemName}
                       />
@@ -852,7 +836,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
                   })}
                 </OptionList>
               ) : (
-                <Text style={styles.sectionHint}>No items have been added yet.</Text>
+                <Text style={styles.sectionHint} variant="metaRegular">No items have been added yet.</Text>
               )}
             </Card>
 

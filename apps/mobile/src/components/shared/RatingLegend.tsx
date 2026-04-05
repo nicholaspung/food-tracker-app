@@ -87,7 +87,7 @@ export function RatingLegend({
                     {RATING_OPTIONS.map((option) => (
                         <View key={option.value} style={styles.optionRow}>
                             <View style={[dynamicStyles.badge, { backgroundColor: resolveRatingColor(theme, option.value) }]}>
-                                <Text style={[styles.badgeText, dynamicStyles.badgeText]}>{option.value}</Text>
+                                <Text style={dynamicStyles.badgeText} variant="labelStrong">{option.value}</Text>
                             </View>
                             <Text tone="secondary">{option.label}</Text>
                         </View>
@@ -112,9 +112,5 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-    },
-    badgeText: {
-        fontSize: 13,
-        fontWeight: '700',
     },
 });

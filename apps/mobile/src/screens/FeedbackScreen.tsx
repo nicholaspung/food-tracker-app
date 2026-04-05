@@ -56,9 +56,6 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     },
     countSummaryText: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
   });
 
@@ -91,7 +88,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
       title="Feedback"
     >
       {feedbackQuery.isSuccess ? (
-        <Text style={styles.countSummaryText}>
+        <Text style={styles.countSummaryText} variant="bodySmTightSemiBold">
           {totalFeedbackCount} {totalFeedbackCount === 1 ? 'feedback thread' : 'feedback threads'} total
         </Text>
       ) : null}

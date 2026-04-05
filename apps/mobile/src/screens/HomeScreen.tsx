@@ -1034,12 +1034,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     monthChevron: {
       color: colors.textMuted,
-      ...theme.typography.labelMdBold,
       width: 12,
     },
     monthLabel: {
       color: colors.textPrimary,
-      ...theme.typography.titleSm,
     },
     monthCountWrap: {
       alignItems: 'flex-end',
@@ -1048,13 +1046,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     monthCount: {
       color: colors.textSecondary,
-      fontSize: 20,
-      fontWeight: '700',
-      lineHeight: 20,
     },
     monthCountMeta: {
       color: colors.textMuted,
-      ...theme.typography.bodySmTightMedium,
     },
     monthContent: {
       gap: theme.spacing.sm,
@@ -1072,17 +1066,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     dayChevron: {
       color: colors.textMuted,
-      ...theme.typography.bodySmTightBold,
       width: 10,
     },
     dayLabel: {
       color: colors.textSecondary,
       flex: 1,
-      ...theme.typography.labelMd,
     },
     dayCount: {
       color: colors.textMuted,
-      ...theme.typography.bodySmTightMedium,
     },
     entries: {
       gap: theme.spacing.xs,
@@ -1097,12 +1088,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     infoTitle: {
       color: colors.textPrimary,
-      ...theme.typography.bodyLgBold,
     },
     infoDescription: {
       color: colors.textSecondary,
-      ...theme.typography.bodyLg,
-      lineHeight: 21,
     },
     infoActionRow: {
       flexDirection: 'row',
@@ -1126,7 +1114,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     quickActionLabel: {
       color: colors.textPrimary,
-      ...theme.typography.labelMd,
       textAlign: 'center',
     },
     quickActionPrimaryLabel: {
@@ -1186,8 +1173,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         <PageErrorToast errorMessage={friendSuggestionErrorMessage} title="Friend suggestion unavailable" />
         {friendSuggestion ? (
           <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Add {inviterDisplayName} as a friend?</Text>
-            <Text style={styles.infoDescription}>
+            <Text style={styles.infoTitle} variant="bodyLgBold">
+              Add {inviterDisplayName} as a friend?
+            </Text>
+            <Text style={styles.infoDescription} variant="bodyLgCompact">
               They invited you to Yummy Recs. Add them now so you can see each other's food activity.
             </Text>
             <View style={styles.infoActionRow}>
@@ -1198,7 +1187,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                 }}
                 style={[styles.quickActionButton, styles.quickActionPrimary]}
               >
-                <Text style={[styles.quickActionLabel, styles.quickActionPrimaryLabel]}>
+                <Text style={[styles.quickActionLabel, styles.quickActionPrimaryLabel]} variant="labelMd">
                   {isApplyingFriendSuggestion ? 'Adding...' : 'Add Friend'}
                 </Text>
               </Pressable>
@@ -1207,7 +1196,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                 onPress={handleDismissFriendSuggestion}
                 style={styles.quickActionButton}
               >
-                <Text style={styles.quickActionLabel}>Not Now</Text>
+                <Text style={styles.quickActionLabel} variant="labelMd">Not Now</Text>
               </Pressable>
             </View>
           </View>
@@ -1218,8 +1207,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         effectiveFeedMode === 'friends' &&
         totalFeedCount === 0 ? (
           <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>No friend activity yet</Text>
-            <Text style={styles.infoDescription}>
+            <Text style={styles.infoTitle} variant="bodyLgBold">No friend activity yet</Text>
+            <Text style={styles.infoDescription} variant="bodyLgCompact">
               Add friends to see their ratings and quick track items here.
             </Text>
             <View style={styles.infoActionRow}>
@@ -1229,7 +1218,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                 }}
                 style={[styles.quickActionButton, styles.quickActionPrimary]}
               >
-                <Text style={[styles.quickActionLabel, styles.quickActionPrimaryLabel]}>Add Friends</Text>
+                <Text style={[styles.quickActionLabel, styles.quickActionPrimaryLabel]} variant="labelMd">
+                  Add Friends
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -1261,8 +1252,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
         {!isLoading && !hasBlockingFeedError && activeFeed.length > 0 && filteredFeed.length === 0 ? (
           <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>No matching ratings</Text>
-            <Text style={styles.infoDescription}>
+            <Text style={styles.infoTitle} variant="bodyLgBold">No matching ratings</Text>
+            <Text style={styles.infoDescription} variant="bodyLgCompact">
               Try another search term or switch filters to see more items.
             </Text>
             <View style={styles.infoActionRow}>
@@ -1273,7 +1264,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                 }}
                 style={styles.quickActionButton}
               >
-                <Text style={styles.quickActionLabel}>Reset Filters</Text>
+                <Text style={styles.quickActionLabel} variant="labelMd">Reset Filters</Text>
               </Pressable>
             </View>
           </View>
@@ -1381,12 +1372,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                     style={styles.monthHeader}
                   >
                     <View style={styles.monthHeaderLeft}>
-                      <Text style={styles.monthChevron}>{isMonthExpanded ? 'v' : '>'}</Text>
-                      <Text style={styles.monthLabel}>{month.monthLabel}</Text>
+                      <Text style={styles.monthChevron} variant="labelMdBold">
+                        {isMonthExpanded ? 'v' : '>'}
+                      </Text>
+                      <Text style={styles.monthLabel} variant="titleSm">{month.monthLabel}</Text>
                     </View>
                     <View style={styles.monthCountWrap}>
-                      <Text style={styles.monthCount}>{month.totalCount}</Text>
-                      <Text style={styles.monthCountMeta}>
+                      <Text style={styles.monthCount} variant="metric">{month.totalCount}</Text>
+                      <Text style={styles.monthCountMeta} variant="bodySmTightMedium">
                         ({month.visitsCount}v • {month.quickTrackCount}q)
                       </Text>
                     </View>
@@ -1405,11 +1398,15 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                               }}
                               style={styles.dayHeader}
                             >
-                              <Text style={styles.dayChevron}>{isDayExpanded ? 'v' : '>'}</Text>
-                              <Text numberOfLines={1} style={styles.dayLabel}>
+                              <Text style={styles.dayChevron} variant="bodySmTightBold">
+                                {isDayExpanded ? 'v' : '>'}
+                              </Text>
+                              <Text numberOfLines={1} style={styles.dayLabel} variant="labelMd">
                                 {day.dayLabel}
                               </Text>
-                              <Text style={styles.dayCount}>({day.entries.length})</Text>
+                              <Text style={styles.dayCount} variant="bodySmTightMedium">
+                                ({day.entries.length})
+                              </Text>
                             </Pressable>
 
                             {isDayExpanded ? (

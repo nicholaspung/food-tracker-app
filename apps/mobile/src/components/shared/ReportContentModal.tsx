@@ -77,21 +77,14 @@ export function ReportContentModal({
     },
     helperLabel: {
       color: theme.colors.text.muted,
-      ...theme.typography.label,
       textTransform: 'uppercase',
     },
     helperValue: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
     },
-    statusMessage: {
-      ...theme.typography.bodySm,
-      lineHeight: 18,
-    },
+    statusMessage: {},
     selectPlaceholder: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
     },
     reasonMenuBody: {
       padding: theme.spacing.sm,
@@ -120,12 +113,10 @@ export function ReportContentModal({
     },
     reasonOptionText: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyMd,
       flex: 1,
     },
     reasonOptionTextSelected: {
       color: theme.colors.text.info,
-      fontWeight: '700',
     },
     notesInput: {
       maxHeight: 132,
@@ -162,17 +153,17 @@ export function ReportContentModal({
     >
       <View style={styles.body}>
         <View style={styles.helperBlock}>
-          <Text style={styles.helperLabel}>Reported content</Text>
-          <Text style={styles.helperValue}>{contentLabel}</Text>
+          <Text style={styles.helperLabel} variant="label">Reported content</Text>
+          <Text style={styles.helperValue} variant="bodySmSemiBold">{contentLabel}</Text>
         </View>
 
         {!isOnline ? (
-          <Text style={styles.statusMessage} tone="warning">
+          <Text style={styles.statusMessage} tone="warning" variant="bodySm">
             Reporting requires an internet connection.
           </Text>
         ) : null}
         {errorMessage ? (
-          <Text style={styles.statusMessage} tone="danger">
+          <Text style={styles.statusMessage} tone="danger" variant="bodySm">
             {errorMessage}
           </Text>
         ) : null}
@@ -217,6 +208,7 @@ export function ReportContentModal({
                           styles.reasonOptionText,
                           isSelected ? styles.reasonOptionTextSelected : null,
                         ]}
+                        variant={isSelected ? 'bodyMdBold' : 'bodyMd'}
                       >
                         {option.label}
                       </Text>

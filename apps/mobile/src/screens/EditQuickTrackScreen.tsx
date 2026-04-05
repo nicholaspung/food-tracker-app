@@ -123,10 +123,6 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       backgroundColor: theme.colors.status.warningBg,
       borderBottomColor: theme.colors.status.warningBorder,
     },
-    categorySelectorTitle: {
-      color: theme.colors.text.primary,
-      fontWeight: '700',
-    },
     categorySelectorSubtitle: {
       color: theme.colors.text.muted,
     },
@@ -416,7 +412,7 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
               subtitle={itemCategory ? 'Selected category' : 'Tap to choose a category'}
               subtitleStyle={itemCategory ? styles.categorySelectorSubtitleSelected : styles.categorySelectorSubtitle}
               title={selectedCategoryLabel}
-              titleStyle={!itemCategory ? styles.categoryPlaceholder : styles.categorySelectorTitle}
+              titleStyle={!itemCategory ? styles.categoryPlaceholder : undefined}
             />
 
             {isCategoryExpanded ? (

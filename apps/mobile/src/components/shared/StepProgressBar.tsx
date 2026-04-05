@@ -84,10 +84,6 @@ export function StepProgressBar({
             borderWidth: 1,
             borderColor: theme.colors.border.default,
         },
-        circleText: {
-            fontSize: compact ? 12 : 14,
-            fontWeight: '600',
-        },
         circleTextActive: {
             color: theme.colors.button.primaryText,
         },
@@ -101,11 +97,6 @@ export function StepProgressBar({
         labelCell: {
             flex: 1,
             alignItems: 'center',
-        },
-        labelTextCompact: {
-            fontSize: 11,
-            lineHeight: 14,
-            fontWeight: '500',
         },
     });
 
@@ -147,10 +138,10 @@ export function StepProgressBar({
                                 >
                                     <Text
                                         style={[
-                                            styles.circleText,
                                             (isCompleted || isCurrent) && styles.circleTextActive,
                                             isFuture && styles.circleTextFuture,
                                         ]}
+                                        variant={compact ? 'bodySmTightSemiBold' : 'labelMd'}
                                     >
                                         {isCompleted && showCompletedCheckmark ? '✓' : `${index + 1}`}
                                     </Text>
@@ -167,9 +158,8 @@ export function StepProgressBar({
                     return (
                         <View key={`label_${index}`} style={styles.labelCell}>
                             <Text
-                                style={compact ? styles.labelTextCompact : undefined}
                                 tone={isCurrent ? undefined : 'muted'}
-                                variant="bodySm"
+                                variant={compact ? 'captionMedium' : 'bodySm'}
                             >
                                 {step.label}
                             </Text>

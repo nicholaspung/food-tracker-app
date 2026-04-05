@@ -111,7 +111,6 @@ function useHomeBetaFeedCardStyles() {
     ownerName: {
       color: theme.colors.text.primary,
       flex: 1,
-      ...theme.typography.titleSm,
     },
     headerActions: {
       alignItems: 'center',
@@ -141,15 +140,11 @@ function useHomeBetaFeedCardStyles() {
     restaurantName: {
       color: theme.colors.text.primary,
       flex: 1,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
     },
     restaurantMeta: {
       color: theme.colors.text.muted,
       maxWidth: '45%',
       textAlign: 'right',
-      ...theme.typography.bodySm,
-      fontWeight: '600',
       textTransform: 'uppercase',
     },
     mediaViewport: {
@@ -198,9 +193,6 @@ function useHomeBetaFeedCardStyles() {
     },
     mediaPillLabel: {
       color: theme.colors.text.secondary,
-      ...theme.typography.label,
-      fontSize: 11,
-      lineHeight: 14,
       textTransform: 'uppercase',
     },
     paginationRow: {
@@ -255,16 +247,13 @@ function useHomeBetaFeedCardStyles() {
     },
     itemName: {
       color: theme.colors.text.primary,
-      ...theme.typography.cardTitle,
       fontStyle: 'italic',
     },
     itemDescription: {
       color: theme.colors.text.secondary,
-      ...theme.typography.bodyMd,
     },
     itemNotes: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodyMd,
       fontStyle: 'italic',
     },
     itemMetaRow: {
@@ -284,9 +273,6 @@ function useHomeBetaFeedCardStyles() {
     },
     metaChipLabel: {
       color: theme.colors.text.secondary,
-      ...theme.typography.label,
-      fontSize: 11,
-      lineHeight: 14,
       textTransform: 'uppercase',
     },
     ratingBand: {
@@ -299,16 +285,13 @@ function useHomeBetaFeedCardStyles() {
     },
     ratingBandLabel: {
       color: theme.colors.text.inverse,
-      ...theme.typography.label,
     },
     footerMeta: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
       textTransform: 'uppercase',
     },
     emptyText: {
       color: theme.colors.text.secondary,
-      ...theme.typography.bodyMd,
     },
   });
 
@@ -522,18 +505,18 @@ function CarouselMedia({
 
                   <View style={styles.mediaTopRow}>
                     <View style={styles.mediaPill}>
-                      <Text style={styles.mediaPillLabel}>Visit</Text>
+                      <Text style={styles.mediaPillLabel} variant="caption">Visit</Text>
                     </View>
                     <View style={styles.mediaTopRightGroup}>
                       {entry.photos.length > 1 ? (
                         <View style={styles.mediaPill}>
-                          <Text style={styles.mediaPillLabel}>
+                          <Text style={styles.mediaPillLabel} variant="caption">
                             {entry.photos.length} photos
                           </Text>
                         </View>
                       ) : null}
                       <View style={styles.mediaPill}>
-                        <Text style={styles.mediaPillLabel}>
+                        <Text style={styles.mediaPillLabel} variant="caption">
                           {index + 1} / {entryCount}
                         </Text>
                       </View>
@@ -607,7 +590,7 @@ export function HomeBetaVisitFeedCard({
     <Card style={styles.card}>
       <View style={styles.headerBlock}>
         <View style={styles.ownerRow}>
-          <Text numberOfLines={1} style={styles.ownerName}>
+          <Text numberOfLines={1} style={styles.ownerName} variant="titleSm">
             {ownerLabel}
           </Text>
           <HeaderActions onDelete={onDelete} onEdit={onEdit} onShare={onShareVisit} />
@@ -615,10 +598,10 @@ export function HomeBetaVisitFeedCard({
         <View style={styles.sectionDivider} />
 
         <View style={styles.restaurantRow}>
-          <Text numberOfLines={1} style={styles.restaurantName}>
+          <Text numberOfLines={1} style={styles.restaurantName} variant="bodyLgBold">
             {visit.restaurantName}
           </Text>
-          <Text numberOfLines={1} style={styles.restaurantMeta}>
+          <Text numberOfLines={1} style={styles.restaurantMeta} variant="bodySmSemiBold">
             {resolvedRestaurantMetaLabel}
           </Text>
         </View>
@@ -651,11 +634,11 @@ export function HomeBetaVisitFeedCard({
 
               <View style={styles.itemHeaderRow}>
                 <View style={styles.itemHeaderCopy}>
-                  <Text numberOfLines={2} style={styles.itemName}>
+                  <Text numberOfLines={2} style={styles.itemName} variant="cardTitle">
                     {activeEntry.name}
                   </Text>
                   {activeEntry.description ? (
-                    <Text style={styles.itemDescription}>{activeEntry.description}</Text>
+                    <Text style={styles.itemDescription} variant="bodyMd">{activeEntry.description}</Text>
                   ) : null}
                 </View>
                 {activeEntry.primaryPhoto ? (
@@ -678,15 +661,15 @@ export function HomeBetaVisitFeedCard({
               </View>
 
               {activeEntry.notes ? (
-                <Text style={styles.itemNotes}>"{activeEntry.notes}"</Text>
+                <Text style={styles.itemNotes} variant="bodyMd">"{activeEntry.notes}"</Text>
               ) : null}
 
               <View style={[styles.ratingBand, { backgroundColor: ratingColor }]}>
-                <Text style={styles.ratingBandLabel}>{getRatingLabel(activeEntry.rating)}</Text>
+                <Text style={styles.ratingBandLabel} variant="label">{getRatingLabel(activeEntry.rating)}</Text>
               </View>
 
               <View style={styles.sectionDivider} />
-              <Text style={styles.footerMeta}>
+              <Text style={styles.footerMeta} variant="bodySm">
                 {dateLabel} • {timeLabel}
               </Text>
             </View>
@@ -694,9 +677,9 @@ export function HomeBetaVisitFeedCard({
         </>
       ) : (
         <View style={styles.contentBlock}>
-          <Text style={styles.emptyText}>No rated items were recorded for this visit.</Text>
+          <Text style={styles.emptyText} variant="bodyMd">No rated items were recorded for this visit.</Text>
           <View style={styles.sectionDivider} />
-          <Text style={styles.footerMeta}>
+          <Text style={styles.footerMeta} variant="bodySm">
             {dateLabel} • {timeLabel}
           </Text>
         </View>
@@ -729,7 +712,7 @@ export function HomeBetaQuickTrackFeedCard({
     <Card style={styles.card}>
       <View style={styles.headerBlock}>
         <View style={styles.ownerRow}>
-          <Text numberOfLines={1} style={styles.ownerName}>
+          <Text numberOfLines={1} style={styles.ownerName} variant="titleSm">
             {ownerLabel}
           </Text>
           <HeaderActions onDelete={onDelete} onEdit={onEdit} />
@@ -737,10 +720,10 @@ export function HomeBetaQuickTrackFeedCard({
         <View style={styles.sectionDivider} />
 
         <View style={styles.restaurantRow}>
-          <Text numberOfLines={1} style={styles.restaurantName}>
+          <Text numberOfLines={1} style={styles.restaurantName} variant="bodyLgBold">
             {quickTrack.restaurantName}
           </Text>
-          <Text numberOfLines={1} style={styles.restaurantMeta}>
+          <Text numberOfLines={1} style={styles.restaurantMeta} variant="bodySmSemiBold">
             {resolvedMetaLabel}
           </Text>
         </View>
@@ -760,16 +743,16 @@ export function HomeBetaQuickTrackFeedCard({
 
               <View style={styles.mediaTopRow}>
                 <View style={styles.mediaPill}>
-                  <Text style={styles.mediaPillLabel}>Quick</Text>
+                  <Text style={styles.mediaPillLabel} variant="caption">Quick</Text>
                 </View>
                 <View style={styles.mediaTopRightGroup}>
                   {photos.length > 1 ? (
                     <View style={styles.mediaPill}>
-                      <Text style={styles.mediaPillLabel}>{photos.length} photos</Text>
+                      <Text style={styles.mediaPillLabel} variant="caption">{photos.length} photos</Text>
                     </View>
                   ) : null}
                   <View style={styles.mediaPill}>
-                    <Text style={styles.mediaPillLabel}>1 / 1</Text>
+                    <Text style={styles.mediaPillLabel} variant="caption">1 / 1</Text>
                   </View>
                 </View>
               </View>
@@ -781,11 +764,11 @@ export function HomeBetaQuickTrackFeedCard({
       <View style={styles.contentBlock}>
         <View style={styles.itemHeaderRow}>
           <View style={styles.itemHeaderCopy}>
-            <Text numberOfLines={2} style={styles.itemName}>
+            <Text numberOfLines={2} style={styles.itemName} variant="cardTitle">
               {quickTrack.itemName}
             </Text>
             {locationLabel ? (
-              <Text style={styles.itemDescription}>{locationLabel}</Text>
+              <Text style={styles.itemDescription} variant="bodyMd">{locationLabel}</Text>
             ) : null}
           </View>
           {primaryPhoto ? (
@@ -810,21 +793,21 @@ export function HomeBetaQuickTrackFeedCard({
         {categoryLabel ? (
           <View style={styles.itemMetaRow}>
             <View style={styles.metaChip}>
-              <Text style={styles.metaChipLabel}>{categoryLabel}</Text>
+              <Text style={styles.metaChipLabel} variant="caption">{categoryLabel}</Text>
             </View>
           </View>
         ) : null}
 
         {quickTrack.notes ? (
-          <Text style={styles.itemNotes}>"{quickTrack.notes.trim()}"</Text>
+          <Text style={styles.itemNotes} variant="bodyMd">"{quickTrack.notes.trim()}"</Text>
         ) : null}
 
         <View style={[styles.ratingBand, { backgroundColor: ratingColor }]}>
-          <Text style={styles.ratingBandLabel}>{getRatingLabel(quickTrack.rating)}</Text>
+          <Text style={styles.ratingBandLabel} variant="label">{getRatingLabel(quickTrack.rating)}</Text>
         </View>
 
         <View style={styles.sectionDivider} />
-        <Text style={styles.footerMeta}>
+        <Text style={styles.footerMeta} variant="bodySm">
           {dateLabel} • {timeLabel}
         </Text>
       </View>

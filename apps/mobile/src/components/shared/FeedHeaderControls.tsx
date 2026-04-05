@@ -66,7 +66,6 @@ export function FeedHeaderControls({
     },
     title: {
       color: theme.colors.text.primary,
-      ...theme.typography.titleLg,
     },
     segmentedControl: {
       backgroundColor: theme.colors.background.muted,
@@ -93,7 +92,6 @@ export function FeedHeaderControls({
     },
     segmentLabel: {
       color: theme.colors.text.muted,
-      ...theme.typography.label,
       textAlign: 'center',
     },
     segmentLabelActive: {
@@ -101,7 +99,6 @@ export function FeedHeaderControls({
     },
     summaryText: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodyMd,
     },
     searchRow: {
       alignItems: 'center',
@@ -131,9 +128,6 @@ export function FeedHeaderControls({
     },
     clearSearchLabel: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     filtersToggle: {
       alignItems: 'center',
@@ -153,7 +147,6 @@ export function FeedHeaderControls({
     },
     filtersToggleLabel: {
       color: theme.colors.text.primary,
-      ...theme.typography.button,
     },
     filtersToggleLabelActive: {
       color: theme.colors.text.inverse,
@@ -179,8 +172,6 @@ export function FeedHeaderControls({
     },
     filterChipLabel: {
       color: theme.colors.text.secondary,
-      ...theme.typography.label,
-      lineHeight: 16,
       textAlign: 'center',
     },
     filterChipLabelActive: {
@@ -191,7 +182,7 @@ export function FeedHeaderControls({
   return (
     <View style={styles.container}>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>Ratings</Text>
+        <Text style={styles.title} variant="titleLg">Ratings</Text>
         <SegmentedControl
           activeLabelStyle={styles.segmentLabelActive}
           activeSegmentStyle={styles.segmentButtonActive}
@@ -206,7 +197,7 @@ export function FeedHeaderControls({
         />
       </View>
 
-      <Text style={styles.summaryText}>{summaryText}</Text>
+      <Text style={styles.summaryText} variant="bodyMd">{summaryText}</Text>
 
       <View style={styles.searchRow}>
         <View style={styles.searchField}>
@@ -226,12 +217,15 @@ export function FeedHeaderControls({
           />
           {searchQuery ? (
             <Pressable onPress={onClearSearch} style={styles.clearSearchButton}>
-              <Text style={styles.clearSearchLabel}>Clear</Text>
+              <Text style={styles.clearSearchLabel} variant="bodySmTightSemiBold">Clear</Text>
             </Pressable>
           ) : null}
         </View>
         <Pressable onPress={onToggleFilters} style={[styles.filtersToggle, filtersExpanded && styles.filtersToggleActive]}>
-          <Text style={[styles.filtersToggleLabel, filtersExpanded && styles.filtersToggleLabelActive]}>
+          <Text
+            style={[styles.filtersToggleLabel, filtersExpanded && styles.filtersToggleLabelActive]}
+            variant="button"
+          >
             Filters
           </Text>
         </Pressable>

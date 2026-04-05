@@ -183,9 +183,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     },
     useActionLabel: {
       color: theme.colors.text.brand,
-      fontSize: 15,
-      fontWeight: '600',
-      lineHeight: 18,
     },
     iconAction: {
       padding: 2,
@@ -217,18 +214,12 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     },
     photoCountText: {
       color: theme.colors.text.inverse,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
     },
     noteTextContent: {
       flex: 1,
       gap: 4,
       minHeight: 64,
       justifyContent: 'center',
-    },
-    notePreview: {
-      lineHeight: 20,
     },
     locationRow: {
       alignItems: 'center',
@@ -453,7 +444,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                           }}
                           testID={`note-use-button-${note.id}`}
                         >
-                          <Text style={styles.useActionLabel}>Use</Text>
+                          <Text style={styles.useActionLabel} variant="bodyBaseSemiBold">Use</Text>
                         </Pressable>
                       ) : null}
 
@@ -504,14 +495,16 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                         <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
                         {notePhotos.length > 1 ? (
                           <View style={styles.photoCountBadge}>
-                            <Text style={styles.photoCountText}>+{notePhotos.length - 1}</Text>
+                            <Text style={styles.photoCountText} variant="captionStrong">
+                              +{notePhotos.length - 1}
+                            </Text>
                           </View>
                         ) : null}
                       </Pressable>
                     ) : null}
 
                     <View style={styles.noteTextContent}>
-                      <Text style={styles.notePreview}>{buildNotePreview(note.content)}</Text>
+                      <Text variant="bodyMd">{buildNotePreview(note.content)}</Text>
                     </View>
                   </View>
                 </Card>

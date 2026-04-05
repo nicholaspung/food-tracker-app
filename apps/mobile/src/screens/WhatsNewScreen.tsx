@@ -150,14 +150,9 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
     },
     releaseTitle: {
       color: theme.colors.text.primary,
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24,
     },
     releaseSummary: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
-      lineHeight: 20,
     },
     versionBadge: {
       backgroundColor: theme.colors.status.infoBg,
@@ -180,23 +175,14 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
     },
     firstViewBadgeText: {
       color: theme.colors.text.inverse,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
       textTransform: 'uppercase',
     },
     versionBadgeText: {
       color: theme.colors.text.info,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
       textTransform: 'uppercase',
     },
     releaseMeta: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     sectionBlock: {
       gap: theme.spacing.xs,
@@ -215,9 +201,6 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
     },
     sectionTitle: {
       color: theme.colors.text.primary,
-      fontSize: 14,
-      fontWeight: '700',
-      lineHeight: 18,
     },
     bulletList: {
       gap: theme.spacing.xxs,
@@ -229,15 +212,11 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
     },
     bullet: {
       color: theme.colors.text.muted,
-      fontSize: 14,
-      lineHeight: 20,
       marginTop: 1,
     },
     bulletText: {
       color: theme.colors.text.secondary,
       flex: 1,
-      fontSize: 14,
-      lineHeight: 20,
     },
     showMoreButton: {
       marginTop: theme.spacing.xs,
@@ -259,13 +238,13 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
           <View style={[styles.sectionIconWrap, { backgroundColor: section.iconBackground }]}>
             <Ionicons color={section.iconColor} name={section.icon} size={16} />
           </View>
-          <Text style={styles.sectionTitle}>{section.label}</Text>
+          <Text style={styles.sectionTitle} variant="labelMdBold">{section.label}</Text>
         </View>
         <View style={styles.bulletList}>
           {items.map((item) => (
             <View key={item} style={styles.bulletRow}>
-              <Text style={styles.bullet}>-</Text>
-              <Text style={styles.bulletText}>{item}</Text>
+              <Text style={styles.bullet} variant="bodyMd">-</Text>
+              <Text style={styles.bulletText} variant="bodyMd">{item}</Text>
             </View>
           ))}
         </View>
@@ -292,21 +271,21 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
         <Card key={entry.version} style={styles.releaseCard}>
           <View style={styles.releaseHeaderRow}>
             <View style={styles.releaseTitleWrap}>
-              <Text style={styles.releaseTitle}>{entry.title}</Text>
-              <Text style={styles.releaseSummary}>{entry.summary}</Text>
+              <Text style={styles.releaseTitle} variant="sectionTitle">{entry.title}</Text>
+              <Text style={styles.releaseSummary} variant="bodyMd">{entry.summary}</Text>
             </View>
             <View style={styles.releaseBadgesRow}>
               {index === 0 && isFirstViewOfLatest ? (
                 <View style={styles.firstViewBadge}>
-                  <Text style={styles.firstViewBadgeText}>First view</Text>
+                  <Text style={styles.firstViewBadgeText} variant="captionStrong">First view</Text>
                 </View>
               ) : null}
               <View style={styles.versionBadge}>
-                <Text style={styles.versionBadgeText}>{`v${entry.version}`}</Text>
+                <Text style={styles.versionBadgeText} variant="captionStrong">{`v${entry.version}`}</Text>
               </View>
             </View>
           </View>
-          <Text style={styles.releaseMeta}>
+          <Text style={styles.releaseMeta} variant="bodySmTightSemiBold">
             {formatDisplayDate(entry.date, {
               fallback: entry.date,
               options: {

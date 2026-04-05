@@ -311,19 +311,9 @@ export function OtaUpdateStatusDetails({ state }: { state: OtaUpdateStatusState 
       gap: 2,
     },
     metaLabel: {
-      fontWeight: '600',
       textTransform: 'uppercase',
     },
-    metaValue: {
-      fontWeight: '600',
-      lineHeight: 19,
-    },
-    status: {
-      lineHeight: 18,
-    },
-    error: {
-      lineHeight: 18,
-    },
+    metaValue: {},
   });
 
   return (
@@ -332,52 +322,51 @@ export function OtaUpdateStatusDetails({ state }: { state: OtaUpdateStatusState 
       <View style={styles.body}>
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
+            <Text style={styles.metaLabel} tone="muted" variant="bodySmSemiBold">
               Runtime
             </Text>
-            <Text style={styles.metaValue} variant="bodyMd">
+            <Text style={styles.metaValue} variant="bodyMdSemiBold">
               {state.currentRuntimeVersion}
             </Text>
           </View>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
+            <Text style={styles.metaLabel} tone="muted" variant="bodySmSemiBold">
               Published
             </Text>
-            <Text style={styles.metaValue} variant="bodyMd">
+            <Text style={styles.metaValue} variant="bodyMdSemiBold">
               {state.currentPublishedAt}
             </Text>
           </View>
         </View>
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
+            <Text style={styles.metaLabel} tone="muted" variant="bodySmSemiBold">
               Current OTA
             </Text>
-            <Text style={styles.metaValue} variant="bodyMd">
+            <Text style={styles.metaValue} variant="bodyMdSemiBold">
               {state.currentOtaLabel}
             </Text>
           </View>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel} tone="muted" variant="bodySm">
+            <Text style={styles.metaLabel} tone="muted" variant="bodySmSemiBold">
               Latest Available
             </Text>
-            <Text style={styles.metaValue} variant="bodyMd">
+            <Text style={styles.metaValue} variant="bodyMdSemiBold">
               {state.latestAvailableLabel}
             </Text>
           </View>
         </View>
         <View style={styles.metaItem}>
-          <Text style={styles.metaLabel} tone="muted" variant="bodySm">
+          <Text style={styles.metaLabel} tone="muted" variant="bodySmSemiBold">
             Channel
           </Text>
-          <Text style={styles.metaValue} variant="bodyMd">
+          <Text style={styles.metaValue} variant="bodyMdSemiBold">
             {state.currentChannel}
           </Text>
         </View>
         {state.statusText ? (
           <View style={styles.metaItem}>
             <Text
-              style={state.errorMessage ? styles.error : styles.status}
               tone={state.errorMessage ? 'danger' : 'secondary'}
               variant="bodySm"
             >
@@ -410,21 +399,15 @@ export function OtaUpdateCard({
     card: {
       gap: theme.spacing.xs,
     },
-    title: {
-      fontWeight: '700',
-    },
-    description: {
-      lineHeight: 20,
-    },
   });
 
   return (
     <Card style={styles.card} tone="muted">
-      <Text style={styles.title} variant="bodyLg">
+      <Text variant="bodyLgBold">
         {title}
       </Text>
       {description ? (
-        <Text style={styles.description} tone="secondary" variant="bodyMd">
+        <Text tone="secondary" variant="bodyMd">
           {description}
         </Text>
       ) : null}

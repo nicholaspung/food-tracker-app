@@ -157,15 +157,6 @@ export function BottomTabNavigation({
       minHeight: 56,
       paddingHorizontal: theme.spacing.xs,
     },
-    tabLabel: {
-      color: theme.colors.text.muted,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
-    },
-    tabLabelActive: {
-      color: theme.colors.text.brand,
-    },
     badge: {
       alignItems: 'center',
       backgroundColor: theme.colors.text.danger,
@@ -177,12 +168,6 @@ export function BottomTabNavigation({
       position: 'absolute',
       right: -8,
       top: -4,
-    },
-    badgeLabel: {
-      color: theme.colors.text.inverse,
-      fontSize: 11,
-      fontWeight: '700',
-      lineHeight: 14,
     },
     iconWrap: {
       position: 'relative',
@@ -220,13 +205,15 @@ export function BottomTabNavigation({
                 />
                 {showBadge ? (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeLabel}>
+                    <Text tone="inverse" variant="captionStrong">
                       {pendingInvitesCount > 9 ? '9+' : pendingInvitesCount}
                     </Text>
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{tab.label}</Text>
+              <Text tone={isActive ? 'brand' : 'muted'} variant="bodySmTightSemiBold">
+                {tab.label}
+              </Text>
             </Pressable>
           );
         })}

@@ -386,9 +386,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       paddingVertical: theme.spacing.md,
     },
     sectionTitle: {
-      fontSize: 20,
-      fontWeight: "700",
-      lineHeight: 24,
       marginBottom: theme.spacing.sm,
     },
     optionBadge: {
@@ -402,9 +399,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     },
     optionBadgeText: {
       color: theme.colors.text.inverse,
-      fontSize: 12,
-      fontWeight: "700",
-      lineHeight: 16,
     },
     optionDot: {
       backgroundColor: theme.colors.text.danger,
@@ -414,9 +408,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     },
     optionMetaText: {
       color: theme.colors.text.secondary,
-      fontSize: 12,
-      fontWeight: "600",
-      lineHeight: 16,
     },
     sectionBody: {
       backgroundColor: theme.colors.background.muted,
@@ -445,21 +436,12 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     },
     detailLabel: {
       color: theme.colors.text.muted,
-      fontSize: 13,
-      fontWeight: "600",
-      lineHeight: 17,
     },
     detailValue: {
       color: theme.colors.text.primary,
-      fontSize: 16,
-      fontWeight: "600",
-      lineHeight: 22,
     },
     detailValueMono: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
-      fontWeight: "600",
-      lineHeight: 17,
     },
     inlineIconActionRow: {
       alignItems: "center",
@@ -501,15 +483,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       borderColor: theme.colors.border.warning,
     },
     inviteCodeText: {
-      fontSize: 16,
-      fontWeight: "700",
       letterSpacing: 1.2,
-      lineHeight: 20,
     },
     inviteCodeMeta: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
     },
     inviteCodeMetaLocked: {
       color: theme.colors.text.warning,
@@ -524,9 +501,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     },
     dangerTitle: {
       color: theme.colors.text.danger,
-      fontSize: 14,
-      fontWeight: "700",
-      lineHeight: 18,
     },
     dangerCopy: {
       color: theme.colors.text.danger,
@@ -569,7 +543,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
 
       <View style={styles.body}>
         <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <Text style={styles.sectionTitle} variant="cardTitle">Quick Actions</Text>
           <OptionList>
             <OptionListRow
               iconName="chatbox-ellipses-outline"
@@ -579,7 +553,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               rightAccessory={
                 activeFeedbackCount > 0 ? (
                   <View style={styles.optionBadge}>
-                    <Text style={styles.optionBadgeText}>
+                    <Text style={styles.optionBadgeText} variant="bodySmTightBold">
                       {activeFeedbackCount}
                     </Text>
                   </View>
@@ -608,7 +582,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 navigation.navigate("About");
               }}
               rightAccessory={
-                <Text style={styles.optionMetaText}>{appVersionLabel}</Text>
+                <Text style={styles.optionMetaText} variant="bodySmTightSemiBold">{appVersionLabel}</Text>
               }
               subtitle="Current version, legal information, and app details"
               testID="profile-about-link"
@@ -618,7 +592,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         </Card>
 
         <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Account</Text>
+          <Text style={styles.sectionTitle} variant="cardTitle">Account</Text>
           <OptionList>
             <OptionListRow
               chevron={expandedPanels.account ? "up" : "down"}
@@ -637,7 +611,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               <OptionListInlineBody testID="profile-account-details-panel">
                 <View style={styles.detailRow}>
                   <View style={styles.detailHeaderRow}>
-                    <Text style={styles.detailLabel}>Name</Text>
+                    <Text style={styles.detailLabel} variant="metaTightSemiBold">Name</Text>
                     {!isEditingAccountName ? (
                       <Pressable
                         accessibilityLabel="Edit account name"
@@ -726,27 +700,27 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                       ) : null}
                     </>
                   ) : (
-                    <Text style={styles.detailValue}>{accountName}</Text>
+                    <Text style={styles.detailValue} variant="titleSmSemiBold">{accountName}</Text>
                   )}
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Email</Text>
-                  <Text style={styles.detailValue}>
+                  <Text style={styles.detailLabel} variant="metaTightSemiBold">Email</Text>
+                  <Text style={styles.detailValue} variant="titleSmSemiBold">
                     {user?.email ?? "Unknown"}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Email Verified</Text>
-                  <Text style={styles.detailValue}>
+                  <Text style={styles.detailLabel} variant="metaTightSemiBold">Email Verified</Text>
+                  <Text style={styles.detailValue} variant="titleSmSemiBold">
                     {user?.verified ? "Yes" : "No"}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Account Created</Text>
-                  <Text style={styles.detailValue}>{accountCreated}</Text>
+                  <Text style={styles.detailLabel} variant="metaTightSemiBold">Account Created</Text>
+                  <Text style={styles.detailValue} variant="titleSmSemiBold">{accountCreated}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Membership</Text>
+                  <Text style={styles.detailLabel} variant="metaTightSemiBold">Membership</Text>
                   <View style={styles.statusRow}>
                     {isAdmin ? (
                       <StatusPill
@@ -783,7 +757,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         </Card>
 
         <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>More Options</Text>
+          <Text style={styles.sectionTitle} variant="cardTitle">More Options</Text>
           <OptionList>
             <OptionListRow
               chevron={expandedPanels.invite ? "up" : "down"}
@@ -841,7 +815,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                             inviteCode.locked ? styles.inviteCodeCardLocked : null,
                           ]}
                         >
-                          <Text style={styles.inviteCodeText}>
+                          <Text style={styles.inviteCodeText} variant="bodyLgTightBold">
                             {inviteCode.code}
                           </Text>
                           <Text
@@ -849,6 +823,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                               styles.inviteCodeMeta,
                               inviteCode.locked ? styles.inviteCodeMetaLocked : null,
                             ]}
+                            variant="bodySmTight"
                           >
                             {inviteCode.locked
                               ? "Copied recently"
@@ -891,7 +866,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         </Card>
 
         <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Danger Zone</Text>
+          <Text style={styles.sectionTitle} variant="cardTitle">Danger Zone</Text>
           <OptionList>
             <OptionListRow
               chevron={expandedPanels.danger ? "up" : "down"}
@@ -910,7 +885,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           {expandedPanels.danger ? (
             <View style={styles.sectionBody} testID="profile-delete-account-panel">
               <View style={styles.dangerPanel}>
-                <Text style={styles.dangerTitle}>This action is permanent</Text>
+                <Text style={styles.dangerTitle} variant="labelMdBold">This action is permanent</Text>
                 <Text style={styles.dangerCopy}>
                   Deleting your account removes all associated data and cannot
                   be undone.

@@ -99,7 +99,6 @@ export function HomeQuickTrackEntryCard({
     entryTitle: {
       color: colors.textPrimary,
       flex: 1,
-      ...theme.typography.titleSm,
     },
     entryTopRight: {
       alignItems: 'flex-end',
@@ -209,7 +208,6 @@ export function HomeQuickTrackEntryCard({
     },
     quickTrackMeta: {
       color: colors.textSecondary,
-      ...theme.typography.bodySmTight,
     },
     quickTrackMetaInline: {
       flex: 1,
@@ -224,9 +222,7 @@ export function HomeQuickTrackEntryCard({
     },
     foodItemNotes: {
       color: colors.textMuted,
-      ...theme.typography.label,
       fontStyle: 'italic',
-      lineHeight: 18,
     },
     foodItemRight: {
       alignItems: 'flex-end',
@@ -241,7 +237,6 @@ export function HomeQuickTrackEntryCard({
     },
     ratingLabel: {
       color: colors.textSecondary,
-      ...theme.typography.bodySmTightMedium,
     },
     ratingRow: {
       alignItems: 'center',
@@ -250,7 +245,6 @@ export function HomeQuickTrackEntryCard({
     },
     entryMeta: {
       color: colors.textMuted,
-      ...theme.typography.bodySmTight,
     },
   });
 
@@ -262,7 +256,7 @@ export function HomeQuickTrackEntryCard({
   return (
     <View style={styles.entryCard}>
       <View style={styles.entryTopRow}>
-        <Text numberOfLines={2} style={styles.entryTitle}>
+        <Text numberOfLines={2} style={styles.entryTitle} variant="titleSm">
           {quickTrack.itemName}
         </Text>
         <View style={styles.entryTopRight}>
@@ -341,7 +335,7 @@ export function HomeQuickTrackEntryCard({
 
         <View style={styles.foodItemContent}>
           {quickTrack.notes ? (
-            <Text numberOfLines={2} style={styles.foodItemNotes}>
+            <Text numberOfLines={2} style={styles.foodItemNotes} variant="label">
               "{quickTrack.notes}"
             </Text>
           ) : null}
@@ -355,7 +349,9 @@ export function HomeQuickTrackEntryCard({
                 { backgroundColor: getRatingColor(theme, quickTrack.rating) },
               ]}
             />
-            <Text style={styles.ratingLabel}>{getRatingLabel(quickTrack.rating)}</Text>
+            <Text style={styles.ratingLabel} variant="bodySmTightMedium">
+              {getRatingLabel(quickTrack.rating)}
+            </Text>
           </View>
           {primaryPhoto && onSharePhoto ? (
             <Pressable
@@ -377,7 +373,7 @@ export function HomeQuickTrackEntryCard({
         </View>
       </View>
 
-      <Text style={styles.entryMeta}>{entryMeta}</Text>
+      <Text style={styles.entryMeta} variant="bodySmTight">{entryMeta}</Text>
     </View>
   );
 }

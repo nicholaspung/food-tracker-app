@@ -319,16 +319,12 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     },
     messageText: {
       color: theme.colors.text.primary,
-      fontSize: 14,
-      lineHeight: 20,
     },
     messageTextMine: {
       color: theme.colors.text.inverse,
     },
     messageTime: {
       color: theme.colors.text.muted,
-      fontSize: 11,
-      lineHeight: 14,
       marginTop: 3,
     },
     messageTimeMine: {
@@ -368,8 +364,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     },
     inlineErrorText: {
       color: theme.colors.text.danger,
-      fontSize: 12,
-      lineHeight: 16,
     },
   });
 
@@ -557,10 +551,10 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
                               variant="soft"
                             />
                           ) : null}
-                          <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
+                          <Text style={[styles.messageText, isMine && styles.messageTextMine]} variant="bodyMd">
                             {messageItem.message}
                           </Text>
-                          <Text style={[styles.messageTime, isMine && styles.messageTimeMine]}>
+                          <Text style={[styles.messageTime, isMine && styles.messageTimeMine]} variant="captionRegular">
                             {formatRelativeReplyTime(messageItem.createdAt, isMine)}
                           </Text>
                         </View>
@@ -571,7 +565,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
             </ScrollView>
 
             <View style={styles.composer}>
-              {sendError ? <Text style={styles.inlineErrorText}>{sendError}</Text> : null}
+              {sendError ? <Text style={styles.inlineErrorText} variant="bodySmTight">{sendError}</Text> : null}
               <View style={styles.composerRow}>
                 <Input
                   containerStyle={styles.composerInputContainer}

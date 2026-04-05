@@ -353,9 +353,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     sectionCard: {
       gap: theme.spacing.sm,
     },
-    tipText: {
-      lineHeight: 20,
-    },
     contentInput: {
       minHeight: 110,
       textAlignVertical: 'top',
@@ -447,9 +444,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       alignItems: 'center',
       flexDirection: 'row',
       justifyContent: 'space-between',
-    },
-    modalDescription: {
-      lineHeight: 20,
     },
     modalClose: {
       alignItems: 'center',
@@ -586,7 +580,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         testID="note-editor-screen"
       >
         <Card tone="info">
-          <Text style={styles.tipText} tone="secondary">
+          <Text tone="secondary" variant="bodyMd">
             <Text variant="label">Tip:</Text> Keep each note focused on one visit or quick-track item so it is easy to
             reuse later.
           </Text>
@@ -743,7 +737,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
               </Pressable>
             </View>
 
-            <Text style={styles.modalDescription} tone="secondary">
+            <Text tone="secondary" variant="bodyMd">
               Choose where to add your photo from.
             </Text>
 

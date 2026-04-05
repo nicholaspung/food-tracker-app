@@ -10,6 +10,18 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.24',
+    date: '2026-04-04',
+    title: 'Visual Polish & Typography Consistency',
+    summary:
+      'Text throughout the app is now more consistent and easier to read. This release unifies font sizes, weights, and line heights across every screen using a shared design system — no new features, just a cleaner, more polished look.',
+    features: [],
+    improvements: [
+      'Typography is now consistent across all screens — font sizes, weights, and line heights follow a single shared design system instead of being set individually per screen.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.23',
     date: '2026-04-04',
     title: 'Faster Feed, Smarter Refresh & Bug Fixes',

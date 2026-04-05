@@ -246,57 +246,20 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       gap: 3,
       paddingVertical: theme.spacing.xs - 1,
     },
-    overlayPrimaryText: {
-      fontSize: 17,
-      fontWeight: '700',
-      lineHeight: 22,
-    },
-    overlayPrimaryModern: {
-      fontSize: 17,
-      fontWeight: '700',
-      lineHeight: 22,
-    },
     overlayPrimaryRustic: {
-      fontSize: 15,
-      fontWeight: '700',
       letterSpacing: 0.8,
-      lineHeight: 20,
       textTransform: 'uppercase',
-    },
-    overlayPrimaryMinimal: {
-      fontSize: 16,
-      fontWeight: '600',
-      lineHeight: 20,
     },
     overlayPrimaryNeon: {
-      fontSize: 15,
-      fontWeight: '700',
       letterSpacing: 1.0,
-      lineHeight: 19,
       textTransform: 'uppercase',
     },
-    overlaySecondaryText: {
-      fontSize: 15,
-      lineHeight: 20,
-    },
-    overlaySecondaryModern: {
-      fontSize: 15,
-      lineHeight: 20,
-    },
     overlaySecondaryRustic: {
-      fontSize: 14,
       fontStyle: 'italic',
       letterSpacing: 0.45,
-      lineHeight: 18,
-    },
-    overlaySecondaryMinimal: {
-      fontSize: 14,
-      lineHeight: 18,
     },
     overlaySecondaryNeon: {
-      fontSize: 13,
       letterSpacing: 0.35,
-      lineHeight: 17,
       textTransform: 'uppercase',
     },
     ratingRow: {
@@ -374,21 +337,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       textTransform: 'uppercase',
     },
     ratingTextRustic: {
-      fontSize: 14,
-      fontWeight: '600',
       letterSpacing: 0.35,
-      lineHeight: 18,
-    },
-    ratingTextMinimal: {
-      fontSize: 14,
-      fontWeight: '500',
-      lineHeight: 18,
     },
     ratingTextNeon: {
-      fontSize: 13,
-      fontWeight: '700',
       letterSpacing: 0.45,
-      lineHeight: 17,
       textTransform: 'uppercase',
     },
     optionPanel: {
@@ -447,6 +399,47 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       marginTop: theme.spacing.xxs,
     },
   });
+  const overlayPrimaryVariant = isRusticTheme
+    ? 'titleXs'
+    : isMinimalTheme
+      ? 'bodyLgTightSemiBold'
+      : isNeonTheme
+        ? 'titleXsTight'
+        : 'titleBase';
+  const overlaySecondaryVariant = isRusticTheme || isMinimalTheme
+    ? 'bodyMdTight'
+    : isNeonTheme
+      ? 'metaTight'
+      : 'bodyBase';
+  const overlayRatingVariant = isRusticTheme
+    ? 'labelMd'
+    : isMinimalTheme
+      ? 'bodyMdTightMedium'
+      : isNeonTheme
+        ? 'metaTightStrong'
+        : 'bodyBase';
+  const overlayPrimaryDecorationStyle = isRusticTheme
+    ? styles.overlayPrimaryRustic
+    : isNeonTheme
+      ? styles.overlayPrimaryNeon
+      : null;
+  const overlaySecondaryDecorationStyle = isRusticTheme
+    ? styles.overlaySecondaryRustic
+    : isNeonTheme
+      ? styles.overlaySecondaryNeon
+      : null;
+  const overlayDateDecorationStyle = isRusticTheme
+    ? styles.dateTextRustic
+    : isMinimalTheme
+      ? styles.dateTextMinimal
+      : isNeonTheme
+        ? styles.dateTextNeon
+        : null;
+  const overlayRatingDecorationStyle = isRusticTheme
+    ? styles.ratingTextRustic
+    : isNeonTheme
+      ? styles.ratingTextNeon
+      : null;
 
   return (
     <View style={styles.screen}>
@@ -529,16 +522,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                   {showDishNames ? (
                     <Text
                       style={[
-                        styles.overlayPrimaryText,
-                        isRusticTheme
-                          ? styles.overlayPrimaryRustic
-                          : isMinimalTheme
-                            ? styles.overlayPrimaryMinimal
-                            : isNeonTheme
-                              ? styles.overlayPrimaryNeon
-                            : styles.overlayPrimaryModern,
+                        overlayPrimaryDecorationStyle,
                         { color: sharePalette.primaryText },
                       ]}
+                      variant={overlayPrimaryVariant}
                     >
                       {item.itemName}
                     </Text>
@@ -546,16 +533,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                   {showRestaurantName ? (
                     <Text
                       style={[
-                        styles.overlaySecondaryText,
-                        isRusticTheme
-                          ? styles.overlaySecondaryRustic
-                          : isMinimalTheme
-                            ? styles.overlaySecondaryMinimal
-                            : isNeonTheme
-                              ? styles.overlaySecondaryNeon
-                            : styles.overlaySecondaryModern,
+                        overlaySecondaryDecorationStyle,
                         { color: sharePalette.secondaryText },
                       ]}
+                      variant={overlaySecondaryVariant}
                     >
                       {restaurantName}
                     </Text>
@@ -566,17 +547,11 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                         <Text
                           numberOfLines={1}
                           style={[
-                            styles.overlaySecondaryText,
                             styles.metaLeftText,
-                            isRusticTheme
-                              ? styles.dateTextRustic
-                              : isMinimalTheme
-                                ? styles.dateTextMinimal
-                                : isNeonTheme
-                                  ? styles.dateTextNeon
-                                : null,
+                            overlayDateDecorationStyle,
                             { color: sharePalette.secondaryText },
                           ]}
+                          variant={overlaySecondaryVariant}
                         >
                           {themedDateLabel}
                         </Text>
@@ -605,16 +580,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                           />
                           <Text
                             style={[
-                              styles.overlaySecondaryText,
-                              isRusticTheme
-                                ? styles.ratingTextRustic
-                                : isMinimalTheme
-                                  ? styles.ratingTextMinimal
-                                  : isNeonTheme
-                                    ? styles.ratingTextNeon
-                                  : null,
+                              overlayRatingDecorationStyle,
                               { color: sharePalette.secondaryText },
                             ]}
+                            variant={overlayRatingVariant}
                           >
                             {getRatingLabel(item.rating)}
                           </Text>
@@ -648,33 +617,21 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                         />
                         <Text
                           style={[
-                            styles.overlaySecondaryText,
-                            isRusticTheme
-                              ? styles.ratingTextRustic
-                              : isMinimalTheme
-                                ? styles.ratingTextMinimal
-                                : isNeonTheme
-                                  ? styles.ratingTextNeon
-                                : null,
-                              { color: sharePalette.secondaryText },
-                            ]}
-                          >
-                            {getRatingLabel(item.rating)}
+                            overlayRatingDecorationStyle,
+                            { color: sharePalette.secondaryText },
+                          ]}
+                          variant={overlayRatingVariant}
+                        >
+                          {getRatingLabel(item.rating)}
                         </Text>
                       </View>
                     ) : (
                       <Text
                         style={[
-                          styles.overlaySecondaryText,
-                          isRusticTheme
-                            ? styles.dateTextRustic
-                            : isMinimalTheme
-                              ? styles.dateTextMinimal
-                              : isNeonTheme
-                                ? styles.dateTextNeon
-                              : null,
+                          overlayDateDecorationStyle,
                           { color: sharePalette.secondaryText },
                         ]}
+                        variant={overlaySecondaryVariant}
                       >
                         {themedDateLabel}
                       </Text>

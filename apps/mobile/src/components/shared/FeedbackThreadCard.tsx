@@ -51,19 +51,12 @@ export function FeedbackThreadCard({
     title: {
       color: theme.colors.text.primary,
       flex: 1,
-      fontSize: compact ? 15 : 18,
-      fontWeight: '700',
-      lineHeight: compact ? 20 : 24,
     },
     ownerText: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
     },
     description: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
-      lineHeight: 20,
     },
     footerRow: {
       alignItems: 'center',
@@ -72,34 +65,25 @@ export function FeedbackThreadCard({
     },
     footerLabelMuted: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     footerLabelSuccess: {
       color: theme.colors.text.success,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     timestamp: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
       marginLeft: 'auto',
     },
     unreadLabel: {
       color: theme.colors.text.brand,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
   });
 
   return (
     <Card style={[styles.card, style]} tone={tone}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} variant={compact ? 'titleXs' : 'sectionTitle'}>
+          {title}
+        </Text>
         <StatusPill
           label={FEEDBACK_STATUS_LABELS[status]}
           tone={resolveFeedbackStatusTone(status)}
@@ -108,21 +92,28 @@ export function FeedbackThreadCard({
         />
       </View>
 
-      {ownerLabel ? <Text style={styles.ownerText}>{ownerLabel}</Text> : null}
-      <Text style={styles.description}>{description}</Text>
+      {ownerLabel ? <Text style={styles.ownerText} variant="bodySmTight">{ownerLabel}</Text> : null}
+      <Text style={styles.description} variant="bodyMd">{description}</Text>
 
       {footerLabel || timestampLabel ? (
         <View style={styles.footerRow}>
           {footerLabel ? (
-            <Text style={footerLabelTone === 'success' ? styles.footerLabelSuccess : styles.footerLabelMuted}>
+            <Text
+              style={footerLabelTone === 'success' ? styles.footerLabelSuccess : styles.footerLabelMuted}
+              variant="bodySmTightSemiBold"
+            >
               {footerLabel}
             </Text>
           ) : null}
-          {timestampLabel ? <Text style={styles.timestamp}>{timestampLabel}</Text> : null}
+          {timestampLabel ? <Text style={styles.timestamp} variant="bodySmTight">{timestampLabel}</Text> : null}
         </View>
       ) : null}
 
-      {unreadCount > 0 ? <Text style={styles.unreadLabel}>{unreadCount} unread</Text> : null}
+      {unreadCount > 0 ? (
+        <Text style={styles.unreadLabel} variant="bodySmTightSemiBold">
+          {unreadCount} unread
+        </Text>
+      ) : null}
     </Card>
   );
 }

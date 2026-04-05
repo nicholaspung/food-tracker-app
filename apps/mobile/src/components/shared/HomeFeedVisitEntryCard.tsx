@@ -125,7 +125,6 @@ export function HomeFeedVisitEntryCard({
     entryTitle: {
       color: colors.textPrimary,
       flex: 1,
-      ...theme.typography.titleSm,
     },
     friendBadge: {
       backgroundColor: colors.accentSoft,
@@ -152,8 +151,6 @@ export function HomeFeedVisitEntryCard({
     },
     restaurantMeta: {
       color: colors.textMuted,
-      ...theme.typography.bodyMd,
-      lineHeight: 19,
     },
     restaurantMetaRow: {
       alignItems: 'center',
@@ -224,13 +221,10 @@ export function HomeFeedVisitEntryCard({
     },
     foodItemName: {
       color: colors.textPrimary,
-      ...theme.typography.button,
     },
     foodItemNotes: {
       color: colors.textMuted,
-      ...theme.typography.label,
       fontStyle: 'italic',
-      lineHeight: 18,
     },
     foodItemRight: {
       alignItems: 'flex-end',
@@ -250,11 +244,9 @@ export function HomeFeedVisitEntryCard({
     },
     ratingLabel: {
       color: colors.textSecondary,
-      ...theme.typography.bodySmTightMedium,
     },
     entryMeta: {
       color: colors.textMuted,
-      ...theme.typography.bodySmTight,
     },
   });
 
@@ -264,7 +256,7 @@ export function HomeFeedVisitEntryCard({
   return (
     <View style={styles.entryCard}>
       <View style={styles.entryTopRow}>
-        <Text numberOfLines={2} style={styles.entryTitle}>
+        <Text numberOfLines={2} style={styles.entryTitle} variant="titleSm">
           {visit.restaurantName}
         </Text>
         <View style={styles.entryTopRight}>
@@ -287,7 +279,7 @@ export function HomeFeedVisitEntryCard({
       {restaurantMetaLabel || hasActions ? (
         <View style={styles.restaurantMetaRow}>
           {restaurantMetaLabel ? (
-            <Text numberOfLines={1} style={[styles.restaurantMeta, styles.restaurantMetaInline]}>
+            <Text numberOfLines={1} style={[styles.restaurantMeta, styles.restaurantMetaInline]} variant="bodyMd">
               {restaurantMetaLabel}
             </Text>
           ) : (
@@ -377,11 +369,11 @@ export function HomeFeedVisitEntryCard({
                 ) : null}
 
                 <View style={styles.foodItemContent}>
-                  <Text numberOfLines={2} style={styles.foodItemName}>
+                  <Text numberOfLines={2} style={styles.foodItemName} variant="button">
                     {item.name}
                   </Text>
                   {item.notes ? (
-                    <Text numberOfLines={2} style={styles.foodItemNotes}>
+                    <Text numberOfLines={2} style={styles.foodItemNotes} variant="label">
                       "{item.notes}"
                     </Text>
                   ) : null}
@@ -395,7 +387,9 @@ export function HomeFeedVisitEntryCard({
                         { backgroundColor: getRatingColor(theme, item.rating) },
                       ]}
                     />
-                    <Text style={styles.ratingLabel}>{getRatingLabel(item.rating)}</Text>
+                    <Text style={styles.ratingLabel} variant="bodySmTightMedium">
+                      {getRatingLabel(item.rating)}
+                    </Text>
                   </View>
                   {primaryPhoto && onSharePhoto ? (
                     <Pressable
@@ -420,10 +414,10 @@ export function HomeFeedVisitEntryCard({
           })}
         </View>
       ) : (
-        <Text style={styles.entryMeta}>No items recorded</Text>
+        <Text style={styles.entryMeta} variant="bodySmTight">No items recorded</Text>
       )}
 
-      {footerLabel ? <Text style={styles.entryMeta}>{footerLabel}</Text> : null}
+      {footerLabel ? <Text style={styles.entryMeta} variant="bodySmTight">{footerLabel}</Text> : null}
     </View>
   );
 }

@@ -121,9 +121,6 @@ export function PhotoViewerModal({
     },
     count: {
       color: viewerPalette.text,
-      fontSize: 14,
-      fontWeight: '600',
-      lineHeight: 18,
     },
     centerMeta: {
       alignItems: 'center',
@@ -132,9 +129,6 @@ export function PhotoViewerModal({
     },
     ownerLabel: {
       color: viewerPalette.text,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
       opacity: 0.9,
     },
   });
@@ -202,8 +196,12 @@ export function PhotoViewerModal({
           </Pressable>
 
           <View style={styles.centerMeta}>
-            {currentOwnerLabel ? <Text style={styles.ownerLabel}>{currentOwnerLabel}</Text> : null}
-            <Text style={styles.count}>
+            {currentOwnerLabel ? (
+              <Text style={styles.ownerLabel} variant="bodySmTightSemiBold">
+                {currentOwnerLabel}
+              </Text>
+            ) : null}
+            <Text style={styles.count} variant="labelMd">
               {urls.length === 0 ? '0 / 0' : `${currentIndex + 1} / ${urls.length}`}
             </Text>
           </View>

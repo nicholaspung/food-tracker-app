@@ -61,9 +61,6 @@ export function FilterChipGroup<T extends string>({
     },
     chipLabel: {
       color: theme.colors.text.secondary,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     chipLabelActive: {
       color: theme.colors.text.info,
@@ -82,7 +79,10 @@ export function FilterChipGroup<T extends string>({
         }}
         style={[styles.chip, chipStyle, isSelected ? [styles.chipActive, activeChipStyle] : null]}
       >
-        <Text style={[styles.chipLabel, labelStyle, isSelected ? [styles.chipLabelActive, activeLabelStyle] : null]}>
+        <Text
+          style={[styles.chipLabel, labelStyle, isSelected ? [styles.chipLabelActive, activeLabelStyle] : null]}
+          variant="bodySmTightSemiBold"
+        >
           {option.label}
         </Text>
       </Pressable>

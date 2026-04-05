@@ -361,9 +361,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     },
     clearSearchLabel: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
-      fontWeight: '600',
-      lineHeight: 18,
     },
     listsWrap: {
       gap: theme.spacing.sm,
@@ -401,8 +398,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     },
     cardDescription: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
-      lineHeight: 20,
     },
     cardMetaRow: {
       alignItems: 'center',
@@ -413,8 +408,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     },
     cardMetaText: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
     },
     ownerMeta: {
       alignItems: 'center',
@@ -531,25 +524,25 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         <ListItem
           description={
             <View style={styles.cardMetaWrap}>
-              {list.description ? <Text style={styles.cardDescription}>{list.description}</Text> : null}
+              {list.description ? <Text style={styles.cardDescription} variant="bodyMd">{list.description}</Text> : null}
               <View style={styles.cardMetaRow}>
-                <Text style={styles.cardMetaText}>
+                <Text style={styles.cardMetaText} variant="bodySmTight">
                   {restaurantCount} {restaurantCount === 1 ? 'restaurant' : 'restaurants'}
                 </Text>
                 {menuItemCount > restaurantCount ? (
-                  <Text style={styles.cardMetaText}>• {menuItemCount} menu items</Text>
+                  <Text style={styles.cardMetaText} variant="bodySmTight">• {menuItemCount} menu items</Text>
                 ) : null}
                 {activeTab !== 'my' ? (
                   <View style={styles.ownerMeta}>
-                    <Text style={styles.cardMetaText}>•</Text>
+                    <Text style={styles.cardMetaText} variant="bodySmTight">•</Text>
                     <Ionicons color={theme.colors.text.muted} name="person-outline" size={13} />
-                    <Text numberOfLines={1} style={styles.cardMetaText}>
+                    <Text numberOfLines={1} style={styles.cardMetaText} variant="bodySmTight">
                       {list.ownerName ?? 'Unknown'}
                     </Text>
                   </View>
                 ) : null}
               </View>
-              <Text style={styles.cardMetaText}>Updated {updatedLabel}</Text>
+              <Text style={styles.cardMetaText} variant="bodySmTight">Updated {updatedLabel}</Text>
             </View>
           }
           leading={list.isDefault ? <Ionicons color={theme.colors.text.warning} name="star" size={16} /> : undefined}
@@ -631,7 +624,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
             }}
             style={({ pressed }) => [styles.clearSearchButton, pressed && styles.clearSearchButtonPressed]}
           >
-            <Text style={styles.clearSearchLabel}>Clear</Text>
+            <Text style={styles.clearSearchLabel} variant="labelMd">Clear</Text>
           </Pressable>
         ) : null}
       </View>

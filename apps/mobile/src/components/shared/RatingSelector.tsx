@@ -46,13 +46,15 @@ export function RatingSelector({ value, onChange, testIDPrefix }: RatingSelector
               ]}
               testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
             >
-              <Text style={[styles.buttonText, dynamicStyles.buttonText]}>{option.value}</Text>
+              <Text style={[styles.buttonText, dynamicStyles.buttonText]} variant="labelMd">
+                {option.value}
+              </Text>
             </Pressable>
           );
         })}
       </View>
       {selectedOption && (
-        <Text tone="secondary" style={styles.label}>
+        <Text tone="secondary" style={styles.label} variant="bodySmTight">
           {selectedOption.label}
         </Text>
       )}
@@ -83,11 +85,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   buttonText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   label: {
     textAlign: 'center',
-    fontSize: 12,
   },
 });

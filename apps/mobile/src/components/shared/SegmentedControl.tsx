@@ -91,9 +91,6 @@ export function SegmentedControl<T extends string>({
     },
     label: {
       color: theme.colors.text.muted,
-      fontSize: 14,
-      fontWeight: '600',
-      lineHeight: 18,
       flexShrink: 1,
       textAlign: 'center',
     },
@@ -130,7 +127,10 @@ export function SegmentedControl<T extends string>({
             ]}
             testID={getOptionTestID?.(option.value, index)}
           >
-            <Text style={[styles.label, labelStyle, isActive ? [styles.labelActive, activeLabelStyle] : null]}>
+            <Text
+              style={[styles.label, labelStyle, isActive ? [styles.labelActive, activeLabelStyle] : null]}
+              variant="labelMd"
+            >
               {option.label}
             </Text>
             {badgeCount > 0 ? renderBadge(badgeCount, option.badgeTone ?? 'default', [styles.badge, badgeStyle]) : null}

@@ -54,10 +54,6 @@ export function QuickTrackFormFields({
       backgroundColor: theme.colors.status.warningBg,
       borderBottomColor: theme.colors.status.warningBorder,
     },
-    categorySelectorTitle: {
-      color: theme.colors.text.primary,
-      fontWeight: '700',
-    },
     categorySelectorSubtitle: {
       color: theme.colors.text.muted,
     },
@@ -149,7 +145,7 @@ export function QuickTrackFormFields({
             subtitle={value.category ? 'Selected category' : 'Tap to choose a category'}
             subtitleStyle={value.category ? styles.categorySelectorSubtitleSelected : styles.categorySelectorSubtitle}
             title={selectedCategoryLabel}
-            titleStyle={!value.category ? styles.categoryPlaceholder : styles.categorySelectorTitle}
+            titleStyle={!value.category ? styles.categoryPlaceholder : undefined}
           />
 
           {isCategoryExpanded

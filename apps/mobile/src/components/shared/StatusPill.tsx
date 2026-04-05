@@ -137,15 +137,17 @@ export function StatusPill({
     },
     label: {
       color: textColor,
-      fontSize: size === 'md' ? 12 : 10,
-      fontWeight: '700',
-      lineHeight: size === 'md' ? 16 : 14,
     },
   });
 
   return (
     <View style={[styles.pill, style]}>
-      <Text style={[styles.label, labelStyle]}>{textLabel}</Text>
+      <Text
+        style={[styles.label, labelStyle]}
+        variant={size === 'md' ? 'bodySmTightBold' : 'microStrong'}
+      >
+        {textLabel}
+      </Text>
     </View>
   );
 }

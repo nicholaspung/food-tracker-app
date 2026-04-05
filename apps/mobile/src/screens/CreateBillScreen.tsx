@@ -1119,14 +1119,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     sectionTitle: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 22,
     },
     sectionHint: {
       color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
-      lineHeight: 17,
     },
     itemComposerRow: {
       alignItems: 'flex-end',
@@ -1152,9 +1147,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     addItemButtonLabel: {
       color: theme.colors.text.inverse,
-      ...theme.typography.label,
-      fontWeight: '700',
-      lineHeight: 18,
     },
     itemsList: {
       borderColor: theme.colors.border.subtle,
@@ -1166,9 +1158,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     itemPrice: {
       color: theme.colors.text.primary,
-      ...theme.typography.label,
-      fontWeight: '700',
-      lineHeight: 18,
     },
     removeItemButton: {
       alignItems: 'center',
@@ -1207,9 +1196,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     assignmentChipLabel: {
       color: theme.colors.text.secondary,
-      ...theme.typography.bodySm,
-      fontWeight: '600',
-      lineHeight: 16,
     },
     assignmentChipLabelSelected: {
       color: theme.colors.text.inverse,
@@ -1223,9 +1209,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     advancedSplitLabel: {
       color: theme.colors.text.primary,
       flex: 1,
-      ...theme.typography.label,
-      fontWeight: '600',
-      lineHeight: 18,
     },
     advancedSplitInput: {
       width: 120,
@@ -1263,9 +1246,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     customTipToggleLabel: {
       color: theme.colors.text.info,
-      ...theme.typography.label,
-      fontWeight: '600',
-      lineHeight: 18,
     },
     customTipEditor: {
       borderColor: theme.colors.border.info,
@@ -1281,8 +1261,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     selectedFriendsSummary: {
       color: theme.colors.text.secondary,
-      ...theme.typography.bodySm,
-      lineHeight: 17,
     },
     friendRowSelected: {
       backgroundColor: theme.colors.status.infoBg,
@@ -1300,9 +1278,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     subsectionTitle: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyMd,
-      fontWeight: '700',
-      lineHeight: 20,
     },
     payerSection: {
       backgroundColor: theme.colors.status.infoBg,
@@ -1329,8 +1304,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     payerDropdownLabel: {
       color: theme.colors.text.primary,
       flex: 1,
-      ...theme.typography.bodyLg,
-      lineHeight: 22,
     },
     payerOptionsList: {
       borderColor: theme.colors.border.info,
@@ -1364,9 +1337,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     owedAmountValue: {
       color: theme.colors.text.primary,
-      ...theme.typography.button,
-      fontWeight: '700',
-      lineHeight: 20,
       textAlign: 'right',
       width: 120,
     },
@@ -1382,25 +1352,15 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     },
     totalsLabel: {
       color: theme.colors.text.secondary,
-      ...theme.typography.label,
     },
     totalsLabelStrong: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyMd,
-      fontWeight: '700',
-      lineHeight: 20,
     },
     totalsValue: {
       color: theme.colors.text.primary,
-      ...theme.typography.label,
-      fontWeight: '700',
-      lineHeight: 18,
     },
     totalsValueStrong: {
       color: theme.colors.text.primary,
-      ...theme.typography.bodyLg,
-      fontWeight: '700',
-      lineHeight: 24,
     },
     totalsPanel: {
       borderRadius: theme.radii.md,
@@ -2221,7 +2181,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons color={theme.colors.text.secondary} name="options-outline" size={16} />
-            <Text style={styles.sectionTitle}>Split Type</Text>
+            <Text style={styles.sectionTitle} variant="titleSm">Split Type</Text>
           </View>
           <SegmentedControl
             getOptionTestID={(value) => `bill-split-mode-${value}`}
@@ -2240,7 +2200,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             ]}
             value={splitMode}
           />
-          <Text style={styles.sectionHint}>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
             {isEqualSplitMode
               ? 'Use one total bill amount and split it evenly across participants.'
               : isCustomSplitMode
@@ -2253,7 +2213,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       <Card style={styles.sectionCard}>
         <View style={styles.sectionTitleRow}>
           <Ionicons color={theme.colors.text.secondary} name="create-outline" size={16} />
-          <Text style={styles.sectionTitle}>Bill Name</Text>
+          <Text style={styles.sectionTitle} variant="titleSm">Bill Name</Text>
         </View>
         <Input
           onChangeText={setBillTitle}
@@ -2266,9 +2226,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       <Card style={styles.sectionCard}>
         <View style={styles.sectionTitleRow}>
           <Ionicons color={theme.colors.text.secondary} name="people-outline" size={16} />
-          <Text style={styles.sectionTitle}>Select Friends</Text>
+          <Text style={styles.sectionTitle} variant="titleSm">Select Friends</Text>
         </View>
-        <Text style={styles.sectionHint}>You are always included in the bill.</Text>
+        <Text style={styles.sectionHint} variant="bodySmCompact">You are always included in the bill.</Text>
         {shouldShowFriendSearch ? (
           <Input
             containerStyle={styles.friendSearchInput}
@@ -2287,11 +2247,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         ) : null}
 
         {!friendsQuery.isLoading && acceptedFriends.length === 0 ? (
-          <Text style={styles.sectionHint}>No friends available. Add friends first to split a bill.</Text>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
+            No friends available. Add friends first to split a bill.
+          </Text>
         ) : null}
 
         {!friendsQuery.isLoading && acceptedFriends.length > 0 && visibleFriends.length === 0 ? (
-          <Text style={styles.sectionHint}>No friends match your search.</Text>
+          <Text style={styles.sectionHint} variant="bodySmCompact">No friends match your search.</Text>
         ) : null}
 
         {!friendsQuery.isLoading && visibleFriends.length > 0 ? (
@@ -2323,7 +2285,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           </OptionList>
         ) : null}
 
-        <Text style={styles.selectedFriendsSummary}>
+        <Text style={styles.selectedFriendsSummary} variant="bodySmCompact">
           {selectedFriendIds.length} friend{selectedFriendIds.length === 1 ? '' : 's'} selected
         </Text>
       </Card>
@@ -2332,7 +2294,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons color={theme.colors.text.secondary} name="cash-outline" size={16} />
-            <Text style={styles.sectionTitle}>Total Bill Price</Text>
+            <Text style={styles.sectionTitle} variant="titleSm">Total Bill Price</Text>
           </View>
           <Input
             keyboardType="decimal-pad"
@@ -2342,7 +2304,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             {...billNumericInputProps}
             value={equalTotalInput}
           />
-          <Text style={styles.sectionHint}>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
             {isEqualSplitMode
               ? 'This total is split evenly across all selected participants.'
               : 'Set the total first, then enter each participant\'s owed amount below.'}
@@ -2354,9 +2316,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <Card style={styles.sectionCard}>
         <View style={styles.sectionTitleRow}>
           <Ionicons color={theme.colors.text.secondary} name="cash-outline" size={16} />
-          <Text style={styles.sectionTitle}>Items</Text>
+          <Text style={styles.sectionTitle} variant="titleSm">Items</Text>
         </View>
-        <Text style={styles.sectionHint}>
+        <Text style={styles.sectionHint} variant="bodySmCompact">
           Custom mode: add items, then choose simple or complex assignment per item.
         </Text>
 
@@ -2387,7 +2349,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               pressed ? { opacity: 0.8 } : null,
             ]}
           >
-            <Text style={styles.addItemButtonLabel}>+ Add Item</Text>
+            <Text style={styles.addItemButtonLabel} variant="labelStrong">+ Add Item</Text>
           </Pressable>
         </View>
 
@@ -2423,7 +2385,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                     }}
                     rightAccessory={
                       <View style={styles.itemRowAccessory}>
-                        <Text style={styles.itemPrice}>{formatCurrency(Number(item.price) || 0)}</Text>
+                        <Text style={styles.itemPrice} variant="labelStrong">
+                          {formatCurrency(Number(item.price) || 0)}
+                        </Text>
                         <Pressable
                           accessibilityLabel={`Remove ${item.name}`}
                           onPress={() => {
@@ -2459,7 +2423,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
                       {item.splitMode === 'simple' ? (
                         <>
-                          <Text style={styles.sectionHint}>Choose who shares this item.</Text>
+                          <Text style={styles.sectionHint} variant="bodySmCompact">Choose who shares this item.</Text>
                           <View style={styles.assignmentChipWrap}>
                             {participants.map((participant) => {
                               const isAssigned = item.assignedParticipantIds.includes(participant.id);
@@ -2480,6 +2444,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                                       styles.assignmentChipLabel,
                                       isAssigned ? styles.assignmentChipLabelSelected : null,
                                     ]}
+                                    variant="bodySmTightSemiBold"
                                   >
                                     {participant.name}
                                   </Text>
@@ -2505,7 +2470,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                               value={item.advancedSplitType}
                             />
                           </View>
-                          <Text style={styles.sectionHint}>Choose participants and enter split values.</Text>
+                          <Text style={styles.sectionHint} variant="bodySmCompact">
+                            Choose participants and enter split values.
+                          </Text>
                           <View style={styles.assignmentChipWrap}>
                             {participants.map((participant) => {
                               const isInSplit = item.advancedSplits.some(
@@ -2528,6 +2495,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                                       styles.assignmentChipLabel,
                                       isInSplit ? styles.assignmentChipLabelSelected : null,
                                     ]}
+                                    variant="bodySmTightSemiBold"
                                   >
                                     {participant.name}
                                   </Text>
@@ -2546,7 +2514,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
                             return (
                               <View key={`${item.id}:${participant.id}`} style={styles.advancedSplitValueRow}>
-                                <Text style={styles.advancedSplitLabel}>{participant.name}</Text>
+                                <Text style={styles.advancedSplitLabel} variant="label">{participant.name}</Text>
                                 <View style={styles.advancedSplitControls}>
                                   <Pressable
                                     accessibilityLabel={
@@ -2613,7 +2581,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             })}
           </OptionList>
         ) : (
-          <Text style={styles.sectionHint}>Add at least one item with a price.</Text>
+          <Text style={styles.sectionHint} variant="bodySmCompact">Add at least one item with a price.</Text>
         )}
         </Card>
       ) : null}
@@ -2622,7 +2590,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Ionicons color={theme.colors.text.secondary} name="calculator-outline" size={16} />
-            <Text style={styles.sectionTitle}>Tax, Tip, Fees</Text>
+            <Text style={styles.sectionTitle} variant="titleSm">Tax, Tip, Fees</Text>
           </View>
 
           <View style={styles.tripleInputRow}>
@@ -2667,7 +2635,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               testID="bill-enable-custom-tip-button"
               style={styles.customTipToggle}
             >
-              <Text style={styles.customTipToggleLabel}>Custom tip</Text>
+              <Text style={styles.customTipToggleLabel} variant="label">Custom tip</Text>
             </Pressable>
           ) : (
             <View style={styles.customTipEditor}>
@@ -2679,7 +2647,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                   testID="bill-disable-custom-tip-button"
                   style={styles.customTipToggle}
                 >
-                  <Text style={styles.customTipToggleLabel}>Cancel custom tip</Text>
+                  <Text style={styles.customTipToggleLabel} variant="label">Cancel custom tip</Text>
                 </Pressable>
               </View>
 
@@ -2718,7 +2686,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                 const isLocked = isAdvancedSplitLocked(split, customTipSplitType);
                 return (
                   <View key={`custom-tip:${participant.id}`} style={styles.advancedSplitValueRow}>
-                    <Text style={styles.advancedSplitLabel}>{participant.name}</Text>
+                    <Text style={styles.advancedSplitLabel} variant="label">{participant.name}</Text>
                     <View style={styles.advancedSplitControls}>
                       <Pressable
                         accessibilityLabel={isLocked ? 'Unlock tip split value' : 'Lock tip split value'}
@@ -2764,7 +2732,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <Card style={styles.sectionCard}>
           <View style={styles.sectionTitleRow} testID="bill-final-price-section">
             <Ionicons color={theme.colors.text.secondary} name="receipt-outline" size={16} />
-            <Text style={styles.sectionTitle}>Final Price</Text>
+            <Text style={styles.sectionTitle} variant="titleSm">Final Price</Text>
             <StatusPill label="Optional" tone="muted" />
           </View>
 
@@ -2778,11 +2746,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             value={finalTotalInput}
           />
 
-          <Text style={styles.sectionHint}>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
             Leave this blank to use items plus tax, tip, and fees. If you enter a final price, the difference is spread
             across the split automatically.
           </Text>
-          <Text style={styles.sectionHint}>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
             Current calculated total: {formatCurrency(roundToCurrency(computedCustomTotal))}
           </Text>
         </Card>
@@ -2791,16 +2759,16 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       <Card style={styles.sectionCard}>
         <View style={styles.sectionTitleRow} testID="bill-payer-owed-section">
           <Ionicons color={theme.colors.text.secondary} name="wallet-outline" size={16} />
-          <Text style={styles.sectionTitle}>Payer & Owed Amounts</Text>
+          <Text style={styles.sectionTitle} variant="titleSm">Payer & Owed Amounts</Text>
         </View>
 
         <View style={styles.payerSection}>
           <View style={styles.subsectionTitleRow}>
             <Ionicons color={theme.colors.text.info} name="person-outline" size={15} />
-            <Text style={styles.subsectionTitle}>Step 1: Who paid the bill?</Text>
+            <Text style={styles.subsectionTitle} variant="bodyMdBold">Step 1: Who paid the bill?</Text>
             <StatusPill label="Required" tone="info" />
           </View>
-          <Text style={styles.sectionHint}>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
             Choose the payer first. Owed amounts below depend on this selection.
           </Text>
           <Pressable
@@ -2813,7 +2781,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               isPayerDropdownOpen ? styles.payerDropdownTriggerOpen : null,
             ]}
           >
-            <Text numberOfLines={1} style={styles.payerDropdownLabel}>
+            <Text numberOfLines={1} style={styles.payerDropdownLabel} variant="bodyLgComfortable">
               {selectedPayerLabel}
             </Text>
             <Ionicons
@@ -2852,7 +2820,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         <View style={styles.owedSection}>
           <View style={styles.subsectionTitleRow}>
             <Ionicons color={theme.colors.text.secondary} name="list-outline" size={15} />
-            <Text style={styles.subsectionTitle}>
+            <Text style={styles.subsectionTitle} variant="bodyMdBold">
               {isEqualSplitMode
                 ? 'Step 2: Auto-split owed amounts'
                 : isManualSplitMode
@@ -2860,7 +2828,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                   : 'Step 2: Calculated owed amounts'}
             </Text>
           </View>
-          <Text style={styles.sectionHint}>
+          <Text style={styles.sectionHint} variant="bodySmCompact">
             {isEqualSplitMode
               ? 'Equal split automatically calculates each person\'s owed amount from the total bill price.'
               : isManualSplitMode
@@ -2876,7 +2844,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                     <Text variant="label">{entry.participant.name}</Text>
                     <StatusPill label={isPayer ? 'Paid' : 'Unpaid'} tone={isPayer ? 'success' : 'muted'} />
                   </View>
-                  <Text style={styles.sectionHint}>
+                  <Text style={styles.sectionHint} variant="bodySmCompact">
                     {isPayer ? 'Marked paid when the bill is created.' : 'Will start as unpaid.'}
                   </Text>
                 </View>
@@ -2896,7 +2864,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                     value={entry.inputValue}
                   />
                 ) : (
-                  <Text style={styles.owedAmountValue}>{formatCurrency(entry.amount)}</Text>
+                  <Text style={styles.owedAmountValue} variant="bodyLgTightBold">
+                    {formatCurrency(entry.amount)}
+                  </Text>
                 )}
               </View>
             );
@@ -2910,17 +2880,17 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           ]}
         >
           <View style={styles.totalsPanelHeader}>
-            <Text style={styles.totalsLabelStrong}>Bill Total Check</Text>
+            <Text style={styles.totalsLabelStrong} variant="bodyMdBold">Bill Total Check</Text>
             <StatusPill label={totalsMatch ? 'Balanced' : 'Mismatch'} tone={totalsMatch ? 'success' : 'warning'} />
           </View>
           <View style={styles.totalsRowStrong}>
-            <Text style={styles.totalsLabelStrong}>Bill total</Text>
-            <Text style={styles.totalsValueStrong}>{formatCurrency(previewTotal)}</Text>
+            <Text style={styles.totalsLabelStrong} variant="bodyMdBold">Bill total</Text>
+            <Text style={styles.totalsValueStrong} variant="bodyLgBold">{formatCurrency(previewTotal)}</Text>
           </View>
           <View style={styles.totalsDivider} />
           <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel}>Owed total</Text>
-            <Text style={styles.totalsValue}>{formatCurrency(owedTotal)}</Text>
+            <Text style={styles.totalsLabel} variant="label">Owed total</Text>
+            <Text style={styles.totalsValue} variant="labelStrong">{formatCurrency(owedTotal)}</Text>
           </View>
           <Text tone={totalsMatch ? 'success' : 'danger'}>
             {totalsMatch ? 'Owed amounts match the bill total.' : 'Owed amounts must match the bill total.'}

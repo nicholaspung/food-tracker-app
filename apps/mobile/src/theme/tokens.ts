@@ -35,6 +35,11 @@ export const typographyTokens = {
     lineHeight: 36,
     fontWeight: '700',
   },
+  displaySm: {
+    fontSize: 26,
+    lineHeight: 30,
+    fontWeight: '700',
+  },
   titleLg: {
     fontSize: 30,
     lineHeight: 36,
@@ -48,6 +53,16 @@ export const typographyTokens = {
   bodyLg: {
     fontSize: 16,
     lineHeight: 24,
+    fontWeight: '400',
+  },
+  bodyLgComfortable: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '400',
+  },
+  bodyLgCompact: {
+    fontSize: 16,
+    lineHeight: 21,
     fontWeight: '400',
   },
   bodyLgMedium: {
@@ -65,10 +80,25 @@ export const typographyTokens = {
     lineHeight: 20,
     fontWeight: '500',
   },
+  bodyLgTightSemiBold: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
   bodyLgTightBold: {
     fontSize: 16,
     lineHeight: 20,
     fontWeight: '700',
+  },
+  bodyBase: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '400',
+  },
+  bodyBaseSemiBold: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   bodyMd: {
     fontSize: 14,
@@ -90,10 +120,30 @@ export const typographyTokens = {
     lineHeight: 20,
     fontWeight: '700',
   },
+  bodyMdTight: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '400',
+  },
+  bodyMdTightMedium: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
   bodySm: {
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '400',
+  },
+  bodySmCompact: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '400',
+  },
+  bodySmSemiBold: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   bodySmTight: {
     fontSize: 12,
@@ -135,9 +185,19 @@ export const typographyTokens = {
     lineHeight: 18,
     fontWeight: '700',
   },
+  titleBase: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
   sectionTitle: {
     fontSize: 18,
     lineHeight: 24,
+    fontWeight: '700',
+  },
+  sectionTitleTight: {
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '700',
   },
   cardTitle: {
@@ -150,6 +210,26 @@ export const typographyTokens = {
     lineHeight: 22,
     fontWeight: '700',
   },
+  titleSmSemiBold: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  titleXs: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  titleXsTight: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  metric: {
+    fontSize: 20,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
   eyebrow: {
     fontSize: 12,
     lineHeight: 16,
@@ -160,8 +240,23 @@ export const typographyTokens = {
     lineHeight: 14,
     fontWeight: '600',
   },
+  captionRegular: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '400',
+  },
+  captionMedium: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '500',
+  },
   captionStrong: {
     fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  microStrong: {
+    fontSize: 10,
     lineHeight: 14,
     fontWeight: '700',
   },
@@ -174,6 +269,21 @@ export const typographyTokens = {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '400',
+  },
+  metaTight: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '400',
+  },
+  metaTightSemiBold: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  metaTightStrong: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   button: {
     fontSize: 16,

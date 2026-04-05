@@ -244,9 +244,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     },
     codeLabel: {
       color: theme.colors.text.info,
-      fontSize: 12,
-      fontWeight: '600',
-      lineHeight: 16,
       letterSpacing: 0.4,
       textTransform: 'uppercase',
     },
@@ -268,10 +265,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     codeText: {
       alignSelf: 'center',
       color: theme.colors.text.info,
-      fontSize: 26,
-      fontWeight: '700',
       letterSpacing: 3,
-      lineHeight: 30,
     },
     qrContainer: {
       alignItems: 'center',
@@ -287,9 +281,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       textAlign: 'center',
     },
     cardTitle: {
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 22,
     },
     cardsList: {
       gap: theme.spacing.sm,
@@ -303,9 +294,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     },
     textActionMuted: {
       color: theme.colors.text.secondary,
-      fontSize: 15,
-      fontWeight: '600',
-      lineHeight: 20,
     },
     requestActions: {
       flexDirection: 'row',
@@ -332,9 +320,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       borderColor: theme.colors.border.danger,
     },
     actionPillLabel: {
-      fontSize: 13,
-      fontWeight: '700',
-      lineHeight: 16,
     },
     actionPillSuccessLabel: {
       color: theme.colors.text.success,
@@ -546,7 +531,12 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                     }}
                     style={[styles.actionPill, styles.actionPillSuccess]}
                   >
-                    <Text style={[styles.actionPillLabel, styles.actionPillSuccessLabel]}>Accept</Text>
+                    <Text
+                      style={[styles.actionPillLabel, styles.actionPillSuccessLabel]}
+                      variant="metaTightStrong"
+                    >
+                      Accept
+                    </Text>
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -556,7 +546,12 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                     }}
                     style={[styles.actionPill, styles.actionPillDanger]}
                   >
-                    <Text style={[styles.actionPillLabel, styles.actionPillDangerLabel]}>Decline</Text>
+                    <Text
+                      style={[styles.actionPillLabel, styles.actionPillDangerLabel]}
+                      variant="metaTightStrong"
+                    >
+                      Decline
+                    </Text>
                   </Pressable>
                 </View>
               }
@@ -592,7 +587,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                   }}
                   style={styles.textAction}
                 >
-                  <Text style={styles.textActionMuted}>Cancel</Text>
+                  <Text style={styles.textActionMuted} variant="bodyBaseSemiBold">Cancel</Text>
                 </Pressable>
               </View>
             }
@@ -645,11 +640,11 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
         {mainTab === 'my-code' ? (
           <Card>
-            <Text style={styles.cardTitle}>My Friend Code</Text>
+            <Text style={styles.cardTitle} variant="sectionTitleTight">My Friend Code</Text>
             <Text style={styles.cardDescription}>Share this code so friends can send you a request.</Text>
             <View style={styles.codeBox}>
               <View style={styles.codeHeaderRow}>
-                <Text style={styles.codeLabel}>Friend Code</Text>
+                <Text style={styles.codeLabel} variant="bodySmTightSemiBold">Friend Code</Text>
                 <Pressable
                   accessibilityLabel="Copy friend code"
                   accessibilityRole="button"
@@ -661,7 +656,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                   <Ionicons color={theme.colors.text.info} name="copy-outline" size={16} />
                 </Pressable>
               </View>
-              <Text style={styles.codeText}>{myFriendCode}</Text>
+              <Text style={styles.codeText} variant="displaySm">{myFriendCode}</Text>
             </View>
             <View style={styles.qrContainer}>
               <QRCode

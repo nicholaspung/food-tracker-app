@@ -55,10 +55,6 @@ export function HeaderAccessoryButton({
     buttonDisabled: {
       opacity: 0.6,
     },
-    label: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
   });
 
   return (
@@ -81,7 +77,7 @@ export function HeaderAccessoryButton({
         name={iconName}
         size={iconSize}
       />
-      <Text style={[styles.label, labelStyle]} variant="label">
+      <Text style={labelStyle} variant="label">
         {label}
       </Text>
     </Pressable>

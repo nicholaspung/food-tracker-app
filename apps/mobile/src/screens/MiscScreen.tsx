@@ -229,14 +229,9 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     },
     tipTitle: {
       color: sectionColors.tipTitle,
-      fontSize: 13,
-      fontWeight: '600',
-      lineHeight: 18,
     },
     tipDescription: {
       color: sectionColors.tipBody,
-      fontSize: 14,
-      lineHeight: 20,
     },
     tipsToggle: {
       alignItems: 'center',
@@ -248,9 +243,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
     },
     tipsToggleLabel: {
       color: sectionColors.blue,
-      fontSize: 14,
-      fontWeight: '600',
-      lineHeight: 20,
     },
   });
 
@@ -362,8 +354,8 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
           <View style={styles.sectionActions}>
             {visibleTips.map((tip) => (
               <View key={tip.title} style={styles.tipCard}>
-                <Text style={styles.tipTitle}>{tip.title}</Text>
-                <Text style={styles.tipDescription}>{tip.description}</Text>
+                <Text style={styles.tipTitle} variant="label">{tip.title}</Text>
+                <Text style={styles.tipDescription} variant="bodyMd">{tip.description}</Text>
               </View>
             ))}
 
@@ -380,7 +372,7 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
                 }}
                 style={({ pressed }) => [styles.tipsToggle, pressed ? styles.tipsTogglePressed : null]}
               >
-                <Text style={styles.tipsToggleLabel}>
+                <Text style={styles.tipsToggleLabel} variant="bodyMdSemiBold">
                   {expandedTips ? 'Show Less' : `Show ${TIPS.length - 3} More Tips`}
                 </Text>
               </Pressable>

@@ -346,14 +346,9 @@ export function AddRestaurantToListScreen({
     },
     sectionTitle: {
       color: theme.colors.text.primary,
-      fontSize: 15,
-      fontWeight: "700",
-      lineHeight: 19,
     },
     sectionDescription: {
       color: theme.colors.text.muted,
-      fontSize: 13,
-      lineHeight: 18,
     },
     cardList: {
       gap: theme.spacing.sm,
@@ -373,19 +368,12 @@ export function AddRestaurantToListScreen({
     },
     restaurantTitle: {
       color: theme.colors.text.primary,
-      fontSize: 16,
-      fontWeight: "700",
-      lineHeight: 20,
     },
     restaurantSubtitle: {
       color: theme.colors.text.secondary,
-      fontSize: 13,
-      lineHeight: 18,
     },
     restaurantMeta: {
       color: theme.colors.text.muted,
-      fontSize: 12,
-      lineHeight: 16,
     },
     disabledCard: {
       opacity: 0.55,
@@ -406,8 +394,6 @@ export function AddRestaurantToListScreen({
     alreadyInListText: {
       color: theme.colors.text.secondary,
       flex: 1,
-      fontSize: 12,
-      lineHeight: 16,
     },
     dateGroupCard: {
       gap: theme.spacing.xs,
@@ -446,14 +432,9 @@ export function AddRestaurantToListScreen({
     },
     foodItemTitle: {
       color: theme.colors.text.primary,
-      fontSize: 14,
-      fontWeight: "700",
-      lineHeight: 18,
     },
     foodItemNote: {
       color: theme.colors.text.secondary,
-      fontSize: 12,
-      lineHeight: 16,
     },
     foodItemMetaRow: {
       alignItems: "center",
@@ -814,10 +795,10 @@ export function AddRestaurantToListScreen({
                     >
                       <View style={styles.restaurantHeaderRow}>
                         <View style={styles.restaurantTitleWrap}>
-                          <Text style={styles.restaurantTitle}>
+                          <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
                             {restaurant.name}
                           </Text>
-                          <Text style={styles.restaurantSubtitle}>
+                          <Text style={styles.restaurantSubtitle} variant="metaRegular">
                             {[restaurant.location, restaurant.cuisineType]
                               .filter(Boolean)
                               .join(" • ") || metadataLabel}
@@ -835,7 +816,7 @@ export function AddRestaurantToListScreen({
                         )}
                       </View>
                       {restaurant.visitDates[0] ? (
-                        <Text style={styles.restaurantMeta}>
+                        <Text style={styles.restaurantMeta} variant="bodySmTight">
                           Latest visit{" "}
                           {formatDisplayDate(restaurant.visitDates[0])}
                         </Text>
@@ -865,10 +846,10 @@ export function AddRestaurantToListScreen({
         <>
           <Card style={styles.selectedCard} tone="default">
             <View style={styles.selectedRestaurantMeta}>
-              <Text style={styles.restaurantTitle}>
+              <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
                 {selectedRestaurant.name}
               </Text>
-              <Text style={styles.restaurantSubtitle}>
+              <Text style={styles.restaurantSubtitle} variant="metaRegular">
                 {[selectedRestaurant.location, selectedRestaurant.cuisineType]
                   .filter(Boolean)
                   .join(" • ") || `${selectedRestaurant.itemCount} rated items`}
@@ -880,7 +861,7 @@ export function AddRestaurantToListScreen({
                     name="checkmark-circle-outline"
                     size={14}
                   />
-                  <Text style={styles.alreadyInListText}>
+                  <Text style={styles.alreadyInListText} variant="bodySmTight">
                     Already in this list. Add more rated items below.
                   </Text>
                 </View>
@@ -889,10 +870,10 @@ export function AddRestaurantToListScreen({
           </Card>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
+            <Text style={styles.sectionTitle} variant="titleXsTight">
               Recommended Items (Optional)
             </Text>
-            <Text style={styles.sectionDescription}>
+            <Text style={styles.sectionDescription} variant="metaRegular">
               Select items you have rated. Items already in this list are marked
               as added.
             </Text>
@@ -947,11 +928,11 @@ export function AddRestaurantToListScreen({
                           >
                             <View style={styles.foodItemHeader}>
                               <View style={styles.foodItemTitleWrap}>
-                                <Text style={styles.foodItemTitle}>
+                                <Text style={styles.foodItemTitle} variant="labelMdBold">
                                   {item.name}
                                 </Text>
                                 {item.notes ? (
-                                  <Text style={styles.foodItemNote}>
+                                  <Text style={styles.foodItemNote} variant="bodySmTight">
                                     {item.notes}
                                   </Text>
                                 ) : null}

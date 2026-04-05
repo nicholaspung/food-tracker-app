@@ -43,9 +43,6 @@ export function UpgradePromptCard({
     },
     title: {
       color: theme.colors.text.info,
-      fontSize: 16,
-      fontWeight: '700',
-      lineHeight: 22,
     },
     actions: {
       gap: theme.spacing.xs,
@@ -55,8 +52,8 @@ export function UpgradePromptCard({
   return (
     <Card style={styles.card} tone="info">
       <View>
-        <Text style={styles.title}>{title}</Text>
-        <Text tone="secondary">{description}</Text>
+        <Text style={styles.title} variant="titleSm">{title}</Text>
+        <Text tone="secondary" variant="bodyMd">{description}</Text>
       </View>
       {primaryAction || secondaryAction ? (
         <View style={styles.actions}>
