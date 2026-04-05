@@ -172,6 +172,23 @@ export interface RestaurantListCountSummary {
   menuItemCount: number;
 }
 
+export interface NoteCountSummary {
+  allCount: number;
+  draftCount: number;
+  usedCount: number;
+}
+
+export interface FriendsCountSummary {
+  friendsCount: number;
+  requestsCount: number;
+  sentCount: number;
+}
+
+export interface FeedbackCountSummary {
+  allCount: number;
+  activeCount: number;
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   page: number;
@@ -1192,6 +1209,11 @@ function buildOrFilter(fieldName: string, values: string[]): string {
   return values.length > 1 ? `(${filter})` : filter;
 }
 
+function buildAnyMatchFilter(fieldName: string, values: string[]): string {
+  const filter = values.map((value) => `${fieldName} ?= "${escapeFilterValue(value)}"`).join(' || ');
+  return values.length > 1 ? `(${filter})` : filter;
+}
+
 function buildSearchFilter(fieldNames: string[], search: string): string | undefined {
   const trimmedSearch = search.trim();
   if (!trimmedSearch) {
@@ -1213,6 +1235,18 @@ function combineFilterClauses(...clauses: (string | undefined)[]): string | unde
   }
 
   return normalizedClauses.map((clause) => `(${clause})`).join(' && ');
+}
+
+function combineOrFilterClauses(...clauses: (string | undefined)[]): string | undefined {
+  const normalizedClauses = clauses
+    .map((clause) => clause?.trim())
+    .filter((clause): clause is string => Boolean(clause));
+
+  if (normalizedClauses.length === 0) {
+    return undefined;
+  }
+
+  return normalizedClauses.map((clause) => `(${clause})`).join(' || ');
 }
 
 function normalizeQuickTrackVisibility(value: unknown): 'friends' | 'private' {
@@ -1355,6 +1389,41 @@ function mapRestaurantListItemLinkRecord(record: ListItemCollectionRecord): Rest
       .map((itemId) => itemId?.trim())
       .filter((itemId): itemId is string => Boolean(itemId)),
   };
+}
+
+export function getRestaurantListItemLinkFoodItemIds(
+  record: Pick<RestaurantListItemLinkRecord, 'foodItemId' | 'userFoodItemId' | 'recommendedItemIds'>,
+): string[] {
+  const foodItemIds = new Set<string>();
+
+  if (record.foodItemId?.trim()) {
+    foodItemIds.add(record.foodItemId.trim());
+  }
+
+  if (record.userFoodItemId?.trim()) {
+    foodItemIds.add(record.userFoodItemId.trim());
+  }
+
+  for (const recommendedItemId of record.recommendedItemIds ?? []) {
+    if (recommendedItemId?.trim()) {
+      foodItemIds.add(recommendedItemId.trim());
+    }
+  }
+
+  return Array.from(foodItemIds);
+}
+
+function buildRestaurantListItemLinkFoodItemLookupFilter(foodItemIds: string[]): string | undefined {
+  const normalizedFoodItemIds = Array.from(new Set(foodItemIds.map((id) => id.trim()).filter((id) => id.length > 0)));
+  if (normalizedFoodItemIds.length === 0) {
+    return undefined;
+  }
+
+  return combineOrFilterClauses(
+    buildOrFilter('foodItem', normalizedFoodItemIds),
+    buildOrFilter('userFoodItem', normalizedFoodItemIds),
+    buildAnyMatchFilter('recommendedItems', normalizedFoodItemIds),
+  );
 }
 
 function mapVisitItemRecord(record: FoodItemCollectionRecord): VisitItem {
@@ -2621,33 +2690,33 @@ export async function listMyBookmarkedListItemLinksForFoodItemIds(
   }
 
   const currentUserId = getAuthenticatedUserId();
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  const myLists = await listCollectionRecords<Pick<RestaurantListCollectionRecord, 'id'>>('restaurant_lists', {
-    filter: `user = "${escapedCurrentUserId}"`,
-    fields: 'id',
-  });
-
-  if (myLists.length === 0) {
+  const normalizedFoodItemIds = Array.from(new Set(foodItemIds.map((id) => id.trim()).filter((id) => id.length > 0)));
+  if (normalizedFoodItemIds.length === 0) {
     return [];
   }
 
-  const links: RestaurantListItemLinkRecord[] = [];
-  const listChunkSize = 20;
+  const linksById = new Map<string, RestaurantListItemLinkRecord>();
   const itemChunkSize = 20;
-  for (let listIndex = 0; listIndex < myLists.length; listIndex += listChunkSize) {
-    const listChunk = myLists.slice(listIndex, listIndex + listChunkSize).map((record) => record.id);
+  const escapedCurrentUserId = escapeFilterValue(currentUserId);
+  for (let itemIndex = 0; itemIndex < normalizedFoodItemIds.length; itemIndex += itemChunkSize) {
+    const itemChunk = normalizedFoodItemIds.slice(itemIndex, itemIndex + itemChunkSize);
+    const lookupFilter = buildRestaurantListItemLinkFoodItemLookupFilter(itemChunk);
+    if (!lookupFilter) {
+      continue;
+    }
 
-    for (let itemIndex = 0; itemIndex < foodItemIds.length; itemIndex += itemChunkSize) {
-      const itemChunk = foodItemIds.slice(itemIndex, itemIndex + itemChunkSize);
-      const records = await listCollectionRecords<ListItemCollectionRecord>('list_items', {
-        filter: `${buildOrFilter('list', listChunk)} && ${buildOrFilter('foodItem', itemChunk)}`,
-        fields: RESTAURANT_LIST_ITEM_LINK_FIELDS,
-      });
-      links.push(...records.map(mapRestaurantListItemLinkRecord));
+    const records = await listCollectionRecords<ListItemCollectionRecord>('list_items', {
+      filter: combineFilterClauses(`list.user = "${escapedCurrentUserId}"`, lookupFilter),
+      fields: RESTAURANT_LIST_ITEM_LINK_FIELDS,
+    });
+
+    for (const record of records) {
+      const link = mapRestaurantListItemLinkRecord(record);
+      linksById.set(link.id, link);
     }
   }
 
-  return links;
+  return Array.from(linksById.values());
 }
 
 export async function getRestaurantListItemCounts(
@@ -3398,6 +3467,20 @@ export async function listNotesPage(input?: ListNotesPageInput): Promise<Paginat
   return mapPaginatedResult(pageResult, pageResult.items.map(mapNoteCollectionRecord));
 }
 
+export async function getNoteCountSummary(): Promise<NoteCountSummary> {
+  if (!pb.authStore.record?.id) {
+    return {
+      allCount: 0,
+      draftCount: 0,
+      usedCount: 0,
+    };
+  }
+
+  return sendApiRequest<NoteCountSummary>('/api/notes/summary', {
+    method: 'GET',
+  });
+}
+
 export async function listFriendsPage(input?: ListFriendsPageInput): Promise<PaginatedResult<FriendRecord>> {
   if (!pb.authStore.record?.id) {
     return createEmptyPaginatedResult(input);
@@ -3427,6 +3510,20 @@ export async function listFriendsPage(input?: ListFriendsPageInput): Promise<Pag
     .filter((friend): friend is FriendRecord => friend !== null);
 
   return mapPaginatedResult(pageResult, items);
+}
+
+export async function getFriendsCountSummary(): Promise<FriendsCountSummary> {
+  if (!pb.authStore.record?.id) {
+    return {
+      friendsCount: 0,
+      requestsCount: 0,
+      sentCount: 0,
+    };
+  }
+
+  return sendApiRequest<FriendsCountSummary>('/api/friends/summary', {
+    method: 'GET',
+  });
 }
 
 export async function listFriends(): Promise<FriendRecord[]> {
@@ -3604,6 +3701,19 @@ export async function listFeedbackPage(input?: ListFeedbackPageInput): Promise<P
   });
 
   return mapPaginatedResult(pageResult, pageResult.items.map(mapFeedbackRecord));
+}
+
+export async function getFeedbackCountSummary(): Promise<FeedbackCountSummary> {
+  if (!pb.authStore.record?.id) {
+    return {
+      allCount: 0,
+      activeCount: 0,
+    };
+  }
+
+  return sendApiRequest<FeedbackCountSummary>('/api/feedback/summary', {
+    method: 'GET',
+  });
 }
 
 export async function listFeedback(options?: {

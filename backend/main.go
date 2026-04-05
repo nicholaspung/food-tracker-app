@@ -80,6 +80,7 @@ func main() {
 		handlers.RegisterUserHandlers(se, app)
 		handlers.RegisterModerationHandlers(se, app)
 		handlers.RegisterFeedbackHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
 		handlers.RegisterUsageLimitHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)

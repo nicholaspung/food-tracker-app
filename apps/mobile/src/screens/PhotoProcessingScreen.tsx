@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Keyboard, Linking, Pressable, StyleSheet, View, type ScrollView } from 'react-native';
@@ -50,6 +49,8 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
+import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   formatDateToLocalDateString,
   formatLocalDateLabel,
@@ -57,6 +58,7 @@ import {
   isValidLocalDate,
   localDateStringToUTC,
 } from '../lib/dateFormatting';
+import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
   buildCreateQuickTrackInput,
@@ -257,32 +259,6 @@ function parseMenuItemNamesFromCsv(csvText: string): string[] {
   return names;
 }
 
-function buildDraftPhotoName(uri: string): string {
-  const baseName = uri.split('/').pop();
-  if (baseName && baseName.includes('.')) {
-    return baseName;
-  }
-
-  return `photo-${Date.now()}.jpg`;
-}
-
-function inferImageMimeType(uri: string): string {
-  const normalizedUri = uri.toLowerCase();
-  if (normalizedUri.endsWith('.png')) {
-    return 'image/png';
-  }
-
-  if (normalizedUri.endsWith('.webp')) {
-    return 'image/webp';
-  }
-
-  if (normalizedUri.endsWith('.heic') || normalizedUri.endsWith('.heif')) {
-    return 'image/heic';
-  }
-
-  return 'image/jpeg';
-}
-
 function parseExifRational(rawValue: unknown): number | null {
   if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
     return rawValue;
@@ -477,9 +453,18 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
   const [countdownValue, setCountdownValue] = useState(5);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
-  const [permissionNeedsSettings, setPermissionNeedsSettings] = useState(false);
   const autoPromptedRef = useRef(false);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const {
+    permissionNeedsSettings,
+    requestPermission: requestPhotoPickerPermission,
+    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
+  } = usePhotoPickerPermissions({
+    cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
+    cameraRequiredMessage: 'Camera permission is required to take a photo.',
+    galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
+    galleryRequiredMessage: 'Photo library permission is required to upload an image.',
+  });
 
   const styles = StyleSheet.create({
     chooseCard: {
@@ -655,26 +640,19 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
     setIsSelectingSource(true);
     setErrorMessage(null);
     setLastRequestedSource(source);
-    setPermissionNeedsSettings(false);
+    resetPhotoPermissionNeedsSettings();
 
     try {
-      const permissionResult =
-        source === 'camera'
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permissionResult.granted) {
+      const permission = await requestPhotoPickerPermission(source);
+      if (!permission.granted) {
         trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PERMISSION_DENIED', {
-          canAskAgain: permissionResult.canAskAgain,
+          canAskAgain: permission.canAskAgain,
           photoSource: source,
           source: 'PhotoProcessingScreen',
         });
-        setPermissionNeedsSettings(permissionResult.canAskAgain === false);
-        throw new Error(
-          source === 'camera'
-            ? 'Camera permission is required to take a photo.'
-            : 'Photo library permission is required to upload an image.',
-        );
+        setErrorMessage(permission.message);
+        setPhase('error');
+        return;
       }
 
       const pickerResult =
@@ -699,15 +677,13 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
       }
 
       const selectedAsset = pickerResult.assets[0];
-      const imageLabel =
-        selectedAsset.fileName?.trim() ||
-        selectedAsset.uri.split('/').pop()?.trim() ||
-        (source === 'camera' ? 'camera-image' : 'library-image');
-      const imageInput: VisitPhotoUploadInput = {
-        uri: selectedAsset.uri,
-        name: imageLabel,
-        mimeType: inferImageMimeType(selectedAsset.uri),
-      };
+      const imageInput: VisitPhotoUploadInput | null = buildLocalPhotoFile(selectedAsset, {
+        fallbackPrefix: source === 'camera' ? 'camera-image' : 'library-image',
+      });
+      if (!imageInput) {
+        throw new Error('Could not read the selected image.');
+      }
+      const imageLabel = imageInput.name;
 
       setSelectedImageName(imageLabel);
       trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICKED', {
@@ -728,7 +704,7 @@ function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScr
     } finally {
       setIsSelectingSource(false);
     }
-  }, [processSelectedImage]);
+  }, [processSelectedImage, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings]);
 
   useEffect(() => {
     if (!isMenuScan || !autoStartSourcePicker || autoPromptedRef.current || phase !== 'choose') {
@@ -975,8 +951,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
   const [isSearchingRestaurants, setIsSearchingRestaurants] = useState(false);
   const [isSearchingNearbyRestaurants, setIsSearchingNearbyRestaurants] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
-  const [locationPermissionNeedsSettings, setLocationPermissionNeedsSettings] = useState(false);
   const [isQuickTrackCategoryExpanded, setIsQuickTrackCategoryExpanded] = useState(false);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [menuItemMode, setMenuItemMode] = useState<MenuItemMode>('existing');
@@ -988,12 +962,31 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [isSelectingSource, setIsSelectingSource] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
-  const [permissionNeedsSettings, setPermissionNeedsSettings] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
   const [reviewPhotoViewerVisible, setReviewPhotoViewerVisible] = useState(false);
   const [reviewPhotoViewerUrls, setReviewPhotoViewerUrls] = useState<string[]>([]);
   const [reviewPhotoViewerInitialIndex, setReviewPhotoViewerInitialIndex] = useState(0);
   const processStepScrollViewRef = useRef<ScrollView | null>(null);
+  const {
+    captureLocation,
+    isCapturing: isGettingLocation,
+    permissionNeedsSettings: locationPermissionNeedsSettings,
+    resetPermissionNeedsSettings: resetLocationPermissionNeedsSettings,
+  } = useForegroundLocationCapture({
+    blockedPermissionMessage: 'Location permission is blocked. Enable it in device settings.',
+    defaultErrorMessage: 'Could not get current location.',
+    deniedPermissionMessage: 'Location permission is required to find nearby places.',
+  });
+  const {
+    permissionNeedsSettings,
+    requestPermission: requestPhotoPickerPermission,
+    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
+  } = usePhotoPickerPermissions({
+    cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
+    cameraRequiredMessage: 'Camera permission is required to take a photo.',
+    galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
+    galleryRequiredMessage: 'Photo library permission is required to upload images.',
+  });
 
   const createVisitSearchUi = resolveCreateVisitSearchUi({
     isFreeTier: isDisplayFreeUser,
@@ -1480,7 +1473,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     setNearbyResults([]);
     setSearchResults([]);
     setSearchErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
+    resetLocationPermissionNeedsSettings();
   };
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
@@ -1516,7 +1509,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     setIsSearchingRestaurants(true);
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
+    resetLocationPermissionNeedsSettings();
     dismissCurrentPhotoLocationHint();
 
     let didAttemptPlacesQuery = false;
@@ -1591,30 +1584,21 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
     setShowNearbyPlaces(true);
     setSearchErrorMessage(null);
-    setLocationPermissionNeedsSettings(false);
-    setIsGettingLocation(true);
+    resetLocationPermissionNeedsSettings();
     dismissCurrentPhotoLocationHint();
 
     let didAttemptPlacesQuery = false;
 
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setLocationPermissionNeedsSettings(permission.canAskAgain === false);
-        setSearchErrorMessage(
-          permission.canAskAgain === false
-            ? 'Location permission is blocked. Enable it in device settings.'
-            : 'Location permission is required to find nearby places.',
-        );
+      const locationCapture = await captureLocation();
+      if (locationCapture.status !== 'success') {
+        setSearchErrorMessage(locationCapture.message);
         return;
       }
 
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
       const coords = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
+        lat: locationCapture.coordinates.latitude,
+        lng: locationCapture.coordinates.longitude,
       };
       setReferenceCoords(coords);
 
@@ -1652,7 +1636,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           : 'Could not load nearby restaurants.';
       setSearchErrorMessage(message);
     } finally {
-      setIsGettingLocation(false);
       setIsSearchingNearbyRestaurants(false);
       if (didAttemptPlacesQuery) {
         await queryClient.invalidateQueries({
@@ -1756,7 +1739,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     };
   };
 
-  const appendAssets = async (assets: ImagePicker.ImagePickerAsset[]) => {
+  const appendAssets = useCallback(async (assets: ImagePicker.ImagePickerAsset[]) => {
     if (assets.length === 0) {
       return;
     }
@@ -1775,24 +1758,25 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       const timestamp = Date.now();
 
       resolvedAssets.forEach(({ asset, captureDate, captureCoordinates }, index) => {
-        if (!asset.uri || existingUris.has(asset.uri)) {
+        const nextPhoto = buildLocalPhotoFile(asset, {
+          fallbackPrefix: 'photo',
+        });
+        if (!nextPhoto || existingUris.has(nextPhoto.uri)) {
           return;
         }
 
         nextPhotos.push({
           id: `${timestamp}-${index}-${asset.assetId ?? index}`,
-          uri: asset.uri,
-          name: asset.fileName?.trim() || buildDraftPhotoName(asset.uri),
-          mimeType: asset.mimeType || inferImageMimeType(asset.uri),
+          ...nextPhoto,
           captureDate,
           captureCoordinates,
         });
-        existingUris.add(asset.uri);
+        existingUris.add(nextPhoto.uri);
       });
 
       return nextPhotos;
     });
-  };
+  }, []);
 
   const pickPhotos = useCallback(
     async (source: ScanSource) => {
@@ -1802,27 +1786,19 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       });
       setIsSelectingSource(true);
       setErrorMessage(null);
-      setPermissionNeedsSettings(false);
+      resetPhotoPermissionNeedsSettings();
       setLastRequestedSource(source);
 
       try {
-        const permission =
-          source === 'camera'
-            ? await ImagePicker.requestCameraPermissionsAsync()
-            : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
+        const permission = await requestPhotoPickerPermission(source);
         if (!permission.granted) {
           trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PERMISSION_DENIED', {
             canAskAgain: permission.canAskAgain,
             photoSource: source,
             source: 'PhotoProcessingScreen',
           });
-          setPermissionNeedsSettings(permission.canAskAgain === false);
-          throw new Error(
-            source === 'camera'
-              ? 'Camera permission is required to take a photo.'
-              : 'Photo library permission is required to upload images.',
-          );
+          setErrorMessage(permission.message);
+          return;
         }
 
         const pickerResult =
@@ -1869,7 +1845,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         setIsSelectingSource(false);
       }
     },
-    [],
+    [appendAssets, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings],
   );
 
   const removePhoto = (photoId: string) => {
@@ -2477,7 +2453,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setSearchResults([]);
               setNearbyResults([]);
               setSearchErrorMessage(null);
-              setLocationPermissionNeedsSettings(false);
+              resetLocationPermissionNeedsSettings();
               setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
               setMenuItemMode('existing');
@@ -2510,7 +2486,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               setSearchResults([]);
               setNearbyResults([]);
               setSearchErrorMessage(null);
-              setLocationPermissionNeedsSettings(false);
+              resetLocationPermissionNeedsSettings();
               setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
               setMenuItemMode('existing');

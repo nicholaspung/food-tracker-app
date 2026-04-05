@@ -18,6 +18,7 @@ import {
   buildPocketBaseFileUrl,
   createDefaultRestaurantList,
   deleteRestaurantList,
+  getRestaurantListItemLinkFoodItemIds,
   getRestaurantListById,
   listMyBookmarkedListItemLinksForFoodItemIds,
   listRestaurantListsPage,
@@ -33,6 +34,7 @@ import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -45,6 +47,7 @@ type ListDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'ListDet
 
 interface GroupedBookmarkedItem {
   key: string;
+  bookmarkLookupIds: string[];
   foodItemId: string;
   listItemId: string;
   name: string;
@@ -107,6 +110,7 @@ interface GroupedRestaurant {
 }
 
 interface SaveBookmarkTarget {
+  bookmarkLookupIds: string[];
   restaurantId: string;
   restaurantName: string;
   foodItemId: string;
@@ -134,6 +138,16 @@ type PendingDeleteListItem =
       listItemId: string;
       foodItemId: string;
     };
+
+function buildBookmarkLookupIds(...ids: (string | undefined)[]): string[] {
+  return Array.from(
+    new Set(
+      ids
+        .map((id) => id?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+}
 
 function formatMonthYearLabel(value: string | undefined): string | null {
   if (!value) {
@@ -247,40 +261,44 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     return Array.from(ids);
   }, [listItems]);
 
-  const myBookmarkedLinksQuery = useQuery({
-    queryKey: ['feature', 'myBookmarkedListItemLinks', ...visibleFoodItemIds],
-    queryFn: () => listMyBookmarkedListItemLinksForFoodItemIds(visibleFoodItemIds),
-    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id) && visibleFoodItemIds.length > 0,
+  const myBookmarkedLinksQuery = useIncrementalIdQuery({
+    queryKey: ['feature', 'myBookmarkedListItemLinks', 'restaurantList', listId, user?.id ?? 'anonymous'],
+    ids: visibleFoodItemIds,
+    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
+    fetchByIds: listMyBookmarkedListItemLinksForFoodItemIds,
+    getRecordIds: getRestaurantListItemLinkFoodItemIds,
+    getRecordKey: (link) => link.id,
   });
 
-  const visitPhotosQuery = useQuery({
-    queryKey: ['feature', 'visitPhotos', 'foodItems', ...visibleFoodItemIds],
-    queryFn: () => listVisitPhotosForFoodItemIds(visibleFoodItemIds),
-    enabled: Boolean(listQuery.data) && visibleFoodItemIds.length > 0,
+  const visitPhotosQuery = useIncrementalIdQuery({
+    queryKey: ['feature', 'visitPhotos', 'foodItems', 'restaurantList', listId],
+    ids: visibleFoodItemIds,
+    enabled: Boolean(listQuery.data),
+    fetchByIds: listVisitPhotosForFoodItemIds,
+    getRecordIds: (photo) => (photo.food_item ? [photo.food_item] : []),
+    getRecordKey: (photo) => photo.id,
   });
 
   const myLists = useMemo(() => myListsQuery.data?.pages.flatMap((page) => page.items) ?? [], [myListsQuery.data]);
-  const savedListIdsByFoodItemId = useMemo(() => {
+  const savedListIdsByBookmarkLookupId = useMemo(() => {
     const mapping = new Map<string, Set<string>>();
     for (const link of myBookmarkedLinksQuery.data ?? []) {
-      if (!link.foodItemId) {
-        continue;
+      for (const bookmarkLookupId of getRestaurantListItemLinkFoodItemIds(link)) {
+        const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
+        listIds.add(link.listId);
+        mapping.set(bookmarkLookupId, listIds);
       }
-
-      const listIds = mapping.get(link.foodItemId) ?? new Set<string>();
-      listIds.add(link.listId);
-      mapping.set(link.foodItemId, listIds);
     }
     return mapping;
   }, [myBookmarkedLinksQuery.data]);
 
-  const savedFoodItemIds = useMemo(() => {
+  const savedBookmarkLookupIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const foodItemId of savedListIdsByFoodItemId.keys()) {
-      ids.add(foodItemId);
+    for (const bookmarkLookupId of savedListIdsByBookmarkLookupId.keys()) {
+      ids.add(bookmarkLookupId);
     }
     return ids;
-  }, [savedListIdsByFoodItemId]);
+  }, [savedListIdsByBookmarkLookupId]);
 
   const defaultList = useMemo(() => myLists.find((candidate) => candidate.isDefault), [myLists]);
   const nonDefaultLists = useMemo(() => myLists.filter((candidate) => !candidate.isDefault), [myLists]);
@@ -289,8 +307,20 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       return new Set<string>();
     }
 
-    return savedListIdsByFoodItemId.get(saveBookmarkTarget.foodItemId) ?? new Set<string>();
-  }, [saveBookmarkTarget, savedListIdsByFoodItemId]);
+    const listIds = new Set<string>();
+    for (const bookmarkLookupId of saveBookmarkTarget.bookmarkLookupIds) {
+      const existingListIds = savedListIdsByBookmarkLookupId.get(bookmarkLookupId);
+      if (!existingListIds) {
+        continue;
+      }
+
+      for (const listId of existingListIds) {
+        listIds.add(listId);
+      }
+    }
+
+    return listIds;
+  }, [saveBookmarkTarget, savedListIdsByBookmarkLookupId]);
 
   const groupedRestaurants = useMemo<GroupedRestaurant[]>(() => {
     const groups = new Map<string, GroupedRestaurant>();
@@ -324,6 +354,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       for (const item of normalizedBookmarkedItems) {
         group.items.push({
           key: `${listItem.id}:${item.id}`,
+          bookmarkLookupIds: buildBookmarkLookupIds(item.id, item.userFoodItemId),
           foodItemId: item.id,
           listItemId: listItem.id,
           name: item.name,
@@ -1134,6 +1165,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setSaveModalError(null);
     setSelectedSaveListIds(new Set());
     setSaveBookmarkTarget({
+      bookmarkLookupIds: item.bookmarkLookupIds,
       restaurantId: group.restaurantId,
       restaurantName: group.restaurantName,
       foodItemId: item.foodItemId,
@@ -1636,6 +1668,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                     group.items.map((item) => {
                       const monthYearLabel = formatMonthYearLabel(item.visitedAt);
                       const hasSourceBookmark = Boolean(item.sourceUserId || item.sourceUserName);
+                      const isSaved = item.bookmarkLookupIds.some((bookmarkLookupId) =>
+                        savedBookmarkLookupIds.has(bookmarkLookupId),
+                      );
                       const sourceUserDisplayName = item.sourceUserName?.trim() || 'Friend';
 
                       return (
@@ -1674,8 +1709,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                               testID={`save-list-item-${item.listItemId}`}
                             >
                               <Ionicons
-                                color={savedFoodItemIds.has(item.foodItemId) ? theme.colors.text.info : theme.colors.text.muted}
-                                name={savedFoodItemIds.has(item.foodItemId) ? 'bookmark' : 'bookmark-outline'}
+                                color={isSaved ? theme.colors.text.info : theme.colors.text.muted}
+                                name={isSaved ? 'bookmark' : 'bookmark-outline'}
                                 size={18}
                               />
                             </Pressable>

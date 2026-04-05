@@ -29,6 +29,7 @@ import {
   formatDateToLocalDateString,
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
   buildCreateQuickTrackInput,
@@ -51,41 +52,9 @@ const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 type PhotoSource = 'camera' | 'gallery';
 
 function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
-  if (!asset.uri) {
-    return null;
-  }
-
-  return {
-    uri: asset.uri,
-    name: asset.fileName?.trim() || buildDraftPhotoName(asset.uri),
-    mimeType: asset.mimeType?.trim() || inferImageMimeType(asset.uri),
-  };
-}
-
-function inferImageMimeType(uri: string): string {
-  const normalizedUri = uri.toLowerCase();
-  if (normalizedUri.endsWith('.png')) {
-    return 'image/png';
-  }
-
-  if (normalizedUri.endsWith('.webp')) {
-    return 'image/webp';
-  }
-
-  if (normalizedUri.endsWith('.heic') || normalizedUri.endsWith('.heif')) {
-    return 'image/heic';
-  }
-
-  return 'image/jpeg';
-}
-
-function buildDraftPhotoName(uri: string): string {
-  const baseName = uri.split('/').pop();
-  if (baseName && baseName.includes('.')) {
-    return baseName;
-  }
-
-  return `quick-track-${Date.now()}.jpg`;
+  return buildLocalPhotoFile(asset, {
+    fallbackPrefix: 'quick-track',
+  });
 }
 
 export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {

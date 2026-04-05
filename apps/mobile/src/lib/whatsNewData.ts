@@ -10,6 +10,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.23',
+    date: '2026-04-04',
+    title: 'Faster Feed, Smarter Refresh & Bug Fixes',
+    summary:
+      'The home feed now loads more intelligently — pages are fetched from whichever source has the newest content, keeping your feed smooth and accurate. Feedback threads refresh faster when you have unread messages and slow down automatically when things are quiet. Several reliability and performance improvements are included under the hood.',
+    features: [],
+    improvements: [
+      'Home feed pagination is now smarter: the app fetches more visits or quick tracks based on which source has newer content, reducing unnecessary network requests.',
+      'Feedback thread messages now refresh every 3 seconds when you have unread messages or recent activity, and every 30 seconds when the thread is quiet — saving battery and data.',
+      'Friends, notes, and feedback counts are now loaded with a single efficient API call instead of fetching a full page of results just to get the count.',
+      'Bookmark detection on a friend\'s list now correctly recognises items saved via any food item reference, including recommended and user-created items.',
+      'Photo picking in notes and visits now uses a unified, more reliable code path that handles unusual filenames and image formats consistently.',
+    ],
+    fixes: [
+      'Fixed a bug where bookmarks on a friend\'s list could appear unsaved if the item was added through a recommended or user-created food entry.',
+    ],
+  },
+  {
     version: '1.0.22',
     date: '2026-04-04',
     title: 'Privacy Updates & Simplified Quick Track',

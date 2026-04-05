@@ -19,7 +19,13 @@ import {
   TabRootScreenScaffold,
   type SegmentedControlOption,
 } from '../components/shared';
-import { listFriendsPage, markFriendInviteAccepted, removeFriend, type FriendRecord } from '../features';
+import {
+  getFriendsCountSummary,
+  listFriendsPage,
+  markFriendInviteAccepted,
+  removeFriend,
+  type FriendRecord,
+} from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -86,21 +92,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [pendingRemoveFriend, setPendingRemoveFriend] = useState<FriendRecord | null>(null);
-  const acceptedFriendsCountQuery = useQuery({
-    queryKey: ['feature', 'friends', 'count', 'friends'],
-    queryFn: async () => (await listFriendsPage({ section: 'friends', page: 1, pageSize: 1 })).totalItems,
-    refetchOnReconnect: 'always',
-  });
-  const pendingReceivedCountQuery = useQuery({
-    queryKey: ['feature', 'friends', 'count', 'requests'],
-    queryFn: async () => (await listFriendsPage({ section: 'requests', page: 1, pageSize: 1 })).totalItems,
-    enabled: mainTab === 'friends-list',
-    refetchOnReconnect: 'always',
-  });
-  const pendingSentCountQuery = useQuery({
-    queryKey: ['feature', 'friends', 'count', 'sent'],
-    queryFn: async () => (await listFriendsPage({ section: 'sent', page: 1, pageSize: 1 })).totalItems,
-    enabled: mainTab === 'friends-list',
+  const friendsSummaryQuery = useQuery({
+    queryKey: ['feature', 'friends', 'summary'],
+    queryFn: getFriendsCountSummary,
     refetchOnReconnect: 'always',
   });
   const friendsQuery = useInfiniteQuery({
@@ -117,18 +111,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     refetchOnReconnect: 'always',
   });
   const { fetchStatus: friendsFetchStatus, refetch: refetchFriends } = friendsQuery;
-  const {
-    fetchStatus: acceptedFriendsCountFetchStatus,
-    refetch: refetchAcceptedFriendsCount,
-  } = acceptedFriendsCountQuery;
-  const {
-    fetchStatus: pendingReceivedCountFetchStatus,
-    refetch: refetchPendingReceivedCount,
-  } = pendingReceivedCountQuery;
-  const {
-    fetchStatus: pendingSentCountFetchStatus,
-    refetch: refetchPendingSentCount,
-  } = pendingSentCountQuery;
+  const { fetchStatus: friendsSummaryFetchStatus, refetch: refetchFriendsSummary } = friendsSummaryQuery;
   const visibleFriends = useMemo(
     () => friendsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [friendsQuery.data],
@@ -137,11 +120,11 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     mainTab === 'friends-list' && friendsQuery.isError && (!friendsQuery.data || friendsQuery.data.pages.length === 0);
   const hasFriendsRefreshError = mainTab === 'friends-list' && !hasBlockingFriendsError && friendsQuery.isError;
   const acceptedFriendsCount =
-    acceptedFriendsCountQuery.data ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
+    friendsSummaryQuery.data?.friendsCount ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
   const pendingReceivedCount =
-    pendingReceivedCountQuery.data ?? (friendsSubTab === 'requests' ? visibleFriends.length : 0);
+    friendsSummaryQuery.data?.requestsCount ?? (friendsSubTab === 'requests' ? visibleFriends.length : 0);
   const pendingSentCount =
-    pendingSentCountQuery.data ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
+    friendsSummaryQuery.data?.sentCount ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
 
   const myFriendCode = useMemo(
     () => generateFriendCode(user?.id, user?.friendCode),
@@ -207,36 +190,24 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
     hasHandledCurrentFocusRef.current = true;
 
-    if (acceptedFriendsCountFetchStatus === 'idle') {
-      void refetchAcceptedFriendsCount();
+    if (friendsSummaryFetchStatus === 'idle') {
+      void refetchFriendsSummary();
     }
 
     if (mainTab !== 'friends-list') {
       return;
     }
 
-    if (pendingReceivedCountFetchStatus === 'idle') {
-      void refetchPendingReceivedCount();
-    }
-
-    if (pendingSentCountFetchStatus === 'idle') {
-      void refetchPendingSentCount();
-    }
-
     if (friendsFetchStatus === 'idle') {
       void refetchFriends();
     }
   }, [
-    acceptedFriendsCountFetchStatus,
     friendsFetchStatus,
+    friendsSummaryFetchStatus,
     isFocused,
     mainTab,
-    pendingReceivedCountFetchStatus,
-    pendingSentCountFetchStatus,
-    refetchAcceptedFriendsCount,
     refetchFriends,
-    refetchPendingReceivedCount,
-    refetchPendingSentCount,
+    refetchFriendsSummary,
   ]);
 
   const styles = StyleSheet.create({
@@ -667,6 +638,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           title="Friends unavailable"
           actionLabel="Retry"
           onAction={() => {
+            void friendsSummaryQuery.refetch();
             void friendsQuery.refetch();
           }}
         />

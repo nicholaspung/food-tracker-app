@@ -23,9 +23,9 @@ import {
 } from '../components/shared';
 import {
   deleteCollectionRecord,
+  getFeedbackCountSummary,
   getAuthRecord,
   getProfile,
-  listFeedbackPage,
   saveAuthRecord,
   sendApiRequest,
   updateCollectionRecord,
@@ -87,11 +87,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     queryFn: getProfile,
   });
 
-  const feedbackCountQuery = useQuery({
-    queryKey: ["feature", "feedback", "count", "active"],
-    queryFn: async () =>
-      (await listFeedbackPage({ status: "active", page: 1, pageSize: 1 }))
-        .totalItems,
+  const feedbackSummaryQuery = useQuery({
+    queryKey: ["feature", "feedback", "summary"],
+    queryFn: getFeedbackCountSummary,
   });
   const whatsNewSeenVersionQuery = useQuery({
     queryKey: WHATS_NEW_SEEN_QUERY_KEY,
@@ -169,7 +167,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     return user?.name?.trim() ?? "";
   }, [profileQuery.data?.displayName, user?.name]);
 
-  const unreadFeedbackCount = feedbackCountQuery.data ?? 0;
+  const activeFeedbackCount = feedbackSummaryQuery.data?.activeCount ?? 0;
   const showWhatsNewDot = hasUnseenWhatsNew(whatsNewSeenVersionQuery.data);
   const appVersionLabel = formatAppVersionLabel();
 
@@ -579,10 +577,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 navigation.navigate("Feedback");
               }}
               rightAccessory={
-                unreadFeedbackCount > 0 ? (
+                activeFeedbackCount > 0 ? (
                   <View style={styles.optionBadge}>
                     <Text style={styles.optionBadgeText}>
-                      {unreadFeedbackCount}
+                      {activeFeedbackCount}
                     </Text>
                   </View>
                 ) : null

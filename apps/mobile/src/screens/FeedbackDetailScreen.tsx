@@ -1,3 +1,4 @@
+import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
@@ -27,6 +28,40 @@ import { Button, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FeedbackDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'FeedbackDetail'>;
+
+const ACTIVE_MESSAGE_POLL_INTERVAL_MS = 3000;
+const IDLE_MESSAGE_POLL_INTERVAL_MS = 30000;
+const RECENT_THREAD_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
+
+function isRecentTimestamp(value?: string, maxAgeMs = RECENT_THREAD_ACTIVITY_WINDOW_MS): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return Date.now() - parsed.getTime() <= maxAgeMs;
+}
+
+function resolveMessagesRefetchInterval(input: {
+  isFocused: boolean;
+  isOnline: boolean;
+  lastMessageAt?: string;
+  userUnreadCount: number;
+}): number | false {
+  if (!input.isFocused || !input.isOnline) {
+    return false;
+  }
+
+  if (input.userUnreadCount > 0 || isRecentTimestamp(input.lastMessageAt)) {
+    return ACTIVE_MESSAGE_POLL_INTERVAL_MS;
+  }
+
+  return IDLE_MESSAGE_POLL_INTERVAL_MS;
+}
 
 function formatTimestamp(value: string): string {
   const parsed = new Date(value);
@@ -100,8 +135,10 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const queueWrite = useQueuedWrite();
   const { isOnline } = useConnectivity();
+  const isFocused = useIsFocused();
   const messagesScrollRef = useRef<ScrollView>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasHandledCurrentFocusRef = useRef(false);
   const feedbackId = route.params.feedbackId;
   const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
 
@@ -124,7 +161,16 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
-    refetchInterval: 3000,
+    refetchInterval: (query) => {
+      const latestMessageAt = query.state.data?.pages[0]?.items[0]?.createdAt ?? feedbackQuery.data?.lastMessageAt;
+
+      return resolveMessagesRefetchInterval({
+        isFocused,
+        isOnline,
+        lastMessageAt: latestMessageAt,
+        userUnreadCount: feedbackQuery.data?.userUnreadCount ?? 0,
+      });
+    },
   });
   const displayedMessages = useMemo(() => {
     const pages = messagesQuery.data?.pages ?? [];
@@ -138,6 +184,27 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const hasMessagesRefreshError = !hasBlockingMessagesError && messagesQuery.isError;
   const latestMessageId = displayedMessages[displayedMessages.length - 1]?.id;
 
+  useEffect(() => {
+    if (!isFocused) {
+      hasHandledCurrentFocusRef.current = false;
+      return;
+    }
+
+    if (hasHandledCurrentFocusRef.current) {
+      return;
+    }
+
+    hasHandledCurrentFocusRef.current = true;
+
+    if (feedbackQuery.fetchStatus === 'idle') {
+      void feedbackQuery.refetch();
+    }
+
+    if (messagesQuery.fetchStatus === 'idle') {
+      void messagesQuery.refetch();
+    }
+  }, [feedbackQuery, isFocused, messagesQuery]);
+
   const scheduleScrollToLatestMessage = useCallback((animated = true, delay = 0) => {
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
@@ -150,7 +217,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   }, []);
 
   useEffect(() => {
-    if (!feedbackQuery.data) {
+    if (!isFocused || !feedbackQuery.data) {
       return;
     }
 
@@ -175,7 +242,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     return () => {
       isCancelled = true;
     };
-  }, [feedbackId, feedbackQuery.data, queryClient]);
+  }, [feedbackId, feedbackQuery.data, isFocused, queryClient]);
 
   useEffect(() => {
     if (!latestMessageId) {

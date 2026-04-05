@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
@@ -22,6 +22,7 @@ import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -231,16 +232,20 @@ export function AddRestaurantToListScreen({
     [visitedRestaurants],
   );
 
-  const listItemLinksQuery = useQuery({
-    queryKey: ["feature", "restaurantListItemLinks", listId, ...visibleRestaurantIds],
-    queryFn: () => listRestaurantListItemLinksForRestaurantIds(listId, visibleRestaurantIds),
-    enabled: visibleRestaurantIds.length > 0,
+  const listItemLinksQuery = useIncrementalIdQuery({
+    queryKey: ['feature', 'restaurantListItemLinks', listId, 'visibleRestaurants'],
+    ids: visibleRestaurantIds,
+    fetchByIds: (restaurantIds) => listRestaurantListItemLinksForRestaurantIds(listId, restaurantIds),
+    getRecordIds: (link) => [link.restaurantId],
+    getRecordKey: (link) => link.id,
   });
 
-  const restaurantNotesQuery = useQuery({
-    queryKey: ["feature", "restaurantListNotes", listId, ...visibleRestaurantIds],
-    queryFn: () => listRestaurantListNotesForRestaurantIds(listId, visibleRestaurantIds),
-    enabled: visibleRestaurantIds.length > 0,
+  const restaurantNotesQuery = useIncrementalIdQuery({
+    queryKey: ['feature', 'restaurantListNotes', listId, 'visibleRestaurants'],
+    ids: visibleRestaurantIds,
+    fetchByIds: (restaurantIds) => listRestaurantListNotesForRestaurantIds(listId, restaurantIds),
+    getRecordIds: (noteRecord) => [noteRecord.restaurantId],
+    getRecordKey: (noteRecord) => noteRecord.restaurantId,
   });
 
   const existingRestaurantIds = useMemo(() => {

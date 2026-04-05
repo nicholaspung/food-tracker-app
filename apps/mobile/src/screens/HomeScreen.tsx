@@ -6,7 +6,7 @@ import {
   View,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -31,9 +31,10 @@ import {
   deleteQuickTrack,
   deleteVisit,
   getAuthenticatedUserIdOrNull,
-  listQuickTracksPage,
+  type HomeFeedCursor,
+  type HomeFeedPageResult,
+  listHomeFeedPage,
   listVisitPhotosForFoodItemIds,
-  listVisitsPage,
   reportContent,
   type QuickTrackRecord,
   type VisitRecord,
@@ -46,6 +47,7 @@ import {
   getPendingFriendSuggestion,
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
+import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -144,20 +146,6 @@ const entryTimeFormatter = new Intl.DateTimeFormat('en-US', {
 
 const BETA_FEED_PAGE_SIZE = 20;
 
-interface HomeFeedCursor {
-  consumedQuickTracks: number;
-  consumedVisits: number;
-}
-
-interface HomeFeedPageResult {
-  items: FeedItem[];
-  consumedQuickTracks: number;
-  consumedVisits: number;
-  totalQuickTracks: number;
-  totalVisits: number;
-  hasNextPage: boolean;
-}
-
 function toDayKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -244,47 +232,6 @@ function buildQuickTrackFeedItem(quickTrack: QuickTrackRecord, currentUserId: st
   };
 }
 
-async function loadFeedSourceWindow<T>(
-  consumedCount: number,
-  pageSize: number,
-  fetchPage: (page: number, pageSize: number) => Promise<{
-    items: T[];
-    totalItems: number;
-    hasNextPage: boolean;
-  }>,
-): Promise<{ items: T[]; totalItems: number }> {
-  let currentPage = Math.floor(consumedCount / pageSize) + 1;
-  let skipCount = consumedCount % pageSize;
-  let totalItems = 0;
-  const items: T[] = [];
-
-  while (items.length < pageSize) {
-    const pageResult = await fetchPage(currentPage, pageSize);
-    totalItems = pageResult.totalItems;
-
-    const nextItems = pageResult.items.slice(skipCount);
-    if (nextItems.length > 0) {
-      items.push(...nextItems);
-    }
-
-    if (!pageResult.hasNextPage || pageResult.items.length === 0) {
-      break;
-    }
-
-    currentPage += 1;
-    skipCount = 0;
-  }
-
-  return {
-    items: items.slice(0, pageSize),
-    totalItems,
-  };
-}
-
-function compareFeedItemsByEvent(left: FeedItem, right: FeedItem): number {
-  return right.eventAt.localeCompare(left.eventAt);
-}
-
 function compareBetaFeedItems(left: FeedItem, right: FeedItem): number {
   const leftMonthKey = getMonthSortKey(left.eventAt);
   const rightMonthKey = getMonthSortKey(right.eventAt);
@@ -337,76 +284,36 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const currentUserId = getAuthenticatedUserIdOrNull();
   const inviterDisplayName = friendSuggestion?.inviterDisplayName?.trim() || 'your inviter';
 
-  const homeFeedQuery = useInfiniteQuery({
+  const homeFeedQuery = useInfiniteQuery<
+    HomeFeedPageResult,
+    Error,
+    InfiniteData<HomeFeedPageResult, HomeFeedCursor | undefined>,
+    string[],
+    HomeFeedCursor | undefined
+  >({
     queryKey: ['feature', 'homeFeed', 'paginated', feedScope, typeFilter, trimmedSearchQuery],
-    initialPageParam: {
-      consumedQuickTracks: 0,
-      consumedVisits: 0,
-    } satisfies HomeFeedCursor,
-    queryFn: async ({ pageParam }) => {
-      const shouldLoadVisits = typeFilter !== 'quick-track';
-      const shouldLoadQuickTracks = typeFilter !== 'visits';
-      const [visitWindow, quickTrackWindow] = await Promise.all([
-        shouldLoadVisits
-          ? loadFeedSourceWindow(pageParam.consumedVisits, BETA_FEED_PAGE_SIZE, (page, pageSize) =>
-              listVisitsPage({
-                scope: feedScope,
-                page,
-                pageSize,
-                search: trimmedSearchQuery || undefined,
-              }),
-            )
-          : Promise.resolve({ items: [], totalItems: 0 }),
-        shouldLoadQuickTracks
-          ? loadFeedSourceWindow(pageParam.consumedQuickTracks, BETA_FEED_PAGE_SIZE, (page, pageSize) =>
-              listQuickTracksPage({
-                scope: feedScope,
-                page,
-                pageSize,
-                search: trimmedSearchQuery || undefined,
-              }),
-            )
-          : Promise.resolve({ items: [], totalItems: 0 }),
-      ]);
-
-      const mergedItems = [
-        ...visitWindow.items.map((visit) => buildVisitFeedItem(visit, currentUserId)),
-        ...quickTrackWindow.items.map((quickTrack) => buildQuickTrackFeedItem(quickTrack, currentUserId)),
-      ].sort(compareFeedItemsByEvent);
-      const pageItems = mergedItems.slice(0, BETA_FEED_PAGE_SIZE);
-
-      let consumedVisits = pageParam.consumedVisits;
-      let consumedQuickTracks = pageParam.consumedQuickTracks;
-      for (const item of pageItems) {
-        if (item.source === 'visit') {
-          consumedVisits += 1;
-        } else {
-          consumedQuickTracks += 1;
-        }
-      }
-
-      return {
-        items: pageItems,
-        consumedQuickTracks,
-        consumedVisits,
-        totalQuickTracks: quickTrackWindow.totalItems,
-        totalVisits: visitWindow.totalItems,
-        hasNextPage:
-          consumedVisits < visitWindow.totalItems || consumedQuickTracks < quickTrackWindow.totalItems,
-      } satisfies HomeFeedPageResult;
-    },
-    getNextPageParam: (lastPage) =>
-      lastPage.hasNextPage
-        ? {
-            consumedQuickTracks: lastPage.consumedQuickTracks,
-            consumedVisits: lastPage.consumedVisits,
-          }
-        : undefined,
+    initialPageParam: undefined as HomeFeedCursor | undefined,
+    queryFn: ({ pageParam }) =>
+      listHomeFeedPage({
+        cursor: pageParam,
+        pageSize: BETA_FEED_PAGE_SIZE,
+        scope: feedScope,
+        search: trimmedSearchQuery || undefined,
+        typeFilter,
+      }),
+    getNextPageParam: (lastPage) => lastPage.cursor,
   });
 
   const loadedFeed = useMemo(
-    () => homeFeedQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [homeFeedQuery.data],
+    () =>
+      homeFeedQuery.data?.pages.flatMap((page) =>
+        page.items.map((item) =>
+          item.source === 'visit'
+            ? buildVisitFeedItem(item.visit, currentUserId)
+            : buildQuickTrackFeedItem(item.quickTrack, currentUserId),
+        ),
+      ) ?? [],
+    [currentUserId, homeFeedQuery.data],
   );
   const activeFeed = useMemo(
     () => (effectiveFeedMode === 'beta' ? [...loadedFeed].sort(compareBetaFeedItems) : loadedFeed),
@@ -428,10 +335,12 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
     return Array.from(ids);
   }, [activeFeed]);
-  const visitPhotosQuery = useQuery({
-    queryKey: ['feature', 'visitPhotos', 'feedItems', ...visibleFoodItemIds],
-    queryFn: () => listVisitPhotosForFoodItemIds(visibleFoodItemIds),
-    enabled: visibleFoodItemIds.length > 0,
+  const visitPhotosQuery = useIncrementalIdQuery({
+    queryKey: ['feature', 'visitPhotos', 'feedItems', effectiveFeedMode],
+    ids: visibleFoodItemIds,
+    fetchByIds: listVisitPhotosForFoodItemIds,
+    getRecordIds: (photo) => (photo.food_item ? [photo.food_item] : []),
+    getRecordKey: (photo) => photo.id,
   });
 
   const isLoading = homeFeedQuery.isLoading;

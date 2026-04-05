@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
@@ -16,7 +17,9 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { buildLocalPhotoFile } from '../lib/photoFiles';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -38,62 +41,8 @@ interface DraftNotePhoto {
   mimeType: string;
 }
 
-interface PhotoLibraryAsset {
-  uri: string;
-  fileName?: string | null;
-  mimeType?: string | null;
-}
-
-interface PhotoLibraryPickerResult {
-  canceled?: boolean;
-  cancelled?: boolean;
-  assets?: PhotoLibraryAsset[];
-}
-
-interface PhotoLibraryPermissionResult {
-  granted: boolean;
-}
-
-interface ImagePickerModule {
-  requestMediaLibraryPermissionsAsync: () => Promise<PhotoLibraryPermissionResult>;
-  launchImageLibraryAsync: (options: Record<string, unknown>) => Promise<PhotoLibraryPickerResult>;
-  MediaType?: {
-    image?: unknown;
-  };
-  MediaTypeOptions?: {
-    Images?: unknown;
-  };
-}
-
 const CONTENT_MAX_LENGTH = 2000;
 const MAX_NOTE_PHOTOS = 20;
-
-function inferMimeType(uri: string): string {
-  const normalized = uri.toLowerCase();
-  if (normalized.endsWith('.png')) {
-    return 'image/png';
-  }
-
-  if (normalized.endsWith('.webp')) {
-    return 'image/webp';
-  }
-
-  return 'image/jpeg';
-}
-
-function buildPhotoFileName(uri: string, mimeType?: string): string {
-  const normalizedMimeType = mimeType ?? inferMimeType(uri);
-  const extension = normalizedMimeType === 'image/png' ? 'png' : normalizedMimeType === 'image/webp' ? 'webp' : 'jpg';
-  return `note_photo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
-}
-
-async function loadImagePickerModule(): Promise<ImagePickerModule | null> {
-  try {
-    return (await import('expo-image-picker')) as unknown as ImagePickerModule;
-  } catch {
-    return null;
-  }
-}
 
 export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const theme = useTheme();
@@ -104,7 +53,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const cameraRef = useRef<CameraView | null>(null);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const {
+    permissionNeedsSettings: photoPermissionNeedsSettings,
+    requestPermission: requestPhotoPickerPermission,
+    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
+  } = usePhotoPickerPermissions({
+    cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
+    cameraRequiredMessage: 'Camera permission is required to add photos.',
+    galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
+    galleryRequiredMessage: 'Photo library permission is required to select photos.',
+  });
 
   const noteQuery = useQuery({
     queryKey: ['feature', 'note', noteId],
@@ -166,25 +124,31 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   }, []);
 
   const addDraftPhoto = useCallback(
-    (uri: string, fileName?: string | null, mimeType?: string | null) => {
+    (asset: { uri: string; fileName?: string | null; mimeType?: string | null }) => {
       if (totalPhotoCount >= MAX_NOTE_PHOTOS) {
         setErrorMessage(`You can add up to ${MAX_NOTE_PHOTOS} photos per note.`);
         return;
       }
 
-      const normalizedMimeType = mimeType?.trim() || inferMimeType(uri);
+      const nextPhoto = buildLocalPhotoFile(asset, {
+        fallbackPrefix: 'note-photo',
+      });
+      if (!nextPhoto) {
+        setErrorMessage('Could not read selected photo.');
+        return;
+      }
+
       setNewPhotos((current) => [
         ...current,
         {
           id: `draft_photo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-          uri,
-          name: fileName?.trim() || buildPhotoFileName(uri, normalizedMimeType),
-          mimeType: normalizedMimeType,
+          ...nextPhoto,
         },
       ]);
       setErrorMessage(null);
+      resetPhotoPermissionNeedsSettings();
     },
-    [totalPhotoCount],
+    [resetPhotoPermissionNeedsSettings, totalPhotoCount],
   );
 
   const handleOpenPhotoSourcePicker = useCallback(() => {
@@ -193,9 +157,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       return;
     }
 
+    resetPhotoPermissionNeedsSettings();
     setErrorMessage(null);
     setIsPhotoSourcePickerOpen(true);
-  }, [totalPhotoCount]);
+  }, [resetPhotoPermissionNeedsSettings, totalPhotoCount]);
 
   const handleOpenCamera = useCallback(async () => {
     trackObservabilityEvent('NOTE_CAMERA_OPEN_STARTED', {
@@ -208,23 +173,22 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       return;
     }
 
-    const hasPermission = cameraPermission?.granted === true;
-    if (!hasPermission) {
-      const permissionResult = await requestCameraPermission();
-      if (!permissionResult.granted) {
-        trackObservabilityEvent('NOTE_CAMERA_PERMISSION_DENIED', {
-          source: 'NoteEditorScreen',
-        });
-        setErrorMessage('Camera permission is required to add photos.');
-        return;
-      }
+    resetPhotoPermissionNeedsSettings();
+    const permission = await requestPhotoPickerPermission('camera');
+    if (!permission.granted) {
+      trackObservabilityEvent('NOTE_CAMERA_PERMISSION_DENIED', {
+        canAskAgain: permission.canAskAgain,
+        source: 'NoteEditorScreen',
+      });
+      setErrorMessage(permission.message);
+      return;
     }
 
     trackObservabilityEvent('NOTE_CAMERA_OPENED', {
       source: 'NoteEditorScreen',
     });
     setIsCameraOpen(true);
-  }, [cameraPermission?.granted, requestCameraPermission, totalPhotoCount]);
+  }, [requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings, totalPhotoCount]);
 
   const handlePickFromPhotoLibrary = useCallback(async () => {
     trackObservabilityEvent('NOTE_LIBRARY_PICK_STARTED', {
@@ -237,33 +201,27 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       return;
     }
 
-    const imagePicker = await loadImagePickerModule();
-    if (!imagePicker) {
-      setErrorMessage('Photo library picker is not available in this build.');
-      return;
-    }
-
     try {
-      const permission = await imagePicker.requestMediaLibraryPermissionsAsync();
+      resetPhotoPermissionNeedsSettings();
+      const permission = await requestPhotoPickerPermission('gallery');
       if (!permission.granted) {
         trackObservabilityEvent('NOTE_LIBRARY_PERMISSION_DENIED', {
+          canAskAgain: permission.canAskAgain,
           source: 'NoteEditorScreen',
         });
-        setErrorMessage('Photo library permission is required to select photos.');
+        setErrorMessage(permission.message);
         return;
       }
 
-      const mediaType = imagePicker.MediaType?.image ?? imagePicker.MediaTypeOptions?.Images;
-      const pickerResult = await imagePicker.launchImageLibraryAsync({
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
         allowsEditing: false,
         quality: 0.8,
         allowsMultipleSelection: false,
         selectionLimit: 1,
-        mediaTypes: mediaType,
+        mediaTypes: ['images'],
       });
 
-      const wasCancelled = pickerResult.canceled === true || pickerResult.cancelled === true;
-      if (wasCancelled) {
+      if (pickerResult.canceled) {
         trackObservabilityEvent('NOTE_LIBRARY_PICK_CANCELED', {
           source: 'NoteEditorScreen',
         });
@@ -276,7 +234,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         return;
       }
 
-      addDraftPhoto(selectedAsset.uri, selectedAsset.fileName, selectedAsset.mimeType);
+      addDraftPhoto(selectedAsset);
       trackObservabilityEvent('NOTE_LIBRARY_PICKED', {
         source: 'NoteEditorScreen',
       });
@@ -289,7 +247,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       });
       setErrorMessage(message);
     }
-  }, [addDraftPhoto, totalPhotoCount]);
+  }, [addDraftPhoto, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings, totalPhotoCount]);
 
   const handleCapturePhoto = useCallback(async () => {
     if (!cameraRef.current) {
@@ -302,7 +260,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         throw new Error('Could not capture photo.');
       }
 
-      addDraftPhoto(captured.uri);
+      addDraftPhoto({ uri: captured.uri });
       setIsCameraOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not capture photo.';
@@ -742,7 +700,24 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           ) : null}
         </Card>
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Could not save note" /> : null}
+        {errorMessage ? (
+          <ErrorState
+            description={errorMessage}
+            details={
+              photoPermissionNeedsSettings ? (
+                <Button
+                  label="Open Settings"
+                  onPress={() => {
+                    void Linking.openSettings();
+                  }}
+                  style={styles.modalActionStack}
+                  variant="secondary"
+                />
+              ) : null
+            }
+            title="Could not save note"
+          />
+        ) : null}
       </FeatureFormScreenScaffold>
 
       <Modal

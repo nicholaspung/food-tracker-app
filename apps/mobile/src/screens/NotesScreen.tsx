@@ -19,6 +19,7 @@ import {
 import {
   buildPocketBaseFileUrl,
   deleteNote,
+  getNoteCountSummary,
   listNotePhotosForNoteIds,
   listNotesPage,
   type NotePhotoRecord,
@@ -119,17 +120,9 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const allNotesCountQuery = useQuery({
-    queryKey: ['feature', 'notes', 'count', 'all'],
-    queryFn: async () => (await listNotesPage({ page: 1, pageSize: 1, status: 'all' })).totalItems,
-  });
-  const unusedNotesCountQuery = useQuery({
-    queryKey: ['feature', 'notes', 'count', 'draft'],
-    queryFn: async () => (await listNotesPage({ page: 1, pageSize: 1, status: 'draft' })).totalItems,
-  });
-  const usedNotesCountQuery = useQuery({
-    queryKey: ['feature', 'notes', 'count', 'used'],
-    queryFn: async () => (await listNotesPage({ page: 1, pageSize: 1, status: 'used' })).totalItems,
+  const notesSummaryQuery = useQuery({
+    queryKey: ['feature', 'notes', 'summary'],
+    queryFn: getNoteCountSummary,
   });
   const notes = useMemo(
     () => notesQuery.data?.pages.flatMap((page) => page.items) ?? [],
@@ -144,9 +137,9 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   });
   const hasBlockingNotesError = notesQuery.isError && (!notesQuery.data || notesQuery.data.pages.length === 0);
   const hasNotesRefreshError = !hasBlockingNotesError && (notesQuery.isError || notePhotosQuery.isError);
-  const unusedCount = unusedNotesCountQuery.data ?? notes.filter((note) => note.status === 'draft').length;
-  const usedCount = usedNotesCountQuery.data ?? notes.filter((note) => note.status === 'used').length;
-  const allCount = allNotesCountQuery.data ?? notes.length;
+  const unusedCount = notesSummaryQuery.data?.draftCount ?? notes.filter((note) => note.status === 'draft').length;
+  const usedCount = notesSummaryQuery.data?.usedCount ?? notes.filter((note) => note.status === 'used').length;
+  const allCount = notesSummaryQuery.data?.allCount ?? notes.length;
 
   const notePhotosByNoteId = useMemo(() => {
     const map = new Map<string, NotePhotoRecord[]>();
@@ -372,6 +365,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           actionLabel="Retry"
           onAction={() => {
             void notesQuery.refetch();
+            void notesSummaryQuery.refetch();
             if (visibleNoteIds.length > 0) {
               void notePhotosQuery.refetch();
             }
@@ -391,6 +385,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
             description="Could not load notes."
             onRetry={() => {
               void notesQuery.refetch();
+              void notesSummaryQuery.refetch();
               if (visibleNoteIds.length > 0) {
                 void notePhotosQuery.refetch();
               }

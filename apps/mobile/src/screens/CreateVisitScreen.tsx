@@ -65,6 +65,7 @@ import {
   localDateStringToUTC,
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
   buildVisitRestaurantDescription,
@@ -183,32 +184,6 @@ function buildRestaurantStatsMap(
   }
 
   return resolved;
-}
-
-function inferImageMimeType(uri: string): string {
-  const normalizedUri = uri.toLowerCase();
-  if (normalizedUri.endsWith(".png")) {
-    return "image/png";
-  }
-
-  if (normalizedUri.endsWith(".webp")) {
-    return "image/webp";
-  }
-
-  if (normalizedUri.endsWith(".heic") || normalizedUri.endsWith(".heif")) {
-    return "image/heic";
-  }
-
-  return "image/jpeg";
-}
-
-function buildDraftPhotoName(uri: string): string {
-  const baseName = uri.split("/").pop();
-  if (baseName && baseName.includes(".")) {
-    return baseName;
-  }
-
-  return `visit-item-${Date.now()}.jpg`;
 }
 
 function normalizeSelectionLabel(value: string): string {
@@ -1552,11 +1527,13 @@ export function CreateVisitScreen({
     }
 
     const asset = result.assets[0];
-    const photo: DraftVisitItemPhoto = {
-      uri: asset.uri,
-      name: asset.fileName?.trim() || buildDraftPhotoName(asset.uri),
-      mimeType: asset.mimeType || inferImageMimeType(asset.uri),
-    };
+    const photo: DraftVisitItemPhoto | null = buildLocalPhotoFile(asset, {
+      fallbackPrefix: 'visit-item',
+    });
+    if (!photo) {
+      setErrorMessage('Could not read the selected image.');
+      return;
+    }
 
     await applyPhotoCaptureDateToVisit(asset);
 
