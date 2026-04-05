@@ -44,11 +44,19 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
 }
 
 function sanitizeNoteRecord(note: NoteRecord): NoteRecord {
-  return {
-    ...note,
-    latitude: undefined,
-    longitude: undefined,
+  const sanitized = {
+    ...(note as NoteRecord & {
+      latitude?: number;
+      locationText?: string;
+      longitude?: number;
+    }),
   };
+
+  delete sanitized.locationText;
+  delete sanitized.latitude;
+  delete sanitized.longitude;
+
+  return sanitized;
 }
 
 function sanitizeFeedbackRecord(feedback: FeedbackRecord): FeedbackRecord {

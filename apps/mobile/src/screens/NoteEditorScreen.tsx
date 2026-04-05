@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { CurrentLocationButton, EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
+import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
 import {
   buildPocketBaseFileUrl,
   createNote,
@@ -16,8 +16,6 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
-import { parseCoordinateString } from '../lib/coordinates';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -68,7 +66,6 @@ interface ImagePickerModule {
 }
 
 const CONTENT_MAX_LENGTH = 2000;
-const LOCATION_MAX_LENGTH = 200;
 const MAX_NOTE_PHOTOS = 20;
 
 function inferMimeType(uri: string): string {
@@ -126,21 +123,12 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   });
 
   const [content, setContent] = useState('');
-  const [locationText, setLocationText] = useState('');
   const [photosToDelete, setPhotosToDelete] = useState<string[]>([]);
   const [newPhotos, setNewPhotos] = useState<DraftNotePhoto[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPhotoSourcePickerOpen, setIsPhotoSourcePickerOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const {
-    captureLocation,
-    isCapturing: isGettingLocation,
-  } = useForegroundLocationCapture({
-    blockedPermissionMessage: 'Location permission is blocked. Enable it in device settings.',
-    defaultErrorMessage: 'Could not get current location.',
-    deniedPermissionMessage: 'Location permission is required to use GPS.',
-  });
 
   const existingPhotos = useMemo(() => {
     const deletedIds = new Set(photosToDelete);
@@ -155,7 +143,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     }
 
     setContent(noteQuery.data.content);
-    setLocationText(noteQuery.data.locationText ?? '');
     setPhotosToDelete([]);
     setNewPhotos([]);
     setErrorMessage(null);
@@ -323,49 +310,12 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     }
   }, [addDraftPhoto]);
 
-  const handleUseCurrentLocation = useCallback(async () => {
-    trackObservabilityEvent('NOTE_LOCATION_CAPTURE_STARTED', {
-      source: 'NoteEditorScreen',
-    });
-    setErrorMessage(null);
-
-    const locationCapture = await captureLocation();
-    if (locationCapture.status === 'permission_denied') {
-      trackObservabilityEvent('NOTE_LOCATION_PERMISSION_DENIED', {
-        canAskAgain: locationCapture.canAskAgain,
-        source: 'NoteEditorScreen',
-      });
-      setErrorMessage(locationCapture.message);
-      return;
-    }
-
-    if (locationCapture.status === 'error') {
-      trackObservabilityEvent('NOTE_LOCATION_CAPTURE_FAILED', {
-        errorMessage: locationCapture.message,
-        errorType:
-          locationCapture.error instanceof Error
-            ? locationCapture.error.name
-            : 'unknown_error',
-        source: 'NoteEditorScreen',
-      });
-      setErrorMessage(locationCapture.message);
-      return;
-    }
-
-    setLocationText(locationCapture.label);
-    trackObservabilityEvent('NOTE_LOCATION_CAPTURED', {
-      source: 'NoteEditorScreen',
-    });
-  }, [captureLocation]);
-
   const handleSave = useCallback(async () => {
     if (!content.trim()) {
       setErrorMessage('Please describe what you want to remember.');
       return;
     }
 
-    const trimmedLocationText = locationText.trim();
-    const parsedCoordinates = parseCoordinateString(trimmedLocationText);
     const uploadPhotos: NotePhotoUploadInput[] = newPhotos.map((photo) => ({
       uri: photo.uri,
       name: photo.name,
@@ -374,16 +324,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     const noteCreateInput = {
       title: '',
       content,
-      locationText: trimmedLocationText || undefined,
-      latitude: parsedCoordinates?.latitude,
-      longitude: parsedCoordinates?.longitude,
       photos: uploadPhotos,
     };
     const noteUpdateInput = {
       content,
-      locationText: trimmedLocationText,
-      latitude: parsedCoordinates?.latitude ?? null,
-      longitude: parsedCoordinates?.longitude ?? null,
       newPhotos: uploadPhotos,
       deletePhotoIds: photosToDelete,
     };
@@ -433,7 +377,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   }, [
     content,
     isEditing,
-    locationText,
     navigation,
     newPhotos,
     noteId,
@@ -524,17 +467,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     },
     addPhotoButtonDisabled: {
       opacity: 0.6,
-    },
-    locationRow: {
-      alignItems: 'flex-end',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    locationField: {
-      flex: 1,
-    },
-    locationAction: {
-      alignSelf: 'flex-end',
     },
     modalBackdrop: {
       alignItems: 'center',
@@ -808,36 +740,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
               Existing photos could not be loaded.
             </Text>
           ) : null}
-        </Card>
-
-        <Card style={styles.sectionCard}>
-          <View style={styles.sectionLabel}>
-            <Ionicons color={theme.colors.text.primary} name="location-outline" size={16} />
-            <Text variant="label">Location (Optional)</Text>
-          </View>
-          <View style={styles.locationRow}>
-            <Input
-              containerStyle={styles.locationField}
-              maxLength={LOCATION_MAX_LENGTH}
-              onChangeText={setLocationText}
-              placeholder="e.g., Starbucks on Main St"
-              testID="note-location-input"
-              value={locationText}
-            />
-            <CurrentLocationButton
-              accessibilityLabel="Use current location"
-              captured={Boolean(parseCoordinateString(locationText))}
-              loading={isGettingLocation}
-              onPress={() => {
-                void handleUseCurrentLocation();
-              }}
-              style={styles.locationAction}
-              variant="icon"
-            />
-          </View>
-          <Text tone="muted" variant="bodySm">
-            Enter a place name or use GPS to capture coordinates.
-          </Text>
         </Card>
 
         {errorMessage ? <ErrorState description={errorMessage} title="Could not save note" /> : null}

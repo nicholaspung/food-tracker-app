@@ -192,16 +192,6 @@ export function QuickTrackFormFields({
             />
           ) : null}
         </OptionList>
-
-        <Input
-          label="Location (Optional)"
-          onChangeText={(nextValue) => {
-            onChange({ locationText: nextValue });
-          }}
-          placeholder="e.g., Trader Joe's, Home Kitchen"
-          value={value.locationText}
-        />
-
         <Input
           inputStyle={styles.notesInput}
           label="Notes (Optional)"

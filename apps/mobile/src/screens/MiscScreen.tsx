@@ -40,7 +40,7 @@ const TIPS: TipItem[] = [
   {
     title: 'Quick Track for Fast Logging',
     description:
-      'Use Quick Track when you just want to save a dish without creating a full visit entry. Add the location manually if you want to remember where you had it.',
+      'Use Quick Track when you just want to save a dish without creating a full visit entry. Add notes or a photo if you want extra context.',
   },
   {
     title: 'Photo Processing Magic',

@@ -201,7 +201,7 @@
         <h1 class="page-h1">How Yummy Recs handles your information</h1>
         <p class="page-sub">This policy explains what information Yummy Recs collects, how it is used, when it may be shared, and what choices you have when using the website, mobile app, and related services.</p>
         <div class="page-meta">
-          <span class="meta-tag">Effective March 12, 2026</span>
+          <span class="meta-tag">Effective April 4, 2026</span>
           <span class="meta-tag">Applies to mobile, web, and support workflows</span>
         </div>
       </div>
@@ -212,7 +212,7 @@
           <p>We collect information you provide directly, including:</p>
           <ul>
             <li>Account details such as your email address, display name, login credentials, and profile preferences.</li>
-            <li>Content you create in the service, including ratings, notes, visit history, quick tracks, restaurant lists, feedback messages, friend connections, and invitations.</li>
+            <li>Content you create in the service, including ratings, notes, visit history, quick tracks, restaurant lists, feedback messages, friend connections, invitations, and restaurant search text or location details you submit while using restaurant search features.</li>
             <li>Photos and related metadata that you choose to upload, including creation time and image metadata when supported by your device.</li>
           </ul>
         </article>
@@ -223,8 +223,9 @@
           <ul>
             <li><strong>Camera:</strong> to capture food photos and scan QR codes.</li>
             <li><strong>Photo library:</strong> to select existing food photos and, when you ask, save processed images back to your library.</li>
-            <li><strong>Location:</strong> to attach your current location to entries and improve nearby restaurant search.</li>
-            <li><strong>Technical diagnostics:</strong> app version, platform, crash details, and usage events may be collected to diagnose issues and improve product reliability.</li>
+            <li><strong>Location:</strong> for nearby restaurant search.</li>
+            <li><strong>Technical diagnostics:</strong> app version, platform details, crash details, and usage events may be collected to diagnose issues and improve product reliability.</li>
+            <li><strong>Server-side image analysis:</strong> if you choose menu scanning or restaurant identification from a photo, the selected image is sent for server-side processing.</li>
           </ul>
         </article>
 
@@ -255,8 +256,10 @@
           <h2>5. Analytics, Diagnostics, and Infrastructure Providers</h2>
           <p>Yummy Recs uses service providers to help run the product. These providers process information on our behalf under their own contractual and legal obligations.</p>
           <ul>
-            <li><strong>Analytics and diagnostics:</strong> usage events, app version, platform details, and error reports may be processed to improve performance and reliability.</li>
-            <li><strong>Infrastructure and storage:</strong> service providers may store or transmit data needed to deliver sync, account, and support features.</li>
+            <li><strong>Analytics and diagnostics:</strong> usage events, app version, platform details, error reports, and operational metrics may be processed by PostHog to improve performance and reliability. Mobile analytics is configured to understand flows and app health without linking those analytics events to a signed-in account.</li>
+            <li><strong>Search and mapping:</strong> when you search for restaurants, Google Places and Google Maps may process search text, typed location text, and nearby-search coordinates to return restaurant matches and geocoding results.</li>
+            <li><strong>AI image analysis:</strong> when you use menu scanning or restaurant-name detection from a photo, Google Gemini may process the selected image to determine whether it is restaurant-related, extract restaurant names, or convert menu items into structured text.</li>
+            <li><strong>Infrastructure and storage:</strong> service providers may store or transmit data needed to deliver sync, account, search, and support features.</li>
           </ul>
         </article>
 

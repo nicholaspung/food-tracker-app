@@ -1,11 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  CurrentLocationButton,
   EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
@@ -28,14 +27,12 @@ import {
   isValidLocalDate,
   localDateStringToUTC,
 } from '../lib/dateFormatting';
-import { formatCoordinateLabel } from '../lib/coordinates';
-import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Button, Card, Input, Text } from '../ui';
+import { Card, Input, Text } from '../ui';
 
 type EditQuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'EditQuickTrack'>;
 type QuickTrackVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
@@ -87,24 +84,11 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
   const [rating, setRating] = useState(3);
   const [notes, setNotes] = useState('');
   const [itemCategory, setItemCategory] = useState<ItemCategory | null>(null);
-  const [locationText, setLocationText] = useState('');
   const [visibility, setVisibility] = useState<QuickTrackVisibility>(resolveDefaultVisitVisibilityFromAuth());
   const [itemDate, setItemDate] = useState(getTodayLocalDateString());
-  const [latitude, setLatitude] = useState<number | undefined>(undefined);
-  const [longitude, setLongitude] = useState<number | undefined>(undefined);
   const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const {
-    captureLocation,
-    isCapturing: isCapturingLocation,
-    permissionNeedsSettings: locationPermissionNeedsSettings,
-    resetPermissionNeedsSettings: resetLocationPermissionNeedsSettings,
-  } = useForegroundLocationCapture({
-    blockedPermissionMessage: 'Location permission is blocked. Enable it in settings.',
-    defaultErrorMessage: 'Could not capture your location.',
-    deniedPermissionMessage: 'Location permission is required to capture your coordinates.',
-  });
 
   useEffect(() => {
     if (!quickTrackQuery.data) {
@@ -115,7 +99,6 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
     setRating(quickTrackQuery.data.rating);
     setNotes(quickTrackQuery.data.notes ?? '');
     setItemCategory(normalizeItemCategory(quickTrackQuery.data.itemCategory));
-    setLocationText(quickTrackQuery.data.locationText ?? '');
     setVisibility(quickTrackQuery.data.visibility ?? resolveDefaultVisitVisibilityFromAuth());
     setItemDate(normalizeQuickTrackDate(quickTrackQuery.data.itemDate));
   }, [quickTrackQuery.data]);
@@ -162,14 +145,6 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
     categoryPlaceholder: {
       color: theme.colors.text.muted,
     },
-    locationRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    locationInput: {
-      flex: 1,
-    },
   });
 
   const selectedCategoryLabel = useMemo(() => {
@@ -184,54 +159,10 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
     return itemName.trim().length > 0 && !isSubmitting;
   }, [isSubmitting, itemName]);
 
-  const hasCapturedCoordinates =
-    typeof latitude === 'number' && typeof longitude === 'number';
-  const coordinateLabel = hasCapturedCoordinates
-    ? formatCoordinateLabel({ latitude, longitude }, 6)
-    : null;
-
   const handleVisibilityChange = (value: VisibilityOptionValue) => {
     if (value === 'private' || value === 'friends') {
       setVisibility(value);
     }
-  };
-
-  const handleCaptureLocation = async () => {
-    trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURE_STARTED', {
-      source: 'EditQuickTrackScreen',
-      quickTrackId,
-    });
-    setErrorMessage(null);
-    resetLocationPermissionNeedsSettings();
-
-    const locationCapture = await captureLocation();
-    if (locationCapture.status === 'permission_denied') {
-      trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_PERMISSION_DENIED', {
-        canAskAgain: locationCapture.canAskAgain,
-        source: 'EditQuickTrackScreen',
-        quickTrackId,
-      });
-      setErrorMessage(locationCapture.message);
-      return;
-    }
-
-    if (locationCapture.status === 'error') {
-      setErrorMessage(locationCapture.message);
-      trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURE_FAILED', {
-        source: 'EditQuickTrackScreen',
-        quickTrackId,
-        error: locationCapture.message,
-      });
-      return;
-    }
-
-    setLatitude(locationCapture.coordinates.latitude);
-    setLongitude(locationCapture.coordinates.longitude);
-    setLocationText(locationCapture.label);
-    trackObservabilityEvent('EDIT_QUICK_TRACK_LOCATION_CAPTURED', {
-      source: 'EditQuickTrackScreen',
-      quickTrackId,
-    });
   };
 
   const handleSave = async () => {
@@ -262,7 +193,6 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
       quickTrackId,
       isOnline,
       hasNotes: notes.trim().length > 0,
-      hasLocation: locationText.trim().length > 0,
       visibility,
     });
     setIsSubmitting(true);
@@ -273,11 +203,8 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
         rating,
         notes,
         itemCategory,
-        locationText,
         visibility,
         itemDate: localDateStringToUTC(itemDate),
-        latitude,
-        longitude,
       };
 
       if (!isOnline) {
@@ -529,40 +456,6 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
               />
             ) : null}
           </OptionList>
-
-          <Text variant="label">Location (Optional)</Text>
-          <View style={styles.locationRow}>
-            <Input
-              containerStyle={styles.locationInput}
-              onChangeText={setLocationText}
-              placeholder="e.g., Trader Joe's, Home Kitchen"
-              value={locationText}
-            />
-            <CurrentLocationButton
-              accessibilityLabel="Capture current location"
-              captured={hasCapturedCoordinates}
-              disabled={isSubmitting}
-              loading={isCapturingLocation}
-              onPress={() => {
-                void handleCaptureLocation();
-              }}
-              variant="icon"
-            />
-          </View>
-          {coordinateLabel ? (
-            <Text tone="success" variant="bodySm">
-              Location updated from GPS: {coordinateLabel}
-            </Text>
-          ) : null}
-          {locationPermissionNeedsSettings ? (
-            <Button
-              label="Open Settings"
-              onPress={() => {
-                void Linking.openSettings();
-              }}
-              variant="secondary"
-            />
-          ) : null}
 
           <Input
             inputStyle={styles.notesInput}

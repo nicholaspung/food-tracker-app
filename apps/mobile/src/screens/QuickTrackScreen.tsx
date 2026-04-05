@@ -170,9 +170,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     setForm((currentForm) => ({
       ...currentForm,
       notes: currentForm.notes.trim() ? currentForm.notes : linkedNoteQuery.data?.content ?? '',
-      locationText: currentForm.locationText.trim()
-        ? currentForm.locationText
-        : linkedNoteQuery.data?.locationText ?? '',
     }));
     setDidApplyNotePrefill(true);
   }, [didApplyNotePrefill, linkedNoteQuery.data]);

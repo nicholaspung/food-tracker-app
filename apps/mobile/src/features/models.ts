@@ -43,7 +43,6 @@ export interface VisitRecord {
 export interface QuickTrackRecord {
   id: string;
   restaurantName: string;
-  locationText?: string;
   itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | 'restaurant';
   itemName: string;
   rating: number;
@@ -132,9 +131,6 @@ export interface NoteRecord {
   content: string;
   rating?: number;
   status: 'draft' | 'used';
-  locationText?: string;
-  latitude?: number;
-  longitude?: number;
   restaurantId?: string;
   restaurantName?: string;
   usedInVisitId?: string;

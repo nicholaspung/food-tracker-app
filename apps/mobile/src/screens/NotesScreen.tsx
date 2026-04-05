@@ -58,18 +58,6 @@ function buildNotePreview(content: string): string {
   return `${normalized.slice(0, 137).trimEnd()}...`;
 }
 
-function buildNoteLocation(note: NoteRecord): string | null {
-  if (note.restaurantName?.trim()) {
-    return note.restaurantName.trim();
-  }
-
-  if (note.locationText?.trim()) {
-    return note.locationText.trim();
-  }
-
-  return null;
-}
-
 function formatTimeAgo(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -434,7 +422,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
         {!notesQuery.isLoading && !hasBlockingNotesError
           ? notes.map((note) => {
-              const location = buildNoteLocation(note);
               const notePhotos = notePhotosByNoteId.get(note.id) ?? [];
               const primaryPhoto = notePhotos[0];
               const thumbnailUrl = primaryPhoto
@@ -530,12 +517,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
                     <View style={styles.noteTextContent}>
                       <Text style={styles.notePreview}>{buildNotePreview(note.content)}</Text>
-                      {location ? (
-                        <View style={styles.locationRow}>
-                          <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />
-                          <Text tone="secondary">{location}</Text>
-                        </View>
-                      ) : null}
                     </View>
                   </View>
                 </Card>

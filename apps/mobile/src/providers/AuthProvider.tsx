@@ -15,8 +15,7 @@ import {
 } from '../lib/rolePreview';
 import {
   captureObservabilityError,
-  clearObservabilityUser,
-  identifyObservabilityUser,
+  resetObservabilityIdentity,
   setObservabilityContext,
   trackObservabilityEvent,
 } from '../observability';
@@ -252,13 +251,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (nextUser && (env.isScreenshotReviewMode || pb.authStore.isValid)) {
       setActualUser(nextUser);
       setStatus('authenticated');
-      identifyObservabilityUser(nextUser);
       return;
     }
 
     setActualUser(null);
     setStatus('unauthenticated');
-    clearObservabilityUser();
   }, []);
 
   useEffect(() => {
@@ -287,7 +284,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setActualUser(screenshotReviewUser);
               setStatus('authenticated');
               setAuthError(null);
-              identifyObservabilityUser(screenshotReviewUser);
             }
 
             trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
@@ -460,7 +456,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setActualUser(authUser);
       setStatus('authenticated');
-      identifyObservabilityUser(authUser);
       trackObservabilityEvent('LOGIN_SUCCESS', {
         source: 'mobile_auth_shell',
       });
@@ -491,10 +486,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     setStatus('unauthenticated');
     setAuthError(null);
-    clearObservabilityUser();
     trackObservabilityEvent('LOGOUT', {
       source: 'mobile_auth_shell',
     });
+    resetObservabilityIdentity();
   }, []);
 
   const value = useMemo<AuthContextValue>(

@@ -81,12 +81,8 @@ export interface CreateQuickTrackInput {
   rating: number;
   itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
   notes?: string;
-  locationText?: string;
-  restaurantName?: string; // Legacy alias for locationText.
   visibility?: 'friends' | 'private';
   itemDate?: string;
-  latitude?: number;
-  longitude?: number;
   photo?: VisitPhotoUploadInput;
   sourceNoteId?: string;
 }
@@ -96,12 +92,8 @@ export interface UpdateQuickTrackInput {
   rating?: number;
   itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | null;
   notes?: string;
-  locationText?: string;
-  restaurantName?: string; // Legacy alias for locationText.
   visibility?: 'friends' | 'private';
   itemDate?: string;
-  latitude?: number | null;
-  longitude?: number | null;
 }
 
 export interface CreateRestaurantListInput {
@@ -270,9 +262,6 @@ export interface CreateNoteInput {
   title: string;
   content: string;
   rating?: number;
-  locationText?: string;
-  latitude?: number;
-  longitude?: number;
   photos?: NotePhotoUploadInput[];
 }
 
@@ -280,9 +269,6 @@ export interface UpdateNoteInput {
   title?: string;
   content?: string;
   rating?: number;
-  locationText?: string;
-  latitude?: number | null;
-  longitude?: number | null;
   newPhotos?: NotePhotoUploadInput[];
   deletePhotoIds?: string[];
 }
@@ -1401,13 +1387,9 @@ function mapVisitCollectionRecord(visit: VisitCollectionRecord, visitItems: Food
 }
 
 function mapQuickTrackCollectionRecord(record: FoodItemCollectionRecord): QuickTrackRecord {
-  const restaurantName =
-    record.location_text?.trim() || record.expand?.visit?.expand?.restaurant?.name?.trim() || 'Quick Track';
-
   return {
     id: record.id,
-    restaurantName,
-    locationText: record.location_text?.trim() || undefined,
+    restaurantName: record.expand?.visit?.expand?.restaurant?.name?.trim() || 'Quick Track',
     itemCategory: record.itemCategory,
     itemName: record.name,
     rating: record.rating,
@@ -1480,9 +1462,6 @@ function mapNoteCollectionRecord(record: NoteCollectionRecord): NoteRecord {
     title: buildNoteTitle(normalizedContent),
     content: normalizedContent,
     status: normalizeNoteStatus(record.status),
-    locationText: record.location_text?.trim() || undefined,
-    latitude: typeof record.latitude === 'number' ? record.latitude : undefined,
-    longitude: typeof record.longitude === 'number' ? record.longitude : undefined,
     restaurantId: record.restaurant,
     restaurantName: record.expand?.restaurant?.name?.trim() || undefined,
     usedInVisitId: record.usedInVisit,
@@ -1976,7 +1955,7 @@ export async function listQuickTracksPage(input?: ListQuickTracksPageInput): Pro
       : scope === 'friends'
         ? `user != "${escapedCurrentUserId}"`
         : undefined;
-  const searchFilter = buildSearchFilter(['name', 'location_text', 'itemCategory', 'notes'], input?.search ?? '');
+  const searchFilter = buildSearchFilter(['name', 'itemCategory', 'notes'], input?.search ?? '');
   const filter = combineFilterClauses('isQuickTrack = true', scopeFilter, searchFilter);
 
   const pageResult = await listCollectionPage<FoodItemCollectionRecord>('food_items', {
@@ -2020,7 +1999,6 @@ export async function createQuickTrack(input: CreateQuickTrackInput): Promise<Qu
       if (!itemName) {
         throw new Error('Item name is required.');
       }
-      const locationText = (input.locationText ?? input.restaurantName ?? '').trim();
       const payload: Record<string, unknown> = {
         name: itemName,
         rating: input.rating,
@@ -2034,20 +2012,8 @@ export async function createQuickTrack(input: CreateQuickTrackInput): Promise<Qu
         payload.notes = input.notes.trim() || '';
       }
 
-      if (locationText) {
-        payload.location_text = locationText;
-      }
-
       if (input.itemCategory !== undefined) {
         payload.itemCategory = input.itemCategory;
-      }
-
-      if (input.latitude !== undefined) {
-        payload.latitude = input.latitude;
-      }
-
-      if (input.longitude !== undefined) {
-        payload.longitude = input.longitude;
       }
 
       const record = await pb.collection('food_items').create<FoodItemCollectionRecord>(
@@ -2081,7 +2047,6 @@ export async function createQuickTrack(input: CreateQuickTrackInput): Promise<Qu
       rating: input.rating,
       visibility: input.visibility ?? getDefaultVisitVisibility(),
       hasPhoto: Boolean(input.photo),
-      hasLocation: Boolean((input.locationText ?? input.restaurantName)?.trim()),
       hasSourceNote: Boolean(input.sourceNoteId),
       hasItemCategory: Boolean(input.itemCategory),
     },
@@ -2117,11 +2082,6 @@ export async function updateQuickTrack(
         payload.notes = updates.notes.trim() || '';
       }
 
-      const nextLocationText = updates.locationText ?? updates.restaurantName;
-      if (nextLocationText !== undefined) {
-        payload.location_text = nextLocationText.trim() || '';
-      }
-
       if (updates.itemCategory !== undefined) {
         payload.itemCategory = updates.itemCategory ?? '';
       }
@@ -2134,13 +2094,9 @@ export async function updateQuickTrack(
         payload.itemDate = updates.itemDate;
       }
 
-      if (updates.latitude !== undefined) {
-        payload.latitude = updates.latitude;
-      }
-
-      if (updates.longitude !== undefined) {
-        payload.longitude = updates.longitude;
-      }
+      payload.location_text = '';
+      payload.latitude = null;
+      payload.longitude = null;
 
       const updatedRecord =
         Object.keys(payload).length > 0
@@ -2157,10 +2113,9 @@ export async function updateQuickTrack(
       hasItemNameUpdate: updates.itemName !== undefined,
       hasRatingUpdate: updates.rating !== undefined,
       hasNotesUpdate: updates.notes !== undefined,
-      hasLocationUpdate: updates.locationText !== undefined || updates.restaurantName !== undefined,
       hasVisibilityUpdate: updates.visibility !== undefined,
       hasItemDateUpdate: updates.itemDate !== undefined,
-      hasCoordinatesUpdate: updates.latitude !== undefined || updates.longitude !== undefined,
+      clearsLegacyLocationData: true,
     },
   );
 }
@@ -3313,18 +3268,6 @@ export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
         status: 'draft',
       };
 
-      if (input.locationText !== undefined) {
-        payload.location_text = input.locationText.trim() || '';
-      }
-
-      if (input.latitude !== undefined) {
-        payload.latitude = input.latitude;
-      }
-
-      if (input.longitude !== undefined) {
-        payload.longitude = input.longitude;
-      }
-
       const record = await pb.collection('notes').create<NoteCollectionRecord>(
         payload,
         {
@@ -3337,8 +3280,6 @@ export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
       return mapNoteCollectionRecord(record);
     },
     {
-      hasLocationText: Boolean(input.locationText?.trim()),
-      hasCoordinates: input.latitude !== undefined || input.longitude !== undefined,
       photoCount: input.photos?.length ?? 0,
       hasRating: input.rating !== undefined,
     },
@@ -3361,17 +3302,9 @@ export async function updateNote(noteId: string, updates: UpdateNoteInput): Prom
         payload.content = content;
       }
 
-      if (updates.locationText !== undefined) {
-        payload.location_text = updates.locationText.trim() || '';
-      }
-
-      if (updates.latitude !== undefined) {
-        payload.latitude = updates.latitude;
-      }
-
-      if (updates.longitude !== undefined) {
-        payload.longitude = updates.longitude;
-      }
+      payload.location_text = '';
+      payload.latitude = null;
+      payload.longitude = null;
 
       if (updates.deletePhotoIds && updates.deletePhotoIds.length > 0) {
         for (const photoId of updates.deletePhotoIds) {
@@ -3400,8 +3333,7 @@ export async function updateNote(noteId: string, updates: UpdateNoteInput): Prom
     },
     {
       hasContentUpdate: updates.title !== undefined || updates.content !== undefined,
-      hasLocationUpdate: updates.locationText !== undefined,
-      hasCoordinatesUpdate: updates.latitude !== undefined || updates.longitude !== undefined,
+      clearsLegacyLocationData: true,
       newPhotoCount: updates.newPhotos?.length ?? 0,
       deletePhotoCount: updates.deletePhotoIds?.length ?? 0,
     },

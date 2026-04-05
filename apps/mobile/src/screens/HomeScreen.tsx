@@ -40,7 +40,6 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { formatCoordinateText } from '../lib/coordinates';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import {
   clearPendingFriendSuggestion,
@@ -180,10 +179,6 @@ function formatCategoryLabel(category: string): string {
   return category.replace(/_/g, ' ');
 }
 
-function formatQuickTrackLocationLabel(value: string): string {
-  return formatCoordinateText(value, 4);
-}
-
 function formatEntryDateLabel(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -239,7 +234,6 @@ function buildQuickTrackFeedItem(quickTrack: QuickTrackRecord, currentUserId: st
     searchText: [
       quickTrack.itemName,
       quickTrack.restaurantName,
-      quickTrack.locationText ?? '',
       quickTrack.itemCategory ?? '',
       quickTrack.notes ?? '',
     ]
@@ -1430,9 +1424,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
                     const quickTrack = feedItem.quickTrack;
                     const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
-                    const quickTrackLocationLabel = quickTrack.locationText
-                      ? formatQuickTrackLocationLabel(quickTrack.locationText)
-                      : undefined;
                     const quickTrackCategoryLabel = quickTrack.itemCategory
                       ? formatCategoryLabel(quickTrack.itemCategory)
                       : undefined;
@@ -1442,7 +1433,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                         categoryLabel={quickTrackCategoryLabel}
                         dateLabel={dateLabel}
                         key={feedItem.id}
-                        locationLabel={quickTrackLocationLabel}
                         onDelete={
                           !feedItem.isFriend
                             ? () => {

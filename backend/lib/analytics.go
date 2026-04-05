@@ -15,6 +15,11 @@ var (
 	AnalyticsEnabled bool
 )
 
+const (
+	posthogDistinctIDBackendLLM    = "backend:llm-generation"
+	posthogDistinctIDBackendPlaces = "backend:places-api"
+)
+
 // InitAnalytics initializes the PostHog client
 func InitAnalytics() error {
 	apiKey := os.Getenv("POSTHOG_API_KEY")
@@ -110,7 +115,7 @@ func TrackLLMGeneration(userID string, props LLMGenerationProperties) {
 
 	// Track event
 	err := PostHogClient.Enqueue(posthog.Capture{
-		DistinctId: userID,
+		DistinctId: posthogDistinctIDBackendLLM,
 		Event:      "LLM Generation",
 		Properties: properties,
 	})
@@ -198,16 +203,13 @@ func TrackPlacesAPICall(userID string, props PlacesAPIProperties) {
 	if props.ErrorType != "" {
 		properties.Set("error_type", props.ErrorType)
 	}
-	if props.Query != "" {
-		properties.Set("query", props.Query)
-	}
 	if props.HasLocation {
 		properties.Set("has_location", props.HasLocation)
 	}
 
 	// Track event
 	err := PostHogClient.Enqueue(posthog.Capture{
-		DistinctId: userID,
+		DistinctId: posthogDistinctIDBackendPlaces,
 		Event:      "LLM Generation",
 		Properties: properties,
 	})

@@ -25,12 +25,9 @@ export interface QuickTrackFormValues {
   itemName: string;
   category: QuickTrackCategory | '';
   rating: number;
-  locationText: string;
   notes: string;
   visibility: QuickTrackVisibility;
   date: string;
-  latitude?: number;
-  longitude?: number;
 }
 
 interface BuildDefaultQuickTrackFormOptions {
@@ -55,12 +52,9 @@ export function buildDefaultQuickTrackForm({
     itemName: '',
     category: previousForm?.category ?? '',
     rating: 3,
-    locationText: previousForm?.locationText ?? '',
     notes: '',
     visibility: previousForm?.visibility ?? resolveDefaultQuickTrackVisibility(),
     date: captureDate ? formatDateToLocalDateString(captureDate) : getTodayLocalDateString(),
-    latitude: previousForm?.latitude,
-    longitude: previousForm?.longitude,
   };
 }
 
@@ -89,11 +83,8 @@ export function buildCreateQuickTrackInput(
     rating: form.rating,
     itemCategory: form.category || undefined,
     notes: form.notes.trim() || undefined,
-    locationText: form.locationText.trim() || undefined,
     visibility: form.visibility,
     itemDate: localDateStringToUTC(form.date),
-    latitude: typeof form.latitude === 'number' ? form.latitude : undefined,
-    longitude: typeof form.longitude === 'number' ? form.longitude : undefined,
     photo,
     sourceNoteId,
   };

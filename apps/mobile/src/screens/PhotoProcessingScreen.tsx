@@ -1305,14 +1305,12 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const reviewQuickTrackCards = useMemo<ReviewQuickTrackCardData[]>(() => {
     return quickTrackReviewEntries.map((entry, index) => {
       const eventAt = entry.photo.captureDate?.toISOString() ?? localDateStringToUTC(entry.form.date);
-      const locationText = entry.form.locationText.trim() || undefined;
 
       return {
         id: `review-quick-track-${entry.photo.id}-${index}`,
         quickTrack: {
           id: entry.photo.id,
-          restaurantName: locationText ?? 'Quick Track',
-          locationText,
+          restaurantName: 'Quick Track',
           itemCategory: entry.form.category || undefined,
           itemName: entry.form.itemName.trim(),
           rating: entry.form.rating,

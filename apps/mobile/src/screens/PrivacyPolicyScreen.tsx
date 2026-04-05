@@ -9,12 +9,12 @@ const PRIVACY_SECTIONS = [
   {
     title: 'Information We Collect',
     body:
-      'We collect information you provide directly, including account details like your email address, display name, login credentials, and profile preferences, plus the content you create in the service such as ratings, notes, visit history, quick tracks, restaurant lists, feedback messages, friend connections, invitations, and photos you choose to upload.',
+      'We collect information you provide directly, including account details like your email address, display name, login credentials, and profile preferences, plus the content you create in the service such as ratings, notes, visit history, quick tracks, restaurant lists, feedback messages, friend connections, invitations, photos you choose to upload, and restaurant search text or location details you submit while using restaurant search features.',
   },
   {
     title: 'Device Data and Permissions',
     body:
-      'Some features request device access only when needed. This can include camera access for food photos and QR codes, photo library access for selecting or saving images, location access for attaching your current location or improving nearby restaurant search, and technical diagnostics such as app version, platform, crash details, and usage events.',
+      'Some features request device access only when needed. This can include camera access for food photos and QR codes, photo library access for selecting or saving images, location access for nearby restaurant search, and technical diagnostics such as app version, platform details, crash details, and usage events. If you choose menu scanning or restaurant identification from a photo, the selected image is also sent for server-side processing.',
   },
   {
     title: 'How We Use Data',
@@ -29,7 +29,7 @@ const PRIVACY_SECTIONS = [
   {
     title: 'Analytics and Service Providers',
     body:
-      'Yummy Recs uses providers for analytics, diagnostics, infrastructure, and storage. Those providers may process usage events, app version, platform details, error reports, and service data needed to deliver sync, account, and support features.',
+      'Yummy Recs uses providers for analytics, diagnostics, infrastructure, search, mapping, and AI-assisted processing. Those providers may process app usage events, app version, platform details, crash and error reports, and operational metrics needed to deliver sync, account, search, and support features. When you search for restaurants, Google Places and Google Maps may process search text, typed location text, and nearby-search coordinates to return results. When you use menu scanning or restaurant-name detection from a photo, Google Gemini may process the selected image to determine whether it is restaurant-related, extract restaurant names, or convert menu items into structured text. We configure mobile analytics to understand flows and reliability without linking those analytics events to your signed-in account.',
   },
   {
     title: 'Retention and Security',
@@ -65,7 +65,7 @@ export function PrivacyPolicyScreen({ navigation }: PrivacyPolicyScreenProps) {
 
   return (
     <StaticContentSectionsScreen
-      introCaption="Effective March 12, 2026"
+      introCaption="Effective April 4, 2026"
       introDescription="This policy explains what information Yummy Recs collects, how it is used, when it may be shared, and what choices you have when using the website, mobile app, and related services."
       introTitle="How Yummy Recs handles your information"
       onBackPress={handleBackPress}

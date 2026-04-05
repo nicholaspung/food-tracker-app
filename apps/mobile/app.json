@@ -20,7 +20,7 @@
       },
       "infoPlist": {
         "NSCameraUsageDescription": "Allow Yummy Recs to scan QR codes and capture food photos.",
-        "NSLocationWhenInUseUsageDescription": "Allow Yummy Recs to use your GPS location for notes, quick tracks, and nearby restaurant search.",
+        "NSLocationWhenInUseUsageDescription": "Allow Yummy Recs to use your GPS location to find nearby restaurants during search.",
         "NSPhotoLibraryUsageDescription": "Allow Yummy Recs to select food photos from your library.",
         "NSPhotoLibraryAddUsageDescription": "Allow Yummy Recs to save processed menu photos when needed.",
         "CFBundleDisplayName": "Yummy Recs",
@@ -68,7 +68,7 @@
         {
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
-          "locationWhenInUsePermission": "Allow Yummy Recs to use your GPS location for notes, quick tracks, and nearby restaurant search."
+          "locationWhenInUsePermission": "Allow Yummy Recs to use your GPS location to find nearby restaurants during search."
         }
       ],
       [

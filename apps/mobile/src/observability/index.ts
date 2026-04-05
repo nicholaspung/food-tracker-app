@@ -60,18 +60,15 @@ export function initializeObservability(): void {
 }
 
 export function identifyObservabilityUser(user: AuthUser): void {
-  if (!initialized) {
-    return;
-  }
-
-  posthogClient?.identify(user.id, {
-    isAdmin: Boolean(user.isAdmin),
-    isSubscriber: Boolean(user.isSubscriber),
-    isBetaUser: Boolean(user.isBetaUser),
-  });
+  void user;
 }
 
 export function clearObservabilityUser(): void {
+  // Preserve the anonymous PostHog identity so flows remain attributable without
+  // linking analytics to an authenticated account.
+}
+
+export function resetObservabilityIdentity(): void {
   if (!initialized) {
     return;
   }
@@ -140,6 +137,10 @@ function sanitizeEventProperties(properties?: EventProperties): EventProperties 
   const sanitized: EventProperties = {};
 
   Object.entries(properties).forEach(([key, value]) => {
+    if (shouldRedactObservabilityKey(key)) {
+      return;
+    }
+
     const sanitizedValue = sanitizeJsonValue(value);
     if (sanitizedValue !== undefined) {
       sanitized[key] = sanitizedValue;
@@ -147,6 +148,18 @@ function sanitizeEventProperties(properties?: EventProperties): EventProperties 
   });
 
   return sanitized;
+}
+
+function shouldRedactObservabilityKey(key: string): boolean {
+  const normalizedKey = key.trim().toLowerCase();
+
+  return (
+    normalizedKey === 'email' ||
+    normalizedKey === 'name' ||
+    normalizedKey === 'query' ||
+    normalizedKey === 'location' ||
+    normalizedKey.endsWith('id')
+  );
 }
 
 function sanitizeJsonValue(value: JsonValue): JsonValue | undefined {

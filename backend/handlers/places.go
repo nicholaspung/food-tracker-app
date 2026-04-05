@@ -361,12 +361,11 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
 				return e.JSON(429, limitErr.Payload())
 			}
-			log.Printf("Failed to consume places query usage (nearby) for user %s: %v", authRecord.Id, err)
+			log.Printf("Failed to consume places query usage (nearby): %v", err)
 			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
-		log.Printf("Searching nearby places: lat=%f, lng=%f, radius=%d",
-			requestData.Latitude, requestData.Longitude, requestData.Radius)
+		log.Printf("Searching nearby places with radius=%d", requestData.Radius)
 
 		// Initialize new Places API client
 		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
@@ -492,12 +491,16 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
 				return e.JSON(429, limitErr.Payload())
 			}
-			log.Printf("Failed to consume places query usage (search) for user %s: %v", authRecord.Id, err)
+			log.Printf("Failed to consume places query usage (search): %v", err)
 			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
-		log.Printf("Text search: query=%s, location=%s, radius=%d",
-			requestData.Query, requestData.Location, requestData.Radius)
+		log.Printf(
+			"Searching places by text with has_query=%t has_location_bias=%t radius=%d",
+			requestData.Query != "",
+			requestData.Location != "",
+			requestData.Radius,
+		)
 
 		// Initialize new Places API client
 		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
@@ -527,7 +530,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 				geocodeResp, err := mapsClient.Geocode(ctx, geocodeReq)
 				if err == nil && len(geocodeResp) > 0 {
 					location := geocodeResp[0].Geometry.Location
-					log.Printf("Geocoded location: lat=%f, lng=%f", location.Lat, location.Lng)
+					log.Printf("Resolved location bias for text search")
 
 					// Add location bias with circle
 					searchReq.LocationBias = &placespb.SearchTextRequest_LocationBias{
@@ -569,7 +572,6 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 				Success:     false,
 				ErrorType:   fmt.Sprintf("%T", err),
 				ResultCount: 0,
-				Query:       requestData.Query,
 				HasLocation: requestData.Location != "",
 			})
 
@@ -584,7 +586,6 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			DurationMs:  durationMs,
 			Success:     true,
 			ResultCount: len(resp.Places),
-			Query:       requestData.Query,
 			HasLocation: requestData.Location != "",
 		})
 
@@ -631,11 +632,11 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			if limitErr, ok := lib.AsLimitExceededError(err); ok {
 				return e.JSON(429, limitErr.Payload())
 			}
-			log.Printf("Failed to consume places query usage (geocode) for user %s: %v", authRecord.Id, err)
+			log.Printf("Failed to consume places query usage (geocode): %v", err)
 			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
-		log.Printf("Geocoding location: %s", requestData.Location)
+		log.Printf("Geocoding location for restaurant search")
 
 		// Initialize Google Maps client
 		ctx, cancel := requestContextWithTimeout(e, googleGeocodeRequestTimeout)
@@ -670,7 +671,6 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 				Success:     false,
 				ErrorType:   fmt.Sprintf("%T", err),
 				ResultCount: 0,
-				Query:       requestData.Location,
 			})
 
 			return apis.NewApiError(500, "failed to geocode location", err)
@@ -684,7 +684,6 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 				DurationMs:  durationMs,
 				Success:     true,
 				ResultCount: 0,
-				Query:       requestData.Location,
 			})
 
 			return e.JSON(200, map[string]any{
@@ -693,7 +692,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		}
 
 		geocodedLocation := resp[0].Geometry.Location
-		log.Printf("Geocoded to: lat=%f, lng:%f", geocodedLocation.Lat, geocodedLocation.Lng)
+		log.Printf("Geocoding succeeded for restaurant search")
 
 		// Track successful API call
 		lib.TrackPlacesAPICall(authRecord.Id, lib.PlacesAPIProperties{
@@ -701,7 +700,6 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			DurationMs:  durationMs,
 			Success:     true,
 			ResultCount: resultCount,
-			Query:       requestData.Location,
 		})
 
 		return e.JSON(200, map[string]any{

@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { buildPocketBaseFileUrl, type QuickTrackRecord } from '../../features';
-import { formatCoordinateText } from '../../lib/coordinates';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -33,10 +32,6 @@ interface HomeQuickTrackEntryCardProps {
 
 function formatCategoryLabel(category: string): string {
   return category.replace(/_/g, ' ');
-}
-
-function formatQuickTrackLocationLabel(value: string): string {
-  return formatCoordinateText(value, 4);
 }
 
 function buildPhotoThumbnailUrl(photo: HomeFeedPhotoRecord): string {
@@ -261,8 +256,6 @@ export function HomeQuickTrackEntryCard({
 
   const primaryPhoto = photos[0] ?? null;
   const photoThumb = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
-  const metaSource = quickTrack.locationText || quickTrack.restaurantName || '';
-  const metaLabel = metaSource ? formatQuickTrackLocationLabel(metaSource) : '';
   const categoryLabel = quickTrack.itemCategory ? formatCategoryLabel(quickTrack.itemCategory) : null;
   const showActions = Boolean(onEdit || onDelete || onMoreActions);
 
@@ -347,19 +340,6 @@ export function HomeQuickTrackEntryCard({
         ) : null}
 
         <View style={styles.foodItemContent}>
-          {metaSource ? (
-            <View style={styles.quickTrackMetaRow}>
-              <Ionicons
-                color={colors.textMuted}
-                name="location-outline"
-                size={12}
-                style={styles.quickTrackLocationIcon}
-              />
-              <Text numberOfLines={1} style={[styles.quickTrackMeta, styles.quickTrackMetaInline]}>
-                {metaLabel}
-              </Text>
-            </View>
-          ) : null}
           {quickTrack.notes ? (
             <Text numberOfLines={2} style={styles.foodItemNotes}>
               "{quickTrack.notes}"
@@ -381,14 +361,14 @@ export function HomeQuickTrackEntryCard({
             <Pressable
               accessibilityLabel={`Share ${quickTrack.itemName}`}
               onPress={() => {
-                onSharePhoto({
-                  itemName: quickTrack.itemName,
-                  photo: primaryPhoto,
-                  rating: quickTrack.rating,
-                  restaurantName: metaSource || 'Quick Track',
-                  visitDate: quickTrack.itemDate || quickTrack.createdAt,
-                });
-              }}
+                  onSharePhoto({
+                    itemName: quickTrack.itemName,
+                    photo: primaryPhoto,
+                    rating: quickTrack.rating,
+                    restaurantName: 'Quick Track',
+                    visitDate: quickTrack.itemDate || quickTrack.createdAt,
+                  });
+                }}
               style={styles.compactActionButton}
             >
               <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />

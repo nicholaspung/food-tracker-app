@@ -10,6 +10,20 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.22',
+    date: '2026-04-04',
+    title: 'Privacy Updates & Simplified Quick Track',
+    summary:
+      'Location fields have been removed from Quick Track and Notes to keep things simple — GPS is now only used when searching for nearby restaurants. The privacy policy has also been updated to be more transparent about how data is handled.',
+    features: [],
+    improvements: [
+      'Location text and GPS capture have been removed from Quick Track forms and Notes. Add notes or a photo for extra context instead.',
+      'Privacy policy updated (effective April 4, 2026) with clearer explanations of what data is used by restaurant search, photo processing, and analytics.',
+      'Analytics are no longer linked to your signed-in account — usage events are tracked anonymously to understand app reliability and flows.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.21',
     date: '2026-04-04',
     title: 'Polish & Under-the-Hood Improvements',
