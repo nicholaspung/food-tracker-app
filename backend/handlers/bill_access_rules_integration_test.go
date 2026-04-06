@@ -104,6 +104,45 @@ func TestBillCollectionListRulesRestrictUnassociatedUsers(t *testing.T) {
 	requireListItemCount(t, strangerBills.Code, strangerBills.Body.Bytes(), 0)
 }
 
+func TestBillInviteCollectionRejectsDuplicateCodes(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
+
+	owner, _ := createAuthUser(t, server.app, false, false)
+	bill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"bill_name":         "Duplicate Invite Bill",
+		"creator_user":      owner.Id,
+		"total_amount":      40,
+		"tax":               0,
+		"tip":               0,
+		"fees":              0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "active",
+	})
+
+	createCollectionRecord(t, server.app, "bill_invites", map[string]any{
+		"bill":       bill.Id,
+		"code":       "BILL42",
+		"created_by": owner.Id,
+		"expires_at": "2099-01-01 00:00:00.000Z",
+	})
+
+	collection, err := server.app.FindCollectionByNameOrId("bill_invites")
+	if err != nil {
+		t.Fatalf("failed to resolve bill_invites collection: %v", err)
+	}
+
+	duplicate := core.NewRecord(collection)
+	duplicate.Set("bill", bill.Id)
+	duplicate.Set("code", "BILL42")
+	duplicate.Set("created_by", owner.Id)
+	duplicate.Set("expires_at", "2099-01-02 00:00:00.000Z")
+
+	if err := server.app.Save(duplicate); err == nil {
+		t.Fatalf("expected duplicate bill invite code to be rejected")
+	}
+}
+
 func TestBillParticipantAndItemListRulesFollowBillMembership(t *testing.T) {
 	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
 

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
@@ -15,12 +14,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   EmptyState,
   FeatureFormScreenScaffold,
-  HomeFeedVisitEntryCard,
-  HomeQuickTrackEntryCard,
   IconActionCard,
   LoadingState,
   PageErrorToast,
-  PhotoViewerModal,
   PhotoSourceActionCards,
   QuickTrackFormFields,
   RatingLegend,
@@ -33,21 +29,15 @@ import {
   VisitMetadataCard,
   VisitRestaurantOptionTrailing,
   VisitRestaurantSearchSection,
-  type HomeFeedPhotoRecord,
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
   createCollectionRecord,
-  createQuickTrack,
-  createVisit,
-  formatLimitExceededMessage,
   getAuthenticatedUserIdOrNull,
-  parseLimitExceededError,
   updateCollectionRecord,
   type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
-  type VisitRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -56,19 +46,11 @@ import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow'
 import {
   formatDateToLocalDateString,
   getTodayLocalDateString,
-  isValidLocalDate,
-  localDateStringToUTC,
 } from '../lib/dateFormatting';
-import { buildLocalPhotoFile } from '../lib/photoFiles';
-import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
-  buildCreateQuickTrackInput,
   buildDefaultQuickTrackForm,
   resolveDefaultQuickTrackVisibility,
-  validateQuickTrackForm,
-  type QuickTrackFormValues,
 } from '../lib/quickTrackForm';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import {
   buildVisitRestaurantDescription,
   type VisitRestaurantWithDistance,
@@ -78,27 +60,25 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { MenuScanPhotoProcessingScreen } from './MenuScanPhotoProcessingScreen';
+import { PhotoProcessingReviewStep } from './photoProcessing/PhotoProcessingReviewStep';
 import {
   buildDefaultRestaurantForm,
-  buildPhotoUploadInput,
-  extractCaptureCoordinates,
   formatCoordinatesForDisplay,
-  formatReviewEntryFooterLabel,
   FREE_MONTHLY_PHOTO_LIMIT,
   FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
   normalizeSelectionLabel,
   resolveProgressSteps,
   resolveWizardStepIndex,
-  type DraftPhotoAsset,
   type GeneralPhotoStep,
   type MenuItemMode,
   type PhotoProcessingScreenProps,
   type ProcessType,
   type RestaurantPhotoForm,
-  type ReviewQuickTrackCardData,
-  type ReviewVisitCardData,
   type ScanSource,
 } from './photoProcessing/shared';
+import { usePhotoProcessingDraftState } from './photoProcessing/usePhotoProcessingDraftState';
+import { usePhotoProcessingReviewData } from './photoProcessing/usePhotoProcessingReviewData';
+import { usePhotoProcessingSubmission } from './photoProcessing/usePhotoProcessingSubmission';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 
@@ -136,13 +116,25 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
   const [step, setStep] = useState<GeneralPhotoStep>('choice');
   const [processType, setProcessType] = useState<ProcessType | null>(null);
-  const [photos, setPhotos] = useState<DraftPhotoAsset[]>([]);
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const [restaurantForms, setRestaurantForms] = useState<Record<string, RestaurantPhotoForm>>({});
-  const [quickTrackForms, setQuickTrackForms] = useState<Record<string, QuickTrackFormValues>>({});
-  const [locationMetadataHintDismissedByPhotoId, setLocationMetadataHintDismissedByPhotoId] = useState<
-    Record<string, boolean>
-  >({});
+  const {
+    appendAssets,
+    currentPhoto,
+    currentPhotoIndex,
+    currentQuickTrackForm,
+    currentRestaurantForm,
+    dismissCurrentPhotoLocationHint,
+    locationMetadataHintDismissedByPhotoId,
+    photos,
+    quickTrackForms,
+    removePhoto,
+    resetDraftState,
+    restaurantForms,
+    setCurrentPhotoIndex,
+    setQuickTrackForms,
+    setRestaurantForms,
+    updateCurrentQuickTrackForm,
+    updateCurrentRestaurantForm,
+  } = usePhotoProcessingDraftState();
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(
     resolveDefaultQuickTrackVisibility(),
   );
@@ -155,12 +147,8 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [isUpdatingMenuItem, setIsUpdatingMenuItem] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSelectingSource, setIsSelectingSource] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
-  const [reviewPhotoViewerVisible, setReviewPhotoViewerVisible] = useState(false);
-  const [reviewPhotoViewerUrls, setReviewPhotoViewerUrls] = useState<string[]>([]);
-  const [reviewPhotoViewerInitialIndex, setReviewPhotoViewerInitialIndex] = useState(0);
   const processStepScrollViewRef = useRef<ScrollView | null>(null);
   const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
     cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
@@ -168,9 +156,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
     galleryRequiredMessage: 'Photo library permission is required to upload images.',
   });
-  const currentPhoto = photos[currentPhotoIndex] ?? null;
-  const currentRestaurantForm = currentPhoto ? restaurantForms[currentPhoto.id] : undefined;
-  const currentQuickTrackForm = currentPhoto ? quickTrackForms[currentPhoto.id] : undefined;
   const currentRestaurantId = currentRestaurantForm?.restaurantId ?? null;
   const shouldEnableRestaurantSelectionQueries = processType === 'restaurant' && step === 'process';
   const {
@@ -241,7 +226,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     if (currentPhotoIndex >= photos.length) {
       setCurrentPhotoIndex(photos.length - 1);
     }
-  }, [currentPhotoIndex, photos.length, step]);
+  }, [currentPhotoIndex, photos.length, setCurrentPhotoIndex, step]);
 
   useEffect(() => {
     if (step !== 'process' || !processType || !currentPhoto) {
@@ -281,7 +266,15 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         }),
       };
     });
-  }, [currentPhoto, currentPhotoIndex, photos, processType, step]);
+  }, [
+    currentPhoto,
+    currentPhotoIndex,
+    photos,
+    processType,
+    setQuickTrackForms,
+    setRestaurantForms,
+    step,
+  ]);
 
   useEffect(() => {
     if (step === 'process' && processType === 'restaurant') {
@@ -321,7 +314,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       setCurrentPhotoIndex(nextIndex);
       setErrorMessage(null);
     },
-    [scrollProcessStepToTop],
+    [scrollProcessStepToTop, setCurrentPhotoIndex],
   );
 
   const displayedSavedRestaurants = useMemo(() => {
@@ -420,162 +413,19 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       (menuItemsQuery.data ?? []).find((item) => normalizeSelectionLabel(item.name) === normalizedName) ?? null
     );
   }, [menuItemsQuery.data, newMenuItemName]);
-
-  const restaurantReviewGroups = useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        restaurantName: string;
-        date: string;
-        items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
-      }
-    >();
-
-    for (const photo of photos) {
-      const form = restaurantForms[photo.id];
-      if (!form) {
-        continue;
-      }
-
-      const key = `${form.restaurantName.trim().toLowerCase()}__${form.date}`;
-      const existing =
-        groups.get(key) ??
-        ({
-          restaurantName: form.restaurantName.trim(),
-          date: form.date,
-          items: [],
-        } as const);
-
-      groups.set(key, {
-        ...existing,
-        items: [...existing.items, { photo, form }],
-      });
-    }
-
-    return Array.from(groups.values());
-  }, [photos, restaurantForms]);
-
-  const quickTrackReviewEntries = useMemo(() => {
-    return photos
-      .map((photo) => {
-        const form = quickTrackForms[photo.id];
-        if (!form) {
-          return null;
-        }
-
-        return { photo, form };
-      })
-      .filter((entry): entry is { photo: DraftPhotoAsset; form: QuickTrackFormValues } => Boolean(entry));
-  }, [photos, quickTrackForms]);
-
-  const reviewQuickTrackCards = useMemo<ReviewQuickTrackCardData[]>(() => {
-    return quickTrackReviewEntries.map((entry, index) => {
-      const eventAt = entry.photo.captureDate?.toISOString() ?? localDateStringToUTC(entry.form.date);
-
-      return {
-        id: `review-quick-track-${entry.photo.id}-${index}`,
-        quickTrack: {
-          id: entry.photo.id,
-          restaurantName: 'Quick Track',
-          itemCategory: entry.form.category || undefined,
-          itemName: entry.form.itemName.trim(),
-          rating: entry.form.rating,
-          notes: entry.form.notes.trim() || undefined,
-          userId: currentUserId ?? undefined,
-          userName: user?.name?.trim() || undefined,
-          visibility: entry.form.visibility,
-          itemDate: eventAt,
-          createdAt: eventAt,
-          updatedAt: eventAt,
-        },
-        photos: [
-          {
-            id: entry.photo.id,
-            food_item: entry.photo.id,
-            photo: entry.photo.name,
-            uri: entry.photo.uri,
-            created: eventAt,
-          },
-        ],
-        entryMeta: formatReviewEntryFooterLabel(eventAt, entry.form.date),
-      };
-    });
-  }, [currentUserId, quickTrackReviewEntries, user?.name]);
-
-  const reviewVisitCards = useMemo<ReviewVisitCardData[]>(() => {
-    return restaurantReviewGroups.map((group, groupIndex) => {
-      const representativeTimestamp =
-        group.items.find((entry) => entry.photo.captureDate)?.photo.captureDate?.toISOString() ?? null;
-      const eventAt = representativeTimestamp ?? localDateStringToUTC(group.date);
-      const footerLabel = formatReviewEntryFooterLabel(eventAt, group.date);
-      const visitItems = group.items.map((entry, itemIndex) => ({
-        id: `review-visit-item-${groupIndex}-${itemIndex}-${entry.photo.id}`,
-        name: entry.form.menuItemName.trim(),
-        rating: entry.form.rating,
-        description: entry.form.description.trim() || undefined,
-        notes: entry.form.notes.trim() || undefined,
-      }));
-      const photosByFoodItem = new Map<string, HomeFeedPhotoRecord[]>();
-
-      group.items.forEach((entry, itemIndex) => {
-        const visitItemId = visitItems[itemIndex]?.id;
-        if (!visitItemId) {
-          return;
-        }
-
-        photosByFoodItem.set(visitItemId, [
-          {
-            id: entry.photo.id,
-            food_item: visitItemId,
-            photo: entry.photo.name,
-            uri: entry.photo.uri,
-            created: entry.photo.captureDate?.toISOString() ?? eventAt,
-          },
-        ]);
-      });
-
-      const visit: VisitRecord = {
-        id: `review-visit-${groupIndex}-${group.date}`,
-        restaurantName: group.restaurantName,
-        visitedAt: eventAt,
-        items: visitItems,
-        source: 'visit',
-        userId: currentUserId ?? undefined,
-        userName: user?.name?.trim() || undefined,
-        visibility: visitVisibility,
-        createdAt: eventAt,
-        updatedAt: eventAt,
-      };
-
-      return {
-        id: visit.id,
-        visit,
-        photosByFoodItem,
-        footerLabel,
-      };
-    });
-  }, [currentUserId, restaurantReviewGroups, user?.name, visitVisibility]);
-
-  const openReviewPhotoViewer = useCallback(
-    (reviewPhotos: HomeFeedPhotoRecord[], initialIndex = 0) => {
-      const urls = reviewPhotos
-        .map((photo) => photo.uri?.trim())
-        .filter((value): value is string => Boolean(value));
-      if (urls.length === 0) {
-        return;
-      }
-
-      const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
-      setReviewPhotoViewerUrls(urls);
-      setReviewPhotoViewerInitialIndex(boundedIndex);
-      setReviewPhotoViewerVisible(true);
-    },
-    [],
-  );
-
-  const closeReviewPhotoViewer = useCallback(() => {
-    setReviewPhotoViewerVisible(false);
-  }, []);
+  const {
+    quickTrackReviewEntries,
+    restaurantReviewGroups,
+    reviewQuickTrackCards,
+    reviewVisitCards,
+  } = usePhotoProcessingReviewData({
+    currentUserId,
+    photos,
+    quickTrackForms,
+    restaurantForms,
+    userName: user?.name?.trim() || undefined,
+    visitVisibility,
+  });
 
   const estimatedFreeMonthlyPhotoTotal = (monthlyUsage.snapshot?.usage.photoUploads ?? 0) + photos.length;
   const estimatedFreeMonthlyPhotoRemaining = Math.max(
@@ -585,61 +435,29 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const shouldShowPhotoUpgradePrompt =
     isDisplayFreeUser &&
     estimatedFreeMonthlyPhotoRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
-
-  const updateCurrentRestaurantForm = (updates: Partial<RestaurantPhotoForm>) => {
-    if (!currentPhoto) {
-      return;
-    }
-
-    setRestaurantForms((current) => {
-      const currentForm = current[currentPhoto.id] ?? buildDefaultRestaurantForm(currentPhoto, undefined);
-      return {
-        ...current,
-        [currentPhoto.id]: {
-          ...currentForm,
-          ...updates,
-        },
-      };
+  const { handleProcessNext, handleSubmitAll, isSubmitting } =
+    usePhotoProcessingSubmission({
+      currentPhoto,
+      currentPhotoIndex,
+      currentQuickTrackForm,
+      currentRestaurantForm,
+      goToProcessPhoto,
+      isDisplayFreeUser,
+      isOnline,
+      monthlyUsageSnapshot: monthlyUsage.snapshot,
+      navigation,
+      photos,
+      processType,
+      queryClient,
+      queueFeatureOutbox,
+      queueWrite,
+      quickTrackForms,
+      restaurantForms,
+      setErrorMessage,
+      setStep,
+      shouldEnforceUsageLimitsClientSide,
+      visitVisibility,
     });
-  };
-
-  const updateCurrentQuickTrackForm = (updates: Partial<QuickTrackFormValues>) => {
-    if (!currentPhoto) {
-      return;
-    }
-
-    setQuickTrackForms((current) => {
-      const currentForm =
-        current[currentPhoto.id] ??
-        buildDefaultQuickTrackForm({
-          captureDate: currentPhoto.captureDate,
-        });
-      return {
-        ...current,
-        [currentPhoto.id]: {
-          ...currentForm,
-          ...updates,
-        },
-      };
-    });
-  };
-
-  const dismissCurrentPhotoLocationHint = () => {
-    if (!currentPhoto?.captureCoordinates) {
-      return;
-    }
-
-    setLocationMetadataHintDismissedByPhotoId((current) => {
-      if (current[currentPhoto.id]) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [currentPhoto.id]: true,
-      };
-    });
-  };
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
     dismissCurrentPhotoLocationHint();
@@ -797,45 +615,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     };
   };
 
-  const appendAssets = useCallback(async (assets: ImagePicker.ImagePickerAsset[]) => {
-    if (assets.length === 0) {
-      return;
-    }
-
-    const resolvedAssets = await Promise.all(
-      assets.map(async (asset) => ({
-        asset,
-        captureDate: await resolvePhotoCaptureDate(asset),
-        captureCoordinates: extractCaptureCoordinates(asset),
-      })),
-    );
-
-    setPhotos((current) => {
-      const existingUris = new Set(current.map((photo) => photo.uri));
-      const nextPhotos = [...current];
-      const timestamp = Date.now();
-
-      resolvedAssets.forEach(({ asset, captureDate, captureCoordinates }, index) => {
-        const nextPhoto = buildLocalPhotoFile(asset, {
-          fallbackPrefix: 'photo',
-        });
-        if (!nextPhoto || existingUris.has(nextPhoto.uri)) {
-          return;
-        }
-
-        nextPhotos.push({
-          id: `${timestamp}-${index}-${asset.assetId ?? index}`,
-          ...nextPhoto,
-          captureDate,
-          captureCoordinates,
-        });
-        existingUris.add(nextPhoto.uri);
-      });
-
-      return nextPhotos;
-    });
-  }, []);
-
   const pickPhotos = useCallback(
     async (source: ScanSource) => {
       trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_STARTED', {
@@ -892,265 +671,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     },
     [appendAssets, pickImageAssets],
   );
-
-  const removePhoto = (photoId: string) => {
-    setPhotos((current) => current.filter((photo) => photo.id !== photoId));
-    setRestaurantForms((current) => {
-      if (!current[photoId]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[photoId];
-      return next;
-    });
-    setQuickTrackForms((current) => {
-      if (!current[photoId]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[photoId];
-      return next;
-    });
-    setLocationMetadataHintDismissedByPhotoId((current) => {
-      if (!current[photoId]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[photoId];
-      return next;
-    });
-  };
-
-  const validateRestaurantForm = (form: RestaurantPhotoForm): string | null => {
-    if (!form.restaurantName.trim()) {
-      return 'Select a restaurant before continuing.';
-    }
-
-    if (!form.menuItemName.trim()) {
-      return 'Select a menu item before continuing.';
-    }
-
-    if (form.rating < 1 || form.rating > 5) {
-      return 'Rating must be between 1 and 5.';
-    }
-
-    if (!isValidLocalDate(form.date.trim())) {
-      return 'Date must use YYYY-MM-DD format.';
-    }
-
-    return null;
-  };
-
-  const handleProcessNext = () => {
-    if (!currentPhoto || !processType) {
-      return;
-    }
-
-    const validationMessage =
-      processType === 'restaurant'
-        ? validateRestaurantForm(currentRestaurantForm ?? buildDefaultRestaurantForm(currentPhoto, undefined))
-        : validateQuickTrackForm(
-            currentQuickTrackForm ??
-              buildDefaultQuickTrackForm({
-                captureDate: currentPhoto.captureDate,
-              }),
-          );
-
-    if (validationMessage) {
-      setErrorMessage(validationMessage);
-      return;
-    }
-
-    setErrorMessage(null);
-    if (currentPhotoIndex < photos.length - 1) {
-      goToProcessPhoto(currentPhotoIndex + 1);
-      return;
-    }
-
-    setStep('review');
-  };
-
-  const handleSubmitRestaurantVisits = async () => {
-    const groupedVisits = new Map<
-      string,
-      {
-        restaurantName: string;
-        date: string;
-        items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
-      }
-    >();
-
-    for (const [index, photo] of photos.entries()) {
-      const form = restaurantForms[photo.id];
-      if (!form) {
-        throw new Error(`Photo ${index + 1} is missing restaurant details.`);
-      }
-
-      const validationMessage = validateRestaurantForm(form);
-      if (validationMessage) {
-        throw new Error(`Photo ${index + 1}: ${validationMessage}`);
-      }
-
-      const key = `${form.restaurantName.trim().toLowerCase()}__${form.date}`;
-      const existingVisit =
-        groupedVisits.get(key) ??
-        ({
-          restaurantName: form.restaurantName.trim(),
-          date: form.date,
-          items: [],
-        } as const);
-
-      groupedVisits.set(key, {
-        ...existingVisit,
-        items: [...existingVisit.items, { photo, form }],
-      });
-    }
-
-    for (const visitGroup of groupedVisits.values()) {
-      const visitInput = {
-        restaurantName: visitGroup.restaurantName,
-        visitedAt: localDateStringToUTC(visitGroup.date),
-        visibility: visitVisibility,
-        source: 'visit',
-        items: visitGroup.items.map((entry) => ({
-          name: entry.form.menuItemName.trim(),
-          rating: entry.form.rating,
-          description: entry.form.description.trim() || undefined,
-          notes: entry.form.notes.trim() || undefined,
-          photos: [buildPhotoUploadInput(entry.photo)],
-        })),
-      } as const;
-
-      if (!isOnline) {
-        await queueFeatureOutbox('visit.create', visitInput);
-        continue;
-      }
-
-      await queueWrite('visit.create');
-      await createVisit(visitInput);
-    }
-
-    trackObservabilityEvent('Photo Processing Completed', {
-      processType: 'restaurant',
-      source: 'PhotoProcessingScreen',
-      photoCount: photos.length,
-      visitCount: groupedVisits.size,
-    });
-  };
-
-  const handleSubmitQuickTrackItems = async () => {
-    for (const [index, photo] of photos.entries()) {
-      const form = quickTrackForms[photo.id];
-      if (!form) {
-        throw new Error(`Photo ${index + 1} is missing quick track details.`);
-      }
-
-      const validationMessage = validateQuickTrackForm(form);
-      if (validationMessage) {
-        throw new Error(`Photo ${index + 1}: ${validationMessage}`);
-      }
-
-      const quickTrackInput = buildCreateQuickTrackInput(form, {
-        photo: buildPhotoUploadInput(photo),
-      });
-
-      if (!isOnline) {
-        await queueFeatureOutbox('quick-track.create', quickTrackInput);
-        continue;
-      }
-
-      await queueWrite('quick-track.create');
-      await createQuickTrack(quickTrackInput);
-    }
-
-    trackObservabilityEvent('Photo Processing Completed', {
-      processType: 'quickTrack',
-      source: 'PhotoProcessingScreen',
-      itemCount: photos.length,
-    });
-  };
-
-  const handleSubmitAll = async () => {
-    if (!processType) {
-      return;
-    }
-
-    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot) {
-      const estimatedTotalAfterSubmit = monthlyUsage.snapshot.usage.photoUploads + photos.length;
-      if (estimatedTotalAfterSubmit > FREE_MONTHLY_PHOTO_LIMIT) {
-        const remaining = Math.max(
-          FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
-          0,
-        );
-        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-          enforcement: 'client_estimate',
-          limit: FREE_MONTHLY_PHOTO_LIMIT,
-          metric: 'photo_uploads',
-          remaining,
-          source: 'PhotoProcessingScreen',
-          used: monthlyUsage.snapshot.usage.photoUploads,
-        });
-        setErrorMessage(
-          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
-        );
-        return;
-      }
-    }
-
-    setErrorMessage(null);
-    setIsSubmitting(true);
-
-    try {
-      if (processType === 'restaurant') {
-        await handleSubmitRestaurantVisits();
-      } else {
-        await handleSubmitQuickTrackItems();
-      }
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
-      ]);
-
-      if (!isOnline) {
-        showQueuedOfflineAlert('Photo entries');
-      }
-
-      navigation.navigate('Home');
-    } catch (error) {
-      const limitPayload = parseLimitExceededError(error);
-      if (limitPayload) {
-        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-          enforcement: 'server',
-          limit: limitPayload.limit,
-          metric: limitPayload.metric,
-          monthKey: limitPayload.monthKey,
-          remaining: limitPayload.remaining,
-          source: 'PhotoProcessingScreen',
-          used: limitPayload.used,
-          userTier: limitPayload.userTier ?? null,
-        });
-      }
-      const message = limitPayload
-        ? formatLimitExceededMessage(limitPayload)
-        : error instanceof Error
-          ? error.message
-          : 'Could not process photos.';
-      setErrorMessage(message);
-      trackObservabilityEvent('Photo Processing Failed', {
-        errorMessage: message,
-        processType: processType ?? 'unknown',
-        source: 'PhotoProcessingScreen',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleCreateMenuItem = async () => {
     if (!currentRestaurantForm?.restaurantId) {
@@ -1486,11 +1006,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             onPress={() => {
               setProcessType('restaurant');
               setStep('upload');
-              setPhotos([]);
-              setCurrentPhotoIndex(0);
-              setRestaurantForms({});
-              setQuickTrackForms({});
-              setLocationMetadataHintDismissedByPhotoId({});
+              resetDraftState();
               resetRestaurantSelectionFlow();
               setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
@@ -1512,11 +1028,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             onPress={() => {
               setProcessType('quickTrack');
               setStep('upload');
-              setPhotos([]);
-              setCurrentPhotoIndex(0);
-              setRestaurantForms({});
-              setQuickTrackForms({});
-              setLocationMetadataHintDismissedByPhotoId({});
+              resetDraftState();
               resetRestaurantSelectionFlow();
               setIsQuickTrackCategoryExpanded(false);
               setMenuItemSearchQuery('');
@@ -2086,78 +1598,24 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         }
         title={processType === 'restaurant' ? 'Review Your Visits' : 'Review Quick Track Items'}
       >
-        <PageErrorToast errorMessage={errorMessage} title="Review issue" />
-
-        {shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="warning">
-              Offline estimate may be stale. Backend limits are enforced when sync runs.
-            </Text>
-          </Card>
-        ) : null}
-
-        {isDisplayFreeUser ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="secondary">
-              Monthly photo estimate:{' '}
-              {monthlyUsage.snapshot
-                ? `${estimatedFreeMonthlyPhotoRemaining} left`
-                : 'unknown'}.
-            </Text>
-          </Card>
-        ) : null}
-
-        {shouldShowPhotoUpgradePrompt ? (
-          <UpgradePromptCard
-            description={
-              estimatedFreeMonthlyPhotoRemaining <= 0
-                ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly limits."
-                : `Only ${estimatedFreeMonthlyPhotoRemaining} photo uploads left this month. Subscriber accounts have higher monthly limits.`
-            }
-            title={
-              estimatedFreeMonthlyPhotoRemaining <= 0
-                ? 'Free limit reached'
-                : 'You are close to your free limit'
-            }
-          />
-        ) : null}
-
-        {processType === 'restaurant' ? (
-          <>
-            <Card style={styles.reviewCard}>
-              <Text variant="label">Visit Visibility</Text>
-              <Text tone="secondary">{visitVisibility === 'private' ? 'Private' : 'Friends'}</Text>
-            </Card>
-
-            <View style={styles.reviewFeedList}>
-              {reviewVisitCards.map((reviewVisitCard) => (
-                <HomeFeedVisitEntryCard
-                  footerLabel={reviewVisitCard.footerLabel}
-                  getPhotosForItem={(itemId) => reviewVisitCard.photosByFoodItem.get(itemId) ?? []}
-                  key={reviewVisitCard.id}
-                  onOpenPhotoViewer={openReviewPhotoViewer}
-                  visit={reviewVisitCard.visit}
-                />
-              ))}
-            </View>
-          </>
-        ) : (
-          reviewQuickTrackCards.map((entry) => (
-            <HomeQuickTrackEntryCard
-              entryMeta={entry.entryMeta}
-              key={entry.id}
-              onOpenPhotoViewer={openReviewPhotoViewer}
-              photos={entry.photos}
-              quickTrack={entry.quickTrack}
-            />
-          ))
-        )}
-
-        <PhotoViewerModal
-          initialIndex={reviewPhotoViewerInitialIndex}
-          onRequestClose={closeReviewPhotoViewer}
-          urls={reviewPhotoViewerUrls}
-          visible={reviewPhotoViewerVisible}
+        <PhotoProcessingReviewStep
+          errorMessage={errorMessage}
+          estimatedFreeMonthlyPhotoRemaining={estimatedFreeMonthlyPhotoRemaining}
+          processType={processType}
+          reviewQuickTrackCards={reviewQuickTrackCards}
+          reviewVisitCards={reviewVisitCards}
+          shouldShowPhotoUpgradePrompt={shouldShowPhotoUpgradePrompt}
+          showOfflineUsageWarning={shouldShowOfflineUsageWarning(
+            isOnline,
+            isDisplayFreeUser,
+          )}
+          showUsageEstimate={isDisplayFreeUser}
+          usageEstimateLabel={
+            monthlyUsage.snapshot
+              ? `${estimatedFreeMonthlyPhotoRemaining} left`
+              : 'unknown'
+          }
+          visitVisibility={visitVisibility}
         />
       </FeatureFormScreenScaffold>
     );

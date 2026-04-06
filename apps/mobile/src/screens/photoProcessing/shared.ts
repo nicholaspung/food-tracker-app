@@ -13,6 +13,7 @@ import {
   formatLocalDateLabel,
   getTodayLocalDateString,
 } from '../../lib/dateFormatting';
+import type { QuickTrackFormValues } from '../../lib/quickTrackForm';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
 export type PhotoProcessingScreenProps = NativeStackScreenProps<
@@ -89,6 +90,17 @@ export interface ReviewQuickTrackCardData {
   entryMeta: string;
 }
 
+export interface RestaurantReviewGroup {
+  restaurantName: string;
+  date: string;
+  items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
+}
+
+export interface QuickTrackReviewEntry {
+  photo: DraftPhotoAsset;
+  form: QuickTrackFormValues;
+}
+
 export function buildScannedItemNames(seedLabel: string): string[] {
   const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
   const base = normalized || 'Scanned Item';
@@ -121,6 +133,51 @@ export function formatReviewEntryFooterLabel(
   const timeLabel = formatReviewEntryTimeLabel(value);
 
   return timeLabel ? `${dateLabel} • ${timeLabel}` : dateLabel;
+}
+
+export function buildRestaurantReviewGroups(
+  photos: DraftPhotoAsset[],
+  restaurantForms: Record<string, RestaurantPhotoForm>,
+): RestaurantReviewGroup[] {
+  const groups = new Map<string, RestaurantReviewGroup>();
+
+  for (const photo of photos) {
+    const form = restaurantForms[photo.id];
+    if (!form) {
+      continue;
+    }
+
+    const key = `${form.restaurantName.trim().toLowerCase()}__${form.date}`;
+    const existing =
+      groups.get(key) ?? {
+        restaurantName: form.restaurantName.trim(),
+        date: form.date,
+        items: [],
+      };
+
+    groups.set(key, {
+      ...existing,
+      items: [...existing.items, { photo, form }],
+    });
+  }
+
+  return Array.from(groups.values());
+}
+
+export function buildQuickTrackReviewEntries(
+  photos: DraftPhotoAsset[],
+  quickTrackForms: Record<string, QuickTrackFormValues>,
+): QuickTrackReviewEntry[] {
+  return photos
+    .map((photo) => {
+      const form = quickTrackForms[photo.id];
+      if (!form) {
+        return null;
+      }
+
+      return { photo, form };
+    })
+    .filter((entry): entry is QuickTrackReviewEntry => Boolean(entry));
 }
 
 function parseCsvFirstColumn(line: string): string {

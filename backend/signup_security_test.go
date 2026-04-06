@@ -175,6 +175,27 @@ func TestInviteCodeReservationCanBeReleasedAfterFailure(t *testing.T) {
 	}
 }
 
+func TestInviteCodesRejectCaseInsensitiveDuplicateCodes(t *testing.T) {
+	app := newSignupSecurityTestApp(t)
+	owner := createSignupSecurityUser(t, app, "owner@example.com")
+
+	createInviteCodeRecord(t, app, "Invite-Dupe", owner.Id)
+
+	collection, err := app.FindCollectionByNameOrId("invite_codes")
+	if err != nil {
+		t.Fatalf("failed to resolve invite_codes collection: %v", err)
+	}
+
+	duplicate := core.NewRecord(collection)
+	duplicate.Set("code", "invite-dupe")
+	duplicate.Set("used", false)
+	duplicate.Set("createdBy", owner.Id)
+
+	if err := app.Save(duplicate); err == nil {
+		t.Fatalf("expected case-insensitive duplicate invite code to be rejected")
+	}
+}
+
 func TestIncrementSignupFailureLocksAfterThreshold(t *testing.T) {
 	app := newSignupSecurityTestApp(t)
 	record, err := getOrCreateRateLimitRecord(app, "198.51.100.20")

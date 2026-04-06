@@ -4,18 +4,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
 	_ "myapp/migrations"
 	"myapp/testutil"
 )
 
-func TestSyncGooglePlaceRestaurantsUpsertsAndReusesFreshRecords(t *testing.T) {
+func TestSyncGooglePlaceRestaurantsReusesCanonicalRecordsAcrossUsers(t *testing.T) {
 	app := testutil.NewTestApp(t)
 
-	user := createPlacesTestUser(t, app)
-	existing := createPlacesTestRestaurant(t, app, user.Id, placeResult{
+	owner := createPlacesTestUser(t, app, "places-owner@example.com")
+	searcher := createPlacesTestUser(t, app, "places-searcher@example.com")
+	existing := createPlacesTestRestaurant(t, app, placeResult{
 		PlaceID:  "google-fresh-place",
 		Name:     "Fresh Place",
 		Vicinity: "Seattle, WA",
@@ -24,8 +24,12 @@ func TestSyncGooglePlaceRestaurantsUpsertsAndReusesFreshRecords(t *testing.T) {
 			Location: placeLocation{Lat: 47.6062, Lng: -122.3321},
 		},
 	}, time.Now().UTC())
+	existing.Set("createdBy", owner.Id)
+	if err := app.Save(existing); err != nil {
+		t.Fatalf("failed to persist legacy owner-bound google place: %v", err)
+	}
 
-	results, err := syncGooglePlaceRestaurants(app, user, []placeResult{
+	results, err := syncGooglePlaceRestaurants(app, searcher, []placeResult{
 		{
 			PlaceID:  "google-fresh-place",
 			Name:     "Fresh Place",
@@ -60,6 +64,9 @@ func TestSyncGooglePlaceRestaurantsUpsertsAndReusesFreshRecords(t *testing.T) {
 	if results[0].CuisineType != "Coffee Shop" {
 		t.Fatalf("expected existing cuisine type to remain Coffee Shop, got %q", results[0].CuisineType)
 	}
+	if results[0].IsGooglePlace != true {
+		t.Fatalf("expected existing record to remain a google place")
+	}
 
 	if results[1].Name != "New Place" {
 		t.Fatalf("expected second result to be the new place, got %q", results[1].Name)
@@ -69,14 +76,7 @@ func TestSyncGooglePlaceRestaurantsUpsertsAndReusesFreshRecords(t *testing.T) {
 		t.Fatalf("expected new placeId google-new-place, got %q", results[1].PlaceID)
 	}
 
-	records, err := app.FindRecordsByFilter(
-		"restaurants",
-		"createdBy = {:userId}",
-		"",
-		10,
-		0,
-		dbx.Params{"userId": user.Id},
-	)
+	records, err := app.FindRecordsByFilter("restaurants", "isGooglePlace = true", "", 10, 0, nil)
 	if err != nil {
 		t.Fatalf("failed to query restaurants: %v", err)
 	}
@@ -84,9 +84,17 @@ func TestSyncGooglePlaceRestaurantsUpsertsAndReusesFreshRecords(t *testing.T) {
 	if len(records) != 2 {
 		t.Fatalf("expected exactly 2 restaurants after sync, got %d", len(records))
 	}
+
+	reloadedExisting, err := app.FindRecordById("restaurants", existing.Id)
+	if err != nil {
+		t.Fatalf("failed to reload canonical restaurant: %v", err)
+	}
+	if reloadedExisting.GetString("createdBy") != "" {
+		t.Fatalf("expected canonical google place to be unowned, got createdBy=%q", reloadedExisting.GetString("createdBy"))
+	}
 }
 
-func createPlacesTestUser(t *testing.T, app core.App) *core.Record {
+func createPlacesTestUser(t *testing.T, app core.App, email string) *core.Record {
 	t.Helper()
 
 	usersCollection, err := app.FindCollectionByNameOrId("users")
@@ -95,7 +103,7 @@ func createPlacesTestUser(t *testing.T, app core.App) *core.Record {
 	}
 
 	user := core.NewRecord(usersCollection)
-	user.Set("email", "places-test@example.com")
+	user.Set("email", email)
 	user.Set("name", "Places Test User")
 	user.Set("defaultRestaurantVisibility", "friends")
 	user.Set("defaultVisitVisibility", "friends")
@@ -111,7 +119,6 @@ func createPlacesTestUser(t *testing.T, app core.App) *core.Record {
 func createPlacesTestRestaurant(
 	t *testing.T,
 	app core.App,
-	userID string,
 	place placeResult,
 	cachedAt time.Time,
 ) *core.Record {
@@ -123,7 +130,7 @@ func createPlacesTestRestaurant(
 	}
 
 	record := core.NewRecord(restaurantsCollection)
-	applyGooglePlaceToRestaurantRecord(record, userID, place, cachedAt)
+	applyGooglePlaceToRestaurantRecord(record, place, cachedAt)
 	if err := app.Save(record); err != nil {
 		t.Fatalf("failed to save test restaurant: %v", err)
 	}

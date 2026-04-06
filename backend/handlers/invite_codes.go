@@ -16,6 +16,11 @@ import (
 	"myapp/lib"
 )
 
+const (
+	generatedInviteCodesPerUser = 5
+	maxInviteCodeSaveAttempts   = 32
+)
+
 // RegisterInviteCodeHandlers registers all invite code related endpoints
 func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 	// Custom API endpoint: Get inviter info from invite code (public endpoint for signup)
@@ -236,7 +241,7 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, map[string]any{
 			"success":   true,
-			"generated": 5,
+			"generated": generatedInviteCodesPerUser,
 			"message":   "Successfully generated 5 new invite codes",
 		})
 	})
@@ -282,32 +287,25 @@ func GenerateInviteCodesForUser(app core.App, userId string, parentInviteCode st
 		log.Printf("Parent invite code is a test code, generated codes will have TEST prefix")
 	}
 
-	// Generate 5 codes
-	generatedCount := 0
-	for i := 0; i < 5; i++ {
-		// Generate random code with prefix if applicable
-		code, err := generateRandomCode(prefix)
-		if err != nil {
-			log.Printf("Error generating random code: %v", err)
-			continue
+	for i := 0; i < generatedInviteCodesPerUser; i++ {
+		if _, err := saveRecordWithUniqueCodeRetries(
+			app,
+			collection,
+			maxInviteCodeSaveAttempts,
+			func() (string, error) {
+				return generateRandomCode(prefix)
+			},
+			func(record *core.Record, code string) {
+				record.Set("code", code)
+				record.Set("used", false)
+				record.Set("createdBy", userId)
+			},
+		); err != nil {
+			return err
 		}
-
-		// Create the invite code record
-		record := core.NewRecord(collection)
-		record.Set("code", code)
-		record.Set("used", false)
-		record.Set("createdBy", userId)
-
-		// Save the record
-		if err := app.Save(record); err != nil {
-			log.Printf("Error saving generated invite code for user %s: %v", userId, err)
-			continue
-		}
-
-		generatedCount++
 	}
 
-	log.Printf("Generated %d invite codes for user %s", generatedCount, userId)
+	log.Printf("Generated %d invite codes for user %s", generatedInviteCodesPerUser, userId)
 
 	return nil
 }

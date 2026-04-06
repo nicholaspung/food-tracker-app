@@ -15,6 +15,7 @@ import (
 )
 
 const tastingInviteCodeLength = 6
+const maxTastingInviteCodeSaveAttempts = 16
 
 var (
 	errTastingInviteUnavailable = errors.New("tasting invite code is invalid or already used")
@@ -155,35 +156,35 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewForbiddenError("only the session leader can generate invite codes", nil)
 		}
 
-		// Generate 6-char alphanumeric code
-		code, err := generateTastingCode()
-		if err != nil {
-			return apis.NewApiError(500, "failed to generate code", err)
-		}
+			// Create invite record
+			invitesCollection, err := app.FindCollectionByNameOrId("tasting_session_invites")
+			if err != nil {
+				return apis.NewApiError(500, "internal error", err)
+			}
 
-		// Create invite record
-		invitesCollection, err := app.FindCollectionByNameOrId("tasting_session_invites")
-		if err != nil {
-			return apis.NewApiError(500, "internal error", err)
-		}
+			invite, err := saveRecordWithUniqueCodeRetries(
+				app,
+				invitesCollection,
+				maxTastingInviteCodeSaveAttempts,
+				generateTastingCode,
+				func(record *core.Record, code string) {
+					record.Set("session", data.SessionId)
+					record.Set("code", code)
+					record.Set("created_by", authRecord.Id)
+					record.Set("expires_at", time.Now().Add(24*time.Hour))
+				},
+			)
+			if err != nil {
+				return apis.NewApiError(500, "failed to create invite code", err)
+			}
 
-		invite := core.NewRecord(invitesCollection)
-		invite.Set("session", data.SessionId)
-		invite.Set("code", code)
-		invite.Set("created_by", authRecord.Id)
-		invite.Set("expires_at", time.Now().Add(24*time.Hour))
-
-		if err := app.Save(invite); err != nil {
-			return apis.NewApiError(500, "failed to create invite code", err)
-		}
-
-		return e.JSON(200, map[string]any{
-			"success":   true,
-			"code":      code,
-			"expiresAt": invite.GetString("expires_at"),
-		})
-	}).Bind(apis.RequireAuth())
-}
+			return e.JSON(200, map[string]any{
+				"success":   true,
+				"code":      invite.GetString("code"),
+				"expiresAt": invite.GetString("expires_at"),
+			})
+		}).Bind(apis.RequireAuth())
+	}
 
 // generateTastingCode creates a random 6-character alphanumeric uppercase code
 func generateTastingCode() (string, error) {

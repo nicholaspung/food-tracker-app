@@ -117,7 +117,7 @@ func triggerVisitPhotoCreateHook(
 		}
 
 		if persistRecord {
-			insertVisitPhotoRowRaw(t, app, user.Id, foodItemID)
+			insertVisitPhotoRowRaw(t, e.App, user.Id, foodItemID)
 		}
 
 		return nil

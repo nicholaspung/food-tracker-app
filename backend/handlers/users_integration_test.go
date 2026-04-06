@@ -147,6 +147,80 @@ func TestAdminUserLookupFindsOtherUserCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestAdminUsersSearchFindsUserBeyondInitialTwoHundredRows(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	targetUser.Set("email", "older-search-user@example.com")
+	targetUser.Set("name", "Older Search User")
+	if err := server.app.Save(targetUser); err != nil {
+		t.Fatalf("failed to update target user: %v", err)
+	}
+
+	for i := 0; i < 210; i++ {
+		createAuthUser(t, server.app, false, false)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/users?search=older-search-user@example.com",
+		adminToken,
+		"",
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := response.Body.String()
+	if !strings.Contains(body, targetUser.Id) {
+		t.Fatalf("expected response to include target user id, got %s", body)
+	}
+	if !strings.Contains(body, "older-search-user@example.com") {
+		t.Fatalf("expected response to include target user email, got %s", body)
+	}
+}
+
+func TestAdminUserLookupFindsUserBeyondInitialTwoHundredRows(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterUserHandlers(se, app)
+	})
+
+	_, adminToken := createAuthUser(t, server.app, true, false)
+	targetUser, _ := createAuthUser(t, server.app, false, false)
+	targetUser.Set("email", "OlderLookupUser@Example.com")
+	if err := server.app.Save(targetUser); err != nil {
+		t.Fatalf("failed to update target user email: %v", err)
+	}
+
+	for i := 0; i < 210; i++ {
+		createAuthUser(t, server.app, false, false)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/admin/users/lookup?email=olderlookupuser@example.com",
+		adminToken,
+		"",
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	body := response.Body.String()
+	if !strings.Contains(body, targetUser.Id) {
+		t.Fatalf("expected response to include target user id, got %s", body)
+	}
+}
+
 func TestAdminUserProfileViewCreatesAuditLog(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterUserHandlers(se, app)

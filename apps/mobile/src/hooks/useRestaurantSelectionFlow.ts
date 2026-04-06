@@ -37,15 +37,35 @@ import {
   type VisitRestaurantReferenceCoords,
   type VisitRestaurantWithDistance,
 } from '../lib/visitRestaurantSearch';
+import { useDebouncedValue } from './useDebouncedValue';
 
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
 const RESTAURANT_SELECTION_PAGE_SIZE = 12;
 const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
+const RESTAURANT_SEARCH_DEBOUNCE_MS = 250;
 
 interface RestaurantSelectionUsageOptions {
   enforceQuota: boolean;
   isFreeTier: boolean;
   placesQueriesRemaining: number | null;
+}
+
+interface UseSavedRestaurantSuggestionsOptions {
+  enabled: boolean;
+  recentLimit?: number;
+  savedRestaurantsEmptyDescription?: string;
+  searchQuery: string;
+}
+
+interface UseSavedRestaurantSuggestionsResult {
+  savedEmptyDescription: string;
+  savedEmptyTitle: string;
+  savedRestaurantRecords: RestaurantRecord[];
+  savedRestaurantsErrorMessage: string | null;
+  savedRestaurantsLoading: boolean;
+  savedRestaurantsTitle: string;
+  shouldQuerySavedRestaurantsBySearch: boolean;
+  triggerSavedRestaurantsRefetch: () => Promise<unknown>;
 }
 
 interface UseRestaurantSelectionFlowOptions {
@@ -142,24 +162,38 @@ export type NearbyRestaurantSearchResult =
       status: 'error';
     };
 
-export function buildRecentRestaurantsQueryOptions(enabled: boolean) {
+export function buildRecentRestaurantsQueryOptions({
+  enabled,
+  limit = RESTAURANT_SELECTION_PAGE_SIZE,
+}: {
+  enabled: boolean;
+  limit?: number;
+}) {
   return {
     enabled,
-    queryFn: () => listRecentRestaurants({ limit: RESTAURANT_SELECTION_PAGE_SIZE }),
-    queryKey: ['feature', 'restaurants', 'recent', RESTAURANT_SELECTION_PAGE_SIZE] as const,
+    queryFn: () => listRecentRestaurants({ limit }),
+    queryKey: ['feature', 'restaurants', 'recent', limit] as const,
   };
 }
 
-export function buildRestaurantSearchQueryOptions(search: string, enabled: boolean) {
+export function buildRestaurantSearchQueryOptions({
+  enabled,
+  pageSize = RESTAURANT_SELECTION_PAGE_SIZE,
+  search,
+}: {
+  enabled: boolean;
+  pageSize?: number;
+  search: string;
+}) {
   return {
     enabled,
     queryFn: async () =>
       searchRestaurantsPage({
         page: 1,
-        pageSize: RESTAURANT_SELECTION_PAGE_SIZE,
+        pageSize,
         search,
       }),
-    queryKey: ['feature', 'restaurants', 'search', search, 1, RESTAURANT_SELECTION_PAGE_SIZE] as const,
+    queryKey: ['feature', 'restaurants', 'search', search, 1, pageSize] as const,
   };
 }
 
@@ -218,6 +252,99 @@ function resolveSavedRestaurantsUiState(
   };
 }
 
+export function useSavedRestaurantSuggestions({
+  enabled,
+  recentLimit = RESTAURANT_SELECTION_PAGE_SIZE,
+  savedRestaurantsEmptyDescription = 'Search nearby places or add a new restaurant to start.',
+  searchQuery,
+}: UseSavedRestaurantSuggestionsOptions): UseSavedRestaurantSuggestionsResult {
+  const trimmedSearchQuery = searchQuery.trim();
+  const debouncedTrimmedSearchQuery = useDebouncedValue(
+    trimmedSearchQuery,
+    RESTAURANT_SEARCH_DEBOUNCE_MS,
+  );
+  const shouldQuerySavedRestaurantsBySearch =
+    trimmedSearchQuery.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH &&
+    debouncedTrimmedSearchQuery.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH &&
+    trimmedSearchQuery === debouncedTrimmedSearchQuery;
+  const recentRestaurantsQuery = useQuery<RestaurantRecord[]>(
+    buildRecentRestaurantsQueryOptions({
+      enabled: enabled && !shouldQuerySavedRestaurantsBySearch,
+      limit: recentLimit,
+    }),
+  );
+  const searchedRestaurantsQuery = useQuery(
+    buildRestaurantSearchQueryOptions({
+      enabled: enabled && shouldQuerySavedRestaurantsBySearch,
+      pageSize: recentLimit,
+      search: debouncedTrimmedSearchQuery,
+    }),
+  );
+
+  const savedRestaurantRecords = useMemo(() => {
+    if (shouldQuerySavedRestaurantsBySearch) {
+      return searchedRestaurantsQuery.data?.items ?? [];
+    }
+
+    const recentRestaurants = recentRestaurantsQuery.data ?? [];
+    if (!trimmedSearchQuery) {
+      return recentRestaurants;
+    }
+
+    return recentRestaurants.filter((restaurant) =>
+      matchesVisitRestaurantSearch(restaurant, trimmedSearchQuery),
+    );
+  }, [
+    recentRestaurantsQuery.data,
+    searchedRestaurantsQuery.data?.items,
+    shouldQuerySavedRestaurantsBySearch,
+    trimmedSearchQuery,
+  ]);
+
+  const savedRestaurantsUiState = useMemo(
+    () =>
+      resolveSavedRestaurantsUiState(
+        savedRestaurantsEmptyDescription,
+        shouldQuerySavedRestaurantsBySearch,
+        recentRestaurantsQuery.isError,
+        recentRestaurantsQuery.isLoading,
+        searchedRestaurantsQuery.isError,
+        searchedRestaurantsQuery.isLoading,
+      ),
+    [
+      recentRestaurantsQuery.isError,
+      recentRestaurantsQuery.isLoading,
+      savedRestaurantsEmptyDescription,
+      searchedRestaurantsQuery.isError,
+      searchedRestaurantsQuery.isLoading,
+      shouldQuerySavedRestaurantsBySearch,
+    ],
+  );
+
+  const triggerSavedRestaurantsRefetch = useCallback(() => {
+    if (shouldQuerySavedRestaurantsBySearch) {
+      return searchedRestaurantsQuery.refetch();
+    }
+
+    return recentRestaurantsQuery.refetch();
+  }, [
+    recentRestaurantsQuery,
+    searchedRestaurantsQuery,
+    shouldQuerySavedRestaurantsBySearch,
+  ]);
+
+  return {
+    savedEmptyDescription: savedRestaurantsUiState.savedEmptyDescription,
+    savedEmptyTitle: savedRestaurantsUiState.savedEmptyTitle,
+    savedRestaurantRecords,
+    savedRestaurantsErrorMessage: savedRestaurantsUiState.savedRestaurantsErrorMessage,
+    savedRestaurantsLoading: savedRestaurantsUiState.savedRestaurantsLoading,
+    savedRestaurantsTitle: savedRestaurantsUiState.savedRestaurantsTitle,
+    shouldQuerySavedRestaurantsBySearch,
+    triggerSavedRestaurantsRefetch,
+  };
+}
+
 export function useRestaurantSelectionFlow({
   fallbackReferenceCoords = null,
   isOnline,
@@ -241,8 +368,6 @@ export function useRestaurantSelectionFlow({
   const [isSearchingRestaurants, setIsSearchingRestaurants] = useState(false);
   const [isSearchingNearbyRestaurants, setIsSearchingNearbyRestaurants] = useState(false);
   const trimmedSearchQuery = searchQuery.trim();
-  const shouldQuerySavedRestaurantsBySearch =
-    trimmedSearchQuery.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH;
   const {
     captureLocation,
     isCapturing: isGettingLocation,
@@ -254,17 +379,20 @@ export function useRestaurantSelectionFlow({
     deniedPermissionMessage: 'Location permission is required to find nearby places.',
   });
 
-  const recentRestaurantsQuery = useQuery<RestaurantRecord[]>(
-    buildRecentRestaurantsQueryOptions(
-      savedRestaurantsEnabled && !shouldQuerySavedRestaurantsBySearch,
-    ),
-  );
-  const searchedRestaurantsQuery = useQuery(
-    buildRestaurantSearchQueryOptions(
-      trimmedSearchQuery,
-      savedRestaurantsEnabled && shouldQuerySavedRestaurantsBySearch,
-    ),
-  );
+  const {
+    savedEmptyDescription,
+    savedEmptyTitle,
+    savedRestaurantRecords,
+    savedRestaurantsErrorMessage,
+    savedRestaurantsLoading,
+    savedRestaurantsTitle,
+    shouldQuerySavedRestaurantsBySearch,
+    triggerSavedRestaurantsRefetch,
+  } = useSavedRestaurantSuggestions({
+    enabled: savedRestaurantsEnabled,
+    savedRestaurantsEmptyDescription,
+    searchQuery,
+  });
   const menuItemsQuery = useQuery<MenuItemRecord[]>(
     buildRestaurantMenuItemsQueryOptions({
       enabled: menuItemsEnabled && Boolean(selectedRestaurantId),
@@ -273,26 +401,6 @@ export function useRestaurantSelectionFlow({
       selectedRestaurantId,
     }),
   );
-
-  const savedRestaurantRecords = useMemo(() => {
-    if (shouldQuerySavedRestaurantsBySearch) {
-      return searchedRestaurantsQuery.data?.items ?? [];
-    }
-
-    const recentRestaurants = recentRestaurantsQuery.data ?? [];
-    if (!trimmedSearchQuery) {
-      return recentRestaurants;
-    }
-
-    return recentRestaurants.filter((restaurant) =>
-      matchesVisitRestaurantSearch(restaurant, trimmedSearchQuery),
-    );
-  }, [
-    recentRestaurantsQuery.data,
-    searchedRestaurantsQuery.data?.items,
-    shouldQuerySavedRestaurantsBySearch,
-    trimmedSearchQuery,
-  ]);
 
   const effectiveReferenceCoords = referenceCoords ?? fallbackReferenceCoords;
   const displayedSavedRestaurants = useMemo(() => {
@@ -327,26 +435,6 @@ export function useRestaurantSelectionFlow({
       ...nearbyResults,
     ]);
   }, [nearbyResults, savedRestaurantRecords, searchResults]);
-
-  const savedRestaurantsUiState = useMemo(
-    () =>
-      resolveSavedRestaurantsUiState(
-        savedRestaurantsEmptyDescription,
-        shouldQuerySavedRestaurantsBySearch,
-        recentRestaurantsQuery.isError,
-        recentRestaurantsQuery.isLoading,
-        searchedRestaurantsQuery.isError,
-        searchedRestaurantsQuery.isLoading,
-      ),
-    [
-      recentRestaurantsQuery.isError,
-      recentRestaurantsQuery.isLoading,
-      savedRestaurantsEmptyDescription,
-      searchedRestaurantsQuery.isError,
-      searchedRestaurantsQuery.isLoading,
-      shouldQuerySavedRestaurantsBySearch,
-    ],
-  );
 
   const searchUi = resolveCreateVisitSearchUi({
     enforceQuota: shouldEnforceUsageLimitsClientSide,
@@ -383,18 +471,6 @@ export function useRestaurantSelectionFlow({
     setSearchErrorMessage(null);
     resetLocationPermissionNeedsSettings();
   }, [resetLocationPermissionNeedsSettings]);
-
-  const triggerSavedRestaurantsRefetch = useCallback(() => {
-    if (shouldQuerySavedRestaurantsBySearch) {
-      return searchedRestaurantsQuery.refetch();
-    }
-
-    return recentRestaurantsQuery.refetch();
-  }, [
-    recentRestaurantsQuery,
-    searchedRestaurantsQuery,
-    shouldQuerySavedRestaurantsBySearch,
-  ]);
 
   const searchByText = useCallback(
     async ({
@@ -596,12 +672,12 @@ export function useRestaurantSelectionFlow({
     placesQueriesRemaining,
     resetLocationPermissionNeedsSettings,
     resetRestaurantSelectionFlow,
-    savedEmptyDescription: savedRestaurantsUiState.savedEmptyDescription,
-    savedEmptyTitle: savedRestaurantsUiState.savedEmptyTitle,
+    savedEmptyDescription,
+    savedEmptyTitle,
     savedRestaurantRecords,
-    savedRestaurantsErrorMessage: savedRestaurantsUiState.savedRestaurantsErrorMessage,
-    savedRestaurantsLoading: savedRestaurantsUiState.savedRestaurantsLoading,
-    savedRestaurantsTitle: savedRestaurantsUiState.savedRestaurantsTitle,
+    savedRestaurantsErrorMessage,
+    savedRestaurantsLoading,
+    savedRestaurantsTitle,
     searchButtonDisabled: searchUi.isSearchDisabled,
     searchByText,
     searchErrorMessage,

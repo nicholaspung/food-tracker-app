@@ -10,6 +10,25 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.28',
+    date: '2026-04-05',
+    title: 'Smarter Search, Private Menu Images & Performance',
+    summary:
+      'Restaurant search now waits for you to pause typing before hitting the server, making suggestions feel snappier. Menu scan images you upload are now private to your account. Google restaurant data is deduplicated and shared globally so the same place no longer appears multiple times. Several database and backend improvements round out this release.',
+    features: [],
+    improvements: [
+      'Restaurant search now waits 250 ms after you stop typing before querying the server — suggestions appear with less flicker and fewer unnecessary network requests.',
+      'Tasting session restaurant suggestions now only start loading when you first interact with the restaurant field, avoiding a background fetch you may never need.',
+      'Menu scan images you upload are now private — only you and admins can access them.',
+      'Google Place restaurant data is now shared and deduplicated across all users, so the same restaurant no longer appears multiple times with slightly different details.',
+      'Invite codes for tasting sessions and bills now automatically retry on the rare occasion a generated code collides with an existing one, making code generation more reliable.',
+      'Database indexes added for invite codes, visit photos, and Google Place restaurants — these queries run faster.',
+      'Admin user search now queries the database directly instead of loading all users into memory, making it scale better.',
+      'Removed unused Android permission declarations from the app, reducing the permissions the app requests on install.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.27',
     date: '2026-04-05',
     title: 'Faster Restaurant Loading & Code Cleanup',

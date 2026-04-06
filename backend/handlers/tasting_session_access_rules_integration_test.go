@@ -217,6 +217,48 @@ func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {
 	}
 }
 
+func TestTastingSessionInviteCollectionRejectsDuplicateCodes(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
+
+	leader, _ := createAuthUser(t, server.app, false, false)
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Duplicate Code Tasting",
+		"location":    "San Francisco, CA",
+		"cuisineType": "Japanese",
+		"user":        leader.Id,
+		"visibility":  "public",
+	})
+	session := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":       "Duplicate Codes",
+		"restaurant": restaurant.Id,
+		"leader":     leader.Id,
+		"status":     "adding_items",
+		"locked":     false,
+	})
+
+	createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":    session.Id,
+		"code":       "TASTE1",
+		"created_by": leader.Id,
+		"expires_at": "2099-01-01 00:00:00.000Z",
+	})
+
+	collection, err := server.app.FindCollectionByNameOrId("tasting_session_invites")
+	if err != nil {
+		t.Fatalf("failed to resolve tasting_session_invites collection: %v", err)
+	}
+
+	duplicate := core.NewRecord(collection)
+	duplicate.Set("session", session.Id)
+	duplicate.Set("code", "TASTE1")
+	duplicate.Set("created_by", leader.Id)
+	duplicate.Set("expires_at", "2099-01-02 00:00:00.000Z")
+
+	if err := server.app.Save(duplicate); err == nil {
+		t.Fatalf("expected duplicate tasting session invite code to be rejected")
+	}
+}
+
 func TestTastingSessionJoinRouteRateLimitBlocksBurstRequests(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterTastingSessionHandlers(se, app)

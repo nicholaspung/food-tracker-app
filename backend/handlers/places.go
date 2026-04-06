@@ -137,7 +137,7 @@ func syncGooglePlaceRestaurants(
 		return nil, fmt.Errorf("resolve restaurants collection: %w", err)
 	}
 
-	existingByPlaceID, err := findRestaurantsByPlaceID(app, authRecord.Id, dedupedPlaces)
+	existingByPlaceID, err := findRestaurantsByPlaceID(app, dedupedPlaces)
 	if err != nil {
 		return nil, err
 	}
@@ -145,15 +145,15 @@ func syncGooglePlaceRestaurants(
 	now := time.Now().UTC()
 	results := make([]restaurantSearchResult, 0, len(dedupedPlaces))
 
-	for _, place := range dedupedPlaces {
-		existing := existingByPlaceID[place.PlaceID]
-		if existing != nil {
-			if isGooglePlaceCacheStale(existing.GetDateTime("googlePlaceCachedAt").Time()) {
-				applyGooglePlaceToRestaurantRecord(existing, authRecord.Id, place, now)
-				if err := app.Save(existing); err != nil {
-					log.Printf("Failed to update cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
+		for _, place := range dedupedPlaces {
+			existing := existingByPlaceID[place.PlaceID]
+			if existing != nil {
+				if shouldRefreshGooglePlaceRestaurant(existing) {
+					applyGooglePlaceToRestaurantRecord(existing, place, now)
+					if err := app.Save(existing); err != nil {
+						log.Printf("Failed to update cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
+					}
 				}
-			}
 
 			results = append(results, mapRestaurantSearchResult(existing))
 			continue
@@ -161,14 +161,22 @@ func syncGooglePlaceRestaurants(
 
 		if strings.TrimSpace(place.Name) == "" {
 			continue
-		}
+			}
 
-		record := core.NewRecord(restaurantsCollection)
-		applyGooglePlaceToRestaurantRecord(record, authRecord.Id, place, now)
-		if err := app.Save(record); err != nil {
-			log.Printf("Failed to create cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
-			continue
-		}
+			record := core.NewRecord(restaurantsCollection)
+			applyGooglePlaceToRestaurantRecord(record, place, now)
+			if err := app.Save(record); err != nil {
+				if isUniqueConstraintError(err) {
+					refetchedByPlaceID, refetchErr := findRestaurantsByPlaceID(app, []placeResult{place})
+					if refetchErr == nil && refetchedByPlaceID[place.PlaceID] != nil {
+						results = append(results, mapRestaurantSearchResult(refetchedByPlaceID[place.PlaceID]))
+						continue
+					}
+				}
+
+				log.Printf("Failed to create cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
+				continue
+			}
 
 		existingByPlaceID[place.PlaceID] = record
 		results = append(results, mapRestaurantSearchResult(record))
@@ -202,16 +210,13 @@ func dedupePlacesByID(places []placeResult) []placeResult {
 
 func findRestaurantsByPlaceID(
 	app core.App,
-	userID string,
 	places []placeResult,
 ) (map[string]*core.Record, error) {
 	if len(places) == 0 {
 		return map[string]*core.Record{}, nil
 	}
 
-	params := dbx.Params{
-		"userId": userID,
-	}
+	params := dbx.Params{}
 	clauses := make([]string, 0, len(places))
 	for index, place := range places {
 		paramKey := fmt.Sprintf("placeId%d", index)
@@ -219,7 +224,7 @@ func findRestaurantsByPlaceID(
 		params[paramKey] = place.PlaceID
 	}
 
-	filter := fmt.Sprintf("createdBy = {:userId} && (%s)", strings.Join(clauses, " || "))
+	filter := fmt.Sprintf("isGooglePlace = true && (%s)", strings.Join(clauses, " || "))
 	records, err := app.FindRecordsByFilter("restaurants", filter, "-updated,-created", len(places)*2, 0, params)
 	if err != nil {
 		return nil, fmt.Errorf("find cached restaurants: %w", err)
@@ -240,12 +245,7 @@ func findRestaurantsByPlaceID(
 	return result, nil
 }
 
-func applyGooglePlaceToRestaurantRecord(
-	record *core.Record,
-	userID string,
-	place placeResult,
-	cachedAt time.Time,
-) {
+func applyGooglePlaceToRestaurantRecord(record *core.Record, place placeResult, cachedAt time.Time) {
 	record.Set("name", place.Name)
 	record.Set("location", place.Vicinity)
 	record.Set("cuisineType", getCuisineFromTypes(place.Types))
@@ -254,8 +254,28 @@ func applyGooglePlaceToRestaurantRecord(
 	record.Set("placeId", place.PlaceID)
 	record.Set("isGooglePlace", true)
 	record.Set("googlePlaceCachedAt", cachedAt)
-	record.Set("createdBy", userID)
+	record.Set("createdBy", "")
 	record.Set("visibility", "public")
+}
+
+func shouldRefreshGooglePlaceRestaurant(record *core.Record) bool {
+	if record == nil {
+		return false
+	}
+
+	if !record.GetBool("isGooglePlace") {
+		return true
+	}
+
+	if strings.TrimSpace(record.GetString("createdBy")) != "" {
+		return true
+	}
+
+	if strings.TrimSpace(record.GetString("visibility")) != "public" {
+		return true
+	}
+
+	return isGooglePlaceCacheStale(record.GetDateTime("googlePlaceCachedAt").Time())
 }
 
 func mapRestaurantSearchResult(record *core.Record) restaurantSearchResult {

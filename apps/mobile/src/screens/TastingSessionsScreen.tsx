@@ -7,12 +7,10 @@ import { BackHeaderScreenScaffold, EmptyState, Skeleton } from '../components/sh
 import {
   createTastingSession,
   joinTastingSession,
-  listRecentRestaurants,
   listTastingSessions,
-  searchRestaurantsPage,
 } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { matchesVisitRestaurantSearch } from '../lib/visitRestaurantSearch';
+import { useSavedRestaurantSuggestions } from '../hooks/useRestaurantSelectionFlow';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -25,7 +23,6 @@ type TastingSessionsScreenProps = NativeStackScreenProps<RootStackParamList, 'Ta
 type SessionFilter = 'active' | 'completed';
 
 const RESTAURANT_SUGGESTION_LIMIT = 3;
-const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
 
 export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps) {
   const theme = useTheme();
@@ -44,54 +41,16 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const [selectedRestaurant, setSelectedRestaurant] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const trimmedRestaurantSearch = restaurantSearch.trim();
-  const shouldQueryRestaurantSearch =
-    trimmedRestaurantSearch.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH;
-  const recentRestaurantsQuery = useQuery({
-    queryKey: ['feature', 'restaurants', 'recent', RESTAURANT_SUGGESTION_LIMIT],
-    queryFn: () => listRecentRestaurants({ limit: RESTAURANT_SUGGESTION_LIMIT }),
-    enabled: !shouldQueryRestaurantSearch,
+  const [hasActivatedRestaurantSuggestions, setHasActivatedRestaurantSuggestions] = useState(false);
+  const {
+    savedRestaurantRecords: filteredRestaurants,
+    savedRestaurantsErrorMessage: restaurantSuggestionsErrorMessage,
+    savedRestaurantsLoading: restaurantSuggestionsLoading,
+  } = useSavedRestaurantSuggestions({
+    enabled: hasActivatedRestaurantSuggestions,
+    recentLimit: RESTAURANT_SUGGESTION_LIMIT,
+    searchQuery: restaurantSearch,
   });
-  const searchedRestaurantsQuery = useQuery({
-    queryKey: ['feature', 'restaurants', 'search', trimmedRestaurantSearch, 1, RESTAURANT_SUGGESTION_LIMIT],
-    queryFn: async () =>
-      searchRestaurantsPage({
-        search: trimmedRestaurantSearch,
-        page: 1,
-        pageSize: RESTAURANT_SUGGESTION_LIMIT,
-      }),
-    enabled: shouldQueryRestaurantSearch,
-  });
-
-  const filteredRestaurants = useMemo(() => {
-    if (shouldQueryRestaurantSearch) {
-      return searchedRestaurantsQuery.data?.items ?? [];
-    }
-
-    const recentRestaurants = recentRestaurantsQuery.data ?? [];
-    if (!trimmedRestaurantSearch) {
-      return recentRestaurants;
-    }
-
-    return recentRestaurants.filter((restaurant) =>
-      matchesVisitRestaurantSearch(restaurant, trimmedRestaurantSearch),
-    );
-  }, [
-    recentRestaurantsQuery.data,
-    searchedRestaurantsQuery.data?.items,
-    shouldQueryRestaurantSearch,
-    trimmedRestaurantSearch,
-  ]);
-  const restaurantSuggestionsLoading = shouldQueryRestaurantSearch
-    ? searchedRestaurantsQuery.isLoading
-    : recentRestaurantsQuery.isLoading;
-  const restaurantSuggestionsErrorMessage = shouldQueryRestaurantSearch
-    ? searchedRestaurantsQuery.isError
-      ? 'Could not load matching restaurants.'
-      : null
-    : recentRestaurantsQuery.isError
-      ? 'Could not load recent restaurants.'
-      : null;
 
   const filteredSessions = useMemo(() => {
     const sessions = sessionsQuery.data ?? [];
@@ -273,13 +232,25 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           />
           <Input
             label="Restaurant search"
-            onChangeText={setRestaurantSearch}
+            onChangeText={(value) => {
+              setHasActivatedRestaurantSuggestions(true);
+              setRestaurantSearch(value);
+            }}
+            onFocus={() => {
+              setHasActivatedRestaurantSuggestions(true);
+            }}
             placeholder="Search restaurants"
             value={restaurantSearch}
           />
           <Input
             label="Selected restaurant"
-            onChangeText={setSelectedRestaurant}
+            onChangeText={(value) => {
+              setHasActivatedRestaurantSuggestions(true);
+              setSelectedRestaurant(value);
+            }}
+            onFocus={() => {
+              setHasActivatedRestaurantSuggestions(true);
+            }}
             placeholder="Restaurant"
             value={selectedRestaurant}
           />
@@ -339,7 +310,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
         <PageErrorToast errorMessage={errorMessage} title="Session action failed" />
 
-        {sessionsQuery.isLoading || (!shouldQueryRestaurantSearch && recentRestaurantsQuery.isLoading) ? (
+        {sessionsQuery.isLoading ? (
           <>
             <Skeleton height={20} />
             <Skeleton height={20} />

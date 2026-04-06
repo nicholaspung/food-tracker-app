@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Linking,
@@ -17,32 +16,18 @@ import {
   FeatureFormScreenScaffold,
   LoadingState,
   PageErrorToast,
-  PhotoAttachmentRow,
-  PhotoSourceActionCards,
-  PhotoViewerModal,
-  RatingLegend,
-  RatingSelector,
   StepProgressBar,
-  UpgradePromptCard,
   VisitMenuItemOptionRow,
-  VisitMetadataCard,
   VisitRestaurantOptionTrailing,
   VisitRestaurantSearchSection,
   type VisitRestaurantSearchOption,
-  type VisibilityOptionValue,
 } from '../components/shared';
 import {
   createCollectionRecord,
-  createVisit,
-  formatLimitExceededMessage,
   getAuthenticatedUserIdOrNull,
   getRestaurantVisitStatsSummary,
   getVisitById,
   hasPendingMenuReviewRequest,
-  linkVisitToListBookmark,
-  parseLimitExceededError,
-  resolveDefaultVisitVisibilityFromAuth,
-  updateVisit,
   type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
@@ -55,9 +40,7 @@ import {
   formatDateToLocalDateString,
   getTodayLocalDateString,
   isValidLocalDate,
-  localDateStringToUTC,
 } from '../lib/dateFormatting';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
@@ -65,66 +48,28 @@ import {
   type VisitRestaurantWithDistance,
 } from '../lib/visitRestaurantSearch';
 import { shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
-import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { CreateVisitReviewStep } from './createVisit/CreateVisitReviewStep';
+import {
+  FREE_MONTHLY_PHOTO_LIMIT,
+  FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
+  WIZARD_STEPS,
+  buildDraftVisitItem,
+  formatFriendCount,
+  formatVisitCount,
+  resolveDefaultVisitVisibility,
+  type CreateVisitScreenProps,
+  type DraftVisitItemPhoto,
+  type RestaurantStats,
+  type VisitVisibility,
+  type VisitWizardStep,
+} from './createVisit/shared';
+import { useCreateVisitDraftItems } from './createVisit/useCreateVisitDraftItems';
+import { useCreateVisitSubmission } from './createVisit/useCreateVisitSubmission';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
-
-type CreateVisitScreenProps = NativeStackScreenProps<
-  RootStackParamList,
-  'CreateVisit'
->;
-
-type VisitWizardStep = 0 | 1 | 2; // 0-indexed to match StepProgressBar
-type VisitVisibility = 'friends' | 'private';
-
-interface DraftVisitItem {
-  id: string;
-  name: string;
-  rating: number;
-  description: string;
-  notes: string;
-  photos: DraftVisitItemPhoto[];
-  sourceMenuItemId?: string;
-}
-
-interface DraftVisitItemPhoto {
-  uri: string;
-  name: string;
-  mimeType: string;
-}
-
-interface RestaurantStats {
-  userVisitCount: number;
-  friendCount: number;
-}
-
-function resolveDefaultVisitVisibility(): VisitVisibility {
-  return resolveDefaultVisitVisibilityFromAuth();
-}
-
-function normalizeSelectionLabel(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function formatVisitCount(count: number): string {
-  return `${count} ${count === 1 ? "visit" : "visits"}`;
-}
-
-function formatFriendCount(count: number): string {
-  return `${count} ${count === 1 ? "friend" : "friends"}`;
-}
-
-const WIZARD_STEPS = [
-  { label: "Restaurant" },
-  { label: "Items" },
-  { label: "Rate & Save" },
-];
-
-const FREE_MONTHLY_PHOTO_LIMIT = 5;
-const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 
 export function CreateVisitScreen({
   navigation,
@@ -163,17 +108,12 @@ export function CreateVisitScreen({
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState("");
   const [menuReviewSubmitted, setMenuReviewSubmitted] = useState(false);
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
-  const [draftItems, setDraftItems] = useState<DraftVisitItem[]>([]);
   const [visitDate, setVisitDate] = useState(getTodayLocalDateString());
   const [detectedVisitDateValue, setDetectedVisitDateValue] = useState<string | null>(null);
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>(
     resolveDefaultVisitVisibility,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
-  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
-  const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [sourceListItemId, setSourceListItemId] = useState<string | null>(null);
   const [restaurantListAnchorY, setRestaurantListAnchorY] = useState(0);
   const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
@@ -234,6 +174,18 @@ export function CreateVisitScreen({
       isFreeTier: isDisplayFreeUser,
       placesQueriesRemaining,
     },
+  });
+  const {
+    draftItems,
+    draftPhotoCount,
+    isMenuItemSelected,
+    removeDraftItemPhoto,
+    selectedMenuItemCount,
+    setDraftItems,
+    toggleMenuItemSelection,
+    updateDraftItem,
+  } = useCreateVisitDraftItems({
+    menuItems: menuItemsQuery.data,
   });
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
   const restaurantStatIds = useMemo(() => {
@@ -321,15 +273,10 @@ export function CreateVisitScreen({
 
         return [
           ...currentItems,
-          {
+          buildDraftVisitItem({
             id: preselectedMenuItemId,
             name: preselectedMenuItemName,
-            rating: 3,
-            description: "",
-            notes: "",
-            photos: [],
-            sourceMenuItemId: preselectedMenuItemId,
-          },
+          }),
         ];
       });
     }
@@ -370,6 +317,7 @@ export function CreateVisitScreen({
     route.params?.sourceListItemId,
     route.params?.returnToStep,
     selectedRestaurantId,
+    setDraftItems,
   ]);
 
   useEffect(() => {
@@ -421,6 +369,7 @@ export function CreateVisitScreen({
     editVisitQuery.data,
     hydratedEditVisitId,
     route.params?.returnToStep,
+    setDraftItems,
   ]);
 
   useEffect(() => {
@@ -441,17 +390,6 @@ export function CreateVisitScreen({
       scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     }, 0);
   }, [step]);
-  const isMenuItemSelected = useCallback(
-    (menuItem: MenuItemRecord) => {
-      const normalizedMenuItemName = normalizeSelectionLabel(menuItem.name);
-      return draftItems.some(
-        (item) =>
-          item.sourceMenuItemId === menuItem.id ||
-          normalizeSelectionLabel(item.name) === normalizedMenuItemName,
-      );
-    },
-    [draftItems],
-  );
   const filteredMenuItems = useMemo(() => {
     const items = menuItemsQuery.data ?? [];
     const normalizedQuery = menuItemSearchQuery.trim().toLowerCase();
@@ -470,43 +408,7 @@ export function CreateVisitScreen({
     );
     return [...selected, ...unselected];
   }, [filteredMenuItems, isMenuItemSelected]);
-  const selectedMenuItemCount = draftItems.length;
-  const draftPhotoCount = useMemo(
-    () =>
-      draftItems.reduce((totalCount, item) => totalCount + item.photos.length, 0),
-    [draftItems],
-  );
   const hasPendingMenuReview = pendingMenuReviewQuery.data === true;
-
-  useEffect(() => {
-    const menuItems = menuItemsQuery.data;
-    if (!menuItems || menuItems.length === 0) {
-      return;
-    }
-
-    const menuItemsById = new Map(menuItems.map((item) => [item.id, item]));
-    const menuItemsByNormalizedName = new Map(
-      menuItems.map((item) => [normalizeSelectionLabel(item.name), item]),
-    );
-    setDraftItems((currentItems) =>
-      currentItems.map((item) => {
-        const matchedMenuItem =
-          (item.sourceMenuItemId
-            ? menuItemsById.get(item.sourceMenuItemId)
-            : undefined) ??
-          menuItemsByNormalizedName.get(normalizeSelectionLabel(item.name));
-        if (!matchedMenuItem) {
-          return item;
-        }
-
-        return {
-          ...item,
-          name: matchedMenuItem.name,
-          sourceMenuItemId: matchedMenuItem.id,
-        };
-      }),
-    );
-  }, [menuItemsQuery.data]);
 
   const styles = StyleSheet.create({
     sectionCard: {
@@ -928,34 +830,6 @@ export function CreateVisitScreen({
     };
   };
 
-  const toggleMenuItemSelection = (menuItem: MenuItemRecord) => {
-    const normalizedMenuItemName = normalizeSelectionLabel(menuItem.name);
-    const existingDraftItem = draftItems.find(
-      (item) =>
-        item.sourceMenuItemId === menuItem.id ||
-        normalizeSelectionLabel(item.name) === normalizedMenuItemName,
-    );
-    if (existingDraftItem) {
-      setDraftItems((currentItems) =>
-        currentItems.filter((item) => item.id !== existingDraftItem.id),
-      );
-      return;
-    }
-
-    setDraftItems((currentItems) => [
-      ...currentItems,
-      {
-        id: menuItem.id,
-        name: menuItem.name,
-        rating: 3,
-        description: "",
-        notes: "",
-        photos: [],
-        sourceMenuItemId: menuItem.id,
-      },
-    ]);
-  };
-
   const handleRequestMenuReview = async () => {
     if (
       !selectedRestaurantId ||
@@ -1152,19 +1026,6 @@ export function CreateVisitScreen({
     }
   };
 
-  const updateDraftItem = (
-    itemId: string,
-    updates: Partial<
-      Pick<DraftVisitItem, "rating" | "description" | "notes" | "photos">
-    >,
-  ) => {
-    setDraftItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === itemId ? { ...item, ...updates } : item,
-      ),
-    );
-  };
-
   const handleVisitDateChange = (value: string) => {
     setVisitDate(value);
   };
@@ -1183,17 +1044,7 @@ export function CreateVisitScreen({
     [],
   );
 
-  const openPhotoViewer = (photos: DraftVisitItemPhoto[], initialIndex: number) => {
-    if (photos.length === 0) {
-      return;
-    }
-
-    setPhotoViewerUrls(photos.map((photo) => photo.uri));
-    setPhotoViewerInitialIndex(initialIndex);
-    setIsPhotoViewerVisible(true);
-  };
-
-  const handleVisitVisibilityChange = (value: VisibilityOptionValue) => {
+  const handleVisitVisibilityChange = (value: 'friends' | 'private' | 'public') => {
     if (value === "friends" || value === "private") {
       setVisitVisibility(value);
     }
@@ -1303,233 +1154,25 @@ export function CreateVisitScreen({
     resetPhotoPermissionNeedsSettings();
     setErrorMessage(null);
   };
-
-  const removeDraftItemPhoto = (itemId: string, uri: string) => {
-    setIsPhotoViewerVisible(false);
-    setDraftItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              photos: item.photos.filter((photo) => photo.uri !== uri),
-            }
-          : item,
-      ),
-    );
-  };
-
-  const submitVisit = async () => {
-    const trimmedRestaurant = restaurantName.trim();
-    const trimmedVisitDate = visitDate.trim();
-
-    if (!trimmedRestaurant) {
-      setErrorMessage("Select a restaurant before continuing.");
-      return;
-    }
-
-    if (draftItems.length === 0) {
-      setErrorMessage("Add at least one item.");
-      return;
-    }
-
-    if (!isValidLocalDate(trimmedVisitDate)) {
-      setErrorMessage("Visit date must be in YYYY-MM-DD format.");
-      return;
-    }
-
-    const parsedItems = draftItems.map((item) => ({
-      id: item.id,
-      name: item.name,
-      rating: item.rating,
-      description: item.description.trim() || undefined,
-      notes: item.notes.trim() || undefined,
-      photos: item.photos,
-    }));
-
-    if (parsedItems.some((item) => item.rating < 1 || item.rating > 5)) {
-      setErrorMessage("Ratings must be between 1 and 5.");
-      return;
-    }
-
-    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot) {
-      const photosInSubmission = parsedItems.reduce(
-        (totalCount, item) => totalCount + item.photos.length,
-        0,
-      );
-      const estimatedTotalAfterSubmit =
-        monthlyUsage.snapshot.usage.photoUploads + photosInSubmission;
-      if (estimatedTotalAfterSubmit > FREE_MONTHLY_PHOTO_LIMIT) {
-        const remaining = Math.max(
-          FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
-          0,
-        );
-        trackObservabilityEvent("USAGE_LIMIT_REACHED", {
-          enforcement: "client_estimate",
-          limit: FREE_MONTHLY_PHOTO_LIMIT,
-          metric: "photo_uploads",
-          remaining,
-          source: "CreateVisitScreen",
-          used: monthlyUsage.snapshot.usage.photoUploads,
-        });
-        setErrorMessage(
-          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
-        );
-        return;
-      }
-    }
-
-    const visitInput = {
-      restaurantName: trimmedRestaurant,
-      items: parsedItems,
-      visitedAt: localDateStringToUTC(trimmedVisitDate),
-      visibility: visitVisibility,
-      source: "visit" as const,
-    };
-
-    setErrorMessage(null);
-    setIsSubmitting(true);
-
-    try {
-      if (isEditMode && editVisitId) {
-        const visitUpdateInput = {
-          restaurantName: trimmedRestaurant,
-          items: parsedItems.map((item) => ({
-            id: item.id,
-            name: item.name,
-            rating: item.rating,
-            description: item.description,
-            notes: item.notes,
-          })),
-          visitedAt: localDateStringToUTC(trimmedVisitDate),
-          visibility: visitVisibility,
-        };
-
-        if (!isOnline) {
-          await queueFeatureOutbox("visit.update", {
-            visitId: editVisitId,
-            updates: visitUpdateInput,
-          });
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
-            queryClient.invalidateQueries({
-              queryKey: ["feature", "restaurants", "visitStats"],
-            }),
-            queryClient.invalidateQueries({
-              queryKey: ["feature", "visit", editVisitId],
-            }),
-          ]);
-          showQueuedOfflineAlert("Visit update");
-          if (navigation.canGoBack()) {
-            navigation.goBack();
-          } else {
-            navigation.navigate("Home");
-          }
-          return;
-        }
-
-        await queueWrite("visit.update");
-        await updateVisit(editVisitId, visitUpdateInput);
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurants", "visitStats"],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "visit", editVisitId],
-          }),
-        ]);
-        if (navigation.canGoBack()) {
-          navigation.goBack();
-        } else {
-          navigation.navigate("Home");
-        }
-        return;
-      }
-
-      if (!isOnline) {
-        await queueFeatureOutbox("visit.create", visitInput);
-        setSourceListItemId(null);
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurants", "visitStats"],
-          }),
-        ]);
-        showQueuedOfflineAlert('Visit');
-        navigation.navigate("Home");
-        return;
-      }
-
-      await queueWrite("visit.create");
-      const createdVisit = await createVisit(visitInput);
-
-      if (sourceListItemId && createdVisit.items.length > 0) {
-        const createdItemId = createdVisit.items[0]?.id;
-        if (createdItemId) {
-          try {
-            await queueWrite("list.bookmark.link-visit");
-            await linkVisitToListBookmark({
-              listItemId: sourceListItemId,
-              userFoodItemId: createdItemId,
-            });
-            await queryClient.invalidateQueries({
-              queryKey: ["feature", "restaurantListItems"],
-            });
-          } catch {
-            // Keep visit creation successful even when link-back fails.
-          }
-        }
-      }
-      setSourceListItemId(null);
-
-      trackObservabilityEvent("Visit Creation Completed", {
-        creationMethod: "manual",
-        hasNotes: parsedItems.some((item) => Boolean(item.notes)),
-        hasPhotos: parsedItems.some((item) => item.photos.length > 0),
-        itemCount: parsedItems.length,
-        source: "CreateVisitScreen",
-        visitVisibility,
-      });
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurants", "visitStats"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "usage", "monthly"],
-        }),
-      ]);
-      navigation.navigate("Home");
-    } catch (error) {
-      const limitPayload = parseLimitExceededError(error);
-      if (limitPayload) {
-        trackObservabilityEvent("USAGE_LIMIT_REACHED", {
-          enforcement: "server",
-          limit: limitPayload.limit,
-          metric: limitPayload.metric,
-          monthKey: limitPayload.monthKey,
-          remaining: limitPayload.remaining,
-          source: "CreateVisitScreen",
-          used: limitPayload.used,
-          userTier: limitPayload.userTier ?? null,
-        });
-      }
-      const message = limitPayload
-        ? formatLimitExceededMessage(limitPayload)
-        : error instanceof Error
-          ? error.message
-          : "Could not save visit.";
-      setErrorMessage(message);
-      trackObservabilityEvent("Visit Creation Failed", {
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : "unknown_error",
-        source: "CreateVisitScreen",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const { isSubmitting, submitVisit } = useCreateVisitSubmission({
+    draftItems,
+    editVisitId,
+    isDisplayFreeUser,
+    isEditMode,
+    isOnline,
+    monthlyUsageSnapshot: monthlyUsage.snapshot,
+    navigation,
+    queryClient,
+    queueFeatureOutbox,
+    queueWrite,
+    restaurantName,
+    setErrorMessage,
+    setSourceListItemId,
+    shouldEnforceUsageLimitsClientSide,
+    sourceListItemId,
+    visitDate,
+    visitVisibility,
+  });
 
   const handleBackPress = () => {
     if (step > 0) {
@@ -2102,141 +1745,30 @@ export function CreateVisitScreen({
       ) : null}
 
       {step === 2 ? (
-        <>
-          {!isEditMode && shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
-            <Card style={styles.statusCard}>
-              <Text tone="warning">
-                Offline estimate may be stale. Backend limits are enforced when sync runs.
-              </Text>
-            </Card>
-          ) : null}
-
-          {!isEditMode && isDisplayFreeUser && draftPhotoCount > 0 ? (
-            <Card style={styles.statusCard} tone="muted">
-              <Text tone="secondary">
-                Monthly photo estimate: {estimatedFreeMonthlyPhotosRemaining} left.
-              </Text>
-            </Card>
-          ) : null}
-
-          {!isEditMode && shouldShowPhotoUpgradePrompt ? (
-            <UpgradePromptCard
-              description={
-                estimatedFreeMonthlyPhotosRemaining <= 0
-                  ? "You have reached this month's free photo limit. Subscriber accounts have higher monthly photo limits."
-                  : `Only ${estimatedFreeMonthlyPhotosRemaining} photo uploads left this month. Subscriber accounts have higher monthly photo limits.`
-              }
-              title={
-                estimatedFreeMonthlyPhotosRemaining <= 0
-                  ? 'Free limit reached'
-                  : 'You are close to your free limit'
-              }
-            />
-          ) : null}
-
-          {isEditMode ? (
-            <Card style={styles.statusCard} tone="muted">
-              <Text tone="secondary">
-                Edit mode currently updates restaurant, date, visibility, ratings, descriptions, and notes.
-              </Text>
-            </Card>
-          ) : null}
-
-          <VisitMetadataCard
-            detectedDateValue={detectedVisitDateValue}
-            dateLabel="Visit Date"
-            dateModalTitle="Select visit date"
-            dateValue={visitDate}
-            onDateChange={handleVisitDateChange}
-            onVisibilityChange={handleVisitVisibilityChange}
-            visibilityValue={visitVisibility}
-          />
-
-          <RatingLegend initiallyExpanded />
-
-          {draftItems.map((item, index) => (
-            <Card key={item.id} style={styles.itemCard}>
-              <Text variant="label">{item.name}</Text>
-              <RatingSelector
-                onChange={(value) => {
-                  updateDraftItem(item.id, { rating: value });
-                }}
-                testIDPrefix={`create-visit-rating-${index}`}
-                value={item.rating}
-              />
-              <Input
-                label="Description"
-                onChangeText={(value) => {
-                  updateDraftItem(item.id, { description: value });
-                }}
-                placeholder="Optional description or modification"
-                value={item.description}
-              />
-              {!isEditMode ? (
-                <>
-                  <View style={styles.itemPhotoSection}>
-                    <View style={styles.itemPhotoLabelRow}>
-                      <Ionicons
-                        color={theme.colors.text.secondary}
-                        name="images-outline"
-                        size={14}
-                      />
-                      <Text variant="label">Add photos</Text>
-                    </View>
-                    <PhotoSourceActionCards
-                      cameraSubtitle="Camera"
-                      cameraTitle="Capture"
-                      gallerySubtitle="Photo Library"
-                      galleryTitle="Upload"
-                      onCameraPress={() => {
-                        void attachPhotoToDraftItem(item.id, "camera");
-                      }}
-                      onGalleryPress={() => {
-                        void attachPhotoToDraftItem(item.id, "gallery");
-                      }}
-                    />
-                  </View>
-                  {item.photos.length > 0 ? (
-                    <View style={styles.itemPhotoList}>
-                      {item.photos.map((photo, index) => (
-                        <PhotoAttachmentRow
-                          accessibilityLabel={`View attached photo ${index + 1} full screen`}
-                          key={photo.uri}
-                          name={photo.name}
-                          onPress={() => {
-                            openPhotoViewer(item.photos, index);
-                          }}
-                          onRemove={() => {
-                            removeDraftItemPhoto(item.id, photo.uri);
-                          }}
-                          uri={photo.uri}
-                        />
-                      ))}
-                    </View>
-                  ) : null}
-                </>
-              ) : null}
-              <Input
-                label="Notes"
-                onChangeText={(value) => {
-                  updateDraftItem(item.id, { notes: value });
-                }}
-                placeholder='Optional notes, e.g. "tastes the same as every other boba shop"'
-                value={item.notes}
-              />
-            </Card>
-          ))}
-        </>
+        <CreateVisitReviewStep
+          detectedVisitDateValue={detectedVisitDateValue}
+          draftItems={draftItems}
+          estimatedFreeMonthlyPhotosRemaining={
+            estimatedFreeMonthlyPhotosRemaining
+          }
+          isEditMode={isEditMode}
+          onAttachPhoto={(itemId, source) => {
+            void attachPhotoToDraftItem(itemId, source);
+          }}
+          onRemoveDraftItemPhoto={removeDraftItemPhoto}
+          onUpdateDraftItem={updateDraftItem}
+          onVisitDateChange={handleVisitDateChange}
+          onVisitVisibilityChange={handleVisitVisibilityChange}
+          shouldShowPhotoUpgradePrompt={!isEditMode && shouldShowPhotoUpgradePrompt}
+          showOfflineUsageWarning={
+            !isEditMode &&
+            shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser)
+          }
+          showUsageEstimate={!isEditMode && isDisplayFreeUser && draftPhotoCount > 0}
+          visitDate={visitDate}
+          visitVisibility={visitVisibility}
+        />
       ) : null}
-
-      <PhotoViewerModal
-        initialIndex={photoViewerInitialIndex}
-        onRequestClose={() => {
-          setIsPhotoViewerVisible(false);
-        }}
-        urls={photoViewerUrls}
-        visible={isPhotoViewerVisible}
-      />
     </FeatureFormScreenScaffold>
   );
 }

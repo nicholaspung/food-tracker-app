@@ -1,12 +1,11 @@
 package hooks
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 
@@ -35,56 +34,61 @@ func EnforceVisitPhotoCreateRequestLimits(e *core.RecordRequestEvent) error {
 		return apis.NewBadRequestError("food_item is required", nil)
 	}
 
-	if effectiveLimits.PhotoUploadsPerRecord != nil {
-		existingRecords, err := e.App.FindRecordsByFilter(
-			"visit_photos",
-			"user = {:userId} && food_item = {:foodItemId}",
-			"",
-			*effectiveLimits.PhotoUploadsPerRecord+1,
-			0,
-			map[string]any{
-				"userId":     authRecord.Id,
-				"foodItemId": foodItemID,
-			},
-		)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("Failed to check visit photo count for user=%s food_item=%s: %v", authRecord.Id, foodItemID, err)
+	originalApp := e.App
+	return e.App.RunInTransaction(func(txApp core.App) error {
+		e.App = txApp
+		defer func() {
+			e.App = originalApp
+		}()
+
+		if _, err := lib.ReserveUsage(txApp, authRecord, lib.UsageMetricPhotoUploads, 1); err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return apis.NewTooManyRequestsError(limitErr.Message, limitErr.Payload())
+			}
+			log.Printf("Failed to reserve photo usage for user=%s: %v", authRecord.Id, err)
 			return apis.NewApiError(500, "failed to validate photo upload limits", err)
 		}
 
-		existingCount := len(existingRecords)
-		if existingCount >= *effectiveLimits.PhotoUploadsPerRecord {
-			limitErr := &lib.LimitExceededError{
-				Metric:    lib.UsageMetricPhotoUploads,
-				Limit:     *effectiveLimits.PhotoUploadsPerRecord,
-				Used:      existingCount,
-				Remaining: 0,
-				MonthKey:  lib.CurrentUTCMonthKey(),
-				UserTier:  userTier,
-				Message:   fmt.Sprintf("Photo upload limit reached for this item (%d).", *effectiveLimits.PhotoUploadsPerRecord),
+		if effectiveLimits.PhotoUploadsPerRecord != nil {
+			existingCount, err := countVisitPhotosForFoodItem(txApp, authRecord.Id, foodItemID)
+			if err != nil {
+				log.Printf("Failed to check visit photo count for user=%s food_item=%s: %v", authRecord.Id, foodItemID, err)
+				return apis.NewApiError(500, "failed to validate photo upload limits", err)
 			}
 
-			return apis.NewTooManyRequestsError(limitErr.Message, limitErr.Payload())
+			if existingCount >= *effectiveLimits.PhotoUploadsPerRecord {
+				limitErr := &lib.LimitExceededError{
+					Metric:    lib.UsageMetricPhotoUploads,
+					Limit:     *effectiveLimits.PhotoUploadsPerRecord,
+					Used:      existingCount,
+					Remaining: 0,
+					MonthKey:  lib.CurrentUTCMonthKey(),
+					UserTier:  userTier,
+					Message:   fmt.Sprintf("Photo upload limit reached for this item (%d).", *effectiveLimits.PhotoUploadsPerRecord),
+				}
+
+				return apis.NewTooManyRequestsError(limitErr.Message, limitErr.Payload())
+			}
 		}
-	}
 
-	reservedMonthlyUsage := false
-	if _, err := lib.ReserveUsage(e.App, authRecord, lib.UsageMetricPhotoUploads, 1); err != nil {
-		if limitErr, ok := lib.AsLimitExceededError(err); ok {
-			return apis.NewTooManyRequestsError(limitErr.Message, limitErr.Payload())
-		}
-		log.Printf("Failed to reserve photo usage for user=%s: %v", authRecord.Id, err)
-		return apis.NewApiError(500, "failed to validate photo upload limits", err)
-	}
+		return e.Next()
+	})
+}
 
-	reservedMonthlyUsage = true
+func countVisitPhotosForFoodItem(app core.App, userID string, foodItemID string) (int, error) {
+	var count int
 
-	err := e.Next()
-	if err != nil && reservedMonthlyUsage {
-		if releaseErr := lib.ReleaseUsage(e.App, authRecord, lib.UsageMetricPhotoUploads, 1); releaseErr != nil {
-			log.Printf("Failed to release reserved photo usage for user=%s: %v", authRecord.Id, releaseErr)
-		}
-	}
+	err := app.DB().NewQuery(`
+		SELECT COUNT(1)
+		FROM visit_photos
+		WHERE user = {:userId}
+		  AND food_item = {:foodItemId}
+	`).
+		Bind(dbx.Params{
+			"userId":     userID,
+			"foodItemId": foodItemID,
+		}).
+		Row(&count)
 
-	return err
+	return count, err
 }

@@ -447,60 +447,113 @@ func requireAdmin(e *core.RequestEvent) error {
 }
 
 func findAdminUsers(app core.App, searchTerm string) ([]*core.Record, error) {
-	users, err := app.FindRecordsByFilter(
-		"users",
-		"",
-		"-created",
-		200,
-		0,
-		nil,
-	)
+	userIDs, err := findAdminUserIDs(app, searchTerm, 200)
 	if err != nil {
 		return nil, err
 	}
 
-	normalizedSearch := strings.ToLower(strings.TrimSpace(searchTerm))
-	if normalizedSearch == "" {
-		return users, nil
-	}
-
-	filtered := make([]*core.Record, 0, len(users))
-	for _, user := range users {
-		name := strings.ToLower(strings.TrimSpace(user.GetString("name")))
-		email := strings.ToLower(strings.TrimSpace(user.Email()))
-		id := strings.ToLower(user.Id)
-
-		if strings.Contains(name, normalizedSearch) ||
-			strings.Contains(email, normalizedSearch) ||
-			strings.Contains(id, normalizedSearch) {
-			filtered = append(filtered, user)
-		}
-	}
-
-	return filtered, nil
+	return findUsersByOrderedIDs(app, userIDs)
 }
 
 func findUserByEmail(app core.App, email string) (*core.Record, error) {
-	users, err := app.FindRecordsByFilter(
-		"users",
-		"",
-		"-created",
-		200,
-		0,
-		nil,
-	)
+	type userIDRow struct {
+		ID string `db:"id"`
+	}
+
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+	if normalizedEmail == "" {
+		return nil, nil
+	}
+
+	row := userIDRow{}
+	err := app.DB().NewQuery(`
+		SELECT id
+		FROM users
+		WHERE LOWER(TRIM(COALESCE(email, ''))) = {:email}
+		ORDER BY created DESC
+		LIMIT 1
+	`).
+		Bind(dbx.Params{"email": normalizedEmail}).
+		One(&row)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no rows") {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	users, err := findUsersByOrderedIDs(app, []string{row.ID})
+	if err != nil {
+		return nil, err
+	}
+	if len(users) == 0 {
+		return nil, nil
+	}
+
+	return users[0], nil
+}
+
+func findAdminUserIDs(app core.App, searchTerm string, limit int) ([]string, error) {
+	type userIDRow struct {
+		ID string `db:"id"`
+	}
+
+	normalizedSearch := strings.ToLower(strings.TrimSpace(searchTerm))
+	params := dbx.Params{
+		"limit": limit,
+	}
+
+	query := `
+		SELECT id
+		FROM users
+	`
+	if normalizedSearch != "" {
+		params["search"] = "%" + normalizedSearch + "%"
+		query += `
+		WHERE
+			LOWER(TRIM(COALESCE(name, ''))) LIKE {:search} OR
+			LOWER(TRIM(COALESCE(email, ''))) LIKE {:search} OR
+			LOWER(id) LIKE {:search}
+		`
+	}
+	query += `
+		ORDER BY created DESC
+		LIMIT {:limit}
+	`
+
+	rows := []userIDRow{}
+	if err := app.DB().NewQuery(query).Bind(params).All(&rows); err != nil {
+		return nil, err
+	}
+
+	result := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if strings.TrimSpace(row.ID) == "" {
+			continue
+		}
+		result = append(result, row.ID)
+	}
+
+	return result, nil
+}
+
+func findUsersByOrderedIDs(app core.App, ids []string) ([]*core.Record, error) {
+	users, err := findRecordsByIDs(app, "users", ids)
 	if err != nil {
 		return nil, err
 	}
 
-	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
-	for _, user := range users {
-		if strings.ToLower(strings.TrimSpace(user.Email())) == normalizedEmail {
-			return user, nil
+	usersByID := mapRecordsByID(users)
+	ordered := make([]*core.Record, 0, len(ids))
+	for _, id := range ids {
+		user := usersByID[strings.TrimSpace(id)]
+		if user == nil {
+			continue
 		}
+		ordered = append(ordered, user)
 	}
 
-	return nil, nil
+	return ordered, nil
 }
 
 func serializeAdminUser(user *core.Record) map[string]any {
