@@ -1,8 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Keyboard, Linking, Pressable, StyleSheet, View, type ScrollView } from 'react-native';
+import {
+  Image,
+  Keyboard,
+  Linking,
+  Pressable,
+  StyleSheet,
+  View,
+  type ScrollView,
+} from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -11,7 +18,6 @@ import {
   HomeFeedVisitEntryCard,
   HomeQuickTrackEntryCard,
   IconActionCard,
-  LinearProgressBar,
   LoadingState,
   PageErrorToast,
   PhotoViewerModal,
@@ -36,24 +42,22 @@ import {
   createVisit,
   formatLimitExceededMessage,
   getAuthenticatedUserIdOrNull,
-  listCollectionRecords,
-  listRestaurants,
-  parseMenuImage,
+  listMenuItemsForRestaurant,
+  listRecentRestaurants,
   parseLimitExceededError,
+  searchRestaurantsPage,
   updateCollectionRecord,
-  type QuickTrackRecord,
+  type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
   type VisitRecord,
-  type VisitPhotoUploadInput,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
-import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
+import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import {
   formatDateToLocalDateString,
-  formatLocalDateLabel,
   getTodayLocalDateString,
   isValidLocalDate,
   localDateStringToUTC,
@@ -69,7 +73,6 @@ import {
 } from '../lib/quickTrackForm';
 import {
   geocodeLocation,
-  mergeRestaurantSearchResults,
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
@@ -82,349 +85,37 @@ import {
   withVisitRestaurantDistance,
   type VisitRestaurantWithDistance,
 } from '../lib/visitRestaurantSearch';
-import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from './usageUiRules';
+import { MenuScanPhotoProcessingScreen } from './MenuScanPhotoProcessingScreen';
+import {
+  buildDefaultRestaurantForm,
+  buildPhotoUploadInput,
+  extractCaptureCoordinates,
+  formatCoordinatesForDisplay,
+  formatReviewEntryFooterLabel,
+  FREE_MONTHLY_PHOTO_LIMIT,
+  FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
+  FREE_SEARCH_WARNING_THRESHOLD,
+  MIN_SERVER_RESTAURANT_SEARCH_LENGTH,
+  normalizeSelectionLabel,
+  resolveProgressSteps,
+  resolveWizardStepIndex,
+  RESTAURANT_SELECTION_PAGE_SIZE,
+  type DraftPhotoAsset,
+  type GeneralPhotoStep,
+  type MenuItemMode,
+  type PhotoProcessingScreenProps,
+  type ProcessType,
+  type RestaurantPhotoForm,
+  type ReviewQuickTrackCardData,
+  type ReviewVisitCardData,
+  type ScanSource,
+} from './photoProcessing/shared';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
-
-type PhotoProcessingScreenProps = NativeStackScreenProps<RootStackParamList, 'ProcessPhotos'>;
-type ScanSource = 'camera' | 'gallery';
-type MenuScanPhase = 'choose' | 'processing' | 'success' | 'error';
-type ProcessType = 'restaurant' | 'quickTrack';
-type GeneralPhotoStep = 'choice' | 'upload' | 'process' | 'review';
-
-interface PhotoCoordinates {
-  latitude: number;
-  longitude: number;
-}
-
-interface DraftPhotoAsset {
-  id: string;
-  uri: string;
-  name: string;
-  mimeType: string;
-  captureDate: Date | null;
-  captureCoordinates: PhotoCoordinates | null;
-}
-
-interface RestaurantPhotoForm {
-  restaurantId: string;
-  restaurantName: string;
-  menuItemId: string;
-  menuItemName: string;
-  rating: number;
-  description: string;
-  notes: string;
-  date: string;
-}
-
-interface MenuItemRecord {
-  id: string;
-  restaurant: string;
-  name: string;
-  description?: string;
-  createdBy?: string;
-  visibility?: 'private' | 'friends' | 'public';
-}
-
-interface CreatedMenuItemRecord {
-  id: string;
-  name: string;
-}
-
-type MenuItemMode = 'existing' | 'create';
-
-const PROGRESS_FLOW_TAIL: { label: string }[] = [{ label: 'Upload' }, { label: 'Process' }, { label: 'Review' }];
-const FREE_MONTHLY_PHOTO_LIMIT = 5;
-const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
-const FREE_SEARCH_WARNING_THRESHOLD = 2;
-const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-});
-const reviewEntryTimeFormatter = new Intl.DateTimeFormat('en-US', {
-  hour: 'numeric',
-  minute: '2-digit',
-});
-
-interface ReviewVisitCardData {
-  id: string;
-  visit: VisitRecord;
-  photosByFoodItem: Map<string, HomeFeedPhotoRecord[]>;
-  footerLabel: string;
-}
-
-interface ReviewQuickTrackCardData {
-  id: string;
-  quickTrack: QuickTrackRecord;
-  photos: HomeFeedPhotoRecord[];
-  entryMeta: string;
-}
-
-function buildScannedItemNames(seedLabel: string): string[] {
-  const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
-  const base = normalized || 'Scanned Item';
-  return [`${base} #1`, `${base} #2`, `${base} #3`];
-}
-
-function formatReviewEntryDateLabel(value: string, fallbackDate: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return formatLocalDateLabel(fallbackDate);
-  }
-
-  return reviewEntryDateFormatter.format(date);
-}
-
-function formatReviewEntryTimeLabel(value: string): string | undefined {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return undefined;
-  }
-
-  return reviewEntryTimeFormatter.format(date);
-}
-
-function formatReviewEntryFooterLabel(value: string, fallbackDate: string): string {
-  const dateLabel = formatReviewEntryDateLabel(value, fallbackDate);
-  const timeLabel = formatReviewEntryTimeLabel(value);
-
-  return timeLabel ? `${dateLabel} • ${timeLabel}` : dateLabel;
-}
-
-function parseCsvFirstColumn(line: string): string {
-  if (!line.trim()) {
-    return '';
-  }
-
-  let inQuotes = false;
-  let value = '';
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-
-    if (char === '"') {
-      const nextChar = line[index + 1];
-      if (inQuotes && nextChar === '"') {
-        value += '"';
-        index += 1;
-        continue;
-      }
-
-      inQuotes = !inQuotes;
-      continue;
-    }
-
-    if (char === ',' && !inQuotes) {
-      break;
-    }
-
-    value += char;
-  }
-
-  return value.trim();
-}
-
-function parseMenuItemNamesFromCsv(csvText: string): string[] {
-  const lines = csvText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) {
-    return [];
-  }
-
-  const names: string[] = [];
-  const firstLineFirstColumn = parseCsvFirstColumn(lines[0]).toLowerCase();
-  const startIndex = firstLineFirstColumn.includes('menu_item') || firstLineFirstColumn.includes('menu item') ? 1 : 0;
-
-  for (let index = startIndex; index < lines.length; index += 1) {
-    const name = parseCsvFirstColumn(lines[index]);
-    if (!name) {
-      continue;
-    }
-
-    if (names.includes(name)) {
-      continue;
-    }
-
-    names.push(name);
-  }
-
-  return names;
-}
-
-function parseExifRational(rawValue: unknown): number | null {
-  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
-    return rawValue;
-  }
-
-  if (typeof rawValue === 'string') {
-    const trimmed = rawValue.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    if (trimmed.includes('/')) {
-      const [numeratorRaw, denominatorRaw] = trimmed.split('/');
-      const numerator = Number(numeratorRaw);
-      const denominator = Number(denominatorRaw);
-      if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator !== 0) {
-        return numerator / denominator;
-      }
-    }
-
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  if (rawValue && typeof rawValue === 'object') {
-    const maybeFraction = rawValue as { numerator?: unknown; denominator?: unknown };
-    if (typeof maybeFraction.numerator === 'number' && typeof maybeFraction.denominator === 'number') {
-      if (!Number.isFinite(maybeFraction.numerator) || !Number.isFinite(maybeFraction.denominator)) {
-        return null;
-      }
-
-      if (maybeFraction.denominator === 0) {
-        return null;
-      }
-
-      return maybeFraction.numerator / maybeFraction.denominator;
-    }
-  }
-
-  return null;
-}
-
-function parseExifCoordinate(rawValue: unknown): number | null {
-  const directValue = parseExifRational(rawValue);
-  if (directValue !== null) {
-    return directValue;
-  }
-
-  if (!Array.isArray(rawValue) || rawValue.length === 0) {
-    return null;
-  }
-
-  const degrees = parseExifRational(rawValue[0]);
-  if (degrees === null) {
-    return null;
-  }
-
-  const minutes = parseExifRational(rawValue[1]) ?? 0;
-  const seconds = parseExifRational(rawValue[2]) ?? 0;
-  const sign = degrees < 0 ? -1 : 1;
-  const absoluteDegrees = Math.abs(degrees) + minutes / 60 + seconds / 3600;
-  return sign * absoluteDegrees;
-}
-
-function applyCoordinateDirection(coordinate: number, rawDirection: unknown): number {
-  if (typeof rawDirection !== 'string') {
-    return coordinate;
-  }
-
-  const direction = rawDirection.trim().toUpperCase();
-  if (direction === 'S' || direction === 'W') {
-    return -Math.abs(coordinate);
-  }
-
-  if (direction === 'N' || direction === 'E') {
-    return Math.abs(coordinate);
-  }
-
-  return coordinate;
-}
-
-function extractCaptureCoordinates(asset: ImagePicker.ImagePickerAsset): PhotoCoordinates | null {
-  if (!asset.exif || typeof asset.exif !== 'object') {
-    return null;
-  }
-
-  const exif = asset.exif as Record<string, unknown>;
-  const latitudeRaw = parseExifCoordinate(exif.GPSLatitude ?? exif.latitude ?? exif.Latitude);
-  const longitudeRaw = parseExifCoordinate(exif.GPSLongitude ?? exif.longitude ?? exif.Longitude);
-
-  if (latitudeRaw === null || longitudeRaw === null) {
-    return null;
-  }
-
-  const latitude = applyCoordinateDirection(latitudeRaw, exif.GPSLatitudeRef ?? exif.LatitudeRef);
-  const longitude = applyCoordinateDirection(longitudeRaw, exif.GPSLongitudeRef ?? exif.LongitudeRef);
-
-  if (
-    !Number.isFinite(latitude) ||
-    !Number.isFinite(longitude) ||
-    latitude < -90 ||
-    latitude > 90 ||
-    longitude < -180 ||
-    longitude > 180
-  ) {
-    return null;
-  }
-
-  return { latitude, longitude };
-}
-
-function formatCoordinatesForDisplay(coordinates: PhotoCoordinates): string {
-  const latitudeDirection = coordinates.latitude >= 0 ? 'N' : 'S';
-  const longitudeDirection = coordinates.longitude >= 0 ? 'E' : 'W';
-  const latitude = Math.abs(coordinates.latitude).toFixed(4);
-  const longitude = Math.abs(coordinates.longitude).toFixed(4);
-  return `${latitude}${latitudeDirection}, ${longitude}${longitudeDirection}`;
-}
-
-function normalizeSelectionLabel(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function buildDefaultRestaurantForm(
-  photo: DraftPhotoAsset,
-  previousForm: RestaurantPhotoForm | undefined,
-): RestaurantPhotoForm {
-  return {
-    restaurantId: previousForm?.restaurantId ?? '',
-    restaurantName: previousForm?.restaurantName ?? '',
-    menuItemId: '',
-    menuItemName: '',
-    rating: 3,
-    description: '',
-    notes: '',
-    date: photo.captureDate ? formatDateToLocalDateString(photo.captureDate) : getTodayLocalDateString(),
-  };
-}
-
-function buildPhotoUploadInput(asset: DraftPhotoAsset): VisitPhotoUploadInput {
-  return {
-    uri: asset.uri,
-    name: asset.name,
-    mimeType: asset.mimeType,
-  };
-}
-
-function resolveWizardStepIndex(step: GeneralPhotoStep): number {
-  if (step === 'choice') {
-    return 0;
-  }
-  if (step === 'upload') {
-    return 1;
-  }
-  if (step === 'process') {
-    return 2;
-  }
-  return 3;
-}
-
-function resolveProgressSteps(processType: ProcessType | null): { label: string }[] {
-  const firstLabel =
-    processType === null ? 'Choose Method' : processType === 'restaurant' ? 'Restaurant Visit' : 'Quick Track';
-
-  return [{ label: firstLabel }, ...PROGRESS_FLOW_TAIL];
-}
 
 export function PhotoProcessingScreen(screenProps: PhotoProcessingScreenProps) {
   const mode = screenProps.route.params?.mode ?? 'general';
@@ -433,477 +124,6 @@ export function PhotoProcessingScreen(screenProps: PhotoProcessingScreenProps) {
   }
 
   return <GeneralPhotoProcessingScreen {...screenProps} />;
-}
-
-function MenuScanPhotoProcessingScreen({ navigation, route }: PhotoProcessingScreenProps) {
-  const theme = useTheme();
-  const queryClient = useQueryClient();
-
-  const mode = route.params?.mode ?? 'general';
-  const restaurantId = route.params?.restaurantId;
-  const restaurantName = route.params?.restaurantName?.trim() ?? 'this restaurant';
-  const autoStartSourcePicker = route.params?.autoStartSourcePicker === true;
-  const isMenuScan = mode === 'menu_scan' && Boolean(restaurantId);
-
-  const [phase, setPhase] = useState<MenuScanPhase>('choose');
-  const [isSelectingSource, setIsSelectingSource] = useState(false);
-  const [selectedImageName, setSelectedImageName] = useState<string>('');
-  const [progressValue, setProgressValue] = useState(0);
-  const [createdItemNames, setCreatedItemNames] = useState<string[]>([]);
-  const [countdownValue, setCountdownValue] = useState(5);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
-  const autoPromptedRef = useRef(false);
-  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const {
-    permissionNeedsSettings,
-    requestPermission: requestPhotoPickerPermission,
-    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
-  } = usePhotoPickerPermissions({
-    cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
-    cameraRequiredMessage: 'Camera permission is required to take a photo.',
-    galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
-    galleryRequiredMessage: 'Photo library permission is required to upload an image.',
-  });
-
-  const styles = StyleSheet.create({
-    chooseCard: {
-      gap: theme.spacing.sm,
-    },
-    tipCard: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.status.infoBorder,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-    },
-    processingCard: {
-      gap: theme.spacing.sm,
-    },
-    processingHint: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    successCard: {
-      borderColor: theme.colors.status.successBorder,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-    },
-    addedItemRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    footerButton: {
-      marginTop: theme.spacing.sm,
-    },
-    errorCard: {
-      borderColor: theme.colors.status.dangerBorder,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-    },
-    errorActionsRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    errorAction: {
-      flex: 1,
-    },
-  });
-
-  const navigateBackToItems = useCallback(() => {
-    if (!restaurantId) {
-      navigation.goBack();
-      return;
-    }
-
-    navigation.navigate('CreateVisit', {
-      preselectedRestaurantId: restaurantId,
-      preselectedRestaurantName: restaurantName,
-      returnToStep: 1,
-    });
-  }, [navigation, restaurantId, restaurantName]);
-
-  const startCountdown = useCallback(() => {
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-    }
-
-    setCountdownValue(5);
-    countdownIntervalRef.current = setInterval(() => {
-      setCountdownValue((currentValue) => {
-        if (currentValue <= 1) {
-          if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-          }
-          navigateBackToItems();
-          return 0;
-        }
-
-        return currentValue - 1;
-      });
-    }, 1000);
-  }, [navigateBackToItems]);
-
-  const createScannedMenuItems = useCallback(async (itemNames: string[], fallbackLabel: string) => {
-    if (!restaurantId) {
-      throw new Error('Restaurant context is missing.');
-    }
-
-    const currentUserId = getAuthenticatedUserIdOrNull();
-    if (!currentUserId) {
-      throw new Error('Please sign in again to continue.');
-    }
-
-    const names = itemNames.length > 0 ? itemNames : buildScannedItemNames(fallbackLabel);
-    const createdRecords: CreatedMenuItemRecord[] = [];
-
-    for (const itemName of names) {
-      const createdItem = await createCollectionRecord<CreatedMenuItemRecord>('menu_items', {
-        restaurant: restaurantId,
-        name: itemName,
-        createdBy: currentUserId,
-        visibility: 'friends',
-        isFromOCR: true,
-      });
-      createdRecords.push(createdItem);
-    }
-
-    queryClient.setQueryData<CreatedMenuItemRecord[]>(
-      ['feature', 'menuItems', restaurantId],
-      (currentItems) => [...createdRecords, ...(currentItems ?? [])],
-    );
-    await queryClient.invalidateQueries({
-      queryKey: ['feature', 'menuItems', restaurantId],
-    });
-
-    return createdRecords.map((record) => record.name);
-  }, [queryClient, restaurantId]);
-
-  const processSelectedImage = useCallback(async (imageName: string, imageInput: VisitPhotoUploadInput) => {
-    setPhase('processing');
-    setProgressValue(0);
-    setErrorMessage(null);
-    setCreatedItemNames([]);
-
-    const progressInterval = setInterval(() => {
-      setProgressValue((currentValue) => {
-        if (currentValue >= 0.92) {
-          return currentValue;
-        }
-
-        return Number((currentValue + 0.08).toFixed(2));
-      });
-    }, 250);
-
-    try {
-      const parseResult = await parseMenuImage(imageInput);
-      const parsedNames = parseMenuItemNamesFromCsv(parseResult.csv);
-      const createdNames = await createScannedMenuItems(parsedNames, imageName);
-      setCreatedItemNames(createdNames);
-      setProgressValue(1);
-      setPhase('success');
-      startCountdown();
-    } catch (error) {
-      const limitPayload = parseLimitExceededError(error);
-      if (limitPayload) {
-        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-          enforcement: 'server',
-          limit: limitPayload.limit,
-          metric: limitPayload.metric,
-          monthKey: limitPayload.monthKey,
-          remaining: limitPayload.remaining,
-          source: 'PhotoProcessingScreen',
-          used: limitPayload.used,
-          userTier: limitPayload.userTier ?? null,
-        });
-      }
-      const message = limitPayload
-        ? formatLimitExceededMessage(limitPayload)
-        : error instanceof Error
-          ? error.message
-          : 'Could not process this photo.';
-      setErrorMessage(message);
-      setPhase('error');
-    } finally {
-      clearInterval(progressInterval);
-      void queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] });
-    }
-  }, [createScannedMenuItems, queryClient, startCountdown]);
-
-  const pickImage = useCallback(async (source: ScanSource) => {
-    trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_STARTED', {
-      photoSource: source,
-      source: 'PhotoProcessingScreen',
-    });
-    setIsSelectingSource(true);
-    setErrorMessage(null);
-    setLastRequestedSource(source);
-    resetPhotoPermissionNeedsSettings();
-
-    try {
-      const permission = await requestPhotoPickerPermission(source);
-      if (!permission.granted) {
-        trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PERMISSION_DENIED', {
-          canAskAgain: permission.canAskAgain,
-          photoSource: source,
-          source: 'PhotoProcessingScreen',
-        });
-        setErrorMessage(permission.message);
-        setPhase('error');
-        return;
-      }
-
-      const pickerResult =
-        source === 'camera'
-          ? await ImagePicker.launchCameraAsync({
-              mediaTypes: ['images'],
-              allowsEditing: false,
-              quality: 0.8,
-            })
-          : await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['images'],
-              allowsEditing: false,
-              quality: 0.8,
-            });
-
-      if (pickerResult.canceled || pickerResult.assets.length === 0) {
-        trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_CANCELED', {
-          photoSource: source,
-          source: 'PhotoProcessingScreen',
-        });
-        return;
-      }
-
-      const selectedAsset = pickerResult.assets[0];
-      const imageInput: VisitPhotoUploadInput | null = buildLocalPhotoFile(selectedAsset, {
-        fallbackPrefix: source === 'camera' ? 'camera-image' : 'library-image',
-      });
-      if (!imageInput) {
-        throw new Error('Could not read the selected image.');
-      }
-      const imageLabel = imageInput.name;
-
-      setSelectedImageName(imageLabel);
-      trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICKED', {
-        photoSource: source,
-        source: 'PhotoProcessingScreen',
-      });
-      await processSelectedImage(imageLabel, imageInput);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not select an image.';
-      trackObservabilityEvent('PHOTO_PROCESSING_IMAGE_PICK_FAILED', {
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        photoSource: source,
-        source: 'PhotoProcessingScreen',
-      });
-      setErrorMessage(message);
-      setPhase('error');
-    } finally {
-      setIsSelectingSource(false);
-    }
-  }, [processSelectedImage, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings]);
-
-  useEffect(() => {
-    if (!isMenuScan || !autoStartSourcePicker || autoPromptedRef.current || phase !== 'choose') {
-      return;
-    }
-
-    autoPromptedRef.current = true;
-    Alert.alert(
-      'Scan Menu Photo',
-      'Choose how you want to add your menu photo.',
-      [
-        {
-          text: 'Take Photo',
-          onPress: () => {
-            void pickImage('camera');
-          },
-        },
-        {
-          text: 'Upload Image',
-          onPress: () => {
-            void pickImage('gallery');
-          },
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ],
-    );
-  }, [autoStartSourcePicker, isMenuScan, phase, pickImage]);
-
-  useEffect(() => {
-    return () => {
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-    };
-  }, []);
-
-  if (!isMenuScan) {
-    return (
-      <FeatureFormScreenScaffold
-        keyboardAware={false}
-        onBackPress={() => {
-          navigation.goBack();
-        }}
-        primaryAction={{
-          label: 'Back',
-          onPress: () => {
-            navigation.goBack();
-          },
-        }}
-        title="Process Photos"
-        subtitle="This route is reserved for the menu scanning flow."
-      >
-        <Card>
-          <Text tone="secondary">Use “Scan Menu Photo” from Track Restaurant Visit to continue.</Text>
-        </Card>
-      </FeatureFormScreenScaffold>
-    );
-  }
-
-  const menuScanTitle =
-    phase === 'processing'
-      ? 'Processing Menu Photo'
-      : phase === 'success'
-        ? 'Menu Scan Complete'
-        : 'Scan Menu Photo';
-  const menuScanSubtitle =
-    phase === 'processing'
-      ? 'Extracting menu items from your uploaded image.'
-      : phase === 'success'
-        ? 'New items were added to this restaurant.'
-        : `Capture or upload a menu image for ${restaurantName}.`;
-
-  return (
-    <FeatureFormScreenScaffold
-      keyboardAware={false}
-      onBackPress={() => {
-        navigateBackToItems();
-      }}
-      primaryAction={{
-        label: phase === 'processing' ? 'Processing...' : 'Back to Menu Items',
-        disabled: phase === 'processing',
-        variant: 'secondary',
-        onPress: () => {
-          navigateBackToItems();
-        },
-      }}
-      secondaryAction={
-        phase === 'choose'
-          ? {
-              label: 'Cancel',
-              onPress: () => {
-                navigateBackToItems();
-              },
-            }
-          : undefined
-      }
-      title={menuScanTitle}
-      subtitle={menuScanSubtitle}
-    >
-      {phase === 'choose' ? (
-        <>
-          <Card style={styles.tipCard}>
-            <Text tone="info" variant="bodySm">
-              Tip: clear, well-lit menu photos produce better item extraction.
-            </Text>
-          </Card>
-
-          <Card style={styles.chooseCard}>
-            <Text variant="label">Choose Photo Source</Text>
-            <Text tone="secondary">Take a new photo or upload an existing menu image.</Text>
-            {isSelectingSource ? <Text tone="secondary" variant="bodySm">Opening source picker...</Text> : null}
-            <PhotoSourceActionCards
-              cameraSubtitle="Camera"
-              cameraTitle="Take Photo"
-              disabled={isSelectingSource}
-              gallerySubtitle="Photo Library"
-              galleryTitle="Upload Image"
-              onCameraPress={() => {
-                void pickImage('camera');
-              }}
-              onGalleryPress={() => {
-                void pickImage('gallery');
-              }}
-            />
-          </Card>
-        </>
-      ) : null}
-
-      {phase === 'processing' ? (
-        <Card style={styles.processingCard}>
-          <View style={styles.processingHint}>
-            <Ionicons color={theme.colors.text.info} name="sync-outline" size={18} />
-            <Text tone="secondary">We're processing your image now.</Text>
-          </View>
-          <Text variant="label">Processing "{selectedImageName}"</Text>
-          <LinearProgressBar progress={progressValue} />
-          <Text tone="secondary">{Math.round(progressValue * 100)}% complete</Text>
-        </Card>
-      ) : null}
-
-      {phase === 'success' ? (
-        <Card style={styles.successCard}>
-          <View style={styles.processingHint}>
-            <Ionicons color={theme.colors.text.success} name="checkmark-circle" size={18} />
-            <Text tone="success" variant="label">
-              Menu scan completed
-            </Text>
-          </View>
-          <Text tone="secondary">Added items:</Text>
-          {createdItemNames.map((itemName) => (
-            <View key={itemName} style={styles.addedItemRow}>
-              <Ionicons color={theme.colors.text.success} name="checkmark-outline" size={14} />
-              <Text>{itemName}</Text>
-            </View>
-          ))}
-          <Text tone="secondary">
-            Returning to menu items in {countdownValue} second{countdownValue === 1 ? '' : 's'}...
-          </Text>
-          <Button
-            label="Go to Menu Items Now"
-            onPress={() => {
-              navigateBackToItems();
-            }}
-            style={styles.footerButton}
-          />
-        </Card>
-      ) : null}
-
-      <PageErrorToast
-        errorMessage={phase === 'error' ? (errorMessage ?? 'Could not process this photo.') : null}
-        title="Menu scan failed"
-        actionLabel="Try Again"
-        onAction={() => {
-          setPhase('choose');
-          setErrorMessage(null);
-          void pickImage(lastRequestedSource);
-        }}
-      />
-
-      {phase === 'error' && permissionNeedsSettings ? (
-        <Card style={styles.errorCard}>
-          <Text tone="danger">Camera or photo library permission is blocked in settings.</Text>
-          <View style={styles.errorActionsRow}>
-            <Button
-              label="Open Settings"
-              onPress={() => {
-                void Linking.openSettings();
-              }}
-              style={styles.errorAction}
-              variant="secondary"
-            />
-          </View>
-        </Card>
-      ) : null}
-    </FeatureFormScreenScaffold>
-  );
 }
 
 function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps) {
@@ -966,6 +186,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [reviewPhotoViewerVisible, setReviewPhotoViewerVisible] = useState(false);
   const [reviewPhotoViewerUrls, setReviewPhotoViewerUrls] = useState<string[]>([]);
   const [reviewPhotoViewerInitialIndex, setReviewPhotoViewerInitialIndex] = useState(0);
+  const trimmedRestaurantSearchQuery = restaurantSearchQuery.trim();
+  const shouldQuerySavedRestaurantsBySearch =
+    trimmedRestaurantSearchQuery.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH;
   const processStepScrollViewRef = useRef<ScrollView | null>(null);
   const {
     captureLocation,
@@ -977,11 +200,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     defaultErrorMessage: 'Could not get current location.',
     deniedPermissionMessage: 'Location permission is required to find nearby places.',
   });
-  const {
-    permissionNeedsSettings,
-    requestPermission: requestPhotoPickerPermission,
-    resetPermissionNeedsSettings: resetPhotoPermissionNeedsSettings,
-  } = usePhotoPickerPermissions({
+  const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
     cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
     cameraRequiredMessage: 'Camera permission is required to take a photo.',
     galleryBlockedMessage: 'Photo library permission is blocked. Enable it in device settings.',
@@ -1007,12 +226,48 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const currentRestaurantForm = currentPhoto ? restaurantForms[currentPhoto.id] : undefined;
   const currentQuickTrackForm = currentPhoto ? quickTrackForms[currentPhoto.id] : undefined;
   const currentRestaurantId = currentRestaurantForm?.restaurantId ?? null;
-
-  const restaurantsQuery = useQuery<RestaurantRecord[]>({
-    queryKey: ['feature', 'restaurants'],
-    queryFn: listRestaurants,
-    enabled: processType === 'restaurant' && (step === 'process' || step === 'review'),
+  const shouldEnableRestaurantSelectionQueries = processType === 'restaurant' && step === 'process';
+  const recentRestaurantsQuery = useQuery<RestaurantRecord[]>({
+    queryKey: ['feature', 'restaurants', 'recent', RESTAURANT_SELECTION_PAGE_SIZE],
+    queryFn: () => listRecentRestaurants({ limit: RESTAURANT_SELECTION_PAGE_SIZE }),
+    enabled: shouldEnableRestaurantSelectionQueries && !shouldQuerySavedRestaurantsBySearch,
   });
+  const searchedRestaurantsQuery = useQuery({
+    queryKey: [
+      'feature',
+      'restaurants',
+      'search',
+      trimmedRestaurantSearchQuery,
+      1,
+      RESTAURANT_SELECTION_PAGE_SIZE,
+    ],
+    queryFn: async () =>
+      searchRestaurantsPage({
+        search: trimmedRestaurantSearchQuery,
+        page: 1,
+        pageSize: RESTAURANT_SELECTION_PAGE_SIZE,
+      }),
+    enabled: shouldEnableRestaurantSelectionQueries && shouldQuerySavedRestaurantsBySearch,
+  });
+  const savedRestaurantRecords = useMemo(() => {
+    if (shouldQuerySavedRestaurantsBySearch) {
+      return searchedRestaurantsQuery.data?.items ?? [];
+    }
+
+    const recentRestaurants = recentRestaurantsQuery.data ?? [];
+    if (!trimmedRestaurantSearchQuery) {
+      return recentRestaurants;
+    }
+
+    return recentRestaurants.filter((restaurant) =>
+      matchesVisitRestaurantSearch(restaurant, trimmedRestaurantSearchQuery),
+    );
+  }, [
+    recentRestaurantsQuery.data,
+    searchedRestaurantsQuery.data?.items,
+    shouldQuerySavedRestaurantsBySearch,
+    trimmedRestaurantSearchQuery,
+  ]);
 
   const menuItemsQuery = useQuery<MenuItemRecord[]>({
     queryKey: ['feature', 'menuItems', currentRestaurantId ?? ''],
@@ -1025,10 +280,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         return queryClient.getQueryData<MenuItemRecord[]>(['feature', 'menuItems', currentRestaurantId]) ?? [];
       }
 
-      return listCollectionRecords<MenuItemRecord>('menu_items', {
-        filter: `restaurant = "${currentRestaurantId}"`,
-        sort: '-created',
-      });
+      return listMenuItemsForRestaurant(currentRestaurantId);
     },
     enabled: processType === 'restaurant' && step === 'process' && Boolean(currentRestaurantId),
   });
@@ -1144,14 +396,11 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   }, [currentPhoto?.captureCoordinates, referenceCoords]);
 
   const displayedSavedRestaurants = useMemo(() => {
-    const filtered = (restaurantsQuery.data ?? []).filter((restaurant) =>
-      matchesVisitRestaurantSearch(restaurant, restaurantSearchQuery),
-    );
     return prioritizeSelectedVisitRestaurant(
-      withVisitRestaurantDistance(filtered, effectiveReferenceCoords),
+      withVisitRestaurantDistance(savedRestaurantRecords, effectiveReferenceCoords),
       currentRestaurantForm?.restaurantId ?? null,
     ).slice(0, 12);
-  }, [currentRestaurantForm?.restaurantId, effectiveReferenceCoords, restaurantSearchQuery, restaurantsQuery.data]);
+  }, [currentRestaurantForm?.restaurantId, effectiveReferenceCoords, savedRestaurantRecords]);
 
   const displayedNearbyRestaurants = useMemo(() => {
     const combined = dedupeVisitRestaurants([...nearbyResults, ...searchResults]);
@@ -1233,9 +482,42 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       return null;
     }
 
-    const restaurants = dedupeVisitRestaurants([...(restaurantsQuery.data ?? []), ...searchResults, ...nearbyResults]);
-    return restaurants.find((restaurant) => restaurant.id === selectedRestaurantId) ?? null;
-  }, [currentRestaurantForm?.restaurantId, nearbyResults, restaurantsQuery.data, searchResults]);
+    const restaurants = dedupeVisitRestaurants([...savedRestaurantRecords, ...searchResults, ...nearbyResults]);
+    return (
+      restaurants.find((restaurant) => restaurant.id === selectedRestaurantId) ??
+      (currentRestaurantForm?.restaurantName
+        ? {
+            id: selectedRestaurantId,
+            name: currentRestaurantForm.restaurantName,
+          }
+        : null)
+    );
+  }, [
+    currentRestaurantForm?.restaurantId,
+    currentRestaurantForm?.restaurantName,
+    nearbyResults,
+    savedRestaurantRecords,
+    searchResults,
+  ]);
+  const savedRestaurantsErrorMessage = shouldQuerySavedRestaurantsBySearch
+    ? searchedRestaurantsQuery.isError
+      ? 'Could not load matching restaurants.'
+      : null
+    : recentRestaurantsQuery.isError
+      ? 'Could not load recent restaurants.'
+      : null;
+  const savedRestaurantsLoading = shouldQuerySavedRestaurantsBySearch
+    ? searchedRestaurantsQuery.isLoading
+    : recentRestaurantsQuery.isLoading;
+  const savedRestaurantsTitle = shouldQuerySavedRestaurantsBySearch
+    ? 'Matching restaurants'
+    : 'Recent restaurants';
+  const savedEmptyTitle = shouldQuerySavedRestaurantsBySearch
+    ? 'No matching restaurants'
+    : 'No recent restaurants';
+  const savedEmptyDescription = shouldQuerySavedRestaurantsBySearch
+    ? 'Try a different name, location, or cuisine.'
+    : 'Search nearby places or use the place search above to continue.';
 
   const matchingMenuItemByName = useMemo(() => {
     const normalizedName = normalizeSelectionLabel(newMenuItemName);
@@ -1529,9 +811,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       });
 
       setSearchResults(results);
-      queryClient.setQueryData<RestaurantRecord[]>(['feature', 'restaurants'], (current) =>
-        mergeRestaurantSearchResults(current, results),
-      );
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {
@@ -1611,9 +890,6 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       });
 
       setNearbyResults(results);
-      queryClient.setQueryData<RestaurantRecord[]>(['feature', 'restaurants'], (current) =>
-        mergeRestaurantSearchResults(current, results),
-      );
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {
@@ -1786,39 +1062,26 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       });
       setIsSelectingSource(true);
       setErrorMessage(null);
-      resetPhotoPermissionNeedsSettings();
       setLastRequestedSource(source);
 
       try {
-        const permission = await requestPhotoPickerPermission(source);
-        if (!permission.granted) {
+        const result = await pickImageAssets({
+          source,
+          allowsMultipleSelection: source === 'gallery',
+          selectionLimit: 20,
+          exif: true,
+        });
+        if (result.status === 'permission_denied') {
           trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PERMISSION_DENIED', {
-            canAskAgain: permission.canAskAgain,
+            canAskAgain: result.canAskAgain,
             photoSource: source,
             source: 'PhotoProcessingScreen',
           });
-          setErrorMessage(permission.message);
+          setErrorMessage(result.message);
           return;
         }
 
-        const pickerResult =
-          source === 'camera'
-            ? await ImagePicker.launchCameraAsync({
-                mediaTypes: ['images'],
-                allowsEditing: false,
-                quality: 0.8,
-                exif: true,
-              })
-            : await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
-                allowsEditing: false,
-                allowsMultipleSelection: true,
-                selectionLimit: 20,
-                quality: 0.8,
-                exif: true,
-              });
-
-        if (pickerResult.canceled || pickerResult.assets.length === 0) {
+        if (result.status === 'canceled') {
           trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_CANCELED', {
             photoSource: source,
             source: 'PhotoProcessingScreen',
@@ -1827,11 +1090,11 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         }
 
         trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICKED', {
-          photoCount: pickerResult.assets.length,
+          photoCount: result.assets.length,
           photoSource: source,
           source: 'PhotoProcessingScreen',
         });
-        await appendAssets(pickerResult.assets);
+        await appendAssets(result.assets);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not select images.';
         trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PICK_FAILED', {
@@ -1845,7 +1108,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         setIsSelectingSource(false);
       }
     },
-    [appendAssets, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings],
+    [appendAssets, pickImageAssets],
   );
 
   const removePhoto = (photoId: string) => {
@@ -2785,8 +2048,11 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
               savedOptions={displayedSavedRestaurants.map((restaurant) =>
                 buildRestaurantSearchOption(restaurant, 'saved'),
               )}
-              savedResultsErrorMessage={restaurantsQuery.isError ? 'Could not load restaurants.' : null}
-              savedResultsLoading={restaurantsQuery.isLoading}
+              savedEmptyDescription={savedEmptyDescription}
+              savedEmptyTitle={savedEmptyTitle}
+              savedResultsErrorMessage={savedRestaurantsErrorMessage}
+              savedResultsLoading={savedRestaurantsLoading}
+              savedResultsTitle={savedRestaurantsTitle}
               searchButtonDisabled={createVisitSearchUi.isSearchDisabled}
               searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
               searchButtonLoading={isSearchingRestaurants}

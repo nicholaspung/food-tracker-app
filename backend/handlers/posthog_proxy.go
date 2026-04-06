@@ -211,7 +211,4 @@ func forwardPostHogRequestHeaders(re *core.RequestEvent, proxyReq *http.Request)
 		proxyReq.Header.Set("Referer", referer)
 	}
 
-	if auth := re.Request.Header.Get("Authorization"); auth != "" {
-		proxyReq.Header.Set("Authorization", auth)
-	}
 }

@@ -23,6 +23,7 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 	var seenFlagsPath string
 	var seenFlagsQuery string
 	var seenFlagsBody string
+	var seenFlagsAuthorization string
 	var seenConfigPath string
 	var seenUnexpectedPath string
 
@@ -42,6 +43,7 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 			seenFlagsPath = r.URL.Path
 			seenFlagsQuery = r.URL.RawQuery
 			seenFlagsBody = string(body)
+			seenFlagsAuthorization = r.Header.Get("Authorization")
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
@@ -96,7 +98,7 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 		server.mux,
 		http.MethodPost,
 		"/api/visit-insights/flags/?v=2",
-		"",
+		"upstream-should-not-see-this",
 		`{"token":"phc_test","distinct_id":"user_123"}`,
 	)
 	if flagsResponse.Code != http.StatusOK {
@@ -121,6 +123,10 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 
 	if seenFlagsBody != `{"token":"phc_test","distinct_id":"user_123"}` {
 		t.Fatalf("expected flags body to be preserved, got %q", seenFlagsBody)
+	}
+
+	if seenFlagsAuthorization != "" {
+		t.Fatalf("expected authorization header to be stripped, got %q", seenFlagsAuthorization)
 	}
 
 	if seenConfigPath != "/array/phc_test/config" {

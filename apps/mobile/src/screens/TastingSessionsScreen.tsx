@@ -7,10 +7,12 @@ import { BackHeaderScreenScaffold, EmptyState, Skeleton } from '../components/sh
 import {
   createTastingSession,
   joinTastingSession,
-  listRestaurants,
+  listRecentRestaurants,
   listTastingSessions,
+  searchRestaurantsPage,
 } from '../features';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { matchesVisitRestaurantSearch } from '../lib/visitRestaurantSearch';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -21,6 +23,9 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 type TastingSessionsScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessions'>;
 
 type SessionFilter = 'active' | 'completed';
+
+const RESTAURANT_SUGGESTION_LIMIT = 3;
+const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
 
 export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps) {
   const theme = useTheme();
@@ -33,28 +38,60 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     queryFn: listTastingSessions,
   });
 
-  const restaurantsQuery = useQuery({
-    queryKey: ['feature', 'restaurants'],
-    queryFn: listRestaurants,
-  });
-
   const [filter, setFilter] = useState<SessionFilter>('active');
   const [createName, setCreateName] = useState('');
   const [restaurantSearch, setRestaurantSearch] = useState('');
   const [selectedRestaurant, setSelectedRestaurant] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const trimmedRestaurantSearch = restaurantSearch.trim();
+  const shouldQueryRestaurantSearch =
+    trimmedRestaurantSearch.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH;
+  const recentRestaurantsQuery = useQuery({
+    queryKey: ['feature', 'restaurants', 'recent', RESTAURANT_SUGGESTION_LIMIT],
+    queryFn: () => listRecentRestaurants({ limit: RESTAURANT_SUGGESTION_LIMIT }),
+    enabled: !shouldQueryRestaurantSearch,
+  });
+  const searchedRestaurantsQuery = useQuery({
+    queryKey: ['feature', 'restaurants', 'search', trimmedRestaurantSearch, 1, RESTAURANT_SUGGESTION_LIMIT],
+    queryFn: async () =>
+      searchRestaurantsPage({
+        search: trimmedRestaurantSearch,
+        page: 1,
+        pageSize: RESTAURANT_SUGGESTION_LIMIT,
+      }),
+    enabled: shouldQueryRestaurantSearch,
+  });
 
   const filteredRestaurants = useMemo(() => {
-    const normalizedSearch = restaurantSearch.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return restaurantsQuery.data ?? [];
+    if (shouldQueryRestaurantSearch) {
+      return searchedRestaurantsQuery.data?.items ?? [];
     }
 
-    return (restaurantsQuery.data ?? []).filter((restaurant) =>
-      restaurant.name.toLowerCase().includes(normalizedSearch),
+    const recentRestaurants = recentRestaurantsQuery.data ?? [];
+    if (!trimmedRestaurantSearch) {
+      return recentRestaurants;
+    }
+
+    return recentRestaurants.filter((restaurant) =>
+      matchesVisitRestaurantSearch(restaurant, trimmedRestaurantSearch),
     );
-  }, [restaurantSearch, restaurantsQuery.data]);
+  }, [
+    recentRestaurantsQuery.data,
+    searchedRestaurantsQuery.data?.items,
+    shouldQueryRestaurantSearch,
+    trimmedRestaurantSearch,
+  ]);
+  const restaurantSuggestionsLoading = shouldQueryRestaurantSearch
+    ? searchedRestaurantsQuery.isLoading
+    : recentRestaurantsQuery.isLoading;
+  const restaurantSuggestionsErrorMessage = shouldQueryRestaurantSearch
+    ? searchedRestaurantsQuery.isError
+      ? 'Could not load matching restaurants.'
+      : null
+    : recentRestaurantsQuery.isError
+      ? 'Could not load recent restaurants.'
+      : null;
 
   const filteredSessions = useMemo(() => {
     const sessions = sessionsQuery.data ?? [];
@@ -247,6 +284,18 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
             value={selectedRestaurant}
           />
 
+          {restaurantSuggestionsLoading ? (
+            <Text tone="secondary" variant="bodySm">
+              Loading restaurant suggestions...
+            </Text>
+          ) : null}
+
+          {restaurantSuggestionsErrorMessage ? (
+            <Text tone="danger" variant="bodySm">
+              {restaurantSuggestionsErrorMessage}
+            </Text>
+          ) : null}
+
           {filteredRestaurants.slice(0, 3).map((restaurant) => (
             <Button
               key={restaurant.id}
@@ -290,7 +339,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
         <PageErrorToast errorMessage={errorMessage} title="Session action failed" />
 
-        {sessionsQuery.isLoading || restaurantsQuery.isLoading ? (
+        {sessionsQuery.isLoading || (!shouldQueryRestaurantSearch && recentRestaurantsQuery.isLoading) ? (
           <>
             <Skeleton height={20} />
             <Skeleton height={20} />

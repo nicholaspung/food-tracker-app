@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/handlers"
 )
 
 func TestTastingSessionListRuleRequiresMembership(t *testing.T) {
@@ -130,4 +132,126 @@ func TestTastingSessionInviteListRuleRequiresLeader(t *testing.T) {
 		"",
 	)
 	requireListItemCount(t, strangerInvites.Code, strangerInvites.Body.Bytes(), 0)
+}
+
+func TestTastingSessionJoinConsumesInviteCodeOnce(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	leader, _ := createAuthUser(t, server.app, false, false)
+	firstJoiner, firstJoinerToken := createAuthUser(t, server.app, false, false)
+	_, secondJoinerToken := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Code Consumption Tasting",
+		"location":    "San Francisco, CA",
+		"cuisineType": "Japanese",
+		"user":        leader.Id,
+		"visibility":  "public",
+	})
+
+	session := createCollectionRecord(t, server.app, "tasting_sessions", map[string]any{
+		"name":       "Single Use Code",
+		"restaurant": restaurant.Id,
+		"leader":     leader.Id,
+		"status":     "adding_items",
+		"locked":     false,
+	})
+
+	invite := createCollectionRecord(t, server.app, "tasting_session_invites", map[string]any{
+		"session":    session.Id,
+		"code":       "TASTE1",
+		"created_by": leader.Id,
+		"expires_at": "2099-01-01 00:00:00.000Z",
+	})
+
+	firstJoinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		firstJoinerToken,
+		`{"code":"taste1"}`,
+	)
+	if firstJoinResponse.Code != http.StatusOK {
+		t.Fatalf("expected first join to succeed, got %d: %s", firstJoinResponse.Code, firstJoinResponse.Body.String())
+	}
+
+	secondJoinResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		secondJoinerToken,
+		`{"code":"TASTE1"}`,
+	)
+	if secondJoinResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected second join attempt to fail, got %d: %s", secondJoinResponse.Code, secondJoinResponse.Body.String())
+	}
+
+	participants, err := server.app.FindRecordsByFilter(
+		"tasting_session_participants",
+		"session = {:session}",
+		"",
+		0,
+		0,
+		map[string]any{"session": session.Id},
+	)
+	if err != nil {
+		t.Fatalf("failed to load tasting session participants: %v", err)
+	}
+	if len(participants) != 1 {
+		t.Fatalf("expected exactly 1 participant, got %d", len(participants))
+	}
+	if participants[0].GetString("user") != firstJoiner.Id {
+		t.Fatalf("expected invite to be consumed by first joiner, got %s", participants[0].GetString("user"))
+	}
+
+	inviteRecord, err := server.app.FindRecordById("tasting_session_invites", invite.Id)
+	if err != nil {
+		t.Fatalf("failed to reload tasting session invite: %v", err)
+	}
+	if inviteRecord.GetString("used_by") != firstJoiner.Id {
+		t.Fatalf("expected invite used_by to be %s, got %s", firstJoiner.Id, inviteRecord.GetString("used_by"))
+	}
+}
+
+func TestTastingSessionJoinRouteRateLimitBlocksBurstRequests(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterTastingSessionHandlers(se, app)
+	})
+
+	_, authToken := createAuthUser(t, server.app, false, false)
+
+	server.app.Settings().RateLimits.Enabled = true
+	server.app.Settings().RateLimits.Rules = []core.RateLimitRule{
+		{Label: "POST /api/tasting-sessions/join", Audience: "@auth", Duration: 60, MaxRequests: 2},
+	}
+
+	for i := 0; i < 2; i++ {
+		response := performJSONRequest(
+			t,
+			server.mux,
+			http.MethodPost,
+			"/api/tasting-sessions/join",
+			authToken,
+			`{"code":"BAD999"}`,
+		)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("expected initial join attempt %d to get 404, got %d: %s", i+1, response.Code, response.Body.String())
+		}
+	}
+
+	limitedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/tasting-sessions/join",
+		authToken,
+		`{"code":"BAD999"}`,
+	)
+	if limitedResponse.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after tasting session join burst, got %d: %s", limitedResponse.Code, limitedResponse.Body.String())
+	}
 }

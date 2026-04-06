@@ -1,9 +1,8 @@
-import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 
-import { listFriends } from '../../features';
+import { getFriendsCountSummary } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -111,16 +110,12 @@ export function BottomTabNavigation({
   onNavigate,
 }: BottomTabNavigationProps) {
   const theme = useTheme();
-  const { data: friends = [] } = useQuery({
-    queryKey: ['feature', 'friends'],
-    queryFn: listFriends,
+  const { data: friendsSummary } = useQuery({
+    queryKey: ['feature', 'friends', 'summary'],
+    queryFn: getFriendsCountSummary,
     refetchOnReconnect: 'always',
   });
-
-  const pendingInvitesCount = useMemo(
-    () => friends.filter((friend) => friend.status === 'pending_received').length,
-    [friends],
-  );
+  const pendingInvitesCount = friendsSummary?.requestsCount ?? 0;
 
   const styles = StyleSheet.create({
     container: {

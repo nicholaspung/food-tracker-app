@@ -573,7 +573,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
             iconColor={theme.colors.text.secondary}
             iconName="time-outline"
             key={friend.id}
-            meta={friend.email}
+            meta={`Sent ${formatDate(friend.createdAt)}`}
             name={friend.name}
             tone="muted"
             rightContent={

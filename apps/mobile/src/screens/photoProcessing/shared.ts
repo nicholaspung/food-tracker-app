@@ -1,0 +1,398 @@
+import * as ImagePicker from 'expo-image-picker';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { HomeFeedPhotoRecord } from '../../components/shared';
+import type {
+  QuickTrackRecord,
+  VisitRecord,
+  VisitPhotoUploadInput,
+} from '../../features';
+import type { PhotoPickerPermissionSource } from '../../hooks/usePhotoPickerPermissions';
+import {
+  formatDateToLocalDateString,
+  formatLocalDateLabel,
+  getTodayLocalDateString,
+} from '../../lib/dateFormatting';
+import type { RootStackParamList } from '../../navigation/RootNavigator';
+
+export type PhotoProcessingScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  'ProcessPhotos'
+>;
+export type ScanSource = PhotoPickerPermissionSource;
+export type MenuScanPhase = 'choose' | 'processing' | 'success' | 'error';
+export type ProcessType = 'restaurant' | 'quickTrack';
+export type GeneralPhotoStep = 'choice' | 'upload' | 'process' | 'review';
+
+export interface PhotoCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
+export interface DraftPhotoAsset {
+  id: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+  captureDate: Date | null;
+  captureCoordinates: PhotoCoordinates | null;
+}
+
+export interface RestaurantPhotoForm {
+  restaurantId: string;
+  restaurantName: string;
+  menuItemId: string;
+  menuItemName: string;
+  rating: number;
+  description: string;
+  notes: string;
+  date: string;
+}
+
+export interface CreatedMenuItemRecord {
+  id: string;
+  name: string;
+}
+
+export type MenuItemMode = 'existing' | 'create';
+
+const PROGRESS_FLOW_TAIL: { label: string }[] = [
+  { label: 'Upload' },
+  { label: 'Process' },
+  { label: 'Review' },
+];
+
+export const FREE_MONTHLY_PHOTO_LIMIT = 5;
+export const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
+export const FREE_SEARCH_WARNING_THRESHOLD = 2;
+export const RESTAURANT_SELECTION_PAGE_SIZE = 12;
+export const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
+
+const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
+
+const reviewEntryTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+export interface ReviewVisitCardData {
+  id: string;
+  visit: VisitRecord;
+  photosByFoodItem: Map<string, HomeFeedPhotoRecord[]>;
+  footerLabel: string;
+}
+
+export interface ReviewQuickTrackCardData {
+  id: string;
+  quickTrack: QuickTrackRecord;
+  photos: HomeFeedPhotoRecord[];
+  entryMeta: string;
+}
+
+export function buildScannedItemNames(seedLabel: string): string[] {
+  const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
+  const base = normalized || 'Scanned Item';
+  return [`${base} #1`, `${base} #2`, `${base} #3`];
+}
+
+function formatReviewEntryDateLabel(value: string, fallbackDate: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return formatLocalDateLabel(fallbackDate);
+  }
+
+  return reviewEntryDateFormatter.format(date);
+}
+
+function formatReviewEntryTimeLabel(value: string): string | undefined {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return reviewEntryTimeFormatter.format(date);
+}
+
+export function formatReviewEntryFooterLabel(
+  value: string,
+  fallbackDate: string,
+): string {
+  const dateLabel = formatReviewEntryDateLabel(value, fallbackDate);
+  const timeLabel = formatReviewEntryTimeLabel(value);
+
+  return timeLabel ? `${dateLabel} • ${timeLabel}` : dateLabel;
+}
+
+function parseCsvFirstColumn(line: string): string {
+  if (!line.trim()) {
+    return '';
+  }
+
+  let inQuotes = false;
+  let value = '';
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+
+    if (char === '"') {
+      const nextChar = line[index + 1];
+      if (inQuotes && nextChar === '"') {
+        value += '"';
+        index += 1;
+        continue;
+      }
+
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      break;
+    }
+
+    value += char;
+  }
+
+  return value.trim();
+}
+
+export function parseMenuItemNamesFromCsv(csvText: string): string[] {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const names: string[] = [];
+  const firstLineFirstColumn = parseCsvFirstColumn(lines[0]).toLowerCase();
+  const startIndex =
+    firstLineFirstColumn.includes('menu_item') ||
+    firstLineFirstColumn.includes('menu item')
+      ? 1
+      : 0;
+
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const name = parseCsvFirstColumn(lines[index]);
+    if (!name || names.includes(name)) {
+      continue;
+    }
+
+    names.push(name);
+  }
+
+  return names;
+}
+
+function parseExifRational(rawValue: unknown): number | null {
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    return rawValue;
+  }
+
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (trimmed.includes('/')) {
+      const [numeratorRaw, denominatorRaw] = trimmed.split('/');
+      const numerator = Number(numeratorRaw);
+      const denominator = Number(denominatorRaw);
+      if (
+        Number.isFinite(numerator) &&
+        Number.isFinite(denominator) &&
+        denominator !== 0
+      ) {
+        return numerator / denominator;
+      }
+    }
+
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (rawValue && typeof rawValue === 'object') {
+    const maybeFraction = rawValue as {
+      numerator?: unknown;
+      denominator?: unknown;
+    };
+    if (
+      typeof maybeFraction.numerator === 'number' &&
+      typeof maybeFraction.denominator === 'number'
+    ) {
+      if (
+        !Number.isFinite(maybeFraction.numerator) ||
+        !Number.isFinite(maybeFraction.denominator) ||
+        maybeFraction.denominator === 0
+      ) {
+        return null;
+      }
+
+      return maybeFraction.numerator / maybeFraction.denominator;
+    }
+  }
+
+  return null;
+}
+
+function parseExifCoordinate(rawValue: unknown): number | null {
+  const directValue = parseExifRational(rawValue);
+  if (directValue !== null) {
+    return directValue;
+  }
+
+  if (!Array.isArray(rawValue) || rawValue.length === 0) {
+    return null;
+  }
+
+  const degrees = parseExifRational(rawValue[0]);
+  if (degrees === null) {
+    return null;
+  }
+
+  const minutes = parseExifRational(rawValue[1]) ?? 0;
+  const seconds = parseExifRational(rawValue[2]) ?? 0;
+  const sign = degrees < 0 ? -1 : 1;
+  const absoluteDegrees = Math.abs(degrees) + minutes / 60 + seconds / 3600;
+  return sign * absoluteDegrees;
+}
+
+function applyCoordinateDirection(
+  coordinate: number,
+  rawDirection: unknown,
+): number {
+  if (typeof rawDirection !== 'string') {
+    return coordinate;
+  }
+
+  const direction = rawDirection.trim().toUpperCase();
+  if (direction === 'S' || direction === 'W') {
+    return -Math.abs(coordinate);
+  }
+
+  if (direction === 'N' || direction === 'E') {
+    return Math.abs(coordinate);
+  }
+
+  return coordinate;
+}
+
+export function extractCaptureCoordinates(
+  asset: ImagePicker.ImagePickerAsset,
+): PhotoCoordinates | null {
+  if (!asset.exif || typeof asset.exif !== 'object') {
+    return null;
+  }
+
+  const exif = asset.exif as Record<string, unknown>;
+  const latitudeRaw = parseExifCoordinate(
+    exif.GPSLatitude ?? exif.latitude ?? exif.Latitude,
+  );
+  const longitudeRaw = parseExifCoordinate(
+    exif.GPSLongitude ?? exif.longitude ?? exif.Longitude,
+  );
+
+  if (latitudeRaw === null || longitudeRaw === null) {
+    return null;
+  }
+
+  const latitude = applyCoordinateDirection(
+    latitudeRaw,
+    exif.GPSLatitudeRef ?? exif.LatitudeRef,
+  );
+  const longitude = applyCoordinateDirection(
+    longitudeRaw,
+    exif.GPSLongitudeRef ?? exif.LongitudeRef,
+  );
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+export function formatCoordinatesForDisplay(
+  coordinates: PhotoCoordinates,
+): string {
+  const latitudeDirection = coordinates.latitude >= 0 ? 'N' : 'S';
+  const longitudeDirection = coordinates.longitude >= 0 ? 'E' : 'W';
+  const latitude = Math.abs(coordinates.latitude).toFixed(4);
+  const longitude = Math.abs(coordinates.longitude).toFixed(4);
+  return `${latitude}${latitudeDirection}, ${longitude}${longitudeDirection}`;
+}
+
+export function normalizeSelectionLabel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export function buildDefaultRestaurantForm(
+  photo: DraftPhotoAsset,
+  previousForm: RestaurantPhotoForm | undefined,
+): RestaurantPhotoForm {
+  return {
+    restaurantId: previousForm?.restaurantId ?? '',
+    restaurantName: previousForm?.restaurantName ?? '',
+    menuItemId: '',
+    menuItemName: '',
+    rating: 3,
+    description: '',
+    notes: '',
+    date: photo.captureDate
+      ? formatDateToLocalDateString(photo.captureDate)
+      : getTodayLocalDateString(),
+  };
+}
+
+export function buildPhotoUploadInput(
+  asset: DraftPhotoAsset,
+): VisitPhotoUploadInput {
+  return {
+    uri: asset.uri,
+    name: asset.name,
+    mimeType: asset.mimeType,
+  };
+}
+
+export function resolveWizardStepIndex(step: GeneralPhotoStep): number {
+  if (step === 'choice') {
+    return 0;
+  }
+
+  if (step === 'upload') {
+    return 1;
+  }
+
+  if (step === 'process') {
+    return 2;
+  }
+
+  return 3;
+}
+
+export function resolveProgressSteps(
+  processType: ProcessType | null,
+): { label: string }[] {
+  const firstLabel =
+    processType === null
+      ? 'Choose Method'
+      : processType === 'restaurant'
+        ? 'Restaurant Visit'
+        : 'Quick Track';
+
+  return [{ label: firstLabel }, ...PROGRESS_FLOW_TAIL];
+}

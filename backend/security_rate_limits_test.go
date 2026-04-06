@@ -20,6 +20,7 @@ func TestConfigureSecurityRateLimitRulesAddsExpectedRules(t *testing.T) {
 		findRestaurantRouteLabel: authAudience,
 		parseMenuRouteLabel:      authAudience,
 		placesRoutesPrefixLabel:  authAudience,
+		tastingSessionJoinLabel:  authAudience,
 	}
 
 	for label, audience := range expected {

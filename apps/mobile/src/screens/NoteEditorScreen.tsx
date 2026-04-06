@@ -11,7 +11,7 @@ import {
   buildPocketBaseFileUrl,
   createNote,
   getNoteById,
-  listCollectionRecords,
+  listNotePhotosForNote,
   updateNote,
   type NotePhotoUploadInput,
 } from '../features';
@@ -27,12 +27,6 @@ import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
 type NoteEditorScreenProps = NativeStackScreenProps<RootStackParamList, 'NoteEditor'>;
-
-interface NotePhotoRecord {
-  id: string;
-  note: string;
-  photo: string;
-}
 
 interface DraftNotePhoto {
   id: string;
@@ -72,11 +66,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
   const notePhotosQuery = useQuery({
     queryKey: ['feature', 'notePhotos', noteId],
-    queryFn: async () =>
-      listCollectionRecords<NotePhotoRecord>('note_photos', {
-        filter: noteId ? `note = "${noteId}"` : undefined,
-        sort: 'created',
-      }),
+    queryFn: () => listNotePhotosForNote(noteId ?? ''),
     enabled: Boolean(noteId),
   });
 

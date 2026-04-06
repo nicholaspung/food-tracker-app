@@ -40,45 +40,49 @@ export function withVisitRestaurantDistance(
   restaurants: RestaurantRecord[],
   referenceCoords: VisitRestaurantReferenceCoords | null,
 ): VisitRestaurantWithDistance[] {
-  return restaurants
-    .map((restaurant) => {
-      if (
-        !referenceCoords ||
-        typeof restaurant.latitude !== 'number' ||
-        typeof restaurant.longitude !== 'number'
-      ) {
-        return { restaurant, distance: null };
-      }
+  const restaurantsWithDistance = restaurants.map((restaurant) => {
+    if (
+      !referenceCoords ||
+      typeof restaurant.latitude !== 'number' ||
+      typeof restaurant.longitude !== 'number'
+    ) {
+      return { restaurant, distance: null };
+    }
 
-      return {
-        restaurant,
-        distance: calculateDistance(
-          referenceCoords.lat,
-          referenceCoords.lng,
-          restaurant.latitude,
-          restaurant.longitude,
-        ),
-      };
-    })
-    .sort((left, right) => {
-      if (left.distance === null && right.distance === null) {
-        return left.restaurant.name.localeCompare(right.restaurant.name);
-      }
+    return {
+      restaurant,
+      distance: calculateDistance(
+        referenceCoords.lat,
+        referenceCoords.lng,
+        restaurant.latitude,
+        restaurant.longitude,
+      ),
+    };
+  });
 
-      if (left.distance === null) {
-        return 1;
-      }
+  if (!referenceCoords) {
+    return restaurantsWithDistance;
+  }
 
-      if (right.distance === null) {
-        return -1;
-      }
+  return restaurantsWithDistance.sort((left, right) => {
+    if (left.distance === null && right.distance === null) {
+      return left.restaurant.name.localeCompare(right.restaurant.name);
+    }
 
-      if (left.distance === right.distance) {
-        return left.restaurant.name.localeCompare(right.restaurant.name);
-      }
+    if (left.distance === null) {
+      return 1;
+    }
 
-      return left.distance - right.distance;
-    });
+    if (right.distance === null) {
+      return -1;
+    }
+
+    if (left.distance === right.distance) {
+      return left.restaurant.name.localeCompare(right.restaurant.name);
+    }
+
+    return left.distance - right.distance;
+  });
 }
 
 export function prioritizeSelectedVisitRestaurant(

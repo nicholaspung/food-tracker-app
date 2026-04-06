@@ -171,6 +171,50 @@ func TestUsersViewRuleAllowsAdminsAndFriendsButNotStrangers(t *testing.T) {
 	}
 }
 
+func TestUsersViewRuleRejectsPendingAndBlockedRelationships(t *testing.T) {
+	server := newPreparedServer(t, func(_ *core.ServeEvent, _ core.App) {})
+
+	owner, _ := createAuthUser(t, server.app, false, false)
+	pendingUser, pendingToken := createAuthUser(t, server.app, false, false)
+	blockedUser, blockedToken := createAuthUser(t, server.app, false, false)
+
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   owner.Id,
+		"friend": pendingUser.Id,
+		"status": "pending",
+	})
+
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   blockedUser.Id,
+		"friend": owner.Id,
+		"status": "blocked",
+	})
+
+	pendingResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/users/records/"+owner.Id,
+		pendingToken,
+		"",
+	)
+	if pendingResponse.Code == http.StatusOK {
+		t.Fatalf("expected pending friendship to be denied, got 200: %s", pendingResponse.Body.String())
+	}
+
+	blockedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/collections/users/records/"+owner.Id,
+		blockedToken,
+		"",
+	)
+	if blockedResponse.Code == http.StatusOK {
+		t.Fatalf("expected blocked relationship to be denied, got 200: %s", blockedResponse.Body.String())
+	}
+}
+
 func TestInviteLookupRouteRateLimitBlocksBurstRequests(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterInviteCodeHandlers(se, app)

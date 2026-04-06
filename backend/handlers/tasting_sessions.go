@@ -2,14 +2,29 @@ package handlers
 
 import (
 	"crypto/rand"
+	"database/sql"
+	"errors"
 	"fmt"
-	"log"
 	"math/big"
+	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
+
+const tastingInviteCodeLength = 6
+
+var (
+	errTastingInviteUnavailable = errors.New("tasting invite code is invalid or already used")
+	errTastingInviteExpired     = errors.New("tasting invite code has expired")
+)
+
+type tastingInviteReservation struct {
+	RecordID  string
+	SessionID string
+}
 
 // RegisterTastingSessionHandlers registers all tasting session related endpoints
 func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
@@ -28,92 +43,88 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError("invalid request body", err)
 		}
 
-		if data.Code == "" {
-			return apis.NewBadRequestError("code is required", nil)
-		}
-
-		// Find the invite code
-		invite, err := app.FindFirstRecordByFilter(
-			"tasting_session_invites",
-			"code = {:code} && used_by = ''",
-			map[string]any{"code": data.Code},
-		)
-
-		if err != nil || invite == nil {
-			return apis.NewNotFoundError("invalid or already used invite code", nil)
-		}
-
-		// Check if expired
-		expiresAt := invite.GetDateTime("expires_at")
-		if !expiresAt.IsZero() && expiresAt.Time().Before(time.Now()) {
-			return apis.NewBadRequestError("invite code has expired", nil)
-		}
-
-		// Get the session
-		sessionId := invite.GetString("session")
-		session, err := app.FindRecordById("tasting_sessions", sessionId)
+		normalizedCode, err := normalizeTastingInviteCode(data.Code)
 		if err != nil {
-			return apis.NewNotFoundError("session not found", nil)
+			return apis.NewBadRequestError(err.Error(), nil)
 		}
+		data.Code = normalizedCode
 
-		// Check if session is locked
-		if session.GetBool("locked") {
-			return apis.NewBadRequestError("session is locked, no new participants allowed", nil)
-		}
+		var responsePayload map[string]any
+		err = app.RunInTransaction(func(txApp core.App) error {
+			reservation, err := reserveTastingSessionInvite(txApp, data.Code, authRecord.Id, time.Now().UTC())
+			if err != nil {
+				switch {
+				case errors.Is(err, errTastingInviteUnavailable):
+					return apis.NewNotFoundError("invalid or already used invite code", nil)
+				case errors.Is(err, errTastingInviteExpired):
+					return apis.NewBadRequestError("invite code has expired", nil)
+				default:
+					return apis.NewApiError(500, "failed to validate invite code", err)
+				}
+			}
 
-		// Check if session is still in adding_items phase
-		if session.GetString("status") != "adding_items" {
-			return apis.NewBadRequestError("session is no longer accepting new participants", nil)
-		}
+			session, err := txApp.FindRecordById("tasting_sessions", reservation.SessionID)
+			if err != nil {
+				return apis.NewNotFoundError("session not found", nil)
+			}
 
-		// Check if user is already a participant
-		existing, _ := app.FindFirstRecordByFilter(
-			"tasting_session_participants",
-			"session = {:session} && user = {:user}",
-			map[string]any{"session": sessionId, "user": authRecord.Id},
-		)
+			if session.GetBool("locked") {
+				return apis.NewBadRequestError("session is locked, no new participants allowed", nil)
+			}
 
-		if existing != nil {
-			return apis.NewBadRequestError("you are already a participant in this session", nil)
-		}
+			if session.GetString("status") != "adding_items" {
+				return apis.NewBadRequestError("session is no longer accepting new participants", nil)
+			}
 
-		// Create participant record
-		participantsCollection, err := app.FindCollectionByNameOrId("tasting_session_participants")
-		if err != nil {
-			return apis.NewApiError(500, "internal error", err)
-		}
+			existing, err := txApp.FindFirstRecordByFilter(
+				"tasting_session_participants",
+				"session = {:session} && user = {:user}",
+				map[string]any{"session": reservation.SessionID, "user": authRecord.Id},
+			)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return apis.NewApiError(500, "failed to verify existing session membership", err)
+			}
+			if existing != nil {
+				return apis.NewBadRequestError("you are already a participant in this session", nil)
+			}
 
-		participant := core.NewRecord(participantsCollection)
-		participant.Set("session", sessionId)
-		participant.Set("user", authRecord.Id)
+			participantsCollection, err := txApp.FindCollectionByNameOrId("tasting_session_participants")
+			if err != nil {
+				return apis.NewApiError(500, "internal error", err)
+			}
 
-		if err := app.Save(participant); err != nil {
-			return apis.NewApiError(500, "failed to join session", err)
-		}
+			participant := core.NewRecord(participantsCollection)
+			participant.Set("session", reservation.SessionID)
+			participant.Set("user", authRecord.Id)
 
-		// Mark invite as used
-		invite.Set("used_by", authRecord.Id)
-		if err := app.Save(invite); err != nil {
-			log.Printf("Warning: Failed to mark invite as used: %v", err)
-		}
+			if err := txApp.Save(participant); err != nil {
+				return apis.NewApiError(500, "failed to join session", err)
+			}
 
-		// Return session details
-		restaurant, _ := app.FindRecordById("restaurants", session.GetString("restaurant"))
-		restaurantName := ""
-		if restaurant != nil {
-			restaurantName = restaurant.GetString("name")
-		}
+			restaurant, _ := txApp.FindRecordById("restaurants", session.GetString("restaurant"))
+			restaurantName := ""
+			if restaurant != nil {
+				restaurantName = restaurant.GetString("name")
+			}
 
-		return e.JSON(200, map[string]any{
-			"success":   true,
-			"sessionId": sessionId,
-			"session": map[string]any{
-				"id":             session.Id,
-				"name":           session.GetString("name"),
-				"status":         session.GetString("status"),
-				"restaurantName": restaurantName,
-			},
+			responsePayload = map[string]any{
+				"success":   true,
+				"sessionId": reservation.SessionID,
+				"session": map[string]any{
+					"id":             session.Id,
+					"name":           session.GetString("name"),
+					"status":         session.GetString("status"),
+					"restaurantName": restaurantName,
+				},
+			}
+
+			return nil
 		})
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
 	}).Bind(apis.RequireAuth())
 
 	// POST /api/tasting-sessions/generate-code - Generate a new invite code for a session
@@ -177,7 +188,7 @@ func RegisterTastingSessionHandlers(se *core.ServeEvent, app core.App) {
 // generateTastingCode creates a random 6-character alphanumeric uppercase code
 func generateTastingCode() (string, error) {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	code := make([]byte, 6)
+	code := make([]byte, tastingInviteCodeLength)
 	for i := range code {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		if err != nil {
@@ -186,4 +197,71 @@ func generateTastingCode() (string, error) {
 		code[i] = charset[n.Int64()]
 	}
 	return string(code), nil
+}
+
+func normalizeTastingInviteCode(raw string) (string, error) {
+	code := strings.ToUpper(strings.TrimSpace(raw))
+	if code == "" {
+		return "", errors.New("code is required")
+	}
+	if len(code) != tastingInviteCodeLength {
+		return "", errors.New("invite code is invalid")
+	}
+
+	for _, char := range code {
+		if (char < 'A' || char > 'Z') && (char < '0' || char > '9') {
+			return "", errors.New("invite code is invalid")
+		}
+	}
+
+	return code, nil
+}
+
+func reserveTastingSessionInvite(app core.App, code string, userID string, now time.Time) (*tastingInviteReservation, error) {
+	invite, err := app.FindFirstRecordByFilter(
+		"tasting_session_invites",
+		"code = {:code}",
+		map[string]any{"code": code},
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errTastingInviteUnavailable
+		}
+		return nil, err
+	}
+	if invite == nil {
+		return nil, errTastingInviteUnavailable
+	}
+
+	expiresAt := invite.GetDateTime("expires_at")
+	if !expiresAt.IsZero() && expiresAt.Time().Before(now) {
+		return nil, errTastingInviteExpired
+	}
+
+	result, err := app.DB().NewQuery(`
+		UPDATE tasting_session_invites
+		SET used_by = {:usedBy}
+		WHERE id = {:id} AND (used_by = '' OR used_by IS NULL)
+	`).
+		Bind(dbx.Params{
+			"id":     invite.Id,
+			"usedBy": strings.TrimSpace(userID),
+		}).
+		Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to reserve tasting invite code: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("failed to confirm tasting invite reservation: %w", err)
+	}
+	if rowsAffected == 0 {
+		return nil, errTastingInviteUnavailable
+	}
+
+	return &tastingInviteReservation{
+		RecordID:  invite.Id,
+		SessionID: invite.GetString("session"),
+	}, nil
 }

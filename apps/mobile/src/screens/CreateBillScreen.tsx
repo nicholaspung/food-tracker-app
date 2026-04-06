@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ConfirmDestructiveModal,
   FeatureFormScreenScaffold,
@@ -18,7 +18,8 @@ import {
   createBill,
   createEntityId,
   getBillById,
-  listFriends,
+  listFriendsByUserIds,
+  listFriendsPage,
   updateBill,
   type BillItemRecord,
   type BillItemSplitConfig,
@@ -38,7 +39,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useTheme } from '../theme';
-import { Card, Input, Text } from '../ui';
+import { Button, Card, Input, Text } from '../ui';
 
 type CreateBillScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBill'>;
 type CreateBillSplitMode = 'equal' | 'custom' | 'manual';
@@ -99,6 +100,16 @@ function normalizeFriendName(friend: FriendRecord): string {
   }
 
   return 'Friend';
+}
+
+function mergeFriendCollections(...collections: readonly FriendRecord[][]): FriendRecord[] {
+  const friendsById = new Map<string, FriendRecord>();
+  collections.forEach((collection) => {
+    collection.forEach((friend) => {
+      friendsById.set(friend.id, friend);
+    });
+  });
+  return Array.from(friendsById.values());
 }
 
 function normalizeNameKey(value: string): string {
@@ -314,10 +325,21 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<DraftBillItem | null>(null);
+  const [cachedFriendRecordsById, setCachedFriendRecordsById] = useState<Record<string, FriendRecord>>({});
+  const normalizedFriendSearchQuery = friendSearchQuery.trim();
 
-  const friendsQuery = useQuery({
-    queryKey: ['feature', 'friends'],
-    queryFn: listFriends,
+  const friendsQuery = useInfiniteQuery({
+    queryKey: ['feature', 'friends', 'paginated', 'friends', 'bill-picker', normalizedFriendSearchQuery],
+    queryFn: ({ pageParam }) =>
+      listFriendsPage({
+        section: 'friends',
+        page: pageParam,
+        pageSize: 20,
+        search: normalizedFriendSearchQuery || undefined,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
+    refetchOnReconnect: 'always',
   });
 
   const billQuery = useQuery({
@@ -326,32 +348,53 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     enabled: isEditMode,
   });
 
-  const acceptedFriends = useMemo(
-    () => (friendsQuery.data ?? []).filter((friend) => friend.status === 'friend'),
+  const billParticipantUserIds = useMemo(() => {
+    const userIds = new Set<string>();
+    (billQuery.data?.participants ?? []).forEach((participant) => {
+      const participantUserId = participant.userId?.trim();
+      if (!participantUserId || participantUserId === user?.id) {
+        return;
+      }
+      userIds.add(participantUserId);
+    });
+    return Array.from(userIds).sort();
+  }, [billQuery.data?.participants, user?.id]);
+  const billParticipantFriendsQuery = useQuery({
+    queryKey: ['feature', 'friends', 'selected', 'bill', billParticipantUserIds],
+    queryFn: () => listFriendsByUserIds(billParticipantUserIds),
+    enabled: isEditMode && billParticipantUserIds.length > 0,
+    refetchOnReconnect: 'always',
+  });
+  const selectableFriends = useMemo(
+    () => friendsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [friendsQuery.data],
+  );
+  const billParticipantFriends = useMemo(
+    () => billParticipantFriendsQuery.data ?? [],
+    [billParticipantFriendsQuery.data],
+  );
+  const acceptedFriends = useMemo(
+    () => mergeFriendCollections(Object.values(cachedFriendRecordsById), billParticipantFriends, selectableFriends),
+    [billParticipantFriends, cachedFriendRecordsById, selectableFriends],
+  );
+  const acceptedFriendRecordById = useMemo(
+    () => new Map(acceptedFriends.map((friend) => [friend.id, friend])),
+    [acceptedFriends],
   );
   const billNumericInputProps = {
     showInlineKeyboardDismissButton: false,
     useDefaultReturnKeyType: false,
   } as const;
-  const shouldShowFriendSearch = acceptedFriends.length > 5;
+  const totalAcceptedFriends = friendsQuery.data?.pages[0]?.totalItems ?? 0;
+  const shouldShowFriendSearch = normalizedFriendSearchQuery.length > 0 || totalAcceptedFriends > 5;
   const isEqualSplitMode = splitMode === 'equal';
   const isCustomSplitMode = splitMode === 'custom';
   const isManualSplitMode = splitMode === 'manual';
   const extrasSplitMode: 'equal' | 'proportional' = isCustomSplitMode ? 'proportional' : 'equal';
-
-  const visibleFriends = useMemo(() => {
-    const normalizedQuery = friendSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return acceptedFriends;
-    }
-
-    return acceptedFriends.filter((friend) => {
-      const friendName = normalizeFriendName(friend).toLowerCase();
-      const friendEmail = friend.email.toLowerCase();
-      return friendName.includes(normalizedQuery) || friendEmail.includes(normalizedQuery);
-    });
-  }, [acceptedFriends, friendSearchQuery]);
+  const visibleFriends = selectableFriends;
+  const hasBlockingFriendsError =
+    friendsQuery.isError && (!friendsQuery.data || friendsQuery.data.pages.length === 0);
+  const hasFriendsRefreshError = !hasBlockingFriendsError && friendsQuery.isError;
 
   const currentUserName = sanitizeParticipantName(user?.name?.trim() || user?.email?.split('@')[0] || 'You', 'You');
   const currentUserDraftId = user?.id ? `user:${user.id}` : 'user:self';
@@ -367,7 +410,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     ];
 
     selectedFriendIds.forEach((friendId) => {
-      const friend = acceptedFriends.find((candidate) => candidate.id === friendId);
+      const friend = acceptedFriendRecordById.get(friendId);
       if (!friend) {
         return;
       }
@@ -385,7 +428,36 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     });
 
     return mappedParticipants;
-  }, [acceptedFriends, currentUserDraftId, currentUserName, selectedFriendIds, user?.id]);
+  }, [acceptedFriendRecordById, currentUserDraftId, currentUserName, selectedFriendIds, user?.id]);
+
+  useEffect(() => {
+    setCachedFriendRecordsById((currentRecords) => {
+      const nextFriends = mergeFriendCollections(billParticipantFriends, selectableFriends);
+      if (nextFriends.length === 0) {
+        return currentRecords;
+      }
+
+      const nextRecords = { ...currentRecords };
+      let didChange = false;
+      nextFriends.forEach((friend) => {
+        const existingFriend = currentRecords[friend.id];
+        if (
+          existingFriend?.userId === friend.userId &&
+          existingFriend?.name === friend.name &&
+          existingFriend?.email === friend.email &&
+          existingFriend?.status === friend.status &&
+          existingFriend?.createdAt === friend.createdAt
+        ) {
+          return;
+        }
+
+        nextRecords[friend.id] = friend;
+        didChange = true;
+      });
+
+      return didChange ? nextRecords : currentRecords;
+    });
+  }, [billParticipantFriends, selectableFriends]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -421,7 +493,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       return;
     }
 
-    if (friendsQuery.isLoading || billQuery.isLoading) {
+    if (friendsQuery.isLoading || billParticipantFriendsQuery.isLoading || billQuery.isLoading) {
       return;
     }
 
@@ -635,6 +707,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     acceptedFriends,
     billQuery.data,
     billQuery.isLoading,
+    billParticipantFriendsQuery.isLoading,
     currentUserDraftId,
     friendsQuery.isLoading,
     isEditHydrated,
@@ -1268,6 +1341,9 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     friendSearchInput: {
       marginTop: theme.spacing.xs,
     },
+    loadMoreButton: {
+      marginTop: theme.spacing.xs,
+    },
     subsectionWrap: {
       gap: theme.spacing.xs,
     },
@@ -1404,15 +1480,33 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     });
   };
 
-  const toggleFriend = (friendId: string) => {
+  const toggleFriend = (friend: FriendRecord) => {
+    setCachedFriendRecordsById((currentRecords) => {
+      const existingFriend = currentRecords[friend.id];
+      if (
+        existingFriend?.userId === friend.userId &&
+        existingFriend?.name === friend.name &&
+        existingFriend?.email === friend.email &&
+        existingFriend?.status === friend.status &&
+        existingFriend?.createdAt === friend.createdAt
+      ) {
+        return currentRecords;
+      }
+
+      return {
+        ...currentRecords,
+        [friend.id]: friend,
+      };
+    });
+
     setSelectedFriendIds((currentIds) => {
-      const wasSelected = currentIds.includes(friendId);
+      const wasSelected = currentIds.includes(friend.id);
       const nextIds = wasSelected
-        ? currentIds.filter((currentId) => currentId !== friendId)
-        : [...currentIds, friendId];
+        ? currentIds.filter((currentId) => currentId !== friend.id)
+        : [...currentIds, friend.id];
       trackObservabilityEvent('CREATE_BILL_FRIEND_TOGGLED', {
         source: 'CreateBillScreen',
-        friendId,
+        friendId: friend.id,
         selected: !wasSelected,
         selectedFriendCount: nextIds.length,
       });
@@ -2246,17 +2340,33 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           </View>
         ) : null}
 
-        {!friendsQuery.isLoading && acceptedFriends.length === 0 ? (
+        {!friendsQuery.isLoading && hasBlockingFriendsError ? (
+          <>
+            <Text style={styles.sectionHint} variant="bodySmCompact">
+              Could not load your friend list right now.
+            </Text>
+            <Button
+              label="Retry"
+              onPress={() => {
+                void friendsQuery.refetch();
+              }}
+              style={styles.loadMoreButton}
+              variant="secondary"
+            />
+          </>
+        ) : null}
+
+        {!friendsQuery.isLoading && !hasBlockingFriendsError && normalizedFriendSearchQuery.length === 0 && totalAcceptedFriends === 0 ? (
           <Text style={styles.sectionHint} variant="bodySmCompact">
             No friends available. Add friends first to split a bill.
           </Text>
         ) : null}
 
-        {!friendsQuery.isLoading && acceptedFriends.length > 0 && visibleFriends.length === 0 ? (
+        {!friendsQuery.isLoading && !hasBlockingFriendsError && normalizedFriendSearchQuery.length > 0 && visibleFriends.length === 0 ? (
           <Text style={styles.sectionHint} variant="bodySmCompact">No friends match your search.</Text>
         ) : null}
 
-        {!friendsQuery.isLoading && visibleFriends.length > 0 ? (
+        {!friendsQuery.isLoading && !hasBlockingFriendsError && visibleFriends.length > 0 ? (
           <OptionList>
             {visibleFriends.map((friend, index) => {
               const isSelected = selectedFriendIds.includes(friend.id);
@@ -2274,7 +2384,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
                     />
                   )}
                   onPress={() => {
-                    toggleFriend(friend.id);
+                    toggleFriend(friend);
                   }}
                   style={isSelected ? styles.friendRowSelected : undefined}
                   subtitle={friendSubtitle}
@@ -2283,6 +2393,18 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
               );
             })}
           </OptionList>
+        ) : null}
+
+        {!friendsQuery.isLoading && !hasBlockingFriendsError && visibleFriends.length > 0 && friendsQuery.hasNextPage ? (
+          <Button
+            label={friendsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more friends'}
+            loading={friendsQuery.isFetchingNextPage}
+            onPress={() => {
+              void friendsQuery.fetchNextPage();
+            }}
+            style={styles.loadMoreButton}
+            variant="secondary"
+          />
         ) : null}
 
         <Text style={styles.selectedFriendsSummary} variant="bodySmCompact">
@@ -2898,6 +3020,20 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </View>
       </Card>
 
+      <PageErrorToast
+        actionLabel="Retry"
+        errorMessage={
+          hasBlockingFriendsError
+            ? 'Could not load your friend list.'
+            : hasFriendsRefreshError
+              ? 'Could not refresh your friend list.'
+              : null
+        }
+        onAction={() => {
+          void friendsQuery.refetch();
+        }}
+        title={hasBlockingFriendsError ? 'Friends unavailable' : 'Friend list may be stale'}
+      />
       <PageErrorToast errorMessage={errorMessage} title={errorToastTitle} />
       <ConfirmDestructiveModal
         cancelLabel="Keep Item"

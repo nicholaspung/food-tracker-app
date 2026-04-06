@@ -11,6 +11,7 @@ const (
 	findRestaurantRouteLabel = "POST /api/find-restaurant-name"
 	parseMenuRouteLabel      = "POST /api/parse-menu"
 	placesRoutesPrefixLabel  = "POST /api/places/"
+	tastingSessionJoinLabel  = "POST /api/tasting-sessions/join"
 	guestAudience            = core.RateLimitRuleAudienceGuest
 	authAudience             = core.RateLimitRuleAudienceAuth
 )
@@ -28,6 +29,7 @@ func configureSecurityRateLimitRules(app core.App) {
 		{Label: findRestaurantRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},
 		{Label: parseMenuRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},
 		{Label: placesRoutesPrefixLabel, Audience: authAudience, Duration: 60, MaxRequests: 30},
+		{Label: tastingSessionJoinLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 12},
 	}
 
 	for _, rule := range requiredRules {

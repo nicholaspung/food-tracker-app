@@ -10,6 +10,27 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.25',
+    date: '2026-04-05',
+    title: 'Menu Scanning, Smarter Restaurant Search & Friends Improvements',
+    summary:
+      'You can now scan a menu photo to quickly populate menu items for a restaurant. Restaurant search in Visit creation, Tasting Sessions, and Photo Processing is faster and more accurate — showing your recent spots by default and querying the server only when needed. Bills now support paginated friend search, and friend visibility is tightened so only accepted connections can see your profile.',
+    features: [
+      'Menu Scan: a new dedicated screen lets you photograph or upload a menu image to automatically extract and save menu items for a restaurant.',
+    ],
+    improvements: [
+      'Restaurant search in the Visit, Photo Processing, and Tasting Sessions screens now shows your most recently visited restaurants by default, and only calls the server when you type two or more characters — making suggestions appear faster.',
+      'Friend picker in the bill-splitting screen now supports paginated search, so you can find friends in large lists without scrolling through everyone.',
+      'Joining a tasting session via invite code is now handled inside a database transaction, preventing rare race conditions where two people claim the same code at the same time.',
+      'Tasting session join now normalises the invite code you type (trimming spaces, fixing case) so minor typos no longer block you from joining.',
+      'Your profile is now only visible to friends whose request you have accepted — pending or blocked connections can no longer look up your account.',
+    ],
+    fixes: [
+      'Fixed restaurant visit-count stats in the Visit creation screen — they now load from a dedicated summary endpoint instead of re-processing all visits on the client.',
+      'Fixed a potential duplicate entry when merging restaurant search results across multiple data sources.',
+    ],
+  },
+  {
     version: '1.0.24',
     date: '2026-04-04',
     title: 'Visual Polish & Typography Consistency',

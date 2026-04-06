@@ -36,17 +36,19 @@ import {
   createVisit,
   formatLimitExceededMessage,
   getAuthenticatedUserIdOrNull,
+  getRestaurantVisitStatsSummary,
   getVisitById,
+  hasPendingMenuReviewRequest,
   linkVisitToListBookmark,
-  listCollectionRecords,
-  listRestaurants,
-  listVisits,
+  listMenuItemsForRestaurant,
+  listRecentRestaurants,
   parseLimitExceededError,
   resolveDefaultVisitVisibilityFromAuth,
+  searchRestaurantsPage,
   updateVisit,
+  type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
-  type VisitRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -54,7 +56,6 @@ import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapt
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   geocodeLocation,
-  mergeRestaurantSearchResults,
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
@@ -107,83 +108,13 @@ interface DraftVisitItemPhoto {
   mimeType: string;
 }
 
-interface FriendshipRecord {
-  id: string;
-  user: string;
-  friend: string;
-  status: "pending" | "accepted" | "blocked";
-}
-
 interface RestaurantStats {
   userVisitCount: number;
   friendCount: number;
 }
 
-interface MenuItemRecord {
-  id: string;
-  restaurant: string;
-  name: string;
-  description?: string;
-  createdBy?: string;
-  visibility?: "private" | "friends" | "public";
-  isFromOCR?: boolean;
-  created: string;
-  updated: string;
-}
-
-interface MenuReviewRequestRecord {
-  id: string;
-  restaurant: string;
-  status: "pending" | "reviewed" | "dismissed";
-}
-
 function resolveDefaultVisitVisibility(): VisitVisibility {
   return resolveDefaultVisitVisibilityFromAuth();
-}
-
-function buildRestaurantStatsMap(
-  visits: VisitRecord[],
-  currentUserId: string,
-  friendIds: Set<string>,
-  restaurantIdByName: Map<string, string>,
-): Map<string, RestaurantStats> {
-  const stats = new Map<
-    string,
-    { userVisitCount: number; friendUserIds: Set<string> }
-  >();
-
-  for (const visit of visits) {
-    const restaurantId =
-      visit.restaurantId ??
-      (visit.restaurantName?.trim()
-        ? restaurantIdByName.get(visit.restaurantName.trim().toLowerCase())
-        : undefined);
-
-    if (!restaurantId) {
-      continue;
-    }
-
-    const current = stats.get(restaurantId) ?? {
-      userVisitCount: 0,
-      friendUserIds: new Set<string>(),
-    };
-    if (visit.userId === currentUserId) {
-      current.userVisitCount += 1;
-    } else if (visit.userId && friendIds.has(visit.userId)) {
-      current.friendUserIds.add(visit.userId);
-    }
-    stats.set(restaurantId, current);
-  }
-
-  const resolved = new Map<string, RestaurantStats>();
-  for (const [restaurantId, value] of stats.entries()) {
-    resolved.set(restaurantId, {
-      userVisitCount: value.userVisitCount,
-      friendCount: value.friendUserIds.size,
-    });
-  }
-
-  return resolved;
 }
 
 function normalizeSelectionLabel(value: string): string {
@@ -207,6 +138,8 @@ const WIZARD_STEPS = [
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
+const RESTAURANT_SELECTION_PAGE_SIZE = 12;
+const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
 
 export function CreateVisitScreen({
   navigation,
@@ -236,31 +169,6 @@ export function CreateVisitScreen({
     : null;
   const editVisitId = route.params?.editVisitId;
   const isEditMode = Boolean(editVisitId);
-
-  const restaurantsQuery = useQuery({
-    queryKey: ["feature", "restaurants"],
-    queryFn: listRestaurants,
-  });
-  const friendshipsQuery = useQuery({
-    queryKey: [
-      "feature",
-      "friendships",
-      "accepted",
-      getAuthenticatedUserIdOrNull() ?? "",
-    ],
-    queryFn: async () => {
-      const currentUserId = getAuthenticatedUserIdOrNull();
-      if (!currentUserId) {
-        return [] as FriendshipRecord[];
-      }
-
-      return listCollectionRecords<FriendshipRecord>("friendships", {
-        filter: `(user = "${currentUserId}" || friend = "${currentUserId}") && status = "accepted"`,
-        fields: "id,user,friend,status",
-      });
-    },
-    enabled: Boolean(getAuthenticatedUserIdOrNull()),
-  });
 
   const [step, setStep] = useState<VisitWizardStep>(0);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
@@ -301,6 +209,31 @@ export function CreateVisitScreen({
   const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
     null,
   );
+  const trimmedRestaurantSearchQuery = restaurantSearchQuery.trim();
+  const shouldQuerySavedRestaurantsBySearch =
+    trimmedRestaurantSearchQuery.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH;
+  const recentRestaurantsQuery = useQuery({
+    queryKey: ["feature", "restaurants", "recent", RESTAURANT_SELECTION_PAGE_SIZE],
+    queryFn: () => listRecentRestaurants({ limit: RESTAURANT_SELECTION_PAGE_SIZE }),
+    enabled: step === 0 && !shouldQuerySavedRestaurantsBySearch,
+  });
+  const searchedRestaurantsQuery = useQuery({
+    queryKey: [
+      "feature",
+      "restaurants",
+      "search",
+      trimmedRestaurantSearchQuery,
+      1,
+      RESTAURANT_SELECTION_PAGE_SIZE,
+    ],
+    queryFn: async () =>
+      searchRestaurantsPage({
+        search: trimmedRestaurantSearchQuery,
+        page: 1,
+        pageSize: RESTAURANT_SELECTION_PAGE_SIZE,
+      }),
+    enabled: step === 0 && shouldQuerySavedRestaurantsBySearch,
+  });
   const {
     captureLocation,
     isCapturing: isGettingLocation,
@@ -327,39 +260,53 @@ export function CreateVisitScreen({
       "Photo library permission is required to upload an image.",
   });
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
-  const friendIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const friendship of friendshipsQuery.data ?? []) {
-      const otherId =
-        friendship.user === currentUserId ? friendship.friend : friendship.user;
-      if (otherId) {
-        ids.add(otherId);
-      }
+  const savedRestaurantRecords = useMemo(() => {
+    if (shouldQuerySavedRestaurantsBySearch) {
+      return searchedRestaurantsQuery.data?.items ?? [];
     }
-    return ids;
-  }, [currentUserId, friendshipsQuery.data]);
-  const restaurantIdByName = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const restaurant of restaurantsQuery.data ?? []) {
-      const normalizedName = restaurant.name.trim().toLowerCase();
-      if (!normalizedName || map.has(normalizedName)) {
-        continue;
-      }
-      map.set(normalizedName, restaurant.id);
+
+    const recentRestaurants = recentRestaurantsQuery.data ?? [];
+    if (!trimmedRestaurantSearchQuery) {
+      return recentRestaurants;
     }
-    return map;
-  }, [restaurantsQuery.data]);
-  const restaurantStatsQuery = useQuery({
-    queryKey: ["feature", "visits"],
-    queryFn: listVisits,
-    select: (visits: VisitRecord[]) =>
-      buildRestaurantStatsMap(
-        visits,
-        currentUserId,
-        friendIds,
-        restaurantIdByName,
+
+    return recentRestaurants.filter((restaurant) =>
+      matchesVisitRestaurantSearch(restaurant, trimmedRestaurantSearchQuery),
+    );
+  }, [
+    recentRestaurantsQuery.data,
+    searchedRestaurantsQuery.data?.items,
+    shouldQuerySavedRestaurantsBySearch,
+    trimmedRestaurantSearchQuery,
+  ]);
+  const restaurantStatIds = useMemo(() => {
+    return Array.from(
+      new Set(
+        dedupeVisitRestaurants([
+          ...savedRestaurantRecords,
+          ...searchResults,
+          ...nearbyResults,
+        ])
+          .map((restaurant) => restaurant.id.trim())
+          .filter((restaurantId) => restaurantId.length > 0),
       ),
+    ).sort();
+  }, [nearbyResults, savedRestaurantRecords, searchResults]);
+  const restaurantStatsQuery = useQuery({
+    queryKey: ["feature", "restaurants", "visitStats", restaurantStatIds],
+    queryFn: async () => getRestaurantVisitStatsSummary(restaurantStatIds),
+    enabled: restaurantStatIds.length > 0,
   });
+  const restaurantStatsById = useMemo(() => {
+    const stats = new Map<string, RestaurantStats>();
+    for (const summary of restaurantStatsQuery.data ?? []) {
+      stats.set(summary.restaurantId, {
+        userVisitCount: summary.userVisitCount,
+        friendCount: summary.friendCount,
+      });
+    }
+    return stats;
+  }, [restaurantStatsQuery.data]);
   const createVisitSearchUi = resolveCreateVisitSearchUi({
     isFreeTier: isDisplayFreeUser,
     enforceQuota: shouldEnforceUsageLimitsClientSide,
@@ -399,10 +346,7 @@ export function CreateVisitScreen({
         );
       }
 
-      return listCollectionRecords<MenuItemRecord>("menu_items", {
-        filter: `restaurant = "${selectedRestaurantId}"`,
-        sort: "-created",
-      });
+      return listMenuItemsForRestaurant(selectedRestaurantId);
     },
     enabled: step === 1 && Boolean(selectedRestaurantId),
   });
@@ -413,15 +357,7 @@ export function CreateVisitScreen({
         return false;
       }
 
-      const records = await listCollectionRecords<MenuReviewRequestRecord>(
-        "menu_review_requests",
-        {
-          filter: `restaurant = "${selectedRestaurantId}" && status = "pending"`,
-          fields: "id,restaurant,status",
-        },
-      );
-
-      return records.length > 0;
+      return hasPendingMenuReviewRequest(selectedRestaurantId);
     },
     enabled: step === 1 && Boolean(selectedRestaurantId) && isOnline,
   });
@@ -582,12 +518,6 @@ export function CreateVisitScreen({
     }, 0);
   }, [step]);
 
-  const filteredSavedRestaurants = useMemo(() => {
-    return (restaurantsQuery.data ?? []).filter((restaurant) =>
-      matchesVisitRestaurantSearch(restaurant, restaurantSearchQuery),
-    );
-  }, [restaurantSearchQuery, restaurantsQuery.data]);
-
   const displayedNearbyRestaurants = useMemo(() => {
     const combined = dedupeVisitRestaurants([...nearbyResults, ...searchResults]);
     const filtered = combined.filter((restaurant) =>
@@ -607,10 +537,29 @@ export function CreateVisitScreen({
 
   const displayedSavedRestaurants = useMemo(() => {
     return prioritizeSelectedVisitRestaurant(
-      withVisitRestaurantDistance(filteredSavedRestaurants, referenceCoords),
+      withVisitRestaurantDistance(savedRestaurantRecords, referenceCoords),
       selectedRestaurantId,
     );
-  }, [filteredSavedRestaurants, referenceCoords, selectedRestaurantId]);
+  }, [referenceCoords, savedRestaurantRecords, selectedRestaurantId]);
+  const savedRestaurantsErrorMessage = shouldQuerySavedRestaurantsBySearch
+    ? searchedRestaurantsQuery.isError
+      ? "Could not load matching restaurants."
+      : null
+    : recentRestaurantsQuery.isError
+      ? "Could not load recent restaurants."
+      : null;
+  const savedRestaurantsLoading = shouldQuerySavedRestaurantsBySearch
+    ? searchedRestaurantsQuery.isLoading
+    : recentRestaurantsQuery.isLoading;
+  const savedRestaurantsTitle = shouldQuerySavedRestaurantsBySearch
+    ? "Matching restaurants"
+    : "Recent restaurants";
+  const savedEmptyTitle = shouldQuerySavedRestaurantsBySearch
+    ? "No matching restaurants"
+    : "No recent restaurants";
+  const savedEmptyDescription = shouldQuerySavedRestaurantsBySearch
+    ? "Try a different name, location, or cuisine."
+    : "Search nearby places or add a new restaurant to start.";
   const isMenuItemSelected = useCallback(
     (menuItem: MenuItemRecord) => {
       const normalizedMenuItemName = normalizeSelectionLabel(menuItem.name);
@@ -1029,7 +978,7 @@ export function CreateVisitScreen({
 
   const getRestaurantStats = (restaurantId: string): RestaurantStats => {
     return (
-      restaurantStatsQuery.data?.get(restaurantId) ?? {
+      restaurantStatsById.get(restaurantId) ?? {
         userVisitCount: 0,
         friendCount: 0,
       }
@@ -1256,9 +1205,6 @@ export function CreateVisitScreen({
       });
 
       setSearchResults(results);
-      queryClient.setQueryData<RestaurantRecord[]>(["feature", "restaurants"], (current) =>
-        mergeRestaurantSearchResults(current, results),
-      );
       trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_COMPLETED", {
         resultCount: results.length,
         source: "CreateVisitScreen",
@@ -1369,9 +1315,6 @@ export function CreateVisitScreen({
       });
 
       setNearbyResults(results);
-      queryClient.setQueryData<RestaurantRecord[]>(["feature", "restaurants"], (current) =>
-        mergeRestaurantSearchResults(current, results),
-      );
       trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_COMPLETED", {
         resultCount: results.length,
         source: "CreateVisitScreen",
@@ -1671,6 +1614,9 @@ export function CreateVisitScreen({
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
             queryClient.invalidateQueries({
+              queryKey: ["feature", "restaurants", "visitStats"],
+            }),
+            queryClient.invalidateQueries({
               queryKey: ["feature", "visit", editVisitId],
             }),
           ]);
@@ -1688,6 +1634,9 @@ export function CreateVisitScreen({
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
           queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurants", "visitStats"],
+          }),
+          queryClient.invalidateQueries({
             queryKey: ["feature", "visit", editVisitId],
           }),
         ]);
@@ -1702,7 +1651,12 @@ export function CreateVisitScreen({
       if (!isOnline) {
         await queueFeatureOutbox("visit.create", visitInput);
         setSourceListItemId(null);
-        await queryClient.invalidateQueries({ queryKey: ["feature", "visits"] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
+          queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurants", "visitStats"],
+          }),
+        ]);
         showQueuedOfflineAlert('Visit');
         navigation.navigate("Home");
         return;
@@ -1739,10 +1693,15 @@ export function CreateVisitScreen({
         visitVisibility,
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["feature", "visits"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["feature", "usage", "monthly"],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["feature", "visits"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["feature", "restaurants", "visitStats"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["feature", "usage", "monthly"],
+        }),
+      ]);
       navigation.navigate("Home");
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -2055,7 +2014,12 @@ export function CreateVisitScreen({
               void Linking.openSettings();
             }}
             onRetrySavedResults={() => {
-              void restaurantsQuery.refetch();
+              if (shouldQuerySavedRestaurantsBySearch) {
+                void searchedRestaurantsQuery.refetch();
+                return;
+              }
+
+              void recentRestaurantsQuery.refetch();
             }}
             onSavedResultsLayout={(event) => {
               setRestaurantListAnchorY(event.nativeEvent.layout.y);
@@ -2080,10 +2044,11 @@ export function CreateVisitScreen({
             savedOptions={displayedSavedRestaurants.map((restaurant, index) =>
               buildRestaurantOption(restaurant, index, "saved"),
             )}
-            savedResultsErrorMessage={
-              restaurantsQuery.isError ? "Could not load your restaurants." : null
-            }
-            savedResultsLoading={restaurantsQuery.isLoading}
+            savedEmptyDescription={savedEmptyDescription}
+            savedEmptyTitle={savedEmptyTitle}
+            savedResultsErrorMessage={savedRestaurantsErrorMessage}
+            savedResultsLoading={savedRestaurantsLoading}
+            savedResultsTitle={savedRestaurantsTitle}
             searchButtonDisabled={createVisitSearchUi.isSearchDisabled}
             searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
             searchButtonLoading={isSearching}
