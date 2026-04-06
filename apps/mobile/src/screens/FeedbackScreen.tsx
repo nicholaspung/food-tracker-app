@@ -9,7 +9,7 @@ import {
   HeaderAccessoryButton,
   Skeleton,
 } from '../components/shared';
-import { listFeedbackPage } from '../features';
+import { feedbackQueryKeys, listFeedbackPage } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -23,7 +23,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const theme = useTheme();
 
   const feedbackQuery = useInfiniteQuery({
-    queryKey: ['feature', 'feedback', 'all', 'paginated'],
+    queryKey: feedbackQueryKeys.list,
     queryFn: ({ pageParam }) =>
       listFeedbackPage({
         status: 'all',

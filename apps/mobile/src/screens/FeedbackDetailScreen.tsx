@@ -13,6 +13,7 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
+  feedbackQueryKeys,
   getFeedbackById,
   listFeedbackMessagesPage,
   markFeedbackAsRead,
@@ -147,7 +148,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const [isSending, setIsSending] = useState(false);
 
   const feedbackQuery = useQuery({
-    queryKey: ['feature', 'feedback', feedbackId],
+    queryKey: feedbackQueryKeys.detail(feedbackId),
     queryFn: () => getFeedbackById(feedbackId),
   });
 
@@ -230,8 +231,8 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
           return;
         }
 
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback', feedbackId] });
+        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.root });
+        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.detail(feedbackId) });
       } catch {
         // Keep thread available even if read-marking fails.
       }
@@ -411,8 +412,8 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
       setDraftMessage('');
       await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback-messages', feedbackId] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback', feedbackId] });
+      await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.root });
+      await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.detail(feedbackId) });
       trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
         source: 'FeedbackDetailScreen',
         feedbackId,

@@ -154,6 +154,7 @@ export function usePhotoProcessingSubmission({
     const groupedVisits = new Map<
       string,
       {
+        restaurantId: string;
         restaurantName: string;
         date: string;
         items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
@@ -171,9 +172,10 @@ export function usePhotoProcessingSubmission({
         throw new Error(`Photo ${index + 1}: ${validationMessage}`);
       }
 
-      const key = `${form.restaurantName.trim().toLowerCase()}__${form.date}`;
+      const key = `${form.restaurantId.trim()}__${form.date}`;
       const existingVisit =
         groupedVisits.get(key) ?? {
+          restaurantId: form.restaurantId.trim(),
           restaurantName: form.restaurantName.trim(),
           date: form.date,
           items: [],
@@ -187,6 +189,7 @@ export function usePhotoProcessingSubmission({
 
     for (const visitGroup of groupedVisits.values()) {
       const visitInput = {
+        restaurantId: visitGroup.restaurantId,
         restaurantName: visitGroup.restaurantName,
         visitedAt: localDateStringToUTC(visitGroup.date),
         visibility: visitVisibility,

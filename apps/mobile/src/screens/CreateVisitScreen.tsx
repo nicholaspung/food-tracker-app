@@ -23,7 +23,7 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
-  createCollectionRecord,
+  createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
   getRestaurantVisitStatsSummary,
   getVisitById,
@@ -51,6 +51,7 @@ import { shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { useSync } from '../providers/SyncProvider';
 import { CreateVisitReviewStep } from './createVisit/CreateVisitReviewStep';
 import {
   FREE_MONTHLY_PHOTO_LIMIT,
@@ -79,6 +80,7 @@ export function CreateVisitScreen({
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { enqueueMutation } = useSync();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -841,17 +843,18 @@ export function CreateVisitScreen({
     }
 
     try {
-      await createCollectionRecord("menu_review_requests", {
-        restaurant: selectedRestaurantId,
-        requestedBy: currentUserId,
+      await createMenuReviewRequest({
+        restaurantId: selectedRestaurantId,
         reason: "User reported incorrect menu items",
-        status: "pending",
       });
       setMenuReviewSubmitted(true);
+      queryClient.setQueryData(
+        ["feature", "menuReview", "pending", selectedRestaurantId],
+        true,
+      );
       setTimeout(() => {
         setMenuReviewSubmitted(false);
       }, 3000);
-      await pendingMenuReviewQuery.refetch();
     } catch (error) {
       const message =
         error instanceof Error
@@ -1163,8 +1166,10 @@ export function CreateVisitScreen({
     monthlyUsageSnapshot: monthlyUsage.snapshot,
     navigation,
     queryClient,
+    queueFeatureApiMutation: enqueueMutation,
     queueFeatureOutbox,
     queueWrite,
+    restaurantId: selectedRestaurantId,
     restaurantName,
     setErrorMessage,
     setSourceListItemId,

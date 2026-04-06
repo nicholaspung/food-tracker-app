@@ -1,5 +1,5 @@
 import type { QuickTrackRecord, VisitRecord } from '../models';
-import { listQuickTracksPage, listVisitsPage } from './featureStore';
+import { getAuthenticatedUserIdOrNull, sendApiRequest } from './pocketbaseGateway';
 
 export type HomeFeedScope = 'all' | 'mine' | 'friends';
 export type HomeFeedTypeFilter = 'all' | 'visits' | 'quick-track';
@@ -34,11 +34,23 @@ export type BufferedHomeFeedEntry<TVisit, TQuickTrack> =
       quickTrack: TQuickTrack;
     };
 
-export type HomeFeedCursor = BufferedHomeFeedCursor<VisitRecord, QuickTrackRecord>;
+export interface HomeFeedCursor {
+  page: number;
+}
 export type HomeFeedPageEntry = BufferedHomeFeedEntry<VisitRecord, QuickTrackRecord>;
+
+export interface HomeFeedPhotoPreviewRecord {
+  id: string;
+  food_item?: string;
+  photo: string;
+  collectionId?: string;
+  collectionName?: string;
+  created: string;
+}
 
 export interface HomeFeedPageResult {
   items: HomeFeedPageEntry[];
+  photoPreviews?: HomeFeedPhotoPreviewRecord[];
   cursor?: HomeFeedCursor;
   hasNextPage: boolean;
   totalQuickTracks: number;
@@ -67,7 +79,6 @@ export interface LoadHomeFeedPageWithSourcesInput<TVisit, TQuickTrack> {
 }
 
 const DEFAULT_HOME_FEED_PAGE_SIZE = 20;
-const DEFAULT_HOME_FEED_SOURCE_BATCH_SIZE = 10;
 
 function createSourceState<T>(overrides?: Partial<HomeFeedSourceCursorState<T>>): HomeFeedSourceCursorState<T> {
   return {
@@ -200,57 +211,40 @@ export async function loadHomeFeedPageWithSources<TVisit, TQuickTrack>(
   };
 }
 
-function getVisitEventAt(visit: VisitRecord): string {
-  return visit.visitedAt || visit.createdAt;
-}
-
-function getQuickTrackEventAt(quickTrack: QuickTrackRecord): string {
-  return quickTrack.itemDate || quickTrack.createdAt;
-}
-
 export async function listHomeFeedPage(input?: ListHomeFeedPageInput): Promise<HomeFeedPageResult> {
+  if (!getAuthenticatedUserIdOrNull()) {
+    return {
+      items: [],
+      photoPreviews: [],
+      cursor: undefined,
+      hasNextPage: false,
+      totalQuickTracks: 0,
+      totalVisits: 0,
+    };
+  }
+
   const pageSize = normalizePageSize(input?.pageSize);
   const scope = input?.scope ?? 'all';
   const trimmedSearch = input?.search?.trim() || undefined;
   const typeFilter = input?.typeFilter ?? 'all';
-  const loadVisits = typeFilter !== 'quick-track';
-  const loadQuickTracks = typeFilter !== 'visits';
-  const dualSourceFeed = loadVisits && loadQuickTracks;
-
-  return loadHomeFeedPageWithSources({
-    cursor: input?.cursor,
-    fetchQuickTracksPage: loadQuickTracks
-      ? (page, sourcePageSize) =>
-          listQuickTracksPage({
-            page,
-            pageSize: sourcePageSize,
-            scope,
-            search: trimmedSearch,
-          })
-      : undefined,
-    fetchVisitsPage: loadVisits
-      ? (page, sourcePageSize) =>
-          listVisitsPage({
-            page,
-            pageSize: sourcePageSize,
-            scope,
-            search: trimmedSearch,
-          })
-      : undefined,
-    getQuickTrackEventAt,
-    getVisitEventAt,
-    loadQuickTracks,
-    loadVisits,
-    pageSize,
-    quickTrackBatchSize: loadQuickTracks
-      ? dualSourceFeed
-        ? Math.min(pageSize, DEFAULT_HOME_FEED_SOURCE_BATCH_SIZE)
-        : pageSize
-      : 0,
-    visitBatchSize: loadVisits
-      ? dualSourceFeed
-        ? Math.min(pageSize, DEFAULT_HOME_FEED_SOURCE_BATCH_SIZE)
-        : pageSize
-      : 0,
+  const page = input?.cursor?.page ?? 1;
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    scope,
+    typeFilter,
   });
+
+  if (trimmedSearch) {
+    query.set('search', trimmedSearch);
+  }
+
+  const response = await sendApiRequest<HomeFeedPageResult>(`/api/home-feed?${query.toString()}`, {
+    method: 'GET',
+  });
+
+  return {
+    ...response,
+    photoPreviews: response.photoPreviews ?? [],
+  };
 }

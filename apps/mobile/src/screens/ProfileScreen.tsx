@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RecordModel } from 'pocketbase';
 
 import {
+  ConfirmDestructiveModal,
   ErrorState,
   OptionList,
   OptionListInlineBody,
@@ -22,10 +23,11 @@ import {
   TabRootScreenScaffold,
 } from '../components/shared';
 import {
-  deleteCollectionRecord,
+  deleteAccount,
+  feedbackQueryKeys,
   generateInviteCodes,
-  getFeedbackCountSummary,
   getAuthRecord,
+  getFeedbackCountSummary,
   getProfile,
   listInviteCodes,
   lockInviteCode,
@@ -84,7 +86,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   });
 
   const feedbackSummaryQuery = useQuery({
-    queryKey: ["feature", "feedback", "summary"],
+    queryKey: feedbackQueryKeys.summary,
     queryFn: getFeedbackCountSummary,
   });
   const whatsNewSeenVersionQuery = useQuery({
@@ -110,6 +112,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     null,
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState("");
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isEditingAccountName, setIsEditingAccountName] = useState(false);
   const [editedAccountName, setEditedAccountName] = useState("");
@@ -340,11 +343,16 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       return;
     }
 
+    if (!deleteAccountPassword.trim()) {
+      setDangerErrorMessage("Current password is required.");
+      return;
+    }
+
     setDangerErrorMessage(null);
     setIsDeletingAccount(true);
 
     try {
-      await deleteCollectionRecord("users", user.id);
+      await deleteAccount(deleteAccountPassword);
       await signOut();
     } catch (error) {
       setDangerErrorMessage(
@@ -353,6 +361,16 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     } finally {
       setIsDeletingAccount(false);
     }
+  };
+
+  const closeDeleteAccountModal = () => {
+    if (isDeletingAccount) {
+      return;
+    }
+
+    setShowDeleteConfirm(false);
+    setDeleteAccountPassword("");
+    setDangerErrorMessage(null);
   };
 
   const styles = StyleSheet.create({
@@ -892,33 +910,14 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 title="Delete account failed"
               />
 
-              {!showDeleteConfirm ? (
-                <Button
-                  label="Delete Account"
-                  onPress={() => {
-                    setShowDeleteConfirm(true);
-                  }}
-                />
-              ) : (
-                <>
-                  <Button
-                    disabled={isDeletingAccount}
-                    label="Cancel"
-                    onPress={() => {
-                      setShowDeleteConfirm(false);
-                    }}
-                    variant="secondary"
-                  />
-                  <Button
-                    disabled={isDeletingAccount}
-                    label="Confirm Delete Account"
-                    loading={isDeletingAccount}
-                    onPress={() => {
-                      void handleDeleteAccount();
-                    }}
-                  />
-                </>
-              )}
+              <Button
+                label="Delete Account"
+                onPress={() => {
+                  setDangerErrorMessage(null);
+                  setDeleteAccountPassword("");
+                  setShowDeleteConfirm(true);
+                }}
+              />
             </View>
           ) : null}
         </Card>
@@ -933,6 +932,39 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           variant="secondary"
         />
       </View>
+
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Account"
+        confirmLabel="Delete Account"
+        confirmLoadingLabel="Deleting..."
+        description="Enter your current password to permanently delete your account and remove your personal data."
+        disabled={!deleteAccountPassword.trim()}
+        loading={isDeletingAccount}
+        onCancel={closeDeleteAccountModal}
+        onConfirm={() => {
+          void handleDeleteAccount();
+        }}
+        testID="profile-delete-account-confirmation-modal"
+        title="Delete Account?"
+        visible={showDeleteConfirm}
+      >
+        <Input
+          autoCapitalize="none"
+          autoCorrect={false}
+          errorText={dangerErrorMessage}
+          label="Current Password"
+          onChangeText={(value) => {
+            setDeleteAccountPassword(value);
+            if (dangerErrorMessage) {
+              setDangerErrorMessage(null);
+            }
+          }}
+          placeholder="Enter your password"
+          secureTextEntry
+          textContentType="password"
+          value={deleteAccountPassword}
+        />
+      </ConfirmDestructiveModal>
     </TabRootScreenScaffold>
   );
 }

@@ -10,10 +10,15 @@ import {
   type MonthlyUsageSnapshot,
   type UpdateVisitInput,
 } from '../../features';
+import {
+  createVisitApiMutationInput,
+  updateVisitApiMutationInput,
+} from '../../features/store/featureOutboxOperations';
 import type {
   FeatureOutboxOperationName,
   FeatureOutboxOperationPayload,
 } from '../../features/store/featureOutboxOperations';
+import type { EnqueueMutationInput } from '../../offline/types';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import { trackObservabilityEvent } from '../../observability';
@@ -38,8 +43,10 @@ interface UseCreateVisitSubmissionParams {
   monthlyUsageSnapshot: MonthlyUsageSnapshot | null;
   navigation: CreateVisitNavigationProp;
   queryClient: QueryClient;
+  queueFeatureApiMutation: (input: EnqueueMutationInput) => Promise<unknown>;
   queueFeatureOutbox: QueueFeatureOutbox;
   queueWrite: (operationName: string) => Promise<void>;
+  restaurantId: string | null;
   restaurantName: string;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setSourceListItemId: Dispatch<SetStateAction<string | null>>;
@@ -58,8 +65,10 @@ export function useCreateVisitSubmission({
   monthlyUsageSnapshot,
   navigation,
   queryClient,
+  queueFeatureApiMutation,
   queueFeatureOutbox,
   queueWrite,
+  restaurantId,
   restaurantName,
   setErrorMessage,
   setSourceListItemId,
@@ -170,12 +179,14 @@ export function useCreateVisitSubmission({
     }
 
     const visitInput = {
+      restaurantId: restaurantId?.trim() || undefined,
       restaurantName: trimmedRestaurant,
       items: parsedItems,
       visitedAt: localDateStringToUTC(trimmedVisitDate),
       visibility: visitVisibility,
       source: 'visit' as const,
     };
+    const hasPhotoUploads = parsedItems.some((item) => item.photos.length > 0);
 
     setErrorMessage(null);
     setIsSubmitting(true);
@@ -183,6 +194,7 @@ export function useCreateVisitSubmission({
     try {
       if (isEditMode && editVisitId) {
         const visitUpdateInput: UpdateVisitInput = {
+          restaurantId: restaurantId?.trim() || undefined,
           restaurantName: trimmedRestaurant,
           items: parsedItems.map((item) => ({
             id: item.id,
@@ -196,10 +208,9 @@ export function useCreateVisitSubmission({
         };
 
         if (!isOnline) {
-          await queueFeatureOutbox('visit.update', {
-            visitId: editVisitId,
-            updates: visitUpdateInput,
-          });
+          await queueFeatureApiMutation(
+            updateVisitApiMutationInput(editVisitId, visitUpdateInput),
+          );
           await invalidateVisitQueries({ visitId: editVisitId });
           showQueuedOfflineAlert('Visit update');
           navigateAfterEdit();
@@ -214,7 +225,11 @@ export function useCreateVisitSubmission({
       }
 
       if (!isOnline) {
-        await queueFeatureOutbox('visit.create', visitInput);
+        if (hasPhotoUploads) {
+          await queueFeatureOutbox('visit.create', visitInput);
+        } else {
+          await queueFeatureApiMutation(createVisitApiMutationInput(visitInput));
+        }
         setSourceListItemId(null);
         await invalidateVisitQueries();
         showQueuedOfflineAlert('Visit');
@@ -294,8 +309,10 @@ export function useCreateVisitSubmission({
     navigation,
     navigateAfterEdit,
     queryClient,
+    queueFeatureApiMutation,
     queueFeatureOutbox,
     queueWrite,
+    restaurantId,
     restaurantName,
     setErrorMessage,
     setSourceListItemId,

@@ -10,9 +10,9 @@ import {
   PhotoSourceActionCards,
 } from '../components/shared';
 import {
-  createCollectionRecord,
+  createMenuItemsFromScan,
   formatLimitExceededMessage,
-  getAuthenticatedUserIdOrNull,
+  type MenuItemRecord,
   parseMenuImage,
   parseLimitExceededError,
   type VisitPhotoUploadInput,
@@ -21,9 +21,7 @@ import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { trackObservabilityEvent } from '../observability';
 import {
-  buildScannedItemNames,
   parseMenuItemNamesFromCsv,
-  type CreatedMenuItemRecord,
   type MenuScanPhase,
   type PhotoProcessingScreenProps,
   type ScanSource,
@@ -49,6 +47,7 @@ export function MenuScanPhotoProcessingScreen({
   const [selectedImageName, setSelectedImageName] = useState('');
   const [progressValue, setProgressValue] = useState(0);
   const [createdItemNames, setCreatedItemNames] = useState<string[]>([]);
+  const [existingItemNames, setExistingItemNames] = useState<string[]>([]);
   const [countdownValue, setCountdownValue] = useState(5);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastRequestedSource, setLastRequestedSource] =
@@ -153,38 +152,37 @@ export function MenuScanPhotoProcessingScreen({
         throw new Error('Restaurant context is missing.');
       }
 
-      const currentUserId = getAuthenticatedUserIdOrNull();
-      if (!currentUserId) {
-        throw new Error('Please sign in again to continue.');
-      }
+      const result = await createMenuItemsFromScan({
+        restaurantId,
+        itemNames,
+        fallbackLabel,
+      });
+      const returnedRecords = [...result.createdItems, ...result.existingItems];
 
-      const names =
-        itemNames.length > 0 ? itemNames : buildScannedItemNames(fallbackLabel);
-      const createdRecords: CreatedMenuItemRecord[] = [];
-
-      for (const itemName of names) {
-        const createdItem = await createCollectionRecord<CreatedMenuItemRecord>(
-          'menu_items',
-          {
-            restaurant: restaurantId,
-            name: itemName,
-            createdBy: currentUserId,
-            visibility: 'friends',
-            isFromOCR: true,
-          },
-        );
-        createdRecords.push(createdItem);
-      }
-
-      queryClient.setQueryData<CreatedMenuItemRecord[]>(
+      queryClient.setQueryData(
         ['feature', 'menuItems', restaurantId],
-        (currentItems) => [...createdRecords, ...(currentItems ?? [])],
+        (currentItems: MenuItemRecord[] | undefined) => {
+          const nextItems = [...(currentItems ?? [])];
+
+          for (const record of returnedRecords) {
+            if (nextItems.some((item) => item.id === record.id)) {
+              continue;
+            }
+
+            nextItems.unshift(record);
+          }
+
+          return nextItems;
+        },
       );
       await queryClient.invalidateQueries({
         queryKey: ['feature', 'menuItems', restaurantId],
       });
 
-      return createdRecords.map((record) => record.name);
+      return {
+        createdNames: result.createdItems.map((record) => record.name),
+        existingNames: result.existingItems.map((record) => record.name),
+      };
     },
     [queryClient, restaurantId],
   );
@@ -195,6 +193,7 @@ export function MenuScanPhotoProcessingScreen({
       setProgressValue(0);
       setErrorMessage(null);
       setCreatedItemNames([]);
+      setExistingItemNames([]);
 
       const progressInterval = setInterval(() => {
         setProgressValue((currentValue) => {
@@ -209,8 +208,12 @@ export function MenuScanPhotoProcessingScreen({
       try {
         const parseResult = await parseMenuImage(imageInput);
         const parsedNames = parseMenuItemNamesFromCsv(parseResult.csv);
-        const createdNames = await createScannedMenuItems(parsedNames, imageName);
+        const { createdNames, existingNames } = await createScannedMenuItems(
+          parsedNames,
+          imageName,
+        );
         setCreatedItemNames(createdNames);
+        setExistingItemNames(existingNames);
         setProgressValue(1);
         setPhase('success');
         startCountdown();
@@ -386,7 +389,9 @@ export function MenuScanPhotoProcessingScreen({
     phase === 'processing'
       ? 'Extracting menu items from your uploaded image.'
       : phase === 'success'
-        ? 'New items were added to this restaurant.'
+        ? createdItemNames.length > 0
+          ? 'New items were added to this restaurant.'
+          : 'Existing menu items were matched for this restaurant.'
         : `Capture or upload a menu image for ${restaurantName}.`;
 
   return (
@@ -475,17 +480,38 @@ export function MenuScanPhotoProcessingScreen({
               Menu scan completed
             </Text>
           </View>
-          <Text tone="secondary">Added items:</Text>
-          {createdItemNames.map((itemName) => (
-            <View key={itemName} style={styles.addedItemRow}>
-              <Ionicons
-                color={theme.colors.text.success}
-                name="checkmark-outline"
-                size={14}
-              />
-              <Text>{itemName}</Text>
-            </View>
-          ))}
+          {createdItemNames.length > 0 ? (
+            <>
+              <Text tone="secondary">Added items:</Text>
+              {createdItemNames.map((itemName) => (
+                <View key={itemName} style={styles.addedItemRow}>
+                  <Ionicons
+                    color={theme.colors.text.success}
+                    name="checkmark-outline"
+                    size={14}
+                  />
+                  <Text>{itemName}</Text>
+                </View>
+              ))}
+            </>
+          ) : null}
+          {existingItemNames.length > 0 ? (
+            <>
+              <Text tone="secondary">
+                {createdItemNames.length > 0 ? 'Already on this menu:' : 'Matched items:'}
+              </Text>
+              {existingItemNames.map((itemName) => (
+                <View key={itemName} style={styles.addedItemRow}>
+                  <Ionicons
+                    color={theme.colors.text.info}
+                    name="checkmark-done-outline"
+                    size={14}
+                  />
+                  <Text>{itemName}</Text>
+                </View>
+              ))}
+            </>
+          ) : null}
           <Text tone="secondary">
             Returning to menu items in {countdownValue} second
             {countdownValue === 1 ? '' : 's'}...

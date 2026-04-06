@@ -58,6 +58,7 @@ interface ParsedFeatureStore {
 }
 
 export interface CreateVisitInput {
+  restaurantId?: string;
   restaurantName: string;
   items: {
     name: string;
@@ -72,6 +73,7 @@ export interface CreateVisitInput {
 }
 
 export interface UpdateVisitInput {
+  restaurantId?: string;
   restaurantName?: string;
   items?: VisitItem[];
   visitedAt?: string;
@@ -742,6 +744,20 @@ interface RecentRestaurantApiRecord {
   isGooglePlace?: boolean;
 }
 
+interface RestaurantUpsertApiRecord {
+  id: string;
+  name: string;
+  location?: string;
+  cuisineType?: string;
+  visibility?: 'private' | 'friends' | 'public';
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
+  isGooglePlace?: boolean;
+  created?: string;
+  updated?: string;
+}
+
 interface VisitCollectionRecord {
   id: string;
   restaurant: string;
@@ -1025,14 +1041,6 @@ function sanitizeCurrency(value: number | null | undefined): number {
 
 function normalizeBillRecordStatus(status: BillCollectionRecord['status']): BillRecord['status'] {
   return status === 'settled' ? 'settled' : 'open';
-}
-
-function toBillCollectionStatus(participants: BillParticipantRecord[]): BillCollectionRecord['status'] {
-  return participants.every((participant) => participant.paidStatus === 'paid') ? 'settled' : 'active';
-}
-
-function toBillCollectionStatusFromRecord(status: BillRecord['status']): BillCollectionRecord['status'] {
-  return status === 'settled' ? 'settled' : 'active';
 }
 
 function resolveBillParticipantName(record: BillParticipantCollectionRecord): string {
@@ -1777,58 +1785,51 @@ async function listVisitIdsMatchingSearch(
   return Array.from(new Set(records.map((record) => record.visit).filter((visitId): visitId is string => Boolean(visitId))));
 }
 
-async function findRestaurantByName(name: string): Promise<RestaurantCollectionRecord | null> {
-  const trimmedName = name.trim();
-  if (!trimmedName) {
-    return null;
-  }
-
-  const escapedName = escapeFilterValue(trimmedName);
-  const normalizedName = trimmedName.toLowerCase();
-  let page = 1;
-
-  while (true) {
-    const response = await pb.collection('restaurants').getList<RestaurantCollectionRecord>(page, 50, {
-      filter: `name ~ "${escapedName}"`,
-      sort: '-updated',
-      fields: RESTAURANT_LIST_FIELDS,
-    });
-
-    const exactMatch = response.items.find((record) => record.name.trim().toLowerCase() === normalizedName);
-    if (exactMatch) {
-      return exactMatch;
-    }
-
-    if (response.items.length === 0 || page >= response.totalPages) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  return null;
+interface UpsertRestaurantInput {
+  restaurantName: string;
+  location?: string;
+  cuisineType?: string;
+  visibility?: 'private' | 'friends' | 'public';
+  placeId?: string;
+  latitude?: number;
+  longitude?: number;
+  isGooglePlace?: boolean;
 }
 
-async function findOrCreateRestaurantByName(
-  restaurantName: string,
-  currentUserId: string,
-  locationText?: string,
-): Promise<RestaurantCollectionRecord> {
-  const trimmedName = restaurantName.trim();
+export async function upsertRestaurantRecord(input: UpsertRestaurantInput): Promise<RestaurantRecord> {
+  getAuthenticatedUserId();
+
+  const trimmedName = input.restaurantName.trim();
   if (!trimmedName) {
     throw new Error('Restaurant name is required.');
   }
 
-  const existingRestaurant = await findRestaurantByName(trimmedName);
-  if (existingRestaurant) {
-    return existingRestaurant;
-  }
+  const response = await sendApiRequest<RestaurantUpsertApiRecord>('/api/restaurants/upsert', {
+    method: 'POST',
+    body: {
+      restaurantName: trimmedName,
+      location: input.location?.trim() || undefined,
+      cuisineType: input.cuisineType?.trim() || undefined,
+      visibility: input.visibility,
+      placeId: input.placeId?.trim() || undefined,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      isGooglePlace: input.isGooglePlace === true,
+    },
+  });
 
-  return pb.collection('restaurants').create<RestaurantCollectionRecord>({
-    name: trimmedName,
-    location: locationText?.trim() || trimmedName,
-    createdBy: currentUserId,
-    visibility: getDefaultRestaurantVisibility(),
+  return mapRestaurantCollectionRecord({
+    id: response.id,
+    name: response.name,
+    location: response.location,
+    cuisineType: response.cuisineType,
+    visibility: response.visibility,
+    latitude: response.latitude,
+    longitude: response.longitude,
+    placeId: response.placeId,
+    isGooglePlace: response.isGooglePlace,
+    created: response.created ?? nowIso(),
+    updated: response.updated ?? nowIso(),
   });
 }
 
@@ -1935,42 +1936,38 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
         throw new Error('At least one item is required.');
       }
 
-      const restaurant = await findOrCreateRestaurantByName(trimmedRestaurantName, currentUserId);
-      const visit = await pb.collection('visits').create<VisitCollectionRecord>(
-        {
-          restaurant: restaurant.id,
-          user: currentUserId,
-          visitDate: input.visitedAt ?? nowIso(),
+      const createdVisit = await sendApiRequest<VisitRecord>('/api/visits', {
+        method: 'POST',
+        body: {
+          restaurantId: input.restaurantId?.trim() || undefined,
+          restaurantName: trimmedRestaurantName,
+          items: input.items.map((item) => ({
+            name: item.name.trim(),
+            rating: item.rating,
+            description: item.description?.trim() || undefined,
+            notes: item.notes?.trim() || undefined,
+          })),
+          visitedAt: input.visitedAt ?? nowIso(),
           visibility: input.visibility ?? getDefaultVisitVisibility(),
         },
-        {
-          expand: 'restaurant,user',
-        },
-      );
+      });
 
-      const createdItems: FoodItemCollectionRecord[] = [];
-      for (const item of input.items) {
-        const createdItem = await pb.collection('food_items').create<FoodItemCollectionRecord>({
-          name: item.name.trim(),
-          rating: item.rating,
-          description: item.description?.trim() || undefined,
-          notes: item.notes?.trim() || undefined,
-          visit: visit.id,
-          user: currentUserId,
-        });
-
-        createdItems.push(createdItem);
+      for (const [index, item] of input.items.entries()) {
+        const createdItemId = createdVisit.items[index]?.id;
+        if (!createdItemId) {
+          throw new Error('Created visit item could not be loaded.');
+        }
 
         await uploadVisitPhotos(
-          visit.id,
-          createdItem.id,
+          createdVisit.id,
+          createdItemId,
           currentUserId,
           item.photos ?? [],
           item.description || item.name,
         );
       }
 
-      return mapVisitCollectionRecord(visit, createdItems);
+      return createdVisit;
     },
     {
       itemCount: input.items.length,
@@ -1985,78 +1982,22 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
   return trackFeatureMutation(
     'visit.update',
     async () => {
-      const currentUserId = getAuthenticatedUserId();
-      const currentVisit = await pb.collection('visits').getOne<VisitCollectionRecord>(visitId, {
-        expand: 'restaurant,user',
+      return sendApiRequest<VisitRecord>(`/api/visits/${encodeURIComponent(visitId)}`, {
+        method: 'PUT',
+        body: {
+          restaurantId: updates.restaurantId?.trim() || undefined,
+          restaurantName: updates.restaurantName?.trim(),
+          items: updates.items?.map((item) => ({
+            id: item.id,
+            name: item.name.trim(),
+            rating: item.rating,
+            description: item.description?.trim() || undefined,
+            notes: item.notes?.trim() || undefined,
+          })),
+          visitedAt: updates.visitedAt,
+          visibility: updates.visibility,
+        },
       });
-
-      const updatePayload: Record<string, unknown> = {};
-      const nextRestaurantName = updates.restaurantName?.trim();
-      if (nextRestaurantName && nextRestaurantName !== (currentVisit.expand?.restaurant?.name ?? '')) {
-        const restaurant = await findOrCreateRestaurantByName(nextRestaurantName, currentUserId);
-        updatePayload.restaurant = restaurant.id;
-      }
-
-      if (updates.visitedAt) {
-        updatePayload.visitDate = updates.visitedAt;
-      }
-
-      if (updates.visibility) {
-        updatePayload.visibility = updates.visibility;
-      }
-
-      const updatedVisit =
-        Object.keys(updatePayload).length > 0
-          ? await pb.collection('visits').update<VisitCollectionRecord>(visitId, updatePayload, {
-              expand: 'restaurant,user',
-            })
-          : currentVisit;
-
-      if (updates.items) {
-        const existingItems = await listCollectionRecords<Pick<FoodItemCollectionRecord, 'id'>>('food_items', {
-          filter: `visit = "${escapeFilterValue(visitId)}"`,
-          fields: 'id',
-        });
-        const existingItemsById = new Map(existingItems.map((item) => [item.id, item]));
-        const requestedIds = new Set<string>();
-
-        for (const item of updates.items) {
-          const trimmedName = item.name.trim();
-          if (!trimmedName) {
-            continue;
-          }
-
-          requestedIds.add(item.id);
-          if (existingItemsById.has(item.id)) {
-            await pb.collection('food_items').update(item.id, {
-              name: trimmedName,
-              rating: item.rating,
-              description: item.description?.trim() || '',
-              notes: item.notes?.trim() || '',
-            });
-          } else {
-            await pb.collection('food_items').create({
-              name: trimmedName,
-              rating: item.rating,
-              description: item.description?.trim() || undefined,
-              notes: item.notes?.trim() || undefined,
-              visit: visitId,
-              user: currentUserId,
-            });
-          }
-        }
-
-        const deletedItems = existingItems.filter((item) => !requestedIds.has(item.id));
-        await Promise.all(deletedItems.map((item) => pb.collection('food_items').delete(item.id)));
-      }
-
-      const nextItems = await listCollectionRecords<FoodItemCollectionRecord>('food_items', {
-        filter: `visit = "${escapeFilterValue(visitId)}"`,
-        sort: '-created',
-        fields: VISIT_ITEM_LIST_FIELDS,
-      });
-
-      return mapVisitCollectionRecord(updatedVisit, nextItems);
     },
     {
       hasRestaurantNameUpdate: updates.restaurantName !== undefined,
@@ -2810,7 +2751,6 @@ export async function addRestaurantToList(
   return trackFeatureMutation(
     'restaurant_list.restaurant.add',
     async () => {
-      const currentUserId = getAuthenticatedUserId();
       const trimmedName = restaurantName.trim();
       if (!trimmedName) {
         throw new Error('Restaurant name is required.');
@@ -2821,7 +2761,11 @@ export async function addRestaurantToList(
       // Ensure the list exists and is accessible to the current user.
       await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId);
 
-      const restaurant = await findOrCreateRestaurantByName(trimmedName, currentUserId, city);
+      const restaurant = await upsertRestaurantRecord({
+        restaurantName: trimmedName,
+        location: city,
+        visibility: getDefaultRestaurantVisibility(),
+      });
       const escapedRestaurantId = escapeFilterValue(restaurant.id);
 
       const existingItems = await pb.collection('list_items').getList<ListItemCollectionRecord>(1, 1, {
@@ -2842,7 +2786,7 @@ export async function addRestaurantToList(
         {
           list: listId,
           restaurant: restaurant.id,
-          addedBy: currentUserId,
+          addedBy: getAuthenticatedUserId(),
           position: nextPosition,
         },
         {
@@ -3626,6 +3570,23 @@ export async function getProfile(): Promise<ProfileRecord> {
   return localDomainStore.getProfile();
 }
 
+export async function deleteAccount(currentPassword: string): Promise<void> {
+  return trackFeatureMutation('account.delete', async () => {
+    getAuthenticatedUserId();
+
+    if (!currentPassword.trim()) {
+      throw new Error('Current password is required.');
+    }
+
+    await sendApiRequest('/api/account/delete', {
+      method: 'POST',
+      body: JSON.stringify({
+        currentPassword,
+      }),
+    });
+  });
+}
+
 export async function listInviteCodes(): Promise<InviteCodeRecord[]> {
   if (!pb.authStore.record?.id) {
     return [];
@@ -4058,105 +4019,50 @@ export async function createBill(input: CreateBillInput): Promise<BillRecord> {
   return trackFeatureMutation(
     'bill.create',
     async () => {
-      const currentUserId = getAuthenticatedUserId();
       const trimmedTitle = input.title.trim();
 
       if (!trimmedTitle) {
         throw new Error('Bill title is required.');
       }
 
-      const normalizedTax = sanitizeCurrency(input.tax);
-      const normalizedTip = sanitizeCurrency(input.tip);
-      const normalizedFees = sanitizeCurrency(input.fees);
-      const subtotal = input.items.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
-      const computedTotalAmount = sanitizeCurrency(subtotal + normalizedTax + normalizedTip + normalizedFees);
-      const totalAmount = typeof input.totalAmount === 'number' && Number.isFinite(input.totalAmount)
-        ? sanitizeCurrency(input.totalAmount)
-        : computedTotalAmount;
-
-      const createdBill = await pb.collection('bills').create<BillCollectionRecord>({
-        creator_user: currentUserId,
-        bill_name: trimmedTitle,
-        total_amount: totalAmount,
-        tax: normalizedTax,
-        tip: normalizedTip,
-        fees: normalizedFees,
-        split_mode: input.extrasSplitMode === 'equal' ? 'even' : 'itemized',
-        extras_split_mode: input.extrasSplitMode,
-        status: toBillCollectionStatus(input.participants),
-      });
-
-      const participantIdLookup = new Map<string, string>();
-      const createdParticipants = await Promise.all(
-        input.participants.map(async (participant) => {
-          const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>({
-            bill: createdBill.id,
-            user: participant.userId?.trim() ? participant.userId : null,
-            participant_name: participant.name.trim() || undefined,
-            amount_owed: sanitizeCurrency(participant.amountOwed),
-            paid_status: participant.paidStatus,
-            paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
-            custom_tip_contribution:
+      return sendApiRequest<BillRecord>('/api/bills', {
+        method: 'POST',
+        body: {
+          title: trimmedTitle,
+          restaurantName: input.restaurantName.trim(),
+          items: input.items.map((item) => ({
+            id: item.id,
+            itemName: item.itemName.trim(),
+            price: sanitizeCurrency(item.price),
+            assignedToParticipantIds: item.assignedToParticipantIds,
+            splitMode: item.splitMode === 'advanced' ? 'advanced' : 'simple',
+            splitConfig: item.splitConfig?.map((entry) => ({
+              participantId: entry.participantId,
+              type: entry.type,
+              value: sanitizeCurrency(entry.value),
+            })),
+          })),
+          participants: input.participants.map((participant) => ({
+            id: participant.id,
+            name: participant.name.trim(),
+            userId: participant.userId?.trim() || undefined,
+            amountOwed: sanitizeCurrency(participant.amountOwed),
+            paidStatus: participant.paidStatus,
+            customTipContribution:
               typeof participant.customTipContribution === 'number'
                 ? sanitizeCurrency(participant.customTipContribution)
-                : null,
-          });
-          participantIdLookup.set(participant.id, createdParticipant.id);
-          return createdParticipant;
-        }),
-      );
-
-      for (const item of input.items) {
-        const mappedParticipantIds = item.assignedToParticipantIds
-          .map((participantId) => participantIdLookup.get(participantId))
-          .filter((candidate): candidate is string => Boolean(candidate));
-        const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
-        const mappedSplitConfig =
-          normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
-            ? item.splitConfig
-                .map((splitConfig) => {
-                  const mappedParticipantId = participantIdLookup.get(splitConfig.participantId);
-                  if (!mappedParticipantId) {
-                    return null;
-                  }
-
-                  if (splitConfig.type !== 'percentage' && splitConfig.type !== 'amount') {
-                    return null;
-                  }
-
-                  return {
-                    participant_id: mappedParticipantId,
-                    type: splitConfig.type,
-                    value: sanitizeCurrency(splitConfig.value),
-                  };
-                })
-                .filter(
-                  (candidate): candidate is { participant_id: string; type: 'percentage' | 'amount'; value: number } =>
-                    candidate !== null,
-                )
-            : null;
-
-        const assignedToParticipantIds =
-          mappedParticipantIds.length > 0
-            ? mappedParticipantIds
-            : createdParticipants.map((participant) => participant.id);
-
-        await pb.collection('bill_items').create<BillItemCollectionRecord>({
-          bill: createdBill.id,
-          item_name: item.itemName.trim(),
-          price: sanitizeCurrency(item.price),
-          assigned_to: assignedToParticipantIds,
-          split_mode: normalizedSplitMode,
-          split_config: normalizedSplitMode === 'advanced' ? mappedSplitConfig : null,
-        });
-      }
-
-      const hydratedBill = await getBillById(createdBill.id);
-      if (!hydratedBill) {
-        throw new Error('Bill was created but could not be loaded.');
-      }
-
-      return hydratedBill;
+                : undefined,
+          })),
+          totalAmount:
+            typeof input.totalAmount === 'number' && Number.isFinite(input.totalAmount)
+              ? sanitizeCurrency(input.totalAmount)
+              : undefined,
+          tax: sanitizeCurrency(input.tax),
+          tip: sanitizeCurrency(input.tip),
+          fees: sanitizeCurrency(input.fees),
+          extrasSplitMode: input.extrasSplitMode,
+        },
+      });
     },
     {
       itemCount: input.items.length,
@@ -4170,195 +4076,44 @@ export async function updateBill(billId: string, updates: UpdateBillInput): Prom
   return trackFeatureMutation(
     'bill.update',
     async () => {
-      const currentBill = await getBillById(billId);
-      if (!currentBill) {
-        throw new Error('Bill not found.');
-      }
-
-      const nextTitle = updates.title?.trim() ?? currentBill.title;
-      const nextItems = updates.items ?? currentBill.items;
-      const nextParticipants = updates.participants ?? currentBill.participants;
-      const nextTax = sanitizeCurrency(updates.tax ?? currentBill.tax);
-      const nextTip = sanitizeCurrency(updates.tip ?? currentBill.tip);
-      const nextFees = sanitizeCurrency(updates.fees ?? currentBill.fees);
-      const nextSubtotal = nextItems.reduce((sum, item) => sum + sanitizeCurrency(item.price), 0);
-      const computedNextTotalAmount = sanitizeCurrency(nextSubtotal + nextTax + nextTip + nextFees);
-      const nextTotalAmount = typeof updates.totalAmount === 'number' && Number.isFinite(updates.totalAmount)
-        ? sanitizeCurrency(updates.totalAmount)
-        : computedNextTotalAmount;
-      const nextStatus: BillCollectionRecord['status'] =
-        updates.status !== undefined
-          ? toBillCollectionStatusFromRecord(updates.status)
-          : updates.participants
-            ? toBillCollectionStatus(nextParticipants)
-            : toBillCollectionStatusFromRecord(currentBill.status);
-
-      await pb.collection('bills').update<BillCollectionRecord>(billId, {
-        bill_name: nextTitle,
-        total_amount: nextTotalAmount,
-        tax: nextTax,
-        tip: nextTip,
-        fees: nextFees,
-        extras_split_mode: updates.extrasSplitMode ?? currentBill.extrasSplitMode,
-        status: nextStatus,
-      });
-
-      const participantIdRemap = new Map<string, string>();
-      const participantIdsToDelete: string[] = [];
-
-      if (updates.participants) {
-        const existingParticipants = await listBillParticipantsForBillId(billId);
-        const existingParticipantIds = new Set(existingParticipants.map((participant) => participant.id));
-        const retainedParticipantIds = new Set<string>();
-
-        for (const participant of updates.participants) {
-          const participantPayload = {
-            bill: billId,
-            user: participant.userId?.trim() ? participant.userId : null,
-            participant_name: participant.name.trim() || undefined,
-            amount_owed: sanitizeCurrency(participant.amountOwed),
-            paid_status: participant.paidStatus,
-            paid_date: participant.paidStatus === 'paid' ? nowIso() : null,
-            custom_tip_contribution:
+      return sendApiRequest<BillRecord>(`/api/bills/${encodeURIComponent(billId)}`, {
+        method: 'PUT',
+        body: {
+          title: updates.title?.trim(),
+          items: updates.items?.map((item) => ({
+            id: item.id,
+            itemName: item.itemName.trim(),
+            price: sanitizeCurrency(item.price),
+            assignedToParticipantIds: item.assignedToParticipantIds,
+            splitMode: item.splitMode === 'advanced' ? 'advanced' : 'simple',
+            splitConfig: item.splitConfig?.map((entry) => ({
+              participantId: entry.participantId,
+              type: entry.type,
+              value: sanitizeCurrency(entry.value),
+            })),
+          })),
+          participants: updates.participants?.map((participant) => ({
+            id: participant.id,
+            name: participant.name.trim(),
+            userId: participant.userId?.trim() || undefined,
+            amountOwed: sanitizeCurrency(participant.amountOwed),
+            paidStatus: participant.paidStatus,
+            customTipContribution:
               typeof participant.customTipContribution === 'number'
                 ? sanitizeCurrency(participant.customTipContribution)
-                : null,
-          };
-
-          if (existingParticipantIds.has(participant.id)) {
-            retainedParticipantIds.add(participant.id);
-            participantIdRemap.set(participant.id, participant.id);
-            await pb
-              .collection('bill_participants')
-              .update<BillParticipantCollectionRecord>(participant.id, participantPayload);
-            continue;
-          }
-
-          const createdParticipant = await pb.collection('bill_participants').create<BillParticipantCollectionRecord>(
-            participantPayload,
-          );
-          retainedParticipantIds.add(createdParticipant.id);
-          participantIdRemap.set(participant.id, createdParticipant.id);
-        }
-
-        existingParticipants.forEach((existingParticipant) => {
-          if (retainedParticipantIds.has(existingParticipant.id)) {
-            return;
-          }
-
-          participantIdsToDelete.push(existingParticipant.id);
-        });
-      }
-
-      if (updates.items) {
-        const existingItems = await listBillItemsForBillId(billId);
-        const existingItemIds = new Set(existingItems.map((item) => item.id));
-        const retainedItemIds = new Set<string>();
-        const mapParticipantId = (participantId: string): string => participantIdRemap.get(participantId) ?? participantId;
-
-        for (const item of updates.items) {
-          const normalizedSplitMode = item.splitMode === 'advanced' ? 'advanced' : 'simple';
-          const normalizedSplitConfig =
-            normalizedSplitMode === 'advanced' && Array.isArray(item.splitConfig)
-              ? item.splitConfig
-                  .filter(
-                    (entry): entry is { participantId: string; type: 'percentage' | 'amount'; value: number } =>
-                      Boolean(entry.participantId) &&
-                      (entry.type === 'percentage' || entry.type === 'amount') &&
-                      Number.isFinite(entry.value),
-                  )
-                  .map((entry) => {
-                    const mappedParticipantId = mapParticipantId(entry.participantId);
-                    return {
-                      participant_id: mappedParticipantId,
-                      type: entry.type,
-                      value: sanitizeCurrency(entry.value),
-                    };
-                  })
-                  .filter((entry) => Boolean(entry.participant_id))
-              : null;
-          const normalizedAssignedToIds = item.assignedToParticipantIds
-            .map((participantId) => mapParticipantId(participantId))
-            .filter(
-              (participantId, index, collection) =>
-                Boolean(participantId) && collection.indexOf(participantId) === index,
-            );
-
-          const itemPayload = {
-            bill: billId,
-            item_name: item.itemName.trim(),
-            price: sanitizeCurrency(item.price),
-            assigned_to: normalizedAssignedToIds,
-            split_mode: normalizedSplitMode,
-            split_config: normalizedSplitMode === 'advanced' ? normalizedSplitConfig : null,
-          };
-
-          if (existingItemIds.has(item.id)) {
-            retainedItemIds.add(item.id);
-            await pb.collection('bill_items').update<BillItemCollectionRecord>(item.id, itemPayload);
-            continue;
-          }
-
-          const createdItem = await pb.collection('bill_items').create<BillItemCollectionRecord>(itemPayload);
-          retainedItemIds.add(createdItem.id);
-        }
-
-        await Promise.all(
-          existingItems.map(async (existingItem) => {
-            if (retainedItemIds.has(existingItem.id)) {
-              return;
-            }
-            await pb.collection('bill_items').delete(existingItem.id);
-          }),
-        );
-      }
-
-      if (!updates.items && participantIdsToDelete.length > 0) {
-        const removedParticipantIdSet = new Set(participantIdsToDelete);
-        const existingItems = await listBillItemsForBillId(billId);
-
-        await Promise.all(
-          existingItems.map(async (existingItem) => {
-            const nextAssignedTo = Array.isArray(existingItem.assigned_to)
-              ? existingItem.assigned_to.filter((participantId) => !removedParticipantIdSet.has(participantId))
-              : [];
-            const nextSplitConfig =
-              existingItem.split_mode === 'advanced' && Array.isArray(existingItem.split_config)
-                ? existingItem.split_config.filter(
-                    (splitEntry) => !removedParticipantIdSet.has(splitEntry.participant_id),
-                  )
-                : null;
-
-            await pb.collection('bill_items').update<BillItemCollectionRecord>(existingItem.id, {
-              assigned_to: nextAssignedTo,
-              split_config: existingItem.split_mode === 'advanced' ? nextSplitConfig : null,
-            });
-          }),
-        );
-      }
-
-      if (participantIdsToDelete.length > 0) {
-        await Promise.all(
-          participantIdsToDelete.map(async (participantId) => {
-            try {
-              await pb.collection('bill_participants').delete(participantId);
-            } catch (error) {
-              if (isNotFoundError(error)) {
-                return;
-              }
-
-              throw error;
-            }
-          }),
-        );
-      }
-
-      const hydratedBill = await getBillById(billId);
-      if (!hydratedBill) {
-        throw new Error('Updated bill could not be loaded.');
-      }
-
-      return hydratedBill;
+                : undefined,
+          })),
+          totalAmount:
+            typeof updates.totalAmount === 'number' && Number.isFinite(updates.totalAmount)
+              ? sanitizeCurrency(updates.totalAmount)
+              : undefined,
+          tax: updates.tax !== undefined ? sanitizeCurrency(updates.tax) : undefined,
+          tip: updates.tip !== undefined ? sanitizeCurrency(updates.tip) : undefined,
+          fees: updates.fees !== undefined ? sanitizeCurrency(updates.fees) : undefined,
+          extrasSplitMode: updates.extrasSplitMode,
+          status: updates.status,
+        },
+      });
     },
     {
       hasTitleUpdate: updates.title !== undefined,

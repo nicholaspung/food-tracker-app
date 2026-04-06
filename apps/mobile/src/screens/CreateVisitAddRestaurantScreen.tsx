@@ -9,7 +9,10 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { createCollectionRecord, resolveDefaultRestaurantVisibilityFromAuth } from '../features';
+import {
+  resolveDefaultRestaurantVisibilityFromAuth,
+  upsertRestaurantRecord,
+} from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -54,8 +57,7 @@ export function CreateVisitAddRestaurantScreen({
   });
 
   const handleAddRestaurant = async () => {
-    const currentUserId = user?.id;
-    if (!currentUserId) {
+    if (!user?.id) {
       trackObservabilityEvent('CREATE_VISIT_ADD_RESTAURANT_SUBMIT_VALIDATION_FAILED', {
         source: 'CreateVisitAddRestaurantScreen',
         reason: 'missing_user',
@@ -96,15 +98,11 @@ export function CreateVisitAddRestaurantScreen({
     setIsSubmitting(true);
 
     try {
-      const createdRestaurant = await createCollectionRecord<{
-        id: string;
-        name: string;
-      }>('restaurants', {
-        name: trimmedName,
+      const createdRestaurant = await upsertRestaurantRecord({
+        restaurantName: trimmedName,
         location: trimmedLocation,
-        cuisineType: restaurantCuisine.trim() || '',
+        cuisineType: restaurantCuisine.trim() || undefined,
         visibility,
-        createdBy: currentUserId,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurants'] });

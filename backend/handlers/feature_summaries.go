@@ -14,9 +14,13 @@ import (
 
 const visibleVisitModerationCondition = `(visits.moderationStatus = '' OR visits.moderationStatus = 'active' OR visits.moderationStatus = 'reviewed')`
 const ownerAccessibleVisitModerationCondition = `(visits.moderationStatus = '' OR visits.moderationStatus = 'active' OR visits.moderationStatus = 'reviewed' OR visits.moderationStatus = 'under_review')`
+const visibleQuickTrackModerationCondition = `(food_items.moderationStatus = '' OR food_items.moderationStatus = 'active' OR food_items.moderationStatus = 'reviewed')`
+const ownerAccessibleQuickTrackModerationCondition = `(food_items.moderationStatus = '' OR food_items.moderationStatus = 'active' OR food_items.moderationStatus = 'reviewed' OR food_items.moderationStatus = 'under_review')`
 
 const defaultRecentRestaurantLimit = 12
 const maxRecentRestaurantLimit = 24
+const defaultHomeFeedPageSize = 20
+const maxHomeFeedPageSize = 50
 
 type noteSummaryResponse struct {
 	AllCount   int `db:"allCount" json:"allCount"`
@@ -79,6 +83,63 @@ type recentRestaurantIDRow struct {
 	RestaurantID string `db:"restaurantId"`
 }
 
+type homeFeedEntryRow struct {
+	Source    string `db:"source"`
+	RecordID  string `db:"recordId"`
+	EventAt   string `db:"eventAt"`
+	CreatedAt string `db:"createdAt"`
+}
+
+type homeFeedCountsRow struct {
+	TotalVisits      int `db:"totalVisits"`
+	TotalQuickTracks int `db:"totalQuickTracks"`
+}
+
+type homeFeedCursorResponse struct {
+	Page int `json:"page"`
+}
+
+type homeFeedQuickTrackResponse struct {
+	ID               string  `json:"id"`
+	RestaurantName   string  `json:"restaurantName"`
+	ItemCategory     string  `json:"itemCategory,omitempty"`
+	ItemName         string  `json:"itemName"`
+	Rating           float64 `json:"rating"`
+	Notes            string  `json:"notes,omitempty"`
+	UserID           string  `json:"userId,omitempty"`
+	UserName         string  `json:"userName,omitempty"`
+	Visibility       string  `json:"visibility,omitempty"`
+	ModerationStatus string  `json:"moderationStatus,omitempty"`
+	ItemDate         string  `json:"itemDate,omitempty"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
+}
+
+type homeFeedPhotoPreviewResponse struct {
+	ID             string `json:"id"`
+	FoodItemID     string `json:"food_item,omitempty"`
+	Photo          string `json:"photo"`
+	CollectionID   string `json:"collectionId,omitempty"`
+	CollectionName string `json:"collectionName,omitempty"`
+	Created        string `json:"created"`
+}
+
+type homeFeedEntryResponse struct {
+	Source     string                      `json:"source"`
+	EventAt    string                      `json:"eventAt"`
+	Visit      *visitResponse              `json:"visit,omitempty"`
+	QuickTrack *homeFeedQuickTrackResponse `json:"quickTrack,omitempty"`
+}
+
+type homeFeedResponse struct {
+	Items            []homeFeedEntryResponse        `json:"items"`
+	PhotoPreviews    []homeFeedPhotoPreviewResponse `json:"photoPreviews"`
+	Cursor           *homeFeedCursorResponse        `json:"cursor,omitempty"`
+	HasNextPage      bool                           `json:"hasNextPage"`
+	TotalQuickTracks int                            `json:"totalQuickTracks"`
+	TotalVisits      int                            `json:"totalVisits"`
+}
+
 // RegisterFeatureSummaryHandlers registers authenticated summary endpoints used by mobile surfaces.
 func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 	se.Router.GET("/api/notes/summary", func(e *core.RequestEvent) error {
@@ -135,6 +196,47 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, summary)
+	})
+
+	se.Router.GET("/api/home-feed", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		scope, err := normalizeHomeFeedScope(e.Request.URL.Query().Get("scope"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		typeFilter, err := normalizeHomeFeedTypeFilter(e.Request.URL.Query().Get("typeFilter"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		page, pageSize, err := parseHomeFeedPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := getHomeFeedResponse(
+			app,
+			e.Auth.Id,
+			e.Auth.GetBool("isAdmin"),
+			page,
+			pageSize,
+			scope,
+			e.Request.URL.Query().Get("search"),
+			typeFilter,
+		)
+		if err != nil {
+			log.Printf("Failed to load home feed for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load home feed", err)
+		}
+
+		return e.JSON(200, response)
 	})
 
 	se.Router.GET("/api/restaurants/recent", func(e *core.RequestEvent) error {
@@ -351,6 +453,536 @@ func getBillListSummary(app core.App, userID string) ([]billListSummaryResponse,
 	}
 
 	return result, nil
+}
+
+func normalizeHomeFeedScope(raw string) (string, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "all":
+		return "all", nil
+	case "mine":
+		return "mine", nil
+	case "friends":
+		return "friends", nil
+	default:
+		return "", fmt.Errorf("invalid home feed scope")
+	}
+}
+
+func normalizeHomeFeedTypeFilter(raw string) (string, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "all":
+		return "all", nil
+	case "visits":
+		return "visits", nil
+	case "quick-track":
+		return "quick-track", nil
+	default:
+		return "", fmt.Errorf("invalid home feed typeFilter")
+	}
+}
+
+func parseHomeFeedPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page := 1
+	if strings.TrimSpace(pageRaw) != "" {
+		parsedPage, err := strconv.Atoi(pageRaw)
+		if err != nil || parsedPage < 1 {
+			return 0, 0, fmt.Errorf("invalid page")
+		}
+		page = parsedPage
+	}
+
+	pageSize := defaultHomeFeedPageSize
+	if strings.TrimSpace(pageSizeRaw) != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeRaw)
+		if err != nil || parsedPageSize < 1 {
+			return 0, 0, fmt.Errorf("invalid pageSize")
+		}
+
+		if parsedPageSize > maxHomeFeedPageSize {
+			pageSize = maxHomeFeedPageSize
+		} else {
+			pageSize = parsedPageSize
+		}
+	}
+
+	return page, pageSize, nil
+}
+
+func getHomeFeedResponse(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	page int,
+	pageSize int,
+	scope string,
+	search string,
+	typeFilter string,
+) (homeFeedResponse, error) {
+	response := homeFeedResponse{
+		Items:         []homeFeedEntryResponse{},
+		PhotoPreviews: []homeFeedPhotoPreviewResponse{},
+	}
+
+	counts, err := countHomeFeedEntries(app, userID, isAdmin, scope, search, typeFilter)
+	if err != nil {
+		return response, err
+	}
+
+	response.TotalVisits = counts.TotalVisits
+	response.TotalQuickTracks = counts.TotalQuickTracks
+
+	rows, err := listHomeFeedEntryRows(app, userID, isAdmin, page, pageSize, scope, search, typeFilter)
+	if err != nil {
+		return response, err
+	}
+
+	response.HasNextPage = len(rows) == pageSize && page*pageSize < (counts.TotalVisits+counts.TotalQuickTracks)
+	if response.HasNextPage {
+		response.Cursor = &homeFeedCursorResponse{Page: page + 1}
+	}
+
+	if len(rows) == 0 {
+		return response, nil
+	}
+
+	visitIDs := make([]string, 0, len(rows))
+	quickTrackIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		switch row.Source {
+		case "visit":
+			visitIDs = append(visitIDs, row.RecordID)
+		case "quick-track":
+			quickTrackIDs = append(quickTrackIDs, row.RecordID)
+		}
+	}
+
+	visitRecords, err := findRecordsByIDs(app, "visits", visitIDs)
+	if err != nil {
+		return response, err
+	}
+	quickTrackRecords, err := findRecordsByIDs(app, "food_items", quickTrackIDs)
+	if err != nil {
+		return response, err
+	}
+
+	visitRecordsByID := mapRecordsByID(visitRecords)
+	quickTrackRecordsByID := mapRecordsByID(quickTrackRecords)
+
+	visitItemRecords, err := findRecordsByRelationValues(app, "food_items", "visit", visitIDs, "-created")
+	if err != nil {
+		return response, err
+	}
+	filteredVisitItems := make([]*core.Record, 0, len(visitItemRecords))
+	for _, record := range visitItemRecords {
+		if record.GetBool("isQuickTrack") {
+			continue
+		}
+		filteredVisitItems = append(filteredVisitItems, record)
+	}
+	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
+
+	linkedVisitIDs := make([]string, 0, len(quickTrackRecords))
+	restaurantIDs := make([]string, 0, len(visitRecords)+len(quickTrackRecords))
+	userIDs := make([]string, 0, len(visitRecords)+len(quickTrackRecords))
+	photoFoodItemIDs := make([]string, 0, len(filteredVisitItems)+len(quickTrackRecords))
+
+	for _, visit := range visitRecords {
+		restaurantIDs = append(restaurantIDs, visit.GetString("restaurant"))
+		userIDs = append(userIDs, visit.GetString("user"))
+	}
+
+	for _, item := range filteredVisitItems {
+		photoFoodItemIDs = append(photoFoodItemIDs, item.Id)
+	}
+
+	for _, quickTrack := range quickTrackRecords {
+		linkedVisitIDs = append(linkedVisitIDs, quickTrack.GetString("visit"))
+		userIDs = append(userIDs, quickTrack.GetString("user"))
+		photoFoodItemIDs = append(photoFoodItemIDs, quickTrack.Id)
+	}
+
+	linkedVisitRecords, err := findRecordsByIDs(app, "visits", linkedVisitIDs)
+	if err != nil {
+		return response, err
+	}
+	linkedVisitsByID := mapRecordsByID(linkedVisitRecords)
+	for _, visit := range linkedVisitRecords {
+		restaurantIDs = append(restaurantIDs, visit.GetString("restaurant"))
+	}
+
+	restaurantRecords, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	if err != nil {
+		return response, err
+	}
+	userRecords, err := findRecordsByIDs(app, "users", userIDs)
+	if err != nil {
+		return response, err
+	}
+	photoRecords, err := findRecordsByRelationValues(app, "visit_photos", "food_item", photoFoodItemIDs, "-created")
+	if err != nil {
+		return response, err
+	}
+
+	restaurantsByID := mapRecordsByID(restaurantRecords)
+	usersByID := mapRecordsByID(userRecords)
+
+	photoPreviews := make([]homeFeedPhotoPreviewResponse, 0, len(photoRecords))
+	for _, photo := range photoRecords {
+		photoPreviews = append(photoPreviews, mapHomeFeedPhotoPreview(photo))
+	}
+	response.PhotoPreviews = photoPreviews
+
+	items := make([]homeFeedEntryResponse, 0, len(rows))
+	for _, row := range rows {
+		switch row.Source {
+		case "visit":
+			visit := visitRecordsByID[row.RecordID]
+			if visit == nil {
+				continue
+			}
+
+			restaurant := restaurantsByID[visit.GetString("restaurant")]
+			user := usersByID[visit.GetString("user")]
+			entryItems := visitItemsByVisitID[visit.Id]
+			items = append(items, homeFeedEntryResponse{
+				Source:  "visit",
+				EventAt: row.EventAt,
+				Visit: &visitResponse{
+					ID:                    visit.Id,
+					RestaurantID:          visit.GetString("restaurant"),
+					RestaurantName:        defaultString(resolveRestaurantName(restaurant), "Unknown Restaurant"),
+					RestaurantLocation:    resolveRestaurantLocation(restaurant),
+					RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
+					VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
+					Items:                 mapHomeFeedVisitItems(entryItems),
+					Source:                "visit",
+					UserID:                visit.GetString("user"),
+					UserName:              resolveHomeFeedUserName(user),
+					Visibility:            strings.TrimSpace(visit.GetString("visibility")),
+					ModerationStatus:      strings.TrimSpace(visit.GetString("moderationStatus")),
+					CreatedAt:             visit.GetString("created"),
+					UpdatedAt:             visit.GetString("updated"),
+				},
+			})
+		case "quick-track":
+			quickTrack := quickTrackRecordsByID[row.RecordID]
+			if quickTrack == nil {
+				continue
+			}
+
+			user := usersByID[quickTrack.GetString("user")]
+			linkedVisit := linkedVisitsByID[quickTrack.GetString("visit")]
+			linkedRestaurant := (*core.Record)(nil)
+			if linkedVisit != nil {
+				linkedRestaurant = restaurantsByID[linkedVisit.GetString("restaurant")]
+			}
+
+			restaurantName := strings.TrimSpace(quickTrack.GetString("location_text"))
+			if restaurantName == "" {
+				restaurantName = resolveRestaurantName(linkedRestaurant)
+			}
+			if restaurantName == "" {
+				restaurantName = "Quick Track"
+			}
+
+			items = append(items, homeFeedEntryResponse{
+				Source:  "quick-track",
+				EventAt: row.EventAt,
+				QuickTrack: &homeFeedQuickTrackResponse{
+					ID:               quickTrack.Id,
+					RestaurantName:   restaurantName,
+					ItemCategory:     strings.TrimSpace(quickTrack.GetString("itemCategory")),
+					ItemName:         quickTrack.GetString("name"),
+					Rating:           quickTrack.GetFloat("rating"),
+					Notes:            strings.TrimSpace(quickTrack.GetString("notes")),
+					UserID:           quickTrack.GetString("user"),
+					UserName:         resolveHomeFeedUserName(user),
+					Visibility:       strings.TrimSpace(quickTrack.GetString("visibility")),
+					ModerationStatus: strings.TrimSpace(quickTrack.GetString("moderationStatus")),
+					ItemDate:         strings.TrimSpace(quickTrack.GetString("itemDate")),
+					CreatedAt:        quickTrack.GetString("created"),
+					UpdatedAt:        quickTrack.GetString("updated"),
+				},
+			})
+		}
+	}
+
+	response.Items = items
+	return response, nil
+}
+
+func countHomeFeedEntries(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	scope string,
+	search string,
+	typeFilter string,
+) (homeFeedCountsRow, error) {
+	row := homeFeedCountsRow{}
+	params := dbx.Params{
+		"userId":     userID,
+		"searchLike": buildHomeFeedSearchLike(search),
+	}
+
+	visitCountExpr := "0"
+	if typeFilter != "quick-track" {
+		visitCountExpr = `SELECT COUNT(*) FROM visits
+			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+			WHERE ` + buildHomeFeedVisitAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search)
+	}
+
+	quickTrackCountExpr := "0"
+	if typeFilter != "visits" {
+		quickTrackCountExpr = `SELECT COUNT(*) FROM food_items
+			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
+			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
+			WHERE ` + buildHomeFeedQuickTrackAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedQuickTrackSearchCondition(search)
+	}
+
+	query := fmt.Sprintf(`
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		)
+		SELECT
+			(%s) AS [[totalVisits]],
+			(%s) AS [[totalQuickTracks]]
+	`, visitCountExpr, quickTrackCountExpr)
+
+	err := app.DB().NewQuery(query).Bind(params).One(&row)
+	return row, err
+}
+
+func listHomeFeedEntryRows(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	page int,
+	pageSize int,
+	scope string,
+	search string,
+	typeFilter string,
+) ([]homeFeedEntryRow, error) {
+	params := dbx.Params{
+		"userId":     userID,
+		"searchLike": buildHomeFeedSearchLike(search),
+		"limit":      pageSize,
+		"offset":     (page - 1) * pageSize,
+	}
+
+	selects := make([]string, 0, 2)
+	if typeFilter != "quick-track" {
+		selects = append(selects, `
+			SELECT
+				'visit' AS source,
+				visits.id AS recordId,
+				COALESCE(NULLIF(visits.visitDate, ''), visits.created) AS eventAt,
+				visits.created AS createdAt
+			FROM visits
+			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+			WHERE `+buildHomeFeedVisitAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedVisitSearchCondition(search))
+	}
+	if typeFilter != "visits" {
+		selects = append(selects, `
+			SELECT
+				'quick-track' AS source,
+				food_items.id AS recordId,
+				COALESCE(NULLIF(food_items.itemDate, ''), food_items.created) AS eventAt,
+				food_items.created AS createdAt
+			FROM food_items
+			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
+			LEFT JOIN restaurants linked_restaurants ON linked_restaurants.id = linked_visits.restaurant
+			WHERE `+buildHomeFeedQuickTrackAccessCondition(scope, isAdmin)+` AND `+buildHomeFeedQuickTrackSearchCondition(search))
+	}
+
+	if len(selects) == 0 {
+		return []homeFeedEntryRow{}, nil
+	}
+
+	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		),
+		filtered_entries AS (
+			` + strings.Join(selects, `
+			UNION ALL
+			`) + `
+		)
+		SELECT
+			filtered_entries.source AS [[source]],
+			filtered_entries.recordId AS [[recordId]],
+			filtered_entries.eventAt AS [[eventAt]],
+			filtered_entries.createdAt AS [[createdAt]]
+		FROM filtered_entries
+		ORDER BY filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC
+		LIMIT {:limit} OFFSET {:offset}
+	`
+
+	rows := []homeFeedEntryRow{}
+	err := app.DB().NewQuery(query).Bind(params).All(&rows)
+	return rows, err
+}
+
+func buildHomeFeedVisitAccessCondition(scope string, isAdmin bool) string {
+	if isAdmin {
+		switch scope {
+		case "mine":
+			return `visits.user = {:userId}`
+		case "friends":
+			return `visits.user != {:userId}`
+		default:
+			return `1 = 1`
+		}
+	}
+
+	ownerCondition := `visits.user = {:userId} AND ` + ownerAccessibleVisitModerationCondition
+	friendCondition := `visits.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleVisitModerationCondition + ` AND (visits.visibility = 'public' OR visits.visibility = 'friends')`
+
+	switch scope {
+	case "mine":
+		return ownerCondition
+	case "friends":
+		return friendCondition
+	default:
+		return `( (` + ownerCondition + `) OR (` + friendCondition + `) )`
+	}
+}
+
+func buildHomeFeedQuickTrackAccessCondition(scope string, isAdmin bool) string {
+	if isAdmin {
+		switch scope {
+		case "mine":
+			return `food_items.isQuickTrack = 1 AND food_items.user = {:userId}`
+		case "friends":
+			return `food_items.isQuickTrack = 1 AND food_items.user != {:userId}`
+		default:
+			return `food_items.isQuickTrack = 1`
+		}
+	}
+
+	ownerCondition := `food_items.isQuickTrack = 1 AND food_items.user = {:userId} AND ` + ownerAccessibleQuickTrackModerationCondition
+	friendCondition := `food_items.isQuickTrack = 1 AND food_items.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleQuickTrackModerationCondition + ` AND (food_items.visibility = 'public' OR food_items.visibility = 'friends')`
+
+	switch scope {
+	case "mine":
+		return ownerCondition
+	case "friends":
+		return friendCondition
+	default:
+		return `( (` + ownerCondition + `) OR (` + friendCondition + `) )`
+	}
+}
+
+func buildHomeFeedVisitSearchCondition(search string) string {
+	if strings.TrimSpace(search) == "" {
+		return `1 = 1`
+	}
+
+	return `(
+		LOWER(COALESCE(restaurants.name, '')) LIKE {:searchLike}
+		OR LOWER(COALESCE(restaurants.location, '')) LIKE {:searchLike}
+		OR LOWER(COALESCE(restaurants.cuisineType, '')) LIKE {:searchLike}
+		OR EXISTS (
+			SELECT 1
+			FROM food_items visit_items
+			WHERE visit_items.visit = visits.id
+				AND COALESCE(visit_items.isQuickTrack, 0) != 1
+				AND (
+					LOWER(COALESCE(visit_items.name, '')) LIKE {:searchLike}
+					OR LOWER(COALESCE(visit_items.notes, '')) LIKE {:searchLike}
+				)
+		)
+	)`
+}
+
+func buildHomeFeedQuickTrackSearchCondition(search string) string {
+	if strings.TrimSpace(search) == "" {
+		return `1 = 1`
+	}
+
+	return `(
+		LOWER(COALESCE(food_items.name, '')) LIKE {:searchLike}
+		OR LOWER(COALESCE(food_items.itemCategory, '')) LIKE {:searchLike}
+		OR LOWER(COALESCE(food_items.notes, '')) LIKE {:searchLike}
+		OR LOWER(COALESCE(food_items.location_text, '')) LIKE {:searchLike}
+		OR LOWER(COALESCE(linked_restaurants.name, '')) LIKE {:searchLike}
+	)`
+}
+
+func buildHomeFeedSearchLike(search string) string {
+	return "%" + strings.ToLower(strings.TrimSpace(search)) + "%"
+}
+
+func mapHomeFeedVisitItems(records []*core.Record) []visitItemResponse {
+	items := make([]visitItemResponse, 0, len(records))
+	for _, record := range records {
+		items = append(items, visitItemResponse{
+			ID:          record.Id,
+			Name:        record.GetString("name"),
+			Rating:      record.GetFloat("rating"),
+			Description: strings.TrimSpace(record.GetString("description")),
+			Notes:       strings.TrimSpace(record.GetString("notes")),
+		})
+	}
+
+	return items
+}
+
+func mapHomeFeedPhotoPreview(record *core.Record) homeFeedPhotoPreviewResponse {
+	collectionName := ""
+	collectionID := ""
+	if collection := record.Collection(); collection != nil {
+		collectionName = collection.Name
+		collectionID = collection.Id
+	}
+
+	return homeFeedPhotoPreviewResponse{
+		ID:             record.Id,
+		FoodItemID:     strings.TrimSpace(record.GetString("food_item")),
+		Photo:          record.GetString("photo"),
+		CollectionID:   collectionID,
+		CollectionName: collectionName,
+		Created:        record.GetString("created"),
+	}
+}
+
+func resolveHomeFeedUserName(record *core.Record) string {
+	if record == nil {
+		return ""
+	}
+
+	name := strings.TrimSpace(record.GetString("name"))
+	if name != "" {
+		return name
+	}
+
+	email := strings.TrimSpace(record.GetString("email"))
+	if email == "" {
+		return ""
+	}
+
+	parts := strings.SplitN(email, "@", 2)
+	return parts[0]
+}
+
+func defaultString(value string, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+
+	return value
 }
 
 func listRecentRestaurantsSummary(

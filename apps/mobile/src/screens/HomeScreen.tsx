@@ -34,7 +34,6 @@ import {
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
-  listVisitPhotosForFoodItemIds,
   reportContent,
   type QuickTrackRecord,
   type VisitRecord,
@@ -47,7 +46,6 @@ import {
   getPendingFriendSuggestion,
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
-import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -319,33 +317,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     () => (effectiveFeedMode === 'beta' ? [...loadedFeed].sort(compareBetaFeedItems) : loadedFeed),
     [effectiveFeedMode, loadedFeed],
   );
-  const visibleFoodItemIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    for (const item of activeFeed) {
-      if (item.source === 'visit') {
-        for (const visitItem of item.visit.items) {
-          ids.add(visitItem.id);
-        }
-        continue;
-      }
-
-      ids.add(item.quickTrack.id);
-    }
-
-    return Array.from(ids);
-  }, [activeFeed]);
-  const visitPhotosQuery = useIncrementalIdQuery({
-    queryKey: ['feature', 'visitPhotos', 'feedItems', effectiveFeedMode],
-    ids: visibleFoodItemIds,
-    fetchByIds: listVisitPhotosForFoodItemIds,
-    getRecordIds: (photo) => (photo.food_item ? [photo.food_item] : []),
-    getRecordKey: (photo) => photo.id,
-  });
+  const loadedPhotoPreviews = useMemo(
+    () => homeFeedQuery.data?.pages.flatMap((page) => page.photoPreviews ?? []) ?? [],
+    [homeFeedQuery.data],
+  );
 
   const isLoading = homeFeedQuery.isLoading;
   const hasBlockingFeedError = homeFeedQuery.isError && (!homeFeedQuery.data || homeFeedQuery.data.pages.length === 0);
-  const hasFeedRefreshError = !hasBlockingFeedError && (homeFeedQuery.isError || visitPhotosQuery.isError);
+  const hasFeedRefreshError = !hasBlockingFeedError && homeFeedQuery.isError;
 
   useEffect(() => {
     let isMounted = true;
@@ -378,7 +357,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
   const photosByFoodItem = useMemo(() => {
     const map = new Map<string, VisitPhotoRecord[]>();
-    for (const photo of visitPhotosQuery.data ?? []) {
+    for (const photo of loadedPhotoPreviews) {
       if (!photo.food_item) {
         continue;
       }
@@ -388,7 +367,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       map.set(photo.food_item, existing);
     }
     return map;
-  }, [visitPhotosQuery.data]);
+  }, [loadedPhotoPreviews]);
 
   const filteredFeed = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -528,10 +507,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
     hasHandledCurrentFocusRef.current = true;
     void homeFeedQuery.refetch();
-    if (visibleFoodItemIds.length > 0) {
-      void visitPhotosQuery.refetch();
-    }
-  }, [homeFeedQuery, isFocused, visibleFoodItemIds.length, visitPhotosQuery]);
+  }, [homeFeedQuery, isFocused]);
 
   const filteredVisitCount = useMemo(
     () => filteredFeed.filter((entry) => entry.source === 'visit').length,
@@ -637,7 +613,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       await queueWrite('quick-track.delete');
       await deleteQuickTrack(quickTrackId);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] });
     },
     [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
@@ -671,7 +646,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       await queueWrite('visit.delete');
       await deleteVisit(visitId);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] });
     },
     [isOnline, queryClient, queueFeatureOutbox, queueWrite],
   );
@@ -756,7 +730,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
       closeReportModal();
       await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not submit report.';
       setReportErrorMessage(message);
@@ -1166,7 +1139,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           actionLabel="Retry"
           onAction={() => {
             void homeFeedQuery.refetch();
-            void visitPhotosQuery.refetch();
           }}
         />
         <PageErrorToast errorMessage={deleteErrorMessage} title="Delete failed" />

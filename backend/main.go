@@ -69,6 +69,8 @@ func main() {
 		handlers.RegisterFeedbackHandlers(se, app)
 		handlers.RegisterFriendHandlers(se, app)
 		handlers.RegisterFeatureSummaryHandlers(se, app)
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterMenuWorkflowHandlers(se, app)
 		handlers.RegisterUsageLimitHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)

@@ -541,6 +541,225 @@ func TestRestaurantVisitStatsEndpoint(t *testing.T) {
 	}
 }
 
+func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	stranger, _ := createAuthUser(t, server.app, false, false)
+
+	user.Set("name", "Owner User")
+	friend.Set("name", "Friend User")
+	stranger.Set("name", "Stranger User")
+	if err := server.app.Save(user); err != nil {
+		t.Fatalf("failed to update user name: %v", err)
+	}
+	if err := server.app.Save(friend); err != nil {
+		t.Fatalf("failed to update friend name: %v", err)
+	}
+	if err := server.app.Save(stranger); err != nil {
+		t.Fatalf("failed to update stranger name: %v", err)
+	}
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	visitRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Ramen House",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+	quickTrackRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Night Market",
+		"location":   "Oakland, CA",
+		"visibility": "public",
+	})
+
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(visitRestaurant),
+		"user":       friend.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	friendVisitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Spicy Ramen",
+		"rating": 5,
+		"notes":  "Great broth",
+	})
+	insertVisitPhotoRowRaw(t, server.app, friend.Id, friendVisit.Id, friendVisitItem.Id)
+
+	friendQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":          friend.Id,
+		"name":          "Sesame Donut",
+		"rating":        4,
+		"notes":         "Late snack",
+		"location_text": quickTrackRestaurant.GetString("name"),
+		"isQuickTrack":  true,
+		"visibility":    "friends",
+		"itemDate":      "2026-04-02 19:15:00.000Z",
+	})
+	insertVisitPhotoRowRaw(t, server.app, friend.Id, "", friendQuickTrack.Id)
+
+	ownerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       restaurantIDOrFail(visitRestaurant),
+		"user":             user.Id,
+		"visitDate":        "2026-04-01 09:00:00.000Z",
+		"visibility":       "private",
+		"moderationStatus": "under_review",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  ownerVisit.Id,
+		"user":   user.Id,
+		"name":   "Breakfast Noodles",
+		"rating": 4,
+		"notes":  "Owner only entry",
+	})
+
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":             friend.Id,
+		"name":             "Hidden Quick Track",
+		"rating":           1,
+		"isQuickTrack":     true,
+		"visibility":       "friends",
+		"itemDate":         "2026-04-04 08:00:00.000Z",
+		"moderationStatus": "hidden",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(visitRestaurant),
+		"user":       stranger.Id,
+		"visitDate":  "2026-04-05 08:00:00.000Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=3&scope=all",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Source  string `json:"source"`
+			EventAt string `json:"eventAt"`
+			Visit   *struct {
+				ID               string `json:"id"`
+				RestaurantName   string `json:"restaurantName"`
+				UserName         string `json:"userName"`
+				ModerationStatus string `json:"moderationStatus"`
+				Items            []struct {
+					ID    string `json:"id"`
+					Name  string `json:"name"`
+					Notes string `json:"notes"`
+				} `json:"items"`
+			} `json:"visit"`
+			QuickTrack *struct {
+				ID             string `json:"id"`
+				RestaurantName string `json:"restaurantName"`
+				ItemName       string `json:"itemName"`
+				UserName       string `json:"userName"`
+			} `json:"quickTrack"`
+		} `json:"items"`
+		PhotoPreviews []struct {
+			ID         string `json:"id"`
+			FoodItemID string `json:"food_item"`
+			Photo      string `json:"photo"`
+		} `json:"photoPreviews"`
+		HasNextPage      bool `json:"hasNextPage"`
+		TotalVisits      int  `json:"totalVisits"`
+		TotalQuickTracks int  `json:"totalQuickTracks"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.HasNextPage {
+		t.Fatalf("expected no next page, got %#v", payload)
+	}
+	if payload.TotalVisits != 2 || payload.TotalQuickTracks != 1 {
+		t.Fatalf("unexpected totals: %#v", payload)
+	}
+	if len(payload.Items) != 3 {
+		t.Fatalf("expected 3 feed entries, got %d: %#v", len(payload.Items), payload.Items)
+	}
+
+	if payload.Items[0].Source != "visit" || payload.Items[0].Visit == nil || payload.Items[0].Visit.ID != friendVisit.Id {
+		t.Fatalf("expected first entry to be the friend visit, got %#v", payload.Items[0])
+	}
+	if payload.Items[1].Source != "quick-track" || payload.Items[1].QuickTrack == nil || payload.Items[1].QuickTrack.ID != friendQuickTrack.Id {
+		t.Fatalf("expected second entry to be the friend quick track, got %#v", payload.Items[1])
+	}
+	if payload.Items[2].Source != "visit" || payload.Items[2].Visit == nil || payload.Items[2].Visit.ID != ownerVisit.Id {
+		t.Fatalf("expected third entry to be the owner visit, got %#v", payload.Items[2])
+	}
+
+	if payload.Items[0].Visit.UserName != "Friend User" {
+		t.Fatalf("expected friend visit user name, got %#v", payload.Items[0].Visit)
+	}
+	if payload.Items[0].Visit.Items[0].ID != friendVisitItem.Id || payload.Items[0].Visit.Items[0].Notes != "Great broth" {
+		t.Fatalf("expected visit item details, got %#v", payload.Items[0].Visit.Items)
+	}
+	if payload.Items[1].QuickTrack.RestaurantName != "Night Market" || payload.Items[1].QuickTrack.UserName != "Friend User" {
+		t.Fatalf("expected quick track restaurant and user, got %#v", payload.Items[1].QuickTrack)
+	}
+	if payload.Items[2].Visit.ModerationStatus != "under_review" {
+		t.Fatalf("expected owner under_review visit to remain visible, got %#v", payload.Items[2].Visit)
+	}
+
+	if len(payload.PhotoPreviews) != 2 {
+		t.Fatalf("expected 2 photo previews, got %d: %#v", len(payload.PhotoPreviews), payload.PhotoPreviews)
+	}
+
+	photoByFoodItemID := map[string]string{}
+	for _, preview := range payload.PhotoPreviews {
+		photoByFoodItemID[preview.FoodItemID] = preview.Photo
+	}
+	if photoByFoodItemID[friendVisitItem.Id] != "test-photo.jpg" {
+		t.Fatalf("expected visit photo preview, got %#v", photoByFoodItemID)
+	}
+	if photoByFoodItemID[friendQuickTrack.Id] != "test-photo.jpg" {
+		t.Fatalf("expected quick track photo preview, got %#v", photoByFoodItemID)
+	}
+
+	searchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=20&scope=all&search=broth",
+		token,
+		"",
+	)
+	if searchResponse.Code != http.StatusOK {
+		t.Fatalf("expected search response 200 OK, got %d: %s", searchResponse.Code, searchResponse.Body.String())
+	}
+
+	var searchPayload struct {
+		Items []struct {
+			Source string `json:"source"`
+			Visit  *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+		} `json:"items"`
+		TotalVisits      int `json:"totalVisits"`
+		TotalQuickTracks int `json:"totalQuickTracks"`
+	}
+	if err := json.Unmarshal(searchResponse.Body.Bytes(), &searchPayload); err != nil {
+		t.Fatalf("failed to parse search response JSON: %v; body=%s", err, searchResponse.Body.String())
+	}
+
+	if len(searchPayload.Items) != 1 || searchPayload.Items[0].Source != "visit" || searchPayload.Items[0].Visit == nil || searchPayload.Items[0].Visit.ID != friendVisit.Id {
+		t.Fatalf("expected search to match only the friend visit item notes, got %#v", searchPayload.Items)
+	}
+	if searchPayload.TotalVisits != 1 || searchPayload.TotalQuickTracks != 0 {
+		t.Fatalf("unexpected search totals: %#v", searchPayload)
+	}
+}
+
 func createNoteRecord(t *testing.T, app core.App, userID string, status string) {
 	t.Helper()
 
@@ -607,4 +826,12 @@ func assertFloatEquals(t *testing.T, value any, expected float64) {
 	if actual != expected {
 		t.Fatalf("expected %.0f, got %.0f", expected, actual)
 	}
+}
+
+func restaurantIDOrFail(record *core.Record) string {
+	if record == nil {
+		return ""
+	}
+
+	return record.Id
 }

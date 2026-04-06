@@ -1,3 +1,4 @@
+import type { MenuItemRecord } from './featureStore';
 import { sendApiRequest } from './pocketbaseGateway';
 
 interface ParseMenuImageInput {
@@ -8,6 +9,32 @@ interface ParseMenuImageInput {
 
 interface ParseMenuImageResponse {
   csv: string;
+}
+
+interface CreateMenuReviewRequestInput {
+  restaurantId: string;
+  reason?: string;
+}
+
+interface CreateMenuReviewRequestResponse {
+  id: string;
+  restaurantId: string;
+  status: 'pending' | 'reviewed' | 'dismissed';
+  reason?: string;
+  deduped: boolean;
+  created?: string;
+  updated?: string;
+}
+
+interface CreateMenuItemsFromScanInput {
+  restaurantId: string;
+  itemNames: string[];
+  fallbackLabel?: string;
+}
+
+interface CreateMenuItemsFromScanResponse {
+  createdItems: MenuItemRecord[];
+  existingItems: MenuItemRecord[];
 }
 
 function buildParseMenuFormData(input: ParseMenuImageInput): FormData {
@@ -25,5 +52,23 @@ export async function parseMenuImage(input: ParseMenuImageInput): Promise<ParseM
   return sendApiRequest<ParseMenuImageResponse>('/api/parse-menu', {
     method: 'POST',
     body: formData,
+  });
+}
+
+export async function createMenuReviewRequest(
+  input: CreateMenuReviewRequestInput,
+): Promise<CreateMenuReviewRequestResponse> {
+  return sendApiRequest<CreateMenuReviewRequestResponse>('/api/menu-review-requests', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export async function createMenuItemsFromScan(
+  input: CreateMenuItemsFromScanInput,
+): Promise<CreateMenuItemsFromScanResponse> {
+  return sendApiRequest<CreateMenuItemsFromScanResponse>('/api/menu-items/from-scan', {
+    method: 'POST',
+    body: input,
   });
 }

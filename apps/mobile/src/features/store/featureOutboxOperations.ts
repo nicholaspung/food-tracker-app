@@ -1,5 +1,6 @@
 import { ClientResponseError } from 'pocketbase';
 
+import { env } from '../../config/env';
 import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
 import type { BillParticipantRecord, BillRecord } from '../models';
 import {
@@ -233,6 +234,56 @@ export function createFeatureOutboxMutationInput<TName extends FeatureOutboxOper
       'X-Mobile-Write-Operation': operationName,
     },
     body: payload,
+  };
+}
+
+export function createVisitApiMutationInput(payload: CreateVisitInput): EnqueueMutationInput {
+  return {
+    method: 'POST',
+    url: `${env.apiBaseUrl}/api/visits`,
+    headers: {
+      'X-Mobile-Write-Operation': 'visit.create',
+    },
+    body: payload,
+  };
+}
+
+export function updateVisitApiMutationInput(
+  visitId: string,
+  updates: UpdateVisitInput,
+): EnqueueMutationInput {
+  return {
+    method: 'PUT',
+    url: `${env.apiBaseUrl}/api/visits/${encodeURIComponent(visitId)}`,
+    headers: {
+      'X-Mobile-Write-Operation': 'visit.update',
+    },
+    body: updates,
+  };
+}
+
+export function createBillApiMutationInput(payload: CreateBillInput): EnqueueMutationInput {
+  return {
+    method: 'POST',
+    url: `${env.apiBaseUrl}/api/bills`,
+    headers: {
+      'X-Mobile-Write-Operation': 'bill.create',
+    },
+    body: payload,
+  };
+}
+
+export function updateBillApiMutationInput(
+  billId: string,
+  updates: UpdateBillInput,
+): EnqueueMutationInput {
+  return {
+    method: 'PUT',
+    url: `${env.apiBaseUrl}/api/bills/${encodeURIComponent(billId)}`,
+    headers: {
+      'X-Mobile-Write-Operation': 'bill.update',
+    },
+    body: updates,
   };
 }
 

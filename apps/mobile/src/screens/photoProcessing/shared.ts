@@ -91,6 +91,7 @@ export interface ReviewQuickTrackCardData {
 }
 
 export interface RestaurantReviewGroup {
+  restaurantId: string;
   restaurantName: string;
   date: string;
   items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
@@ -147,9 +148,10 @@ export function buildRestaurantReviewGroups(
       continue;
     }
 
-    const key = `${form.restaurantName.trim().toLowerCase()}__${form.date}`;
+    const key = `${form.restaurantId.trim()}__${form.date}`;
     const existing =
       groups.get(key) ?? {
+        restaurantId: form.restaurantId.trim(),
         restaurantName: form.restaurantName.trim(),
         date: form.date,
         items: [],

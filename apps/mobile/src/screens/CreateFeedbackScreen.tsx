@@ -4,7 +4,13 @@ import { StyleSheet, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
-import { createFeedback, type FeedbackRecord } from '../features';
+import {
+  createFeedback,
+  feedbackQueryKeys,
+  type FeedbackCountSummary,
+  type FeedbackListQueryData,
+  prependFeedbackListItem,
+} from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -15,15 +21,6 @@ import { useTheme } from '../theme';
 import { Card, Input } from '../ui';
 
 type CreateFeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateFeedback'>;
-
-function prependFeedbackRecord(
-  currentFeedback: FeedbackRecord[] | undefined,
-  createdFeedback: FeedbackRecord,
-): FeedbackRecord[] {
-  const withoutDuplicate = (currentFeedback ?? []).filter((feedbackItem) => feedbackItem.id !== createdFeedback.id);
-
-  return [createdFeedback, ...withoutDuplicate];
-}
 
 export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) {
   const theme = useTheme();
@@ -98,7 +95,7 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
 
       if (!isOnline) {
         await queueFeatureOutbox('feedback.create', feedbackInput);
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
+        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.root });
         trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
           source: 'CreateFeedbackScreen',
           queued: true,
@@ -111,13 +108,18 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
       await queueWrite('feedback.create');
       const createdFeedback = await createFeedback(feedbackInput);
 
-      queryClient.setQueryData<FeedbackRecord[]>(['feature', 'feedback', 'all'], (currentFeedback) =>
-        prependFeedbackRecord(currentFeedback, createdFeedback),
+      queryClient.setQueryData<FeedbackListQueryData>(feedbackQueryKeys.list, (currentFeedback) =>
+        prependFeedbackListItem(currentFeedback, createdFeedback),
       );
-      queryClient.setQueryData<FeedbackRecord[]>(['feature', 'feedback'], (currentFeedback) =>
-        prependFeedbackRecord(currentFeedback, createdFeedback),
+      queryClient.setQueryData(feedbackQueryKeys.detail(createdFeedback.id), createdFeedback);
+      queryClient.setQueryData<FeedbackCountSummary | undefined>(feedbackQueryKeys.summary, (currentSummary) =>
+        currentSummary
+          ? {
+              allCount: currentSummary.allCount + 1,
+              activeCount: createdFeedback.status === 'closed' ? currentSummary.activeCount : currentSummary.activeCount + 1,
+            }
+          : currentSummary,
       );
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback'] });
       trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
         source: 'CreateFeedbackScreen',
         queued: false,

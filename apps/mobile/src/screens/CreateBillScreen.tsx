@@ -31,13 +31,17 @@ import {
   formatCurrency,
   validateBillTotal,
 } from '../features/bills/billCalculations';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
+import {
+  createBillApiMutationInput,
+  updateBillApiMutationInput,
+} from '../features/store/featureOutboxOperations';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { useSync } from '../providers/SyncProvider';
 import { useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
@@ -295,7 +299,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const { enqueueMutation } = useSync();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const editBillId = route.params?.billId;
@@ -2175,15 +2179,14 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
       if (!isOnline) {
         if (isEditMode && editBillId) {
-          await queueFeatureOutbox('bill.update', {
-            billId: editBillId,
-            updates: billPayload,
-          });
+          await enqueueMutation(updateBillApiMutationInput(editBillId, billPayload));
         } else {
-          await queueFeatureOutbox('bill.create', {
-            ...billPayload,
-            createdByUserId: user?.id ?? 'unknown_user',
-          });
+          await enqueueMutation(
+            createBillApiMutationInput({
+              ...billPayload,
+              createdByUserId: user?.id ?? 'unknown_user',
+            }),
+          );
         }
 
         await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
