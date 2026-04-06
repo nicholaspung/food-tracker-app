@@ -23,11 +23,13 @@ import {
 } from '../components/shared';
 import {
   deleteCollectionRecord,
+  generateInviteCodes,
   getFeedbackCountSummary,
   getAuthRecord,
   getProfile,
+  listInviteCodes,
+  lockInviteCode,
   saveAuthRecord,
-  sendApiRequest,
   updateCollectionRecord,
   updateProfile,
 } from '../features';
@@ -48,12 +50,6 @@ import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 type ExpandablePanel = 'account' | 'invite' | 'danger';
-
-interface InviteCode {
-  id: string;
-  code: string;
-  locked?: boolean;
-}
 
 const INVITE_SIGNUP_DEEP_LINK_PREFIX = 'yummyrecs://signup?code=';
 
@@ -104,12 +100,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     invite: false,
     danger: false,
   });
-  const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
   const [inviteErrorMessage, setInviteErrorMessage] = useState<string | null>(
     null,
   );
-  const [isInviteLoading, setIsInviteLoading] = useState(true);
-  const [isGeneratingCodes, setIsGeneratingCodes] = useState(false);
   const [activeInviteCodeId, setActiveInviteCodeId] = useState<string | null>(
     null,
   );
@@ -123,32 +116,27 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const [accountNameErrorMessage, setAccountNameErrorMessage] = useState<
     string | null
   >(null);
-
-  const fetchInviteCodes = async () => {
-    setIsInviteLoading(true);
-    setInviteErrorMessage(null);
-
-    try {
-      const response = await sendApiRequest<{ codes?: InviteCode[] }>(
-        "/api/invite-codes",
-        {
-          method: "GET",
-        },
-      );
-
-      setInviteCodes(response.codes ?? []);
-    } catch (error) {
-      setInviteErrorMessage(
-        getErrorMessage(error, "Could not load invite codes."),
-      );
-    } finally {
-      setIsInviteLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchInviteCodes();
-  }, [user?.id]);
+  const inviteCodesQuery = useQuery({
+    queryKey: ["feature", "inviteCodes", user?.id ?? null],
+    queryFn: listInviteCodes,
+    enabled: expandedPanels.invite && Boolean(user?.id),
+  });
+  const generateInviteCodesMutation = useMutation({
+    mutationFn: generateInviteCodes,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["feature", "inviteCodes", user?.id ?? null],
+      });
+    },
+  });
+  const lockInviteCodeMutation = useMutation({
+    mutationFn: lockInviteCode,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["feature", "inviteCodes", user?.id ?? null],
+      });
+    },
+  });
 
   const accountName = useMemo(() => {
     const profileName = profileQuery.data?.displayName?.trim() ?? "";
@@ -174,6 +162,18 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const accountCreated = formatDisplayDate(authRecord?.created, {
     fallback: "Unknown",
   });
+  const inviteCodes = inviteCodesQuery.data ?? [];
+  const hasBlockingInviteQueryError =
+    inviteCodesQuery.isError && inviteCodes.length === 0;
+  const inviteError =
+    inviteErrorMessage ??
+    (hasBlockingInviteQueryError
+      ? getErrorMessage(inviteCodesQuery.error, "Could not load invite codes.")
+      : inviteCodesQuery.isError
+        ? "Could not refresh invite codes. Showing saved data."
+        : null);
+  const isInviteLoading = inviteCodesQuery.isLoading;
+  const isGeneratingCodes = generateInviteCodesMutation.isPending;
 
   useEffect(() => {
     if (!isEditingAccountName) {
@@ -193,13 +193,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       source: "ProfileScreen",
     });
     setInviteErrorMessage(null);
-    setIsGeneratingCodes(true);
 
     try {
-      await sendApiRequest("/api/invite-codes/generate", {
-        method: "POST",
-      });
-      await fetchInviteCodes();
+      await generateInviteCodesMutation.mutateAsync();
       trackObservabilityEvent("PROFILE_INVITE_CODES_GENERATE_COMPLETED", {
         source: "ProfileScreen",
       });
@@ -212,8 +208,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       setInviteErrorMessage(
         getErrorMessage(error, "Could not generate invite codes."),
       );
-    } finally {
-      setIsGeneratingCodes(false);
     }
   };
 
@@ -238,12 +232,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         return;
       }
 
-      await sendApiRequest("/api/invite-codes/lock", {
-        method: "POST",
-        body: { codeId },
-      });
-
-      await fetchInviteCodes();
+      await lockInviteCodeMutation.mutateAsync(codeId);
       trackObservabilityEvent("PROFILE_INVITE_CODE_SHARE_COMPLETED", {
         codeId,
         source: "ProfileScreen",
@@ -787,12 +776,17 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                 ) : null}
 
                 <PageErrorToast
-                  errorMessage={inviteErrorMessage}
+                  errorMessage={inviteError}
                   title="Invite codes unavailable"
-                  actionLabel="Retry"
-                  onAction={() => {
-                    void fetchInviteCodes();
-                  }}
+                  actionLabel={inviteCodesQuery.isError ? "Retry" : undefined}
+                  onAction={
+                    inviteCodesQuery.isError
+                      ? () => {
+                          setInviteErrorMessage(null);
+                          void inviteCodesQuery.refetch();
+                        }
+                      : undefined
+                  }
                 />
 
                 {isInviteLoading ? (
@@ -802,7 +796,8 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                   </>
                 ) : null}
 
-                {!isInviteLoading && !inviteErrorMessage ? (
+                {!isInviteLoading &&
+                (!inviteError || inviteCodes.length > 0) ? (
                   <View style={styles.inviteList}>
                     {inviteCodes.length === 0 ? (
                       <Text tone="muted">No invite codes available.</Text>

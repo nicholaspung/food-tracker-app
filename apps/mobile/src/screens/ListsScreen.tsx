@@ -218,6 +218,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
+    enabled: activeTab === 'my',
   });
 
   const friendsListsQuery = useInfiniteQuery({
@@ -231,6 +232,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
+    enabled: activeTab === 'friends',
   });
 
   useEffect(() => {
@@ -242,6 +244,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       !user?.id ||
       trimmedSearchQuery.length > 0 ||
       hasTriedCreatingDefault.current ||
+      !myListsQuery.data ||
       myListsQuery.isLoading ||
       (myListsQuery.isError && !myListsQuery.data)
     ) {
@@ -315,12 +318,15 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         value: tab.value,
         badgeCount:
           tab.value === 'my'
-            ? (myListsQuery.data?.pages[0]?.totalItems ?? myLists.length)
+            ? (myListsQuery.data?.pages[0]?.totalItems ?? (activeTab === 'my' ? myLists.length : undefined))
             : tab.value === 'friends'
-              ? (friendsListsQuery.data?.pages[0]?.totalItems ?? friendLists.length)
+              ? (
+                  friendsListsQuery.data?.pages[0]?.totalItems ??
+                  (activeTab === 'friends' ? friendLists.length : undefined)
+                )
               : 0,
       })),
-    [friendLists.length, friendsListsQuery.data, myLists.length, myListsQuery.data],
+    [activeTab, friendLists.length, friendsListsQuery.data, myLists.length, myListsQuery.data],
   );
 
   const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);

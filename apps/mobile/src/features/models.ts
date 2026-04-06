@@ -98,6 +98,13 @@ export interface RestaurantListRecord {
   updatedAt: string;
 }
 
+export interface InviteCodeRecord {
+  id: string;
+  code: string;
+  locked?: boolean;
+  lockedUntil?: string;
+}
+
 export interface RestaurantListBookmarkedItemRecord {
   id: string;
   listItemId: string;

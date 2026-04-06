@@ -10,6 +10,21 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.29',
+    date: '2026-04-05',
+    title: 'Faster Lists & Smarter Invite Codes',
+    summary:
+      'Restaurant list item and restaurant counts now update instantly on the server whenever you add or remove items, so the numbers you see are always accurate without extra loading. The Lists screen now only fetches the tab you are viewing, and your invite codes only load when you open that section of your profile.',
+    features: [],
+    improvements: [
+      'Restaurant list counts (number of restaurants and menu items) are now maintained on the server and returned directly — no extra round-trip needed to calculate them on your device.',
+      'The Lists screen now only loads your lists or your friends\' lists when you switch to that tab, reducing unnecessary network requests.',
+      'Invite codes on the Profile screen now only load when you expand the Invite section, so the tab opens faster.',
+      'If invite codes fail to refresh, the screen now shows your previously loaded codes instead of going blank, along with a retry option.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.28',
     date: '2026-04-05',
     title: 'Smarter Search, Private Menu Images & Performance',

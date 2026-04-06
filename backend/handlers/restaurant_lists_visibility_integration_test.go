@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/hooks"
 )
 
 func TestRestaurantListsRejectPublicVisibility(t *testing.T) {
@@ -47,7 +49,9 @@ func TestRestaurantListsRejectPublicVisibility(t *testing.T) {
 }
 
 func TestFriendsCanViewSharedRestaurantListsAndItems(t *testing.T) {
-	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {})
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		hooks.RegisterRestaurantListCountHooks(app)
+	})
 
 	owner, _ := createAuthUser(t, server.app, false, false)
 	friend, friendToken := createAuthUser(t, server.app, false, false)
@@ -96,6 +100,20 @@ func TestFriendsCanViewSharedRestaurantListsAndItems(t *testing.T) {
 	if !strings.Contains(friendListResponse.Body.String(), list.Id) {
 		t.Fatalf("expected accepted friend to see shared list, got %s", friendListResponse.Body.String())
 	}
+
+	friendListBody := parseJSONMap(t, friendListResponse.Body.Bytes())
+	items, ok := friendListBody["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected a single shared list item in payload, got %#v", friendListBody["items"])
+	}
+
+	listPayload, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected list payload object, got %#v", items[0])
+	}
+
+	assertFloatEquals(t, listPayload["restaurantCount"], 1)
+	assertFloatEquals(t, listPayload["menuItemCount"], 1)
 
 	strangerListResponse := performJSONRequest(
 		t,
