@@ -11,7 +11,10 @@ const (
 	findRestaurantRouteLabel = "POST /api/find-restaurant-name"
 	parseMenuRouteLabel      = "POST /api/parse-menu"
 	placesRoutesPrefixLabel  = "POST /api/places/"
+	postHogStaticRouteLabel  = "GET /api/visit-insights/static/"
+	postHogRoutePrefixLabel  = "/api/visit-insights/"
 	tastingSessionJoinLabel  = "POST /api/tasting-sessions/join"
+	allAudience              = core.RateLimitRuleAudienceAll
 	guestAudience            = core.RateLimitRuleAudienceGuest
 	authAudience             = core.RateLimitRuleAudienceAuth
 )
@@ -25,6 +28,8 @@ func configureSecurityRateLimitRules(app core.App) {
 		{Label: signupRouteLabel, Audience: guestAudience, Duration: 15 * 60, MaxRequests: 10},
 		{Label: publicInviteLookupLabel, Audience: guestAudience, Duration: 60, MaxRequests: 12},
 		{Label: friendCodeLookupLabel, Audience: authAudience, Duration: 60, MaxRequests: 20},
+		{Label: postHogStaticRouteLabel, Audience: allAudience, Duration: 60, MaxRequests: 120},
+		{Label: postHogRoutePrefixLabel, Audience: allAudience, Duration: 60, MaxRequests: 60},
 		{Label: convertHeicRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 20},
 		{Label: findRestaurantRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},
 		{Label: parseMenuRouteLabel, Audience: authAudience, Duration: 10 * 60, MaxRequests: 10},

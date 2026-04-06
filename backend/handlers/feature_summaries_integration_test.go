@@ -79,6 +79,205 @@ func TestFeedbackSummaryEndpoint(t *testing.T) {
 	assertFloatEquals(t, body["activeCount"], 2)
 }
 
+func TestBillsSummaryEndpoint(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	creatorParticipant, _ := createAuthUser(t, server.app, false, false)
+	settledParticipant, _ := createAuthUser(t, server.app, false, false)
+	otherCreator, _ := createAuthUser(t, server.app, false, false)
+	unrelatedUser, _ := createAuthUser(t, server.app, false, false)
+
+	createdBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      user.Id,
+		"bill_name":         "Team Dinner",
+		"total_amount":      50.0,
+		"tax":               4.0,
+		"tip":               8.0,
+		"fees":              0.0,
+		"split_mode":        "even",
+		"extras_split_mode": "proportional",
+		"status":            "active",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             createdBill.Id,
+		"user":             user.Id,
+		"participant_name": "You",
+		"amount_owed":      12.0,
+		"paid_status":      "pending",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             createdBill.Id,
+		"user":             creatorParticipant.Id,
+		"participant_name": "Alex",
+		"amount_owed":      18.0,
+		"paid_status":      "pending",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             createdBill.Id,
+		"user":             settledParticipant.Id,
+		"participant_name": "Taylor",
+		"amount_owed":      20.0,
+		"paid_status":      "paid",
+	})
+
+	participantBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      otherCreator.Id,
+		"bill_name":         "Cab Ride",
+		"total_amount":      25.0,
+		"tax":               0.0,
+		"tip":               0.0,
+		"fees":              0.0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "active",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             participantBill.Id,
+		"user":             otherCreator.Id,
+		"participant_name": "Morgan",
+		"amount_owed":      16.0,
+		"paid_status":      "paid",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             participantBill.Id,
+		"user":             user.Id,
+		"participant_name": "You",
+		"amount_owed":      9.0,
+		"paid_status":      "pending",
+	})
+
+	settledBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      user.Id,
+		"bill_name":         "Lunch",
+		"total_amount":      28.0,
+		"tax":               2.0,
+		"tip":               4.0,
+		"fees":              0.0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "settled",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             settledBill.Id,
+		"user":             user.Id,
+		"participant_name": "You",
+		"amount_owed":      14.0,
+		"paid_status":      "paid",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             settledBill.Id,
+		"user":             creatorParticipant.Id,
+		"participant_name": "Alex",
+		"amount_owed":      14.0,
+		"paid_status":      "paid",
+	})
+
+	unrelatedBill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"creator_user":      unrelatedUser.Id,
+		"bill_name":         "Private Bill",
+		"total_amount":      10.0,
+		"tax":               0.0,
+		"tip":               0.0,
+		"fees":              0.0,
+		"split_mode":        "even",
+		"extras_split_mode": "equal",
+		"status":            "active",
+	})
+	createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             unrelatedBill.Id,
+		"user":             unrelatedUser.Id,
+		"participant_name": "Unaffiliated",
+		"amount_owed":      10.0,
+		"paid_status":      "pending",
+	})
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/bills/summary", token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload []struct {
+		ID                           string  `json:"id"`
+		Title                        string  `json:"title"`
+		Status                       string  `json:"status"`
+		ParticipantCount             int     `json:"participantCount"`
+		PendingOtherParticipantCount int     `json:"pendingOtherParticipantCount"`
+		YouOwe                       float64 `json:"youOwe"`
+		YouAreOwed                   float64 `json:"youAreOwed"`
+		IsCreator                    bool    `json:"isCreator"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if len(payload) != 3 {
+		t.Fatalf("expected 3 bill summaries, got %d: %#v", len(payload), payload)
+	}
+
+	summaryByID := make(map[string]struct {
+		title                        string
+		status                       string
+		participantCount             int
+		pendingOtherParticipantCount int
+		youOwe                       float64
+		youAreOwed                   float64
+		isCreator                    bool
+	}, len(payload))
+	for _, item := range payload {
+		summaryByID[item.ID] = struct {
+			title                        string
+			status                       string
+			participantCount             int
+			pendingOtherParticipantCount int
+			youOwe                       float64
+			youAreOwed                   float64
+			isCreator                    bool
+		}{
+			title:                        item.Title,
+			status:                       item.Status,
+			participantCount:             item.ParticipantCount,
+			pendingOtherParticipantCount: item.PendingOtherParticipantCount,
+			youOwe:                       item.YouOwe,
+			youAreOwed:                   item.YouAreOwed,
+			isCreator:                    item.IsCreator,
+		}
+	}
+
+	if _, exists := summaryByID[unrelatedBill.Id]; exists {
+		t.Fatalf("unexpected unrelated bill in summary: %#v", summaryByID[unrelatedBill.Id])
+	}
+
+	if summary := summaryByID[createdBill.Id]; summary.title != "Team Dinner" ||
+		summary.status != "open" ||
+		summary.participantCount != 3 ||
+		summary.pendingOtherParticipantCount != 1 ||
+		summary.youOwe != 12.0 ||
+		summary.youAreOwed != 18.0 ||
+		!summary.isCreator {
+		t.Fatalf("unexpected created bill summary: %#v", summary)
+	}
+
+	if summary := summaryByID[participantBill.Id]; summary.title != "Cab Ride" ||
+		summary.status != "open" ||
+		summary.participantCount != 2 ||
+		summary.pendingOtherParticipantCount != 0 ||
+		summary.youOwe != 9.0 ||
+		summary.youAreOwed != 0.0 ||
+		summary.isCreator {
+		t.Fatalf("unexpected participant bill summary: %#v", summary)
+	}
+
+	if summary := summaryByID[settledBill.Id]; summary.title != "Lunch" ||
+		summary.status != "settled" ||
+		summary.participantCount != 2 ||
+		summary.pendingOtherParticipantCount != 0 ||
+		summary.youOwe != 0.0 ||
+		summary.youAreOwed != 0.0 ||
+		!summary.isCreator {
+		t.Fatalf("unexpected settled bill summary: %#v", summary)
+	}
+}
+
 func TestRestaurantVisitStatsEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

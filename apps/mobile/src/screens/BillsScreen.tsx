@@ -13,11 +13,10 @@ import {
   Skeleton,
   StatusPill,
 } from '../components/shared';
-import { listBills } from '../features';
+import { listBillSummaries } from '../features';
 import { formatCurrency } from '../features/bills/billCalculations';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useAuth } from '../providers/AuthProvider';
 import { useTheme } from '../theme';
 import { Card } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -27,11 +26,10 @@ type BillFilter = 'all' | 'you_owe' | 'you_are_owed' | 'settled';
 
 export function BillsScreen({ navigation }: BillsScreenProps) {
   const theme = useTheme();
-  const { user } = useAuth();
 
   const billsQuery = useQuery({
     queryKey: ['feature', 'bills'],
-    queryFn: listBills,
+    queryFn: listBillSummaries,
   });
   const hasBlockingBillsError = billsQuery.isError && !billsQuery.data;
   const hasBillsRefreshError = !hasBlockingBillsError && billsQuery.isError;
@@ -47,29 +45,18 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
 
     if (activeFilter === 'you_owe') {
       return bills.filter((bill) => {
-        const participant = bill.participants.find((candidate) => candidate.userId === user?.id);
-        return (
-          bill.status !== 'settled' &&
-          participant?.paidStatus === 'pending' &&
-          (participant.amountOwed ?? 0) > 0
-        );
+        return bill.status !== 'settled' && bill.youOwe > 0;
       });
     }
 
     if (activeFilter === 'you_are_owed') {
       return bills.filter((bill) => {
-        if (bill.createdByUserId !== user?.id || bill.status === 'settled') {
-          return false;
-        }
-
-        return bill.participants.some(
-          (participant) => participant.userId !== user?.id && participant.paidStatus === 'pending',
-        );
+        return bill.status !== 'settled' && bill.youAreOwed > 0;
       });
     }
 
     return bills;
-  }, [activeFilter, billsQuery.data, user?.id]);
+  }, [activeFilter, billsQuery.data]);
 
   const styles = StyleSheet.create({
     body: {
@@ -173,27 +160,18 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           <Card style={styles.listCard}>
             <OptionList style={styles.list}>
               {filteredBills.map((bill, index) => {
-                const me = bill.participants.find((participant) => participant.userId === user?.id);
-                const isCreator = bill.createdByUserId === user?.id;
-                const pendingOthers = bill.participants.filter(
-                  (participant) => participant.userId !== user?.id && participant.paidStatus === 'pending',
-                );
-
                 const statusTone = bill.status === 'settled' ? 'success' : 'info';
                 const statusLabel = bill.status === 'settled' ? 'Settled' : 'Active';
-                const youOwe = me?.paidStatus === 'pending' ? me.amountOwed : 0;
-                const youAreOwed = isCreator
-                  ? pendingOthers.reduce((sum, participant) => sum + participant.amountOwed, 0)
-                  : 0;
-                const participantLabel = `${bill.participants.length} participant${bill.participants.length === 1 ? '' : 's'}`;
+                const participantLabel =
+                  `${bill.participantCount} participant${bill.participantCount === 1 ? '' : 's'}`;
                 const summaryLabel =
-                  youOwe > 0
-                    ? `${participantLabel} • Owe ${formatCurrency(youOwe)}`
-                    : youAreOwed > 0
-                      ? `${participantLabel} • Owed ${formatCurrency(youAreOwed)}`
+                  bill.youOwe > 0
+                    ? `${participantLabel} • Owe ${formatCurrency(bill.youOwe)}`
+                    : bill.youAreOwed > 0
+                      ? `${participantLabel} • Owed ${formatCurrency(bill.youAreOwed)}`
                       : bill.status === 'settled'
                         ? `${participantLabel} • All settled`
-                        : `${participantLabel} • ${pendingOthers.length} pending`;
+                        : `${participantLabel} • ${bill.pendingOtherParticipantCount} pending`;
 
                 return (
                   <OptionListRow
@@ -204,7 +182,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
                         source: 'BillsScreen',
                         filter: activeFilter,
                         status: bill.status,
-                        isCreator,
+                        isCreator: bill.isCreator,
                       });
                       navigation.navigate('BillDetail', { billId: bill.id });
                     }}

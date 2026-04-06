@@ -92,6 +92,8 @@ export interface RestaurantListRecord {
   ownerName?: string;
   isDefault?: boolean;
   coverImage?: string;
+  restaurantCount?: number;
+  menuItemCount?: number;
   createdAt: string;
   updatedAt: string;
 }

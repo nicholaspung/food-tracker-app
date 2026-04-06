@@ -2,16 +2,21 @@ package handlers
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
 
 const postHogProxyPrefix = "/api/visit-insights"
+
+const maxPostHogProxyBodyBytes int64 = 512 << 10
 
 // RegisterPostHogProxyHandlers registers the PostHog reverse proxy endpoints
 // This allows the frontend to send analytics events through our backend,
@@ -60,7 +65,11 @@ func registerPostHogMethodProxy(e *core.ServeEvent, method string, posthogHost s
 			path = "/"
 		}
 
-		targetURL := posthogHost + path
+		targetURL, err := resolvePostHogTargetURL(method, path, posthogHost)
+		if err != nil {
+			return apis.NewNotFoundError("analytics route not found", err)
+		}
+
 		if method == http.MethodGet {
 			return proxyPostHogRequestGET(re, targetURL)
 		}
@@ -78,11 +87,14 @@ func proxyPostHogRequest(re *core.RequestEvent, targetURL string) error {
 		targetURL += "?" + re.Request.URL.RawQuery
 	}
 
-	// Read request body
-	body, err := io.ReadAll(re.Request.Body)
+	body, err := readPostHogProxyBody(re.Request.Body, maxPostHogProxyBodyBytes)
 	if err != nil {
-		return re.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Failed to read request body",
+		statusCode := http.StatusBadRequest
+		if isRequestBodyTooLarge(err) {
+			statusCode = http.StatusRequestEntityTooLarge
+		}
+		return re.JSON(statusCode, map[string]string{
+			"error": err.Error(),
 		})
 	}
 	defer re.Request.Body.Close()
@@ -201,14 +213,86 @@ func forwardPostHogRequestHeaders(re *core.RequestEvent, proxyReq *http.Request)
 		proxyReq.Header.Set("User-Agent", ua)
 	}
 
-	if xff := re.Request.Header.Get("X-Forwarded-For"); xff != "" {
-		proxyReq.Header.Set("X-Forwarded-For", xff)
-	} else if realIP := re.Request.Header.Get("X-Real-IP"); realIP != "" {
+	if realIP := strings.TrimSpace(re.RealIP()); realIP != "" {
 		proxyReq.Header.Set("X-Forwarded-For", realIP)
+		proxyReq.Header.Set("X-Real-IP", realIP)
 	}
 
 	if referer := re.Request.Header.Get("Referer"); referer != "" {
 		proxyReq.Header.Set("Referer", referer)
 	}
+}
 
+func resolvePostHogTargetURL(method string, requestPath string, posthogHost string) (string, error) {
+	cleanPath, err := sanitizePostHogRequestPath(requestPath)
+	if err != nil {
+		return "", err
+	}
+
+	if !isAllowedPostHogRoute(method, cleanPath) {
+		return "", fmt.Errorf("route %s %s is not allowlisted", method, cleanPath)
+	}
+
+	return posthogHost + cleanPath, nil
+}
+
+func sanitizePostHogRequestPath(requestPath string) (string, error) {
+	trimmed := strings.TrimSpace(requestPath)
+	if trimmed == "" || trimmed == "/" {
+		return "/", nil
+	}
+
+	if !strings.HasPrefix(trimmed, "/") {
+		trimmed = "/" + trimmed
+	}
+
+	hadTrailingSlash := strings.HasSuffix(trimmed, "/")
+	cleaned := path.Clean(trimmed)
+	if cleaned == "." {
+		cleaned = "/"
+	}
+
+	if !strings.HasPrefix(cleaned, "/") {
+		return "", fmt.Errorf("invalid analytics path")
+	}
+
+	if hadTrailingSlash && cleaned != "/" {
+		cleaned += "/"
+	}
+
+	return cleaned, nil
+}
+
+func isAllowedPostHogRoute(method string, requestPath string) bool {
+	switch method {
+	case http.MethodGet:
+		return requestPath == "/flags" ||
+			requestPath == "/flags/" ||
+			isAllowedPostHogArrayConfigPath(requestPath)
+	case http.MethodPost:
+		return requestPath == "/flags" ||
+			requestPath == "/flags/" ||
+			hasAllowedPostHogPrefix(requestPath, "/batch") ||
+			hasAllowedPostHogPrefix(requestPath, "/capture") ||
+			hasAllowedPostHogPrefix(requestPath, "/decide") ||
+			hasAllowedPostHogPrefix(requestPath, "/e") ||
+			hasAllowedPostHogPrefix(requestPath, "/engage") ||
+			hasAllowedPostHogPrefix(requestPath, "/i/v0/e") ||
+			hasAllowedPostHogPrefix(requestPath, "/s")
+	default:
+		return false
+	}
+}
+
+func isAllowedPostHogArrayConfigPath(requestPath string) bool {
+	if !strings.HasPrefix(requestPath, "/array/") {
+		return false
+	}
+
+	segments := strings.Split(strings.Trim(requestPath, "/"), "/")
+	return len(segments) == 3 && segments[0] == "array" && segments[1] != "" && segments[2] == "config"
+}
+
+func hasAllowedPostHogPrefix(requestPath string, prefix string) bool {
+	return requestPath == prefix || strings.HasPrefix(requestPath, prefix+"/")
 }

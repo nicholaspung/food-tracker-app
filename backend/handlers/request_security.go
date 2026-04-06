@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gabriel-vasile/mimetype"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -26,6 +28,7 @@ const (
 )
 
 var (
+	errRequestBodyTooLarge = errors.New("request body exceeds allowed size")
 	allowedImageExtensions = map[string]struct{}{
 		".heic": {},
 		".heif": {},
@@ -37,6 +40,14 @@ var (
 	allowedHEICExtensions = map[string]struct{}{
 		".heic": {},
 		".heif": {},
+	}
+	allowedImageMimeTypesByExtension = map[string][]string{
+		".heic": {"image/heic", "image/heif"},
+		".heif": {"image/heic", "image/heif"},
+		".jpeg": {"image/jpeg"},
+		".jpg":  {"image/jpeg"},
+		".png":  {"image/png"},
+		".webp": {"image/webp"},
 	}
 	geminiHTTPClient  = &http.Client{Timeout: geminiRequestTimeout}
 	placesHTTPClient  = &http.Client{Timeout: googlePlacesRequestTimeout}
@@ -89,6 +100,99 @@ func readUploadedFileWithLimit(file multipart.File, maxBytes int64) ([]byte, err
 	}
 
 	return data, nil
+}
+
+func readPostHogProxyBody(body io.Reader, maxBytes int64) ([]byte, error) {
+	if body == nil {
+		return []byte{}, nil
+	}
+
+	reader := io.LimitReader(body, maxBytes+1)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read request body")
+	}
+
+	if int64(len(data)) > maxBytes {
+		return nil, errRequestBodyTooLarge
+	}
+
+	return data, nil
+}
+
+func isRequestBodyTooLarge(err error) bool {
+	return errors.Is(err, errRequestBodyTooLarge)
+}
+
+func detectUploadedImageFormat(
+	header *multipart.FileHeader,
+	data []byte,
+	allowedExtensions map[string]struct{},
+) (mimeType string, format string, err error) {
+	if header == nil {
+		return "", "", fmt.Errorf("image file is required")
+	}
+
+	if err := validateUploadedImage(header, allowedExtensions); err != nil {
+		return "", "", err
+	}
+
+	if len(data) == 0 {
+		return "", "", fmt.Errorf("image file is empty")
+	}
+
+	extension := strings.ToLower(filepath.Ext(header.Filename))
+	detectedMimeType := mimetype.Detect(data).String()
+	if !isAllowedDetectedImageMimeType(extension, detectedMimeType, allowedExtensions) {
+		return "", "", fmt.Errorf("image contents do not match the uploaded file type")
+	}
+
+	imageFormat, err := imageFormatFromMimeType(detectedMimeType)
+	if err != nil {
+		return "", "", err
+	}
+
+	return detectedMimeType, imageFormat, nil
+}
+
+func isAllowedDetectedImageMimeType(
+	extension string,
+	mimeType string,
+	allowedExtensions map[string]struct{},
+) bool {
+	if _, ok := allowedExtensions[extension]; !ok {
+		return false
+	}
+
+	allowedMimeTypes, ok := allowedImageMimeTypesByExtension[extension]
+	if !ok {
+		return false
+	}
+
+	for _, allowedMimeType := range allowedMimeTypes {
+		if mimeType == allowedMimeType {
+			return true
+		}
+	}
+
+	return false
+}
+
+func imageFormatFromMimeType(mimeType string) (string, error) {
+	switch mimeType {
+	case "image/heic":
+		return "heic", nil
+	case "image/heif":
+		return "heif", nil
+	case "image/jpeg":
+		return "jpeg", nil
+	case "image/png":
+		return "png", nil
+	case "image/webp":
+		return "webp", nil
+	default:
+		return "", fmt.Errorf("unsupported detected image format %q", mimeType)
+	}
 }
 
 func normalizeBoundedString(raw string, fieldName string, maxLength int) (string, error) {

@@ -3,7 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
@@ -17,7 +17,6 @@ import {
 import { env } from '../config/env';
 import {
   createDefaultRestaurantList,
-  getRestaurantListItemCounts,
   listRestaurantListsPage,
   type RestaurantListRecord,
 } from '../features';
@@ -309,14 +308,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     [activeTab, friendLists, myLists],
   );
 
-  const visibleListIds = useMemo(() => visibleLists.map((list) => list.id), [visibleLists]);
-
-  const listItemCountsQuery = useQuery({
-    queryKey: ['feature', 'restaurantListItemCounts.v2', activeTab, ...visibleListIds],
-    queryFn: () => getRestaurantListItemCounts(visibleListIds),
-    enabled: visibleListIds.length > 0 && !activeQuery.isLoading && !hasBlockingActiveQueryError,
-  });
-
   const tabOptions = useMemo<readonly SegmentedControlOption<ListTab>[]>(
     () =>
       TAB_DEFINITIONS.map((tab) => ({
@@ -502,7 +493,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   );
 
   const renderListCard = (list: RestaurantListRecord, listIndex: number) => {
-    const counts = normalizeListCountSummary(listItemCountsQuery.data?.[list.id]);
+    const counts = normalizeListCountSummary({
+      restaurantCount: list.restaurantCount,
+      menuItemCount: list.menuItemCount,
+    });
     const restaurantCount = counts.restaurantCount;
     const menuItemCount = counts.menuItemCount;
     const coverImage = getListCoverImageUrl(list);
@@ -642,15 +636,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           void activeQuery.refetch();
         }}
         title="Lists unavailable"
-      />
-
-      <PageErrorToast
-        actionLabel="Retry"
-        errorMessage={listItemCountsQuery.isError ? 'Could not load list item counts.' : null}
-        onAction={() => {
-          void listItemCountsQuery.refetch();
-        }}
-        title="List counts unavailable"
       />
 
       {isLoading ? (

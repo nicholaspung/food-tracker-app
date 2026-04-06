@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -77,6 +78,100 @@ func RegisterFriendHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/friends/suggestions/accept", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		data := struct {
+			InviterID string `json:"inviterId"`
+		}{}
+		if err := e.BindBody(&data); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		inviterID := strings.TrimSpace(data.InviterID)
+		if inviterID == "" {
+			return apis.NewBadRequestError("inviterId is required", nil)
+		}
+		if inviterID == e.Auth.Id {
+			return apis.NewBadRequestError("cannot add yourself as a friend", nil)
+		}
+
+		friendshipID := ""
+		friendshipStatus := ""
+
+		err := app.RunInTransaction(func(txApp core.App) error {
+			if _, err := txApp.FindRecordById("users", inviterID); err != nil {
+				return apis.NewNotFoundError("inviter not found", err)
+			}
+
+			validSuggestion, err := userWasInvitedBy(txApp, inviterID, e.Auth.Id)
+			if err != nil {
+				return apis.NewApiError(500, "failed to validate friend suggestion", err)
+			}
+			if !validSuggestion {
+				return apis.NewForbiddenError("friend suggestion is no longer valid", nil)
+			}
+
+			existing, err := findFriendshipBetweenUsers(txApp, inviterID, e.Auth.Id)
+			if err != nil {
+				return apis.NewApiError(500, "failed to resolve friendship", err)
+			}
+
+			if existing != nil {
+				switch strings.TrimSpace(existing.GetString("status")) {
+				case "accepted":
+					friendshipID = existing.Id
+					friendshipStatus = "accepted"
+					return nil
+				case "pending":
+					if strings.TrimSpace(existing.GetString("friend")) != e.Auth.Id {
+						return apis.NewForbiddenError("friend request already exists", nil)
+					}
+
+					existing.Set("status", "accepted")
+					if err := txApp.Save(existing); err != nil {
+						return apis.NewApiError(500, "failed to accept friendship", err)
+					}
+
+					friendshipID = existing.Id
+					friendshipStatus = "accepted"
+					return nil
+				default:
+					return apis.NewBadRequestError("friend suggestion can no longer be accepted", nil)
+				}
+			}
+
+			collection, err := txApp.FindCollectionByNameOrId("friendships")
+			if err != nil {
+				return apis.NewApiError(500, "friendships collection missing", err)
+			}
+
+			record := core.NewRecord(collection)
+			record.Set("user", inviterID)
+			record.Set("friend", e.Auth.Id)
+			record.Set("status", "accepted")
+
+			if err := txApp.Save(record); err != nil {
+				return apis.NewApiError(500, "failed to accept friend suggestion", err)
+			}
+
+			friendshipID = record.Id
+			friendshipStatus = "accepted"
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, map[string]any{
+			"friendshipId": friendshipID,
+			"status":       friendshipStatus,
+			"success":      true,
+		})
 	}).Bind(apis.RequireAuth())
 }
 
@@ -318,4 +413,42 @@ func friendsSectionStatus(section string) string {
 	default:
 		return "friend"
 	}
+}
+
+func userWasInvitedBy(app core.App, inviterID string, invitedUserID string) (bool, error) {
+	record, err := app.FindFirstRecordByFilter(
+		"invite_codes",
+		"createdBy = {:createdBy} && usedBy = {:usedBy} && used = true",
+		dbx.Params{
+			"createdBy": inviterID,
+			"usedBy":    invitedUserID,
+		},
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return record != nil, nil
+}
+
+func findFriendshipBetweenUsers(app core.App, leftUserID string, rightUserID string) (*core.Record, error) {
+	record, err := app.FindFirstRecordByFilter(
+		"friendships",
+		"((user = {:leftUser} && friend = {:rightUser}) || (user = {:rightUser} && friend = {:leftUser}))",
+		dbx.Params{
+			"leftUser":  leftUserID,
+			"rightUser": rightUserID,
+		},
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return record, nil
 }

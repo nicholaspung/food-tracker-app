@@ -190,6 +190,19 @@ export interface FeedbackCountSummary {
   activeCount: number;
 }
 
+export interface BillListSummary {
+  id: string;
+  title: string;
+  status: BillRecord['status'];
+  participantCount: number;
+  pendingOtherParticipantCount: number;
+  youOwe: number;
+  youAreOwed: number;
+  isCreator: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RestaurantVisitStatsSummary {
   restaurantId: string;
   userVisitCount: number;
@@ -895,6 +908,19 @@ interface BillItemCollectionRecord {
   created: string;
 }
 
+interface BillListSummaryApiResponseItem {
+  id: string;
+  title: string;
+  status: string;
+  participantCount?: number;
+  pendingOtherParticipantCount?: number;
+  youOwe?: number;
+  youAreOwed?: number;
+  isCreator?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 const RESTAURANT_LIST_FIELDS =
   'id,name,location,cuisineType,visibility,latitude,longitude,placeId,isGooglePlace,created,updated';
 const VISIT_ITEM_LIST_FIELDS = 'id,name,rating,description,notes,visit';
@@ -1085,6 +1111,21 @@ function mapBillRecord(
     status: normalizeBillRecordStatus(bill.status),
     createdAt: bill.created,
     updatedAt: bill.updated,
+  };
+}
+
+function mapBillListSummaryApiItem(item: BillListSummaryApiResponseItem): BillListSummary {
+  return {
+    id: item.id,
+    title: item.title,
+    status: item.status === 'settled' ? 'settled' : 'open',
+    participantCount: parseCount(item.participantCount),
+    pendingOtherParticipantCount: parseCount(item.pendingOtherParticipantCount),
+    youOwe: sanitizeCurrency(item.youOwe),
+    youAreOwed: sanitizeCurrency(item.youAreOwed),
+    isCreator: item.isCreator === true,
+    createdAt: typeof item.createdAt === 'string' ? item.createdAt : '',
+    updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : '',
   };
 }
 
@@ -2296,19 +2337,6 @@ export async function clearPhotoDraft(): Promise<void> {
   });
 }
 
-export async function listRestaurants(): Promise<RestaurantRecord[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const records = await listCollectionRecords<RestaurantCollectionRecord>('restaurants', {
-    sort: 'name',
-    fields: RESTAURANT_LIST_FIELDS,
-  });
-
-  return records.map(mapRestaurantCollectionRecord);
-}
-
 export async function searchRestaurantsPage(
   input: SearchRestaurantsPageInput,
 ): Promise<PaginatedResult<RestaurantRecord>> {
@@ -2435,11 +2463,12 @@ export async function listRestaurantLists(input?: ListRestaurantListsInput): Pro
   });
 
   const mappedRecords = records.map(mapRestaurantListCollectionRecord);
+  const recordsWithCounts = await hydrateRestaurantListCountSummaries(mappedRecords);
   if (scope !== 'my') {
-    return mappedRecords;
+    return recordsWithCounts;
   }
 
-  return mappedRecords.sort((left, right) => {
+  return recordsWithCounts.sort((left, right) => {
     if (left.isDefault && !right.isDefault) {
       return -1;
     }
@@ -2511,7 +2540,9 @@ export async function listRestaurantListsPage(
     sort: scope === 'my' ? '-isDefault,-updated' : '-updated',
   });
 
-  return mapPaginatedResult(pageResult, pageResult.items.map(mapRestaurantListCollectionRecord));
+  const mappedItems = pageResult.items.map(mapRestaurantListCollectionRecord);
+  const itemsWithCounts = await hydrateRestaurantListCountSummaries(mappedItems);
+  return mapPaginatedResult(pageResult, itemsWithCounts);
 }
 
 export async function getRestaurantListById(listId: string): Promise<RestaurantListRecord | null> {
@@ -2663,21 +2694,6 @@ export async function deleteRestaurantList(listId: string): Promise<void> {
   });
 }
 
-export async function listRestaurantListItems(listId: string): Promise<RestaurantListItemRecord[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const escapedListId = escapeFilterValue(listId);
-  const records = await listCollectionRecords<ListItemCollectionRecord>('list_items', {
-    filter: `list = "${escapedListId}"`,
-    expand: 'restaurant,sourceUser,foodItem.visit,foodItem.user,userFoodItem.visit,userFoodItem.user,recommendedItems.visit,recommendedItems.user',
-    sort: 'position,-created',
-  });
-
-  return records.map(mapListItemCollectionRecord);
-}
-
 export async function listRestaurantListItemsPage(
   listId: string,
   input?: PaginationInput,
@@ -2759,39 +2775,6 @@ export async function listRestaurantListNotesForRestaurantIds(
   }
 
   return Array.from(noteByRestaurantId.values());
-}
-
-export async function listMyBookmarkedListItemLinks(): Promise<RestaurantListItemLinkRecord[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const currentUserId = getAuthenticatedUserId();
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  const myLists = await listCollectionRecords<Pick<RestaurantListCollectionRecord, 'id'>>('restaurant_lists', {
-    filter: `user = "${escapedCurrentUserId}"`,
-    fields: 'id',
-  });
-
-  if (myLists.length === 0) {
-    return [];
-  }
-
-  const links: RestaurantListItemLinkRecord[] = [];
-  const chunkSize = 20;
-  for (let index = 0; index < myLists.length; index += chunkSize) {
-    const chunk = myLists.slice(index, index + chunkSize);
-    const records = await listCollectionRecords<ListItemCollectionRecord>('list_items', {
-      filter: buildOrFilter(
-        'list',
-        chunk.map((record) => record.id),
-      ),
-      fields: RESTAURANT_LIST_ITEM_LINK_FIELDS,
-    });
-    links.push(...records.map(mapRestaurantListItemLinkRecord));
-  }
-
-  return links;
 }
 
 export async function listMyBookmarkedListItemLinksForFoodItemIds(
@@ -2881,6 +2864,25 @@ export async function getRestaurantListItemCounts(
   }
 
   return counts;
+}
+
+async function hydrateRestaurantListCountSummaries(
+  lists: RestaurantListRecord[],
+): Promise<RestaurantListRecord[]> {
+  if (lists.length === 0) {
+    return lists;
+  }
+
+  try {
+    const countsByListId = await getRestaurantListItemCounts(lists.map((list) => list.id));
+    return lists.map((list) => ({
+      ...list,
+      restaurantCount: countsByListId[list.id]?.restaurantCount ?? 0,
+      menuItemCount: countsByListId[list.id]?.menuItemCount ?? 0,
+    }));
+  } catch {
+    return lists;
+  }
 }
 
 export async function saveRestaurantFoodItemToList(input: SaveRestaurantFoodItemToListInput): Promise<void> {
@@ -3724,30 +3726,6 @@ export async function getFriendsCountSummary(): Promise<FriendsCountSummary> {
   });
 }
 
-export async function listFriends(): Promise<FriendRecord[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const items: FriendRecord[] = [];
-  let page = 1;
-
-  while (true) {
-    const response = await listFriendsPage({
-      section: 'friends',
-      page,
-      pageSize: 100,
-    });
-    items.push(...response.items);
-
-    if (!response.hasNextPage) {
-      return items;
-    }
-
-    page += 1;
-  }
-}
-
 export async function inviteFriend(input: InviteFriendInput): Promise<FriendRecord> {
   return trackFeatureMutation('friend.invite', async () => {
     const currentUserId = getAuthenticatedUserId();
@@ -3807,25 +3785,17 @@ export async function inviteFriend(input: InviteFriendInput): Promise<FriendReco
 
 export async function createFriendSuggestionAcceptance(input: { inviterId: string }): Promise<void> {
   return trackFeatureMutation('friend.suggestion.accept', async () => {
-    const currentUserId = getAuthenticatedUserId();
     const inviterId = input.inviterId.trim();
 
-    if (!inviterId || inviterId === currentUserId) {
+    if (!inviterId) {
       return;
     }
 
-    const existing = await pb.collection('friendships').getList<FriendshipRecord>(1, 1, {
-      filter: `(user = "${currentUserId}" && friend = "${inviterId}") || (user = "${inviterId}" && friend = "${currentUserId}")`,
-    });
-
-    if (existing.totalItems > 0) {
-      return;
-    }
-
-    await pb.collection('friendships').create({
-      user: inviterId,
-      friend: currentUserId,
-      status: 'accepted',
+    await sendApiRequest('/api/friends/suggestions/accept', {
+      method: 'POST',
+      body: JSON.stringify({
+        inviterId,
+      }),
     });
   });
 }
@@ -4312,6 +4282,18 @@ export async function listBills(): Promise<BillRecord[]> {
   return bills.map((bill) =>
     mapBillRecord(bill, participantsByBillId.get(bill.id) ?? [], itemsByBillId.get(bill.id) ?? []),
   );
+}
+
+export async function listBillSummaries(): Promise<BillListSummary[]> {
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const response = await sendApiRequest<BillListSummaryApiResponseItem[]>('/api/bills/summary', {
+    method: 'GET',
+  });
+
+  return response.map(mapBillListSummaryApiItem);
 }
 
 export async function getBillById(billId: string): Promise<BillRecord | null> {

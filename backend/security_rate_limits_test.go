@@ -16,6 +16,8 @@ func TestConfigureSecurityRateLimitRulesAddsExpectedRules(t *testing.T) {
 		signupRouteLabel:         guestAudience,
 		publicInviteLookupLabel:  guestAudience,
 		friendCodeLookupLabel:    authAudience,
+		postHogStaticRouteLabel:  allAudience,
+		postHogRoutePrefixLabel:  allAudience,
 		convertHeicRouteLabel:    authAudience,
 		findRestaurantRouteLabel: authAudience,
 		parseMenuRouteLabel:      authAudience,

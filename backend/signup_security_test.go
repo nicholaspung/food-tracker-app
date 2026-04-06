@@ -68,7 +68,27 @@ func createInviteCodeRecord(t *testing.T, app core.App, code string, createdBy s
 	return record
 }
 
-func TestResolveSignupClientIPUsesTrustedProxyHeader(t *testing.T) {
+func TestResolveSignupClientIPDefaultsToRemoteAddr(t *testing.T) {
+	app := newSignupSecurityTestApp(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/collections/users/records", nil)
+	req.Header.Set("X-Forwarded-For", "198.51.100.10")
+	req.RemoteAddr = "198.51.100.44:54321"
+
+	requestEvent := &core.RequestEvent{App: app}
+	requestEvent.Request = req
+	requestEvent.Response = httptest.NewRecorder()
+
+	recordEvent := &core.RecordRequestEvent{RequestEvent: requestEvent}
+
+	if got := resolveSignupClientIP(recordEvent); got != "198.51.100.44" {
+		t.Fatalf("expected direct remote IP, got %q", got)
+	}
+}
+
+func TestResolveSignupClientIPUsesTrustedProxyHeaderWhenConfigured(t *testing.T) {
+	t.Setenv(trustProxyHeadersEnvKey, "true")
+
 	app := newSignupSecurityTestApp(t)
 	configureTrustedProxyHeaders(app)
 

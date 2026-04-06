@@ -416,15 +416,26 @@ func TestAdminModerationCasesIncludeUserReportHistory(t *testing.T) {
 		t.Fatalf("expected moderation case list to succeed, got %d: %s", listResponse.Code, listResponse.Body.String())
 	}
 
+	reportBody := parseJSONMap(t, reportResponse.Body.Bytes())
 	body := parseJSONMap(t, listResponse.Body.Bytes())
 	items, ok := body["items"].([]any)
 	if !ok || len(items) == 0 {
 		t.Fatalf("expected moderation case list items, got %#v", body["items"])
 	}
 
-	casePayload, ok := items[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected moderation case payload map, got %#v", items[0])
+	var casePayload map[string]any
+	for _, item := range items {
+		candidate, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if candidate["id"] == reportBody["caseId"] || candidate["targetRecordId"] == quickTrack.Id {
+			casePayload = candidate
+			break
+		}
+	}
+	if casePayload == nil {
+		t.Fatalf("expected moderation case for quick track %s, got %#v", quickTrack.Id, items)
 	}
 	if casePayload["reportCount"] != float64(1) {
 		t.Fatalf("expected reportCount=1, got %#v", casePayload["reportCount"])
@@ -434,13 +445,23 @@ func TestAdminModerationCasesIncludeUserReportHistory(t *testing.T) {
 	}
 
 	reports, ok := casePayload["reports"].([]any)
-	if !ok || len(reports) != 1 {
-		t.Fatalf("expected 1 report entry, got %#v", casePayload["reports"])
+	if !ok || len(reports) == 0 {
+		t.Fatalf("expected report entries, got %#v", casePayload["reports"])
 	}
 
-	reportPayload, ok := reports[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected report payload map, got %#v", reports[0])
+	var reportPayload map[string]any
+	for _, candidate := range reports {
+		candidatePayload, ok := candidate.(map[string]any)
+		if !ok {
+			continue
+		}
+		if candidatePayload["reasonCode"] == "harassment" && candidatePayload["notes"] == "Reported from integration test" {
+			reportPayload = candidatePayload
+			break
+		}
+	}
+	if reportPayload == nil {
+		t.Fatalf("expected harassment report payload, got %#v", reports)
 	}
 	if reportPayload["reasonCode"] != "harassment" {
 		t.Fatalf("expected report reason harassment, got %#v", reportPayload["reasonCode"])

@@ -10,6 +10,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.26',
+    date: '2026-04-05',
+    title: 'Security Hardening & Reliability',
+    summary:
+      'This release tightens security across the app — your records and account are better protected against unauthorised access. Friend requests, content records, and file uploads now have stricter checks so only you can create or modify your own data.',
+    features: [],
+    improvements: [
+      'Your visits, notes, restaurants, lists, and other records are now enforced server-side to only be creatable and editable by you — preventing any attempt to write data on someone else\'s behalf.',
+      'Friend requests are now strictly validated: only you can send a request, and only the person you invited can accept or block it. Participants on an existing friendship can no longer be swapped out.',
+      'Duplicate friend request pairs are blocked at the database level with a unique index, so you can\'t accidentally end up with two pending requests to the same person.',
+      'Uploaded images are now verified by inspecting the actual file contents, not just the filename extension, so a renamed file can no longer bypass the image type check.',
+      'A CI/CD security workflow now runs on every backend change, automatically checking for known Go vulnerabilities before code is merged.',
+    ],
+    fixes: [
+      'Fixed a startup misconfiguration that could allow the server to start with missing or invalid environment variables — it now fails fast with a clear error message.',
+    ],
+  },
+  {
     version: '1.0.25',
     date: '2026-04-05',
     title: 'Menu Scanning, Smarter Restaurant Search & Friends Improvements',

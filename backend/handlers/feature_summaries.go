@@ -31,6 +31,32 @@ type feedbackSummaryResponse struct {
 	AllCount    int `db:"allCount" json:"allCount"`
 }
 
+type billListSummaryRow struct {
+	ID                           string  `db:"id"`
+	Title                        string  `db:"title"`
+	Status                       string  `db:"status"`
+	ParticipantCount             int     `db:"participantCount"`
+	PendingOtherParticipantCount int     `db:"pendingOtherParticipantCount"`
+	YouOwe                       float64 `db:"youOwe"`
+	YouAreOwed                   float64 `db:"youAreOwed"`
+	IsCreator                    int     `db:"isCreator"`
+	CreatedAt                    string  `db:"createdAt"`
+	UpdatedAt                    string  `db:"updatedAt"`
+}
+
+type billListSummaryResponse struct {
+	ID                           string  `json:"id"`
+	Title                        string  `json:"title"`
+	Status                       string  `json:"status"`
+	ParticipantCount             int     `json:"participantCount"`
+	PendingOtherParticipantCount int     `json:"pendingOtherParticipantCount"`
+	YouOwe                       float64 `json:"youOwe"`
+	YouAreOwed                   float64 `json:"youAreOwed"`
+	IsCreator                    bool    `json:"isCreator"`
+	CreatedAt                    string  `json:"createdAt"`
+	UpdatedAt                    string  `json:"updatedAt"`
+}
+
 type restaurantVisitStatsRequest struct {
 	RestaurantIDs []string `json:"restaurantIds"`
 }
@@ -84,6 +110,20 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			log.Printf("Failed to load feedback summary for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to load feedback summary", err)
+		}
+
+		return e.JSON(200, summary)
+	})
+
+	se.Router.GET("/api/bills/summary", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		summary, err := getBillListSummary(app, e.Auth.Id)
+		if err != nil {
+			log.Printf("Failed to load bills summary for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load bills summary", err)
 		}
 
 		return e.JSON(200, summary)
@@ -186,6 +226,104 @@ func getFeedbackSummary(app core.App, userID string) (feedbackSummaryResponse, e
 		One(&summary)
 
 	return summary, err
+}
+
+func getBillListSummary(app core.App, userID string) ([]billListSummaryResponse, error) {
+	rows := []billListSummaryRow{}
+	err := app.DB().NewQuery(`
+		WITH accessible_bills AS (
+			SELECT DISTINCT
+				bills.id,
+				bills.bill_name,
+				bills.status,
+				bills.creator_user,
+				bills.created,
+				bills.updated
+			FROM bills
+			LEFT JOIN bill_participants current_user_participants
+				ON current_user_participants.bill = bills.id
+				AND current_user_participants.user = {:userId}
+			WHERE bills.creator_user = {:userId}
+				OR current_user_participants.id IS NOT NULL
+		)
+		SELECT
+			accessible_bills.id AS [[id]],
+			accessible_bills.bill_name AS [[title]],
+			CASE
+				WHEN accessible_bills.status = 'settled' THEN 'settled'
+				ELSE 'open'
+			END AS [[status]],
+			COUNT(participants.id) AS [[participantCount]],
+			COALESCE(
+				SUM(
+					CASE
+						WHEN participants.paid_status = 'pending' AND COALESCE(participants.user, '') != {:userId} THEN 1
+						ELSE 0
+					END
+				),
+				0
+			) AS [[pendingOtherParticipantCount]],
+			COALESCE(
+				MAX(
+					CASE
+						WHEN participants.user = {:userId} AND participants.paid_status = 'pending' THEN participants.amount_owed
+						ELSE 0
+					END
+				),
+				0
+			) AS [[youOwe]],
+			COALESCE(
+				SUM(
+					CASE
+						WHEN accessible_bills.creator_user = {:userId}
+							AND participants.paid_status = 'pending'
+							AND COALESCE(participants.user, '') != {:userId}
+						THEN participants.amount_owed
+						ELSE 0
+					END
+				),
+				0
+			) AS [[youAreOwed]],
+			CASE
+				WHEN accessible_bills.creator_user = {:userId} THEN 1
+				ELSE 0
+			END AS [[isCreator]],
+			accessible_bills.created AS [[createdAt]],
+			accessible_bills.updated AS [[updatedAt]]
+		FROM accessible_bills
+		LEFT JOIN bill_participants participants ON participants.bill = accessible_bills.id
+		GROUP BY
+			accessible_bills.id,
+			accessible_bills.bill_name,
+			accessible_bills.status,
+			accessible_bills.creator_user,
+			accessible_bills.created,
+			accessible_bills.updated
+		ORDER BY accessible_bills.created DESC
+	`).
+		Bind(dbx.Params{"userId": userID}).
+		All(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]billListSummaryResponse, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, billListSummaryResponse{
+			ID:                           row.ID,
+			Title:                        row.Title,
+			Status:                       row.Status,
+			ParticipantCount:             row.ParticipantCount,
+			PendingOtherParticipantCount: row.PendingOtherParticipantCount,
+			YouOwe:                       row.YouOwe,
+			YouAreOwed:                   row.YouAreOwed,
+			IsCreator:                    row.IsCreator != 0,
+			CreatedAt:                    row.CreatedAt,
+			UpdatedAt:                    row.UpdatedAt,
+		})
+	}
+
+	return result, nil
 }
 
 func getRestaurantVisitStats(

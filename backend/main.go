@@ -26,22 +26,9 @@ func main() {
 		log.Printf("Warning: Error loading .env file: %v", err)
 	}
 
-	// Validate required environment variables before starting the server
-	requiredEnvVars := []string{
-		"GEMINI_API_KEY",
-		"GOOGLE_PLACES_API_KEY",
-	}
-	runtimeResources := lib.LoadRuntimeResourcesFromEnv()
-
-	missingVars := []string{}
-	for _, envVar := range requiredEnvVars {
-		if os.Getenv(envVar) == "" {
-			missingVars = append(missingVars, envVar)
-		}
-	}
-
-	if len(missingVars) > 0 {
-		log.Fatalf("FATAL: Missing required environment variables: %s\nPlease set these variables in your .env file or environment", strings.Join(missingVars, ", "))
+	runtimeResources, err := validateStartupConfiguration()
+	if err != nil {
+		log.Fatalf("FATAL: %v", err)
 	}
 
 	log.Printf("Environment variables validated successfully")
@@ -238,6 +225,8 @@ func main() {
 	})
 
 	hooks.RegisterUsageLimitHooks(app)
+	hooks.RegisterRecordOwnershipHooks(app)
+	hooks.RegisterFriendshipSecurityHooks(app)
 	hooks.RegisterUserProfileSecurityHooks(app)
 	hooks.RegisterFeedbackSecurityHooks(app)
 	hooks.RegisterModerationHooks(app)

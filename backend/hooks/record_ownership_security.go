@@ -1,0 +1,184 @@
+package hooks
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+)
+
+var ownerBoundCollectionFields = map[string]string{
+	"food_items":       "user",
+	"menu_items":       "createdBy",
+	"note_photos":      "user",
+	"notes":            "user",
+	"ratings":          "user",
+	"restaurant_lists": "user",
+	"restaurants":      "createdBy",
+	"visit_photos":     "user",
+	"visits":           "user",
+}
+
+// RegisterRecordOwnershipHooks enforces owner-bound create/update constraints
+// for raw collection API requests.
+func RegisterRecordOwnershipHooks(app core.App) {
+	app.OnRecordCreateRequest().BindFunc(func(e *core.RecordRequestEvent) error {
+		return EnforceOwnerBoundCreateRequestSecurity(e)
+	})
+
+	app.OnRecordUpdateRequest().BindFunc(func(e *core.RecordRequestEvent) error {
+		return EnforceOwnerBoundUpdateRequestSecurity(e)
+	})
+}
+
+func EnforceOwnerBoundCreateRequestSecurity(e *core.RecordRequestEvent) error {
+	if e == nil || e.Collection == nil {
+		return nil
+	}
+
+	ownerField, ok := ownerBoundCollectionFields[e.Collection.Name]
+	if !ok {
+		return e.Next()
+	}
+
+	if e.HasSuperuserAuth() {
+		return e.Next()
+	}
+
+	if e.Auth == nil {
+		return apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	if strings.TrimSpace(e.Record.GetString(ownerField)) != strings.TrimSpace(e.Auth.Id) {
+		return apis.NewForbiddenError(fmt.Sprintf("%s must match the authenticated user", ownerField), nil)
+	}
+
+	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Record); err != nil {
+		return err
+	}
+
+	return e.Next()
+}
+
+func EnforceOwnerBoundUpdateRequestSecurity(e *core.RecordRequestEvent) error {
+	if e == nil || e.Collection == nil {
+		return nil
+	}
+
+	ownerField, ok := ownerBoundCollectionFields[e.Collection.Name]
+	if !ok {
+		return e.Next()
+	}
+
+	if e.HasSuperuserAuth() {
+		return e.Next()
+	}
+
+	if e.Auth == nil {
+		return apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	original := e.Record.Original()
+	if original == nil {
+		return apis.NewBadRequestError("existing record is required", nil)
+	}
+
+	if strings.TrimSpace(e.Record.GetString(ownerField)) != strings.TrimSpace(original.GetString(ownerField)) {
+		return apis.NewForbiddenError(fmt.Sprintf("%s cannot be modified", ownerField), nil)
+	}
+
+	if err := validateOwnerBoundRelations(e.App, strings.TrimSpace(e.Auth.Id), e.Record); err != nil {
+		return err
+	}
+
+	return e.Next()
+}
+
+func validateOwnerBoundRelations(app core.App, authUserID string, record *core.Record) error {
+	if app == nil || record == nil || record.Collection() == nil {
+		return nil
+	}
+
+	switch record.Collection().Name {
+	case "food_items":
+		return requireOwnedRelation(app, "visits", record.GetString("visit"), "visit", authUserID)
+	case "notes":
+		if err := requireOwnedRelation(app, "visits", record.GetString("usedInVisit"), "usedInVisit", authUserID); err != nil {
+			return err
+		}
+		return requireOwnedRelation(app, "food_items", record.GetString("usedInFoodItem"), "usedInFoodItem", authUserID)
+	case "note_photos":
+		return requireOwnedRelation(app, "notes", record.GetString("note"), "note", authUserID)
+	case "visit_photos":
+		return validateVisitPhotoRelations(app, authUserID, record)
+	default:
+		return nil
+	}
+}
+
+func requireOwnedRelation(
+	app core.App,
+	collectionName string,
+	recordID string,
+	fieldName string,
+	authUserID string,
+) error {
+	trimmedRecordID := strings.TrimSpace(recordID)
+	if trimmedRecordID == "" {
+		return nil
+	}
+
+	record, err := app.FindRecordById(collectionName, trimmedRecordID)
+	if err != nil {
+		return apis.NewBadRequestError(fmt.Sprintf("%s is invalid", fieldName), err)
+	}
+
+	if strings.TrimSpace(record.GetString("user")) != authUserID {
+		return apis.NewForbiddenError(fmt.Sprintf("%s must belong to the authenticated user", fieldName), nil)
+	}
+
+	return nil
+}
+
+func validateVisitPhotoRelations(app core.App, authUserID string, record *core.Record) error {
+	foodItemID := strings.TrimSpace(record.GetString("food_item"))
+	if foodItemID == "" {
+		return apis.NewBadRequestError("food_item is required", nil)
+	}
+
+	foodItemRecord, err := app.FindRecordById("food_items", foodItemID)
+	if err != nil {
+		return apis.NewBadRequestError("food_item is invalid", err)
+	}
+
+	if strings.TrimSpace(foodItemRecord.GetString("user")) != authUserID {
+		return apis.NewForbiddenError("food_item must belong to the authenticated user", nil)
+	}
+
+	visitID := strings.TrimSpace(record.GetString("visit"))
+	foodItemVisitID := strings.TrimSpace(foodItemRecord.GetString("visit"))
+
+	if visitID == "" {
+		if foodItemVisitID != "" {
+			return apis.NewBadRequestError("visit is required for photos attached to visited items", nil)
+		}
+
+		return nil
+	}
+
+	visitRecord, err := app.FindRecordById("visits", visitID)
+	if err != nil {
+		return apis.NewBadRequestError("visit is invalid", err)
+	}
+
+	if strings.TrimSpace(visitRecord.GetString("user")) != authUserID {
+		return apis.NewForbiddenError("visit must belong to the authenticated user", nil)
+	}
+
+	if foodItemVisitID != "" && foodItemVisitID != visitID {
+		return apis.NewBadRequestError("visit must match the food item's visit", nil)
+	}
+
+	return nil
+}

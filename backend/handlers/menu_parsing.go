@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"image/jpeg"
 	"log"
-	"mime"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -62,6 +60,13 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewApiError(500, "failed to read file", err)
 		}
 
+		detectedMimeType, _, err := detectUploadedImageFormat(header, heicData, allowedHEICExtensions)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		log.Printf("Converting HEIC image upload (size=%d mime=%s)", len(heicData), detectedMimeType)
+
 		// Decode HEIC image
 		img, err := goheif.Decode(bytes.NewReader(heicData))
 		if err != nil {
@@ -76,7 +81,7 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewApiError(500, "failed to encode JPEG", err)
 		}
 
-		log.Printf("Successfully converted HEIC to JPEG, output size: %d bytes", jpegBuffer.Len())
+		log.Printf("Successfully converted HEIC image to JPEG (outputSize=%d)", jpegBuffer.Len())
 
 		// Return JPEG image
 		e.Response.Header().Set("Content-Type", "image/jpeg")
@@ -127,13 +132,18 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
-		log.Printf("Parsing menu image with Gemini: %s, size: %d bytes", header.Filename, header.Size)
-
 		// Read file into memory
 		imageData, err := readUploadedFileWithLimit(file, maxImageUploadBytes)
 		if err != nil {
 			return apis.NewApiError(500, "failed to read image file", err)
 		}
+
+		mimeType, format, err := detectUploadedImageFormat(header, imageData, allowedImageExtensions)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		log.Printf("Parsing menu image with Gemini (size=%d mime=%s)", len(imageData), mimeType)
 
 		// Initialize Gemini client
 		ctx, cancel := requestContextWithTimeout(e, geminiRequestTimeout)
@@ -151,19 +161,7 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 		// Configure model
 		model.SetTemperature(0)
 
-		// Detect MIME type from filename extension
-		mimeType := mime.TypeByExtension(filepath.Ext(header.Filename))
-		if mimeType == "" {
-			// Default to jpeg if detection fails
-			mimeType = "image/jpeg"
-		}
-
-		// Extract format from MIME type (e.g., "image/jpeg" -> "jpeg")
-		// genai.ImageData expects just the format, not the full MIME type
-		format := strings.TrimPrefix(mimeType, "image/")
-		log.Printf("Detected MIME type: %s, format: %s for file: %s", mimeType, format, header.Filename)
-
-		// Prepare the image part (pass format only, not full MIME type)
+		// Prepare the image part using the detected content type.
 		imagePart := genai.ImageData(format, imageData)
 
 		// Prepare the prompt
@@ -222,7 +220,7 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			}
 		}
 
-		log.Printf("Gemini response: %s", responseText)
+		log.Printf("Gemini menu parsing completed (responseChars=%d)", len(responseText))
 
 		// Prepare debug data for admin users
 		var debugData map[string]any
@@ -341,13 +339,18 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
-		log.Printf("Finding restaurant name with Gemini: %s, size: %d bytes", header.Filename, header.Size)
-
 		// Read file into memory
 		imageData, err := readUploadedFileWithLimit(file, maxImageUploadBytes)
 		if err != nil {
 			return apis.NewApiError(500, "failed to read image file", err)
 		}
+
+		mimeType, format, err := detectUploadedImageFormat(header, imageData, allowedImageExtensions)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		log.Printf("Finding restaurant name with Gemini (size=%d mime=%s)", len(imageData), mimeType)
 
 		// Initialize Gemini client
 		ctx, cancel := requestContextWithTimeout(e, geminiRequestTimeout)
@@ -365,18 +368,7 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 		// Configure model for consistent output
 		model.SetTemperature(0)
 
-		// Detect MIME type from filename extension
-		mimeType := mime.TypeByExtension(filepath.Ext(header.Filename))
-		if mimeType == "" {
-			// Default to jpeg if detection fails
-			mimeType = "image/jpeg"
-		}
-
-		// Extract format from MIME type (e.g., "image/jpeg" -> "jpeg")
-		format := strings.TrimPrefix(mimeType, "image/")
-		log.Printf("Detected MIME type: %s, format: %s for file: %s", mimeType, format, header.Filename)
-
-		// Prepare the image part
+		// Prepare the image part using the detected content type.
 		imagePart := genai.ImageData(format, imageData)
 
 		// Prepare the prompt with strict instructions and prompt injection protection
@@ -491,7 +483,7 @@ Analyze the image now and respond with JSON only.`
 			}
 		}
 
-		log.Printf("Gemini restaurant name response: %s", responseText)
+		log.Printf("Gemini restaurant-name extraction completed (responseChars=%d)", len(responseText))
 
 		// Clean response - remove markdown code blocks if present
 		responseText = strings.TrimSpace(responseText)

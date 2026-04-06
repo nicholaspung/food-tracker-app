@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ const (
 	signupRateLimitMaxAttempts        = 5
 	signupRateLimitBaseLockoutSeconds = 15 * 60
 	signupRateLimitUnavailableMessage = "signup rate limiting is temporarily unavailable, please try again shortly"
+	trustProxyHeadersEnvKey           = "TRUST_PROXY_HEADERS"
 )
 
 var (
@@ -34,6 +36,10 @@ func configureTrustedProxyHeaders(app core.App) {
 		return
 	}
 
+	if !trustedProxyHeadersEnabled() {
+		return
+	}
+
 	settings.TrustedProxy.Headers = []string{"X-Forwarded-For", "X-Real-IP"}
 	settings.TrustedProxy.UseLeftmostIP = false
 }
@@ -43,7 +49,12 @@ func resolveSignupClientIP(e *core.RecordRequestEvent) string {
 		return ""
 	}
 
-	candidate := strings.TrimSpace(e.RealIP())
+	candidate := strings.TrimSpace(e.RemoteIP())
+	if hasTrustedProxyHeadersConfigured(e.App) {
+		if realIP := strings.TrimSpace(e.RealIP()); realIP != "" {
+			candidate = realIP
+		}
+	}
 	if candidate == "" {
 		return ""
 	}
@@ -53,6 +64,19 @@ func resolveSignupClientIP(e *core.RecordRequestEvent) string {
 	}
 
 	return candidate
+}
+
+func trustedProxyHeadersEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(trustProxyHeadersEnvKey))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasTrustedProxyHeadersConfigured(app core.App) bool {
+	return app != nil && len(app.Settings().TrustedProxy.Headers) > 0
 }
 
 func getOrCreateRateLimitRecord(app core.App, clientIP string) (*core.Record, error) {

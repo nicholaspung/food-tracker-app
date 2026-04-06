@@ -28,6 +28,7 @@ import {
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
+import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -130,10 +131,12 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   );
   const visibleNoteIds = useMemo(() => notes.map((note) => note.id), [notes]);
 
-  const notePhotosQuery = useQuery({
-    queryKey: ['feature', 'notePhotos', 'notes', ...visibleNoteIds],
-    queryFn: () => listNotePhotosForNoteIds(visibleNoteIds),
-    enabled: visibleNoteIds.length > 0,
+  const notePhotosQuery = useIncrementalIdQuery({
+    queryKey: ['feature', 'notePhotos', 'notes'],
+    ids: visibleNoteIds,
+    fetchByIds: listNotePhotosForNoteIds,
+    getRecordIds: (photo) => [photo.note],
+    getRecordKey: (photo) => photo.id,
   });
   const hasBlockingNotesError = notesQuery.isError && (!notesQuery.data || notesQuery.data.pages.length === 0);
   const hasNotesRefreshError = !hasBlockingNotesError && (notesQuery.isError || notePhotosQuery.isError);

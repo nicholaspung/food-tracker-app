@@ -114,12 +114,9 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 	// Custom API endpoint: Get unused invite codes for authenticated user
 	se.Router.GET("/api/invite-codes", func(e *core.RequestEvent) error {
 		authRecord := e.Auth
-		log.Printf("GET /api/invite-codes - Auth record: %v", authRecord)
 		if authRecord == nil {
-			log.Printf("GET /api/invite-codes - No auth record found")
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
-		log.Printf("GET /api/invite-codes - User ID: %s", authRecord.Id)
 
 		// Find all unused codes created by this user (including locked ones)
 		records, err := app.FindRecordsByFilter(
@@ -132,11 +129,9 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 		)
 
 		if err != nil {
-			log.Printf("GET /api/invite-codes - Error fetching records: %v", err)
+			log.Printf("Invite code list lookup failed for user %s: %v", authRecord.Id, err)
 			return apis.NewApiError(500, "failed to fetch invite codes: "+err.Error(), err)
 		}
-
-		log.Printf("GET /api/invite-codes - Found %d records", len(records))
 
 		// Map records to simple response format with lock status
 		codes := make([]map[string]any, len(records))
@@ -144,21 +139,14 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 			locked := false
 			lockedUntil := ""
 			lockedUntilStr := record.GetString("locked_until")
-			log.Printf("Code %s - locked_until field: '%s'", record.GetString("code"), lockedUntilStr)
 
 			if lockedUntilStr != "" {
 				lockedUntilTime := record.GetDateTime("locked_until")
-				log.Printf("Code %s - parsed time: %v, isZero: %v", record.GetString("code"), lockedUntilTime, lockedUntilTime.IsZero())
 
 				if !lockedUntilTime.IsZero() && lockedUntilTime.Time().After(time.Now()) {
 					locked = true
 					lockedUntil = lockedUntilStr
-					log.Printf("Code %s - LOCKED (until %v)", record.GetString("code"), lockedUntilTime.Time())
-				} else {
-					log.Printf("Code %s - NOT locked (expired or zero time)", record.GetString("code"))
 				}
-			} else {
-				log.Printf("Code %s - NOT locked (no locked_until)", record.GetString("code"))
 			}
 
 			codes[i] = map[string]any{
@@ -167,7 +155,6 @@ func RegisterInviteCodeHandlers(se *core.ServeEvent, app core.App) {
 				"locked":      locked,
 				"lockedUntil": lockedUntil,
 			}
-			log.Printf("Code %s - Final data: locked=%v, lockedUntil=%s", record.GetString("code"), locked, lockedUntil)
 		}
 
 		return e.JSON(200, map[string]any{
@@ -296,6 +283,7 @@ func GenerateInviteCodesForUser(app core.App, userId string, parentInviteCode st
 	}
 
 	// Generate 5 codes
+	generatedCount := 0
 	for i := 0; i < 5; i++ {
 		// Generate random code with prefix if applicable
 		code, err := generateRandomCode(prefix)
@@ -312,12 +300,14 @@ func GenerateInviteCodesForUser(app core.App, userId string, parentInviteCode st
 
 		// Save the record
 		if err := app.Save(record); err != nil {
-			log.Printf("Error saving invite code %s for user %s: %v", code, userId, err)
+			log.Printf("Error saving generated invite code for user %s: %v", userId, err)
 			continue
 		}
 
-		log.Printf("Generated invite code %s for user %s", code, userId)
+		generatedCount++
 	}
+
+	log.Printf("Generated %d invite codes for user %s", generatedCount, userId)
 
 	return nil
 }
