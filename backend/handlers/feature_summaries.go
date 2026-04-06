@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -13,6 +14,9 @@ import (
 
 const visibleVisitModerationCondition = `(visits.moderationStatus = '' OR visits.moderationStatus = 'active' OR visits.moderationStatus = 'reviewed')`
 const ownerAccessibleVisitModerationCondition = `(visits.moderationStatus = '' OR visits.moderationStatus = 'active' OR visits.moderationStatus = 'reviewed' OR visits.moderationStatus = 'under_review')`
+
+const defaultRecentRestaurantLimit = 12
+const maxRecentRestaurantLimit = 24
 
 type noteSummaryResponse struct {
 	AllCount   int `db:"allCount" json:"allCount"`
@@ -71,6 +75,10 @@ type restaurantVisitStatsResponse struct {
 	Stats []restaurantVisitStatsSummary `json:"stats"`
 }
 
+type recentRestaurantIDRow struct {
+	RestaurantID string `db:"restaurantId"`
+}
+
 // RegisterFeatureSummaryHandlers registers authenticated summary endpoints used by mobile surfaces.
 func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 	se.Router.GET("/api/notes/summary", func(e *core.RequestEvent) error {
@@ -127,6 +135,25 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, summary)
+	})
+
+	se.Router.GET("/api/restaurants/recent", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		limit, err := normalizeRecentRestaurantLimit(e.Request.URL.Query().Get("limit"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		restaurants, err := listRecentRestaurantsSummary(app, e.Auth.Id, limit, e.Auth.GetBool("isAdmin"))
+		if err != nil {
+			log.Printf("Failed to load recent restaurants for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load recent restaurants", err)
+		}
+
+		return e.JSON(200, restaurants)
 	})
 
 	se.Router.POST("/api/restaurants/visit-stats", func(e *core.RequestEvent) error {
@@ -326,6 +353,103 @@ func getBillListSummary(app core.App, userID string) ([]billListSummaryResponse,
 	return result, nil
 }
 
+func listRecentRestaurantsSummary(
+	app core.App,
+	userID string,
+	limit int,
+	isAdmin bool,
+) ([]restaurantSearchResult, error) {
+	normalizedLimit := clampRecentRestaurantLimit(limit)
+	if normalizedLimit <= 0 {
+		return []restaurantSearchResult{}, nil
+	}
+
+	restaurantAccessCondition := `
+			restaurants.visibility = 'public'
+			OR restaurants.createdBy = {:userId}
+			OR (
+				restaurants.visibility = 'friends'
+				AND restaurants.createdBy IN (SELECT friendId FROM accepted_friends)
+			)
+	`
+
+	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		),
+		ranked_visits AS (
+			SELECT
+				visits.restaurant AS restaurantId,
+				visits.visitDate AS visitDate,
+				visits.updated AS updatedAt,
+				visits.created AS createdAt,
+				ROW_NUMBER() OVER (
+					PARTITION BY visits.restaurant
+					ORDER BY visits.visitDate DESC, visits.updated DESC, visits.created DESC, visits.id DESC
+				) AS visitRank
+			FROM visits
+			JOIN restaurants ON restaurants.id = visits.restaurant
+			WHERE visits.user = {:userId}
+				AND TRIM(visits.restaurant) != ''
+	`
+
+	if !isAdmin {
+		query += `
+				AND ` + ownerAccessibleVisitModerationCondition + `
+				AND (` + restaurantAccessCondition + `)
+		`
+	}
+
+	query += `
+		)
+		SELECT ranked_visits.restaurantId AS [[restaurantId]]
+		FROM ranked_visits
+		WHERE ranked_visits.visitRank = 1
+		ORDER BY ranked_visits.visitDate DESC, ranked_visits.updatedAt DESC, ranked_visits.createdAt DESC, ranked_visits.restaurantId DESC
+		LIMIT {:limit}
+	`
+
+	rows := []recentRestaurantIDRow{}
+	err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"userId": userID,
+			"limit":  normalizedLimit,
+		}).
+		All(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	restaurantIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		restaurantIDs = append(restaurantIDs, row.RestaurantID)
+	}
+
+	records, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	recordsByID := mapRecordsByID(records)
+	result := make([]restaurantSearchResult, 0, len(restaurantIDs))
+	for _, restaurantID := range restaurantIDs {
+		record := recordsByID[restaurantID]
+		if record == nil {
+			continue
+		}
+
+		result = append(result, mapRestaurantSearchResult(record))
+	}
+
+	return result, nil
+}
+
 func getRestaurantVisitStats(
 	app core.App,
 	userID string,
@@ -428,4 +552,30 @@ func normalizeRestaurantIDs(restaurantIDs []string) []string {
 	}
 
 	return normalized
+}
+
+func normalizeRecentRestaurantLimit(limitRaw string) (int, error) {
+	trimmedLimit := strings.TrimSpace(limitRaw)
+	if trimmedLimit == "" {
+		return defaultRecentRestaurantLimit, nil
+	}
+
+	parsedLimit, err := strconv.Atoi(trimmedLimit)
+	if err != nil {
+		return 0, fmt.Errorf("limit must be an integer")
+	}
+
+	return clampRecentRestaurantLimit(parsedLimit), nil
+}
+
+func clampRecentRestaurantLimit(limit int) int {
+	if limit <= 0 {
+		return 1
+	}
+
+	if limit > maxRecentRestaurantLimit {
+		return maxRecentRestaurantLimit
+	}
+
+	return limit
 }

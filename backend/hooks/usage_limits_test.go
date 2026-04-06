@@ -10,21 +10,17 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
-	pbtests "github.com/pocketbase/pocketbase/tests"
 	"github.com/pocketbase/pocketbase/tools/router"
 
 	"myapp/lib"
 	_ "myapp/migrations"
+	"myapp/testutil"
 )
 
-func newHookTestApp(t *testing.T) *pbtests.TestApp {
+func newHookTestApp(t *testing.T) core.App {
 	t.Helper()
 
-	app, err := pbtests.NewTestApp("../pb_data")
-	if err != nil {
-		t.Fatalf("failed to initialize test app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 
 	RegisterUsageLimitHooks(app)
 	return app

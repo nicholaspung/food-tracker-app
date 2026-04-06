@@ -64,10 +64,6 @@ const PROGRESS_FLOW_TAIL: { label: string }[] = [
 
 export const FREE_MONTHLY_PHOTO_LIMIT = 5;
 export const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
-export const FREE_SEARCH_WARNING_THRESHOLD = 2;
-export const RESTAURANT_SELECTION_PAGE_SIZE = 12;
-export const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
-
 const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
   weekday: 'short',
   month: 'short',

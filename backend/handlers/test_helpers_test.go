@@ -17,6 +17,7 @@ import (
 
 	"myapp/lib"
 	_ "myapp/migrations"
+	"myapp/testutil"
 )
 
 type preparedServer struct {
@@ -30,12 +31,9 @@ func newPreparedServer(
 ) *preparedServer {
 	t.Helper()
 
-	app, err := pbtests.NewTestApp("../pb_data")
-	if err != nil {
-		t.Fatalf("failed to initialize test app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 
+	var err error
 	baseRouter, err := apis.NewRouter(app)
 	if err != nil {
 		t.Fatalf("failed to create base router: %v", err)

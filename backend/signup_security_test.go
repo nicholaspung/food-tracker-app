@@ -11,18 +11,13 @@ import (
 	pbtests "github.com/pocketbase/pocketbase/tests"
 
 	_ "myapp/migrations"
+	"myapp/testutil"
 )
 
 func newSignupSecurityTestApp(t *testing.T) *pbtests.TestApp {
 	t.Helper()
 
-	app, err := pbtests.NewTestApp("pb_data")
-	if err != nil {
-		t.Fatalf("failed to initialize test app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
-
-	return app
+	return testutil.NewTestApp(t)
 }
 
 func createSignupSecurityUser(t *testing.T, app core.App, email string) *core.Record {

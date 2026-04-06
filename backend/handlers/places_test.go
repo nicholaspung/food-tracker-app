@@ -6,17 +6,13 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
-	pbtests "github.com/pocketbase/pocketbase/tests"
 
 	_ "myapp/migrations"
+	"myapp/testutil"
 )
 
 func TestSyncGooglePlaceRestaurantsUpsertsAndReusesFreshRecords(t *testing.T) {
-	app, err := pbtests.NewTestApp("../pb_data")
-	if err != nil {
-		t.Fatalf("failed to initialize test app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 
 	user := createPlacesTestUser(t, app)
 	existing := createPlacesTestRestaurant(t, app, user.Id, placeResult{

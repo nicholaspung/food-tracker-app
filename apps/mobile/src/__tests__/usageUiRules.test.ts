@@ -1,4 +1,4 @@
-import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from '../screens/usageUiRules';
+import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
 
 describe('CreateVisitScreen usage UI rules', () => {
   it('shows remaining-label variants only when free user has <= 10 searches left', () => {

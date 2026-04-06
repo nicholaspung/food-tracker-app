@@ -278,6 +278,126 @@ func TestBillsSummaryEndpoint(t *testing.T) {
 	}
 }
 
+func TestRecentRestaurantsEndpoint(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	otherOwner, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurantOlder := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Older Restaurant",
+		"location":    "Los Angeles, CA",
+		"visibility":  "public",
+		"createdBy":   user.Id,
+		"cuisineType": "American",
+	})
+	restaurantDeduped := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":          "Deduped Restaurant",
+		"location":      "San Diego, CA",
+		"visibility":    "public",
+		"createdBy":     user.Id,
+		"placeId":       "place-deduped",
+		"isGooglePlace": true,
+	})
+	restaurantFriendOnly := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Friend Restaurant",
+		"location":   "San Francisco, CA",
+		"visibility": "friends",
+		"createdBy":  friend.Id,
+	})
+	restaurantHiddenByVisibility := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Private Restaurant",
+		"location":   "Portland, OR",
+		"visibility": "private",
+		"createdBy":  otherOwner.Id,
+	})
+
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantOlder.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       restaurantDeduped.Id,
+		"user":             user.Id,
+		"visitDate":        "2026-04-06 18:30:00.000Z",
+		"visibility":       "friends",
+		"moderationStatus": "hidden",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantHiddenByVisibility.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-05 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       restaurantFriendOnly.Id,
+		"user":             user.Id,
+		"visitDate":        "2026-04-04 18:30:00.000Z",
+		"visibility":       "friends",
+		"moderationStatus": "under_review",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantDeduped.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantDeduped.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-02 18:30:00.000Z",
+		"visibility": "friends",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurants/recent?limit=2",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload []struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		Location      string `json:"location"`
+		Visibility    string `json:"visibility"`
+		CuisineType   string `json:"cuisineType"`
+		PlaceID       string `json:"placeId"`
+		IsGooglePlace bool   `json:"isGooglePlace"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if len(payload) != 2 {
+		t.Fatalf("expected 2 recent restaurants, got %d: %#v", len(payload), payload)
+	}
+
+	if payload[0].ID != restaurantFriendOnly.Id {
+		t.Fatalf("expected friend-accessible restaurant first, got %#v", payload)
+	}
+	if payload[1].ID != restaurantDeduped.Id {
+		t.Fatalf("expected deduped restaurant second, got %#v", payload)
+	}
+
+	if payload[1].Name != "Deduped Restaurant" ||
+		payload[1].Location != "San Diego, CA" ||
+		payload[1].Visibility != "public" ||
+		payload[1].PlaceID != "place-deduped" ||
+		!payload[1].IsGooglePlace {
+		t.Fatalf("unexpected restaurant payload: %#v", payload[1])
+	}
+}
+
 func TestRestaurantVisitStatsEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

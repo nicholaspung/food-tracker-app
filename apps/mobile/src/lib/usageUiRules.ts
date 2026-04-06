@@ -35,10 +35,10 @@ export function resolveCreateVisitSearchUi(input: CreateVisitSearchUiInput): Cre
     : 'Search Food Places';
 
   return {
-    hasQuota,
-    isQuotaReached,
     compactLabel,
     expandedLabel,
+    hasQuota,
+    isQuotaReached,
     isSearchDisabled: !input.isOnline || input.isSearching || (input.enforceQuota && isQuotaReached),
   };
 }

@@ -9,20 +9,16 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
-	pbtests "github.com/pocketbase/pocketbase/tests"
 	"github.com/pocketbase/pocketbase/tools/router"
 
 	_ "myapp/migrations"
+	"myapp/testutil"
 )
 
-func newUserProfileSecurityTestApp(t *testing.T) *pbtests.TestApp {
+func newUserProfileSecurityTestApp(t *testing.T) core.App {
 	t.Helper()
 
-	app, err := pbtests.NewTestApp("../pb_data")
-	if err != nil {
-		t.Fatalf("failed to initialize test app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 
 	RegisterUserProfileSecurityHooks(app)
 	return app

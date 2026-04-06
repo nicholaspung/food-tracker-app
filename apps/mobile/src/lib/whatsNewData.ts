@@ -10,6 +10,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: '1.0.27',
+    date: '2026-04-05',
+    title: 'Faster Restaurant Loading & Code Cleanup',
+    summary:
+      'Recent restaurants in the Visit creation and Photo Processing screens now load from a dedicated server endpoint, making the list appear faster and more accurately reflect your actual visit history.',
+    features: [],
+    improvements: [
+      'Recent restaurants now load via a dedicated backend query instead of scanning through your visit history on-device — results appear faster and are consistent across screens.',
+      'Restaurant selection logic is now shared between the Visit creation and Photo Processing screens, giving both a consistent search and nearby-places experience.',
+    ],
+    fixes: [],
+  },
+  {
     version: '1.0.26',
     date: '2026-04-05',
     title: 'Security Hardening & Reliability',

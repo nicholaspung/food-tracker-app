@@ -40,11 +40,8 @@ import {
   getVisitById,
   hasPendingMenuReviewRequest,
   linkVisitToListBookmark,
-  listMenuItemsForRestaurant,
-  listRecentRestaurants,
   parseLimitExceededError,
   resolveDefaultVisitVisibilityFromAuth,
-  searchRestaurantsPage,
   updateVisit,
   type MenuItemRecord,
   useMonthlyUsage,
@@ -52,13 +49,8 @@ import {
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { useForegroundLocationCapture } from '../hooks/useForegroundLocationCapture';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
-import {
-  geocodeLocation,
-  searchAndCacheNearbyRestaurants,
-  searchAndCacheRestaurantsByText,
-} from '../lib/googlePlaces';
+import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
   formatDateToLocalDateString,
   getTodayLocalDateString,
@@ -70,17 +62,13 @@ import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
   buildVisitRestaurantDescription,
-  dedupeVisitRestaurants,
-  matchesVisitRestaurantSearch,
-  prioritizeSelectedVisitRestaurant,
-  withVisitRestaurantDistance,
   type VisitRestaurantWithDistance,
 } from '../lib/visitRestaurantSearch';
+import { shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from './usageUiRules';
 import { useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
@@ -137,9 +125,6 @@ const WIZARD_STEPS = [
 
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
-const FREE_SEARCH_WARNING_THRESHOLD = 2;
-const RESTAURANT_SELECTION_PAGE_SIZE = 12;
-const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
 
 export function CreateVisitScreen({
   navigation,
@@ -171,25 +156,10 @@ export function CreateVisitScreen({
   const isEditMode = Boolean(editVisitId);
 
   const [step, setStep] = useState<VisitWizardStep>(0);
-  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [restaurantName, setRestaurantName] = useState("");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<
     string | null
   >(null);
-  const [restaurantSearchQuery, setRestaurantSearchQuery] = useState("");
-  const [manualLocation, setManualLocation] = useState("");
-  const [showNearbyPlaces, setShowNearbyPlaces] = useState(false);
-  const [referenceCoords, setReferenceCoords] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
-  const [searchResults, setSearchResults] = useState<RestaurantRecord[]>([]);
-  const [nearbyResults, setNearbyResults] = useState<RestaurantRecord[]>([]);
-  const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(
-    null,
-  );
-  const [isSearching, setIsSearching] = useState(false);
-  const [isSearchingNearby, setIsSearchingNearby] = useState(false);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState("");
   const [menuReviewSubmitted, setMenuReviewSubmitted] = useState(false);
   const [isTipPopoverVisible, setIsTipPopoverVisible] = useState(false);
@@ -209,43 +179,6 @@ export function CreateVisitScreen({
   const [hydratedEditVisitId, setHydratedEditVisitId] = useState<string | null>(
     null,
   );
-  const trimmedRestaurantSearchQuery = restaurantSearchQuery.trim();
-  const shouldQuerySavedRestaurantsBySearch =
-    trimmedRestaurantSearchQuery.length >= MIN_SERVER_RESTAURANT_SEARCH_LENGTH;
-  const recentRestaurantsQuery = useQuery({
-    queryKey: ["feature", "restaurants", "recent", RESTAURANT_SELECTION_PAGE_SIZE],
-    queryFn: () => listRecentRestaurants({ limit: RESTAURANT_SELECTION_PAGE_SIZE }),
-    enabled: step === 0 && !shouldQuerySavedRestaurantsBySearch,
-  });
-  const searchedRestaurantsQuery = useQuery({
-    queryKey: [
-      "feature",
-      "restaurants",
-      "search",
-      trimmedRestaurantSearchQuery,
-      1,
-      RESTAURANT_SELECTION_PAGE_SIZE,
-    ],
-    queryFn: async () =>
-      searchRestaurantsPage({
-        search: trimmedRestaurantSearchQuery,
-        page: 1,
-        pageSize: RESTAURANT_SELECTION_PAGE_SIZE,
-      }),
-    enabled: step === 0 && shouldQuerySavedRestaurantsBySearch,
-  });
-  const {
-    captureLocation,
-    isCapturing: isGettingLocation,
-    permissionNeedsSettings: locationPermissionNeedsSettings,
-    resetPermissionNeedsSettings: resetLocationPermissionNeedsSettings,
-  } = useForegroundLocationCapture({
-    blockedPermissionMessage:
-      "Location permission is blocked. Enable it in device settings.",
-    defaultErrorMessage: "Could not get current location.",
-    deniedPermissionMessage:
-      "Location permission is required to find nearby places.",
-  });
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
     requestPermission: requestPhotoPickerPermission,
@@ -259,39 +192,59 @@ export function CreateVisitScreen({
     galleryRequiredMessage:
       "Photo library permission is required to upload an image.",
   });
+  const {
+    clearPlacesSearchState: clearSearchState,
+    clearSearchErrorMessage,
+    compactSearchLabel,
+    displayedNearbyRestaurants,
+    displayedSavedRestaurants,
+    expandedSearchLabel,
+    isGettingLocation,
+    isPlacesQuotaReached,
+    isSearchExpanded,
+    isSearchingNearbyRestaurants: isSearchingNearby,
+    isSearchingRestaurants: isSearching,
+    loadedRestaurantRecords,
+    locationPermissionNeedsSettings,
+    manualLocation,
+    menuItemsQuery,
+    savedEmptyDescription,
+    savedEmptyTitle,
+    savedRestaurantsErrorMessage,
+    savedRestaurantsLoading,
+    savedRestaurantsTitle,
+    searchButtonDisabled,
+    searchByText: runRestaurantSearchByText,
+    searchErrorMessage,
+    searchNearby: runNearbyRestaurantSearch,
+    searchQuery: restaurantSearchQuery,
+    setIsSearchExpanded,
+    setManualLocation,
+    setSearchQuery: setRestaurantSearchQuery,
+    shouldShowPlacesUpgradePrompt,
+    showNearbyPlaces,
+    triggerSavedRestaurantsRefetch,
+  } = useRestaurantSelectionFlow({
+    isOnline,
+    menuItemsEnabled: step === 1 && Boolean(selectedRestaurantId),
+    savedRestaurantsEnabled: step === 0,
+    selectedRestaurantId,
+    usage: {
+      enforceQuota: shouldEnforceUsageLimitsClientSide,
+      isFreeTier: isDisplayFreeUser,
+      placesQueriesRemaining,
+    },
+  });
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
-  const savedRestaurantRecords = useMemo(() => {
-    if (shouldQuerySavedRestaurantsBySearch) {
-      return searchedRestaurantsQuery.data?.items ?? [];
-    }
-
-    const recentRestaurants = recentRestaurantsQuery.data ?? [];
-    if (!trimmedRestaurantSearchQuery) {
-      return recentRestaurants;
-    }
-
-    return recentRestaurants.filter((restaurant) =>
-      matchesVisitRestaurantSearch(restaurant, trimmedRestaurantSearchQuery),
-    );
-  }, [
-    recentRestaurantsQuery.data,
-    searchedRestaurantsQuery.data?.items,
-    shouldQuerySavedRestaurantsBySearch,
-    trimmedRestaurantSearchQuery,
-  ]);
   const restaurantStatIds = useMemo(() => {
     return Array.from(
       new Set(
-        dedupeVisitRestaurants([
-          ...savedRestaurantRecords,
-          ...searchResults,
-          ...nearbyResults,
-        ])
+        loadedRestaurantRecords
           .map((restaurant) => restaurant.id.trim())
           .filter((restaurantId) => restaurantId.length > 0),
       ),
     ).sort();
-  }, [nearbyResults, savedRestaurantRecords, searchResults]);
+  }, [loadedRestaurantRecords]);
   const restaurantStatsQuery = useQuery({
     queryKey: ["feature", "restaurants", "visitStats", restaurantStatIds],
     queryFn: async () => getRestaurantVisitStatsSummary(restaurantStatIds),
@@ -307,16 +260,6 @@ export function CreateVisitScreen({
     }
     return stats;
   }, [restaurantStatsQuery.data]);
-  const createVisitSearchUi = resolveCreateVisitSearchUi({
-    isFreeTier: isDisplayFreeUser,
-    enforceQuota: shouldEnforceUsageLimitsClientSide,
-    placesQueriesRemaining,
-    isOnline,
-    isSearching,
-  });
-  const isPlacesQuotaReached = createVisitSearchUi.isQuotaReached;
-  const compactSearchLabel = createVisitSearchUi.compactLabel;
-  const expandedSearchLabel = createVisitSearchUi.expandedLabel;
   const scrollViewRef = useRef<ScrollView | null>(null);
   const editVisitQuery = useQuery({
     queryKey: ["feature", "visit", editVisitId ?? ""],
@@ -328,27 +271,6 @@ export function CreateVisitScreen({
       return getVisitById(editVisitId);
     },
     enabled: Boolean(editVisitId),
-  });
-  const menuItemsQuery = useQuery({
-    queryKey: ["feature", "menuItems", selectedRestaurantId ?? ""],
-    queryFn: async () => {
-      if (!selectedRestaurantId) {
-        return [] as MenuItemRecord[];
-      }
-
-      if (!isOnline) {
-        return (
-          queryClient.getQueryData<MenuItemRecord[]>([
-            "feature",
-            "menuItems",
-            selectedRestaurantId,
-          ]) ?? []
-        );
-      }
-
-      return listMenuItemsForRestaurant(selectedRestaurantId);
-    },
-    enabled: step === 1 && Boolean(selectedRestaurantId),
   });
   const pendingMenuReviewQuery = useQuery({
     queryKey: ["feature", "menuReview", "pending", selectedRestaurantId ?? ""],
@@ -423,7 +345,7 @@ export function CreateVisitScreen({
     }
 
     setErrorMessage(null);
-    setSearchErrorMessage(null);
+    clearSearchErrorMessage();
     if (returnToStep !== undefined) {
       setStep(returnToStep);
     } else if (preselectedRestaurantId || preselectedMenuItemId) {
@@ -439,6 +361,7 @@ export function CreateVisitScreen({
       returnToStep: undefined,
     });
   }, [
+    clearSearchErrorMessage,
     navigation,
     route.params?.preselectedRestaurantId,
     route.params?.preselectedRestaurantName,
@@ -489,10 +412,11 @@ export function CreateVisitScreen({
     );
     setStep(requestedStep ?? 2);
     setErrorMessage(null);
-    setSearchErrorMessage(null);
+    clearSearchErrorMessage();
     setSourceListItemId(null);
     setHydratedEditVisitId(editVisitId);
   }, [
+    clearSearchErrorMessage,
     editVisitId,
     editVisitQuery.data,
     hydratedEditVisitId,
@@ -517,49 +441,6 @@ export function CreateVisitScreen({
       scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     }, 0);
   }, [step]);
-
-  const displayedNearbyRestaurants = useMemo(() => {
-    const combined = dedupeVisitRestaurants([...nearbyResults, ...searchResults]);
-    const filtered = combined.filter((restaurant) =>
-      matchesVisitRestaurantSearch(restaurant, restaurantSearchQuery),
-    );
-    return prioritizeSelectedVisitRestaurant(
-      withVisitRestaurantDistance(filtered, referenceCoords),
-      selectedRestaurantId,
-    );
-  }, [
-    nearbyResults,
-    referenceCoords,
-    restaurantSearchQuery,
-    searchResults,
-    selectedRestaurantId,
-  ]);
-
-  const displayedSavedRestaurants = useMemo(() => {
-    return prioritizeSelectedVisitRestaurant(
-      withVisitRestaurantDistance(savedRestaurantRecords, referenceCoords),
-      selectedRestaurantId,
-    );
-  }, [referenceCoords, savedRestaurantRecords, selectedRestaurantId]);
-  const savedRestaurantsErrorMessage = shouldQuerySavedRestaurantsBySearch
-    ? searchedRestaurantsQuery.isError
-      ? "Could not load matching restaurants."
-      : null
-    : recentRestaurantsQuery.isError
-      ? "Could not load recent restaurants."
-      : null;
-  const savedRestaurantsLoading = shouldQuerySavedRestaurantsBySearch
-    ? searchedRestaurantsQuery.isLoading
-    : recentRestaurantsQuery.isLoading;
-  const savedRestaurantsTitle = shouldQuerySavedRestaurantsBySearch
-    ? "Matching restaurants"
-    : "Recent restaurants";
-  const savedEmptyTitle = shouldQuerySavedRestaurantsBySearch
-    ? "No matching restaurants"
-    : "No recent restaurants";
-  const savedEmptyDescription = shouldQuerySavedRestaurantsBySearch
-    ? "Try a different name, location, or cuisine."
-    : "Search nearby places or add a new restaurant to start.";
   const isMenuItemSelected = useCallback(
     (menuItem: MenuItemRecord) => {
       const normalizedMenuItemName = normalizeSelectionLabel(menuItem.name);
@@ -946,14 +827,6 @@ export function CreateVisitScreen({
     },
   });
 
-  const clearSearchState = () => {
-    setShowNearbyPlaces(false);
-    setNearbyResults([]);
-    setSearchResults([]);
-    setSearchErrorMessage(null);
-    resetLocationPermissionNeedsSettings();
-  };
-
   const scrollToRestaurantList = useCallback(() => {
     if (!scrollViewRef.current || restaurantListAnchorY <= 0) {
       return;
@@ -972,7 +845,7 @@ export function CreateVisitScreen({
     setRestaurantName(restaurant.name);
     setSelectedRestaurantId(restaurant.id);
     setErrorMessage(null);
-    setSearchErrorMessage(null);
+    clearSearchErrorMessage();
     setStep(1);
   };
 
@@ -1147,14 +1020,21 @@ export function CreateVisitScreen({
   };
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
-    if (!isOnline) {
-      setSearchErrorMessage(
-        "Google Places search requires internet connection.",
-      );
-      return;
+    const trimmedQuery = restaurantSearchQuery.trim();
+    const trimmedLocation = manualLocation.trim();
+    if (isOnline && !(isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)) {
+      trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_STARTED", {
+        hasLocation: Boolean(trimmedLocation),
+        hasQuery: Boolean(trimmedQuery),
+        source: "CreateVisitScreen",
+      });
     }
 
-    if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+    const result = await runRestaurantSearchByText({
+      collapseAfterSearch,
+    });
+
+    if (result.status === "quota_reached") {
       trackObservabilityEvent("USAGE_LIMIT_REACHED", {
         enforcement: "client_estimate",
         limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
@@ -1163,50 +1043,12 @@ export function CreateVisitScreen({
         source: "CreateVisitScreen",
         used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
       });
-      setSearchErrorMessage("Monthly food place search limit reached.");
       return;
     }
 
-    const trimmedQuery = restaurantSearchQuery.trim();
-    const trimmedLocation = manualLocation.trim();
-    trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_STARTED", {
-      hasLocation: Boolean(trimmedLocation),
-      hasQuery: Boolean(trimmedQuery),
-      source: "CreateVisitScreen",
-    });
-    if (!trimmedQuery && !trimmedLocation) {
-      setSearchErrorMessage("Enter a place name/type or a location to search.");
-      return;
-    }
-
-    if (collapseAfterSearch) {
-      setIsSearchExpanded(false);
-    }
-
-    setIsSearching(true);
-    setShowNearbyPlaces(true);
-    setSearchErrorMessage(null);
-    resetLocationPermissionNeedsSettings();
-    let didAttemptPlacesQuery = false;
-
-    try {
-      let nextReferenceCoords: { lat: number; lng: number } | null =
-        referenceCoords;
-      if (trimmedLocation) {
-        nextReferenceCoords = await geocodeLocation(trimmedLocation);
-      }
-
-      setReferenceCoords(nextReferenceCoords);
-      didAttemptPlacesQuery = true;
-      const results = await searchAndCacheRestaurantsByText({
-        query: trimmedQuery || "food",
-        location: trimmedLocation || undefined,
-        radius: 5000,
-      });
-
-      setSearchResults(results);
+    if (result.status === "success") {
       trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_COMPLETED", {
-        resultCount: results.length,
+        resultCount: result.results.length,
         source: "CreateVisitScreen",
       });
       if (collapseAfterSearch) {
@@ -1214,48 +1056,41 @@ export function CreateVisitScreen({
           scrollToRestaurantList();
         }, 60);
       }
-    } catch (error) {
-      const limitPayload = parseLimitExceededError(error);
-      if (limitPayload) {
+      return;
+    }
+
+    if (result.status === "error") {
+      if (result.limitPayload) {
         trackObservabilityEvent("USAGE_LIMIT_REACHED", {
           enforcement: "server",
-          limit: limitPayload.limit,
-          metric: limitPayload.metric,
-          monthKey: limitPayload.monthKey,
-          remaining: limitPayload.remaining,
+          limit: result.limitPayload.limit,
+          metric: result.limitPayload.metric,
+          monthKey: result.limitPayload.monthKey,
+          remaining: result.limitPayload.remaining,
           source: "CreateVisitScreen",
-          used: limitPayload.used,
-          userTier: limitPayload.userTier ?? null,
+          used: result.limitPayload.used,
+          userTier: result.limitPayload.userTier ?? null,
         });
       }
-      const message = limitPayload
-        ? formatLimitExceededMessage(limitPayload)
-        : error instanceof Error
-          ? error.message
-          : "Could not search restaurants.";
       trackObservabilityEvent("CREATE_VISIT_RESTAURANT_SEARCH_FAILED", {
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : "unknown_error",
+        errorMessage: result.message,
+        errorType:
+          result.error instanceof Error ? result.error.name : "unknown_error",
         source: "CreateVisitScreen",
       });
-      setSearchErrorMessage(message);
-    } finally {
-      setIsSearching(false);
-      if (didAttemptPlacesQuery) {
-        await queryClient.invalidateQueries({
-          queryKey: ["feature", "usage", "monthly"],
-        });
-      }
     }
   };
 
   const handleSearchNearby = async () => {
-    if (!isOnline) {
-      setSearchErrorMessage("Nearby search requires internet connection.");
-      return;
+    if (isOnline && !(isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide)) {
+      trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_STARTED", {
+        source: "CreateVisitScreen",
+      });
     }
 
-    if (isPlacesQuotaReached && shouldEnforceUsageLimitsClientSide) {
+    const result = await runNearbyRestaurantSearch();
+
+    if (result.status === "quota_reached") {
       trackObservabilityEvent("USAGE_LIMIT_REACHED", {
         enforcement: "client_estimate",
         limit: monthlyUsage.snapshot?.limits.placesQueriesMonthly ?? null,
@@ -1264,93 +1099,56 @@ export function CreateVisitScreen({
         source: "CreateVisitScreen",
         used: monthlyUsage.snapshot?.usage.placesQueries ?? null,
       });
-      setSearchErrorMessage("Monthly food place search limit reached.");
       return;
     }
 
-    trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_STARTED", {
-      source: "CreateVisitScreen",
-    });
-    setShowNearbyPlaces(true);
-    setSearchErrorMessage(null);
-    resetLocationPermissionNeedsSettings();
-    let didAttemptPlacesQuery = false;
-
-    const locationCapture = await captureLocation();
-    if (locationCapture.status === "permission_denied") {
+    if (result.status === "permission_denied") {
       trackObservabilityEvent("CREATE_VISIT_LOCATION_PERMISSION_DENIED", {
-        canAskAgain: locationCapture.canAskAgain,
+        canAskAgain: result.canAskAgain,
         source: "CreateVisitScreen",
       });
-      setSearchErrorMessage(locationCapture.message);
       return;
     }
 
-    if (locationCapture.status === "error") {
+    if (result.status === "location_error") {
       trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_FAILED", {
-        errorMessage: locationCapture.message,
+        errorMessage: result.message,
         errorType:
-          locationCapture.error instanceof Error
-            ? locationCapture.error.name
+          result.error instanceof Error
+            ? result.error.name
             : "unknown_error",
         source: "CreateVisitScreen",
       });
-      setSearchErrorMessage(locationCapture.message);
       return;
     }
 
-    const coords = {
-      lat: locationCapture.coordinates.latitude,
-      lng: locationCapture.coordinates.longitude,
-    };
-    setReferenceCoords(coords);
-
-    try {
-      setIsSearchingNearby(true);
-      didAttemptPlacesQuery = true;
-      const results = await searchAndCacheNearbyRestaurants({
-        latitude: coords.lat,
-        longitude: coords.lng,
-        radius: 5000,
-      });
-
-      setNearbyResults(results);
+    if (result.status === "success") {
       trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_COMPLETED", {
-        resultCount: results.length,
+        resultCount: result.results.length,
         source: "CreateVisitScreen",
       });
-    } catch (error) {
-      const limitPayload = parseLimitExceededError(error);
-      if (limitPayload) {
+      return;
+    }
+
+    if (result.status === "error") {
+      if (result.limitPayload) {
         trackObservabilityEvent("USAGE_LIMIT_REACHED", {
           enforcement: "server",
-          limit: limitPayload.limit,
-          metric: limitPayload.metric,
-          monthKey: limitPayload.monthKey,
-          remaining: limitPayload.remaining,
+          limit: result.limitPayload.limit,
+          metric: result.limitPayload.metric,
+          monthKey: result.limitPayload.monthKey,
+          remaining: result.limitPayload.remaining,
           source: "CreateVisitScreen",
-          used: limitPayload.used,
-          userTier: limitPayload.userTier ?? null,
+          used: result.limitPayload.used,
+          userTier: result.limitPayload.userTier ?? null,
         });
       }
-      const message = limitPayload
-        ? formatLimitExceededMessage(limitPayload)
-        : error instanceof Error
-          ? error.message
-          : "Could not load nearby restaurants.";
       trackObservabilityEvent("CREATE_VISIT_NEARBY_SEARCH_FAILED", {
-        errorMessage: message,
-        errorType: error instanceof Error ? error.name : "unknown_error",
+        errorMessage: result.message,
+        errorType:
+          result.error instanceof Error ? result.error.name : "unknown_error",
         source: "CreateVisitScreen",
       });
-      setSearchErrorMessage(message);
-    } finally {
-      setIsSearchingNearby(false);
-      if (didAttemptPlacesQuery) {
-        await queryClient.invalidateQueries({
-          queryKey: ["feature", "usage", "monthly"],
-        });
-      }
     }
   };
 
@@ -1842,10 +1640,6 @@ export function CreateVisitScreen({
     FREE_MONTHLY_PHOTO_LIMIT - estimatedMonthlyPhotoTotal,
     0,
   );
-  const shouldShowPlacesUpgradePrompt =
-    isDisplayFreeUser &&
-    typeof placesQueriesRemaining === 'number' &&
-    placesQueriesRemaining <= FREE_SEARCH_WARNING_THRESHOLD;
   const shouldShowPhotoUpgradePrompt =
     isDisplayFreeUser &&
     draftPhotoCount > 0 &&
@@ -2014,12 +1808,7 @@ export function CreateVisitScreen({
               void Linking.openSettings();
             }}
             onRetrySavedResults={() => {
-              if (shouldQuerySavedRestaurantsBySearch) {
-                void searchedRestaurantsQuery.refetch();
-                return;
-              }
-
-              void recentRestaurantsQuery.refetch();
+              void triggerSavedRestaurantsRefetch();
             }}
             onSavedResultsLayout={(event) => {
               setRestaurantListAnchorY(event.nativeEvent.layout.y);
@@ -2049,7 +1838,7 @@ export function CreateVisitScreen({
             savedResultsErrorMessage={savedRestaurantsErrorMessage}
             savedResultsLoading={savedRestaurantsLoading}
             savedResultsTitle={savedRestaurantsTitle}
-            searchButtonDisabled={createVisitSearchUi.isSearchDisabled}
+            searchButtonDisabled={searchButtonDisabled}
             searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
             searchButtonLoading={isSearching}
             searchErrorMessage={searchErrorMessage}
