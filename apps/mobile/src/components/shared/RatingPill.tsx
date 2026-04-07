@@ -1,8 +1,8 @@
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 type RatingPillSize = 'sm' | 'md';
@@ -19,6 +19,25 @@ function isKnownRating(rating: number): boolean {
   return Number.isFinite(rating) && rating >= 1 && rating <= 5;
 }
 
+const useStyles = createThemedStyles(
+  (theme, backgroundColor: string, textColor: string, size: RatingPillSize) => ({
+    pill: {
+      alignItems: 'center',
+      backgroundColor,
+      borderColor: backgroundColor,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      justifyContent: 'center',
+      minWidth: size === 'md' ? 22 : 20,
+      paddingHorizontal: size === 'md' ? theme.spacing.sm : theme.spacing.xs,
+      paddingVertical: 2,
+    },
+    text: {
+      color: textColor,
+    },
+  }),
+);
+
 export function RatingPill({
   rating,
   label,
@@ -34,23 +53,7 @@ export function RatingPill({
   const textColor = knownRating
     ? theme.colors.text.inverse
     : theme.colors.text.secondary;
-
-  const styles = StyleSheet.create({
-    pill: {
-      alignItems: 'center',
-      backgroundColor,
-      borderColor: backgroundColor,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      justifyContent: 'center',
-      minWidth: size === 'md' ? 22 : 20,
-      paddingHorizontal: size === 'md' ? theme.spacing.sm : theme.spacing.xs,
-      paddingVertical: 2,
-    },
-    text: {
-      color: textColor,
-    },
-  });
+  const styles = useStyles(backgroundColor, textColor, size);
 
   return (
     <View style={[styles.pill, style]}>

@@ -1,23 +1,24 @@
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Screen, Text } from '../ui';
 import { Skeleton } from '../components/shared';
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    alignItems: 'center',
+    flex: 1,
+    gap: theme.spacing.sm,
+    justifyContent: 'center',
+  },
+  skeleton: {
+    marginTop: theme.spacing.xxs,
+  },
+}));
+
 export function SplashScreen() {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.spacing.sm,
-    },
-    skeleton: {
-      marginTop: theme.spacing.xxs,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <Screen background="surface" padded={false}>

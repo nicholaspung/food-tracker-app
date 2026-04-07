@@ -1,6 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Card, Text } from '../../ui';
 import { BackHeaderScreenScaffold } from './BackHeaderScreenScaffold';
 
@@ -20,6 +20,22 @@ export interface StaticContentSectionsScreenProps {
   testID?: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  introCard: {
+    gap: theme.spacing.xs,
+  },
+  sectionCard: {
+    gap: theme.spacing.xs,
+  },
+  caption: {
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+}));
+
 export function StaticContentSectionsScreen({
   title,
   subtitle,
@@ -30,23 +46,7 @@ export function StaticContentSectionsScreen({
   onBackPress,
   testID,
 }: StaticContentSectionsScreenProps) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    introCard: {
-      gap: theme.spacing.xs,
-    },
-    sectionCard: {
-      gap: theme.spacing.xs,
-    },
-    caption: {
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
-    },
-  });
+  const styles = useStyles();
 
   return (
     <BackHeaderScreenScaffold

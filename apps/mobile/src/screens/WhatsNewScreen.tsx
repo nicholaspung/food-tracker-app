@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { BackHeaderScreenScaffold } from '../components/shared';
@@ -16,7 +16,7 @@ import {
 import { LATEST_WHATS_NEW_VERSION, WHATS_NEW_ENTRIES, type WhatsNewEntry } from '../lib/whatsNewData';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 
 type WhatsNewScreenProps = NativeStackScreenProps<RootStackParamList, 'WhatsNew'>;
@@ -32,8 +32,104 @@ interface SectionDefinition {
 
 const WHATS_NEW_PAGE_SIZE = 5;
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+  },
+  releaseCard: {
+    gap: theme.spacing.sm,
+  },
+  releaseHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  releaseTitleWrap: {
+    flex: 1,
+    gap: theme.spacing.xs,
+  },
+  releaseTitle: {
+    color: theme.colors.text.primary,
+  },
+  releaseSummary: {
+    color: theme.colors.text.secondary,
+  },
+  versionBadge: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 3,
+  },
+  releaseBadgesRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  firstViewBadge: {
+    backgroundColor: theme.colors.text.danger,
+    borderRadius: theme.radii.pill,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 3,
+  },
+  firstViewBadgeText: {
+    color: theme.colors.text.inverse,
+    textTransform: 'uppercase',
+  },
+  versionBadgeText: {
+    color: theme.colors.text.info,
+    textTransform: 'uppercase',
+  },
+  releaseMeta: {
+    color: theme.colors.text.muted,
+  },
+  sectionBlock: {
+    gap: theme.spacing.xs,
+  },
+  sectionHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  sectionIconWrap: {
+    alignItems: 'center',
+    borderRadius: theme.radii.md,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  sectionTitle: {
+    color: theme.colors.text.primary,
+  },
+  bulletList: {
+    gap: theme.spacing.xxs,
+    paddingLeft: theme.spacing.xxs,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  bullet: {
+    color: theme.colors.text.muted,
+    marginTop: 1,
+  },
+  bulletText: {
+    color: theme.colors.text.secondary,
+    flex: 1,
+  },
+  showMoreButton: {
+    marginTop: theme.spacing.xs,
+  },
+}));
+
 export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const seenVersionQuery = useQuery({
     queryKey: WHATS_NEW_SEEN_QUERY_KEY,
@@ -127,101 +223,6 @@ export function WhatsNewScreen({ navigation }: WhatsNewScreenProps) {
       iconBackground: theme.colors.status.warningBg,
     },
   ];
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.xl,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-    },
-    releaseCard: {
-      gap: theme.spacing.sm,
-    },
-    releaseHeaderRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    releaseTitleWrap: {
-      flex: 1,
-      gap: theme.spacing.xs,
-    },
-    releaseTitle: {
-      color: theme.colors.text.primary,
-    },
-    releaseSummary: {
-      color: theme.colors.text.secondary,
-    },
-    versionBadge: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 3,
-    },
-    releaseBadgesRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    firstViewBadge: {
-      backgroundColor: theme.colors.text.danger,
-      borderRadius: theme.radii.pill,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 3,
-    },
-    firstViewBadgeText: {
-      color: theme.colors.text.inverse,
-      textTransform: 'uppercase',
-    },
-    versionBadgeText: {
-      color: theme.colors.text.info,
-      textTransform: 'uppercase',
-    },
-    releaseMeta: {
-      color: theme.colors.text.muted,
-    },
-    sectionBlock: {
-      gap: theme.spacing.xs,
-    },
-    sectionHeaderRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    sectionIconWrap: {
-      alignItems: 'center',
-      borderRadius: theme.radii.md,
-      height: 28,
-      justifyContent: 'center',
-      width: 28,
-    },
-    sectionTitle: {
-      color: theme.colors.text.primary,
-    },
-    bulletList: {
-      gap: theme.spacing.xxs,
-      paddingLeft: theme.spacing.xxs,
-    },
-    bulletRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    bullet: {
-      color: theme.colors.text.muted,
-      marginTop: 1,
-    },
-    bulletText: {
-      color: theme.colors.text.secondary,
-      flex: 1,
-    },
-    showMoreButton: {
-      marginTop: theme.spacing.xs,
-    },
-  });
 
   const visibleEntries = WHATS_NEW_ENTRIES.slice(0, visibleEntryCount);
   const hasMoreEntries = visibleEntryCount < WHATS_NEW_ENTRIES.length;

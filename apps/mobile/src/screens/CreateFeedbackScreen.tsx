@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
@@ -17,13 +17,29 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Card, Input } from '../ui';
 
 type CreateFeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateFeedback'>;
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  formCard: {
+    borderColor: theme.colors.border.info,
+    gap: theme.spacing.sm,
+  },
+  messageInput: {
+    maxHeight: 220,
+    minHeight: 140,
+    paddingTop: theme.spacing.sm,
+    textAlignVertical: 'top',
+  },
+}));
+
 export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const queryClient = useQueryClient();
@@ -33,22 +49,6 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    formCard: {
-      borderColor: theme.colors.border.info,
-      gap: theme.spacing.sm,
-    },
-    messageInput: {
-      maxHeight: 220,
-      minHeight: 140,
-      paddingTop: theme.spacing.sm,
-      textAlignVertical: 'top',
-    },
-  });
 
   const canSubmit = useMemo(() => {
     return subject.trim().length > 0 && message.trim().length > 0 && !isSubmitting;

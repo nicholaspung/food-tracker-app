@@ -3,7 +3,7 @@ import { CameraView } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
@@ -23,7 +23,7 @@ import { buildLocalPhotoFile } from '../lib/photoFiles';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
 type NoteEditorScreenProps = NativeStackScreenProps<RootStackParamList, 'NoteEditor'>;
@@ -38,8 +38,137 @@ interface DraftNotePhoto {
 const CONTENT_MAX_LENGTH = 2000;
 const MAX_NOTE_PHOTOS = 20;
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  contentInput: {
+    minHeight: 110,
+    textAlignVertical: 'top',
+  },
+  charCount: {
+    alignSelf: 'flex-end',
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  sectionLabel: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  photoPreviewWrap: {
+    borderRadius: theme.radii.md,
+    height: 72,
+    overflow: 'hidden',
+    position: 'relative',
+    width: 72,
+  },
+  photoPreview: {
+    backgroundColor: theme.colors.background.muted,
+    height: '100%',
+    width: '100%',
+  },
+  removePhotoButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.overlay,
+    borderRadius: theme.radii.pill,
+    height: 20,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    width: 20,
+  },
+  photoSourceBadge: {
+    backgroundColor: theme.colors.background.inverse,
+    borderRadius: theme.radii.sm,
+    bottom: 4,
+    left: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    position: 'absolute',
+  },
+  addPhotoButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'center',
+    minHeight: 46,
+    paddingHorizontal: theme.spacing.md,
+  },
+  addPhotoButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalBackdrop: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.overlay,
+    flex: 1,
+    justifyContent: 'center',
+    padding: theme.spacing.md,
+  },
+  modalCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    maxWidth: 480,
+    padding: theme.spacing.md,
+    width: '100%',
+  },
+  modalHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalClose: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  cameraFrame: {
+    backgroundColor: theme.colors.background.inverse,
+    borderRadius: theme.radii.md,
+    height: 340,
+    overflow: 'hidden',
+  },
+  camera: {
+    flex: 1,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  modalAction: {
+    flex: 1,
+  },
+  modalActionStack: {
+    marginTop: theme.spacing.xs,
+  },
+}));
+
 export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const noteId = route.params?.noteId;
   const isEditing = Boolean(noteId);
   const queueWrite = useQueuedWrite();
@@ -334,134 +463,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     queueFeatureOutbox,
     queueWrite,
   ]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.lg,
-    },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    contentInput: {
-      minHeight: 110,
-      textAlignVertical: 'top',
-    },
-    charCount: {
-      alignSelf: 'flex-end',
-    },
-    sectionHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: theme.spacing.sm,
-    },
-    sectionLabel: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    photoGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    photoPreviewWrap: {
-      borderRadius: theme.radii.md,
-      height: 72,
-      overflow: 'hidden',
-      position: 'relative',
-      width: 72,
-    },
-    photoPreview: {
-      backgroundColor: theme.colors.background.muted,
-      height: '100%',
-      width: '100%',
-    },
-    removePhotoButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.overlay,
-      borderRadius: theme.radii.pill,
-      height: 20,
-      justifyContent: 'center',
-      position: 'absolute',
-      right: 4,
-      top: 4,
-      width: 20,
-    },
-    photoSourceBadge: {
-      backgroundColor: theme.colors.background.inverse,
-      borderRadius: theme.radii.sm,
-      bottom: 4,
-      left: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      position: 'absolute',
-    },
-    addPhotoButton: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderStyle: 'dashed',
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'center',
-      minHeight: 46,
-      paddingHorizontal: theme.spacing.md,
-    },
-    addPhotoButtonDisabled: {
-      opacity: 0.6,
-    },
-    modalBackdrop: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.overlay,
-      flex: 1,
-      justifyContent: 'center',
-      padding: theme.spacing.md,
-    },
-    modalCard: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.lg,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-      maxWidth: 480,
-      padding: theme.spacing.md,
-      width: '100%',
-    },
-    modalHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    modalClose: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      height: 28,
-      justifyContent: 'center',
-      width: 28,
-    },
-    cameraFrame: {
-      backgroundColor: theme.colors.background.inverse,
-      borderRadius: theme.radii.md,
-      height: 340,
-      overflow: 'hidden',
-    },
-    camera: {
-      flex: 1,
-    },
-    modalActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    modalAction: {
-      flex: 1,
-    },
-    modalActionStack: {
-      marginTop: theme.spacing.xs,
-    },
-  });
 
   if (isEditing && noteQuery.isLoading) {
     return (

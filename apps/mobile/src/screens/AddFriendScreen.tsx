@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
@@ -11,10 +11,25 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
 type AddFriendScreenProps = NativeStackScreenProps<RootStackParamList, 'AddFriend'>;
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+  scanAction: {
+    marginTop: theme.spacing.xxs,
+  },
+  helperCard: {
+    gap: theme.spacing.xs,
+  },
+}));
 
 function sanitizeFriendCode(value: string): string {
   return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8);
@@ -30,7 +45,7 @@ function generateFriendCode(userId: string | undefined): string {
 }
 
 export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -42,21 +57,6 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const myFriendCode = useMemo(() => generateFriendCode(user?.id), [user?.id]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-    scanAction: {
-      marginTop: theme.spacing.xxs,
-    },
-    helperCard: {
-      gap: theme.spacing.xs,
-    },
-  });
 
   const handleBack = () => {
     if (navigation.canGoBack()) {

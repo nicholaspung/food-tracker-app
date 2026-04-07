@@ -5,7 +5,6 @@ import {
   Keyboard,
   Linking,
   Pressable,
-  StyleSheet,
   View,
   type ScrollView,
 } from 'react-native';
@@ -79,8 +78,155 @@ import {
 import { usePhotoProcessingDraftState } from './photoProcessing/usePhotoProcessingDraftState';
 import { usePhotoProcessingReviewData } from './photoProcessing/usePhotoProcessingReviewData';
 import { usePhotoProcessingSubmission } from './photoProcessing/usePhotoProcessingSubmission';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
+
+const useStyles = createThemedStyles((theme) => ({
+  choiceContent: {
+    backgroundColor: theme.colors.background.muted,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  choiceBody: {
+    flex: 1,
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+  },
+  uploadCard: {
+    gap: theme.spacing.sm,
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  photoTile: {
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    overflow: 'hidden',
+    width: '47%',
+  },
+  photoImage: {
+    backgroundColor: theme.colors.background.app,
+    height: 120,
+    width: '100%',
+  },
+  photoMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+    paddingBottom: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  photoName: {
+    flex: 1,
+  },
+  photoRemoveButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 20,
+    justifyContent: 'center',
+    width: 20,
+  },
+  photoPreviewCard: {
+    gap: theme.spacing.xs,
+  },
+  largePhotoPreview: {
+    backgroundColor: theme.colors.background.app,
+    borderRadius: theme.radii.md,
+    height: 220,
+    width: '100%',
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  listCard: {
+    gap: theme.spacing.xs,
+  },
+  statusCard: {
+    gap: theme.spacing.xs,
+  },
+  searchHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  searchHeaderTitle: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  searchHeaderButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xxs,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  locationField: {
+    flex: 1,
+  },
+  locationInput: {
+    height: theme.sizes.inputMinHeight,
+    minHeight: theme.sizes.inputMinHeight,
+  },
+  locationAction: {
+    alignSelf: 'flex-end',
+    minWidth: 96,
+  },
+  listSection: {
+    gap: theme.spacing.xs,
+  },
+  selectedHint: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  menuModeControl: {
+    marginTop: theme.spacing.xxs,
+  },
+  menuSearchInput: {
+    marginTop: theme.spacing.xxs,
+  },
+  inlineEditorActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  inlineEditorAction: {
+    flex: 1,
+  },
+  notesInput: {
+    minHeight: 96,
+    textAlignVertical: 'top',
+  },
+  reviewFeedList: {
+    gap: theme.spacing.md,
+  },
+  reviewCard: {
+    gap: theme.spacing.sm,
+  },
+}));
 
 export function PhotoProcessingScreen(screenProps: PhotoProcessingScreenProps) {
   const mode = screenProps.route.params?.mode ?? 'general';
@@ -808,152 +954,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     }
   };
 
-  const styles = StyleSheet.create({
-    choiceContent: {
-      backgroundColor: theme.colors.background.muted,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    choiceBody: {
-      flex: 1,
-      gap: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-      paddingBottom: theme.spacing.xl,
-    },
-    uploadCard: {
-      gap: theme.spacing.sm,
-    },
-    photoGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.sm,
-    },
-    photoTile: {
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      overflow: 'hidden',
-      width: '47%',
-    },
-    photoImage: {
-      backgroundColor: theme.colors.background.app,
-      height: 120,
-      width: '100%',
-    },
-    photoMetaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-      paddingHorizontal: theme.spacing.xs,
-      paddingBottom: theme.spacing.xs,
-    },
-    photoName: {
-      flex: 1,
-    },
-    photoRemoveButton: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 20,
-      justifyContent: 'center',
-      width: 20,
-    },
-    photoPreviewCard: {
-      gap: theme.spacing.xs,
-    },
-    largePhotoPreview: {
-      backgroundColor: theme.colors.background.app,
-      borderRadius: theme.radii.md,
-      height: 220,
-      width: '100%',
-    },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    listCard: {
-      gap: theme.spacing.xs,
-    },
-    statusCard: {
-      gap: theme.spacing.xs,
-    },
-    searchHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    searchHeaderTitle: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    searchHeaderButton: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xxs,
-    },
-    row: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    locationField: {
-      flex: 1,
-    },
-    locationInput: {
-      height: theme.sizes.inputMinHeight,
-      minHeight: theme.sizes.inputMinHeight,
-    },
-    locationAction: {
-      alignSelf: 'flex-end',
-      minWidth: 96,
-    },
-    listSection: {
-      gap: theme.spacing.xs,
-    },
-    selectedHint: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    menuModeControl: {
-      marginTop: theme.spacing.xxs,
-    },
-    menuSearchInput: {
-      marginTop: theme.spacing.xxs,
-    },
-    inlineEditorActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    inlineEditorAction: {
-      flex: 1,
-    },
-    notesInput: {
-      minHeight: 96,
-      textAlignVertical: 'top',
-    },
-    reviewFeedList: {
-      gap: theme.spacing.md,
-    },
-    reviewCard: {
-      gap: theme.spacing.sm,
-    },
-  });
+  const styles = useStyles();
 
   const errorActionLabel = permissionNeedsSettings ? 'Open Settings' : undefined;
   const errorAction = permissionNeedsSettings

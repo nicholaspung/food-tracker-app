@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet } from 'react-native';
+import { Animated, Easing } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 
 export interface SkeletonProps {
   width?: number | `${number}%`;
@@ -11,9 +11,21 @@ export interface SkeletonProps {
   style?: StyleProp<ViewStyle>;
 }
 
+const useStyles = createThemedStyles(
+  (theme, width: number | `${number}%`, height: number, borderRadius?: number) => ({
+    skeleton: {
+      width,
+      height,
+      borderRadius: borderRadius ?? theme.radii.sm,
+      backgroundColor: theme.colors.border.subtle,
+    },
+  }),
+);
+
 export function Skeleton({ width = '100%', height = 16, borderRadius, style }: SkeletonProps) {
   const theme = useTheme();
   const opacity = useRef(new Animated.Value(0.35)).current;
+  const styles = useStyles(width, height, borderRadius);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -38,15 +50,6 @@ export function Skeleton({ width = '100%', height = 16, borderRadius, style }: S
       animation.stop();
     };
   }, [opacity, theme.sizes.skeletonPulseMs]);
-
-  const styles = StyleSheet.create({
-    skeleton: {
-      width,
-      height,
-      borderRadius: borderRadius ?? theme.radii.sm,
-      backgroundColor: theme.colors.border.subtle,
-    },
-  });
 
   return <Animated.View style={[styles.skeleton, { opacity }, style]} />;
 }

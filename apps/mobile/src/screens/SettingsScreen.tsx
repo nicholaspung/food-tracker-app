@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RecordModel } from 'pocketbase';
 
@@ -10,7 +10,7 @@ import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -30,6 +30,16 @@ interface UserSettings {
   restaurantVisibility: RestaurantVisibility;
   listVisibility: ListVisibility;
 }
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  optionList: {
+    gap: theme.spacing.xs,
+  },
+}));
 
 function normalizeVisitVisibility(value: unknown): VisitVisibility {
   return value === 'private' ? 'private' : 'friends';
@@ -58,7 +68,7 @@ function mapUserSettings(record: UserSettingsRecord): UserSettings {
 }
 
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
   const queryClient = useQueryClient();
@@ -79,16 +89,6 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
       const record = await getCollectionRecord<UserSettingsRecord>('users', user.id);
       return mapUserSettings(record);
-    },
-  });
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    optionList: {
-      gap: theme.spacing.xs,
     },
   });
 

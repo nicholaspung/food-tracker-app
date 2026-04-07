@@ -1,7 +1,7 @@
 import type { StyleProp, ViewStyle } from 'react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { IconActionCard } from './IconActionCard';
 
 interface PhotoSourceActionCardsProps {
@@ -15,6 +15,16 @@ interface PhotoSourceActionCardsProps {
   containerStyle?: StyleProp<ViewStyle>;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  row: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  action: {
+    flex: 1,
+  },
+}));
+
 export function PhotoSourceActionCards({
   onCameraPress,
   onGalleryPress,
@@ -26,16 +36,7 @@ export function PhotoSourceActionCards({
   containerStyle,
 }: PhotoSourceActionCardsProps) {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    row: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    action: {
-      flex: 1,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <View style={[styles.row, containerStyle]}>

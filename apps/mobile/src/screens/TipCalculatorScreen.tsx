@@ -1,11 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { BackHeaderScreenScaffold, SegmentedControl } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
 type TipCalculatorScreenProps = NativeStackScreenProps<RootStackParamList, 'TipCalculator'>;
@@ -13,12 +13,39 @@ type TipMode = 'percentage' | 'custom';
 
 const PRESET_PERCENTAGES = [15, 18, 20, 25] as const;
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  rowAction: {
+    flex: 1,
+  },
+  resultCard: {
+    borderWidth: 2,
+  },
+  resultRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  totalDivider: {
+    borderTopColor: theme.colors.border.subtle,
+    borderTopWidth: 1,
+    marginTop: theme.spacing.xs,
+    paddingTop: theme.spacing.sm,
+  },
+}));
+
 function parseMoney(value: string): number {
   return Number.parseFloat(value) || 0;
 }
 
 export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const [subtotal, setSubtotal] = useState('');
   const [taxes, setTaxes] = useState('');
   const [tipMode, setTipMode] = useState<TipMode>('percentage');
@@ -64,33 +91,6 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
     });
     setHasTrackedCalculationEvent(true);
   }, [finalTotal, hasTrackedCalculationEvent, parsedSubtotal, parsedTaxes, pretipTotal, tipAmount, tipMode]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    row: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    rowAction: {
-      flex: 1,
-    },
-    resultCard: {
-      borderWidth: 2,
-    },
-    resultRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    totalDivider: {
-      borderTopColor: theme.colors.border.subtle,
-      borderTopWidth: 1,
-      marginTop: theme.spacing.xs,
-      paddingTop: theme.spacing.sm,
-    },
-  });
 
   const handleMoneyInput = (value: string, setter: (nextValue: string) => void) => {
     if (value === '' || /^\d*\.?\d{0,2}$/.test(value)) {

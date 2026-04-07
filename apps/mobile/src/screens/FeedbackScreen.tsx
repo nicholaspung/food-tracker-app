@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 
 import {
@@ -10,18 +10,35 @@ import {
   Skeleton,
 } from '../components/shared';
 import { feedbackQueryKeys, listFeedbackPage } from '../features';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type FeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'Feedback'>;
 
-export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
-  const theme = useTheme();
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  historySection: {
+    gap: theme.spacing.md,
+  },
+  feedbackPressable: {
+    borderRadius: theme.radii.lg,
+  },
+  countSummaryText: {
+    color: theme.colors.text.muted,
+  },
+}));
 
+export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const feedbackQuery = useInfiniteQuery({
     queryKey: feedbackQueryKeys.list,
     queryFn: ({ pageParam }) =>
@@ -33,31 +50,16 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const hasBlockingFeedbackError =
-    feedbackQuery.isError && (!feedbackQuery.data || feedbackQuery.data.pages.length === 0);
-  const hasFeedbackRefreshError = !hasBlockingFeedbackError && feedbackQuery.isError;
-  const hasResolvedFeedback = feedbackQuery.isSuccess && !feedbackQuery.isFetching;
-  const displayedFeedback = feedbackQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const visibleFeedbackCount = displayedFeedback.length;
-  const totalFeedbackCount = feedbackQuery.data?.pages[0]?.totalItems ?? visibleFeedbackCount;
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    historySection: {
-      gap: theme.spacing.md,
-    },
-    feedbackPressable: {
-      borderRadius: theme.radii.lg,
-    },
-    countSummaryText: {
-      color: theme.colors.text.muted,
-    },
+  const feedbackState = usePaginatedQueryState({
+    data: feedbackQuery.data,
+    isError: feedbackQuery.isError,
+    isFetching: feedbackQuery.isFetching,
+    isLoading: feedbackQuery.isLoading,
+    isSuccess: feedbackQuery.isSuccess,
   });
+  const displayedFeedback = feedbackState.items;
+  const visibleFeedbackCount = displayedFeedback.length;
+  const styles = useStyles();
 
   const handleBackToProfile = () => {
     navigation.navigate('Profile');
@@ -89,7 +91,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     >
       {feedbackQuery.isSuccess ? (
         <Text style={styles.countSummaryText} variant="bodySmTightSemiBold">
-          {totalFeedbackCount} {totalFeedbackCount === 1 ? 'feedback thread' : 'feedback threads'} total
+          {feedbackState.totalItems} {feedbackState.totalItems === 1 ? 'feedback thread' : 'feedback threads'} total
         </Text>
       ) : null}
 
@@ -103,9 +105,9 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
 
         <PageErrorToast
           errorMessage={
-            hasBlockingFeedbackError
+            feedbackState.hasBlockingError
               ? 'Could not load feedback history.'
-              : hasFeedbackRefreshError
+              : feedbackState.hasRefreshError
                 ? 'Could not refresh feedback history. Showing saved data.'
                 : null
           }
@@ -116,14 +118,14 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
           }}
         />
 
-        {hasResolvedFeedback && !hasBlockingFeedbackError && visibleFeedbackCount === 0 ? (
+        {feedbackState.hasResolvedData && !feedbackState.hasBlockingError && visibleFeedbackCount === 0 ? (
           <EmptyState
             description="Your submitted feedback will appear here. Tap the plus button above to start a new thread."
             title="No feedback yet"
           />
         ) : null}
 
-        {feedbackQuery.isSuccess && !hasBlockingFeedbackError && visibleFeedbackCount > 0
+        {feedbackQuery.isSuccess && !feedbackState.hasBlockingError && visibleFeedbackCount > 0
           ? displayedFeedback.map((feedback, index) => {
               const unreadCount = feedback.userUnreadCount;
               const timestampLabel = formatDisplayDate(feedback.lastMessageAt ?? feedback.createdAt, {
@@ -167,7 +169,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
             })
         : null}
 
-        {!feedbackQuery.isLoading && !hasBlockingFeedbackError && visibleFeedbackCount > 0 && feedbackQuery.hasNextPage ? (
+        {!feedbackQuery.isLoading && !feedbackState.hasBlockingError && visibleFeedbackCount > 0 && feedbackQuery.hasNextPage ? (
           <Button
             label={feedbackQuery.isFetchingNextPage ? 'Loading more...' : 'Load more feedback'}
             loading={feedbackQuery.isFetchingNextPage}

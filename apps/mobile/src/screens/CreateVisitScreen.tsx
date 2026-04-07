@@ -69,8 +69,327 @@ import {
 } from './createVisit/shared';
 import { useCreateVisitDraftItems } from './createVisit/useCreateVisitDraftItems';
 import { useCreateVisitSubmission } from './createVisit/useCreateVisitSubmission';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
+
+const useStyles = createThemedStyles((theme) => ({
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  row: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+  },
+  locationField: {
+    flex: 1,
+  },
+  locationInput: {
+    height: theme.sizes.inputMinHeight,
+    minHeight: theme.sizes.inputMinHeight,
+  },
+  locationAction: {
+    alignSelf: "flex-end",
+    minWidth: 96,
+  },
+  statusCard: {
+    gap: theme.spacing.xs,
+  },
+  searchHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+    justifyContent: "space-between",
+  },
+  searchHeaderTitle: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+  },
+  searchHeaderButton: {
+    alignItems: "center",
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xxs,
+  },
+  compactSearchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+  },
+  compactSearchField: {
+    flex: 1,
+  },
+  compactSearchButton: {
+    minWidth: 126,
+  },
+  listCard: {
+    gap: theme.spacing.xs,
+  },
+  stepOneContainer: {
+    gap: theme.spacing.md,
+    position: "relative",
+  },
+  tipDismissOverlay: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 20,
+  },
+  tipIconButton: {
+    alignItems: "center",
+    borderColor: theme.colors.status.warningBorder,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: "center",
+    width: 28,
+  },
+  tipPopover: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.strong,
+    borderRadius: theme.radii.md,
+    borderWidth: 2,
+    elevation: 14,
+    gap: theme.spacing.xs,
+    maxWidth: 320,
+    minWidth: 230,
+    padding: theme.spacing.md,
+    position: "absolute",
+    right: theme.spacing.md,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    top: 48,
+    zIndex: 35,
+  },
+  tipPopoverArrow: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.strong,
+    borderLeftWidth: 2,
+    borderTopWidth: 2,
+    height: 14,
+    position: "absolute",
+    right: 12,
+    top: -9,
+    transform: [{ rotate: "45deg" }],
+    width: 14,
+  },
+  tipPopoverHeaderRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  tipPopoverTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+  },
+  tipPopoverClose: {
+    alignItems: "center",
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 22,
+    justifyContent: "center",
+    width: 22,
+  },
+  menuItemsHeaderLeft: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 1,
+    gap: theme.spacing.xs,
+  },
+  reviewBadge: {
+    alignItems: "center",
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+    minHeight: 24,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
+  reviewBadgeDisabled: {
+    opacity: 0.75,
+  },
+  quickActionsCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.strong,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    overflow: "visible",
+    position: "relative",
+  },
+  quickActionsCardRaised: {
+    elevation: 12,
+    zIndex: 30,
+  },
+  quickActionsPrimaryRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+  },
+  quickActionsPrimaryButton: {
+    flex: 1,
+  },
+  menuActionButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.button.secondaryBg,
+    borderColor: theme.colors.button.secondaryBorder,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+    justifyContent: "center",
+    minHeight: theme.sizes.secondaryButtonHeight,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  menuSearchInput: {
+    marginBottom: theme.spacing.xs,
+  },
+  menuItemsHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: theme.spacing.xs,
+  },
+  menuItemDividerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+    marginVertical: theme.spacing.xs,
+  },
+  menuItemDividerLine: {
+    borderTopColor: theme.colors.border.default,
+    borderTopWidth: 1,
+    flex: 1,
+  },
+  itemCard: {
+    gap: theme.spacing.sm,
+  },
+  metadataCard: {
+    gap: theme.spacing.sm,
+  },
+  datePickerButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+    minHeight: theme.sizes.inputMinHeight,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  datePickerFallbackCard: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.status.warningBorder,
+    borderWidth: 1,
+    gap: theme.spacing.xxs,
+  },
+  datePickerModalOverlay: {
+    backgroundColor: theme.colors.background.overlay,
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  datePickerModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  datePickerModalSheet: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderTopLeftRadius: theme.radii.lg,
+    borderTopRightRadius: theme.radii.lg,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.lg,
+  },
+  datePickerModalActions: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+  },
+  datePickerModalAction: {
+    flex: 1,
+  },
+  visibilitySection: {
+    gap: theme.spacing.xs,
+  },
+  itemPhotoSection: {
+    gap: theme.spacing.xs,
+  },
+  itemPhotoLabelRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+  },
+  itemPhotoList: {
+    gap: theme.spacing.xs,
+  },
+  inlineLink: {
+    alignSelf: "flex-start",
+    paddingVertical: theme.spacing.xxs,
+  },
+  selectedHint: {
+    alignItems: "center",
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+    marginBottom: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  listTrailing: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+  },
+  selectedRestaurantItem: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+  },
+  descriptionContainer: {
+    gap: theme.spacing.xxs,
+  },
+  statsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.xs,
+  },
+  statPill: {
+    alignItems: "center",
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
+  userStatPill: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+  },
+  friendStatPill: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
+  },
+}));
 
 export function CreateVisitScreen({
   navigation,
@@ -412,324 +731,7 @@ export function CreateVisitScreen({
   }, [filteredMenuItems, isMenuItemSelected]);
   const hasPendingMenuReview = pendingMenuReviewQuery.data === true;
 
-  const styles = StyleSheet.create({
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    row: {
-      flexDirection: "row",
-      gap: theme.spacing.sm,
-    },
-    locationField: {
-      flex: 1,
-    },
-    locationInput: {
-      height: theme.sizes.inputMinHeight,
-      minHeight: theme.sizes.inputMinHeight,
-    },
-    locationAction: {
-      alignSelf: "flex-end",
-      minWidth: 96,
-    },
-    statusCard: {
-      gap: theme.spacing.xs,
-    },
-    searchHeader: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-      justifyContent: "space-between",
-    },
-    searchHeaderTitle: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-    },
-    searchHeaderButton: {
-      alignItems: "center",
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xxs,
-    },
-    compactSearchRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.sm,
-    },
-    compactSearchField: {
-      flex: 1,
-    },
-    compactSearchButton: {
-      minWidth: 126,
-    },
-    listCard: {
-      gap: theme.spacing.xs,
-    },
-    stepOneContainer: {
-      gap: theme.spacing.md,
-      position: "relative",
-    },
-    tipDismissOverlay: {
-      bottom: 0,
-      left: 0,
-      position: "absolute",
-      right: 0,
-      top: 0,
-      zIndex: 20,
-    },
-    tipIconButton: {
-      alignItems: "center",
-      borderColor: theme.colors.status.warningBorder,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 28,
-      justifyContent: "center",
-      width: 28,
-    },
-    tipPopover: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.strong,
-      borderRadius: theme.radii.md,
-      borderWidth: 2,
-      elevation: 14,
-      gap: theme.spacing.xs,
-      maxWidth: 320,
-      minWidth: 230,
-      padding: theme.spacing.md,
-      position: "absolute",
-      right: theme.spacing.md,
-      shadowColor: theme.colors.background.inverse,
-      shadowOffset: { width: 0, height: 12 },
-      shadowOpacity: 0.2,
-      shadowRadius: 18,
-      top: 48,
-      zIndex: 35,
-    },
-    tipPopoverArrow: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.strong,
-      borderLeftWidth: 2,
-      borderTopWidth: 2,
-      height: 14,
-      position: "absolute",
-      right: 12,
-      top: -9,
-      transform: [{ rotate: "45deg" }],
-      width: 14,
-    },
-    tipPopoverHeaderRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-    },
-    tipPopoverTitleRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-    },
-    tipPopoverClose: {
-      alignItems: "center",
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 22,
-      justifyContent: "center",
-      width: 22,
-    },
-    menuItemsHeaderLeft: {
-      alignItems: "center",
-      flexDirection: "row",
-      flexShrink: 1,
-      gap: theme.spacing.xs,
-    },
-    reviewBadge: {
-      alignItems: "center",
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-      minHeight: 24,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 2,
-    },
-    reviewBadgeDisabled: {
-      opacity: 0.75,
-    },
-    quickActionsCard: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.strong,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      overflow: "visible",
-      position: "relative",
-    },
-    quickActionsCardRaised: {
-      elevation: 12,
-      zIndex: 30,
-    },
-    quickActionsPrimaryRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-    },
-    quickActionsPrimaryButton: {
-      flex: 1,
-    },
-    menuActionButton: {
-      alignItems: "center",
-      backgroundColor: theme.colors.button.secondaryBg,
-      borderColor: theme.colors.button.secondaryBorder,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-      justifyContent: "center",
-      minHeight: theme.sizes.secondaryButtonHeight,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    menuSearchInput: {
-      marginBottom: theme.spacing.xs,
-    },
-    menuItemsHeader: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: theme.spacing.xs,
-    },
-    menuItemDividerRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-      marginVertical: theme.spacing.xs,
-    },
-    menuItemDividerLine: {
-      borderTopColor: theme.colors.border.default,
-      borderTopWidth: 1,
-      flex: 1,
-    },
-    itemCard: {
-      gap: theme.spacing.sm,
-    },
-    metadataCard: {
-      gap: theme.spacing.sm,
-    },
-    datePickerButton: {
-      alignItems: "center",
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-      minHeight: theme.sizes.inputMinHeight,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    datePickerFallbackCard: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderColor: theme.colors.status.warningBorder,
-      borderWidth: 1,
-      gap: theme.spacing.xxs,
-    },
-    datePickerModalOverlay: {
-      backgroundColor: theme.colors.background.overlay,
-      flex: 1,
-      justifyContent: "flex-end",
-    },
-    datePickerModalBackdrop: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    datePickerModalSheet: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderTopLeftRadius: theme.radii.lg,
-      borderTopRightRadius: theme.radii.lg,
-      borderWidth: 1,
-      borderBottomWidth: 0,
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-      paddingBottom: theme.spacing.lg,
-    },
-    datePickerModalActions: {
-      flexDirection: "row",
-      gap: theme.spacing.sm,
-    },
-    datePickerModalAction: {
-      flex: 1,
-    },
-    visibilitySection: {
-      gap: theme.spacing.xs,
-    },
-    itemPhotoSection: {
-      gap: theme.spacing.xs,
-    },
-    itemPhotoLabelRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-    },
-    itemPhotoList: {
-      gap: theme.spacing.xs,
-    },
-    inlineLink: {
-      alignSelf: "flex-start",
-      paddingVertical: theme.spacing.xxs,
-    },
-    selectedHint: {
-      alignItems: "center",
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-      marginBottom: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    listTrailing: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-    },
-    selectedRestaurantItem: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-    },
-    descriptionContainer: {
-      gap: theme.spacing.xxs,
-    },
-    statsRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.xs,
-    },
-    statPill: {
-      alignItems: "center",
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 2,
-    },
-    userStatPill: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-    },
-    friendStatPill: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.status.infoBorder,
-    },
-  });
+  const styles = useStyles();
 
   const scrollToRestaurantList = useCallback(() => {
     if (!scrollViewRef.current || restaurantListAnchorY <= 0) {

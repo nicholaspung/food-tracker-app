@@ -1,41 +1,41 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { AUTH_EMAIL_UNVERIFIED_ERROR, useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
+const useStyles = createThemedStyles((theme) => ({
+  formContent: {
+    paddingTop: theme.spacing.sm,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+  forgotLink: {
+    alignSelf: 'flex-end',
+    paddingVertical: theme.spacing.xs,
+  },
+  secondaryActions: {
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
+  },
+}));
+
 export function LoginScreen({ navigation, route }: LoginScreenProps) {
-  const theme = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { signInWithPassword, isSubmitting, authError } = useAuth();
   const prefilledEmail = route.params?.email?.trim().toLowerCase() ?? '';
   const signInErrorMessage = authError ? 'Cannot log in. Please try again.' : null;
-
-  const styles = StyleSheet.create({
-    formContent: {
-      paddingTop: theme.spacing.sm,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-    forgotLink: {
-      alignSelf: 'flex-end',
-      paddingVertical: theme.spacing.xs,
-    },
-    secondaryActions: {
-      gap: theme.spacing.sm,
-      marginTop: theme.spacing.xs,
-    },
-  });
+  const styles = useStyles();
 
   const handleSignIn = async () => {
     const normalizedEmail = email.trim().toLowerCase();

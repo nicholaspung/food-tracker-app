@@ -1,19 +1,29 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { confirmUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ResetPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ResetPassword'>;
 
+const useStyles = createThemedStyles((theme) => ({
+  formContent: {
+    paddingTop: theme.spacing.sm,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+  helperText: {
+    marginBottom: theme.spacing.xs,
+  },
+}));
+
 export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenProps) {
-  const theme = useTheme();
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
@@ -21,18 +31,7 @@ export function ResetPasswordScreen({ navigation, route }: ResetPasswordScreenPr
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const resetEmail = route.params?.email?.trim().toLowerCase() ?? '';
-
-  const styles = StyleSheet.create({
-    formContent: {
-      paddingTop: theme.spacing.sm,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-    helperText: {
-      marginBottom: theme.spacing.xs,
-    },
-  });
+  const styles = useStyles();
 
   const handleSubmit = async () => {
     if (!token.trim() || !password) {

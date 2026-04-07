@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -26,6 +26,7 @@ import {
   removeFriend,
   type FriendRecord,
 } from '../features';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -33,7 +34,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -53,6 +54,126 @@ const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
     value: 'friends-list',
   },
 ];
+
+const useStyles = createThemedStyles((theme) => ({
+  screenContent: {
+    backgroundColor: theme.colors.background.muted,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  mainTabsSection: {
+    backgroundColor: theme.colors.background.surface,
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  body: {
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  cardDescription: {
+    color: theme.colors.text.secondary,
+  },
+  codeBox: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.md,
+    borderWidth: 2,
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.md,
+  },
+  codeLabel: {
+    color: theme.colors.text.info,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  codeHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  copyButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  codeText: {
+    alignSelf: 'center',
+    color: theme.colors.text.info,
+    letterSpacing: 3,
+  },
+  qrContainer: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    paddingVertical: theme.spacing.sm,
+  },
+  qrDescription: {
+    paddingHorizontal: theme.spacing.sm,
+    textAlign: 'center',
+  },
+  cardTitle: {},
+  cardsList: {
+    gap: theme.spacing.sm,
+  },
+  iconAction: {
+    padding: 2,
+  },
+  textAction: {
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xxs,
+  },
+  textActionMuted: {
+    color: theme.colors.text.secondary,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  sentActions: {
+    alignItems: 'flex-end',
+    gap: theme.spacing.xxs,
+  },
+  actionPill: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    minWidth: 72,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+  },
+  actionPillSuccess: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.border.success,
+  },
+  actionPillDanger: {
+    backgroundColor: theme.colors.status.dangerBg,
+    borderColor: theme.colors.border.danger,
+  },
+  actionPillLabel: {},
+  actionPillSuccessLabel: {
+    color: theme.colors.text.success,
+  },
+  actionPillDangerLabel: {
+    color: theme.colors.text.danger,
+  },
+  skeletonList: {
+    gap: theme.spacing.sm,
+  },
+}));
 
 function generateFriendCode(userId: string | undefined, persistedFriendCode?: string): string {
   const normalizedPersistedCode = persistedFriendCode?.trim().toUpperCase();
@@ -110,15 +231,17 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     refetchOnReconnect: 'always',
   });
+  const friendsState = usePaginatedQueryState({
+    data: friendsQuery.data,
+    enabled: mainTab === 'friends-list',
+    isError: friendsQuery.isError,
+    isFetching: friendsQuery.isFetching,
+    isLoading: friendsQuery.isLoading,
+    isSuccess: friendsQuery.isSuccess,
+  });
   const { fetchStatus: friendsFetchStatus, refetch: refetchFriends } = friendsQuery;
   const { fetchStatus: friendsSummaryFetchStatus, refetch: refetchFriendsSummary } = friendsSummaryQuery;
-  const visibleFriends = useMemo(
-    () => friendsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [friendsQuery.data],
-  );
-  const hasBlockingFriendsError =
-    mainTab === 'friends-list' && friendsQuery.isError && (!friendsQuery.data || friendsQuery.data.pages.length === 0);
-  const hasFriendsRefreshError = mainTab === 'friends-list' && !hasBlockingFriendsError && friendsQuery.isError;
+  const visibleFriends = friendsState.items;
   const acceptedFriendsCount =
     friendsSummaryQuery.data?.friendsCount ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
   const pendingReceivedCount =
@@ -210,127 +333,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     refetchFriendsSummary,
   ]);
 
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: theme.colors.background.muted,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    mainTabsSection: {
-      backgroundColor: theme.colors.background.surface,
-      borderBottomColor: theme.colors.border.subtle,
-      borderBottomWidth: 1,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-    },
-    body: {
-      gap: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingBottom: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    cardDescription: {
-      color: theme.colors.text.secondary,
-    },
-    codeBox: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-      borderRadius: theme.radii.md,
-      borderWidth: 2,
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.md,
-    },
-    codeLabel: {
-      color: theme.colors.text.info,
-      letterSpacing: 0.4,
-      textTransform: 'uppercase',
-    },
-    codeHeaderRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    copyButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.info,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 30,
-      justifyContent: 'center',
-      width: 30,
-    },
-    codeText: {
-      alignSelf: 'center',
-      color: theme.colors.text.info,
-      letterSpacing: 3,
-    },
-    qrContainer: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      paddingVertical: theme.spacing.sm,
-    },
-    qrDescription: {
-      paddingHorizontal: theme.spacing.sm,
-      textAlign: 'center',
-    },
-    cardTitle: {
-    },
-    cardsList: {
-      gap: theme.spacing.sm,
-    },
-    iconAction: {
-      padding: 2,
-    },
-    textAction: {
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xxs,
-    },
-    textActionMuted: {
-      color: theme.colors.text.secondary,
-    },
-    requestActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    sentActions: {
-      alignItems: 'flex-end',
-      gap: theme.spacing.xxs,
-    },
-    actionPill: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      minWidth: 72,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 6,
-    },
-    actionPillSuccess: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.border.success,
-    },
-    actionPillDanger: {
-      backgroundColor: theme.colors.status.dangerBg,
-      borderColor: theme.colors.border.danger,
-    },
-    actionPillLabel: {
-    },
-    actionPillSuccessLabel: {
-      color: theme.colors.text.success,
-    },
-    actionPillDangerLabel: {
-      color: theme.colors.text.danger,
-    },
-    skeletonList: {
-      gap: theme.spacing.sm,
-    },
-  });
+  const styles = useStyles();
 
   const invalidateFriends = async () => {
     await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
@@ -436,7 +439,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       );
     }
 
-    if (hasBlockingFriendsError) {
+    if (friendsState.hasBlockingError) {
       return (
         <>
           <PageErrorToast
@@ -629,7 +632,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       <View style={styles.body}>
         <PageErrorToast errorMessage={errorMessage} title="Friend operation failed" />
         <PageErrorToast
-          errorMessage={hasFriendsRefreshError ? 'Could not refresh friendship data. Showing saved data.' : null}
+          errorMessage={friendsState.hasRefreshError ? 'Could not refresh friendship data. Showing saved data.' : null}
           title="Friends unavailable"
           actionLabel="Retry"
           onAction={() => {

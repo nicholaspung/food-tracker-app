@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import {
   PhotoAttachmentRow,
@@ -12,7 +12,7 @@ import {
   VisitMetadataCard,
   type VisibilityOptionValue,
 } from '../../components/shared';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Input, Text } from '../../ui';
 import type { DraftVisitItem, DraftVisitItemPhoto } from './shared';
 
@@ -40,6 +40,26 @@ interface CreateVisitReviewStepProps {
   visitVisibility: 'friends' | 'private';
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  itemCard: {
+    gap: theme.spacing.sm,
+  },
+  itemPhotoLabelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+  },
+  itemPhotoList: {
+    gap: theme.spacing.xs,
+  },
+  itemPhotoSection: {
+    gap: theme.spacing.xs,
+  },
+  statusCard: {
+    gap: theme.spacing.xs,
+  },
+}));
+
 export function CreateVisitReviewStep({
   detectedVisitDateValue,
   draftItems,
@@ -57,29 +77,10 @@ export function CreateVisitReviewStep({
   visitVisibility,
 }: CreateVisitReviewStepProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
-
-  const styles = StyleSheet.create({
-    itemCard: {
-      gap: theme.spacing.sm,
-    },
-    itemPhotoLabelRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-    },
-    itemPhotoList: {
-      gap: theme.spacing.xs,
-    },
-    itemPhotoSection: {
-      gap: theme.spacing.xs,
-    },
-    statusCard: {
-      gap: theme.spacing.xs,
-    },
-  });
 
   const openPhotoViewer = useCallback(
     (photos: DraftVisitItemPhoto[], initialIndex: number) => {

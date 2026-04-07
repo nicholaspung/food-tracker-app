@@ -1,7 +1,7 @@
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 export type StatusPillTone = 'brand' | 'info' | 'warning' | 'success' | 'danger' | 'muted';
@@ -17,6 +17,29 @@ export interface StatusPillProps {
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
 }
+
+const useStyles = createThemedStyles((
+  theme,
+  backgroundColor: string,
+  borderColor: string,
+  textColor: string,
+  size: StatusPillSize,
+) => ({
+  pill: {
+    alignItems: 'center',
+    backgroundColor,
+    borderColor,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minWidth: size === 'md' ? 22 : 20,
+    paddingHorizontal: size === 'md' ? theme.spacing.sm : theme.spacing.xs,
+    paddingVertical: 2,
+  },
+  label: {
+    color: textColor,
+  },
+}));
 
 function resolveToneColors(
   tone: StatusPillTone,
@@ -122,23 +145,7 @@ export function StatusPill({
   const theme = useTheme();
   const { backgroundColor, borderColor, textColor } = resolveToneColors(tone, variant, theme);
   const textLabel = uppercase ? String(label).toUpperCase() : String(label);
-
-  const styles = StyleSheet.create({
-    pill: {
-      alignItems: 'center',
-      backgroundColor,
-      borderColor,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      justifyContent: 'center',
-      minWidth: size === 'md' ? 22 : 20,
-      paddingHorizontal: size === 'md' ? theme.spacing.sm : theme.spacing.xs,
-      paddingVertical: 2,
-    },
-    label: {
-      color: textColor,
-    },
-  });
+  const styles = useStyles(backgroundColor, borderColor, textColor, size);
 
   return (
     <View style={[styles.pill, style]}>

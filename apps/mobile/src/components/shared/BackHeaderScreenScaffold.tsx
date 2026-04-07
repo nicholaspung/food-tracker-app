@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Screen } from '../../ui';
 import { ScreenHeader } from './ScreenHeader';
 
@@ -30,6 +30,21 @@ export interface BackHeaderScreenScaffoldProps {
   testID?: string;
 }
 
+const useStyles = createThemedStyles((theme, backgroundColor: string) => ({
+  screenContent: {
+    backgroundColor,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+}));
+
 export function BackHeaderScreenScaffold({
   title,
   subtitle,
@@ -55,21 +70,7 @@ export function BackHeaderScreenScaffold({
         ? theme.colors.background.surface
         : theme.colors.background.muted;
   const scrollUnderlayTopInset = Math.max(220, Math.round(height / 2));
-
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.xl,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-  });
+  const styles = useStyles(backgroundColor);
 
   return (
     <Screen

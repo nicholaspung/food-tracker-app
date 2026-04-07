@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { StyleSheet } from 'react-native';
 
 import {
   BackHeaderScreenScaffold,
@@ -13,7 +12,7 @@ import {
 } from '../components/shared';
 import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Text } from '../ui';
 
 type AboutScreenProps = NativeStackScreenProps<RootStackParamList, 'About'>;
@@ -38,8 +37,17 @@ function getVersionSubtitle(options: {
   return 'Current app version and native build';
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  metaValue: {
+    color: theme.colors.text.secondary,
+    ...theme.typography.meta,
+  },
+}));
+
 export function AboutScreen({ navigation }: AboutScreenProps) {
-  const theme = useTheme();
   const appVersionLabel = formatAppVersionLabel();
   const otaUpdateState = useOtaUpdateStatus('AboutScreen');
   const [isVersionExpanded, setIsVersionExpanded] = useState(otaUpdateState.shouldAutoExpand);
@@ -49,16 +57,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
       setIsVersionExpanded(true);
     }
   }, [otaUpdateState.shouldAutoExpand]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    metaValue: {
-      color: theme.colors.text.secondary,
-      ...theme.typography.meta,
-    },
-  });
+  const styles = useStyles();
 
   const handleBackPress = () => {
     if (navigation.canGoBack()) {

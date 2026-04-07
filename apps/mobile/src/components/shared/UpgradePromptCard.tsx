@@ -1,6 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 
 export interface UpgradePromptCardProps {
@@ -13,6 +13,18 @@ export interface UpgradePromptCardProps {
   disabled?: boolean;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  card: {
+    gap: theme.spacing.sm,
+  },
+  title: {
+    color: theme.colors.text.info,
+  },
+  actions: {
+    gap: theme.spacing.xs,
+  },
+}));
+
 export function UpgradePromptCard({
   title,
   description,
@@ -22,7 +34,7 @@ export function UpgradePromptCard({
   onSecondaryAction,
   disabled = false,
 }: UpgradePromptCardProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const primaryAction = onPrimaryAction
     ? {
         label: primaryActionLabel,
@@ -36,18 +48,6 @@ export function UpgradePromptCard({
           onPress: onSecondaryAction,
         }
       : null;
-
-  const styles = StyleSheet.create({
-    card: {
-      gap: theme.spacing.sm,
-    },
-    title: {
-      color: theme.colors.text.info,
-    },
-    actions: {
-      gap: theme.spacing.xs,
-    },
-  });
 
   return (
     <Card style={styles.card} tone="info">

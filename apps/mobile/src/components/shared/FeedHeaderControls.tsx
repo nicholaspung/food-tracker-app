@@ -1,7 +1,7 @@
 import { useRef } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, TextInput, View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import { FilterChipGroup, type FilterChipOption } from './FilterChipGroup';
 import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl';
@@ -20,6 +20,131 @@ const TYPE_FILTER_OPTIONS: readonly FilterChipOption<FeedTypeFilterValue>[] = [
   { label: 'Visits', value: 'visits' },
   { label: 'Quick Track', value: 'quick-track' },
 ];
+
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    gap: theme.spacing.sm,
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+  },
+  title: {
+    color: theme.colors.text.primary,
+  },
+  segmentedControl: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 2,
+  },
+  segmentButton: {
+    borderRadius: 8,
+    minWidth: 54,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 7,
+  },
+  segmentButtonActive: {
+    backgroundColor: theme.colors.background.surface,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+  },
+  segmentLabel: {
+    color: theme.colors.text.muted,
+    textAlign: 'center',
+  },
+  segmentLabelActive: {
+    color: theme.colors.text.primary,
+  },
+  summaryText: {
+    color: theme.colors.text.muted,
+  },
+  searchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  searchField: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    minHeight: 42,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  searchInput: {
+    color: theme.colors.text.primary,
+    flex: 1,
+    ...theme.typography.bodyLg,
+    paddingVertical: theme.spacing.xs,
+  },
+  clearSearchButton: {
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xs,
+  },
+  clearSearchLabel: {
+    color: theme.colors.text.muted,
+  },
+  filtersToggle: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    minHeight: 42,
+    minWidth: 82,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  filtersToggleActive: {
+    backgroundColor: theme.colors.text.brand,
+    borderColor: theme.colors.text.brand,
+  },
+  filtersToggleLabel: {
+    color: theme.colors.text.primary,
+  },
+  filtersToggleLabelActive: {
+    color: theme.colors.text.inverse,
+  },
+  filtersRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  filterChip: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 8,
+  },
+  filterChipActive: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+  },
+  filterChipLabel: {
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
+  },
+  filterChipLabelActive: {
+    color: theme.colors.text.info,
+  },
+}));
 
 interface FeedHeaderControlsProps {
   summaryText: string;
@@ -50,134 +175,10 @@ export function FeedHeaderControls({
 }: FeedHeaderControlsProps) {
   const theme = useTheme();
   const searchInputRef = useRef<TextInput>(null);
+  const styles = useStyles();
   const feedModeOptions = showBetaTab
     ? FEED_MODE_OPTIONS
     : FEED_MODE_OPTIONS.filter((option) => option.value !== 'beta');
-
-  const styles = StyleSheet.create({
-    container: {
-      gap: theme.spacing.sm,
-    },
-    titleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: theme.spacing.sm,
-    },
-    title: {
-      color: theme.colors.text.primary,
-    },
-    segmentedControl: {
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.default,
-      borderRadius: 10,
-      borderWidth: 1,
-      padding: 2,
-    },
-    segmentButton: {
-      borderRadius: 8,
-      minWidth: 54,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 7,
-    },
-    segmentButtonActive: {
-      backgroundColor: theme.colors.background.surface,
-      shadowColor: theme.colors.background.inverse,
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.08,
-      shadowRadius: 1,
-    },
-    segmentLabel: {
-      color: theme.colors.text.muted,
-      textAlign: 'center',
-    },
-    segmentLabelActive: {
-      color: theme.colors.text.primary,
-    },
-    summaryText: {
-      color: theme.colors.text.muted,
-    },
-    searchRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    searchField: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.default,
-      borderRadius: 10,
-      borderWidth: 1,
-      flex: 1,
-      flexDirection: 'row',
-      minHeight: 42,
-      paddingHorizontal: theme.spacing.sm,
-    },
-    searchInput: {
-      color: theme.colors.text.primary,
-      flex: 1,
-      ...theme.typography.bodyLg,
-      paddingVertical: theme.spacing.xs,
-    },
-    clearSearchButton: {
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xs,
-    },
-    clearSearchLabel: {
-      color: theme.colors.text.muted,
-    },
-    filtersToggle: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: 10,
-      borderWidth: 1,
-      flexDirection: 'row',
-      justifyContent: 'center',
-      minHeight: 42,
-      minWidth: 82,
-      paddingHorizontal: theme.spacing.sm,
-    },
-    filtersToggleActive: {
-      backgroundColor: theme.colors.text.brand,
-      borderColor: theme.colors.text.brand,
-    },
-    filtersToggleLabel: {
-      color: theme.colors.text.primary,
-    },
-    filtersToggleLabelActive: {
-      color: theme.colors.text.inverse,
-    },
-    filtersRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    filterChip: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: 8,
-      borderWidth: 1,
-      flex: 1,
-      justifyContent: 'center',
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 8,
-    },
-    filterChipActive: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-    },
-    filterChipLabel: {
-      color: theme.colors.text.secondary,
-      textAlign: 'center',
-    },
-    filterChipLabelActive: {
-      color: theme.colors.text.info,
-    },
-  });
 
   return (
     <View style={styles.container}>

@@ -1,7 +1,7 @@
 import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 
@@ -19,12 +19,13 @@ import {
   markFeedbackAsRead,
   sendFeedbackMessage,
 } from '../features';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -33,6 +34,106 @@ type FeedbackDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'Fee
 const ACTIVE_MESSAGE_POLL_INTERVAL_MS = 3000;
 const IDLE_MESSAGE_POLL_INTERVAL_MS = 30000;
 const RECENT_THREAD_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
+
+const useStyles = createThemedStyles((theme) => ({
+  bodyRoot: {
+    flex: 1,
+    gap: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
+  body: {
+    flex: 1,
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  messagesContainer: {
+    flex: 1,
+  },
+  messagesContent: {
+    flexGrow: 1,
+    gap: theme.spacing.xs,
+    paddingBottom: theme.spacing.sm,
+  },
+  messageRow: {
+    flexDirection: 'row',
+  },
+  messageRowMine: {
+    justifyContent: 'flex-end',
+  },
+  messageRowOther: {
+    justifyContent: 'flex-start',
+  },
+  messageBubble: {
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    maxWidth: '82%',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  messageBubbleMine: {
+    backgroundColor: theme.colors.text.brand,
+    borderColor: theme.colors.text.brand,
+  },
+  messageBubbleOther: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+  },
+  messageSenderBadge: {
+    alignSelf: 'flex-start',
+    marginBottom: theme.spacing.xxs,
+  },
+  messageText: {
+    color: theme.colors.text.primary,
+  },
+  messageTextMine: {
+    color: theme.colors.text.inverse,
+  },
+  messageTime: {
+    color: theme.colors.text.muted,
+    marginTop: 3,
+  },
+  messageTimeMine: {
+    color: theme.colors.text.inverse,
+    opacity: 0.8,
+  },
+  composer: {
+    backgroundColor: theme.colors.background.surface,
+    borderTopColor: theme.colors.border.subtle,
+    borderTopWidth: 1,
+    gap: theme.spacing.xs,
+    marginHorizontal: -theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  composerRow: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  composerInputContainer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    gap: 0,
+    minWidth: 0,
+  },
+  composerInput: {
+    maxHeight: 120,
+    minHeight: 46,
+    paddingTop: theme.spacing.sm,
+    textAlignVertical: 'top',
+    width: '100%',
+  },
+  sendButton: {
+    flexShrink: 0,
+    minWidth: 72,
+  },
+  inlineErrorText: {
+    color: theme.colors.text.danger,
+  },
+}));
 
 function isRecentTimestamp(value?: string, maxAgeMs = RECENT_THREAD_ACTIVITY_WINDOW_MS): boolean {
   if (!value) {
@@ -131,7 +232,7 @@ function formatRelativeReplyTime(value: string, isMine: boolean): string {
 }
 
 export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const queueWrite = useQueuedWrite();
@@ -173,6 +274,13 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       });
     },
   });
+  const messagesState = usePaginatedQueryState({
+    data: messagesQuery.data,
+    isError: messagesQuery.isError,
+    isFetching: messagesQuery.isFetching,
+    isLoading: messagesQuery.isLoading,
+    isSuccess: messagesQuery.isSuccess,
+  });
   const displayedMessages = useMemo(() => {
     const pages = messagesQuery.data?.pages ?? [];
     return pages
@@ -180,9 +288,8 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       .reverse()
       .flatMap((page) => [...page.items].reverse());
   }, [messagesQuery.data]);
-  const hasBlockingMessagesError =
-    messagesQuery.isError && (!messagesQuery.data || messagesQuery.data.pages.length === 0);
-  const hasMessagesRefreshError = !hasBlockingMessagesError && messagesQuery.isError;
+  const hasBlockingMessagesError = messagesState.hasBlockingError;
+  const hasMessagesRefreshError = messagesState.hasRefreshError;
   const latestMessageId = displayedMessages[displayedMessages.length - 1]?.id;
 
   useEffect(() => {
@@ -267,106 +374,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       }
     };
   }, [isKeyboardVisible, scheduleScrollToLatestMessage]);
-
-  const styles = StyleSheet.create({
-    bodyRoot: {
-      flex: 1,
-      gap: 0,
-      paddingBottom: 0,
-      paddingHorizontal: 0,
-      paddingTop: 0,
-    },
-    body: {
-      flex: 1,
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    messagesContainer: {
-      flex: 1,
-    },
-    messagesContent: {
-      flexGrow: 1,
-      gap: theme.spacing.xs,
-      paddingBottom: theme.spacing.sm,
-    },
-    messageRow: {
-      flexDirection: 'row',
-    },
-    messageRowMine: {
-      justifyContent: 'flex-end',
-    },
-    messageRowOther: {
-      justifyContent: 'flex-start',
-    },
-    messageBubble: {
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      maxWidth: '82%',
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    messageBubbleMine: {
-      backgroundColor: theme.colors.text.brand,
-      borderColor: theme.colors.text.brand,
-    },
-    messageBubbleOther: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-    },
-    messageSenderBadge: {
-      alignSelf: 'flex-start',
-      marginBottom: theme.spacing.xxs,
-    },
-    messageText: {
-      color: theme.colors.text.primary,
-    },
-    messageTextMine: {
-      color: theme.colors.text.inverse,
-    },
-    messageTime: {
-      color: theme.colors.text.muted,
-      marginTop: 3,
-    },
-    messageTimeMine: {
-      color: theme.colors.text.inverse,
-      opacity: 0.8,
-    },
-    composer: {
-      backgroundColor: theme.colors.background.surface,
-      borderTopColor: theme.colors.border.subtle,
-      borderTopWidth: 1,
-      gap: theme.spacing.xs,
-      marginHorizontal: -theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-    },
-    composerRow: {
-      alignItems: 'flex-end',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    composerInputContainer: {
-      flexGrow: 1,
-      flexShrink: 1,
-      gap: 0,
-      minWidth: 0,
-    },
-    composerInput: {
-      maxHeight: 120,
-      minHeight: 46,
-      paddingTop: theme.spacing.sm,
-      textAlignVertical: 'top',
-      width: '100%',
-    },
-    sendButton: {
-      flexShrink: 0,
-      minWidth: 72,
-    },
-    inlineErrorText: {
-      color: theme.colors.text.danger,
-    },
-  });
 
   const handleSendMessage = async () => {
     if (!draftMessage.trim()) {

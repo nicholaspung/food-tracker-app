@@ -13,11 +13,91 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type QRScannerScreenProps = NativeStackScreenProps<RootStackParamList, 'QRScanner'>;
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    flex: 1,
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  cameraSection: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 420,
+    overflow: 'hidden',
+  },
+  camera: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    padding: theme.spacing.md,
+  },
+  overlayTopCard: {
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.md,
+  },
+  overlayBottomCard: {
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.md,
+  },
+  overlayTitle: {
+    color: theme.colors.text.primary,
+  },
+  overlayText: {
+    color: theme.colors.text.secondary,
+  },
+  scanWindowWrap: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  scanWindow: {
+    aspectRatio: 1,
+    backgroundColor: 'transparent',
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.md,
+    borderWidth: 3,
+    maxHeight: 300,
+    maxWidth: 300,
+    minHeight: 220,
+    minWidth: 220,
+    width: '72%',
+  },
+  statusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  statusText: {
+    color: theme.colors.text.secondary,
+    flex: 1,
+  },
+  permissionCard: {
+    gap: theme.spacing.sm,
+  },
+}));
 
 function sanitizeFriendCode(value: string): string {
   return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8);
@@ -57,6 +137,7 @@ function generateFriendCode(userId: string | undefined): string {
 
 export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const queryClient = useQueryClient();
@@ -78,86 +159,6 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
 
     navigation.navigate('Friends');
   };
-
-  const styles = StyleSheet.create({
-    body: {
-      flex: 1,
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    cameraSection: {
-      flex: 1,
-      minHeight: 420,
-      overflow: 'hidden',
-      borderRadius: theme.radii.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.border.default,
-      backgroundColor: theme.colors.background.surface,
-    },
-    camera: {
-      flex: 1,
-    },
-    overlay: {
-      ...StyleSheet.absoluteFillObject,
-      justifyContent: 'space-between',
-      padding: theme.spacing.md,
-    },
-    overlayTopCard: {
-      alignSelf: 'stretch',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      padding: theme.spacing.md,
-    },
-    overlayBottomCard: {
-      alignSelf: 'stretch',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      padding: theme.spacing.md,
-    },
-    overlayTitle: {
-      color: theme.colors.text.primary,
-    },
-    overlayText: {
-      color: theme.colors.text.secondary,
-    },
-    scanWindowWrap: {
-      alignItems: 'center',
-      flex: 1,
-      justifyContent: 'center',
-    },
-    scanWindow: {
-      width: '72%',
-      aspectRatio: 1,
-      maxHeight: 300,
-      maxWidth: 300,
-      minHeight: 220,
-      minWidth: 220,
-      borderRadius: theme.radii.md,
-      borderWidth: 3,
-      borderColor: theme.colors.border.info,
-      backgroundColor: 'transparent',
-    },
-    statusRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    statusText: {
-      color: theme.colors.text.secondary,
-      flex: 1,
-    },
-    permissionCard: {
-      gap: theme.spacing.sm,
-    },
-  });
 
   const isCameraGranted = cameraPermission?.granted === true;
   const myFriendCode = generateFriendCode(user?.id);

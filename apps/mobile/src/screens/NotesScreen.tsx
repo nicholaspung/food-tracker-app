@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -25,19 +25,88 @@ import {
   type NotePhotoRecord,
   type NoteRecord,
 } from '../features';
+import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
 type NotesFilter = 'unused' | 'used' | 'all';
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  noteTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+  },
+  noteMeta: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flex: 1,
+    gap: theme.spacing.xs,
+  },
+  noteActionsInline: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  useActionLabel: {
+    color: theme.colors.text.brand,
+  },
+  iconAction: {
+    padding: 2,
+  },
+  noteContentRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  photoWrap: {
+    position: 'relative',
+  },
+  photoThumb: {
+    backgroundColor: theme.colors.border.subtle,
+    borderRadius: 8,
+    height: 64,
+    width: 64,
+  },
+  photoCountBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.inverse,
+    borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    minWidth: 20,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    left: 2,
+    top: 2,
+  },
+  photoCountText: {
+    color: theme.colors.text.inverse,
+  },
+  noteTextContent: {
+    flex: 1,
+    gap: 4,
+    minHeight: 64,
+    justifyContent: 'center',
+  },
+  locationRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+  },
+}));
 
 function resolveNoteStatusFilter(activeFilter: NotesFilter): 'all' | 'draft' | 'used' {
   if (activeFilter === 'unused') {
@@ -125,10 +194,14 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     queryKey: ['feature', 'notes', 'summary'],
     queryFn: getNoteCountSummary,
   });
-  const notes = useMemo(
-    () => notesQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [notesQuery.data],
-  );
+  const notesState = usePaginatedQueryState({
+    data: notesQuery.data,
+    isError: notesQuery.isError,
+    isFetching: notesQuery.isFetching,
+    isLoading: notesQuery.isLoading,
+    isSuccess: notesQuery.isSuccess,
+  });
+  const notes = notesState.items;
   const visibleNoteIds = useMemo(() => notes.map((note) => note.id), [notes]);
 
   const notePhotosQuery = useIncrementalIdQuery({
@@ -138,8 +211,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     getRecordIds: (photo) => [photo.note],
     getRecordKey: (photo) => photo.id,
   });
-  const hasBlockingNotesError = notesQuery.isError && (!notesQuery.data || notesQuery.data.pages.length === 0);
-  const hasNotesRefreshError = !hasBlockingNotesError && (notesQuery.isError || notePhotosQuery.isError);
+  const hasNotesRefreshError = notesState.hasRefreshError || notePhotosQuery.isError;
   const unusedCount = notesSummaryQuery.data?.draftCount ?? notes.filter((note) => note.status === 'draft').length;
   const usedCount = notesSummaryQuery.data?.usedCount ?? notes.filter((note) => note.status === 'used').length;
   const allCount = notesSummaryQuery.data?.allCount ?? notes.length;
@@ -163,73 +235,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     [allCount, unusedCount, usedCount],
   );
 
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    noteTopRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: theme.spacing.sm,
-    },
-    noteMeta: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flex: 1,
-      gap: theme.spacing.xs,
-    },
-    noteActionsInline: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    useActionLabel: {
-      color: theme.colors.text.brand,
-    },
-    iconAction: {
-      padding: 2,
-    },
-    noteContentRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    photoWrap: {
-      position: 'relative',
-    },
-    photoThumb: {
-      backgroundColor: theme.colors.border.subtle,
-      borderRadius: 8,
-      height: 64,
-      width: 64,
-    },
-    photoCountBadge: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.inverse,
-      borderRadius: theme.radii.pill,
-      justifyContent: 'center',
-      minWidth: 20,
-      paddingHorizontal: 4,
-      position: 'absolute',
-      left: 2,
-      top: 2,
-    },
-    photoCountText: {
-      color: theme.colors.text.inverse,
-    },
-    noteTextContent: {
-      flex: 1,
-      gap: 4,
-      minHeight: 64,
-      justifyContent: 'center',
-    },
-    locationRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-    },
-  });
+  const styles = useStyles();
 
   const openPhotoViewer = useCallback((photos: NotePhotoRecord[], initialIndex = 0) => {
     if (photos.length === 0) {
@@ -347,7 +353,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
         <PageErrorToast
           errorMessage={
-            hasBlockingNotesError
+            notesState.hasBlockingError
               ? 'Could not load notes.'
               : hasNotesRefreshError
                 ? notePhotosQuery.isError
@@ -374,7 +380,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           </>
         ) : null}
 
-        {hasBlockingNotesError ? (
+        {notesState.hasBlockingError ? (
           <ErrorState
             description="Could not load notes."
             onRetry={() => {
@@ -388,7 +394,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           />
         ) : null}
 
-        {!notesQuery.isLoading && !hasBlockingNotesError && notes.length === 0 ? (
+        {!notesQuery.isLoading && !notesState.hasBlockingError && notes.length === 0 ? (
           <EmptyState
             actionLabel="Log a Note"
             description={
@@ -409,7 +415,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           />
         ) : null}
 
-        {!notesQuery.isLoading && !hasBlockingNotesError
+        {!notesQuery.isLoading && !notesState.hasBlockingError
           ? notes.map((note) => {
               const notePhotos = notePhotosByNoteId.get(note.id) ?? [];
               const primaryPhoto = notePhotos[0];
@@ -515,7 +521,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
             })
           : null}
 
-        {!notesQuery.isLoading && !hasBlockingNotesError && notes.length > 0 && notesQuery.hasNextPage ? (
+        {!notesQuery.isLoading && !notesState.hasBlockingError && notes.length > 0 && notesQuery.hasNextPage ? (
           <Button
             label={notesQuery.isFetchingNextPage ? 'Loading more...' : 'Load more notes'}
             loading={notesQuery.isFetchingNextPage}

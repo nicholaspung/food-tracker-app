@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Card, Input, ListItem, Text } from '../../ui';
 import { CurrentLocationButton } from './CurrentLocationButton';
 import { EmptyState } from './EmptyState';
@@ -64,6 +64,70 @@ interface VisitRestaurantSearchSectionProps {
   onSavedResultsLayout?: (event: LayoutChangeEvent) => void;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  searchHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  searchHeaderTitle: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  compactSearchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  compactSearchField: {
+    flex: 1,
+  },
+  compactSearchButton: {
+    minWidth: 126,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  locationField: {
+    flex: 1,
+  },
+  locationInput: {
+    height: theme.sizes.inputMinHeight,
+    minHeight: theme.sizes.inputMinHeight,
+  },
+  locationAction: {
+    alignSelf: 'flex-end',
+    minWidth: 96,
+  },
+  statusCard: {
+    gap: theme.spacing.xs,
+  },
+  listCard: {
+    gap: theme.spacing.xs,
+  },
+  selectedHint: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  selectedOption: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+  },
+}));
+
 export function VisitRestaurantSearchSection({
   selectedRestaurantName,
   locationMetadataHintText,
@@ -107,70 +171,7 @@ export function VisitRestaurantSearchSection({
   onSavedResultsLayout,
 }: VisitRestaurantSearchSectionProps) {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    searchHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-    },
-    searchHeaderTitle: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    compactSearchRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    compactSearchField: {
-      flex: 1,
-    },
-    compactSearchButton: {
-      minWidth: 126,
-    },
-    row: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    locationField: {
-      flex: 1,
-    },
-    locationInput: {
-      height: theme.sizes.inputMinHeight,
-      minHeight: theme.sizes.inputMinHeight,
-    },
-    locationAction: {
-      alignSelf: 'flex-end',
-      minWidth: 96,
-    },
-    statusCard: {
-      gap: theme.spacing.xs,
-    },
-    listCard: {
-      gap: theme.spacing.xs,
-    },
-    selectedHint: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    selectedOption: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <>

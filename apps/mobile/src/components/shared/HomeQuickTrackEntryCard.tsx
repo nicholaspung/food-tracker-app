@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 
 import { buildPocketBaseFileUrl, type QuickTrackRecord } from '../../features';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import type { HomeFeedPhotoRecord } from './HomeFeedVisitEntryCard';
 import { StatusPill } from './StatusPill';
@@ -49,6 +49,174 @@ function buildPhotoThumbnailUrl(photo: HomeFeedPhotoRecord): string {
   });
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  entryCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  entryTopRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  entryTitle: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  entryTopRight: {
+    alignItems: 'flex-end',
+    gap: theme.spacing.xs,
+  },
+  badgesRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    justifyContent: 'flex-end',
+  },
+  friendBadge: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.text.brand,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 4,
+  },
+  friendBadgeLabel: {
+    color: theme.colors.text.brand,
+    ...theme.typography.bodySmTightBold,
+  },
+  sourceBadge: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderRadius: 999,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 4,
+  },
+  sourceBadgeLabel: {
+    color: theme.colors.text.info,
+    ...theme.typography.bodySmTightBold,
+    textTransform: 'uppercase',
+  },
+  quickTrackCategoryRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -4,
+  },
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.background.muted,
+    borderRadius: 999,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 4,
+  },
+  categoryBadgeLabel: {
+    color: theme.colors.text.secondary,
+    ...theme.typography.bodySmTightSemiBold,
+    textTransform: 'capitalize',
+  },
+  compactActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  compactActionButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  compactActionDanger: {
+    borderColor: theme.colors.border.danger,
+  },
+  foodItemRow: {
+    alignItems: 'flex-start',
+    backgroundColor: theme.colors.background.surface,
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    padding: theme.spacing.xs,
+  },
+  photoWrap: {
+    position: 'relative',
+  },
+  photoThumb: {
+    backgroundColor: theme.colors.border.subtle,
+    borderRadius: 8,
+    height: 56,
+    width: 56,
+  },
+  photoCountBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.inverse,
+    borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    left: 2,
+    minWidth: 20,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    top: 2,
+  },
+  photoCountText: {
+    color: theme.colors.text.inverse,
+    ...theme.typography.captionStrong,
+  },
+  foodItemContent: {
+    flex: 1,
+    gap: 2,
+    justifyContent: 'center',
+    minHeight: 56,
+  },
+  quickTrackMeta: {
+    color: theme.colors.text.secondary,
+  },
+  quickTrackMetaInline: {
+    flex: 1,
+  },
+  quickTrackMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  quickTrackLocationIcon: {
+    marginTop: 1,
+  },
+  foodItemNotes: {
+    color: theme.colors.text.muted,
+    fontStyle: 'italic',
+  },
+  foodItemRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+    justifyContent: 'center',
+    minHeight: 56,
+  },
+  ratingDot: {
+    borderRadius: theme.radii.pill,
+    height: 10,
+    width: 10,
+  },
+  ratingLabel: {
+    color: theme.colors.text.secondary,
+  },
+  ratingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  entryMeta: {
+    color: theme.colors.text.muted,
+  },
+}));
+
 export function HomeQuickTrackEntryCard({
   quickTrack,
   photos,
@@ -63,190 +231,7 @@ export function HomeQuickTrackEntryCard({
   showUnderReviewBadge = false,
 }: HomeQuickTrackEntryCardProps) {
   const theme = useTheme();
-
-  const colors = {
-    accent: theme.colors.text.brand,
-    accentSoft: theme.colors.status.infoBg,
-    accentSoftText: theme.colors.text.info,
-    border: theme.colors.border.default,
-    borderSubtle: theme.colors.border.subtle,
-    dangerBorder: theme.colors.border.danger,
-    dangerText: theme.colors.text.danger,
-    screenBackground: theme.colors.background.muted,
-    shadow: theme.colors.background.inverse,
-    surface: theme.colors.background.surface,
-    textMuted: theme.colors.text.muted,
-    textPrimary: theme.colors.text.primary,
-    textSecondary: theme.colors.text.secondary,
-  } as const;
-
-  const styles = StyleSheet.create({
-    entryCard: {
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    entryTopRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    entryTitle: {
-      color: colors.textPrimary,
-      flex: 1,
-    },
-    entryTopRight: {
-      alignItems: 'flex-end',
-      gap: theme.spacing.xs,
-    },
-    badgesRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-      justifyContent: 'flex-end',
-    },
-    friendBadge: {
-      backgroundColor: colors.accentSoft,
-      borderColor: colors.accent,
-      borderRadius: 999,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    friendBadgeLabel: {
-      color: colors.accent,
-      ...theme.typography.bodySmTightBold,
-    },
-    sourceBadge: {
-      backgroundColor: colors.accentSoft,
-      borderRadius: 999,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    sourceBadgeLabel: {
-      color: colors.accentSoftText,
-      ...theme.typography.bodySmTightBold,
-      textTransform: 'uppercase',
-    },
-    quickTrackCategoryRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: -4,
-    },
-    categoryBadge: {
-      alignSelf: 'flex-start',
-      backgroundColor: colors.screenBackground,
-      borderRadius: 999,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    categoryBadgeLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.bodySmTightSemiBold,
-      textTransform: 'capitalize',
-    },
-    compactActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    compactActionButton: {
-      alignItems: 'center',
-      borderColor: colors.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      height: 30,
-      justifyContent: 'center',
-      width: 30,
-    },
-    compactActionDanger: {
-      borderColor: colors.dangerBorder,
-    },
-    foodItemRow: {
-      alignItems: 'flex-start',
-      backgroundColor: colors.surface,
-      borderRadius: 10,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      padding: theme.spacing.xs,
-    },
-    photoWrap: {
-      position: 'relative',
-    },
-    photoThumb: {
-      backgroundColor: colors.borderSubtle,
-      borderRadius: 8,
-      height: 56,
-      width: 56,
-    },
-    photoCountBadge: {
-      alignItems: 'center',
-      backgroundColor: colors.shadow,
-      borderRadius: theme.radii.pill,
-      justifyContent: 'center',
-      left: 2,
-      minWidth: 20,
-      paddingHorizontal: 4,
-      position: 'absolute',
-      top: 2,
-    },
-    photoCountText: {
-      color: theme.colors.text.inverse,
-      ...theme.typography.captionStrong,
-    },
-    foodItemContent: {
-      flex: 1,
-      gap: 2,
-      justifyContent: 'center',
-      minHeight: 56,
-    },
-    quickTrackMeta: {
-      color: colors.textSecondary,
-    },
-    quickTrackMetaInline: {
-      flex: 1,
-    },
-    quickTrackMetaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    quickTrackLocationIcon: {
-      marginTop: 1,
-    },
-    foodItemNotes: {
-      color: colors.textMuted,
-      fontStyle: 'italic',
-    },
-    foodItemRight: {
-      alignItems: 'flex-end',
-      gap: 6,
-      justifyContent: 'center',
-      minHeight: 56,
-    },
-    ratingDot: {
-      borderRadius: theme.radii.pill,
-      height: 10,
-      width: 10,
-    },
-    ratingLabel: {
-      color: colors.textSecondary,
-    },
-    ratingRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 6,
-    },
-    entryMeta: {
-      color: colors.textMuted,
-    },
-  });
+  const styles = useStyles();
 
   const primaryPhoto = photos[0] ?? null;
   const photoThumb = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
@@ -289,7 +274,7 @@ export function HomeQuickTrackEntryCard({
             <View style={styles.compactActions}>
               {onEdit ? (
                 <Pressable accessibilityLabel="Edit quick track" onPress={onEdit} style={styles.compactActionButton}>
-                  <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
+                  <Ionicons color={theme.colors.text.secondary} name="create-outline" size={16} />
                 </Pressable>
               ) : null}
               {onDelete ? (
@@ -298,7 +283,7 @@ export function HomeQuickTrackEntryCard({
                   onPress={onDelete}
                   style={[styles.compactActionButton, styles.compactActionDanger]}
                 >
-                  <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
+                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
                 </Pressable>
               ) : null}
               {onMoreActions ? (
@@ -307,7 +292,7 @@ export function HomeQuickTrackEntryCard({
                   onPress={onMoreActions}
                   style={styles.compactActionButton}
                 >
-                  <Ionicons color={colors.textSecondary} name="ellipsis-horizontal" size={16} />
+                  <Ionicons color={theme.colors.text.secondary} name="ellipsis-horizontal" size={16} />
                 </Pressable>
               ) : null}
             </View>
@@ -367,7 +352,7 @@ export function HomeQuickTrackEntryCard({
                 }}
               style={styles.compactActionButton}
             >
-              <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
+              <Ionicons color={theme.colors.text.secondary} name="share-social-outline" size={16} />
             </Pressable>
           ) : null}
         </View>

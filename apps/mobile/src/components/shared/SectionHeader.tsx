@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Text } from '../../ui';
 import type { TextProps } from '../../ui';
 
@@ -22,6 +22,31 @@ export interface SectionHeaderProps {
   descriptionTone?: TextProps['tone'];
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    gap: theme.spacing.xxs,
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  titleLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    minWidth: 0,
+  },
+  title: {
+    flexShrink: 1,
+  },
+  rightAccessory: {
+    marginLeft: 'auto',
+  },
+}));
+
 export function SectionHeader({
   title,
   description,
@@ -37,32 +62,7 @@ export function SectionHeader({
   titleTone = 'primary',
   descriptionTone = 'secondary',
 }: SectionHeaderProps) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    container: {
-      gap: theme.spacing.xxs,
-    },
-    titleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    titleLeft: {
-      alignItems: 'center',
-      flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-      minWidth: 0,
-    },
-    title: {
-      flexShrink: 1,
-    },
-    rightAccessory: {
-      marginLeft: 'auto',
-    },
-  });
+  const styles = useStyles();
 
   return (
     <View style={[styles.container, style]}>

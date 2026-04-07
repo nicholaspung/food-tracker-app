@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 
 import {
   buildPocketBaseFileUrl,
   type VisitRecord,
 } from '../../features';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import { StatusPill } from './StatusPill';
 
@@ -61,6 +61,161 @@ function buildPhotoThumbnailUrl(photo: HomeFeedPhotoRecord): string {
   });
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  entryCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  entryTopRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  entryTopRight: {
+    alignItems: 'flex-end',
+    gap: theme.spacing.xs,
+  },
+  badgesRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    justifyContent: 'flex-end',
+  },
+  entryTitle: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  friendBadge: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.text.brand,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 4,
+  },
+  friendBadgeLabel: {
+    color: theme.colors.text.brand,
+    ...theme.typography.bodySmTightBold,
+  },
+  sourceBadge: {
+    backgroundColor: theme.colors.background.muted,
+    borderRadius: theme.radii.pill,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 4,
+  },
+  sourceBadgeLabel: {
+    color: theme.colors.text.secondary,
+    ...theme.typography.bodySmTightBold,
+    textTransform: 'uppercase',
+  },
+  restaurantMeta: {
+    color: theme.colors.text.muted,
+  },
+  restaurantMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+    marginTop: theme.spacing.xxs,
+  },
+  restaurantMetaInline: {
+    flex: 1,
+  },
+  compactActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  compactActionButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  compactActionDanger: {
+    borderColor: theme.colors.border.danger,
+  },
+  foodItemsList: {
+    gap: theme.spacing.xs,
+  },
+  foodItemRow: {
+    alignItems: 'flex-start',
+    backgroundColor: theme.colors.background.muted,
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    padding: theme.spacing.xs,
+  },
+  photoWrap: {
+    position: 'relative',
+  },
+  photoThumb: {
+    backgroundColor: theme.colors.border.subtle,
+    borderRadius: 8,
+    height: 56,
+    width: 56,
+  },
+  photoCountBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.inverse,
+    borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    left: 2,
+    minWidth: 20,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    top: 2,
+  },
+  photoCountText: {
+    color: theme.colors.text.inverse,
+    ...theme.typography.captionStrong,
+  },
+  foodItemContent: {
+    flex: 1,
+    gap: 2,
+    justifyContent: 'center',
+    minHeight: 56,
+  },
+  foodItemName: {
+    color: theme.colors.text.primary,
+  },
+  foodItemNotes: {
+    color: theme.colors.text.muted,
+    fontStyle: 'italic',
+  },
+  foodItemRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+    justifyContent: 'center',
+    minHeight: 56,
+  },
+  ratingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  ratingDot: {
+    borderRadius: theme.radii.pill,
+    height: 10,
+    width: 10,
+  },
+  ratingLabel: {
+    color: theme.colors.text.secondary,
+  },
+  entryMeta: {
+    color: theme.colors.text.muted,
+  },
+}));
+
 export function HomeFeedVisitEntryCard({
   visit,
   getPhotosForItem,
@@ -79,176 +234,7 @@ export function HomeFeedVisitEntryCard({
   moreActionsTestID,
 }: HomeFeedVisitEntryCardProps) {
   const theme = useTheme();
-
-  const colors = {
-    accent: theme.colors.text.brand,
-    accentSoft: theme.colors.status.infoBg,
-    border: theme.colors.border.default,
-    borderSubtle: theme.colors.border.subtle,
-    dangerBorder: theme.colors.border.danger,
-    dangerText: theme.colors.text.danger,
-    screenBackground: theme.colors.background.muted,
-    shadow: theme.colors.background.inverse,
-    surface: theme.colors.background.surface,
-    textMuted: theme.colors.text.muted,
-    textPrimary: theme.colors.text.primary,
-    textSecondary: theme.colors.text.secondary,
-  } as const;
-
-  const styles = StyleSheet.create({
-    entryCard: {
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    entryTopRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    entryTopRight: {
-      alignItems: 'flex-end',
-      gap: theme.spacing.xs,
-    },
-    badgesRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-      justifyContent: 'flex-end',
-    },
-    entryTitle: {
-      color: colors.textPrimary,
-      flex: 1,
-    },
-    friendBadge: {
-      backgroundColor: colors.accentSoft,
-      borderColor: colors.accent,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    friendBadgeLabel: {
-      color: colors.accent,
-      ...theme.typography.bodySmTightBold,
-    },
-    sourceBadge: {
-      backgroundColor: colors.screenBackground,
-      borderRadius: theme.radii.pill,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    sourceBadgeLabel: {
-      color: colors.textSecondary,
-      ...theme.typography.bodySmTightBold,
-      textTransform: 'uppercase',
-    },
-    restaurantMeta: {
-      color: colors.textMuted,
-    },
-    restaurantMetaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-      marginTop: theme.spacing.xxs,
-    },
-    restaurantMetaInline: {
-      flex: 1,
-    },
-    compactActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    compactActionButton: {
-      alignItems: 'center',
-      borderColor: colors.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      height: 30,
-      justifyContent: 'center',
-      width: 30,
-    },
-    compactActionDanger: {
-      borderColor: colors.dangerBorder,
-    },
-    foodItemsList: {
-      gap: theme.spacing.xs,
-    },
-    foodItemRow: {
-      alignItems: 'flex-start',
-      backgroundColor: colors.screenBackground,
-      borderRadius: 10,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      padding: theme.spacing.xs,
-    },
-    photoWrap: {
-      position: 'relative',
-    },
-    photoThumb: {
-      backgroundColor: colors.borderSubtle,
-      borderRadius: 8,
-      height: 56,
-      width: 56,
-    },
-    photoCountBadge: {
-      alignItems: 'center',
-      backgroundColor: colors.shadow,
-      borderRadius: theme.radii.pill,
-      justifyContent: 'center',
-      left: 2,
-      minWidth: 20,
-      paddingHorizontal: 4,
-      position: 'absolute',
-      top: 2,
-    },
-    photoCountText: {
-      color: theme.colors.text.inverse,
-      ...theme.typography.captionStrong,
-    },
-    foodItemContent: {
-      flex: 1,
-      gap: 2,
-      justifyContent: 'center',
-      minHeight: 56,
-    },
-    foodItemName: {
-      color: colors.textPrimary,
-    },
-    foodItemNotes: {
-      color: colors.textMuted,
-      fontStyle: 'italic',
-    },
-    foodItemRight: {
-      alignItems: 'flex-end',
-      gap: 6,
-      justifyContent: 'center',
-      minHeight: 56,
-    },
-    ratingRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 6,
-    },
-    ratingDot: {
-      borderRadius: theme.radii.pill,
-      height: 10,
-      width: 10,
-    },
-    ratingLabel: {
-      color: colors.textSecondary,
-    },
-    entryMeta: {
-      color: colors.textMuted,
-    },
-  });
+  const styles = useStyles();
 
   const hasActions = Boolean(onShareVisit || onEdit || onDelete || onMoreActions);
   const showUnderReviewBadge = !friendName?.trim() && visit.moderationStatus === 'under_review';
@@ -293,7 +279,7 @@ export function HomeFeedVisitEntryCard({
                   onPress={onShareVisit}
                   style={styles.compactActionButton}
                 >
-                  <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
+                  <Ionicons color={theme.colors.text.secondary} name="share-social-outline" size={16} />
                 </Pressable>
               ) : null}
               {onEdit ? (
@@ -303,7 +289,7 @@ export function HomeFeedVisitEntryCard({
                   style={styles.compactActionButton}
                   testID={editTestID}
                 >
-                  <Ionicons color={colors.textSecondary} name="create-outline" size={16} />
+                  <Ionicons color={theme.colors.text.secondary} name="create-outline" size={16} />
                 </Pressable>
               ) : null}
               {onDelete ? (
@@ -313,7 +299,7 @@ export function HomeFeedVisitEntryCard({
                   style={[styles.compactActionButton, styles.compactActionDanger]}
                   testID={deleteTestID}
                 >
-                  <Ionicons color={colors.dangerText} name="trash-outline" size={16} />
+                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={16} />
                 </Pressable>
               ) : null}
               {onMoreActions ? (
@@ -323,7 +309,7 @@ export function HomeFeedVisitEntryCard({
                   style={styles.compactActionButton}
                   testID={moreActionsTestID}
                 >
-                  <Ionicons color={colors.textSecondary} name="ellipsis-horizontal" size={16} />
+                  <Ionicons color={theme.colors.text.secondary} name="ellipsis-horizontal" size={16} />
                 </Pressable>
               ) : null}
             </View>
@@ -405,7 +391,7 @@ export function HomeFeedVisitEntryCard({
                       }}
                       style={styles.compactActionButton}
                     >
-                      <Ionicons color={colors.textSecondary} name="share-social-outline" size={16} />
+                      <Ionicons color={theme.colors.text.secondary} name="share-social-outline" size={16} />
                     </Pressable>
                   ) : null}
                 </View>

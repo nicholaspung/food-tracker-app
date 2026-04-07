@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -20,6 +20,7 @@ import {
   listRestaurantListsPage,
   type RestaurantListRecord,
 } from '../features';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -27,7 +28,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 
 type ListsScreenProps = NativeStackScreenProps<RootStackParamList, 'Lists'>;
@@ -38,6 +39,103 @@ type ListCountSummary = {
   restaurantCount: number;
   menuItemCount: number;
 };
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  searchField: {
+    flex: 1,
+  },
+  clearSearchButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: theme.sizes.secondaryButtonHeight,
+    paddingHorizontal: theme.spacing.md,
+  },
+  clearSearchButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+  clearSearchLabel: {
+    color: theme.colors.text.secondary,
+  },
+  listsWrap: {
+    gap: theme.spacing.sm,
+  },
+  skeletonWrap: {
+    gap: theme.spacing.sm,
+  },
+  listCard: {
+    gap: 0,
+    overflow: 'hidden',
+    padding: 0,
+  },
+  defaultListCard: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.status.warningBorder,
+  },
+  coverImageWrap: {
+    backgroundColor: theme.colors.background.surface,
+    height: 130,
+    width: '100%',
+  },
+  coverImage: {
+    height: '100%',
+    width: '100%',
+  },
+  cardListItem: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    borderRadius: 0,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  cardMetaWrap: {
+    gap: theme.spacing.xxs,
+  },
+  cardDescription: {
+    color: theme.colors.text.secondary,
+  },
+  cardMetaRow: {
+    alignItems: 'center',
+    columnGap: theme.spacing.xxs,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 2,
+  },
+  cardMetaText: {
+    color: theme.colors.text.muted,
+  },
+  ownerMeta: {
+    alignItems: 'center',
+    columnGap: 4,
+    flexDirection: 'row',
+    maxWidth: '75%',
+  },
+  trailingIcons: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+  },
+  emptyIconWrap: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.app,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 52,
+    justifyContent: 'center',
+    width: 52,
+  },
+}));
 
 const TAB_DEFINITIONS: readonly { label: string; value: ListTab }[] = [
   { label: 'My Lists', value: 'my' },
@@ -194,6 +292,7 @@ function getUpdatedLabel(list: RestaurantListRecord): string {
 
 export function ListsScreen({ navigation }: ListsScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
@@ -234,6 +333,20 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     enabled: activeTab === 'friends',
   });
+  const myListsState = usePaginatedQueryState({
+    data: myListsQuery.data,
+    isError: myListsQuery.isError,
+    isFetching: myListsQuery.isFetching,
+    isLoading: myListsQuery.isLoading,
+    isSuccess: myListsQuery.isSuccess,
+  });
+  const friendsListsState = usePaginatedQueryState({
+    data: friendsListsQuery.data,
+    isError: friendsListsQuery.isError,
+    isFetching: friendsListsQuery.isFetching,
+    isLoading: friendsListsQuery.isLoading,
+    isSuccess: friendsListsQuery.isSuccess,
+  });
 
   useEffect(() => {
     hasTriedCreatingDefault.current = false;
@@ -255,7 +368,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       return;
     }
 
-    const myLists = myListsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+    const myLists = myListsState.items;
     const hasDefault = myLists.some((list) => list.isDefault);
     if (hasDefault) {
       return;
@@ -287,6 +400,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     user?.id,
     trimmedSearchQuery,
     isCreatingDefaultList,
+    myListsState.items,
     myListsQuery.data,
     myListsQuery.isError,
     myListsQuery.isLoading,
@@ -296,15 +410,10 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     queueWrite,
   ]);
 
-  const myLists = useMemo(() => myListsQuery.data?.pages.flatMap((page) => page.items) ?? [], [myListsQuery.data]);
-  const friendLists = useMemo(
-    () => friendsListsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [friendsListsQuery.data],
-  );
+  const myLists = myListsState.items;
+  const friendLists = friendsListsState.items;
   const activeQuery = activeTab === 'my' ? myListsQuery : friendsListsQuery;
-  const hasBlockingActiveQueryError =
-    activeQuery.isError && (!activeQuery.data || activeQuery.data.pages.length === 0);
-  const hasActiveQueryRefreshError = !hasBlockingActiveQueryError && activeQuery.isError;
+  const activeState = activeTab === 'my' ? myListsState : friendsListsState;
 
   const visibleLists = useMemo(
     () => (activeTab === 'friends' ? friendLists : myLists),
@@ -318,116 +427,16 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         value: tab.value,
         badgeCount:
           tab.value === 'my'
-            ? (myListsQuery.data?.pages[0]?.totalItems ?? (activeTab === 'my' ? myLists.length : undefined))
+            ? (myListsState.totalItems ?? (activeTab === 'my' ? myLists.length : undefined))
             : tab.value === 'friends'
-              ? (
-                  friendsListsQuery.data?.pages[0]?.totalItems ??
-                  (activeTab === 'friends' ? friendLists.length : undefined)
-                )
+              ? (friendsListsState.totalItems ?? (activeTab === 'friends' ? friendLists.length : undefined))
               : 0,
       })),
-    [activeTab, friendLists.length, friendsListsQuery.data, myLists.length, myListsQuery.data],
+    [activeTab, friendLists.length, friendsListsState.totalItems, myLists.length, myListsState.totalItems],
   );
 
   const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);
   const hasSearch = trimmedSearchQuery.length > 0;
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    searchRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    searchField: {
-      flex: 1,
-    },
-    clearSearchButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      justifyContent: 'center',
-      minHeight: theme.sizes.secondaryButtonHeight,
-      paddingHorizontal: theme.spacing.md,
-    },
-    clearSearchButtonPressed: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    clearSearchLabel: {
-      color: theme.colors.text.secondary,
-    },
-    listsWrap: {
-      gap: theme.spacing.sm,
-    },
-    skeletonWrap: {
-      gap: theme.spacing.sm,
-    },
-    listCard: {
-      gap: 0,
-      overflow: 'hidden',
-      padding: 0,
-    },
-    defaultListCard: {
-      borderColor: theme.colors.status.warningBorder,
-      backgroundColor: theme.colors.status.warningBg,
-    },
-    coverImageWrap: {
-      backgroundColor: theme.colors.background.surface,
-      height: 130,
-      width: '100%',
-    },
-    coverImage: {
-      height: '100%',
-      width: '100%',
-    },
-    cardListItem: {
-      backgroundColor: 'transparent',
-      borderColor: 'transparent',
-      borderRadius: 0,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-    },
-    cardMetaWrap: {
-      gap: theme.spacing.xxs,
-    },
-    cardDescription: {
-      color: theme.colors.text.secondary,
-    },
-    cardMetaRow: {
-      alignItems: 'center',
-      columnGap: theme.spacing.xxs,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      rowGap: 2,
-    },
-    cardMetaText: {
-      color: theme.colors.text.muted,
-    },
-    ownerMeta: {
-      alignItems: 'center',
-      columnGap: 4,
-      flexDirection: 'row',
-      maxWidth: '75%',
-    },
-    trailingIcons: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-    },
-    emptyIconWrap: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.app,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 52,
-      justifyContent: 'center',
-      width: 52,
-    },
-  });
 
   const handleTabChange = (tab: ListTab) => {
     trackObservabilityEvent('LISTS_TAB_CHANGED', {
@@ -632,9 +641,9 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       <PageErrorToast
         actionLabel="Retry"
         errorMessage={
-          hasBlockingActiveQueryError
+          activeState.hasBlockingError
             ? 'Could not load lists.'
-            : hasActiveQueryRefreshError
+            : activeState.hasRefreshError
               ? 'Could not refresh lists. Showing saved data.'
               : null
         }
@@ -652,7 +661,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         </View>
       ) : null}
 
-      {!isLoading && !hasBlockingActiveQueryError
+      {!isLoading && !activeState.hasBlockingError
         ? visibleLists.length === 0
           ? hasSearch
             ? renderNoSearchResults()

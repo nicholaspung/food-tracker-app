@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -16,19 +16,33 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Card, Input, Text } from '../ui';
 
 type CreateRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateRestaurantList'>;
 type ListVisibility = RestaurantListRecord['visibility'];
 const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  formCard: {
+    borderColor: theme.colors.border.info,
+    gap: theme.spacing.sm,
+  },
+  descriptionInput: {
+    minHeight: 110,
+    textAlignVertical: 'top',
+  },
+}));
+
 function resolveDefaultListVisibility(): ListVisibility {
   return resolveDefaultListVisibilityFromAuth();
 }
 
 export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -39,20 +53,6 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
   const [visibility, setVisibility] = useState<ListVisibility>(resolveDefaultListVisibility());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    formCard: {
-      borderColor: theme.colors.border.info,
-      gap: theme.spacing.sm,
-    },
-    descriptionInput: {
-      minHeight: 110,
-      textAlignVertical: 'top',
-    },
-  });
 
   const canSubmit = useMemo(() => name.trim().length > 0 && !isSubmitting, [isSubmitting, name]);
 

@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Card, ListItem, Text } from '../../ui';
 import { SectionHeader } from './SectionHeader';
 
@@ -20,16 +19,16 @@ export interface DetailListScaffoldProps {
   tone?: 'default' | 'muted' | 'info' | 'warning' | 'danger' | 'success';
 }
 
-export function DetailListScaffold({ title, subtitle, items, tone = 'default' }: DetailListScaffoldProps) {
-  const theme = useTheme();
+const useStyles = createThemedStyles((theme) => ({
+  rowValue: {
+    flexShrink: 1,
+    marginLeft: theme.spacing.sm,
+    textAlign: 'right',
+  },
+}));
 
-  const styles = StyleSheet.create({
-    rowValue: {
-      flexShrink: 1,
-      marginLeft: theme.spacing.sm,
-      textAlign: 'right',
-    },
-  });
+export function DetailListScaffold({ title, subtitle, items, tone = 'default' }: DetailListScaffoldProps) {
+  const styles = useStyles();
 
   return (
     <Card tone={tone}>

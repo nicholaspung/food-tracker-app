@@ -1,7 +1,7 @@
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Text } from '../../ui';
 
 export interface FilterChipOption<T extends string> {
@@ -22,6 +22,37 @@ interface FilterChipGroupProps<T extends string> {
   activeLabelStyle?: StyleProp<TextStyle>;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  row: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  rowWrap: {
+    flexWrap: 'wrap',
+  },
+  scrollContent: {
+    gap: theme.spacing.xs,
+    paddingRight: theme.spacing.sm,
+  },
+  chip: {
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xxs,
+  },
+  chipActive: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+  },
+  chipLabel: {
+    color: theme.colors.text.secondary,
+  },
+  chipLabelActive: {
+    color: theme.colors.text.info,
+  },
+}));
+
 export function FilterChipGroup<T extends string>({
   options,
   value,
@@ -34,38 +65,7 @@ export function FilterChipGroup<T extends string>({
   labelStyle,
   activeLabelStyle,
 }: FilterChipGroupProps<T>) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    row: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    rowWrap: {
-      flexWrap: 'wrap',
-    },
-    scrollContent: {
-      gap: theme.spacing.xs,
-      paddingRight: theme.spacing.sm,
-    },
-    chip: {
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xxs,
-    },
-    chipActive: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-    },
-    chipLabel: {
-      color: theme.colors.text.secondary,
-    },
-    chipLabelActive: {
-      color: theme.colors.text.info,
-    },
-  });
+  const styles = useStyles();
 
   const chips = options.map((option) => {
     const isSelected = option.value === value;

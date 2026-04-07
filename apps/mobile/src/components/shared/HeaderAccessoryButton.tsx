@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable } from 'react-native';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -21,6 +21,28 @@ export interface HeaderAccessoryButtonProps {
   testID?: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  button: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 4,
+  },
+  buttonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+}));
+
 export function HeaderAccessoryButton({
   label,
   onPress,
@@ -34,28 +56,7 @@ export function HeaderAccessoryButton({
   testID,
 }: HeaderAccessoryButtonProps) {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    button: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      justifyContent: 'center',
-      minHeight: 32,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 4,
-    },
-    buttonPressed: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    buttonDisabled: {
-      opacity: 0.6,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <Pressable

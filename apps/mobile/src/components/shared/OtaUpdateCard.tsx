@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
 
 import { trackObservabilityEvent } from '../../observability';
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 import { PageErrorToast } from './PageErrorToast';
 
@@ -33,6 +33,31 @@ export interface OtaUpdateStatusState {
   shouldAutoExpand: boolean;
   handleApplyLatestOtaUpdate: () => Promise<void>;
 }
+
+const useDetailStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.sm,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  metaItem: {
+    flex: 1,
+    gap: 2,
+  },
+  metaLabel: {
+    textTransform: 'uppercase',
+  },
+  metaValue: {},
+}));
+
+const useCardStyles = createThemedStyles((theme) => ({
+  card: {
+    gap: theme.spacing.xs,
+  },
+}));
 
 function formatUpdateTimestamp(value: Date | undefined): string {
   if (!value) {
@@ -295,26 +320,7 @@ export function useOtaUpdateStatus(source: string): OtaUpdateStatusState {
 }
 
 export function OtaUpdateStatusDetails({ state }: { state: OtaUpdateStatusState }) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.sm,
-    },
-    metaRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    metaItem: {
-      flex: 1,
-      gap: 2,
-    },
-    metaLabel: {
-      textTransform: 'uppercase',
-    },
-    metaValue: {},
-  });
+  const styles = useDetailStyles();
 
   return (
     <>
@@ -392,14 +398,8 @@ export function OtaUpdateCard({
   title = 'App update status',
   description,
 }: OtaUpdateCardProps) {
-  const theme = useTheme();
   const state = useOtaUpdateStatus(source);
-
-  const styles = StyleSheet.create({
-    card: {
-      gap: theme.spacing.xs,
-    },
-  });
+  const styles = useCardStyles();
 
   return (
     <Card style={styles.card} tone="muted">

@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 
 export interface ErrorStateProps {
@@ -12,6 +11,12 @@ export interface ErrorStateProps {
   onRetry?: () => void;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  retry: {
+    marginTop: theme.spacing.xs,
+  },
+}));
+
 export function ErrorState({
   title = 'Something went wrong',
   description,
@@ -19,13 +24,7 @@ export function ErrorState({
   retryLabel = 'Try again',
   onRetry,
 }: ErrorStateProps) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    retry: {
-      marginTop: theme.spacing.xs,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <Card tone="danger">

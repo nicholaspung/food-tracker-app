@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Card, Text } from '../../ui';
 import { PhotoDetectedDateField } from './PhotoDetectedDateField';
 import { VisibilityOptionSelector, type VisibilityOptionValue } from './VisibilityOptionSelector';
@@ -19,6 +19,15 @@ interface VisitMetadataCardProps {
   beforeVisibilityContent?: ReactNode;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  card: {
+    gap: theme.spacing.sm,
+  },
+  visibilitySection: {
+    gap: theme.spacing.xs,
+  },
+}));
+
 export function VisitMetadataCard({
   dateValue,
   onDateChange,
@@ -31,16 +40,7 @@ export function VisitMetadataCard({
   visibilityOptions = ['friends', 'private'],
   beforeVisibilityContent,
 }: VisitMetadataCardProps) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    card: {
-      gap: theme.spacing.sm,
-    },
-    visibilitySection: {
-      gap: theme.spacing.xs,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <Card style={styles.card}>

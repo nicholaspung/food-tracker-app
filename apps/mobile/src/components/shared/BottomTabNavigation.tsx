@@ -1,10 +1,10 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 
 import { getFriendsCountSummary } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 export type BottomTabRoute = 'Home' | 'AddVisit' | 'Friends' | 'Misc' | 'Profile';
@@ -54,6 +54,58 @@ export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList
 };
 
 export const BOTTOM_TAB_ROUTES: BottomTabRoute[] = ['Home', 'AddVisit', 'Friends', 'Misc', 'Profile'];
+
+const useStyles = createThemedStyles((theme, bottomPadding: number) => ({
+  container: {
+    backgroundColor: theme.colors.background.surface,
+    borderTopColor: theme.colors.border.subtle,
+    borderTopWidth: 1,
+    bottom: 0,
+    elevation: 10,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  containerHidden: {
+    opacity: 0,
+  },
+  row: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    height: 56 + bottomPadding,
+    paddingBottom: bottomPadding,
+  },
+  tab: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 2,
+    justifyContent: 'center',
+    minHeight: 56,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  badge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.text.danger,
+    borderRadius: theme.radii.pill,
+    height: 18,
+    justifyContent: 'center',
+    minWidth: 18,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    right: -8,
+    top: -4,
+  },
+  iconWrap: {
+    position: 'relative',
+  },
+}));
 
 export function getBottomTabRouteForScreen(
   routeName?: keyof RootStackParamList,
@@ -110,64 +162,13 @@ export function BottomTabNavigation({
   onNavigate,
 }: BottomTabNavigationProps) {
   const theme = useTheme();
+  const styles = useStyles(bottomPadding);
   const { data: friendsSummary } = useQuery({
     queryKey: ['feature', 'friends', 'summary'],
     queryFn: getFriendsCountSummary,
     refetchOnReconnect: 'always',
   });
   const pendingInvitesCount = friendsSummary?.requestsCount ?? 0;
-
-  const styles = StyleSheet.create({
-    container: {
-      backgroundColor: theme.colors.background.surface,
-      borderTopColor: theme.colors.border.subtle,
-      borderTopWidth: 1,
-      bottom: 0,
-      elevation: 10,
-      left: 0,
-      position: 'absolute',
-      right: 0,
-      shadowColor: theme.colors.background.inverse,
-      shadowOffset: {
-        width: 0,
-        height: -2,
-      },
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-    },
-    containerHidden: {
-      opacity: 0,
-    },
-    row: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      height: 56 + bottomPadding,
-      paddingBottom: bottomPadding,
-    },
-    tab: {
-      alignItems: 'center',
-      flex: 1,
-      gap: 2,
-      justifyContent: 'center',
-      minHeight: 56,
-      paddingHorizontal: theme.spacing.xs,
-    },
-    badge: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.text.danger,
-      borderRadius: theme.radii.pill,
-      height: 18,
-      justifyContent: 'center',
-      minWidth: 18,
-      paddingHorizontal: 4,
-      position: 'absolute',
-      right: -8,
-      top: -4,
-    },
-    iconWrap: {
-      position: 'relative',
-    },
-  });
 
   return (
     <View

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, StyleSheet, View } from 'react-native';
+import { Alert, Linking, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -26,14 +26,60 @@ import {
   type PhotoProcessingScreenProps,
   type ScanSource,
 } from './photoProcessing/shared';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
+
+const useStyles = createThemedStyles((theme) => ({
+  chooseCard: {
+    gap: theme.spacing.sm,
+  },
+  tipCard: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+  },
+  processingCard: {
+    gap: theme.spacing.sm,
+  },
+  processingHint: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  successCard: {
+    borderColor: theme.colors.status.successBorder,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+  },
+  addedItemRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  footerButton: {
+    marginTop: theme.spacing.sm,
+  },
+  errorCard: {
+    borderColor: theme.colors.status.dangerBorder,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+  },
+  errorActionsRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  errorAction: {
+    flex: 1,
+  },
+}));
 
 export function MenuScanPhotoProcessingScreen({
   navigation,
   route,
 }: PhotoProcessingScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
 
   const mode = route.params?.mode ?? 'general';
@@ -64,51 +110,6 @@ export function MenuScanPhotoProcessingScreen({
       'Photo library permission is blocked. Enable it in device settings.',
     galleryRequiredMessage:
       'Photo library permission is required to upload an image.',
-  });
-
-  const styles = StyleSheet.create({
-    chooseCard: {
-      gap: theme.spacing.sm,
-    },
-    tipCard: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.status.infoBorder,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-    },
-    processingCard: {
-      gap: theme.spacing.sm,
-    },
-    processingHint: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    successCard: {
-      borderColor: theme.colors.status.successBorder,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-    },
-    addedItemRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    footerButton: {
-      marginTop: theme.spacing.sm,
-    },
-    errorCard: {
-      borderColor: theme.colors.status.dangerBorder,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-    },
-    errorActionsRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    errorAction: {
-      flex: 1,
-    },
   });
 
   const navigateBackToItems = useCallback(() => {

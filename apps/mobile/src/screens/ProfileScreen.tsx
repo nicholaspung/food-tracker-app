@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Pressable,
   Share,
-  StyleSheet,
   View,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,7 +45,7 @@ import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -54,6 +53,150 @@ type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 type ExpandablePanel = 'account' | 'invite' | 'danger';
 
 const INVITE_SIGNUP_DEEP_LINK_PREFIX = 'yummyrecs://signup?code=';
+
+const useStyles = createThemedStyles((theme) => ({
+  screenContent: {
+    backgroundColor: theme.colors.background.app,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  body: {
+    flex: 1,
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+  },
+  sectionCard: {
+    gap: 0,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+  },
+  sectionTitle: {
+    marginBottom: theme.spacing.sm,
+  },
+  optionBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.text.danger,
+    borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  optionBadgeText: {
+    color: theme.colors.text.inverse,
+  },
+  optionDot: {
+    backgroundColor: theme.colors.text.danger,
+    borderRadius: theme.radii.pill,
+    height: 8,
+    width: 8,
+  },
+  optionMetaText: {
+    color: theme.colors.text.secondary,
+  },
+  sectionBody: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  detailRow: {
+    gap: 2,
+  },
+  detailHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  inlineEditRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  inlineEditInputContainer: {
+    flex: 1,
+  },
+  detailLabel: {
+    color: theme.colors.text.muted,
+  },
+  detailValue: {
+    color: theme.colors.text.primary,
+  },
+  detailValueMono: {
+    color: theme.colors.text.secondary,
+  },
+  inlineIconActionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  inlineIconButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  inlineIconButtonDisabled: {
+    opacity: 0.5,
+  },
+  statusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.xxs,
+  },
+  inviteList: {
+    gap: theme.spacing.sm,
+  },
+  inviteCodeCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.sm,
+  },
+  inviteCodeCardLocked: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.border.warning,
+  },
+  inviteCodeText: {
+    letterSpacing: 1.2,
+  },
+  inviteCodeMeta: {
+    color: theme.colors.text.muted,
+  },
+  inviteCodeMetaLocked: {
+    color: theme.colors.text.warning,
+  },
+  dangerPanel: {
+    backgroundColor: theme.colors.status.dangerBg,
+    borderColor: theme.colors.border.danger,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.sm,
+  },
+  dangerTitle: {
+    color: theme.colors.text.danger,
+  },
+  dangerCopy: {
+    color: theme.colors.text.danger,
+  },
+  logoutButton: {
+    marginTop: theme.spacing.xs,
+  },
+}));
 
 function buildInviteShareMessage(code: string): string {
   const signupUrl = `${INVITE_SIGNUP_DEEP_LINK_PREFIX}${encodeURIComponent(code)}`;
@@ -72,6 +215,7 @@ function buildInviteShareMessage(code: string): string {
 
 export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const { actualUser, user, signOut } = useAuth();
   const authRecord = getAuthRecord();
@@ -372,150 +516,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     setDeleteAccountPassword("");
     setDangerErrorMessage(null);
   };
-
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: theme.colors.background.app,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    body: {
-      flex: 1,
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.xl,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-    },
-    sectionCard: {
-      gap: 0,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.md,
-    },
-    sectionTitle: {
-      marginBottom: theme.spacing.sm,
-    },
-    optionBadge: {
-      alignItems: "center",
-      backgroundColor: theme.colors.text.danger,
-      borderRadius: theme.radii.pill,
-      justifyContent: "center",
-      minWidth: 22,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    optionBadgeText: {
-      color: theme.colors.text.inverse,
-    },
-    optionDot: {
-      backgroundColor: theme.colors.text.danger,
-      borderRadius: theme.radii.pill,
-      height: 8,
-      width: 8,
-    },
-    optionMetaText: {
-      color: theme.colors.text.secondary,
-    },
-    sectionBody: {
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-      marginTop: theme.spacing.sm,
-      padding: theme.spacing.md,
-    },
-    detailRow: {
-      gap: 2,
-    },
-    detailHeaderRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-    },
-    inlineEditRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-    },
-    inlineEditInputContainer: {
-      flex: 1,
-    },
-    detailLabel: {
-      color: theme.colors.text.muted,
-    },
-    detailValue: {
-      color: theme.colors.text.primary,
-    },
-    detailValueMono: {
-      color: theme.colors.text.secondary,
-    },
-    inlineIconActionRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-    },
-    inlineIconButton: {
-      alignItems: "center",
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 36,
-      justifyContent: "center",
-      width: 36,
-    },
-    inlineIconButtonDisabled: {
-      opacity: 0.5,
-    },
-    statusRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.xs,
-      marginTop: theme.spacing.xxs,
-    },
-    inviteList: {
-      gap: theme.spacing.sm,
-    },
-    inviteCodeCard: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      padding: theme.spacing.sm,
-    },
-    inviteCodeCardLocked: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderColor: theme.colors.border.warning,
-    },
-    inviteCodeText: {
-      letterSpacing: 1.2,
-    },
-    inviteCodeMeta: {
-      color: theme.colors.text.muted,
-    },
-    inviteCodeMetaLocked: {
-      color: theme.colors.text.warning,
-    },
-    dangerPanel: {
-      backgroundColor: theme.colors.status.dangerBg,
-      borderColor: theme.colors.border.danger,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      padding: theme.spacing.sm,
-    },
-    dangerTitle: {
-      color: theme.colors.text.danger,
-    },
-    dangerCopy: {
-      color: theme.colors.text.danger,
-    },
-    logoutButton: {
-      marginTop: theme.spacing.xs,
-    },
-  });
 
   if (profileQuery.isLoading) {
     return (

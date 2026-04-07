@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { BackHeaderScreenScaffold, EmptyState, Skeleton } from '../components/shared';
@@ -14,7 +14,7 @@ import { useSavedRestaurantSuggestions } from '../hooks/useRestaurantSelectionFl
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -24,8 +24,30 @@ type SessionFilter = 'active' | 'completed';
 
 const RESTAURANT_SUGGESTION_LIMIT = 3;
 
+const useStyles = createThemedStyles((theme) => ({
+  screenContent: {
+    backgroundColor: theme.colors.background.muted,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  rowAction: {
+    flex: 1,
+  },
+}));
+
 export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
   const queryClient = useQueryClient();
@@ -60,28 +82,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
     return sessions.filter((session) => session.status === 'lobby' || session.status === 'rating');
   }, [filter, sessionsQuery.data]);
-
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: theme.colors.background.muted,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.xl,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    row: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    rowAction: {
-      flex: 1,
-    },
-  });
 
   const handleCreate = async () => {
     const name = createName.trim();

@@ -1,8 +1,8 @@
 import type { PropsWithChildren, ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Text } from '../../ui';
 
 export interface FormScaffoldProps {
@@ -14,6 +14,29 @@ export interface FormScaffoldProps {
   footer?: ReactNode;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    width: '100%',
+    alignItems: 'center',
+    paddingBottom: theme.spacing.xl,
+  },
+  content: {
+    width: '100%',
+    maxWidth: theme.sizes.modalMaxWidth,
+    gap: theme.spacing.lg,
+    paddingTop: theme.spacing.xl,
+  },
+  header: {
+    gap: theme.spacing.xs,
+  },
+  fields: {
+    gap: theme.spacing.md,
+  },
+  footer: {
+    marginTop: theme.spacing.sm,
+  },
+}));
+
 export function FormScaffold({
   title,
   subtitle,
@@ -23,30 +46,7 @@ export function FormScaffold({
   footer,
   children,
 }: PropsWithChildren<FormScaffoldProps>) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    container: {
-      width: '100%',
-      alignItems: 'center',
-      paddingBottom: theme.spacing.xl,
-    },
-    content: {
-      width: '100%',
-      maxWidth: theme.sizes.modalMaxWidth,
-      gap: theme.spacing.lg,
-      paddingTop: theme.spacing.xl,
-    },
-    header: {
-      gap: theme.spacing.xs,
-    },
-    fields: {
-      gap: theme.spacing.md,
-    },
-    footer: {
-      marginTop: theme.spacing.sm,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <View style={styles.container}>

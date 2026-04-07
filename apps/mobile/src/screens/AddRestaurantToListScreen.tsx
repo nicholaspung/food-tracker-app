@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -18,16 +18,17 @@ import {
   listVisitsPage,
   type VisitRecord,
 } from '../features';
+import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -59,6 +60,109 @@ interface GroupedFoodItemsByDate {
   visitDate: string;
   items: RestaurantFoodItemOption[];
 }
+
+const useStyles = createThemedStyles((theme) => ({
+  section: {
+    gap: theme.spacing.sm,
+  },
+  sectionTitle: {
+    color: theme.colors.text.primary,
+  },
+  sectionDescription: {
+    color: theme.colors.text.muted,
+  },
+  cardList: {
+    gap: theme.spacing.sm,
+  },
+  restaurantCard: {
+    gap: theme.spacing.xs,
+  },
+  restaurantHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  restaurantTitleWrap: {
+    flex: 1,
+    gap: 2,
+    paddingRight: theme.spacing.sm,
+  },
+  restaurantTitle: {
+    color: theme.colors.text.primary,
+  },
+  restaurantSubtitle: {
+    color: theme.colors.text.secondary,
+  },
+  restaurantMeta: {
+    color: theme.colors.text.muted,
+  },
+  disabledCard: {
+    opacity: 0.55,
+  },
+  selectedCard: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.border.warning,
+  },
+  selectedRestaurantMeta: {
+    gap: theme.spacing.xxs,
+  },
+  alreadyInListBanner: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.xxs,
+  },
+  alreadyInListText: {
+    color: theme.colors.text.secondary,
+    flex: 1,
+  },
+  dateGroupCard: {
+    gap: theme.spacing.xs,
+    paddingBottom: theme.spacing.xs,
+  },
+  dateGroupTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  foodItemRow: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  foodItemRowSelected: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.border.warning,
+  },
+  foodItemRowDisabled: {
+    opacity: 0.6,
+  },
+  foodItemHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  foodItemTitleWrap: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  foodItemTitle: {
+    color: theme.colors.text.primary,
+  },
+  foodItemNote: {
+    color: theme.colors.text.secondary,
+  },
+  foodItemMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+}));
 
 function toTimestamp(value: string): number {
   const parsed = new Date(value);
@@ -184,6 +288,7 @@ export function AddRestaurantToListScreen({
 }: AddRestaurantToListScreenProps) {
   const { listId } = route.params;
   const theme = useTheme();
+  const styles = useStyles();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -214,14 +319,16 @@ export function AddRestaurantToListScreen({
     getNextPageParam: (lastPage) =>
       lastPage.hasNextPage ? lastPage.page + 1 : undefined,
   });
+  const visitsState = usePaginatedQueryState({
+    data: visitsQuery.data,
+    isError: visitsQuery.isError,
+    isFetching: visitsQuery.isFetching,
+    isLoading: visitsQuery.isLoading,
+    isSuccess: visitsQuery.isSuccess,
+  });
 
-  const loadedVisits = useMemo(
-    () => visitsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [visitsQuery.data],
-  );
-  const hasBlockingVisitsError =
-    visitsQuery.isError &&
-    (!visitsQuery.data || visitsQuery.data.pages.length === 0);
+  const loadedVisits = visitsState.items;
+  const hasBlockingVisitsError = visitsState.hasBlockingError;
 
   const visitedRestaurants = useMemo(
     () => buildVisitedRestaurants(loadedVisits, user?.id),
@@ -339,109 +446,6 @@ export function AddRestaurantToListScreen({
     }
     return noteByRestaurantId;
   }, [restaurantNotesQuery.data]);
-
-  const styles = StyleSheet.create({
-    section: {
-      gap: theme.spacing.sm,
-    },
-    sectionTitle: {
-      color: theme.colors.text.primary,
-    },
-    sectionDescription: {
-      color: theme.colors.text.muted,
-    },
-    cardList: {
-      gap: theme.spacing.sm,
-    },
-    restaurantCard: {
-      gap: theme.spacing.xs,
-    },
-    restaurantHeaderRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-    },
-    restaurantTitleWrap: {
-      flex: 1,
-      gap: 2,
-      paddingRight: theme.spacing.sm,
-    },
-    restaurantTitle: {
-      color: theme.colors.text.primary,
-    },
-    restaurantSubtitle: {
-      color: theme.colors.text.secondary,
-    },
-    restaurantMeta: {
-      color: theme.colors.text.muted,
-    },
-    disabledCard: {
-      opacity: 0.55,
-    },
-    selectedCard: {
-      borderColor: theme.colors.border.warning,
-      backgroundColor: theme.colors.status.warningBg,
-    },
-    selectedRestaurantMeta: {
-      gap: theme.spacing.xxs,
-    },
-    alreadyInListBanner: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-      marginTop: theme.spacing.xxs,
-    },
-    alreadyInListText: {
-      color: theme.colors.text.secondary,
-      flex: 1,
-    },
-    dateGroupCard: {
-      gap: theme.spacing.xs,
-      paddingBottom: theme.spacing.xs,
-    },
-    dateGroupTitleRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-    },
-    foodItemRow: {
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border.subtle,
-      backgroundColor: theme.colors.background.surface,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-      gap: theme.spacing.xs,
-    },
-    foodItemRowSelected: {
-      borderColor: theme.colors.border.warning,
-      backgroundColor: theme.colors.status.warningBg,
-    },
-    foodItemRowDisabled: {
-      opacity: 0.6,
-    },
-    foodItemHeader: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: theme.spacing.sm,
-    },
-    foodItemTitleWrap: {
-      flex: 1,
-      gap: theme.spacing.xxs,
-    },
-    foodItemTitle: {
-      color: theme.colors.text.primary,
-    },
-    foodItemNote: {
-      color: theme.colors.text.secondary,
-    },
-    foodItemMetaRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: theme.spacing.xs,
-    },
-  });
 
   const handleBackToListDetail = () => {
     if (navigation.canGoBack()) {
@@ -686,7 +690,7 @@ export function AddRestaurantToListScreen({
         errorMessage={
           hasBlockingVisitsError
             ? "Could not load your visits."
-            : visitsQuery.isError
+            : visitsState.hasRefreshError
               ? "Could not refresh your visits. Showing saved data."
               : null
         }

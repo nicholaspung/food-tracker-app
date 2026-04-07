@@ -1,7 +1,7 @@
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Text } from '../../ui';
 import { StatusPill } from './StatusPill';
 
@@ -42,6 +42,50 @@ function renderBadge(count: number, tone: SegmentedControlBadgeTone, style?: Sty
   );
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    backgroundColor: theme.colors.background.app,
+    borderColor: theme.colors.border.default,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    padding: 2,
+  },
+  segment: {
+    alignItems: 'center',
+    borderRadius: 9,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 7,
+  },
+  segmentFill: {
+    flex: 1,
+  },
+  segmentActive: {
+    backgroundColor: theme.colors.background.surface,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+  },
+  label: {
+    color: theme.colors.text.muted,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  labelActive: {
+    color: theme.colors.text.primary,
+  },
+  badge: {
+    marginLeft: 6,
+  },
+}));
+
 export function SegmentedControl<T extends string>({
   options,
   value,
@@ -56,51 +100,7 @@ export function SegmentedControl<T extends string>({
   activeLabelStyle,
   badgeStyle,
 }: SegmentedControlProps<T>) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    container: {
-      backgroundColor: theme.colors.background.app,
-      borderColor: theme.colors.border.default,
-      borderRadius: 12,
-      borderWidth: 1,
-      flexDirection: 'row',
-      padding: 2,
-    },
-    segment: {
-      alignItems: 'center',
-      borderRadius: 9,
-      flexDirection: 'row',
-      justifyContent: 'center',
-      minHeight: 36,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 7,
-    },
-    segmentFill: {
-      flex: 1,
-    },
-    segmentActive: {
-      backgroundColor: theme.colors.background.surface,
-      shadowColor: theme.colors.background.inverse,
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.08,
-      shadowRadius: 1,
-    },
-    label: {
-      color: theme.colors.text.muted,
-      flexShrink: 1,
-      textAlign: 'center',
-    },
-    labelActive: {
-      color: theme.colors.text.primary,
-    },
-    badge: {
-      marginLeft: 6,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <View style={[styles.container, containerStyle]}>

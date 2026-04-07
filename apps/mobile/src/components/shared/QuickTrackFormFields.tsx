@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { QuickTrackFormValues } from '../../lib/quickTrackForm';
 import { QUICK_TRACK_CATEGORIES } from '../../lib/quickTrackForm';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Input, Text } from '../../ui';
 import { OptionList, OptionListRow } from './OptionList';
 import { PhotoDetectedDateField } from './PhotoDetectedDateField';
@@ -23,6 +23,45 @@ interface QuickTrackFormFieldsProps {
   ratingTestIDPrefix?: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  photoSection: {
+    gap: theme.spacing.sm,
+  },
+  notesInput: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  categorySelectorRow: {
+    backgroundColor: theme.colors.background.muted,
+    borderBottomColor: theme.colors.border.default,
+  },
+  categorySelectorRowExpanded: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderBottomColor: theme.colors.status.warningBorder,
+  },
+  categorySelectorSubtitle: {
+    color: theme.colors.text.muted,
+  },
+  categorySelectorSubtitleSelected: {
+    color: theme.colors.text.warning,
+  },
+  categoryOptionSelectedRow: {
+    backgroundColor: theme.colors.status.warningBg,
+  },
+  categoryOptionSelectedLabel: {
+    color: theme.colors.text.warning,
+  },
+  categoryClearLabel: {
+    color: theme.colors.text.muted,
+  },
+  categoryPlaceholder: {
+    color: theme.colors.text.muted,
+  },
+}));
+
 export function QuickTrackFormFields({
   value,
   onChange,
@@ -34,45 +73,7 @@ export function QuickTrackFormFields({
   ratingTestIDPrefix,
 }: QuickTrackFormFieldsProps) {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    photoSection: {
-      gap: theme.spacing.sm,
-    },
-    notesInput: {
-      minHeight: 100,
-      textAlignVertical: 'top',
-    },
-    categorySelectorRow: {
-      backgroundColor: theme.colors.background.muted,
-      borderBottomColor: theme.colors.border.default,
-    },
-    categorySelectorRowExpanded: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderBottomColor: theme.colors.status.warningBorder,
-    },
-    categorySelectorSubtitle: {
-      color: theme.colors.text.muted,
-    },
-    categorySelectorSubtitleSelected: {
-      color: theme.colors.text.warning,
-    },
-    categoryOptionSelectedRow: {
-      backgroundColor: theme.colors.status.warningBg,
-    },
-    categoryOptionSelectedLabel: {
-      color: theme.colors.text.warning,
-    },
-    categoryClearLabel: {
-      color: theme.colors.text.muted,
-    },
-    categoryPlaceholder: {
-      color: theme.colors.text.muted,
-    },
-  });
+  const styles = useStyles();
 
   const selectedCategory = QUICK_TRACK_CATEGORIES.find((category) => category.value === value.category) ?? null;
   const selectedCategoryLabel = selectedCategory?.label ?? 'Select category';

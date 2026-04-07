@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { trackObservabilityEvent } from '../../observability';
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 import type { CardProps } from '../../ui';
 
@@ -16,6 +16,28 @@ export interface EmptyStateProps {
   tone?: CardProps['tone'];
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  cardFill: {
+    flex: 1,
+  },
+  content: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  contentFill: {
+    flex: 1,
+  },
+  description: {
+    textAlign: 'center',
+  },
+  action: {
+    width: '100%',
+    marginTop: theme.spacing.xs,
+  },
+}));
+
 export function EmptyState({
   title,
   description,
@@ -25,10 +47,10 @@ export function EmptyState({
   fill = false,
   tone = 'muted',
 }: EmptyStateProps) {
-  const theme = useTheme();
   const lastShownKeyRef = useRef<string | null>(null);
   const hasAction = Boolean(actionLabel && onAction);
   const shownKey = `${title}::${description ?? ''}::${actionLabel ?? ''}::${fill ? 'fill' : 'inline'}`;
+  const styles = useStyles();
 
   useEffect(() => {
     if (lastShownKeyRef.current === shownKey) {
@@ -58,28 +80,6 @@ export function EmptyState({
     });
     onAction();
   }, [actionLabel, fill, onAction, title]);
-
-  const styles = StyleSheet.create({
-    cardFill: {
-      flex: 1,
-    },
-    content: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    contentFill: {
-      flex: 1,
-    },
-    description: {
-      textAlign: 'center',
-    },
-    action: {
-      width: '100%',
-      marginTop: theme.spacing.xs,
-    },
-  });
 
   return (
     <Card style={fill ? styles.cardFill : undefined} tone={tone}>

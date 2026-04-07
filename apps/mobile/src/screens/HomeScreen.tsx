@@ -2,7 +2,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
-  StyleSheet,
   View,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
@@ -46,11 +45,12 @@ import {
   getPendingFriendSuggestion,
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -118,6 +118,149 @@ interface GroupedMonth {
   quickTrackCount: number;
   days: GroupedDay[];
 }
+
+const useStyles = createThemedStyles((theme) => ({
+  screenContent: {
+    backgroundColor: theme.colors.background.muted,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  header: {
+    backgroundColor: theme.colors.background.surface,
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  body: {
+    flex: 1,
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+  },
+  betaFeed: {
+    gap: theme.spacing.md,
+  },
+  deleteConfirmationModalSentinel: {
+    backgroundColor: theme.colors.background.surface,
+    height: 2,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+    width: 2,
+    zIndex: 1,
+  },
+  monthSection: {
+    gap: theme.spacing.xs,
+  },
+  monthHeader: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  monthHeaderLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  monthChevron: {
+    color: theme.colors.text.muted,
+    width: 12,
+  },
+  monthLabel: {
+    color: theme.colors.text.primary,
+  },
+  monthCountWrap: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  monthCount: {
+    color: theme.colors.text.secondary,
+  },
+  monthCountMeta: {
+    color: theme.colors.text.muted,
+  },
+  monthContent: {
+    gap: theme.spacing.sm,
+    paddingLeft: theme.spacing.sm,
+  },
+  dayGroup: {
+    gap: theme.spacing.xs,
+  },
+  dayHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 6,
+  },
+  dayChevron: {
+    color: theme.colors.text.muted,
+    width: 10,
+  },
+  dayLabel: {
+    color: theme.colors.text.secondary,
+    flex: 1,
+  },
+  dayCount: {
+    color: theme.colors.text.muted,
+  },
+  entries: {
+    gap: theme.spacing.xs,
+  },
+  infoCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.sm,
+  },
+  infoTitle: {
+    color: theme.colors.text.primary,
+  },
+  infoDescription: {
+    color: theme.colors.text.secondary,
+  },
+  infoActionRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.xs,
+  },
+  quickActionButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  quickActionPrimary: {
+    backgroundColor: theme.colors.text.brand,
+    borderColor: theme.colors.text.brand,
+  },
+  quickActionLabel: {
+    color: theme.colors.text.primary,
+    textAlign: 'center',
+  },
+  quickActionPrimaryLabel: {
+    color: theme.colors.text.inverse,
+  },
+}));
 
 const monthFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -301,17 +444,22 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       }),
     getNextPageParam: (lastPage) => lastPage.cursor,
   });
+  const homeFeedState = usePaginatedQueryState({
+    data: homeFeedQuery.data,
+    isError: homeFeedQuery.isError,
+    isFetching: homeFeedQuery.isFetching,
+    isLoading: homeFeedQuery.isLoading,
+    isSuccess: homeFeedQuery.isSuccess,
+  });
 
   const loadedFeed = useMemo(
     () =>
-      homeFeedQuery.data?.pages.flatMap((page) =>
-        page.items.map((item) =>
-          item.source === 'visit'
-            ? buildVisitFeedItem(item.visit, currentUserId)
-            : buildQuickTrackFeedItem(item.quickTrack, currentUserId),
-        ),
-      ) ?? [],
-    [currentUserId, homeFeedQuery.data],
+      homeFeedState.items.map((item) =>
+        item.source === 'visit'
+          ? buildVisitFeedItem(item.visit, currentUserId)
+          : buildQuickTrackFeedItem(item.quickTrack, currentUserId),
+      ),
+    [currentUserId, homeFeedState.items],
   );
   const activeFeed = useMemo(
     () => (effectiveFeedMode === 'beta' ? [...loadedFeed].sort(compareBetaFeedItems) : loadedFeed),
@@ -323,8 +471,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   );
 
   const isLoading = homeFeedQuery.isLoading;
-  const hasBlockingFeedError = homeFeedQuery.isError && (!homeFeedQuery.data || homeFeedQuery.data.pages.length === 0);
-  const hasFeedRefreshError = !hasBlockingFeedError && homeFeedQuery.isError;
+  const hasBlockingFeedError = homeFeedState.hasBlockingError;
+  const hasFeedRefreshError = homeFeedState.hasRefreshError;
 
   useEffect(() => {
     let isMounted = true;
@@ -951,148 +1099,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     textSecondary: theme.colors.text.secondary,
   } as const;
 
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: colors.screenBackground,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    header: {
-      backgroundColor: colors.surface,
-      borderBottomColor: colors.borderSubtle,
-      borderBottomWidth: 1,
-      gap: theme.spacing.sm,
-      paddingBottom: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    body: {
-      flex: 1,
-      gap: theme.spacing.sm,
-      paddingBottom: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.sm,
-      paddingTop: theme.spacing.sm,
-    },
-    betaFeed: {
-      gap: theme.spacing.md,
-    },
-    deleteConfirmationModalSentinel: {
-      backgroundColor: colors.surface,
-      height: 2,
-      left: 0,
-      position: 'absolute',
-      top: 0,
-      width: 2,
-      zIndex: 1,
-    },
-    monthSection: {
-      gap: theme.spacing.xs,
-    },
-    monthHeader: {
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 12,
-      borderWidth: 1,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    monthHeaderLeft: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    monthChevron: {
-      color: colors.textMuted,
-      width: 12,
-    },
-    monthLabel: {
-      color: colors.textPrimary,
-    },
-    monthCountWrap: {
-      alignItems: 'flex-end',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    monthCount: {
-      color: colors.textSecondary,
-    },
-    monthCountMeta: {
-      color: colors.textMuted,
-    },
-    monthContent: {
-      gap: theme.spacing.sm,
-      paddingLeft: theme.spacing.sm,
-    },
-    dayGroup: {
-      gap: theme.spacing.xs,
-    },
-    dayHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 6,
-    },
-    dayChevron: {
-      color: colors.textMuted,
-      width: 10,
-    },
-    dayLabel: {
-      color: colors.textSecondary,
-      flex: 1,
-    },
-    dayCount: {
-      color: colors.textMuted,
-    },
-    entries: {
-      gap: theme.spacing.xs,
-    },
-    infoCard: {
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 12,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      padding: theme.spacing.sm,
-    },
-    infoTitle: {
-      color: colors.textPrimary,
-    },
-    infoDescription: {
-      color: colors.textSecondary,
-    },
-    infoActionRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      marginTop: theme.spacing.xs,
-    },
-    quickActionButton: {
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      borderRadius: 10,
-      borderWidth: 1,
-      flex: 1,
-      justifyContent: 'center',
-      minHeight: 40,
-      paddingHorizontal: theme.spacing.xs,
-    },
-    quickActionPrimary: {
-      backgroundColor: colors.accent,
-      borderColor: colors.accent,
-    },
-    quickActionLabel: {
-      color: colors.textPrimary,
-      textAlign: 'center',
-    },
-    quickActionPrimaryLabel: {
-      color: theme.colors.text.inverse,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <TabRootScreenScaffold

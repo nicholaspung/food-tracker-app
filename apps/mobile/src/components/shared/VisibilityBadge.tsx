@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import {
   getVisibilityOptionMeta,
@@ -15,6 +15,30 @@ interface VisibilityBadgeProps {
   style?: StyleProp<ViewStyle>;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  badge: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 2,
+  },
+  privateBadge: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+  },
+  friendsBadge: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
+  },
+  publicBadge: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+  },
+}));
+
 export function VisibilityBadge({
   value,
   communityLabel,
@@ -22,6 +46,7 @@ export function VisibilityBadge({
 }: VisibilityBadgeProps) {
   const theme = useTheme();
   const optionMeta = getVisibilityOptionMeta(value, communityLabel);
+  const styles = useStyles();
 
   const resolveToneColor = () => {
     if (optionMeta.tone === 'info') {
@@ -34,30 +59,6 @@ export function VisibilityBadge({
 
     return theme.colors.text.secondary;
   };
-
-  const styles = StyleSheet.create({
-    badge: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 2,
-    },
-    privateBadge: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-    },
-    friendsBadge: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.status.infoBorder,
-    },
-    publicBadge: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-    },
-  });
 
   const badgeStyle =
     value === 'private'

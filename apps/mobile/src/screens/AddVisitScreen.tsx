@@ -1,12 +1,12 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
 import { TabBrandHeader, TabRootScreenScaffold } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 
 type AddVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'AddVisit'>;
 type AddOptionId = 'restaurant-visit' | 'quick-track' | 'log-note' | 'process-photos' | 'manage-notes';
@@ -20,8 +20,25 @@ interface AddOptionConfig {
   iconColor: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  screenContent: {
+    backgroundColor: theme.colors.background.muted,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  body: {
+    flex: 1,
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+  },
+}));
+
 export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
 
   const optionColors = {
     restaurant: theme.colors.text.info,
@@ -31,22 +48,6 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     manageNotes: theme.colors.text.secondary,
     iconOnColor: theme.colors.text.inverse,
   } as const;
-
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: theme.colors.background.muted,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    body: {
-      flex: 1,
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.xl,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-    },
-  });
 
   const options: AddOptionConfig[] = [
     {

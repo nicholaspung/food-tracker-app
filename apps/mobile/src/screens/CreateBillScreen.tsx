@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ConfirmDestructiveModal,
@@ -35,6 +35,7 @@ import {
   createBillApiMutationInput,
   updateBillApiMutationInput,
 } from '../features/store/featureOutboxOperations';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -42,7 +43,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useSync } from '../providers/SyncProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
 type CreateBillScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBill'>;
@@ -73,6 +74,295 @@ interface DraftParticipant {
   userId?: string;
   isCurrentUser: boolean;
 }
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  sectionTitle: {
+    color: theme.colors.text.primary,
+  },
+  sectionHint: {
+    color: theme.colors.text.muted,
+  },
+  itemComposerRow: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  itemNameInput: {
+    flex: 1,
+  },
+  itemPriceInput: {
+    width: 110,
+  },
+  addItemButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.text.brand,
+    borderRadius: theme.radii.md,
+    justifyContent: 'center',
+    minHeight: theme.sizes.inputMinHeight,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  addItemButtonDisabled: {
+    backgroundColor: theme.colors.button.primaryDisabledBg,
+  },
+  addItemButtonLabel: {
+    color: theme.colors.text.inverse,
+  },
+  itemsList: {
+    borderColor: theme.colors.border.subtle,
+  },
+  itemRowAccessory: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  itemPrice: {
+    color: theme.colors.text.primary,
+  },
+  removeItemButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    padding: 2,
+  },
+  itemSplitBody: {
+    gap: theme.spacing.sm,
+  },
+  itemSplitModeRow: {
+    gap: theme.spacing.xs,
+  },
+  itemSplitTypeRow: {
+    gap: theme.spacing.xs,
+  },
+  splitControl: {
+    alignSelf: 'flex-start',
+  },
+  assignmentChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  assignmentChip: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xxs,
+  },
+  assignmentChipSelected: {
+    backgroundColor: theme.colors.text.brand,
+    borderColor: theme.colors.text.brand,
+  },
+  assignmentChipLabel: {
+    color: theme.colors.text.secondary,
+  },
+  assignmentChipLabelSelected: {
+    color: theme.colors.text.inverse,
+  },
+  advancedSplitValueRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  advancedSplitLabel: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  advancedSplitInput: {
+    width: 120,
+  },
+  advancedSplitControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  splitLockButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  splitLockButtonLocked: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+  },
+  tripleInputRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  tripleInputItem: {
+    flex: 1,
+  },
+  customTipToggle: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: theme.spacing.xxs,
+    paddingVertical: theme.spacing.xxs,
+  },
+  customTipToggleLabel: {
+    color: theme.colors.text.info,
+  },
+  customTipEditor: {
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm,
+  },
+  customTipHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  selectedFriendsSummary: {
+    color: theme.colors.text.secondary,
+  },
+  friendRowSelected: {
+    backgroundColor: theme.colors.status.infoBg,
+  },
+  friendSearchInput: {
+    marginTop: theme.spacing.xs,
+  },
+  loadMoreButton: {
+    marginTop: theme.spacing.xs,
+  },
+  subsectionWrap: {
+    gap: theme.spacing.xs,
+  },
+  subsectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  subsectionTitle: {
+    color: theme.colors.text.primary,
+  },
+  payerSection: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.sm,
+  },
+  payerDropdownTrigger: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: theme.sizes.inputMinHeight,
+    paddingHorizontal: theme.spacing.md,
+  },
+  payerDropdownTriggerOpen: {
+    borderColor: theme.colors.border.strong,
+  },
+  payerDropdownLabel: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  payerOptionsList: {
+    borderColor: theme.colors.border.info,
+  },
+  owedSection: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm,
+  },
+  owedRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  owedParticipantInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  owedParticipantTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  owedAmountInput: {
+    width: 120,
+  },
+  owedAmountValue: {
+    color: theme.colors.text.primary,
+    textAlign: 'right',
+    width: 120,
+  },
+  totalsRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  totalsRowStrong: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  totalsLabel: {
+    color: theme.colors.text.secondary,
+  },
+  totalsLabelStrong: {
+    color: theme.colors.text.primary,
+  },
+  totalsValue: {
+    color: theme.colors.text.primary,
+  },
+  totalsValueStrong: {
+    color: theme.colors.text.primary,
+  },
+  totalsPanel: {
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.sm,
+  },
+  totalsPanelMatch: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.border.success,
+  },
+  totalsPanelMismatch: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.border.warning,
+  },
+  totalsPanelHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  totalsDivider: {
+    borderTopColor: theme.colors.border.subtle,
+    borderTopWidth: 1,
+    marginVertical: theme.spacing.xxs,
+  },
+  loadingRow: {
+    gap: theme.spacing.xs,
+  },
+}));
 
 function isLikelyUserId(value: string): boolean {
   return /^[a-z0-9]{15}$/i.test(value.trim());
@@ -345,6 +635,13 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
     refetchOnReconnect: 'always',
   });
+  const friendsState = usePaginatedQueryState({
+    data: friendsQuery.data,
+    isError: friendsQuery.isError,
+    isFetching: friendsQuery.isFetching,
+    isLoading: friendsQuery.isLoading,
+    isSuccess: friendsQuery.isSuccess,
+  });
 
   const billQuery = useQuery({
     queryKey: ['feature', 'bill', editBillId],
@@ -369,10 +666,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     enabled: isEditMode && billParticipantUserIds.length > 0,
     refetchOnReconnect: 'always',
   });
-  const selectableFriends = useMemo(
-    () => friendsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [friendsQuery.data],
-  );
+  const selectableFriends = friendsState.items;
   const billParticipantFriends = useMemo(
     () => billParticipantFriendsQuery.data ?? [],
     [billParticipantFriendsQuery.data],
@@ -389,16 +683,15 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     showInlineKeyboardDismissButton: false,
     useDefaultReturnKeyType: false,
   } as const;
-  const totalAcceptedFriends = friendsQuery.data?.pages[0]?.totalItems ?? 0;
+  const totalAcceptedFriends = friendsState.totalItems;
   const shouldShowFriendSearch = normalizedFriendSearchQuery.length > 0 || totalAcceptedFriends > 5;
   const isEqualSplitMode = splitMode === 'equal';
   const isCustomSplitMode = splitMode === 'custom';
   const isManualSplitMode = splitMode === 'manual';
   const extrasSplitMode: 'equal' | 'proportional' = isCustomSplitMode ? 'proportional' : 'equal';
   const visibleFriends = selectableFriends;
-  const hasBlockingFriendsError =
-    friendsQuery.isError && (!friendsQuery.data || friendsQuery.data.pages.length === 0);
-  const hasFriendsRefreshError = !hasBlockingFriendsError && friendsQuery.isError;
+  const hasBlockingFriendsError = friendsState.hasBlockingError;
+  const hasFriendsRefreshError = friendsState.hasRefreshError;
 
   const currentUserName = sanitizeParticipantName(user?.name?.trim() || user?.email?.split('@')[0] || 'You', 'You');
   const currentUserDraftId = user?.id ? `user:${user.id}` : 'user:self';
@@ -1182,294 +1475,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     [isManualSplitMode, owedAmountEntries, previewTotal],
   );
 
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    sectionTitleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    sectionTitle: {
-      color: theme.colors.text.primary,
-    },
-    sectionHint: {
-      color: theme.colors.text.muted,
-    },
-    itemComposerRow: {
-      alignItems: 'flex-end',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    itemNameInput: {
-      flex: 1,
-    },
-    itemPriceInput: {
-      width: 110,
-    },
-    addItemButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.text.brand,
-      borderRadius: theme.radii.md,
-      justifyContent: 'center',
-      minHeight: theme.sizes.inputMinHeight,
-      paddingHorizontal: theme.spacing.sm,
-    },
-    addItemButtonDisabled: {
-      backgroundColor: theme.colors.button.primaryDisabledBg,
-    },
-    addItemButtonLabel: {
-      color: theme.colors.text.inverse,
-    },
-    itemsList: {
-      borderColor: theme.colors.border.subtle,
-    },
-    itemRowAccessory: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    itemPrice: {
-      color: theme.colors.text.primary,
-    },
-    removeItemButton: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      justifyContent: 'center',
-      padding: 2,
-    },
-    itemSplitBody: {
-      gap: theme.spacing.sm,
-    },
-    itemSplitModeRow: {
-      gap: theme.spacing.xs,
-    },
-    itemSplitTypeRow: {
-      gap: theme.spacing.xs,
-    },
-    splitControl: {
-      alignSelf: 'flex-start',
-    },
-    assignmentChipWrap: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    assignmentChip: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xxs,
-    },
-    assignmentChipSelected: {
-      backgroundColor: theme.colors.text.brand,
-      borderColor: theme.colors.text.brand,
-    },
-    assignmentChipLabel: {
-      color: theme.colors.text.secondary,
-    },
-    assignmentChipLabelSelected: {
-      color: theme.colors.text.inverse,
-    },
-    advancedSplitValueRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    advancedSplitLabel: {
-      color: theme.colors.text.primary,
-      flex: 1,
-    },
-    advancedSplitInput: {
-      width: 120,
-    },
-    advancedSplitControls: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    splitLockButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 34,
-      justifyContent: 'center',
-      width: 34,
-    },
-    splitLockButtonLocked: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-    },
-    tripleInputRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    tripleInputItem: {
-      flex: 1,
-    },
-    customTipToggle: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: theme.spacing.xxs,
-      paddingVertical: theme.spacing.xxs,
-    },
-    customTipToggleLabel: {
-      color: theme.colors.text.info,
-    },
-    customTipEditor: {
-      borderColor: theme.colors.border.info,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-      padding: theme.spacing.sm,
-    },
-    customTipHeaderRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    selectedFriendsSummary: {
-      color: theme.colors.text.secondary,
-    },
-    friendRowSelected: {
-      backgroundColor: theme.colors.status.infoBg,
-    },
-    friendSearchInput: {
-      marginTop: theme.spacing.xs,
-    },
-    loadMoreButton: {
-      marginTop: theme.spacing.xs,
-    },
-    subsectionWrap: {
-      gap: theme.spacing.xs,
-    },
-    subsectionTitleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    subsectionTitle: {
-      color: theme.colors.text.primary,
-    },
-    payerSection: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      padding: theme.spacing.sm,
-    },
-    payerDropdownTrigger: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      minHeight: theme.sizes.inputMinHeight,
-      paddingHorizontal: theme.spacing.md,
-    },
-    payerDropdownTriggerOpen: {
-      borderColor: theme.colors.border.strong,
-    },
-    payerDropdownLabel: {
-      color: theme.colors.text.primary,
-      flex: 1,
-    },
-    payerOptionsList: {
-      borderColor: theme.colors.border.info,
-    },
-    owedSection: {
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.sm,
-      padding: theme.spacing.sm,
-    },
-    owedRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    owedParticipantInfo: {
-      flex: 1,
-      gap: 2,
-    },
-    owedParticipantTitleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    owedAmountInput: {
-      width: 120,
-    },
-    owedAmountValue: {
-      color: theme.colors.text.primary,
-      textAlign: 'right',
-      width: 120,
-    },
-    totalsRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    totalsRowStrong: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    totalsLabel: {
-      color: theme.colors.text.secondary,
-    },
-    totalsLabelStrong: {
-      color: theme.colors.text.primary,
-    },
-    totalsValue: {
-      color: theme.colors.text.primary,
-    },
-    totalsValueStrong: {
-      color: theme.colors.text.primary,
-    },
-    totalsPanel: {
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xs,
-      padding: theme.spacing.sm,
-    },
-    totalsPanelMatch: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.border.success,
-    },
-    totalsPanelMismatch: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderColor: theme.colors.border.warning,
-    },
-    totalsPanelHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    totalsDivider: {
-      borderTopColor: theme.colors.border.subtle,
-      borderTopWidth: 1,
-      marginVertical: theme.spacing.xxs,
-    },
-    loadingRow: {
-      gap: theme.spacing.xs,
-    },
-  });
+  const styles = useStyles();
 
   const selectedPayer = participants.find((participant) => participant.id === payerParticipantId);
   const selectedPayerLabel = selectedPayer?.name ?? 'Select payer';

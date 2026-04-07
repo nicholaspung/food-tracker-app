@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, View } from 'react-native';
 import type { ScrollView, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Screen } from '../../ui';
 import { ScreenHeader } from './ScreenHeader';
 
@@ -35,6 +35,45 @@ export interface FeatureFormScreenScaffoldProps {
   testID?: string;
 }
 
+const useStyles = createThemedStyles((theme, headerBottomCompact: boolean) => ({
+  screenContent: {
+    backgroundColor: theme.colors.background.muted,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  bodyContainer: {
+    flex: 1,
+  },
+  headerBottom: {
+    backgroundColor: theme.colors.background.muted,
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: headerBottomCompact ? theme.spacing.xs : theme.spacing.sm,
+  },
+  bodyScroll: {
+    flex: 1,
+  },
+  bodyContent: {
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  footer: {
+    backgroundColor: theme.colors.background.surface,
+    borderTopColor: theme.colors.border.subtle,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  footerAction: {
+    flex: 1,
+  },
+}));
+
 /**
  * Shared scaffold for compact-header form screens with a sticky action bar.
  * Useful for create/edit flows where Save/Cancel should remain visible above tabs.
@@ -60,45 +99,7 @@ export function FeatureFormScreenScaffold({
   const internalScrollViewRef = useRef<ScrollView | null>(null);
   const resolvedScrollViewRef = scrollViewRef ?? internalScrollViewRef;
   const [footerHeight, setFooterHeight] = useState(theme.sizes.buttonHeight + theme.spacing.xl);
-
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: theme.colors.background.muted,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    bodyContainer: {
-      flex: 1,
-    },
-    headerBottom: {
-      backgroundColor: theme.colors.background.muted,
-      borderBottomColor: theme.colors.border.subtle,
-      borderBottomWidth: 1,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: headerBottomCompact ? theme.spacing.xs : theme.spacing.sm,
-    },
-    bodyScroll: {
-      flex: 1,
-    },
-    bodyContent: {
-      gap: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    footer: {
-      backgroundColor: theme.colors.background.surface,
-      borderTopColor: theme.colors.border.subtle,
-      borderTopWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-    },
-    footerAction: {
-      flex: 1,
-    },
-  });
+  const styles = useStyles(headerBottomCompact);
 
   return (
     <Screen

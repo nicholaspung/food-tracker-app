@@ -1,14 +1,14 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import type { ComponentProps } from 'react';
 
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { AuthTopBar, FormScaffold } from '../components/shared';
 import { BRAND_LOGO } from '../lib/branding';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Screen, Text } from '../ui';
 
 type OnboardingScreenProps = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
@@ -64,6 +64,112 @@ const ONBOARDING_CARDS: OnboardingCardConfig[] = [
   },
 ];
 
+const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
+  screenContent: {
+    paddingTop: theme.spacing.xl,
+  },
+  titleSection: {
+    gap: theme.spacing.xs,
+  },
+  title: {
+    textAlign: 'left',
+  },
+  subtitle: {
+    textAlign: 'left',
+  },
+  carouselViewport: {
+    width: '100%',
+  },
+  carouselContent: {
+    alignItems: 'stretch',
+  },
+  carouselItem: {
+    width: carouselCardWidth,
+  },
+  heroCard: {
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    paddingVertical: theme.spacing.lg,
+  },
+  heroVisual: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    height: 176,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  heroBadge: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    position: 'absolute',
+    width: 30,
+  },
+  heroBadgeTopLeft: {
+    left: theme.spacing.md,
+    top: theme.spacing.md,
+  },
+  heroBadgeTopRight: {
+    right: theme.spacing.md,
+    top: theme.spacing.md,
+  },
+  heroBadgeBottom: {
+    bottom: theme.spacing.md,
+    right: theme.spacing.xl,
+  },
+  heroIconFrame: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 84,
+    justifyContent: 'center',
+    width: 84,
+  },
+  heroLogo: {
+    height: 52,
+    width: 52,
+  },
+  heroTitle: {
+    textAlign: 'center',
+  },
+  heroDescription: {
+    textAlign: 'center',
+  },
+  indicatorRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'center',
+    width: '100%',
+  },
+  indicatorDot: {
+    backgroundColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    height: 8,
+    width: 8,
+  },
+  indicatorDotActive: {
+    backgroundColor: theme.colors.text.brand,
+    width: 18,
+  },
+  indicatorButton: {
+    borderRadius: theme.radii.pill,
+    paddingHorizontal: theme.spacing.xxs,
+    paddingVertical: theme.spacing.xs,
+  },
+  actions: {
+    gap: theme.spacing.sm,
+  },
+}));
+
 export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
   const theme = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
@@ -71,118 +177,7 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const carouselCardWidth = Math.min(viewportWidth - theme.spacing.lg * 2, theme.sizes.modalMaxWidth);
   const boundedActiveCardIndex = Math.min(activeCardIndex, ONBOARDING_CARDS.length - 1);
-
-  const styles = StyleSheet.create({
-    screenContent: {
-      paddingTop: theme.spacing.xl,
-    },
-    titleSection: {
-      gap: theme.spacing.xs,
-    },
-    title: {
-      textAlign: 'left',
-    },
-    subtitle: {
-      textAlign: 'left',
-    },
-    carouselViewport: {
-      width: '100%',
-    },
-    carouselContent: {
-      alignItems: 'stretch',
-    },
-    carouselItem: {
-      width: carouselCardWidth,
-    },
-    heroCard: {
-      alignItems: 'center',
-      gap: theme.spacing.md,
-      paddingVertical: theme.spacing.lg,
-    },
-    heroVisual: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.lg,
-      borderWidth: 1,
-      height: 176,
-      justifyContent: 'center',
-      overflow: 'hidden',
-      position: 'relative',
-      width: '100%',
-    },
-    heroBadge: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 30,
-      justifyContent: 'center',
-      position: 'absolute',
-      width: 30,
-    },
-    heroBadgeTopLeft: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.status.infoBorder,
-      left: theme.spacing.md,
-      top: theme.spacing.md,
-    },
-    heroBadgeTopRight: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-      right: theme.spacing.md,
-      top: theme.spacing.md,
-    },
-    heroBadgeBottom: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderColor: theme.colors.status.warningBorder,
-      bottom: theme.spacing.md,
-      right: theme.spacing.xl,
-    },
-    heroIconFrame: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 84,
-      justifyContent: 'center',
-      width: 84,
-    },
-    heroLogo: {
-      height: 52,
-      width: 52,
-    },
-    heroTitle: {
-      textAlign: 'center',
-    },
-    heroDescription: {
-      textAlign: 'center',
-    },
-    indicatorRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'center',
-      width: '100%',
-    },
-    indicatorDot: {
-      backgroundColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      height: 8,
-      width: 8,
-    },
-    indicatorDotActive: {
-      backgroundColor: theme.colors.text.brand,
-      width: 18,
-    },
-    indicatorButton: {
-      borderRadius: theme.radii.pill,
-      paddingVertical: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.xxs,
-    },
-    actions: {
-      gap: theme.spacing.sm,
-    },
-  });
+  const styles = useStyles(carouselCardWidth);
 
   useEffect(() => {
     carouselRef.current?.scrollTo({

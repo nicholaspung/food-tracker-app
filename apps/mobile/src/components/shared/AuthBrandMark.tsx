@@ -1,7 +1,7 @@
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, View } from 'react-native';
 
 import { APP_NAME, BRAND_LOGO } from '../../lib/branding';
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Text } from '../../ui';
 
 type AuthBrandMarkSize = 'default' | 'large';
@@ -10,28 +10,28 @@ interface AuthBrandMarkProps {
   size?: AuthBrandMarkSize;
 }
 
+const useStyles = createThemedStyles((theme, badgeSize: number) => ({
+  container: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  logoBadge: {
+    height: badgeSize,
+    overflow: 'hidden',
+    borderRadius: theme.radii.md,
+    width: badgeSize,
+  },
+  logoImage: {
+    height: '100%',
+    width: '100%',
+  },
+}));
+
 export function AuthBrandMark({ size = 'default' }: AuthBrandMarkProps) {
-  const theme = useTheme();
   const isLarge = size === 'large';
   const badgeSize = isLarge ? 40 : 28;
-
-  const styles = StyleSheet.create({
-    container: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    logoBadge: {
-      height: badgeSize,
-      overflow: 'hidden',
-      borderRadius: theme.radii.md,
-      width: badgeSize,
-    },
-    logoImage: {
-      height: '100%',
-      width: '100%',
-    },
-  });
+  const styles = useStyles(badgeSize);
 
   return (
     <View style={styles.container}>

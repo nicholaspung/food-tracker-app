@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -16,13 +16,25 @@ import {
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Card, Input, Text } from '../ui';
 
 type CreateVisitAddRestaurantScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateVisitAddRestaurant'>;
 
 type RestaurantVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
 const RESTAURANT_VISIBILITY_OPTIONS: readonly RestaurantVisibility[] = ['friends', 'private'];
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+  visibilitySection: {
+    gap: theme.spacing.xs,
+  },
+}));
 
 function resolveDefaultRestaurantVisibility(): RestaurantVisibility {
   return resolveDefaultRestaurantVisibilityFromAuth();
@@ -32,7 +44,7 @@ export function CreateVisitAddRestaurantScreen({
   navigation,
   route,
 }: CreateVisitAddRestaurantScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const editVisitId = route.params?.editVisitId;
@@ -43,18 +55,6 @@ export function CreateVisitAddRestaurantScreen({
   const [visibility, setVisibility] = useState<RestaurantVisibility>(resolveDefaultRestaurantVisibility());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-    visibilitySection: {
-      gap: theme.spacing.xs,
-    },
-  });
 
   const handleAddRestaurant = async () => {
     if (!user?.id) {

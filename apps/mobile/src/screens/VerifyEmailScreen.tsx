@@ -1,20 +1,27 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormResultBanner, FormScaffold, LoadingOverlay } from '../components/shared';
 import { confirmUserEmailVerification } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { AUTH_EMAIL_UNVERIFIED_ERROR, useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type VerifyEmailScreenProps = NativeStackScreenProps<RootStackParamList, 'VerifyEmail'>;
 
+const useStyles = createThemedStyles((theme) => ({
+  formContent: {
+    paddingTop: theme.spacing.sm,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+}));
+
 export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps) {
-  const theme = useTheme();
   const { signInWithPassword, signOut } = useAuth();
   const [token, setToken] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,15 +33,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
   const subtitle = pendingEmail
     ? `Paste the verification token sent to ${pendingEmail}.`
     : 'Paste the verification token sent by email.';
-
-  const styles = StyleSheet.create({
-    formContent: {
-      paddingTop: theme.spacing.sm,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-  });
+  const styles = useStyles();
 
   const handleVerify = async () => {
     const trimmedToken = token.trim();

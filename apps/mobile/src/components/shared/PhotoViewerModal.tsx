@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Modal as RNModal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { FlatList, Image, Modal as RNModal, Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getPhotoViewerPalette, useTheme } from '../../theme';
+import { createThemedStyles, getPhotoViewerPalette, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 export interface PhotoViewerModalProps {
@@ -13,6 +13,76 @@ export interface PhotoViewerModalProps {
   initialIndex?: number;
   onRequestClose: () => void;
 }
+
+const useStyles = createThemedStyles((
+  theme,
+  topPadding: number,
+  bottomPadding: number,
+  viewerBackground: string,
+  viewerControlBackground: string,
+  viewerText: string,
+) => ({
+  modalContainer: {
+    backgroundColor: viewerBackground,
+    flex: 1,
+  },
+  topBar: {
+    alignItems: 'flex-end',
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: topPadding,
+  },
+  closeButton: {
+    alignItems: 'center',
+    backgroundColor: viewerControlBackground,
+    borderRadius: theme.radii.pill,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  list: {
+    flex: 1,
+  },
+  slide: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  image: {
+    height: '100%',
+    resizeMode: 'contain',
+    width: '100%',
+  },
+  bottomBar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: bottomPadding,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  navButton: {
+    alignItems: 'center',
+    backgroundColor: viewerControlBackground,
+    borderRadius: theme.radii.pill,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  navButtonDisabled: {
+    opacity: 0.35,
+  },
+  count: {
+    color: viewerText,
+  },
+  centerMeta: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 2,
+  },
+  ownerLabel: {
+    color: viewerText,
+    opacity: 0.9,
+  },
+}));
 
 export function PhotoViewerModal({
   visible,
@@ -32,6 +102,13 @@ export function PhotoViewerModal({
   const hasPreviousPhoto = currentIndex > 0;
   const hasNextPhoto = currentIndex < urls.length - 1;
   const currentOwnerLabel = ownerLabels?.[currentIndex]?.trim() || null;
+  const styles = useStyles(
+    Math.max(theme.spacing.sm, insets.top + theme.spacing.xs),
+    Math.max(theme.spacing.lg, insets.bottom + theme.spacing.sm),
+    viewerPalette.background,
+    viewerPalette.controlBackground,
+    viewerPalette.text,
+  );
 
   useEffect(() => {
     if (!visible) {
@@ -69,69 +146,6 @@ export function PhotoViewerModal({
     const boundedIndex = Math.max(0, Math.min(rawIndex, urls.length - 1));
     setCurrentIndex(boundedIndex);
   };
-
-  const styles = StyleSheet.create({
-    modalContainer: {
-      backgroundColor: viewerPalette.background,
-      flex: 1,
-    },
-    topBar: {
-      alignItems: 'flex-end',
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: Math.max(theme.spacing.sm, insets.top + theme.spacing.xs),
-    },
-    closeButton: {
-      alignItems: 'center',
-      backgroundColor: viewerPalette.controlBackground,
-      borderRadius: theme.radii.pill,
-      height: 36,
-      justifyContent: 'center',
-      width: 36,
-    },
-    list: {
-      flex: 1,
-    },
-    slide: {
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    image: {
-      height: '100%',
-      resizeMode: 'contain',
-      width: '100%',
-    },
-    bottomBar: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingBottom: Math.max(theme.spacing.lg, insets.bottom + theme.spacing.sm),
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    navButton: {
-      alignItems: 'center',
-      backgroundColor: viewerPalette.controlBackground,
-      borderRadius: theme.radii.pill,
-      height: 40,
-      justifyContent: 'center',
-      width: 40,
-    },
-    navButtonDisabled: {
-      opacity: 0.35,
-    },
-    count: {
-      color: viewerPalette.text,
-    },
-    centerMeta: {
-      alignItems: 'center',
-      flex: 1,
-      gap: 2,
-    },
-    ownerLabel: {
-      color: viewerPalette.text,
-      opacity: 0.9,
-    },
-  });
 
   return (
     <RNModal

@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import { env } from '../config/env';
@@ -9,7 +9,7 @@ import { getErrorMessage } from '../lib/errorUtils';
 import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -23,8 +23,20 @@ interface InviteCodeInviterResponse {
   };
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  formContent: {
+    paddingTop: theme.spacing.sm,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+  supportActions: {
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
+  },
+}));
+
 export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
-  const theme = useTheme();
   const isScreenshotReviewMode = env.isScreenshotReviewMode;
   const prefilledInviteCode =
     route.params?.inviteCode?.trim() ?? route.params?.code?.trim() ?? '';
@@ -43,19 +55,7 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
     setInviteCode(prefilledInviteCode);
   }, [prefilledInviteCode]);
-
-  const styles = StyleSheet.create({
-    formContent: {
-      paddingTop: theme.spacing.sm,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-    supportActions: {
-      gap: theme.spacing.sm,
-      marginTop: theme.spacing.xs,
-    },
-  });
+  const styles = useStyles();
 
   const handleSignUp = async () => {
     const trimmedEmail = email.trim().toLowerCase();

@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -40,17 +40,81 @@ interface OptionListInlineBodyProps {
   testID?: string;
 }
 
-export function OptionList({ children, style }: OptionListProps) {
-  const theme = useTheme();
+const useListStyles = createThemedStyles((theme) => ({
+  list: {
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+}));
 
-  const styles = StyleSheet.create({
-    list: {
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      overflow: 'hidden',
-    },
-  });
+const useRowStyles = createThemedStyles((theme) => ({
+  row: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  rowConnected: {
+    borderBottomWidth: 0,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  left: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  textWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+  },
+  titleTextWrap: {
+    flexShrink: 1,
+  },
+  title: {
+    color: theme.colors.text.primary,
+    ...theme.typography.titleSm,
+  },
+  subtitle: {
+    color: theme.colors.text.muted,
+    ...theme.typography.bodySm,
+  },
+  right: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'flex-end',
+  },
+}));
+
+const useInlineBodyStyles = createThemedStyles((theme) => ({
+  body: {
+    backgroundColor: theme.colors.background.muted,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  bodyWithDivider: {
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+  },
+}));
+
+export function OptionList({ children, style }: OptionListProps) {
+  const styles = useListStyles();
 
   return <View style={[styles.list, style]}>{children}</View>;
 }
@@ -74,6 +138,7 @@ export function OptionListRow({
   testID,
 }: OptionListRowProps) {
   const theme = useTheme();
+  const styles = useRowStyles();
   const chevronDirection = chevron ?? (onPress ? 'forward' : false);
   const chevronName =
     chevronDirection === 'up'
@@ -83,58 +148,6 @@ export function OptionListRow({
         : chevronDirection === 'forward'
           ? 'chevron-forward'
           : null;
-
-  const styles = StyleSheet.create({
-    row: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderBottomColor: theme.colors.border.subtle,
-      borderBottomWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    rowConnected: {
-      borderBottomWidth: 0,
-    },
-    rowLast: {
-      borderBottomWidth: 0,
-    },
-    left: {
-      alignItems: 'center',
-      flex: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    textWrap: {
-      flex: 1,
-      gap: 2,
-    },
-    titleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-    },
-    titleTextWrap: {
-      flexShrink: 1,
-    },
-    title: {
-      color: theme.colors.text.primary,
-      ...theme.typography.titleSm,
-    },
-    subtitle: {
-      color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
-    },
-    right: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'flex-end',
-    },
-  });
 
   const rowContent = (
     <>
@@ -186,19 +199,7 @@ export function OptionListInlineBody({
   style,
   testID,
 }: OptionListInlineBodyProps) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    body: {
-      backgroundColor: theme.colors.background.muted,
-      gap: theme.spacing.sm,
-      padding: theme.spacing.md,
-    },
-    bodyWithDivider: {
-      borderBottomColor: theme.colors.border.subtle,
-      borderBottomWidth: 1,
-    },
-  });
+  const styles = useInlineBodyStyles();
 
   return (
     <View style={[styles.body, withBottomDivider && styles.bodyWithDivider, style]} testID={testID}>

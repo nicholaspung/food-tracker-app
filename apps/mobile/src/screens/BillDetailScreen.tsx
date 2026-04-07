@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -31,7 +31,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 
 type BillDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'BillDetail'>;
@@ -131,9 +131,130 @@ function formatComplexSplitValue(type: 'percentage' | 'amount', value: number): 
   return formatCurrency(value);
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  skeletonGroup: {
+    gap: theme.spacing.sm,
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  sectionTitle: {
+    color: theme.colors.text.primary,
+  },
+  statusActionCard: {
+    gap: theme.spacing.sm,
+  },
+  statusActionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  statusActionCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  statusActionHint: {
+    color: theme.colors.text.secondary,
+  },
+  statusActionButton: {
+    minHeight: 36,
+    paddingHorizontal: theme.spacing.md,
+  },
+  summaryRows: {
+    gap: theme.spacing.xs,
+  },
+  summaryRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  summaryLabel: {
+    color: theme.colors.text.secondary,
+    flex: 1,
+  },
+  summaryLabelStrong: {
+    color: theme.colors.text.primary,
+  },
+  summaryValue: {
+    color: theme.colors.text.primary,
+    marginLeft: theme.spacing.sm,
+    textAlign: 'right',
+  },
+  list: {
+    borderColor: theme.colors.border.subtle,
+  },
+  participantActionPill: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  participantActionPillPositive: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.border.success,
+  },
+  participantActionPillSecondary: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+  },
+  participantActionPillPressed: {
+    opacity: 0.75,
+  },
+  participantActionPillDisabled: {
+    opacity: 0.6,
+  },
+  participantActionLabel: {
+    color: theme.colors.text.success,
+  },
+  participantActionLabelSecondary: {
+    color: theme.colors.text.secondary,
+  },
+  itemPrice: {
+    color: theme.colors.text.primary,
+  },
+  sectionHint: {
+    color: theme.colors.text.muted,
+  },
+  destructiveButton: {
+    backgroundColor: theme.colors.text.danger,
+  },
+  deleteTriggerButton: {
+    minHeight: 36,
+    paddingHorizontal: theme.spacing.md,
+    width: '100%',
+  },
+  headerRightRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  headerEditButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+}));
+
 export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const { billId } = route.params;
   const theme = useTheme();
+  const styles = useStyles();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -223,126 +344,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       0,
     );
   }, [bill]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    skeletonGroup: {
-      gap: theme.spacing.sm,
-    },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    sectionTitleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    sectionTitle: {
-      color: theme.colors.text.primary,
-    },
-    statusActionCard: {
-      gap: theme.spacing.sm,
-    },
-    statusActionRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    statusActionCopy: {
-      flex: 1,
-      gap: 2,
-    },
-    statusActionHint: {
-      color: theme.colors.text.secondary,
-    },
-    statusActionButton: {
-      minHeight: 36,
-      paddingHorizontal: theme.spacing.md,
-    },
-    summaryRows: {
-      gap: theme.spacing.xs,
-    },
-    summaryRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    summaryLabel: {
-      color: theme.colors.text.secondary,
-      flex: 1,
-    },
-    summaryLabelStrong: {
-      color: theme.colors.text.primary,
-    },
-    summaryValue: {
-      color: theme.colors.text.primary,
-      marginLeft: theme.spacing.sm,
-      textAlign: 'right',
-    },
-    list: {
-      borderColor: theme.colors.border.subtle,
-    },
-    participantActionPill: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      minHeight: 32,
-      paddingHorizontal: theme.spacing.sm,
-      justifyContent: 'center',
-    },
-    participantActionPillPositive: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.border.success,
-    },
-    participantActionPillSecondary: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-    },
-    participantActionPillPressed: {
-      opacity: 0.75,
-    },
-    participantActionPillDisabled: {
-      opacity: 0.6,
-    },
-    participantActionLabel: {
-      color: theme.colors.text.success,
-    },
-    participantActionLabelSecondary: {
-      color: theme.colors.text.secondary,
-    },
-    itemPrice: {
-      color: theme.colors.text.primary,
-    },
-    sectionHint: {
-      color: theme.colors.text.muted,
-    },
-    destructiveButton: {
-      backgroundColor: theme.colors.text.danger,
-    },
-    deleteTriggerButton: {
-      minHeight: 36,
-      width: '100%',
-      paddingHorizontal: theme.spacing.md,
-    },
-    headerRightRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    headerEditButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
-    },
-  });
 
   const refreshBill = async () => {
     await Promise.all([

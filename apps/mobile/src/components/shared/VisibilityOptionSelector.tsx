@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import { StatusPill, type StatusPillTone } from './StatusPill';
 
@@ -63,6 +63,114 @@ export function getVisibilityOptionMeta(
 
 const DEFAULT_OPTIONS: VisibilityOptionValue[] = ['private', 'friends', 'public'];
 
+const useStyles = createThemedStyles((
+  theme,
+  isPersonalSegmentedLayout: boolean,
+  isCompactLayout: boolean,
+) => ({
+  containerSegmented: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.default,
+    borderRadius: isPersonalSegmentedLayout ? theme.radii.lg + theme.spacing.xxs : 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: isPersonalSegmentedLayout ? theme.spacing.xxs : 4,
+    padding: isPersonalSegmentedLayout ? theme.spacing.xxs : 4,
+  },
+  containerCards: {
+    gap: theme.spacing.xs,
+  },
+  disabled: {
+    opacity: 0.55,
+  },
+  segmentedOption: {
+    alignItems: 'center',
+    borderRadius: isPersonalSegmentedLayout ? theme.radii.lg : 9,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: isPersonalSegmentedLayout ? 6 : isCompactLayout ? 4 : 6,
+    justifyContent: 'center',
+    minHeight: isPersonalSegmentedLayout ? 46 : 38,
+    minWidth: 0,
+    paddingHorizontal: isPersonalSegmentedLayout
+      ? theme.spacing.sm
+      : isCompactLayout
+        ? theme.spacing.xxs
+        : theme.spacing.xs,
+    paddingVertical: isPersonalSegmentedLayout ? theme.spacing.xs : 7,
+  },
+  segmentedOptionInactive: {
+    borderColor: 'transparent',
+  },
+  segmentedOptionActiveBase: {
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+  },
+  segmentedOptionLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  cardOption: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 2,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  cardOptionPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+  cardRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  cardRadioOuter: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 2,
+    height: 20,
+    justifyContent: 'center',
+    marginTop: 2,
+    width: 20,
+  },
+  cardRadioOuterSelected: {
+    backgroundColor: theme.colors.text.brand,
+    borderColor: theme.colors.text.brand,
+  },
+  cardRadioInner: {
+    backgroundColor: theme.colors.text.inverse,
+    borderRadius: theme.radii.pill,
+    height: 8,
+    width: 8,
+  },
+  cardContent: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  cardTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  cardLabel: {
+    color: theme.colors.text.primary,
+  },
+  cardDescription: {
+    color: theme.colors.text.secondary,
+  },
+}));
+
 export function VisibilityOptionSelector({
   value,
   onChange,
@@ -82,6 +190,7 @@ export function VisibilityOptionSelector({
   const isPersonalSegmentedLayout = isSegmentedVariant && options.length === 2;
   const isCompactLayout = isSegmentedVariant && options.length >= 3;
   const resolvedLabelPreset = labelPreset ?? (isPersonalSegmentedLayout ? 'personal' : 'default');
+  const styles = useStyles(isPersonalSegmentedLayout, isCompactLayout);
 
   const resolveToneTokens = (tone: VisibilityTone) => {
     if (tone === 'info') {
@@ -106,110 +215,6 @@ export function VisibilityOptionSelector({
       activeText: theme.colors.text.primary,
     };
   };
-
-  const styles = StyleSheet.create({
-    containerSegmented: {
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.default,
-      borderRadius: isPersonalSegmentedLayout ? theme.radii.lg + theme.spacing.xxs : 12,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: isPersonalSegmentedLayout ? theme.spacing.xxs : 4,
-      padding: isPersonalSegmentedLayout ? theme.spacing.xxs : 4,
-    },
-    containerCards: {
-      gap: theme.spacing.xs,
-    },
-    disabled: {
-      opacity: 0.55,
-    },
-    segmentedOption: {
-      alignItems: 'center',
-      borderRadius: isPersonalSegmentedLayout ? theme.radii.lg : 9,
-      borderWidth: 1,
-      flex: 1,
-      flexDirection: 'row',
-      gap: isPersonalSegmentedLayout ? 6 : isCompactLayout ? 4 : 6,
-      justifyContent: 'center',
-      minHeight: isPersonalSegmentedLayout ? 46 : 38,
-      minWidth: 0,
-      paddingHorizontal: isPersonalSegmentedLayout
-        ? theme.spacing.sm
-        : isCompactLayout
-          ? theme.spacing.xxs
-          : theme.spacing.xs,
-      paddingVertical: isPersonalSegmentedLayout ? theme.spacing.xs : 7,
-    },
-    segmentedOptionInactive: {
-      borderColor: 'transparent',
-    },
-    segmentedOptionActiveBase: {
-      shadowColor: theme.colors.background.inverse,
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 0.08,
-      shadowRadius: 1,
-    },
-    segmentedOptionLabel: {
-      flexShrink: 1,
-      minWidth: 0,
-    },
-    cardOption: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 2,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    cardOptionPressed: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    cardRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    cardRadioOuter: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 2,
-      height: 20,
-      justifyContent: 'center',
-      marginTop: 2,
-      width: 20,
-    },
-    cardRadioOuterSelected: {
-      backgroundColor: theme.colors.text.brand,
-      borderColor: theme.colors.text.brand,
-    },
-    cardRadioInner: {
-      backgroundColor: theme.colors.text.inverse,
-      borderRadius: theme.radii.pill,
-      height: 8,
-      width: 8,
-    },
-    cardContent: {
-      flex: 1,
-      gap: theme.spacing.xxs,
-    },
-    cardTitleRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    cardLabel: {
-      color: theme.colors.text.primary,
-    },
-    cardDescription: {
-      color: theme.colors.text.secondary,
-    },
-  });
 
   return (
     <View

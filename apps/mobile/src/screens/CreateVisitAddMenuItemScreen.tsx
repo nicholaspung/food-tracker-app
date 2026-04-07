@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -13,7 +13,7 @@ import { createCollectionRecord, getAuthenticatedUserIdOrNull } from '../feature
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Card, Input, Text } from '../ui';
 
 type CreateVisitAddMenuItemScreenProps = NativeStackScreenProps<
@@ -27,11 +27,23 @@ interface MenuItemRecord {
   name: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+  visibilitySection: {
+    gap: theme.spacing.xs,
+  },
+}));
+
 export function CreateVisitAddMenuItemScreen({
   navigation,
   route,
 }: CreateVisitAddMenuItemScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
 
@@ -41,18 +53,6 @@ export function CreateVisitAddMenuItemScreen({
   const [visibility, setVisibility] = useState<VisibilityOptionValue>('friends');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-    visibilitySection: {
-      gap: theme.spacing.xs,
-    },
-  });
 
   const handleAddMenuItem = async () => {
     if (!isOnline) {

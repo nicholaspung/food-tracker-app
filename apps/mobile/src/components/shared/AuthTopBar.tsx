@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { AuthBrandMark } from './AuthBrandMark';
 
 interface AuthTopBarProps {
@@ -9,26 +9,27 @@ interface AuthTopBarProps {
   backAccessibilityLabel?: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  backButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+}));
+
 export function AuthTopBar({ onBackPress, backAccessibilityLabel = 'Back' }: AuthTopBarProps) {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    container: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    backButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 36,
-      justifyContent: 'center',
-      width: 36,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <View style={styles.container}>

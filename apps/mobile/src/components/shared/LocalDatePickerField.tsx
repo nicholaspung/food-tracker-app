@@ -8,7 +8,7 @@ import {
   formatLocalDateLabel,
   isValidLocalDate,
 } from '../../lib/dateFormatting';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Card, Input, Text } from '../../ui';
 
 interface LocalDatePickerFieldProps {
@@ -23,6 +23,73 @@ interface LocalDatePickerFieldProps {
   highlighted?: boolean;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    gap: theme.spacing.xs,
+  },
+  datePickerButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+    minHeight: theme.sizes.inputMinHeight,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  datePickerButtonHighlighted: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.status.infoBorder,
+  },
+  datePickerButtonDisabled: {
+    opacity: 0.65,
+  },
+  datePickerButtonLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  datePickerFallbackCard: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.status.warningBorder,
+    borderWidth: 1,
+    gap: theme.spacing.xxs,
+  },
+  datePickerModalOverlay: {
+    backgroundColor: theme.colors.background.overlay,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  datePickerModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  datePickerModalSheet: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderTopLeftRadius: theme.radii.lg,
+    borderTopRightRadius: theme.radii.lg,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
+  },
+  datePickerModalActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  datePickerModalAction: {
+    flex: 1,
+  },
+  helperText: {
+    paddingHorizontal: theme.spacing.xxs,
+  },
+}));
+
 export function LocalDatePickerField({
   label = 'Date',
   value,
@@ -35,6 +102,7 @@ export function LocalDatePickerField({
   highlighted = false,
 }: LocalDatePickerFieldProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [pendingDate, setPendingDate] = useState<Date>(() =>
     isValidLocalDate(value) ? new Date(`${value}T00:00:00`) : new Date(),
@@ -51,73 +119,6 @@ export function LocalDatePickerField({
   }, []);
 
   const parsedValue = isValidLocalDate(value) ? new Date(`${value}T00:00:00`) : new Date();
-
-  const styles = StyleSheet.create({
-    container: {
-      gap: theme.spacing.xs,
-    },
-    datePickerButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-      minHeight: theme.sizes.inputMinHeight,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    datePickerButtonHighlighted: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.status.infoBorder,
-    },
-    datePickerButtonDisabled: {
-      opacity: 0.65,
-    },
-    datePickerButtonLeft: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    datePickerFallbackCard: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderColor: theme.colors.status.warningBorder,
-      borderWidth: 1,
-      gap: theme.spacing.xxs,
-    },
-    datePickerModalOverlay: {
-      backgroundColor: theme.colors.background.overlay,
-      flex: 1,
-      justifyContent: 'flex-end',
-    },
-    datePickerModalBackdrop: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    datePickerModalSheet: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderTopLeftRadius: theme.radii.lg,
-      borderTopRightRadius: theme.radii.lg,
-      borderWidth: 1,
-      borderBottomWidth: 0,
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingBottom: theme.spacing.lg,
-      paddingTop: theme.spacing.sm,
-    },
-    datePickerModalActions: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    datePickerModalAction: {
-      flex: 1,
-    },
-    helperText: {
-      paddingHorizontal: theme.spacing.xxs,
-    },
-  });
 
   const handleOpenDatePicker = () => {
     if (!NativeDateTimePicker) {

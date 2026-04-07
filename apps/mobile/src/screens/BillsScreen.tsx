@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -14,30 +14,49 @@ import {
   StatusPill,
 } from '../components/shared';
 import { listBillSummaries } from '../features';
+import { useQueryListState } from '../hooks/useListQueryState';
 import { formatCurrency } from '../features/bills/billCalculations';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Card } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type BillsScreenProps = NativeStackScreenProps<RootStackParamList, 'Bills'>;
 type BillFilter = 'all' | 'you_owe' | 'you_are_owed' | 'settled';
 
-export function BillsScreen({ navigation }: BillsScreenProps) {
-  const theme = useTheme();
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  filterCard: {
+    padding: theme.spacing.xs,
+  },
+  listCard: {
+    borderColor: theme.colors.border.subtle,
+  },
+  list: {
+    borderColor: theme.colors.border.subtle,
+  },
+}));
 
+export function BillsScreen({ navigation }: BillsScreenProps) {
   const billsQuery = useQuery({
     queryKey: ['feature', 'bills'],
     queryFn: listBillSummaries,
   });
-  const hasBlockingBillsError = billsQuery.isError && !billsQuery.data;
-  const hasBillsRefreshError = !hasBlockingBillsError && billsQuery.isError;
+  const billsState = useQueryListState({
+    data: billsQuery.data,
+    isError: billsQuery.isError,
+    isFetching: billsQuery.isFetching,
+    isLoading: billsQuery.isLoading,
+    isSuccess: billsQuery.isSuccess,
+  });
 
   const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
 
   const filteredBills = useMemo(() => {
-    const bills = billsQuery.data ?? [];
+    const bills = billsState.items;
 
     if (activeFilter === 'settled') {
       return bills.filter((bill) => bill.status === 'settled');
@@ -56,22 +75,8 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     }
 
     return bills;
-  }, [activeFilter, billsQuery.data]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    filterCard: {
-      padding: theme.spacing.xs,
-    },
-    listCard: {
-      borderColor: theme.colors.border.subtle,
-    },
-    list: {
-      borderColor: theme.colors.border.subtle,
-    },
-  });
+  }, [activeFilter, billsState.items]);
+  const styles = useStyles();
 
   return (
     <BackHeaderScreenScaffold
@@ -129,9 +134,9 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
 
         <PageErrorToast
           errorMessage={
-            hasBlockingBillsError
+            billsState.hasBlockingError
               ? 'Could not load bills.'
-              : hasBillsRefreshError
+              : billsState.hasRefreshError
                 ? 'Could not refresh bills. Showing saved data.'
                 : null
           }
@@ -142,7 +147,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           }}
         />
 
-        {!billsQuery.isLoading && !hasBlockingBillsError && filteredBills.length === 0 ? (
+        {!billsQuery.isLoading && !billsState.hasBlockingError && filteredBills.length === 0 ? (
           <EmptyState
             description={
               activeFilter === 'all'
@@ -156,7 +161,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
           />
         ) : null}
 
-        {!billsQuery.isLoading && !hasBlockingBillsError && filteredBills.length > 0 ? (
+        {!billsQuery.isLoading && !billsState.hasBlockingError && filteredBills.length > 0 ? (
           <Card style={styles.listCard}>
             <OptionList style={styles.list}>
               {filteredBills.map((bill, index) => {

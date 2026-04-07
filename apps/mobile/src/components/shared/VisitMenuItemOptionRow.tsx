@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 import { VisibilityBadge } from './VisibilityBadge';
 
@@ -27,6 +27,67 @@ function normalizeMenuItemVisibility(value: MenuItemVisibility | undefined): Men
   return 'friends';
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    alignItems: 'stretch',
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  containerSelected: {
+    backgroundColor: theme.colors.status.successBg,
+    borderColor: theme.colors.status.successBorder,
+  },
+  mainButton: {
+    flex: 1,
+    gap: theme.spacing.xs,
+  },
+  headerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  nameWrap: {
+    flex: 1,
+    paddingRight: theme.spacing.xs,
+  },
+  metaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  badgeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  actionsColumn: {
+    alignItems: 'flex-end',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  selectButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 24,
+    minWidth: 24,
+    padding: theme.spacing.xxs,
+  },
+  editButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xxs,
+  },
+}));
+
 export function VisitMenuItemOptionRow({
   name,
   description,
@@ -41,67 +102,7 @@ export function VisitMenuItemOptionRow({
   const theme = useTheme();
   const resolvedVisibility = normalizeMenuItemVisibility(visibility);
   const trimmedDescription = description?.trim() || '';
-
-  const styles = StyleSheet.create({
-    container: {
-      alignItems: 'stretch',
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    containerSelected: {
-      backgroundColor: theme.colors.status.successBg,
-      borderColor: theme.colors.status.successBorder,
-    },
-    mainButton: {
-      flex: 1,
-      gap: theme.spacing.xs,
-    },
-    headerRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-    },
-    nameWrap: {
-      flex: 1,
-      paddingRight: theme.spacing.xs,
-    },
-    metaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-    },
-    badgeRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    actionsColumn: {
-      alignItems: 'flex-end',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-    },
-    selectButton: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 24,
-      minWidth: 24,
-      padding: theme.spacing.xxs,
-    },
-    editButton: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xxs,
-      justifyContent: 'center',
-      minHeight: 44,
-      minWidth: 44,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xxs,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <View style={[styles.container, selected ? styles.containerSelected : null]}>

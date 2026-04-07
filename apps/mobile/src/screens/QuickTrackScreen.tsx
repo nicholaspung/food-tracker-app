@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
-import { Linking, Platform, StyleSheet, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -41,7 +41,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
 
 type QuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'QuickTrack'>;
@@ -51,6 +51,19 @@ const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 type PhotoSource = 'camera' | 'gallery';
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  linkedNoteCard: {
+    gap: theme.spacing.xs,
+  },
+}));
+
 function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
   return buildLocalPhotoFile(asset, {
     fallbackPrefix: 'quick-track',
@@ -58,7 +71,7 @@ function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUp
 }
 
 export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -142,19 +155,6 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     }));
     setDidApplyNotePrefill(true);
   }, [didApplyNotePrefill, linkedNoteQuery.data]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.sm,
-    },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    linkedNoteCard: {
-      gap: theme.spacing.xs,
-    },
-  });
 
   const applyPhotoCaptureDate = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
     const captureDate = await resolvePhotoCaptureDate(asset);

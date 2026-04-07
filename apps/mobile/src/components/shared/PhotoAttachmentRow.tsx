@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet } from 'react-native';
+import { Image, Pressable } from 'react-native';
 import type { GestureResponderEvent, StyleProp, ViewStyle } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 interface PhotoAttachmentRowProps {
@@ -14,6 +14,43 @@ interface PhotoAttachmentRowProps {
   accessibilityLabel?: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    minHeight: 44,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xs,
+  },
+  containerPressed: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.strong,
+  },
+  thumbnail: {
+    backgroundColor: theme.colors.background.muted,
+    borderRadius: theme.radii.sm,
+    height: 28,
+    width: 28,
+  },
+  name: {
+    flex: 1,
+  },
+  removeButton: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 20,
+    justifyContent: 'center',
+    width: 20,
+  },
+}));
+
 export function PhotoAttachmentRow({
   uri,
   name,
@@ -24,43 +61,7 @@ export function PhotoAttachmentRow({
 }: PhotoAttachmentRowProps) {
   const theme = useTheme();
   const isPressable = typeof onPress === 'function';
-
-  const styles = StyleSheet.create({
-    container: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      minHeight: 44,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xs,
-    },
-    containerPressed: {
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.strong,
-    },
-    thumbnail: {
-      backgroundColor: theme.colors.background.muted,
-      borderRadius: theme.radii.sm,
-      height: 28,
-      width: 28,
-    },
-    name: {
-      flex: 1,
-    },
-    removeButton: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 20,
-      justifyContent: 'center',
-      width: 20,
-    },
-  });
+  const styles = useStyles();
 
   const handleRemovePress = (event: GestureResponderEvent) => {
     event.stopPropagation();

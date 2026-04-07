@@ -4,7 +4,6 @@ import {
   Image,
   Pressable,
   ScrollView,
-  StyleSheet,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -17,7 +16,7 @@ import {
   type VisitRecord,
 } from '../../features';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Card, Text } from '../../ui';
 
 export interface HomeBetaFeedPhotoRecord {
@@ -74,226 +73,227 @@ interface VisitCarouselEntry {
   rating: number;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  card: {
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.lg,
+    overflow: 'hidden',
+    padding: 0,
+    shadowColor: theme.colors.background.inverse,
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  headerBlock: {
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+  },
+  ownerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  sectionDivider: {
+    backgroundColor: theme.colors.border.subtle,
+    height: 1,
+    width: '100%',
+  },
+  ownerName: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  iconButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  iconButtonDanger: {
+    borderColor: theme.colors.border.danger,
+  },
+  restaurantRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+    paddingBottom: theme.spacing.sm,
+  },
+  restaurantName: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  restaurantMeta: {
+    color: theme.colors.text.muted,
+    maxWidth: '45%',
+    textAlign: 'right',
+    textTransform: 'uppercase',
+  },
+  mediaViewport: {
+    backgroundColor: theme.colors.background.muted,
+    width: '100%',
+  },
+  mediaPage: {
+    width: 1,
+  },
+  mediaFrame: {
+    aspectRatio: 1,
+    backgroundColor: theme.colors.background.muted,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
+  mediaFramePressable: {
+    flex: 1,
+  },
+  mediaImage: {
+    height: '100%',
+    width: '100%',
+  },
+  mediaTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    left: theme.spacing.sm,
+    position: 'absolute',
+    right: theme.spacing.sm,
+    top: theme.spacing.sm,
+  },
+  mediaTopRightGroup: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  mediaPill: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 4,
+  },
+  mediaPillLabel: {
+    color: theme.colors.text.secondary,
+    textTransform: 'uppercase',
+  },
+  paginationRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  paginationArrowButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  paginationArrowButtonDisabled: {
+    opacity: 0.45,
+  },
+  paginationIndicators: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.sm,
+  },
+  indicatorDot: {
+    backgroundColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    height: 6,
+    width: 6,
+  },
+  indicatorDotActive: {
+    backgroundColor: theme.colors.text.brand,
+    width: 18,
+  },
+  contentBlock: {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  itemHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  itemHeaderCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  itemName: {
+    color: theme.colors.text.primary,
+    fontStyle: 'italic',
+  },
+  itemDescription: {
+    color: theme.colors.text.secondary,
+  },
+  itemNotes: {
+    color: theme.colors.text.muted,
+    fontStyle: 'italic',
+  },
+  itemMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  metaChip: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 4,
+  },
+  metaChipLabel: {
+    color: theme.colors.text.secondary,
+    textTransform: 'uppercase',
+  },
+  ratingBand: {
+    alignItems: 'center',
+    borderRadius: theme.radii.md,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  ratingBandLabel: {
+    color: theme.colors.text.inverse,
+  },
+  footerMeta: {
+    color: theme.colors.text.muted,
+    textTransform: 'uppercase',
+  },
+  emptyText: {
+    color: theme.colors.text.secondary,
+  },
+}));
+
 function useHomeBetaFeedCardStyles() {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    card: {
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.lg,
-      overflow: 'hidden',
-      padding: 0,
-      shadowColor: theme.colors.background.inverse,
-      shadowOffset: {
-        width: 0,
-        height: 6,
-      },
-      shadowOpacity: 0.08,
-      shadowRadius: 14,
-      elevation: 2,
-    },
-    headerBlock: {
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-    },
-    ownerRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    sectionDivider: {
-      backgroundColor: theme.colors.border.subtle,
-      height: 1,
-      width: '100%',
-    },
-    ownerName: {
-      color: theme.colors.text.primary,
-      flex: 1,
-    },
-    headerActions: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    iconButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      height: 34,
-      justifyContent: 'center',
-      width: 34,
-    },
-    iconButtonDanger: {
-      borderColor: theme.colors.border.danger,
-    },
-    restaurantRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-      paddingBottom: theme.spacing.sm,
-    },
-    restaurantName: {
-      color: theme.colors.text.primary,
-      flex: 1,
-    },
-    restaurantMeta: {
-      color: theme.colors.text.muted,
-      maxWidth: '45%',
-      textAlign: 'right',
-      textTransform: 'uppercase',
-    },
-    mediaViewport: {
-      backgroundColor: theme.colors.background.muted,
-      width: '100%',
-    },
-    mediaPage: {
-      width: 1,
-    },
-    mediaFrame: {
-      aspectRatio: 1,
-      backgroundColor: theme.colors.background.muted,
-      justifyContent: 'center',
-      overflow: 'hidden',
-      position: 'relative',
-      width: '100%',
-    },
-    mediaFramePressable: {
-      flex: 1,
-    },
-    mediaImage: {
-      height: '100%',
-      width: '100%',
-    },
-    mediaTopRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      left: theme.spacing.sm,
-      position: 'absolute',
-      right: theme.spacing.sm,
-      top: theme.spacing.sm,
-    },
-    mediaTopRightGroup: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    mediaPill: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    mediaPillLabel: {
-      color: theme.colors.text.secondary,
-      textTransform: 'uppercase',
-    },
-    paginationRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      width: '100%',
-    },
-    paginationArrowButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
-    },
-    paginationArrowButtonDisabled: {
-      opacity: 0.45,
-    },
-    paginationIndicators: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'center',
-      paddingHorizontal: theme.spacing.sm,
-    },
-    indicatorDot: {
-      backgroundColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      height: 6,
-      width: 6,
-    },
-    indicatorDotActive: {
-      backgroundColor: theme.colors.text.brand,
-      width: 18,
-    },
-    contentBlock: {
-      gap: theme.spacing.sm,
-      padding: theme.spacing.md,
-    },
-    itemHeaderRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    itemHeaderCopy: {
-      flex: 1,
-      gap: theme.spacing.xxs,
-    },
-    itemName: {
-      color: theme.colors.text.primary,
-      fontStyle: 'italic',
-    },
-    itemDescription: {
-      color: theme.colors.text.secondary,
-    },
-    itemNotes: {
-      color: theme.colors.text.muted,
-      fontStyle: 'italic',
-    },
-    itemMetaRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xs,
-    },
-    metaChip: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      justifyContent: 'center',
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 4,
-    },
-    metaChipLabel: {
-      color: theme.colors.text.secondary,
-      textTransform: 'uppercase',
-    },
-    ratingBand: {
-      alignItems: 'center',
-      borderRadius: theme.radii.md,
-      flexDirection: 'row',
-      justifyContent: 'center',
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    ratingBandLabel: {
-      color: theme.colors.text.inverse,
-    },
-    footerMeta: {
-      color: theme.colors.text.muted,
-      textTransform: 'uppercase',
-    },
-    emptyText: {
-      color: theme.colors.text.secondary,
-    },
-  });
+  const styles = useStyles();
 
   return { styles, theme };
 }

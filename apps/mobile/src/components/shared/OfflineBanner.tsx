@@ -1,6 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 
 export interface OfflineBannerProps {
@@ -12,6 +12,20 @@ export interface OfflineBannerProps {
   isSyncing?: boolean;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  actions: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
+  },
+  action: {
+    flex: 1,
+  },
+  container: {
+    gap: theme.spacing.xs,
+  },
+}));
+
 export function OfflineBanner({
   isOnline,
   pendingWrites = 0,
@@ -20,8 +34,8 @@ export function OfflineBanner({
   onSyncNow,
   isSyncing = false,
 }: OfflineBannerProps) {
-  const theme = useTheme();
   const hasQueue = pendingWrites > 0 || failedWrites > 0;
+  const styles = useStyles();
 
   if (isOnline && !hasQueue) {
     return null;
@@ -41,20 +55,6 @@ export function OfflineBanner({
     : failedWrites > 0
       ? 'Retry failed writes after confirming network and auth state.'
       : 'You can trigger sync now to flush the queue immediately.';
-
-  const styles = StyleSheet.create({
-    actions: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      marginTop: theme.spacing.xs,
-    },
-    action: {
-      flex: 1,
-    },
-    container: {
-      gap: theme.spacing.xs,
-    },
-  });
 
   return (
     <Card tone={tone}>

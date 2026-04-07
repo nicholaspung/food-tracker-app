@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import {
   HomeFeedVisitEntryCard,
@@ -9,7 +9,7 @@ import {
   UpgradePromptCard,
   type HomeFeedPhotoRecord,
 } from '../../components/shared';
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Card, Text } from '../../ui';
 import type {
   ProcessType,
@@ -30,6 +30,18 @@ interface PhotoProcessingReviewStepProps {
   visitVisibility: 'friends' | 'private';
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  reviewCard: {
+    gap: theme.spacing.sm,
+  },
+  reviewFeedList: {
+    gap: theme.spacing.md,
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+}));
+
 export function PhotoProcessingReviewStep({
   errorMessage,
   estimatedFreeMonthlyPhotoRemaining,
@@ -42,25 +54,13 @@ export function PhotoProcessingReviewStep({
   usageEstimateLabel,
   visitVisibility,
 }: PhotoProcessingReviewStepProps) {
-  const theme = useTheme();
+  const styles = useStyles();
   const [reviewPhotoViewerVisible, setReviewPhotoViewerVisible] = useState(false);
   const [reviewPhotoViewerUrls, setReviewPhotoViewerUrls] = useState<string[]>(
     [],
   );
   const [reviewPhotoViewerInitialIndex, setReviewPhotoViewerInitialIndex] =
     useState(0);
-
-  const styles = StyleSheet.create({
-    reviewCard: {
-      gap: theme.spacing.sm,
-    },
-    reviewFeedList: {
-      gap: theme.spacing.md,
-    },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-  });
 
   const openReviewPhotoViewer = useCallback(
     (reviewPhotos: HomeFeedPhotoRecord[], initialIndex = 0) => {

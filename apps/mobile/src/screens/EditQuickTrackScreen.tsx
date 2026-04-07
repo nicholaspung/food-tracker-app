@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -31,11 +31,51 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
 type EditQuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'EditQuickTrack'>;
 type QuickTrackVisibility = Extract<VisibilityOptionValue, 'private' | 'friends'>;
+
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+  },
+  sectionCard: {
+    gap: theme.spacing.sm,
+  },
+  notesInput: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  categorySelectorRow: {
+    backgroundColor: theme.colors.background.muted,
+    borderBottomColor: theme.colors.border.default,
+  },
+  categorySelectorRowExpanded: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderBottomColor: theme.colors.status.warningBorder,
+  },
+  categorySelectorSubtitle: {
+    color: theme.colors.text.muted,
+  },
+  categorySelectorSubtitleSelected: {
+    color: theme.colors.text.warning,
+  },
+  categoryOptionSelectedRow: {
+    backgroundColor: theme.colors.status.warningBg,
+  },
+  categoryOptionSelectedLabel: {
+    color: theme.colors.text.warning,
+  },
+  categoryClearLabel: {
+    color: theme.colors.text.muted,
+  },
+  categoryPlaceholder: {
+    color: theme.colors.text.muted,
+  },
+}));
 
 const ITEM_CATEGORIES = [
   { value: 'convenience_store', label: 'Convenience Store' },
@@ -70,6 +110,7 @@ function normalizeItemCategory(value: string | undefined): ItemCategory | null {
 export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreenProps) {
   const { quickTrackId } = route.params;
   const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -102,46 +143,6 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
     setVisibility(quickTrackQuery.data.visibility ?? resolveDefaultVisitVisibilityFromAuth());
     setItemDate(normalizeQuickTrackDate(quickTrackQuery.data.itemDate));
   }, [quickTrackQuery.data]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.sm,
-    },
-    sectionCard: {
-      gap: theme.spacing.sm,
-    },
-    notesInput: {
-      minHeight: 100,
-      textAlignVertical: 'top',
-    },
-    categorySelectorRow: {
-      backgroundColor: theme.colors.background.muted,
-      borderBottomColor: theme.colors.border.default,
-    },
-    categorySelectorRowExpanded: {
-      backgroundColor: theme.colors.status.warningBg,
-      borderBottomColor: theme.colors.status.warningBorder,
-    },
-    categorySelectorSubtitle: {
-      color: theme.colors.text.muted,
-    },
-    categorySelectorSubtitleSelected: {
-      color: theme.colors.text.warning,
-    },
-    categoryOptionSelectedRow: {
-      backgroundColor: theme.colors.status.warningBg,
-    },
-    categoryOptionSelectedLabel: {
-      color: theme.colors.text.warning,
-    },
-    categoryClearLabel: {
-      color: theme.colors.text.muted,
-    },
-    categoryPlaceholder: {
-      color: theme.colors.text.muted,
-    },
-  });
 
   const selectedCategoryLabel = useMemo(() => {
     if (!itemCategory) {

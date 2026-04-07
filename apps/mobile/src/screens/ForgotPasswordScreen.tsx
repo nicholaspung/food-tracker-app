@@ -1,31 +1,30 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
 
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import { requestUserPasswordReset } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
+const useStyles = createThemedStyles((theme) => ({
+  formContent: {
+    paddingTop: theme.spacing.sm,
+  },
+  formCard: {
+    gap: theme.spacing.sm,
+  },
+}));
+
 export function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
-  const theme = useTheme();
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const styles = StyleSheet.create({
-    formContent: {
-      paddingTop: theme.spacing.sm,
-    },
-    formCard: {
-      gap: theme.spacing.sm,
-    },
-  });
+  const styles = useStyles();
 
   const handleSubmit = async () => {
     const trimmedEmail = email.trim().toLowerCase();

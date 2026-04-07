@@ -7,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   Share,
-  StyleSheet,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -19,7 +18,7 @@ import { LoadingState, SectionHeader } from '../components/shared';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { getVisitSharePalette, useTheme } from '../theme';
+import { createThemedStyles, getVisitSharePalette, useTheme } from '../theme';
 import { Button, Text } from '../ui';
 
 type VisitShareCustomizationScreenProps = NativeStackScreenProps<RootStackParamList, 'VisitShareCustomization'>;
@@ -50,6 +49,247 @@ function buildPhotoUrl(item: VisitShareItem, thumb?: string): string {
     thumb,
   });
 }
+
+const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof getVisitSharePalette>) => ({
+  screen: {
+    backgroundColor: sharePalette.screenBackground,
+    flex: 1,
+  },
+  header: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.md,
+  },
+  headerTitleWrap: {
+    flex: 1,
+    gap: 2,
+    paddingRight: theme.spacing.sm,
+  },
+  headerTitle: {
+    color: theme.colors.text.inverse,
+  },
+  headerSubtitle: {
+    color: sharePalette.headerSubtitle,
+  },
+  closeButton: {
+    alignItems: 'center',
+    backgroundColor: sharePalette.closeButtonBackground,
+    borderRadius: theme.radii.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  previewScroll: {
+    flex: 1,
+    paddingHorizontal: theme.spacing.md,
+  },
+  previewScrollContent: {
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+  },
+  shareCanvas: {
+    borderRadius: 0,
+    borderWidth: 1,
+    gap: 0,
+    padding: 0,
+  },
+  shareItemCard: {
+    borderRadius: 0,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  shareImage: {
+    aspectRatio: 1,
+    backgroundColor: theme.colors.background.muted,
+    width: '100%',
+  },
+  shareOverlay: {
+    bottom: 0,
+    gap: 4,
+    left: 0,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    position: 'absolute',
+    right: 0,
+  },
+  shareOverlayModern: {
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    paddingVertical: theme.spacing.xs,
+  },
+  shareOverlayRustic: {
+    borderTopWidth: 2,
+    borderBottomWidth: 1,
+    paddingVertical: theme.spacing.xs + 1,
+  },
+  shareOverlayMinimal: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    gap: 2,
+    paddingVertical: theme.spacing.xs - 1,
+  },
+  shareOverlayNeon: {
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
+    gap: 3,
+    paddingVertical: theme.spacing.xs - 1,
+  },
+  overlayPrimaryRustic: {
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  overlayPrimaryNeon: {
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  overlaySecondaryRustic: {
+    fontStyle: 'italic',
+    letterSpacing: 0.45,
+  },
+  overlaySecondaryNeon: {
+    letterSpacing: 0.35,
+    textTransform: 'uppercase',
+  },
+  ratingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  metaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 20,
+  },
+  metaLeftText: {
+    flexShrink: 1,
+    paddingRight: theme.spacing.xs,
+  },
+  metaRight: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: 6,
+    marginLeft: theme.spacing.xs,
+  },
+  metaRightModern: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  metaRightRustic: {
+    backgroundColor: sharePalette.metaRightBackground,
+    borderColor: sharePalette.metaRightBorderColor,
+    borderRadius: 0,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  metaRightMinimal: {
+    backgroundColor: sharePalette.metaRightBackground,
+    borderColor: sharePalette.metaRightBorderColor,
+    borderRadius: 0,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  metaRightNeon: {
+    backgroundColor: sharePalette.metaRightBackground,
+    borderColor: sharePalette.metaRightBorderColor,
+    borderRadius: 0,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  ratingDot: {
+    borderRadius: theme.radii.pill,
+    height: 10,
+    width: 10,
+  },
+  ratingDotRustic: {
+    height: 11,
+    width: 11,
+  },
+  ratingDotMinimal: {
+    height: 9,
+    width: 9,
+  },
+  dateTextRustic: {
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+  },
+  dateTextMinimal: {
+    letterSpacing: 0.2,
+  },
+  dateTextNeon: {
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+  },
+  ratingTextRustic: {
+    letterSpacing: 0.35,
+  },
+  ratingTextNeon: {
+    letterSpacing: 0.45,
+    textTransform: 'uppercase',
+  },
+  optionPanel: {
+    backgroundColor: sharePalette.optionPanelBackground,
+    borderTopColor: sharePalette.optionPanelBorder,
+    borderTopWidth: 1,
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  optionSectionHeader: {
+    marginBottom: theme.spacing.xxs,
+  },
+  optionSectionTitle: {
+    opacity: 0.9,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  chipButton: {
+    alignItems: 'center',
+    borderColor: sharePalette.chipBorder,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 36,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xs,
+  },
+  chipButtonActive: {
+    backgroundColor: sharePalette.chipActiveBackground,
+    borderColor: sharePalette.chipActiveBorder,
+  },
+  chipLabel: {
+    color: sharePalette.chipLabel,
+    ...theme.typography.bodySmTightSemiBold,
+  },
+  chipLabelActive: {
+    color: theme.colors.text.inverse,
+  },
+  statusText: {
+    color: sharePalette.statusText,
+    ...theme.typography.bodySmTight,
+    minHeight: 16,
+    textAlign: 'center',
+  },
+  statusLoading: {
+    justifyContent: 'center',
+    minHeight: 16,
+  },
+  statusErrorText: {
+    color: theme.colors.text.danger,
+  },
+  shareButton: {
+    marginTop: theme.spacing.xxs,
+  },
+}));
 
 export function VisitShareCustomizationScreen({ navigation, route }: VisitShareCustomizationScreenProps) {
   const theme = useTheme();
@@ -100,6 +340,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
   }, [formattedVisitDate, shareTheme]);
 
   const sharePalette = useMemo(() => getVisitSharePalette(theme, shareTheme), [shareTheme, theme]);
+  const styles = useStyles(sharePalette);
 
   const markPhotoReady = useCallback((photoId: string) => {
     setReadyPhotoIds((previous) => {
@@ -158,247 +399,6 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
       setIsSharing(false);
     }
   }, [items.length, navigation, restaurantName, shareTheme]);
-
-  const styles = StyleSheet.create({
-    screen: {
-      backgroundColor: sharePalette.screenBackground,
-      flex: 1,
-    },
-    header: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: theme.spacing.md,
-    },
-    headerTitleWrap: {
-      flex: 1,
-      gap: 2,
-      paddingRight: theme.spacing.sm,
-    },
-    headerTitle: {
-      color: theme.colors.text.inverse,
-    },
-    headerSubtitle: {
-      color: sharePalette.headerSubtitle,
-    },
-    closeButton: {
-      alignItems: 'center',
-      backgroundColor: sharePalette.closeButtonBackground,
-      borderRadius: theme.radii.pill,
-      height: 38,
-      justifyContent: 'center',
-      width: 38,
-    },
-    previewScroll: {
-      flex: 1,
-      paddingHorizontal: theme.spacing.md,
-    },
-    previewScrollContent: {
-      alignItems: 'center',
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.lg,
-      paddingTop: theme.spacing.md,
-    },
-    shareCanvas: {
-      borderRadius: 0,
-      borderWidth: 1,
-      gap: 0,
-      padding: 0,
-    },
-    shareItemCard: {
-      borderRadius: 0,
-      borderWidth: 1,
-      overflow: 'hidden',
-    },
-    shareImage: {
-      aspectRatio: 1,
-      backgroundColor: theme.colors.background.muted,
-      width: '100%',
-    },
-    shareOverlay: {
-      bottom: 0,
-      gap: 4,
-      left: 0,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-      position: 'absolute',
-      right: 0,
-    },
-    shareOverlayModern: {
-      borderTopWidth: 0,
-      borderBottomWidth: 0,
-      paddingVertical: theme.spacing.xs,
-    },
-    shareOverlayRustic: {
-      borderTopWidth: 2,
-      borderBottomWidth: 1,
-      paddingVertical: theme.spacing.xs + 1,
-    },
-    shareOverlayMinimal: {
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-      gap: 2,
-      paddingVertical: theme.spacing.xs - 1,
-    },
-    shareOverlayNeon: {
-      borderTopWidth: 2,
-      borderBottomWidth: 2,
-      gap: 3,
-      paddingVertical: theme.spacing.xs - 1,
-    },
-    overlayPrimaryRustic: {
-      letterSpacing: 0.8,
-      textTransform: 'uppercase',
-    },
-    overlayPrimaryNeon: {
-      letterSpacing: 1.0,
-      textTransform: 'uppercase',
-    },
-    overlaySecondaryRustic: {
-      fontStyle: 'italic',
-      letterSpacing: 0.45,
-    },
-    overlaySecondaryNeon: {
-      letterSpacing: 0.35,
-      textTransform: 'uppercase',
-    },
-    ratingRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 6,
-    },
-    metaRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      minHeight: 20,
-    },
-    metaLeftText: {
-      flexShrink: 1,
-      paddingRight: theme.spacing.xs,
-    },
-    metaRight: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexShrink: 0,
-      gap: 6,
-      marginLeft: theme.spacing.xs,
-    },
-    metaRightModern: {
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    metaRightRustic: {
-      backgroundColor: sharePalette.metaRightBackground,
-      borderColor: sharePalette.metaRightBorderColor,
-      borderRadius: 0,
-      borderWidth: 1,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-    },
-    metaRightMinimal: {
-      backgroundColor: sharePalette.metaRightBackground,
-      borderColor: sharePalette.metaRightBorderColor,
-      borderRadius: 0,
-      borderWidth: 1,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-    },
-    metaRightNeon: {
-      backgroundColor: sharePalette.metaRightBackground,
-      borderColor: sharePalette.metaRightBorderColor,
-      borderRadius: 0,
-      borderWidth: 1,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-    },
-    ratingDot: {
-      borderRadius: theme.radii.pill,
-      height: 10,
-      width: 10,
-    },
-    ratingDotRustic: {
-      height: 11,
-      width: 11,
-    },
-    ratingDotMinimal: {
-      height: 9,
-      width: 9,
-    },
-    dateTextRustic: {
-      letterSpacing: 0.55,
-      textTransform: 'uppercase',
-    },
-    dateTextMinimal: {
-      letterSpacing: 0.2,
-    },
-    dateTextNeon: {
-      letterSpacing: 0.55,
-      textTransform: 'uppercase',
-    },
-    ratingTextRustic: {
-      letterSpacing: 0.35,
-    },
-    ratingTextNeon: {
-      letterSpacing: 0.45,
-      textTransform: 'uppercase',
-    },
-    optionPanel: {
-      backgroundColor: sharePalette.optionPanelBackground,
-      borderTopColor: sharePalette.optionPanelBorder,
-      borderTopWidth: 1,
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-    },
-    optionSectionHeader: {
-      marginBottom: theme.spacing.xxs,
-    },
-    optionSectionTitle: {
-      opacity: 0.9,
-    },
-    chipRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    chipButton: {
-      alignItems: 'center',
-      borderColor: sharePalette.chipBorder,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flex: 1,
-      minHeight: 36,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: theme.spacing.xs,
-    },
-    chipButtonActive: {
-      backgroundColor: sharePalette.chipActiveBackground,
-      borderColor: sharePalette.chipActiveBorder,
-    },
-    chipLabel: {
-      color: sharePalette.chipLabel,
-      ...theme.typography.bodySmTightSemiBold,
-    },
-    chipLabelActive: {
-      color: theme.colors.text.inverse,
-    },
-    statusText: {
-      color: sharePalette.statusText,
-      ...theme.typography.bodySmTight,
-      minHeight: 16,
-      textAlign: 'center',
-    },
-    statusLoading: {
-      justifyContent: 'center',
-      minHeight: 16,
-    },
-    statusErrorText: {
-      color: theme.colors.text.danger,
-    },
-    shareButton: {
-      marginTop: theme.spacing.xxs,
-    },
-  });
   const overlayPrimaryVariant = isRusticTheme
     ? 'titleXs'
     : isMinimalTheme

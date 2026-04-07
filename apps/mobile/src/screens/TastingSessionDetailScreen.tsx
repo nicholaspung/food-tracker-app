@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Share, StyleSheet, View } from 'react-native';
+import { Share, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { EmptyState, ErrorState, FeatureDetailScreenScaffold, Skeleton } from '../components/shared';
@@ -18,7 +18,7 @@ import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -42,9 +42,22 @@ function getControversyScore(item: TastingSessionItem): number {
   return Math.max(...ratings) - Math.min(...ratings);
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    gap: theme.spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  rowAction: {
+    flex: 1,
+  },
+}));
+
 export function TastingSessionDetailScreen({ navigation, route }: TastingSessionDetailScreenProps) {
   const { sessionId } = route.params;
-  const theme = useTheme();
+  const styles = useStyles();
   const { user } = useAuth();
   const queueWrite = useQueuedWrite();
   const queryClient = useQueryClient();
@@ -109,19 +122,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       controversial,
     };
   }, [sessionQuery.data]);
-
-  const styles = StyleSheet.create({
-    container: {
-      gap: theme.spacing.md,
-    },
-    row: {
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    rowAction: {
-      flex: 1,
-    },
-  });
 
   const handleBackPress = () => {
     if (navigation.canGoBack()) {

@@ -1,7 +1,7 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Card, Text } from '../../ui';
 import { FEEDBACK_STATUS_LABELS, resolveFeedbackStatusTone, type FeedbackStatus } from './FeedbackStatus';
 import { StatusPill } from './StatusPill';
@@ -23,6 +23,46 @@ interface FeedbackThreadCardProps {
   style?: StyleProp<ViewStyle>;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  card: {
+    gap: theme.spacing.xxs,
+  },
+  headerRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  title: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  ownerText: {
+    color: theme.colors.text.muted,
+  },
+  description: {
+    color: theme.colors.text.secondary,
+  },
+  footerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  footerLabelMuted: {
+    color: theme.colors.text.muted,
+  },
+  footerLabelSuccess: {
+    color: theme.colors.text.success,
+  },
+  timestamp: {
+    color: theme.colors.text.muted,
+    marginLeft: 'auto',
+  },
+  unreadLabel: {
+    color: theme.colors.text.brand,
+  },
+}));
+
 export function FeedbackThreadCard({
   title,
   description,
@@ -36,47 +76,7 @@ export function FeedbackThreadCard({
   tone = 'muted',
   style,
 }: FeedbackThreadCardProps) {
-  const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    card: {
-      gap: theme.spacing.xxs,
-    },
-    headerRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-    },
-    title: {
-      color: theme.colors.text.primary,
-      flex: 1,
-    },
-    ownerText: {
-      color: theme.colors.text.muted,
-    },
-    description: {
-      color: theme.colors.text.secondary,
-    },
-    footerRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    footerLabelMuted: {
-      color: theme.colors.text.muted,
-    },
-    footerLabelSuccess: {
-      color: theme.colors.text.success,
-    },
-    timestamp: {
-      color: theme.colors.text.muted,
-      marginLeft: 'auto',
-    },
-    unreadLabel: {
-      color: theme.colors.text.brand,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <Card style={[styles.card, style]} tone={tone}>

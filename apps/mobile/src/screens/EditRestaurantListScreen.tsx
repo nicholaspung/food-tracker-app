@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -19,16 +19,30 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles } from '../theme';
 import { Card, Input, Text } from '../ui';
 
 type EditRestaurantListScreenProps = NativeStackScreenProps<RootStackParamList, 'EditRestaurantList'>;
 type ListVisibility = RestaurantListRecord['visibility'];
 const LIST_VISIBILITY_OPTIONS: readonly VisibilityOptionValue[] = ['friends', 'private'];
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.md,
+  },
+  formCard: {
+    borderColor: theme.colors.border.info,
+    gap: theme.spacing.sm,
+  },
+  descriptionInput: {
+    minHeight: 110,
+    textAlignVertical: 'top',
+  },
+}));
+
 export function EditRestaurantListScreen({ navigation, route }: EditRestaurantListScreenProps) {
   const { listId } = route.params;
-  const theme = useTheme();
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -55,20 +69,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
     setDescription(list.description ?? '');
     setVisibility(list.visibility);
   }, [listQuery.data]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.md,
-    },
-    formCard: {
-      borderColor: theme.colors.border.info,
-      gap: theme.spacing.sm,
-    },
-    descriptionInput: {
-      minHeight: 110,
-      textAlignVertical: 'top',
-    },
-  });
 
   const canSubmit = useMemo(() => name.trim().length > 0 && !isSubmitting, [isSubmitting, name]);
 

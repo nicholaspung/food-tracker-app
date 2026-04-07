@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import type { ContentReportReasonCode } from '../../features';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Input, Modal, Text } from '../../ui';
 import { OptionList, OptionListInlineBody, OptionListRow } from './OptionList';
 
@@ -33,6 +33,70 @@ export interface ReportContentModalProps {
   testID?: string;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  body: {
+    gap: theme.spacing.sm,
+  },
+  helperBlock: {
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: 2,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  helperLabel: {
+    color: theme.colors.text.muted,
+    textTransform: 'uppercase',
+  },
+  helperValue: {
+    color: theme.colors.text.primary,
+  },
+  statusMessage: {},
+  selectPlaceholder: {
+    color: theme.colors.text.muted,
+  },
+  reasonMenuBody: {
+    padding: theme.spacing.sm,
+  },
+  reasonMenuScroll: {
+    maxHeight: 176,
+  },
+  reasonMenuScrollContent: {
+    gap: theme.spacing.xs,
+  },
+  reasonOptionButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  reasonOptionButtonSelected: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+  },
+  reasonOptionText: {
+    color: theme.colors.text.primary,
+    flex: 1,
+  },
+  reasonOptionTextSelected: {
+    color: theme.colors.text.info,
+  },
+  notesInput: {
+    maxHeight: 132,
+    minHeight: 92,
+    paddingTop: theme.spacing.sm,
+    textAlignVertical: 'top',
+  },
+}));
+
 export function ReportContentModal({
   visible,
   contentType,
@@ -49,6 +113,7 @@ export function ReportContentModal({
   testID,
 }: ReportContentModalProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const [isReasonMenuOpen, setIsReasonMenuOpen] = useState(false);
   const isSubmitDisabled = !isOnline || !selectedReasonCode || isSubmitting;
   const selectedReasonOption = useMemo(
@@ -61,70 +126,6 @@ export function ReportContentModal({
       setIsReasonMenuOpen(false);
     }
   }, [visible]);
-
-  const styles = StyleSheet.create({
-    body: {
-      gap: theme.spacing.sm,
-    },
-    helperBlock: {
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: 2,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    helperLabel: {
-      color: theme.colors.text.muted,
-      textTransform: 'uppercase',
-    },
-    helperValue: {
-      color: theme.colors.text.primary,
-    },
-    statusMessage: {},
-    selectPlaceholder: {
-      color: theme.colors.text.muted,
-    },
-    reasonMenuBody: {
-      padding: theme.spacing.sm,
-    },
-    reasonMenuScroll: {
-      maxHeight: 176,
-    },
-    reasonMenuScrollContent: {
-      gap: theme.spacing.xs,
-    },
-    reasonOptionButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    reasonOptionButtonSelected: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-    },
-    reasonOptionText: {
-      color: theme.colors.text.primary,
-      flex: 1,
-    },
-    reasonOptionTextSelected: {
-      color: theme.colors.text.info,
-    },
-    notesInput: {
-      maxHeight: 132,
-      minHeight: 92,
-      paddingTop: theme.spacing.sm,
-      textAlignVertical: 'top',
-    },
-  });
 
   const title = contentType === 'visit' ? 'Report Visit' : 'Report Quick Track';
 

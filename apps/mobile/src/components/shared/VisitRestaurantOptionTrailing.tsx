@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { RestaurantRecord } from '../../features';
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 
 interface RestaurantVisibilityIcon {
   name: keyof typeof Ionicons.glyphMap;
@@ -13,6 +13,14 @@ interface VisitRestaurantOptionTrailingProps {
   restaurant: RestaurantRecord;
   selected: boolean;
 }
+
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+}));
 
 function getRestaurantVisibilityIcon(restaurant: RestaurantRecord): RestaurantVisibilityIcon | null {
   const visibility =
@@ -38,14 +46,7 @@ export function VisitRestaurantOptionTrailing({
 }: VisitRestaurantOptionTrailingProps) {
   const theme = useTheme();
   const visibilityIcon = getRestaurantVisibilityIcon(restaurant);
-
-  const styles = StyleSheet.create({
-    container: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-  });
+  const styles = useStyles();
 
   const resolveVisibilityIconColor = (tone: RestaurantVisibilityIcon['tone']): string => {
     if (tone === 'info') {

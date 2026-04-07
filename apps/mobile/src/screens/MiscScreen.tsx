@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   OptionList,
@@ -15,7 +15,7 @@ import {
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Text } from '../ui';
 
 type MiscScreenProps = NativeStackScreenProps<RootStackParamList, 'Misc'>;
@@ -79,8 +79,75 @@ const TIPS: TipItem[] = [
   },
 ] as const;
 
+const useStyles = createThemedStyles((theme) => ({
+  screenContent: {
+    backgroundColor: theme.colors.background.muted,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  body: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+  },
+  sectionCard: {
+    borderColor: theme.colors.border.subtle,
+  },
+  sectionDescription: {
+    color: theme.colors.text.muted,
+  },
+  optionList: {
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  featureRow: {
+    backgroundColor: theme.colors.background.app,
+  },
+  sectionActions: {
+    gap: theme.spacing.sm,
+  },
+  featureIconWrap: {
+    alignItems: 'center',
+    borderRadius: theme.radii.md,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  tipCard: {
+    backgroundColor: theme.colors.status.warningBg,
+    borderColor: theme.colors.border.warning,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  tipTitle: {
+    color: theme.colors.text.primary,
+  },
+  tipDescription: {
+    color: theme.colors.text.secondary,
+  },
+  tipsToggle: {
+    alignItems: 'center',
+    borderRadius: theme.radii.md,
+    paddingVertical: theme.spacing.xs,
+  },
+  tipsTogglePressed: {
+    backgroundColor: theme.colors.status.infoBg,
+  },
+  tipsToggleLabel: {
+    color: theme.colors.text.info,
+  },
+}));
+
 export function MiscScreen({ navigation }: MiscScreenProps) {
   const theme = useTheme();
+  const styles = useStyles();
   const { user } = useAuth();
   const isAdmin = Boolean(user?.isAdmin);
   const [expandedTips, setExpandedTips] = useState(false);
@@ -179,72 +246,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   ];
 
   const visibleTips = expandedTips ? TIPS : TIPS.slice(0, 3);
-
-  const styles = StyleSheet.create({
-    screenContent: {
-      backgroundColor: sectionColors.background,
-      gap: 0,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    body: {
-      gap: theme.spacing.md,
-      paddingBottom: theme.spacing.xl,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-    },
-    sectionCard: {
-      borderColor: sectionColors.cardBorder,
-    },
-    sectionDescription: {
-      color: sectionColors.subtitle,
-    },
-    optionList: {
-      borderColor: sectionColors.cardBorder,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      overflow: 'hidden',
-    },
-    featureRow: {
-      backgroundColor: sectionColors.rowBackground,
-    },
-    sectionActions: {
-      gap: theme.spacing.sm,
-    },
-    featureIconWrap: {
-      alignItems: 'center',
-      borderRadius: theme.radii.md,
-      height: 36,
-      justifyContent: 'center',
-      width: 36,
-    },
-    tipCard: {
-      backgroundColor: sectionColors.yellowSoft,
-      borderColor: sectionColors.yellowBorder,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-    },
-    tipTitle: {
-      color: sectionColors.tipTitle,
-    },
-    tipDescription: {
-      color: sectionColors.tipBody,
-    },
-    tipsToggle: {
-      alignItems: 'center',
-      borderRadius: theme.radii.md,
-      paddingVertical: theme.spacing.xs,
-    },
-    tipsTogglePressed: {
-      backgroundColor: sectionColors.tipsTogglePressed,
-    },
-    tipsToggleLabel: {
-      color: sectionColors.blue,
-    },
-  });
 
   return (
     <TabRootScreenScaffold

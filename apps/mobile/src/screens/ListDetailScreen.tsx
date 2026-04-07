@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -30,16 +30,17 @@ import {
   saveRestaurantFoodItemToList,
   type VisitPhotoRecord,
 } from '../features';
+import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
+import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
-import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -192,6 +193,370 @@ function resolveExpandedPhotoOwnerName(photo: VisitPhotoRecord): string | null {
   return null;
 }
 
+const useStyles = createThemedStyles((theme) => ({
+  container: {
+    gap: theme.spacing.md,
+  },
+  subtitleText: {
+    color: theme.colors.text.secondary,
+    ...theme.typography.bodyMd,
+  },
+  headerRightRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  headerIconButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  addBannerButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.button.primaryBg,
+    borderColor: theme.colors.button.primaryBg,
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+  },
+  addBannerButtonPressed: {
+    backgroundColor: theme.colors.button.primaryPressed,
+    borderColor: theme.colors.button.primaryPressed,
+  },
+  addBannerLabel: {
+    color: theme.colors.button.primaryText,
+    ...theme.typography.bodyLgBold,
+  },
+  listCard: {
+    gap: theme.spacing.sm,
+  },
+  restaurantHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  restaurantTitleRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  restaurantIndex: {
+    color: theme.colors.text.muted,
+    ...theme.typography.bodyLgMedium,
+  },
+  restaurantTitle: {
+    color: theme.colors.text.primary,
+    ...theme.typography.bodyLgBold,
+  },
+  locationRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xxs,
+  },
+  locationText: {
+    color: theme.colors.text.secondary,
+    ...theme.typography.bodyMd,
+  },
+  section: {
+    borderTopColor: theme.colors.border.subtle,
+    borderTopWidth: 1,
+    gap: theme.spacing.xs,
+    paddingTop: theme.spacing.sm,
+  },
+  ownerItemCard: {
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xxs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  ownerItemHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  itemPhotoWrap: {
+    position: 'relative',
+  },
+  itemPhotoThumb: {
+    backgroundColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.sm,
+    height: 52,
+    width: 52,
+  },
+  itemPhotoCountBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.inverse,
+    borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    left: 2,
+    minWidth: 18,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    top: 2,
+  },
+  itemPhotoCountText: {
+    color: theme.colors.text.inverse,
+    ...theme.typography.bodySmTightBold,
+  },
+  ownerItemName: {
+    color: theme.colors.text.primary,
+    flex: 1,
+    ...theme.typography.titleSm,
+  },
+  ownerItemMetaRow: {
+    alignItems: 'center',
+    columnGap: theme.spacing.xxs,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 4,
+  },
+  ownerItemMetaDate: {
+    color: theme.colors.text.muted,
+    ...theme.typography.bodySm,
+  },
+  ownerBookmarkRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  ownerBookmarkMeta: {
+    alignItems: 'center',
+    columnGap: theme.spacing.xxs,
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 4,
+  },
+  bookmarkedItemBlock: {
+    gap: 2,
+  },
+  bookmarkedItemRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  bookmarkedItemLeft: {
+    alignItems: 'center',
+    columnGap: theme.spacing.xxs,
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 4,
+  },
+  sourceUserRow: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: 1,
+  },
+  sourceUserText: {
+    color: theme.colors.text.info,
+    ...theme.typography.bodySmTightBold,
+  },
+  bookmarkedItemName: {
+    color: theme.colors.text.primary,
+    flexShrink: 1,
+    ...theme.typography.bodyLgTightMedium,
+  },
+  metaDot: {
+    color: theme.colors.text.muted,
+    ...theme.typography.bodySm,
+  },
+  bookmarkedDate: {
+    color: theme.colors.text.muted,
+    ...theme.typography.bodySm,
+  },
+  ownerItemActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  ownerYouRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'space-between',
+  },
+  iWentButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.sm,
+    flexDirection: 'row',
+    gap: 2,
+    minHeight: 22,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  iWentButtonPressed: {
+    backgroundColor: theme.colors.status.successBg,
+  },
+  iWentButtonLabel: {
+    color: theme.colors.text.success,
+    ...theme.typography.bodySmTightSemiBold,
+  },
+  reorderControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+  },
+  reorderButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.sm,
+    borderWidth: 1,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  reorderButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+  itemDeleteButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  itemDeleteButtonPressed: {
+    backgroundColor: theme.colors.status.dangerBg,
+  },
+  itemBookmarkButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.sm,
+    height: 26,
+    justifyContent: 'center',
+    width: 26,
+  },
+  itemBookmarkButtonPressed: {
+    backgroundColor: theme.colors.status.infoBg,
+  },
+  noteText: {
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+    ...theme.typography.bodyMd,
+  },
+  ownerReviewRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xxs,
+    marginTop: 1,
+  },
+  ownerReviewArrow: {
+    color: theme.colors.text.info,
+    ...theme.typography.bodySm,
+  },
+  ownerReviewText: {
+    color: theme.colors.text.info,
+    ...theme.typography.bodySmTightSemiBold,
+  },
+  ownerReviewDate: {
+    color: theme.colors.text.info,
+    ...theme.typography.bodySm,
+  },
+  emptyItemsText: {
+    color: theme.colors.text.muted,
+    ...theme.typography.label,
+  },
+  saveModalItemCard: {
+    borderColor: theme.colors.border.info,
+    gap: theme.spacing.xs,
+  },
+  saveModalItemRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xxs,
+  },
+  saveModalItemName: {
+    color: theme.colors.text.primary,
+    ...theme.typography.bodyLgTightBold,
+  },
+  saveModalCaption: {
+    color: theme.colors.text.secondary,
+    ...theme.typography.label,
+  },
+  saveListHeader: {
+    marginTop: theme.spacing.xs,
+  },
+  saveListRows: {
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.xs,
+  },
+  saveListRow: {
+    alignItems: 'center',
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    minHeight: 46,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  saveListRowSelected: {
+    backgroundColor: theme.colors.status.infoBg,
+    borderColor: theme.colors.border.info,
+  },
+  saveListRowDisabled: {
+    backgroundColor: theme.colors.background.muted,
+    opacity: 0.7,
+  },
+  saveListLabelWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  saveListLabelTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  saveListName: {
+    color: theme.colors.text.primary,
+    ...theme.typography.labelMdBold,
+  },
+  saveListDescription: {
+    color: theme.colors.text.muted,
+    ...theme.typography.bodySm,
+  },
+  saveListAlreadyLabel: {
+    color: theme.colors.text.success,
+    ...theme.typography.bodySmTightSemiBold,
+  },
+  saveModalFooter: {
+    marginTop: theme.spacing.sm,
+  },
+  saveModalError: {
+    color: theme.colors.text.danger,
+    ...theme.typography.bodySm,
+  },
+}));
+
 export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { listId } = route.params;
   const theme = useTheme();
@@ -235,16 +600,28 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
+  const listItemsState = usePaginatedQueryState({
+    data: listItemsQuery.data,
+    enabled: Boolean(listQuery.data),
+    isError: listItemsQuery.isError,
+    isFetching: listItemsQuery.isFetching,
+    isLoading: listItemsQuery.isLoading,
+    isSuccess: listItemsQuery.isSuccess,
+  });
+  const myListsState = usePaginatedQueryState({
+    data: myListsQuery.data,
+    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
+    isError: myListsQuery.isError,
+    isFetching: myListsQuery.isFetching,
+    isLoading: myListsQuery.isLoading,
+    isSuccess: myListsQuery.isSuccess,
+  });
 
   const list = listQuery.data;
   const isOwner = Boolean(list && user?.id && list.userId === user.id);
-  const listItems = useMemo(
-    () => listItemsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [listItemsQuery.data],
-  );
-  const hasBlockingListItemsError =
-    listItemsQuery.isError && (!listItemsQuery.data || listItemsQuery.data.pages.length === 0);
-  const hasListItemsRefreshError = !hasBlockingListItemsError && listItemsQuery.isError;
+  const listItems = listItemsState.items;
+  const hasBlockingListItemsError = listItemsState.hasBlockingError;
+  const hasListItemsRefreshError = listItemsState.hasRefreshError;
   const visibleFoodItemIds = useMemo(() => {
     const ids = new Set<string>();
 
@@ -279,7 +656,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     getRecordKey: (photo) => photo.id,
   });
 
-  const myLists = useMemo(() => myListsQuery.data?.pages.flatMap((page) => page.items) ?? [], [myListsQuery.data]);
+  const myLists = myListsState.items;
   const savedListIdsByBookmarkLookupId = useMemo(() => {
     const mapping = new Map<string, Set<string>>();
     for (const link of myBookmarkedLinksQuery.data ?? []) {
@@ -519,369 +896,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     setPhotoViewerVisible(false);
   }, []);
 
-  const styles = StyleSheet.create({
-    container: {
-      gap: theme.spacing.md,
-    },
-    subtitleText: {
-      color: theme.colors.text.secondary,
-      ...theme.typography.bodyMd,
-    },
-    headerRightRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    headerIconButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
-    },
-    addBannerButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.button.primaryBg,
-      borderColor: theme.colors.button.primaryBg,
-      borderRadius: theme.radii.lg,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'center',
-      minHeight: 44,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.xs,
-    },
-    addBannerButtonPressed: {
-      backgroundColor: theme.colors.button.primaryPressed,
-      borderColor: theme.colors.button.primaryPressed,
-    },
-    addBannerLabel: {
-      color: theme.colors.button.primaryText,
-      ...theme.typography.bodyLgBold,
-    },
-    listCard: {
-      gap: theme.spacing.sm,
-    },
-    restaurantHeaderRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      justifyContent: 'space-between',
-    },
-    restaurantTitleRow: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      flex: 1,
-    },
-    restaurantIndex: {
-      color: theme.colors.text.muted,
-      ...theme.typography.bodyLgMedium,
-    },
-    restaurantTitle: {
-      color: theme.colors.text.primary,
-      ...theme.typography.bodyLgBold,
-    },
-    locationRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xxs,
-    },
-    locationText: {
-      color: theme.colors.text.secondary,
-      ...theme.typography.bodyMd,
-    },
-    section: {
-      borderTopColor: theme.colors.border.subtle,
-      borderTopWidth: 1,
-      gap: theme.spacing.xs,
-      paddingTop: theme.spacing.sm,
-    },
-    ownerItemCard: {
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      gap: theme.spacing.xxs,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    ownerItemHeaderRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-    },
-    itemPhotoWrap: {
-      position: 'relative',
-    },
-    itemPhotoThumb: {
-      backgroundColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.sm,
-      height: 52,
-      width: 52,
-    },
-    itemPhotoCountBadge: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.inverse,
-      borderRadius: theme.radii.pill,
-      justifyContent: 'center',
-      minWidth: 18,
-      paddingHorizontal: 4,
-      position: 'absolute',
-      left: 2,
-      top: 2,
-    },
-    itemPhotoCountText: {
-      color: theme.colors.text.inverse,
-      ...theme.typography.bodySmTightBold,
-    },
-    ownerItemName: {
-      color: theme.colors.text.primary,
-      flex: 1,
-      ...theme.typography.titleSm,
-    },
-    ownerItemMetaRow: {
-      alignItems: 'center',
-      columnGap: theme.spacing.xxs,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      rowGap: 4,
-    },
-    ownerItemMetaDate: {
-      color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
-    },
-    ownerBookmarkRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-    },
-    ownerBookmarkMeta: {
-      alignItems: 'center',
-      columnGap: theme.spacing.xxs,
-      flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      rowGap: 4,
-    },
-    bookmarkedItemBlock: {
-      gap: 2,
-    },
-    bookmarkedItemRow: {
-      alignItems: 'flex-start',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: theme.spacing.xs,
-    },
-    bookmarkedItemLeft: {
-      alignItems: 'center',
-      columnGap: theme.spacing.xxs,
-      flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      rowGap: 4,
-    },
-    sourceUserRow: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: 4,
-      paddingHorizontal: theme.spacing.xs,
-      paddingVertical: 1,
-    },
-    sourceUserText: {
-      color: theme.colors.text.info,
-      ...theme.typography.bodySmTightBold,
-    },
-    bookmarkedItemName: {
-      color: theme.colors.text.primary,
-      ...theme.typography.bodyLgTightMedium,
-      flexShrink: 1,
-    },
-    metaDot: {
-      color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
-    },
-    bookmarkedDate: {
-      color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
-    },
-    ownerItemActions: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 4,
-    },
-    ownerYouRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      justifyContent: 'space-between',
-    },
-    iWentButton: {
-      alignItems: 'center',
-      borderRadius: theme.radii.sm,
-      flexDirection: 'row',
-      gap: 2,
-      minHeight: 22,
-      paddingHorizontal: theme.spacing.xs,
-    },
-    iWentButtonPressed: {
-      backgroundColor: theme.colors.status.successBg,
-    },
-    iWentButtonLabel: {
-      color: theme.colors.text.success,
-      ...theme.typography.bodySmTightSemiBold,
-    },
-    reorderControls: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 2,
-    },
-    reorderButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.surface,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.sm,
-      borderWidth: 1,
-      height: 24,
-      justifyContent: 'center',
-      width: 24,
-    },
-    reorderButtonPressed: {
-      backgroundColor: theme.colors.background.muted,
-    },
-    itemDeleteButton: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      height: 24,
-      justifyContent: 'center',
-      width: 24,
-    },
-    itemDeleteButtonPressed: {
-      backgroundColor: theme.colors.status.dangerBg,
-    },
-    itemBookmarkButton: {
-      alignItems: 'center',
-      borderRadius: theme.radii.sm,
-      height: 26,
-      justifyContent: 'center',
-      width: 26,
-    },
-    itemBookmarkButtonPressed: {
-      backgroundColor: theme.colors.status.infoBg,
-    },
-    noteText: {
-      color: theme.colors.text.secondary,
-      fontStyle: 'italic',
-      ...theme.typography.bodyMd,
-    },
-    ownerReviewRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xxs,
-      marginTop: 1,
-    },
-    ownerReviewArrow: {
-      color: theme.colors.text.info,
-      ...theme.typography.bodySm,
-    },
-    ownerReviewText: {
-      color: theme.colors.text.info,
-      ...theme.typography.bodySmTightSemiBold,
-    },
-    ownerReviewDate: {
-      color: theme.colors.text.info,
-      ...theme.typography.bodySm,
-    },
-    emptyItemsText: {
-      color: theme.colors.text.muted,
-      ...theme.typography.label,
-    },
-    saveModalItemCard: {
-      borderColor: theme.colors.border.info,
-      gap: theme.spacing.xs,
-    },
-    saveModalItemRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: theme.spacing.xxs,
-    },
-    saveModalItemName: {
-      color: theme.colors.text.primary,
-      ...theme.typography.bodyLgTightBold,
-    },
-    saveModalCaption: {
-      color: theme.colors.text.secondary,
-      ...theme.typography.label,
-    },
-    saveListHeader: {
-      marginTop: theme.spacing.xs,
-    },
-    saveListRows: {
-      gap: theme.spacing.xs,
-      marginTop: theme.spacing.xs,
-    },
-    saveListRow: {
-      alignItems: 'center',
-      borderColor: theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-      minHeight: 46,
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    saveListRowSelected: {
-      backgroundColor: theme.colors.status.infoBg,
-      borderColor: theme.colors.border.info,
-    },
-    saveListRowDisabled: {
-      backgroundColor: theme.colors.background.muted,
-      opacity: 0.7,
-    },
-    saveListLabelWrap: {
-      flex: 1,
-      gap: 2,
-    },
-    saveListLabelTop: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-    },
-    saveListName: {
-      color: theme.colors.text.primary,
-      ...theme.typography.labelMdBold,
-    },
-    saveListDescription: {
-      color: theme.colors.text.muted,
-      ...theme.typography.bodySm,
-    },
-    saveListAlreadyLabel: {
-      color: theme.colors.text.success,
-      ...theme.typography.bodySmTightSemiBold,
-    },
-    saveModalFooter: {
-      marginTop: theme.spacing.sm,
-    },
-    saveModalError: {
-      color: theme.colors.text.danger,
-      ...theme.typography.bodySm,
-    },
-  });
+  const styles = useStyles();
 
   const subtitle = useMemo(() => {
     const restaurantCount = groupedRestaurants.length;

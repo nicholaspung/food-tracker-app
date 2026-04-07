@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
 
 export interface ScreenHeaderProps {
@@ -19,6 +19,43 @@ export interface ScreenHeaderProps {
   testID?: string;
 }
 
+const useStyles = createThemedStyles((theme, isCompact: boolean) => ({
+  container: {
+    backgroundColor: theme.colors.background.surface,
+    borderBottomColor: theme.colors.border.subtle,
+    borderBottomWidth: 1,
+    gap: isCompact ? theme.spacing.xxs : theme.spacing.xs,
+    paddingBottom: isCompact ? theme.spacing.xs : theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: isCompact ? theme.spacing.sm : theme.spacing.md,
+  },
+  topRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  backButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.muted,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    height: isCompact ? 32 : 36,
+    justifyContent: 'center',
+    width: isCompact ? 32 : 36,
+  },
+  title: {
+    color: theme.colors.text.primary,
+    flexShrink: 1,
+  },
+  subtitle: {
+    color: theme.colors.text.muted,
+  },
+  rightAccessory: {
+    marginLeft: 'auto',
+  },
+}));
+
 export function ScreenHeader({
   title,
   subtitle,
@@ -33,43 +70,7 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   const theme = useTheme();
   const isCompact = variant === 'compact';
-
-  const styles = StyleSheet.create({
-    container: {
-      backgroundColor: theme.colors.background.surface,
-      borderBottomColor: theme.colors.border.subtle,
-      borderBottomWidth: 1,
-      gap: isCompact ? theme.spacing.xxs : theme.spacing.xs,
-      paddingBottom: isCompact ? theme.spacing.xs : theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: isCompact ? theme.spacing.sm : theme.spacing.md,
-    },
-    topRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: theme.spacing.sm,
-    },
-    backButton: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.background.muted,
-      borderColor: theme.colors.border.subtle,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      height: isCompact ? 32 : 36,
-      justifyContent: 'center',
-      width: isCompact ? 32 : 36,
-    },
-    title: {
-      color: theme.colors.text.primary,
-      flexShrink: 1,
-    },
-    subtitle: {
-      color: theme.colors.text.muted,
-    },
-    rightAccessory: {
-      marginLeft: 'auto',
-    },
-  });
+  const styles = useStyles(isCompact);
 
   return (
     <View style={[styles.container, style]} testID={testID}>
