@@ -129,6 +129,7 @@ export function usePhotoProcessingDraftState() {
             ...nextPhoto,
             captureDate,
             captureCoordinates,
+            metadataDate: captureDate,
           });
           existingUris.add(nextPhoto.uri);
         },
@@ -169,6 +170,21 @@ export function usePhotoProcessingDraftState() {
     });
   }, []);
 
+  const replacePhotos = useCallback((nextPhotos: DraftPhotoAsset[]) => {
+    setPhotos(nextPhotos);
+    setCurrentPhotoIndex(0);
+    setRestaurantForms({});
+    setQuickTrackForms({});
+    setLocationMetadataHintDismissedByPhotoId({});
+  }, []);
+
+  const resetProcessingForms = useCallback(() => {
+    setCurrentPhotoIndex(0);
+    setRestaurantForms({});
+    setQuickTrackForms({});
+    setLocationMetadataHintDismissedByPhotoId({});
+  }, []);
+
   const resetDraftState = useCallback(() => {
     setPhotos([]);
     setCurrentPhotoIndex(0);
@@ -188,7 +204,9 @@ export function usePhotoProcessingDraftState() {
     photos,
     quickTrackForms,
     removePhoto,
+    replacePhotos,
     resetDraftState,
+    resetProcessingForms,
     restaurantForms,
     setCurrentPhotoIndex,
     setQuickTrackForms,

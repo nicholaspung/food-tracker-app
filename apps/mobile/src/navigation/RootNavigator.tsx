@@ -115,6 +115,7 @@ export type RootStackParamList = {
         preselectedMenuItemId?: string;
         preselectedMenuItemName?: string;
         sourceListItemId?: string;
+        sourceNoteId?: string;
         editVisitId?: string;
         returnToStep?: 0 | 1 | 2;
       }
@@ -136,7 +137,12 @@ export type RootStackParamList = {
     initialVisibility?: 'private' | 'friends' | 'public';
   };
   EditVisit: { visitId: string };
-  QuickTrack: { sourceNoteId?: string } | undefined;
+  QuickTrack:
+    | {
+        sourceNoteId?: string;
+        returnToPrevious?: boolean;
+      }
+    | undefined;
   EditQuickTrack: { quickTrackId: string };
   ProcessPhotos:
     | {
@@ -144,6 +150,7 @@ export type RootStackParamList = {
         restaurantId?: string;
         restaurantName?: string;
         autoStartSourcePicker?: boolean;
+        sourceNoteId?: string;
       }
     | undefined;
   Lists: undefined;

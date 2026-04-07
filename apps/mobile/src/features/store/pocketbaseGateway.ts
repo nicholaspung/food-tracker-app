@@ -32,17 +32,34 @@ interface CollectionUpdateOptions {
   fields?: string;
 }
 
+function sanitizeCollectionOptions<T extends Record<string, string | number | undefined>>(
+  options?: T,
+): Partial<T> | undefined {
+  if (!options) {
+    return undefined;
+  }
+
+  const sanitizedEntries = Object.entries(options).filter(([, value]) => value !== undefined);
+
+  if (sanitizedEntries.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(sanitizedEntries) as Partial<T>;
+}
+
 export async function listCollectionRecords<T>(
   collectionName: string,
   options?: CollectionListOptions,
 ): Promise<T[]> {
   const { pageSize = 100, ...listOptions } = options ?? {};
   const normalizedPageSize = Number.isFinite(pageSize) ? Math.max(1, Math.floor(pageSize)) : 100;
+  const sanitizedListOptions = sanitizeCollectionOptions(listOptions);
   const records: T[] = [];
   let page = 1;
 
   while (true) {
-    const response = await pb.collection(collectionName).getList<T>(page, normalizedPageSize, listOptions);
+    const response = await pb.collection(collectionName).getList<T>(page, normalizedPageSize, sanitizedListOptions);
     records.push(...response.items);
 
     if (response.items.length === 0 || page >= response.totalPages) {
@@ -71,7 +88,12 @@ export async function listCollectionPage<T>(
   const { page = 1, pageSize = 20, ...listOptions } = options ?? {};
   const normalizedPage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
   const normalizedPageSize = Number.isFinite(pageSize) ? Math.max(1, Math.floor(pageSize)) : 20;
-  const response = await pb.collection(collectionName).getList<T>(normalizedPage, normalizedPageSize, listOptions);
+  const sanitizedListOptions = sanitizeCollectionOptions(listOptions);
+  const response = await pb.collection(collectionName).getList<T>(
+    normalizedPage,
+    normalizedPageSize,
+    sanitizedListOptions,
+  );
 
   return {
     items: response.items,
@@ -157,7 +179,7 @@ export async function deleteCollectionRecord(collectionName: string, recordId: s
 }
 
 export async function getCollectionCount(collectionName: string, filter?: string): Promise<number> {
-  const response = await pb.collection(collectionName).getList(1, 1, filter ? { filter } : undefined);
+  const response = await pb.collection(collectionName).getList(1, 1, sanitizeCollectionOptions({ filter }));
   return response.totalItems;
 }
 

@@ -4,7 +4,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 import { useTheme } from '../theme';
 
-type CardTone = 'default' | 'muted' | 'info' | 'warning' | 'danger' | 'success';
+export type CardTone = 'default' | 'muted' | 'info' | 'warning' | 'danger' | 'success';
 
 export interface CardProps {
   tone?: CardTone;

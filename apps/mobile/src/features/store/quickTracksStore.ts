@@ -6,6 +6,7 @@ import type {
   PaginatedResult,
   UpdateQuickTrackInput,
 } from './featureStore';
+import { markNoteUsed } from './notesStore';
 import {
   buildSearchFilter,
   combineFilterClauses,
@@ -141,9 +142,9 @@ export async function createQuickTrack(input: CreateQuickTrackInput): Promise<Qu
 
       if (input.sourceNoteId) {
         try {
-          await pb.collection('notes').update(input.sourceNoteId, {
-            status: 'used',
-            usedInFoodItem: record.id,
+          await markNoteUsed({
+            noteId: input.sourceNoteId,
+            usedInFoodItemId: record.id,
           });
         } catch {
           // Best effort only: quick-track create should still succeed if note linking fails.

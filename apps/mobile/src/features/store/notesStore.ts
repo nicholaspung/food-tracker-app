@@ -3,6 +3,7 @@ import type { NoteRecord } from '../models';
 import type {
   CreateNoteInput,
   ListNotesPageInput,
+  MarkNoteUsedInput,
   NoteCountSummary,
   NotePhotoRecord,
   NotePhotoUploadInput,
@@ -24,6 +25,7 @@ import { listCollectionPage, listCollectionRecords, sendApiRequest } from './poc
 export type {
   CreateNoteInput,
   ListNotesPageInput,
+  MarkNoteUsedInput,
   NoteCountSummary,
   NotePhotoRecord,
   UpdateNoteInput,
@@ -37,6 +39,9 @@ interface NoteCollectionRecord {
   id: string;
   user: string;
   content: string;
+  location_text?: string;
+  latitude?: number;
+  longitude?: number;
   restaurant?: string;
   status?: 'draft' | 'used';
   usedInVisit?: string;
@@ -91,6 +96,7 @@ function mapNoteCollectionRecord(record: NoteCollectionRecord): NoteRecord {
     id: record.id,
     title: buildNoteTitle(normalizedContent),
     content: normalizedContent,
+    locationText: record.location_text?.trim() || undefined,
     status: normalizeNoteStatus(record.status),
     restaurantId: record.restaurant,
     restaurantName: record.expand?.restaurant?.name?.trim() || undefined,
@@ -156,6 +162,7 @@ export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
     async () => {
       const currentUserId = getAuthenticatedUserId();
       const content = buildNoteContent(input.title, input.content);
+      const trimmedLocationText = input.locationText?.trim() || '';
       if (!content) {
         throw new Error('Note content is required.');
       }
@@ -163,6 +170,9 @@ export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
       const payload: Record<string, unknown> = {
         user: currentUserId,
         content,
+        location_text: trimmedLocationText,
+        latitude: null,
+        longitude: null,
         status: 'draft',
       };
 
@@ -178,6 +188,7 @@ export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
       return mapNoteCollectionRecord(record);
     },
     {
+      hasLocationText: Boolean(input.locationText?.trim()),
       photoCount: input.photos?.length ?? 0,
       hasRating: input.rating !== undefined,
     },
@@ -200,7 +211,10 @@ export async function updateNote(noteId: string, updates: UpdateNoteInput): Prom
         payload.content = content;
       }
 
-      payload.location_text = '';
+      if (updates.locationText !== undefined) {
+        payload.location_text = updates.locationText.trim() || '';
+      }
+
       payload.latitude = null;
       payload.longitude = null;
 
@@ -231,6 +245,7 @@ export async function updateNote(noteId: string, updates: UpdateNoteInput): Prom
     },
     {
       hasContentUpdate: updates.title !== undefined || updates.content !== undefined,
+      hasLocationUpdate: updates.locationText !== undefined,
       clearsLegacyLocationData: true,
       newPhotoCount: updates.newPhotos?.length ?? 0,
       deletePhotoCount: updates.deletePhotoIds?.length ?? 0,
@@ -249,6 +264,43 @@ export async function deleteNote(noteId: string): Promise<void> {
       throw error;
     }
   });
+}
+
+export async function markNoteUsed(input: MarkNoteUsedInput): Promise<void> {
+  const trimmedNoteId = input.noteId.trim();
+  if (!trimmedNoteId) {
+    throw new Error('Note id is required.');
+  }
+
+  await trackFeatureMutation(
+    'note.mark_used',
+    async () => {
+      try {
+        const payload: Record<string, unknown> = {
+          status: 'used',
+        };
+
+        const trimmedVisitId = input.usedInVisitId?.trim();
+        const trimmedFoodItemId = input.usedInFoodItemId?.trim();
+        if (trimmedVisitId) {
+          payload.usedInVisit = trimmedVisitId;
+        }
+        if (trimmedFoodItemId) {
+          payload.usedInFoodItem = trimmedFoodItemId;
+        }
+
+        await pb.collection('notes').update(trimmedNoteId, payload);
+      } catch (error) {
+        if (!isNotFoundError(error)) {
+          throw error;
+        }
+      }
+    },
+    {
+      hasFoodItemLink: Boolean(input.usedInFoodItemId?.trim()),
+      hasVisitLink: Boolean(input.usedInVisitId?.trim()),
+    },
+  );
 }
 
 export async function listNotePhotosForNote(noteId: string): Promise<NotePhotoRecord[]> {

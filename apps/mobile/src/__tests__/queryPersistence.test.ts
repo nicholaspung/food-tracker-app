@@ -234,6 +234,7 @@ describe('React Query persistence', () => {
                         id: 'note_1',
                         title: 'Saved place',
                         content: 'Try the noodles',
+                        locationText: 'Mission District',
                         status: 'draft',
                         latitude: 37.7749,
                         longitude: -122.4194,
@@ -317,6 +318,7 @@ describe('React Query persistence', () => {
         pages?: {
           items?: {
             latitude?: number;
+            locationText?: string;
             longitude?: number;
           }[];
         }[];
@@ -335,6 +337,7 @@ describe('React Query persistence', () => {
 
     expect(note).toBeDefined();
     expect(feedback).toBeDefined();
+    expect(note?.locationText).toBe('Mission District');
     expect(note?.latitude).toBeUndefined();
     expect(note?.longitude).toBeUndefined();
     expect(feedback?.userEmail).toBeUndefined();

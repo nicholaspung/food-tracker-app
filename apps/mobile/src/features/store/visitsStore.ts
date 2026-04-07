@@ -27,6 +27,7 @@ import type {
   UpdateVisitInput,
   VisitPhotoRecord,
 } from './featureStore';
+import { markNoteUsed } from './notesStore';
 import type {
   FoodItemCollectionRecord,
   RestaurantCollectionRecord,
@@ -269,11 +270,23 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
         );
       }
 
+      if (input.sourceNoteId) {
+        try {
+          await markNoteUsed({
+            noteId: input.sourceNoteId,
+            usedInVisitId: createdVisit.id,
+          });
+        } catch {
+          // Best effort only: visit create should still succeed if note linking fails.
+        }
+      }
+
       return createdVisit;
     },
     {
       itemCount: input.items.length,
       hasVisitedAt: Boolean(input.visitedAt),
+      hasSourceNote: Boolean(input.sourceNoteId),
       visibility: input.visibility ?? getDefaultVisitVisibility(),
       source: input.source ?? 'unknown',
     },

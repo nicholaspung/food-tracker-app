@@ -14,6 +14,7 @@ import {
   EmptyState,
   ErrorState,
   FeatureFormScreenScaffold,
+  LinkedNoteCard,
   LoadingState,
   PageErrorToast,
   StepProgressBar,
@@ -25,6 +26,7 @@ import {
 import {
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
+  getNoteById,
   getRestaurantVisitStatsSummary,
   getVisitById,
   hasPendingMenuReviewRequest,
@@ -419,6 +421,7 @@ export function CreateVisitScreen({
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
   const editVisitId = route.params?.editVisitId;
+  const sourceNoteId = route.params?.sourceNoteId;
   const isEditMode = Boolean(editVisitId);
 
   const [step, setStep] = useState<VisitWizardStep>(0);
@@ -544,6 +547,11 @@ export function CreateVisitScreen({
       return getVisitById(editVisitId);
     },
     enabled: Boolean(editVisitId),
+  });
+  const linkedNoteQuery = useQuery({
+    queryKey: ['feature', 'note', sourceNoteId],
+    queryFn: () => (sourceNoteId ? getNoteById(sourceNoteId) : Promise.resolve(null)),
+    enabled: Boolean(sourceNoteId),
   });
   const pendingMenuReviewQuery = useQuery({
     queryKey: ["feature", "menuReview", "pending", selectedRestaurantId ?? ""],
@@ -1176,6 +1184,7 @@ export function CreateVisitScreen({
     setErrorMessage,
     setSourceListItemId,
     shouldEnforceUsageLimitsClientSide,
+    sourceNoteId,
     sourceListItemId,
     visitDate,
     visitVisibility,
@@ -1400,6 +1409,13 @@ export function CreateVisitScreen({
         }
         title="Visit draft issue"
       />
+      {sourceNoteId ? (
+        <LinkedNoteCard
+          isLoading={linkedNoteQuery.isLoading}
+          note={linkedNoteQuery.data}
+          testID="linked-note-card"
+        />
+      ) : null}
 
       {step === 0 ? (
         <>

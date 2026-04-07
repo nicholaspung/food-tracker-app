@@ -9,6 +9,7 @@ import type {
 } from '../../features';
 import type { PhotoPickerPermissionSource } from '../../hooks/usePhotoPickerPermissions';
 import {
+  formatDisplayDate,
   formatDateToLocalDateString,
   formatLocalDateLabel,
   getTodayLocalDateString,
@@ -37,6 +38,7 @@ export interface DraftPhotoAsset {
   mimeType: string;
   captureDate: Date | null;
   captureCoordinates: PhotoCoordinates | null;
+  metadataDate: Date | string | null;
 }
 
 export interface RestaurantPhotoForm {
@@ -421,6 +423,17 @@ export function buildPhotoUploadInput(
     name: asset.name,
     mimeType: asset.mimeType,
   };
+}
+
+export function formatDraftPhotoMetadataLabel(photo: DraftPhotoAsset): string {
+  return formatDisplayDate(photo.metadataDate, {
+    fallback: 'Date unavailable',
+    options: {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    },
+  });
 }
 
 export function resolveWizardStepIndex(step: GeneralPhotoStep): number {

@@ -91,12 +91,10 @@ function sanitizeNoteRecord(note: NoteRecord): NoteRecord {
   const sanitized = {
     ...(note as NoteRecord & {
       latitude?: number;
-      locationText?: string;
       longitude?: number;
     }),
   };
 
-  delete sanitized.locationText;
   delete sanitized.latitude;
   delete sanitized.longitude;
 

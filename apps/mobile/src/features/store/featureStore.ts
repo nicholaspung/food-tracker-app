@@ -22,6 +22,7 @@ export interface CreateVisitInput {
   visitedAt?: string;
   visibility?: 'friends' | 'private';
   source?: VisitRecord['source'];
+  sourceNoteId?: string;
 }
 
 export interface UpdateVisitInput {
@@ -276,6 +277,7 @@ export interface VisitPhotoUploadInput {
 export interface CreateNoteInput {
   title: string;
   content: string;
+  locationText?: string;
   rating?: number;
   photos?: NotePhotoUploadInput[];
 }
@@ -283,9 +285,16 @@ export interface CreateNoteInput {
 export interface UpdateNoteInput {
   title?: string;
   content?: string;
+  locationText?: string;
   rating?: number;
   newPhotos?: NotePhotoUploadInput[];
   deletePhotoIds?: string[];
+}
+
+export interface MarkNoteUsedInput {
+  noteId: string;
+  usedInVisitId?: string;
+  usedInFoodItemId?: string;
 }
 
 export interface InviteFriendInput {
@@ -443,6 +452,7 @@ export {
   listNotePhotosForNote,
   listNotePhotosForNoteIds,
   listNotesPage,
+  markNoteUsed,
   updateNote,
 } from './notesStore';
 

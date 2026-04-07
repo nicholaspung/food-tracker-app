@@ -36,6 +36,7 @@ interface DraftNotePhoto {
 }
 
 const CONTENT_MAX_LENGTH = 2000;
+const LOCATION_MAX_LENGTH = 200;
 const MAX_NOTE_PHOTOS = 20;
 
 const useStyles = createThemedStyles((theme) => ({
@@ -200,6 +201,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   });
 
   const [content, setContent] = useState('');
+  const [locationText, setLocationText] = useState('');
   const [photosToDelete, setPhotosToDelete] = useState<string[]>([]);
   const [newPhotos, setNewPhotos] = useState<DraftNotePhoto[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -220,6 +222,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     }
 
     setContent(noteQuery.data.content);
+    setLocationText(noteQuery.data.locationText ?? '');
     setPhotosToDelete([]);
     setNewPhotos([]);
     setErrorMessage(null);
@@ -401,10 +404,12 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     const noteCreateInput = {
       title: '',
       content,
+      locationText,
       photos: uploadPhotos,
     };
     const noteUpdateInput = {
       content,
+      locationText,
       newPhotos: uploadPhotos,
       deletePhotoIds: photosToDelete,
     };
@@ -454,6 +459,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   }, [
     content,
     isEditing,
+    locationText,
     navigation,
     newPhotos,
     noteId,
@@ -600,6 +606,17 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           <Text style={styles.charCount} tone="muted" variant="bodySm">
             {content.length}/{CONTENT_MAX_LENGTH}
           </Text>
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <Input
+            autoCapitalize="words"
+            label="Location (Optional)"
+            maxLength={LOCATION_MAX_LENGTH}
+            onChangeText={setLocationText}
+            placeholder="City, neighborhood, or place name"
+            value={locationText}
+          />
         </Card>
 
         <Card style={styles.sectionCard}>

@@ -5,6 +5,7 @@ import {
   createQuickTrack,
   createVisit,
   formatLimitExceededMessage,
+  markNoteUsed,
   parseLimitExceededError,
   type MonthlyUsageSnapshot,
 } from '../../features';
@@ -56,6 +57,7 @@ interface UsePhotoProcessingSubmissionParams {
   restaurantForms: Record<string, RestaurantPhotoForm>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<GeneralPhotoStep>>;
+  sourceNoteId?: string;
   shouldEnforceUsageLimitsClientSide: boolean;
   visitVisibility: 'friends' | 'private';
 }
@@ -79,6 +81,7 @@ export function usePhotoProcessingSubmission({
   restaurantForms,
   setErrorMessage,
   setStep,
+  sourceNoteId,
   shouldEnforceUsageLimitsClientSide,
   visitVisibility,
 }: UsePhotoProcessingSubmissionParams) {
@@ -194,6 +197,9 @@ export function usePhotoProcessingSubmission({
         visitedAt: localDateStringToUTC(visitGroup.date),
         visibility: visitVisibility,
         source: 'visit' as const,
+        ...(sourceNoteId && groupedVisits.size === 1
+          ? { sourceNoteId }
+          : {}),
         items: visitGroup.items.map((entry) => ({
           name: entry.form.menuItemName.trim(),
           rating: entry.form.rating,
@@ -212,6 +218,18 @@ export function usePhotoProcessingSubmission({
       await createVisit(visitInput);
     }
 
+    if (sourceNoteId && groupedVisits.size > 1) {
+      if (!isOnline) {
+        await queueFeatureOutbox('note.mark-used', {
+          noteId: sourceNoteId,
+        });
+      } else {
+        await markNoteUsed({
+          noteId: sourceNoteId,
+        });
+      }
+    }
+
     trackObservabilityEvent('Photo Processing Completed', {
       processType: 'restaurant',
       source: 'PhotoProcessingScreen',
@@ -224,6 +242,7 @@ export function usePhotoProcessingSubmission({
     queueFeatureOutbox,
     queueWrite,
     restaurantForms,
+    sourceNoteId,
     validateRestaurantForm,
     visitVisibility,
   ]);
@@ -242,6 +261,7 @@ export function usePhotoProcessingSubmission({
 
       const quickTrackInput = buildCreateQuickTrackInput(form, {
         photo: buildPhotoUploadInput(photo),
+        sourceNoteId: sourceNoteId && photos.length === 1 ? sourceNoteId : undefined,
       });
 
       if (!isOnline) {
@@ -253,12 +273,24 @@ export function usePhotoProcessingSubmission({
       await createQuickTrack(quickTrackInput);
     }
 
+    if (sourceNoteId && photos.length > 1) {
+      if (!isOnline) {
+        await queueFeatureOutbox('note.mark-used', {
+          noteId: sourceNoteId,
+        });
+      } else {
+        await markNoteUsed({
+          noteId: sourceNoteId,
+        });
+      }
+    }
+
     trackObservabilityEvent('Photo Processing Completed', {
       processType: 'quickTrack',
       source: 'PhotoProcessingScreen',
       itemCount: photos.length,
     });
-  }, [isOnline, photos, queueFeatureOutbox, queueWrite, quickTrackForms]);
+  }, [isOnline, photos, queueFeatureOutbox, queueWrite, quickTrackForms, sourceNoteId]);
 
   const handleSubmitAll = useCallback(async () => {
     if (!processType) {
@@ -309,6 +341,14 @@ export function usePhotoProcessingSubmission({
         queryClient.invalidateQueries({
           queryKey: ['feature', 'usage', 'monthly'],
         }),
+        ...(sourceNoteId
+          ? [
+              queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
+              queryClient.invalidateQueries({
+                queryKey: ['feature', 'note', sourceNoteId],
+              }),
+            ]
+          : []),
       ]);
 
       if (!isOnline) {
@@ -354,6 +394,7 @@ export function usePhotoProcessingSubmission({
     queryClient,
     setErrorMessage,
     shouldEnforceUsageLimitsClientSide,
+    sourceNoteId,
     submitQuickTrackItems,
     submitRestaurantVisits,
   ]);

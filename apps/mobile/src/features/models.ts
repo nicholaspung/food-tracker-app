@@ -138,6 +138,7 @@ export interface NoteRecord {
   id: string;
   title: string;
   content: string;
+  locationText?: string;
   rating?: number;
   status: 'draft' | 'used';
   restaurantId?: string;

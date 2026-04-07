@@ -442,14 +442,14 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                     <View style={styles.noteActionsInline}>
                       {note.status === 'draft' ? (
                         <Pressable
-                          accessibilityLabel="Use note to track item"
+                          accessibilityLabel="Use note"
                           accessibilityRole="button"
                           onPress={() => {
                             trackObservabilityEvent('NOTE_USE_TAPPED', {
                               source: 'NotesScreen',
                               noteStatus: note.status,
                             });
-                            navigation.navigate('QuickTrack', { sourceNoteId: note.id });
+                            navigation.navigate('ProcessPhotos', { sourceNoteId: note.id });
                           }}
                           testID={`note-use-button-${note.id}`}
                         >

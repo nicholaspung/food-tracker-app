@@ -8,12 +8,14 @@ import {
   View,
   type ScrollView,
 } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
+  ErrorState,
   FeatureFormScreenScaffold,
   IconActionCard,
+  LinkedNoteCard,
   LoadingState,
   PageErrorToast,
   PhotoSourceActionCards,
@@ -22,6 +24,7 @@ import {
   RatingSelector,
   ScreenHeader,
   SegmentedControl,
+  StatusPill,
   StepProgressBar,
   UpgradePromptCard,
   VisitMenuItemOptionRow,
@@ -32,7 +35,9 @@ import {
 } from '../components/shared';
 import {
   createCollectionRecord,
+  getNoteById,
   getAuthenticatedUserIdOrNull,
+  listNotePhotosForNote,
   updateCollectionRecord,
   type MenuItemRecord,
   useMonthlyUsage,
@@ -68,6 +73,7 @@ import {
   normalizeSelectionLabel,
   resolveProgressSteps,
   resolveWizardStepIndex,
+  formatDraftPhotoMetadataLabel,
   type GeneralPhotoStep,
   type MenuItemMode,
   type PhotoProcessingScreenProps,
@@ -75,6 +81,10 @@ import {
   type RestaurantPhotoForm,
   type ScanSource,
 } from './photoProcessing/shared';
+import {
+  cleanupHydratedNotePhotos,
+  hydrateDraftPhotosFromNote,
+} from './photoProcessing/notePhotoHydration';
 import { usePhotoProcessingDraftState } from './photoProcessing/usePhotoProcessingDraftState';
 import { usePhotoProcessingReviewData } from './photoProcessing/usePhotoProcessingReviewData';
 import { usePhotoProcessingSubmission } from './photoProcessing/usePhotoProcessingSubmission';
@@ -237,7 +247,7 @@ export function PhotoProcessingScreen(screenProps: PhotoProcessingScreenProps) {
   return <GeneralPhotoProcessingScreen {...screenProps} />;
 }
 
-function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps) {
+function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
@@ -254,11 +264,23 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const monthlyUsage = useMonthlyUsage({
     viewAsTier: usagePreviewTier,
   });
+  const sourceNoteId = route.params?.sourceNoteId;
+  const isNoteDrivenFlow = Boolean(sourceNoteId);
   const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const currentUserId = getAuthenticatedUserIdOrNull();
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
+  const linkedNoteQuery = useQuery({
+    queryKey: ['feature', 'note', sourceNoteId],
+    queryFn: () => (sourceNoteId ? getNoteById(sourceNoteId) : Promise.resolve(null)),
+    enabled: isNoteDrivenFlow,
+  });
+  const notePhotosQuery = useQuery({
+    queryKey: ['feature', 'notePhotos', sourceNoteId],
+    queryFn: () => listNotePhotosForNote(sourceNoteId ?? ''),
+    enabled: isNoteDrivenFlow,
+  });
 
   const [step, setStep] = useState<GeneralPhotoStep>('choice');
   const [processType, setProcessType] = useState<ProcessType | null>(null);
@@ -273,7 +295,9 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
     photos,
     quickTrackForms,
     removePhoto,
+    replacePhotos,
     resetDraftState,
+    resetProcessingForms,
     restaurantForms,
     setCurrentPhotoIndex,
     setQuickTrackForms,
@@ -293,6 +317,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
   const [isUpdatingMenuItem, setIsUpdatingMenuItem] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSelectingSource, setIsSelectingSource] = useState(false);
+  const [isPreparingNotePhotos, setIsPreparingNotePhotos] = useState(false);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
   const processStepScrollViewRef = useRef<ScrollView | null>(null);
@@ -359,6 +384,20 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       placesQueriesRemaining,
     },
   });
+  const hasNotePhotos = (notePhotosQuery.data?.length ?? 0) > 0;
+  const notePhotoCount = notePhotosQuery.data?.length ?? 0;
+  const isBlockingNotePhotoLoad = isNoteDrivenFlow && notePhotosQuery.isLoading && !notePhotosQuery.data;
+  const hasBlockingNotePhotoError = isNoteDrivenFlow && notePhotosQuery.isError && !notePhotosQuery.data;
+
+  useEffect(() => {
+    if (!sourceNoteId) {
+      return undefined;
+    }
+
+    return () => {
+      cleanupHydratedNotePhotos(sourceNoteId);
+    };
+  }, [sourceNoteId]);
 
   useEffect(() => {
     if (photos.length === 0) {
@@ -445,6 +484,65 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
 
     setIsQuickTrackCategoryExpanded(false);
   }, [currentPhoto?.id, processType, step]);
+
+  const resetFlowSelectionState = useCallback(() => {
+    resetRestaurantSelectionFlow();
+    setIsQuickTrackCategoryExpanded(false);
+    setMenuItemSearchQuery('');
+    setMenuItemMode('existing');
+    setNewMenuItemName('');
+    setIsEditingMenuItemInline(false);
+    setEditingMenuItemName('');
+  }, [resetRestaurantSelectionFlow]);
+
+  const beginStandardProcessFlow = useCallback(
+    (nextProcessType: ProcessType) => {
+      setProcessType(nextProcessType);
+      setStep('upload');
+      resetDraftState();
+      resetFlowSelectionState();
+      setErrorMessage(null);
+    },
+    [resetDraftState, resetFlowSelectionState],
+  );
+
+  const beginNotePhotoProcessFlow = useCallback(
+    async (nextProcessType: ProcessType) => {
+      if (!sourceNoteId || !hasNotePhotos) {
+        return;
+      }
+
+      setIsPreparingNotePhotos(true);
+      setErrorMessage(null);
+
+      try {
+        if (photos.length === 0) {
+          const hydratedPhotos = await hydrateDraftPhotosFromNote(sourceNoteId, notePhotosQuery.data ?? []);
+          replacePhotos(hydratedPhotos);
+        } else {
+          resetProcessingForms();
+        }
+
+        resetFlowSelectionState();
+        setProcessType(nextProcessType);
+        setStep('upload');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not load note photos.';
+        setErrorMessage(message);
+      } finally {
+        setIsPreparingNotePhotos(false);
+      }
+    },
+    [
+      hasNotePhotos,
+      notePhotosQuery.data,
+      photos.length,
+      replacePhotos,
+      resetFlowSelectionState,
+      resetProcessingForms,
+      sourceNoteId,
+    ],
+  );
 
   const scrollProcessStepToTop = useCallback(() => {
     processStepScrollViewRef.current?.scrollTo({
@@ -601,6 +699,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
       restaurantForms,
       setErrorMessage,
       setStep,
+      sourceNoteId,
       shouldEnforceUsageLimitsClientSide,
       visitVisibility,
     });
@@ -962,6 +1061,23 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         void Linking.openSettings();
       }
     : undefined;
+  const linkedNoteCard = isNoteDrivenFlow ? (
+    <LinkedNoteCard
+      isLoading={linkedNoteQuery.isLoading}
+      note={linkedNoteQuery.data}
+      testID="linked-note-card"
+      titleAccessory={
+        step === 'choice' && hasNotePhotos ? (
+          <StatusPill
+            label={`${notePhotoCount} photo${notePhotoCount === 1 ? '' : 's'}`}
+            tone="info"
+            variant="soft"
+          />
+        ) : undefined
+      }
+      tone={step === 'choice' ? 'default' : 'muted'}
+    />
+  ) : null;
   const progressSteps = resolveProgressSteps(processType);
   const progressHeaderContent = processType ? (
     <StepProgressBar
@@ -979,19 +1095,20 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         contentStyle={styles.choiceContent}
         edges={['top']}
         padded={false}
-        scroll={false}
+        scroll={isNoteDrivenFlow}
         testID="process-photos-choice-screen"
       >
         <ScreenHeader
           onBackPress={() => {
             navigation.goBack();
           }}
-          subtitle="What would you like to track?"
-          title="Process Photos"
+          subtitle={isNoteDrivenFlow ? 'Choose how you want to use this note.' : 'What would you like to track?'}
+          title={isNoteDrivenFlow ? 'Use Note' : 'Process Photos'}
           variant="compact"
         />
-        <View style={styles.choiceBody}>
+        <View style={styles.choiceBody} testID={isNoteDrivenFlow ? 'note-use-choice-screen' : undefined}>
           <PageErrorToast actionLabel={errorActionLabel} errorMessage={errorMessage} onAction={errorAction} />
+          {linkedNoteCard}
           <StepProgressBar
             compact
             currentStep={resolveWizardStepIndex('choice')}
@@ -999,49 +1116,84 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
             steps={resolveProgressSteps(null)}
           />
 
-          <IconActionCard
-            description="Track menu items from your saved photos"
-            iconBackground={theme.colors.text.info}
-            iconColor={theme.colors.text.inverse}
-            iconName="restaurant-outline"
-            onPress={() => {
-              setProcessType('restaurant');
-              setStep('upload');
-              resetDraftState();
-              resetRestaurantSelectionFlow();
-              setIsQuickTrackCategoryExpanded(false);
-              setMenuItemSearchQuery('');
-              setMenuItemMode('existing');
-              setNewMenuItemName('');
-              setIsEditingMenuItemInline(false);
-              setEditingMenuItemName('');
-              setErrorMessage(null);
-            }}
-            title="Restaurant Visit"
-            trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
-          />
+          {isBlockingNotePhotoLoad ? <LoadingState label="Loading note photos..." /> : null}
+          {hasBlockingNotePhotoError ? (
+            <ErrorState
+              description="Could not load note photos."
+              onRetry={() => {
+                void linkedNoteQuery.refetch();
+                void notePhotosQuery.refetch();
+              }}
+              title="Note unavailable"
+            />
+          ) : null}
 
-          <IconActionCard
-            description="Rate each photo as an individual item"
-            iconBackground={theme.colors.text.success}
-            iconColor={theme.colors.text.inverse}
-            iconName="flash-outline"
-            onPress={() => {
-              setProcessType('quickTrack');
-              setStep('upload');
-              resetDraftState();
-              resetRestaurantSelectionFlow();
-              setIsQuickTrackCategoryExpanded(false);
-              setMenuItemSearchQuery('');
-              setMenuItemMode('existing');
-              setNewMenuItemName('');
-              setIsEditingMenuItemInline(false);
-              setEditingMenuItemName('');
-              setErrorMessage(null);
-            }}
-            title="Quick Track Items"
-            trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
-          />
+          {!isBlockingNotePhotoLoad && !hasBlockingNotePhotoError ? (
+            <>
+              <IconActionCard
+                description={
+                  isNoteDrivenFlow
+                    ? 'Full experience with restaurant, menu items, and ratings'
+                    : 'Track menu items from your saved photos'
+                }
+                disabled={isPreparingNotePhotos}
+                iconBackground={theme.colors.text.info}
+                iconColor={theme.colors.text.inverse}
+                iconName="restaurant-outline"
+                onPress={() => {
+                  if (isNoteDrivenFlow) {
+                    if (hasNotePhotos) {
+                      void beginNotePhotoProcessFlow('restaurant');
+                      return;
+                    }
+
+                    setErrorMessage(null);
+                    navigation.navigate('CreateVisit', { sourceNoteId });
+                    return;
+                  }
+
+                  beginStandardProcessFlow('restaurant');
+                }}
+                testID={isNoteDrivenFlow ? 'note-use-choice-restaurant' : undefined}
+                title="Track Restaurant Visit"
+                trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
+              />
+
+              <IconActionCard
+                description={
+                  isNoteDrivenFlow
+                    ? 'Quickly rate any item without a restaurant'
+                    : 'Rate each photo as an individual item'
+                }
+                disabled={isPreparingNotePhotos}
+                iconBackground={theme.colors.text.success}
+                iconColor={theme.colors.text.inverse}
+                iconName="flash-outline"
+                onPress={() => {
+                  if (isNoteDrivenFlow) {
+                    if (hasNotePhotos) {
+                      void beginNotePhotoProcessFlow('quickTrack');
+                      return;
+                    }
+
+                    setErrorMessage(null);
+                    navigation.navigate('QuickTrack', {
+                      returnToPrevious: true,
+                      sourceNoteId,
+                    });
+                    return;
+                  }
+
+                  beginStandardProcessFlow('quickTrack');
+                }}
+                testID={isNoteDrivenFlow ? 'note-use-choice-quick-track' : undefined}
+                title={isNoteDrivenFlow ? 'Quick Track Item' : 'Quick Track Items'}
+                trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
+              />
+
+              {isPreparingNotePhotos ? <Text tone="secondary">Preparing note photos...</Text> : null}
+            </>
+          ) : null}
         </View>
       </Screen>
     );
@@ -1089,6 +1241,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           onAction={errorAction}
           title="Photo upload issue"
         />
+        {linkedNoteCard}
 
         {shouldShowOfflineUsageWarning(isOnline, isDisplayFreeUser) ? (
           <Card style={styles.sectionCard} tone="muted">
@@ -1165,7 +1318,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
                       tone="secondary"
                       variant="bodySm"
                     >
-                      {photo.name}
+                      {formatDraftPhotoMetadataLabel(photo)}
                     </Text>
                     <Pressable
                       accessibilityLabel="Remove photo"
@@ -1241,6 +1394,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
           onAction={errorAction}
           title="Photo details issue"
         />
+        {linkedNoteCard}
 
         <Card style={styles.photoPreviewCard}>
           <Image source={{ uri: currentPhoto.uri }} style={styles.largePhotoPreview} />
@@ -1599,6 +1753,7 @@ function GeneralPhotoProcessingScreen({ navigation }: PhotoProcessingScreenProps
         }
         title={processType === 'restaurant' ? 'Review Your Visits' : 'Review Quick Track Items'}
       >
+        {linkedNoteCard}
         <PhotoProcessingReviewStep
           errorMessage={errorMessage}
           estimatedFreeMonthlyPhotoRemaining={estimatedFreeMonthlyPhotoRemaining}

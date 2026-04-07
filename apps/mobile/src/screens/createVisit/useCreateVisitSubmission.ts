@@ -51,6 +51,7 @@ interface UseCreateVisitSubmissionParams {
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setSourceListItemId: Dispatch<SetStateAction<string | null>>;
   shouldEnforceUsageLimitsClientSide: boolean;
+  sourceNoteId?: string;
   sourceListItemId: string | null;
   visitDate: string;
   visitVisibility: VisitVisibility;
@@ -73,6 +74,7 @@ export function useCreateVisitSubmission({
   setErrorMessage,
   setSourceListItemId,
   shouldEnforceUsageLimitsClientSide,
+  sourceNoteId,
   sourceListItemId,
   visitDate,
   visitVisibility,
@@ -80,7 +82,7 @@ export function useCreateVisitSubmission({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const invalidateVisitQueries = useCallback(
-    async (options?: { visitId?: string; includeUsage?: boolean }) => {
+    async (options?: { visitId?: string; includeUsage?: boolean; sourceNoteId?: string }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({
@@ -97,6 +99,14 @@ export function useCreateVisitSubmission({
           ? [
               queryClient.invalidateQueries({
                 queryKey: ['feature', 'usage', 'monthly'],
+              }),
+            ]
+          : []),
+        ...(options?.sourceNoteId
+          ? [
+              queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
+              queryClient.invalidateQueries({
+                queryKey: ['feature', 'note', options.sourceNoteId],
               }),
             ]
           : []),
@@ -185,6 +195,7 @@ export function useCreateVisitSubmission({
       visitedAt: localDateStringToUTC(trimmedVisitDate),
       visibility: visitVisibility,
       source: 'visit' as const,
+      sourceNoteId,
     };
     const hasPhotoUploads = parsedItems.some((item) => item.photos.length > 0);
 
@@ -225,13 +236,13 @@ export function useCreateVisitSubmission({
       }
 
       if (!isOnline) {
-        if (hasPhotoUploads) {
+        if (hasPhotoUploads || sourceNoteId) {
           await queueFeatureOutbox('visit.create', visitInput);
         } else {
           await queueFeatureApiMutation(createVisitApiMutationInput(visitInput));
         }
         setSourceListItemId(null);
-        await invalidateVisitQueries();
+        await invalidateVisitQueries({ sourceNoteId });
         showQueuedOfflineAlert('Visit');
         navigation.navigate('Home');
         return;
@@ -268,7 +279,7 @@ export function useCreateVisitSubmission({
         visitVisibility,
       });
 
-      await invalidateVisitQueries({ includeUsage: true });
+      await invalidateVisitQueries({ includeUsage: true, sourceNoteId });
       navigation.navigate('Home');
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -317,6 +328,7 @@ export function useCreateVisitSubmission({
     setErrorMessage,
     setSourceListItemId,
     shouldEnforceUsageLimitsClientSide,
+    sourceNoteId,
     sourceListItemId,
     visitDate,
     visitVisibility,

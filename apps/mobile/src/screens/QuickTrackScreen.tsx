@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   FeatureFormScreenScaffold,
+  LinkedNoteCard,
   PageErrorToast,
   PhotoAttachmentRow,
   PhotoSourceActionCards,
@@ -59,9 +60,6 @@ const useStyles = createThemedStyles((theme) => ({
   sectionCard: {
     gap: theme.spacing.sm,
   },
-  linkedNoteCard: {
-    gap: theme.spacing.xs,
-  },
 }));
 
 function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
@@ -103,6 +101,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     queryFn: () => (sourceNoteId ? getNoteById(sourceNoteId) : Promise.resolve(null)),
     enabled: Boolean(sourceNoteId),
   });
+  const returnToPrevious = route.params?.returnToPrevious === true;
 
   const [form, setForm] = useState<QuickTrackFormValues>(() => buildDefaultQuickTrackForm());
   const [detectedItemDateValue, setDetectedItemDateValue] = useState<string | null>(null);
@@ -401,6 +400,11 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   };
 
   const handleCancel = () => {
+    if (returnToPrevious && navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
     if (sourceNoteId) {
       navigation.navigate('Notes');
       return;
@@ -466,21 +470,11 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         ) : null}
 
         {sourceNoteId ? (
-          <Card style={styles.linkedNoteCard} tone="muted">
-            <Text variant="label">Linked Note</Text>
-            {linkedNoteQuery.isLoading ? (
-              <Text tone="secondary">Loading note details...</Text>
-            ) : linkedNoteQuery.data ? (
-              <>
-                <Text tone="secondary">{linkedNoteQuery.data.title}</Text>
-                <Text numberOfLines={4} tone="secondary" variant="bodySm">
-                  {linkedNoteQuery.data.content}
-                </Text>
-              </>
-            ) : (
-              <Text tone="warning">Note details unavailable. You can still save this item.</Text>
-            )}
-          </Card>
+          <LinkedNoteCard
+            isLoading={linkedNoteQuery.isLoading}
+            note={linkedNoteQuery.data}
+            testID="linked-note-card"
+          />
         ) : null}
 
         <QuickTrackFormFields

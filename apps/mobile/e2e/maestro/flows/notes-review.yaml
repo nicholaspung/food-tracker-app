@@ -19,6 +19,24 @@ appId: com.yummyrecs.mobile
     id: notes-create-button
 - takeScreenshot: 86-manage-notes
 
+- runFlow:
+    when:
+      visible:
+        text: "^Use$"
+    commands:
+      - tapOn:
+          text: "^Use$"
+          index: 0
+      - assertVisible:
+          id: note-use-choice-screen
+      - assertVisible:
+          id: linked-note-card
+      - takeScreenshot: 86a-note-use-choice
+      - tapOn:
+          id: screen-back-button
+      - assertVisible:
+          id: notes-create-button
+
 - tapOn:
     id: notes-create-button
 - assertVisible:

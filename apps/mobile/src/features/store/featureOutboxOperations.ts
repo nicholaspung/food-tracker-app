@@ -18,6 +18,7 @@ import {
   deleteRestaurantList,
   deleteVisit,
   inviteFriend,
+  markNoteUsed,
   markBillParticipantPaid,
   markFriendInviteAccepted,
   moveRestaurantListRestaurant,
@@ -39,6 +40,7 @@ import {
   type CreateRestaurantListInput,
   type CreateVisitInput,
   type InviteFriendInput,
+  type MarkNoteUsedInput,
   type MoveRestaurantListRestaurantInput,
   type RemoveRestaurantListSourceRatingInput,
   type SaveRestaurantFoodItemToListInput,
@@ -80,6 +82,8 @@ interface NoteUpdateOperationPayload {
 interface NoteDeleteOperationPayload {
   noteId: string;
 }
+
+type NoteMarkUsedOperationPayload = MarkNoteUsedInput;
 
 interface RestaurantListUpdateOperationPayload {
   listId: string;
@@ -140,6 +144,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'note.create': CreateNoteInput;
   'note.update': NoteUpdateOperationPayload;
   'note.delete': NoteDeleteOperationPayload;
+  'note.mark-used': NoteMarkUsedOperationPayload;
   'list.create': CreateRestaurantListInput;
   'list.update': RestaurantListUpdateOperationPayload;
   'list.delete': RestaurantListDeleteOperationPayload;
@@ -178,6 +183,7 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'note.create',
   'note.update',
   'note.delete',
+  'note.mark-used',
   'list.create',
   'list.update',
   'list.delete',
@@ -244,7 +250,14 @@ export function createVisitApiMutationInput(payload: CreateVisitInput): EnqueueM
     headers: {
       'X-Mobile-Write-Operation': 'visit.create',
     },
-    body: payload,
+    body: {
+      restaurantId: payload.restaurantId,
+      restaurantName: payload.restaurantName,
+      items: payload.items,
+      visitedAt: payload.visitedAt,
+      visibility: payload.visibility,
+      source: payload.source,
+    },
   };
 }
 
@@ -335,6 +348,9 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
       await deleteNote(noteDeletePayload.noteId);
       return true;
     }
+    case 'note.mark-used':
+      await markNoteUsed(payload as NoteMarkUsedOperationPayload);
+      return true;
     case 'list.create':
       await createRestaurantList(payload as CreateRestaurantListInput);
       return true;

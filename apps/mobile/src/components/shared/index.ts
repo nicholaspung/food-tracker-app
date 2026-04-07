@@ -23,6 +23,7 @@ export * from './IconActionCard';
 export * from './LoadingOverlay';
 export * from './LoadingState';
 export * from './LinearProgressBar';
+export * from './LinkedNoteCard';
 export * from './LocalDatePickerField';
 export * from './OfflineBanner';
 export * from './OptionList';
