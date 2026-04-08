@@ -2,7 +2,7 @@ module myapp
 
 go 1.25.0
 
-toolchain go1.25.8
+toolchain go1.25.9
 
 require (
 	cloud.google.com/go/maps v1.25.0
