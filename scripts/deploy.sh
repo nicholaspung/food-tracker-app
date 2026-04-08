@@ -559,13 +559,46 @@ install_workspace_dependencies() {
     log "Workspace dependencies installed ✓"
 }
 
+verify_mobile_web_bundle_environment() {
+    step "Verifying mobile web bundle environment ($ENVIRONMENT)..."
+
+    local build_dir="$APP_WEB_SOURCE_DIR"
+    if [ ! -d "$build_dir" ]; then
+        error "Mobile web build directory is missing: $build_dir"
+        exit 1
+    fi
+
+    local -a expected_fragments=(
+        "EXPO_PUBLIC_APP_ENV:\"$FOOD_TRACKER_ENV\""
+        "EXPO_PUBLIC_API_BASE_URL:\"$FOOD_TRACKER_API_BASE_URL\""
+        "EXPO_PUBLIC_POCKETBASE_URL:\"$FOOD_TRACKER_POCKETBASE_URL\""
+        "EXPO_PUBLIC_APP_WEB_URL:\"$FOOD_TRACKER_APP_URL\""
+        "EXPO_PUBLIC_ADMIN_URL:\"$FOOD_TRACKER_ADMIN_URL\""
+    )
+
+    local fragment
+    for fragment in "${expected_fragments[@]}"; do
+        if ! rg -Fq -- "$fragment" "$build_dir"; then
+            error "Mobile web build is missing expected environment fragment: $fragment"
+            error "Expo may have picked up the wrong environment before exporting the web bundle."
+            exit 1
+        fi
+    done
+
+    log "Mobile web bundle environment verified ✓"
+}
+
 build_web_surfaces() {
     step "Building web surfaces..."
 
     cd "$APP_DIR"
 
     run_pnpm --filter @food-tracker/admin build
-    run_pnpm --filter @food-tracker/mobile web:build
+    (
+        export EXPO_NO_DOTENV=1
+        run_pnpm --filter @food-tracker/mobile web:build -- --clear
+    )
+    verify_mobile_web_bundle_environment
 
     log "Web surfaces built ✓"
 }
