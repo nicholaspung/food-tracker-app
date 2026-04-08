@@ -559,6 +559,18 @@ install_workspace_dependencies() {
     log "Workspace dependencies installed ✓"
 }
 
+bundle_contains_fragment() {
+    local fragment="$1"
+    local build_dir="$2"
+
+    if command -v rg > /dev/null 2>&1; then
+        rg -Fq -- "$fragment" "$build_dir"
+        return $?
+    fi
+
+    grep -R -Fq -- "$fragment" "$build_dir"
+}
+
 verify_mobile_web_bundle_environment() {
     step "Verifying mobile web bundle environment ($ENVIRONMENT)..."
 
@@ -578,7 +590,7 @@ verify_mobile_web_bundle_environment() {
 
     local fragment
     for fragment in "${expected_fragments[@]}"; do
-        if ! rg -Fq -- "$fragment" "$build_dir"; then
+        if ! bundle_contains_fragment "$fragment" "$build_dir"; then
             error "Mobile web build is missing expected environment fragment: $fragment"
             error "Expo may have picked up the wrong environment before exporting the web bundle."
             exit 1
