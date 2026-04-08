@@ -2,13 +2,33 @@ package handlers_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
 )
+
+func setCollectionRecordCreatedAt(
+	t *testing.T,
+	app core.App,
+	collectionName string,
+	recordID string,
+	createdAt string,
+) {
+	t.Helper()
+
+	query := fmt.Sprintf(`UPDATE %s SET created = {:createdAt} WHERE id = {:recordId}`, collectionName)
+	if _, err := app.DB().NewQuery(query).Bind(dbx.Params{
+		"createdAt": createdAt,
+		"recordId":  recordID,
+	}).Execute(); err != nil {
+		t.Fatalf("failed to update %s created time: %v", collectionName, err)
+	}
+}
 
 func TestNotesSummaryEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
@@ -757,6 +777,174 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	}
 	if searchPayload.TotalVisits != 1 || searchPayload.TotalQuickTracks != 0 {
 		t.Fatalf("unexpected search totals: %#v", searchPayload)
+	}
+}
+
+func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Ordering Cafe",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+	})
+
+	ownerQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":         user.Id,
+		"name":         "Older Created Quick Track",
+		"rating":       4,
+		"isQuickTrack": true,
+		"visibility":   "private",
+		"itemDate":     "2026-04-20 08:00:00.000Z",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerQuickTrack.Id, "2026-04-01 08:00:00.000Z")
+
+	ownerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       user.Id,
+		"visitDate":  "2026-04-01 09:00:00.000Z",
+		"visibility": "private",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", ownerVisit.Id, "2026-04-02 08:00:00.000Z")
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  ownerVisit.Id,
+		"user":   user.Id,
+		"name":   "Newer Created Visit",
+		"rating": 5,
+	})
+
+	friendQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":         friend.Id,
+		"name":         "Older Created Friend Quick Track",
+		"rating":       3,
+		"isQuickTrack": true,
+		"visibility":   "friends",
+		"itemDate":     "2026-04-20 10:00:00.000Z",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", friendQuickTrack.Id, "2026-04-03 08:00:00.000Z")
+
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       friend.Id,
+		"visitDate":  "2026-04-05 09:00:00.000Z",
+		"visibility": "friends",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", friendVisit.Id, "2026-04-04 08:00:00.000Z")
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Newer Created Friend Visit",
+		"rating": 4,
+	})
+
+	mineResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine",
+		token,
+		"",
+	)
+	if mineResponse.Code != http.StatusOK {
+		t.Fatalf("expected mine response 200 OK, got %d: %s", mineResponse.Code, mineResponse.Body.String())
+	}
+
+	var minePayload struct {
+		Items []struct {
+			Source  string `json:"source"`
+			EventAt string `json:"eventAt"`
+			Visit   *struct {
+				ID        string `json:"id"`
+				CreatedAt string `json:"createdAt"`
+			} `json:"visit"`
+			QuickTrack *struct {
+				ID        string `json:"id"`
+				CreatedAt string `json:"createdAt"`
+			} `json:"quickTrack"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(mineResponse.Body.Bytes(), &minePayload); err != nil {
+		t.Fatalf("failed to parse mine response JSON: %v; body=%s", err, mineResponse.Body.String())
+	}
+
+	if len(minePayload.Items) != 2 {
+		t.Fatalf("expected 2 mine feed entries, got %d: %#v", len(minePayload.Items), minePayload.Items)
+	}
+	if minePayload.Items[0].Source != "visit" || minePayload.Items[0].Visit == nil || minePayload.Items[0].Visit.ID != ownerVisit.Id {
+		t.Fatalf("expected newer-created owner visit first in mine feed, got %#v", minePayload.Items[0])
+	}
+	if minePayload.Items[0].EventAt != "2026-04-01 09:00:00.000Z" {
+		t.Fatalf("expected mine visit eventAt to remain unchanged, got %#v", minePayload.Items[0])
+	}
+	if minePayload.Items[0].Visit.CreatedAt != "2026-04-02 08:00:00.000Z" {
+		t.Fatalf("expected mine visit createdAt in response, got %#v", minePayload.Items[0].Visit)
+	}
+	if minePayload.Items[1].Source != "quick-track" || minePayload.Items[1].QuickTrack == nil || minePayload.Items[1].QuickTrack.ID != ownerQuickTrack.Id {
+		t.Fatalf("expected older-created owner quick track second in mine feed, got %#v", minePayload.Items[1])
+	}
+	if minePayload.Items[1].QuickTrack.CreatedAt != "2026-04-01 08:00:00.000Z" {
+		t.Fatalf("expected mine quick track createdAt in response, got %#v", minePayload.Items[1].QuickTrack)
+	}
+
+	friendsResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends",
+		token,
+		"",
+	)
+	if friendsResponse.Code != http.StatusOK {
+		t.Fatalf("expected friends response 200 OK, got %d: %s", friendsResponse.Code, friendsResponse.Body.String())
+	}
+
+	var friendsPayload struct {
+		Items []struct {
+			Source  string `json:"source"`
+			EventAt string `json:"eventAt"`
+			Visit   *struct {
+				VisitedAt string `json:"visitedAt"`
+				ID        string `json:"id"`
+				CreatedAt string `json:"createdAt"`
+			} `json:"visit"`
+			QuickTrack *struct {
+				ItemDate  string `json:"itemDate"`
+				ID        string `json:"id"`
+				CreatedAt string `json:"createdAt"`
+			} `json:"quickTrack"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(friendsResponse.Body.Bytes(), &friendsPayload); err != nil {
+		t.Fatalf("failed to parse friends response JSON: %v; body=%s", err, friendsResponse.Body.String())
+	}
+
+	if len(friendsPayload.Items) != 2 {
+		t.Fatalf("expected 2 friends feed entries, got %d: %#v", len(friendsPayload.Items), friendsPayload.Items)
+	}
+	if friendsPayload.Items[0].Source != "quick-track" || friendsPayload.Items[0].QuickTrack == nil || friendsPayload.Items[0].QuickTrack.ID != friendQuickTrack.Id {
+		t.Fatalf("expected higher-eventAt friend quick track first in friends feed, got %#v", friendsPayload.Items[0])
+	}
+	if friendsPayload.Items[0].EventAt != "2026-04" {
+		t.Fatalf("expected friends feed eventAt to be redacted to month precision, got %#v", friendsPayload.Items[0])
+	}
+	if friendsPayload.Items[0].QuickTrack.ItemDate != "2026-04" {
+		t.Fatalf("expected friends quick track itemDate to be redacted to month precision, got %#v", friendsPayload.Items[0].QuickTrack)
+	}
+	if friendsPayload.Items[0].QuickTrack.CreatedAt != "2026-04" {
+		t.Fatalf("expected friends quick track createdAt to be redacted to month precision, got %#v", friendsPayload.Items[0].QuickTrack)
+	}
+	if friendsPayload.Items[1].Source != "visit" || friendsPayload.Items[1].Visit == nil || friendsPayload.Items[1].Visit.ID != friendVisit.Id {
+		t.Fatalf("expected lower-eventAt friend visit second in friends feed, got %#v", friendsPayload.Items[1])
+	}
+	if friendsPayload.Items[1].Visit.VisitedAt != "2026-04" {
+		t.Fatalf("expected friends visit visitedAt to be redacted to month precision, got %#v", friendsPayload.Items[1].Visit)
+	}
+	if friendsPayload.Items[1].Visit.CreatedAt != "2026-04" {
+		t.Fatalf("expected friends visit createdAt to be redacted to month precision, got %#v", friendsPayload.Items[1].Visit)
 	}
 }
 

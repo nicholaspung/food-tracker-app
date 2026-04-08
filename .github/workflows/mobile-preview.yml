@@ -17,6 +17,14 @@ on:
         required: false
         type: boolean
         default: false
+      deploy_target:
+        description: "Choose which hosted backend this internal mobile release should target"
+        required: false
+        type: choice
+        default: beta
+        options:
+          - beta
+          - production
 
 concurrency:
   group: mobile-preview-${{ github.ref }}
@@ -30,10 +38,11 @@ jobs:
     name: Publish Mobile Preview
     runs-on: ubuntu-latest
     environment:
-      name: beta
-      url: https://beta.app.yummyrecs.com
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'production' && 'production' || 'beta' }}
+      url: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'production' && 'https://app.yummyrecs.com' || 'https://beta.app.yummyrecs.com' }}
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      MOBILE_DEPLOY_TARGET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'production' && 'production' || 'beta' }}
 
     steps:
       - name: Checkout repository
@@ -57,7 +66,7 @@ jobs:
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
             echo "EXPO_TOKEN is not available to this job."
-            echo "If you stored it as an environment secret, it must be attached to the 'beta' GitHub environment."
+            echo "If you stored it as an environment secret, it must be attached to the selected GitHub environment."
             exit 1
           fi
 
@@ -76,7 +85,26 @@ jobs:
       - name: Typecheck mobile app
         run: pnpm mobile:typecheck
 
-      - name: Detect preview release type
+      - name: Resolve mobile release target
+        id: release_target
+        shell: bash
+        run: |
+          case "$MOBILE_DEPLOY_TARGET" in
+            production)
+              echo "build_profile=production-preview" >> "$GITHUB_OUTPUT"
+              echo "ota_channel=production-preview" >> "$GITHUB_OUTPUT"
+              echo "eas_environment=production" >> "$GITHUB_OUTPUT"
+              echo "target_label=production-preview" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "build_profile=preview" >> "$GITHUB_OUTPUT"
+              echo "ota_channel=preview" >> "$GITHUB_OUTPUT"
+              echo "eas_environment=preview" >> "$GITHUB_OUTPUT"
+              echo "target_label=preview" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Detect mobile release type
         id: release_type
         shell: bash
         run: |
@@ -102,23 +130,23 @@ jobs:
             echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish preview OTA update
+      - name: Publish mobile OTA update
         if: steps.release_type.outputs.publish_mode == 'ota'
         run: |
           cd apps/mobile
           eas update \
-            --channel preview \
-            --environment preview \
-            --message "Preview OTA from ${GITHUB_REF_NAME} (${GITHUB_SHA::7})" \
+            --channel "${{ steps.release_target.outputs.ota_channel }}" \
+            --environment "${{ steps.release_target.outputs.eas_environment }}" \
+            --message "${{ steps.release_target.outputs.target_label }} OTA from ${GITHUB_REF_NAME} (${GITHUB_SHA::7})" \
             --non-interactive
 
-      - name: Trigger preview build
+      - name: Trigger mobile build
         if: steps.release_type.outputs.publish_mode == 'build'
         run: |
           cd apps/mobile
           eas build \
             --platform all \
-            --profile preview \
+            --profile "${{ steps.release_target.outputs.build_profile }}" \
             --non-interactive \
             --no-wait
 
@@ -127,8 +155,8 @@ jobs:
         shell: bash
         run: |
           if [ "${{ steps.release_type.outputs.publish_mode }}" = "build" ]; then
-            echo "Triggered an EAS preview build because native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
-            echo "Install the new preview build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
+            echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} build because native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
+            echo "Install the new build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "Published an OTA update to the shared preview channel." >> "$GITHUB_STEP_SUMMARY"
+            echo "Published an OTA update to the ${{ steps.release_target.outputs.ota_channel }} channel." >> "$GITHUB_STEP_SUMMARY"
           fi

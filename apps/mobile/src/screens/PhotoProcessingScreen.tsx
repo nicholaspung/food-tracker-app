@@ -1075,7 +1075,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           />
         ) : undefined
       }
-      tone={step === 'choice' ? 'default' : 'muted'}
     />
   ) : null;
   const progressSteps = resolveProgressSteps(processType);

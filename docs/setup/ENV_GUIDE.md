@@ -169,7 +169,7 @@ Notes:
 
 - Beta and production can point at the same VPS connection values if both environments deploy to the same server.
 - `GEMINI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `POSTHOG_API_KEY`, and `POSTHOG_HOST` should usually be scoped separately per GitHub environment so beta and production can diverge safely.
-- There is no checked-in GitHub workflow yet for production mobile OTA updates or production mobile builds. If you add one, attach it to the `production` GitHub environment and provide `EXPO_TOKEN` there too.
+- Attach `EXPO_TOKEN` to the `production` GitHub environment as well if you want to use the manual production-targeted mobile preview dispatch in `.github/workflows/mobile-preview.yml`.
 
 ## Expo Environments
 
@@ -182,12 +182,14 @@ Expo and EAS have two distinct concerns in this repo:
 
 - `development` profile -> local resources
 - `preview` profile -> beta resources
+- `production-preview` profile -> production resources via internal distribution
 - `production` profile -> production resources
 - `ios-simulator` profile -> local resources
 
 The checked-in `eas.json` already sets:
 
 - `preview` profile: `EXPO_PUBLIC_APP_ENV=beta`
+- `production-preview` profile: `EXPO_PUBLIC_APP_ENV=production`
 - `production` profile: `EXPO_PUBLIC_APP_ENV=production`
 
 ### Expo Environment `preview`
@@ -251,11 +253,13 @@ POSTHOG_CLI_API_KEY=
 Use these pairings consistently:
 
 - preview OTA updates -> `--channel preview --environment preview` -> beta URLs/resources
+- production-preview OTA updates -> `--channel production-preview --environment production` -> production URLs/resources for internal testing
 - production OTA updates -> `--channel production --environment production` -> production URLs/resources
 
 That keeps the OTA bundle environment aligned with the install base:
 
 - preview builds install onto the `preview` channel and should talk to beta
+- production-preview builds install onto the `production-preview` channel and can safely talk to production without sharing OTA updates with beta preview installs
 - production builds install onto the `production` channel and should talk to production
 
 ### Optional PostHog CLI Variables
@@ -281,12 +285,13 @@ The checked-in app code does not read `POSTHOG_CLI_*` directly. This section is 
 
 ### Current Mobile Automation Status
 
-Today, the checked-in GitHub automation only covers preview/beta mobile publishing:
+Today, the checked-in GitHub automation covers:
 
 - preview OTA update: `.github/workflows/mobile-preview.yml`
 - preview build fallback when native files change: `.github/workflows/mobile-preview.yml`
+- manual production-targeted internal OTA/build dispatch via `.github/workflows/mobile-preview.yml` with `deploy_target=production`
 
-There is currently no checked-in production mobile workflow. If you add one, it should mirror preview with:
+There is still no checked-in production App Store/TestFlight mobile workflow. A future production workflow should mirror preview with:
 
 ```bash
 eas update --channel production --environment production
@@ -296,6 +301,19 @@ and/or:
 
 ```bash
 eas build --profile production
+```
+
+For internal device testing against production today, use:
+
+```bash
+cd apps/mobile
+eas build --profile production-preview --platform ios
+```
+
+and, after that build is installed:
+
+```bash
+pnpm mobile:update:production-preview
 ```
 
 ## Local Workflow

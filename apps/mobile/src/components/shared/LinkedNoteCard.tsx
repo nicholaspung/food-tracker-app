@@ -38,7 +38,7 @@ export function LinkedNoteCard({
   style,
   title = 'Linked Note',
   testID,
-  tone = 'muted',
+  tone = 'default',
   titleAccessory,
 }: LinkedNoteCardProps) {
   const styles = useStyles();

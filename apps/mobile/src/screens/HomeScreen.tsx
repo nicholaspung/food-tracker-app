@@ -15,6 +15,8 @@ import {
   HomeBetaVisitFeedCard,
   HomeFeedVisitEntryCard,
   HomeQuickTrackEntryCard,
+  OptionList,
+  OptionListRow,
   PhotoViewerModal,
   ReportContentModal,
   Skeleton,
@@ -51,7 +53,7 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Text } from '../ui';
+import { Button, Modal, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -104,19 +106,13 @@ type PendingReportTarget =
     };
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
 
-interface GroupedDay {
-  dayKey: string;
-  dayLabel: string;
-  entries: FeedItem[];
-}
-
 interface GroupedMonth {
   monthKey: string;
   monthLabel: string;
   totalCount: number;
   visitsCount: number;
   quickTrackCount: number;
-  days: GroupedDay[];
+  entries: FeedItem[];
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -153,6 +149,9 @@ const useStyles = createThemedStyles((theme) => ({
     top: 0,
     width: 2,
     zIndex: 1,
+  },
+  reportActionTitle: {
+    color: theme.colors.text.danger,
   },
   monthSection: {
     gap: theme.spacing.xs,
@@ -194,27 +193,6 @@ const useStyles = createThemedStyles((theme) => ({
   monthContent: {
     gap: theme.spacing.sm,
     paddingLeft: theme.spacing.sm,
-  },
-  dayGroup: {
-    gap: theme.spacing.xs,
-  },
-  dayHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.xs,
-    paddingVertical: 6,
-  },
-  dayChevron: {
-    color: theme.colors.text.muted,
-    width: 10,
-  },
-  dayLabel: {
-    color: theme.colors.text.secondary,
-    flex: 1,
-  },
-  dayCount: {
-    color: theme.colors.text.muted,
   },
   entries: {
     gap: theme.spacing.xs,
@@ -264,13 +242,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 const monthFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
-  year: 'numeric',
-});
-
-const dayFormatter = new Intl.DateTimeFormat('en-US', {
-  weekday: 'long',
-  month: 'long',
-  day: 'numeric',
+  timeZone: 'UTC',
   year: 'numeric',
 });
 
@@ -286,13 +258,7 @@ const entryTimeFormatter = new Intl.DateTimeFormat('en-US', {
 });
 
 const BETA_FEED_PAGE_SIZE = 20;
-
-function toDayKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+const REDACTED_MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
 
 function toMonthKey(date: Date): string {
   const year = date.getFullYear();
@@ -326,6 +292,38 @@ function formatEntryTimeLabel(value: string): string {
   return entryTimeFormatter.format(date).toUpperCase();
 }
 
+function getFriendEntryMonthInfo(value: string): { monthKey: string; monthLabel: string } | null {
+  const trimmedValue = value.trim();
+  const redactedMonthMatch = REDACTED_MONTH_PATTERN.exec(trimmedValue);
+  if (redactedMonthMatch) {
+    const year = Number(redactedMonthMatch[1]);
+    const monthIndex = Number(redactedMonthMatch[2]) - 1;
+    if (monthIndex < 0 || monthIndex > 11) {
+      return null;
+    }
+
+    return {
+      monthKey: trimmedValue,
+      monthLabel: monthFormatter.format(new Date(Date.UTC(year, monthIndex, 15, 12))),
+    };
+  }
+
+  const date = new Date(trimmedValue);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  return {
+    monthKey,
+    monthLabel: monthFormatter.format(date),
+  };
+}
+
+function formatFriendEntryMonthLabel(value: string): string {
+  return getFriendEntryMonthInfo(value)?.monthLabel ?? value;
+}
+
 function getMonthSortKey(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -335,12 +333,16 @@ function getMonthSortKey(value: string): string {
   return toMonthKey(date);
 }
 
-function buildVisitFeedItem(visit: VisitRecord, currentUserId: string | null): VisitFeedItem {
+function buildVisitFeedItem(
+  visit: VisitRecord,
+  currentUserId: string | null,
+  eventAt?: string,
+): VisitFeedItem {
   return {
     isFriend: !!visit.userId && !!currentUserId && visit.userId !== currentUserId,
     friendName: visit.userName,
     id: `visit_${visit.id}`,
-    eventAt: visit.visitedAt || visit.createdAt,
+    eventAt: eventAt?.trim() || visit.visitedAt || visit.createdAt,
     searchText: [
       visit.restaurantName,
       visit.restaurantLocation ?? '',
@@ -354,12 +356,16 @@ function buildVisitFeedItem(visit: VisitRecord, currentUserId: string | null): V
   };
 }
 
-function buildQuickTrackFeedItem(quickTrack: QuickTrackRecord, currentUserId: string | null): QuickTrackFeedItem {
+function buildQuickTrackFeedItem(
+  quickTrack: QuickTrackRecord,
+  currentUserId: string | null,
+  eventAt?: string,
+): QuickTrackFeedItem {
   return {
     isFriend: !!quickTrack.userId && !!currentUserId && quickTrack.userId !== currentUserId,
     friendName: quickTrack.userName,
     id: `quick_track_${quickTrack.id}`,
-    eventAt: quickTrack.itemDate || quickTrack.createdAt,
+    eventAt: eventAt?.trim() || quickTrack.itemDate || quickTrack.createdAt,
     searchText: [
       quickTrack.itemName,
       quickTrack.restaurantName,
@@ -371,6 +377,15 @@ function buildQuickTrackFeedItem(quickTrack: QuickTrackRecord, currentUserId: st
     source: 'quick-track',
     quickTrack,
   };
+}
+
+function getFeedItemCreatedAt(feedItem: FeedItem): string {
+  return feedItem.source === 'visit' ? feedItem.visit.createdAt : feedItem.quickTrack.createdAt;
+}
+
+function formatMineEntryFooterLabel(feedItem: FeedItem): string {
+  const createdAt = getFeedItemCreatedAt(feedItem);
+  return formatEntryDateLabel(createdAt) || createdAt;
 }
 
 function compareBetaFeedItems(left: FeedItem, right: FeedItem): number {
@@ -402,7 +417,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
-  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
@@ -412,6 +426,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [pendingDeleteTarget, setPendingDeleteTarget] = useState<PendingDeleteTarget | null>(null);
   const [isDeletingTarget, setIsDeletingTarget] = useState(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+  const [pendingReportMenuTarget, setPendingReportMenuTarget] = useState<PendingReportTarget | null>(null);
   const [pendingReportTarget, setPendingReportTarget] = useState<PendingReportTarget | null>(null);
   const [reportReasonCode, setReportReasonCode] = useState<ContentReportReasonCode | null>(null);
   const [reportNotes, setReportNotes] = useState('');
@@ -456,8 +471,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     () =>
       homeFeedState.items.map((item) =>
         item.source === 'visit'
-          ? buildVisitFeedItem(item.visit, currentUserId)
-          : buildQuickTrackFeedItem(item.quickTrack, currentUserId),
+          ? buildVisitFeedItem(item.visit, currentUserId, item.eventAt)
+          : buildQuickTrackFeedItem(item.quickTrack, currentUserId, item.eventAt),
       ),
     [currentUserId, homeFeedState.items],
   );
@@ -538,6 +553,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   }, [activeFeed, searchQuery, typeFilter]);
 
   const groupedMonths = useMemo<GroupedMonth[]>(() => {
+    if (effectiveFeedMode !== 'friends') {
+      return [];
+    }
+
     const monthMap = new Map<
       string,
       {
@@ -546,20 +565,17 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         totalCount: number;
         visitsCount: number;
         quickTrackCount: number;
-        daysMap: Map<string, GroupedDay>;
+        entries: FeedItem[];
       }
     >();
 
     filteredFeed.forEach((entry) => {
-      const date = new Date(entry.eventAt);
-      if (Number.isNaN(date.getTime())) {
+      const monthInfo = getFriendEntryMonthInfo(entry.eventAt);
+      if (!monthInfo) {
         return;
       }
 
-      const monthKey = toMonthKey(date);
-      const monthLabel = monthFormatter.format(date);
-      const dayKey = toDayKey(date);
-      const dayLabel = dayFormatter.format(date);
+      const { monthKey, monthLabel } = monthInfo;
 
       if (!monthMap.has(monthKey)) {
         monthMap.set(monthKey, {
@@ -568,7 +584,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           totalCount: 0,
           visitsCount: 0,
           quickTrackCount: 0,
-          daysMap: new Map(),
+          entries: [],
         });
       }
 
@@ -583,27 +599,20 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       } else {
         monthGroup.quickTrackCount += 1;
       }
-
-      if (!monthGroup.daysMap.has(dayKey)) {
-        monthGroup.daysMap.set(dayKey, {
-          dayKey,
-          dayLabel,
-          entries: [],
-        });
-      }
-
-      monthGroup.daysMap.get(dayKey)?.entries.push(entry);
+      monthGroup.entries.push(entry);
     });
 
-    return Array.from(monthMap.values()).map((month) => ({
-      monthKey: month.monthKey,
-      monthLabel: month.monthLabel,
-      totalCount: month.totalCount,
-      visitsCount: month.visitsCount,
-      quickTrackCount: month.quickTrackCount,
-      days: Array.from(month.daysMap.values()),
-    }));
-  }, [filteredFeed]);
+    return Array.from(monthMap.values())
+      .sort((left, right) => right.monthKey.localeCompare(left.monthKey))
+      .map((month) => ({
+        monthKey: month.monthKey,
+        monthLabel: month.monthLabel,
+        totalCount: month.totalCount,
+        visitsCount: month.visitsCount,
+        quickTrackCount: month.quickTrackCount,
+        entries: month.entries,
+      }));
+  }, [effectiveFeedMode, filteredFeed]);
 
   useEffect(() => {
     if (!canViewBetaFeed && feedMode === 'beta') {
@@ -614,7 +623,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   useEffect(() => {
     if (groupedMonths.length === 0) {
       setExpandedMonths(new Set());
-      setExpandedDays(new Set());
       return;
     }
 
@@ -623,17 +631,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       const next = new Set(Array.from(previous).filter((key) => availableKeys.has(key)));
       if (next.size === 0) {
         next.add(groupedMonths[0].monthKey);
-      }
-      return next;
-    });
-
-    setExpandedDays((previous) => {
-      const availableKeys = new Set(
-        groupedMonths.flatMap((month) => month.days.map((day) => day.dayKey)),
-      );
-      const next = new Set(Array.from(previous).filter((key) => availableKeys.has(key)));
-      if (next.size === 0 && groupedMonths[0]?.days[0]?.dayKey) {
-        next.add(groupedMonths[0].days[0].dayKey);
       }
       return next;
     });
@@ -660,6 +657,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const filteredVisitCount = useMemo(
     () => filteredFeed.filter((entry) => entry.source === 'visit').length,
     [filteredFeed],
+  );
+  const firstMineVisitIndex = useMemo(
+    () =>
+      effectiveFeedMode === 'mine'
+        ? filteredFeed.findIndex((entry) => entry.source === 'visit')
+        : -1,
+    [effectiveFeedMode, filteredFeed],
   );
   const filteredQuickTrackCount = filteredFeed.length - filteredVisitCount;
   const totalVisitCount = homeFeedQuery.data?.pages[0]?.totalVisits ?? loadedFeed.filter((entry) => entry.source === 'visit').length;
@@ -716,7 +720,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
   const toggleMonth = useCallback(
     (monthKey: string) => {
-      const shouldExpand = !expandedMonths.has(monthKey);
       setExpandedMonths((previous) => {
         const next = new Set(previous);
         if (next.has(monthKey)) {
@@ -726,28 +729,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         }
         return next;
       });
-
-      if (shouldExpand) {
-        const firstDayKey = groupedMonths.find((month) => month.monthKey === monthKey)?.days[0]?.dayKey;
-        if (firstDayKey) {
-          setExpandedDays((previous) => new Set(previous).add(firstDayKey));
-        }
-      }
     },
-    [expandedMonths, groupedMonths],
+    [],
   );
-
-  const toggleDay = useCallback((dayKey: string) => {
-    setExpandedDays((previous) => {
-      const next = new Set(previous);
-      if (next.has(dayKey)) {
-        next.delete(dayKey);
-      } else {
-        next.add(dayKey);
-      }
-      return next;
-    });
-  }, []);
 
   const handleDeleteQuickTrack = useCallback(
     async (quickTrackId: string) => {
@@ -836,12 +820,30 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [handleDeleteQuickTrack, handleDeleteVisit, isDeletingTarget, pendingDeleteTarget]);
 
+  const promptReportMenuTarget = useCallback((target: PendingReportTarget) => {
+    setPendingReportMenuTarget(target);
+  }, []);
+
+  const closeReportMenu = useCallback(() => {
+    setPendingReportMenuTarget(null);
+  }, []);
+
   const promptReportTarget = useCallback((target: PendingReportTarget) => {
     setPendingReportTarget(target);
     setReportReasonCode(null);
     setReportNotes('');
     setReportErrorMessage(null);
   }, []);
+
+  const openReportModalFromMenu = useCallback(() => {
+    if (!pendingReportMenuTarget) {
+      return;
+    }
+
+    const target = pendingReportMenuTarget;
+    setPendingReportMenuTarget(null);
+    promptReportTarget(target);
+  }, [pendingReportMenuTarget, promptReportTarget]);
 
   const closeReportModal = useCallback(() => {
     if (isSubmittingReport) {
@@ -1083,6 +1085,137 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [friendSuggestion, isOnline, queryClient, queueWrite]);
 
+  const renderStandardFeedEntry = useCallback(
+    ({
+      deleteTestID,
+      editTestID,
+      feedItem,
+      footerLabel,
+    }: {
+      deleteTestID?: string;
+      editTestID?: string;
+      feedItem: FeedItem;
+      footerLabel: string;
+    }) => {
+      if (feedItem.source === 'visit') {
+        const { visit } = feedItem;
+        const restaurantMeta = [visit.restaurantLocation, visit.restaurantCuisineType]
+          .filter((value) => value && value.trim().length > 0)
+          .join(' • ');
+        const shareableVisitItems = buildVisitShareItems(visit);
+        const showVisitShare = !feedItem.isFriend && shareableVisitItems.length > 1;
+
+        return (
+          <HomeFeedVisitEntryCard
+            deleteTestID={deleteTestID}
+            editTestID={editTestID}
+            footerLabel={footerLabel}
+            friendName={feedItem.isFriend ? feedItem.friendName : undefined}
+            getPhotosForItem={(itemId) => photosByFoodItem.get(itemId) ?? []}
+            key={feedItem.id}
+            onDelete={
+              !feedItem.isFriend
+                ? () => {
+                    promptDeleteVisit(visit.id, visit.restaurantName);
+                  }
+                : undefined
+            }
+            onEdit={
+              !feedItem.isFriend
+                ? () => {
+                    navigation.push('CreateVisit', {
+                      editVisitId: visit.id,
+                      returnToStep: 2,
+                    });
+                  }
+                : undefined
+            }
+            onOpenPhotoViewer={openPhotoViewer}
+            onMoreActions={
+              feedItem.isFriend
+                ? () => {
+                    promptReportMenuTarget({
+                      id: visit.id,
+                      itemName: visit.restaurantName,
+                      kind: 'visit',
+                    });
+                  }
+                : undefined
+            }
+            onSharePhoto={handleSharePhoto}
+            onShareVisit={
+              !feedItem.isFriend && showVisitShare
+                ? () => {
+                    handleShareVisit(visit);
+                  }
+                : undefined
+            }
+            moreActionsAccessibilityLabel="Visit actions"
+            restaurantMetaLabel={restaurantMeta}
+            visit={visit}
+          />
+        );
+      }
+
+      const quickTrack = feedItem.quickTrack;
+      const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
+
+      return (
+        <HomeQuickTrackEntryCard
+          entryMeta={footerLabel}
+          friendName={feedItem.isFriend ? feedItem.friendName : undefined}
+          key={feedItem.id}
+          moreActionsAccessibilityLabel="Quick track actions"
+          onDelete={
+            !feedItem.isFriend
+              ? () => {
+                  promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
+                }
+              : undefined
+          }
+          onEdit={
+            !feedItem.isFriend
+              ? () => {
+                  navigation.navigate('EditQuickTrack', {
+                    quickTrackId: quickTrack.id,
+                  });
+                }
+              : undefined
+          }
+          onMoreActions={
+            feedItem.isFriend
+              ? () => {
+                  promptReportMenuTarget({
+                    id: quickTrack.id,
+                    itemName: quickTrack.itemName,
+                    kind: 'quick-track',
+                  });
+                }
+              : undefined
+          }
+          onOpenPhotoViewer={openPhotoViewer}
+          onSharePhoto={handleSharePhoto}
+          photos={quickTrackPhotos}
+          quickTrack={quickTrack}
+          showUnderReviewBadge={
+            !feedItem.isFriend && quickTrack.moderationStatus === 'under_review'
+          }
+        />
+      );
+    },
+    [
+      buildVisitShareItems,
+      handleSharePhoto,
+      handleShareVisit,
+      navigation,
+      openPhotoViewer,
+      photosByFoodItem,
+      promptDeleteQuickTrack,
+      promptDeleteVisit,
+      promptReportMenuTarget,
+    ],
+  );
+
   const colors = {
     accent: theme.colors.text.brand,
     accentSoft: theme.colors.status.infoBg,
@@ -1249,97 +1382,109 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         ) : null}
 
-        {!isLoading && !hasBlockingFeedError && filteredFeed.length > 0
-          ? effectiveFeedMode === 'beta'
-            ? (
-                <View style={styles.betaFeed}>
-                  {filteredFeed.map((feedItem) => {
-                    const ownerLabel =
-                      feedItem.friendName?.trim() ||
-                      (feedItem.isFriend ? 'Unknown User' : user?.name?.trim() || 'You');
-                    const dateLabel = formatEntryDateLabel(feedItem.eventAt);
-                    const timeLabel = formatEntryTimeLabel(feedItem.eventAt);
+        {!isLoading && !hasBlockingFeedError && filteredFeed.length > 0 ? (
+          effectiveFeedMode === 'beta' ? (
+            <View style={styles.betaFeed}>
+              {filteredFeed.map((feedItem) => {
+                const ownerLabel =
+                  feedItem.friendName?.trim() ||
+                  (feedItem.isFriend ? 'Unknown User' : user?.name?.trim() || 'You');
+                const dateLabel = formatEntryDateLabel(feedItem.eventAt);
+                const timeLabel = formatEntryTimeLabel(feedItem.eventAt);
 
-                    if (feedItem.source === 'visit') {
-                      const { visit } = feedItem;
-                      const restaurantMeta = [visit.restaurantLocation, visit.restaurantCuisineType]
-                        .filter((value) => value && value.trim().length > 0)
-                        .join(' • ');
-                      const shareableVisitItems = buildVisitShareItems(visit);
-                      const showVisitShare = !feedItem.isFriend && shareableVisitItems.length > 1;
+                if (feedItem.source === 'visit') {
+                  const { visit } = feedItem;
+                  const restaurantMeta = [visit.restaurantLocation, visit.restaurantCuisineType]
+                    .filter((value) => value && value.trim().length > 0)
+                    .join(' • ');
+                  const shareableVisitItems = buildVisitShareItems(visit);
+                  const showVisitShare = !feedItem.isFriend && shareableVisitItems.length > 1;
 
-                      return (
-                        <HomeBetaVisitFeedCard
-                          dateLabel={dateLabel}
-                          key={feedItem.id}
-                          onDelete={
-                            !feedItem.isFriend
-                              ? () => {
-                                  promptDeleteVisit(visit.id, visit.restaurantName);
-                                }
-                              : undefined
+                  return (
+                    <HomeBetaVisitFeedCard
+                      dateLabel={dateLabel}
+                      key={feedItem.id}
+                      onDelete={
+                        !feedItem.isFriend
+                          ? () => {
+                              promptDeleteVisit(visit.id, visit.restaurantName);
+                            }
+                          : undefined
+                      }
+                      onEdit={
+                        !feedItem.isFriend
+                          ? () => {
+                              navigation.push('CreateVisit', {
+                                editVisitId: visit.id,
+                                returnToStep: 2,
+                              });
+                            }
+                          : undefined
+                      }
+                      onOpenPhotoViewer={openPhotoViewer}
+                      onSharePhoto={handleSharePhoto}
+                      onShareVisit={showVisitShare ? () => handleShareVisit(visit) : undefined}
+                      ownerLabel={ownerLabel}
+                      photosByFoodItem={photosByFoodItem}
+                      restaurantMetaLabel={restaurantMeta}
+                      timeLabel={timeLabel}
+                      visit={visit}
+                    />
+                  );
+                }
+
+                const quickTrack = feedItem.quickTrack;
+                const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
+                const quickTrackCategoryLabel = quickTrack.itemCategory
+                  ? formatCategoryLabel(quickTrack.itemCategory)
+                  : undefined;
+
+                return (
+                  <HomeBetaQuickTrackFeedCard
+                    categoryLabel={quickTrackCategoryLabel}
+                    dateLabel={dateLabel}
+                    key={feedItem.id}
+                    onDelete={
+                      !feedItem.isFriend
+                        ? () => {
+                            promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
                           }
-                          onEdit={
-                            !feedItem.isFriend
-                              ? () => {
-                                  navigation.push('CreateVisit', {
-                                    editVisitId: visit.id,
-                                    returnToStep: 2,
-                                  });
-                                }
-                              : undefined
-                          }
-                          onOpenPhotoViewer={openPhotoViewer}
-                          onSharePhoto={handleSharePhoto}
-                          onShareVisit={showVisitShare ? () => handleShareVisit(visit) : undefined}
-                          ownerLabel={ownerLabel}
-                          photosByFoodItem={photosByFoodItem}
-                          restaurantMetaLabel={restaurantMeta}
-                          timeLabel={timeLabel}
-                          visit={visit}
-                        />
-                      );
+                        : undefined
                     }
-
-                    const quickTrack = feedItem.quickTrack;
-                    const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
-                    const quickTrackCategoryLabel = quickTrack.itemCategory
-                      ? formatCategoryLabel(quickTrack.itemCategory)
-                      : undefined;
-
-                    return (
-                      <HomeBetaQuickTrackFeedCard
-                        categoryLabel={quickTrackCategoryLabel}
-                        dateLabel={dateLabel}
-                        key={feedItem.id}
-                        onDelete={
-                          !feedItem.isFriend
-                            ? () => {
-                                promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
-                              }
-                            : undefined
-                        }
-                        onEdit={
-                          !feedItem.isFriend
-                            ? () => {
-                                navigation.navigate('EditQuickTrack', {
-                                  quickTrackId: quickTrack.id,
-                                });
-                              }
-                            : undefined
-                        }
-                        onOpenPhotoViewer={openPhotoViewer}
-                        onSharePhoto={handleSharePhoto}
-                        ownerLabel={ownerLabel}
-                        photos={quickTrackPhotos}
-                        quickTrack={quickTrack}
-                        timeLabel={timeLabel}
-                      />
-                    );
-                  })}
-                </View>
-              )
-            : groupedMonths.map((month, monthIndex) => {
+                    onEdit={
+                      !feedItem.isFriend
+                        ? () => {
+                            navigation.navigate('EditQuickTrack', {
+                              quickTrackId: quickTrack.id,
+                            });
+                          }
+                        : undefined
+                    }
+                    onOpenPhotoViewer={openPhotoViewer}
+                    onSharePhoto={handleSharePhoto}
+                    ownerLabel={ownerLabel}
+                    photos={quickTrackPhotos}
+                    quickTrack={quickTrack}
+                    timeLabel={timeLabel}
+                  />
+                );
+              })}
+            </View>
+          ) : effectiveFeedMode === 'mine' ? (
+            <View style={styles.entries}>
+              {filteredFeed.map((feedItem, entryIndex) =>
+                renderStandardFeedEntry({
+                  deleteTestID:
+                    entryIndex === firstMineVisitIndex ? 'home-first-visit-delete-button' : undefined,
+                  editTestID:
+                    entryIndex === firstMineVisitIndex ? 'home-first-visit-edit-button' : undefined,
+                  feedItem,
+                  footerLabel: formatMineEntryFooterLabel(feedItem),
+                }),
+              )}
+            </View>
+          ) : (
+            groupedMonths.map((month, monthIndex) => {
               const isMonthExpanded = expandedMonths.has(month.monthKey);
 
               return (
@@ -1366,161 +1511,29 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
                   {isMonthExpanded ? (
                     <View style={styles.monthContent}>
-                      {month.days.map((day, dayIndex) => {
-                        const isDayExpanded = expandedDays.has(day.dayKey);
-
-                        return (
-                          <View key={day.dayKey} style={styles.dayGroup}>
-                            <Pressable
-                              onPress={() => {
-                                toggleDay(day.dayKey);
-                              }}
-                              style={styles.dayHeader}
-                            >
-                              <Text style={styles.dayChevron} variant="bodySmTightBold">
-                                {isDayExpanded ? 'v' : '>'}
-                              </Text>
-                              <Text numberOfLines={1} style={styles.dayLabel} variant="labelMd">
-                                {day.dayLabel}
-                              </Text>
-                              <Text style={styles.dayCount} variant="bodySmTightMedium">
-                                ({day.entries.length})
-                              </Text>
-                            </Pressable>
-
-                            {isDayExpanded ? (
-                              <View style={styles.entries}>
-                                {day.entries.map((feedItem, entryIndex) => {
-                                  const timeLabel = new Date(feedItem.eventAt).toLocaleTimeString([], {
-                                    hour: 'numeric',
-                                    minute: '2-digit',
-                                  });
-
-                                  if (feedItem.source === 'visit') {
-                                    const { visit } = feedItem;
-                                    const restaurantMeta = [visit.restaurantLocation, visit.restaurantCuisineType]
-                                      .filter((value) => value && value.trim().length > 0)
-                                      .join(' • ');
-                                    const shareableVisitItems = buildVisitShareItems(visit);
-                                    const showVisitShare = !feedItem.isFriend && shareableVisitItems.length > 1;
-
-                                    return (
-                                      <HomeFeedVisitEntryCard
-                                        deleteTestID={
-                                          monthIndex === 0 && dayIndex === 0 && entryIndex === 0
-                                            ? 'home-first-visit-delete-button'
-                                            : undefined
-                                        }
-                                        editTestID={
-                                          monthIndex === 0 && dayIndex === 0 && entryIndex === 0
-                                            ? 'home-first-visit-edit-button'
-                                            : undefined
-                                        }
-                                        footerLabel={timeLabel}
-                                        friendName={feedItem.isFriend ? feedItem.friendName : undefined}
-                                        getPhotosForItem={(itemId) => photosByFoodItem.get(itemId) ?? []}
-                                        key={feedItem.id}
-                                        onDelete={
-                                          !feedItem.isFriend
-                                            ? () => {
-                                                promptDeleteVisit(visit.id, visit.restaurantName);
-                                              }
-                                            : undefined
-                                        }
-                                        onEdit={
-                                          !feedItem.isFriend
-                                            ? () => {
-                                                navigation.push('CreateVisit', {
-                                                  editVisitId: visit.id,
-                                                  returnToStep: 2,
-                                                });
-                                              }
-                                            : undefined
-                                        }
-                                        onOpenPhotoViewer={openPhotoViewer}
-                                        onMoreActions={
-                                          feedItem.isFriend
-                                            ? () => {
-                                                promptReportTarget({
-                                                  id: visit.id,
-                                                  itemName: visit.restaurantName,
-                                                  kind: 'visit',
-                                                });
-                                              }
-                                            : undefined
-                                        }
-                                        onSharePhoto={handleSharePhoto}
-                                        onShareVisit={
-                                          !feedItem.isFriend && showVisitShare
-                                            ? () => {
-                                                handleShareVisit(visit);
-                                              }
-                                            : undefined
-                                        }
-                                        moreActionsAccessibilityLabel="Report visit"
-                                        restaurantMetaLabel={restaurantMeta}
-                                        visit={visit}
-                                      />
-                                    );
-                                  }
-
-                                  const quickTrack = feedItem.quickTrack;
-                                  const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
-
-                                  return (
-                                    <HomeQuickTrackEntryCard
-                                      entryMeta={timeLabel}
-                                      friendName={feedItem.isFriend ? feedItem.friendName : undefined}
-                                      key={feedItem.id}
-                                      moreActionsAccessibilityLabel="Report quick track"
-                                      onDelete={
-                                        !feedItem.isFriend
-                                          ? () => {
-                                              promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
-                                            }
-                                          : undefined
-                                      }
-                                      onEdit={
-                                        !feedItem.isFriend
-                                          ? () => {
-                                              navigation.navigate('EditQuickTrack', {
-                                                quickTrackId: quickTrack.id,
-                                              });
-                                            }
-                                          : undefined
-                                      }
-                                      onMoreActions={
-                                        feedItem.isFriend
-                                          ? () => {
-                                              promptReportTarget({
-                                                id: quickTrack.id,
-                                                itemName: quickTrack.itemName,
-                                                kind: 'quick-track',
-                                              });
-                                            }
-                                          : undefined
-                                      }
-                                      onOpenPhotoViewer={openPhotoViewer}
-                                      onSharePhoto={handleSharePhoto}
-                                      photos={quickTrackPhotos}
-                                      quickTrack={quickTrack}
-                                      showUnderReviewBadge={
-                                        !feedItem.isFriend && quickTrack.moderationStatus === 'under_review'
-                                      }
-                                    />
-                                  );
-                                })}
-                              </View>
-                            ) : null}
-                          </View>
-                        );
-                      })}
+                      <View style={styles.entries}>
+                        {month.entries.map((feedItem, entryIndex) =>
+                          renderStandardFeedEntry({
+                            deleteTestID:
+                              monthIndex === 0 && entryIndex === 0
+                                ? 'home-first-visit-delete-button'
+                                : undefined,
+                            editTestID:
+                              monthIndex === 0 && entryIndex === 0
+                                ? 'home-first-visit-edit-button'
+                                : undefined,
+                            feedItem,
+                            footerLabel: formatFriendEntryMonthLabel(feedItem.eventAt),
+                          }),
+                        )}
+                      </View>
                     </View>
                   ) : null}
                 </View>
               );
             })
-          : null}
+          )
+        ) : null}
 
         {!isLoading && !hasBlockingFeedError && homeFeedQuery.hasNextPage ? (
           <Button
@@ -1539,6 +1552,40 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         urls={photoViewerUrls}
         visible={photoViewerVisible}
       />
+      <Modal
+        description={
+          pendingReportMenuTarget?.itemName?.trim()
+            ? `Choose an action for "${pendingReportMenuTarget.itemName.trim()}".`
+            : pendingReportMenuTarget?.kind === 'quick-track'
+              ? 'Choose an action for this quick track.'
+              : 'Choose an action for this visit.'
+        }
+        onRequestClose={closeReportMenu}
+        secondaryAction={{
+          accessibilityLabel: 'Cancel',
+          label: 'Cancel',
+          onPress: closeReportMenu,
+          testID: 'home-feed-actions-modal-cancel-button',
+        }}
+        testID="home-feed-actions-modal"
+        title={pendingReportMenuTarget?.kind === 'quick-track' ? 'Quick Track Actions' : 'Visit Actions'}
+        visible={pendingReportMenuTarget !== null}
+      >
+        <OptionList>
+          <OptionListRow
+            accessibilityLabel={
+              pendingReportMenuTarget?.kind === 'quick-track' ? 'Report quick track' : 'Report visit'
+            }
+            iconColor={theme.colors.text.danger}
+            iconName="flag-outline"
+            isLast
+            onPress={openReportModalFromMenu}
+            testID="home-feed-actions-modal-report-button"
+            title={pendingReportMenuTarget?.kind === 'quick-track' ? 'Report Quick Track' : 'Report Visit'}
+            titleStyle={styles.reportActionTitle}
+          />
+        </OptionList>
+      </Modal>
       <ReportContentModal
         contentLabel={pendingReportTarget?.itemName?.trim() || (pendingReportTarget?.kind === 'visit' ? 'Visit' : 'Quick Track')}
         contentType={pendingReportTarget?.kind ?? 'visit'}

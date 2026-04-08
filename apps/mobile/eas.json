@@ -22,6 +22,16 @@
       },
       "channel": "preview"
     },
+    "production-preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
+        "EXPO_PUBLIC_WEB_DISABLE_QUICKTRACK_MUTATIONS": "true",
+        "EXPO_PUBLIC_BETA_ADMIN_ONLY": "false"
+      },
+      "channel": "production-preview"
+    },
     "production": {
       "autoIncrement": true,
       "env": {

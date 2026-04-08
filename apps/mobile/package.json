@@ -10,6 +10,7 @@
     "android": "expo run:android",
     "web:build": "expo export --platform web --output-dir web-dist",
     "update:preview": "eas update --channel preview --environment preview",
+    "update:production-preview": "eas update --channel production-preview --environment production",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand"

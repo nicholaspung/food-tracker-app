@@ -708,6 +708,10 @@ func getHomeFeedResponse(
 	}
 
 	response.Items = items
+	if scope == "friends" {
+		redactFriendHomeFeedTimestamps(&response)
+	}
+
 	return response, nil
 }
 
@@ -805,6 +809,11 @@ func listHomeFeedEntryRows(
 		return []homeFeedEntryRow{}, nil
 	}
 
+	orderByClause := "filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC"
+	if scope == "mine" {
+		orderByClause = "filtered_entries.createdAt DESC, filtered_entries.recordId DESC"
+	}
+
 	query := `
 		WITH accepted_friends AS (
 			SELECT friend AS friendId
@@ -826,7 +835,7 @@ func listHomeFeedEntryRows(
 			filtered_entries.eventAt AS [[eventAt]],
 			filtered_entries.createdAt AS [[createdAt]]
 		FROM filtered_entries
-		ORDER BY filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC
+		ORDER BY ` + orderByClause + `
 		LIMIT {:limit} OFFSET {:offset}
 	`
 
@@ -955,6 +964,40 @@ func mapHomeFeedPhotoPreview(record *core.Record) homeFeedPhotoPreviewResponse {
 		CollectionID:   collectionID,
 		CollectionName: collectionName,
 		Created:        record.GetString("created"),
+	}
+}
+
+func redactFriendHomeFeedTimestamp(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	if len(trimmed) >= 7 {
+		return trimmed[:7]
+	}
+
+	return trimmed
+}
+
+func redactFriendHomeFeedTimestamps(response *homeFeedResponse) {
+	for index := range response.PhotoPreviews {
+		response.PhotoPreviews[index].Created = redactFriendHomeFeedTimestamp(response.PhotoPreviews[index].Created)
+	}
+
+	for index := range response.Items {
+		response.Items[index].EventAt = redactFriendHomeFeedTimestamp(response.Items[index].EventAt)
+		if response.Items[index].Visit != nil {
+			response.Items[index].Visit.VisitedAt = redactFriendHomeFeedTimestamp(response.Items[index].Visit.VisitedAt)
+			response.Items[index].Visit.CreatedAt = redactFriendHomeFeedTimestamp(response.Items[index].Visit.CreatedAt)
+			response.Items[index].Visit.UpdatedAt = redactFriendHomeFeedTimestamp(response.Items[index].Visit.UpdatedAt)
+		}
+
+		if response.Items[index].QuickTrack != nil {
+			response.Items[index].QuickTrack.ItemDate = redactFriendHomeFeedTimestamp(response.Items[index].QuickTrack.ItemDate)
+			response.Items[index].QuickTrack.CreatedAt = redactFriendHomeFeedTimestamp(response.Items[index].QuickTrack.CreatedAt)
+			response.Items[index].QuickTrack.UpdatedAt = redactFriendHomeFeedTimestamp(response.Items[index].QuickTrack.UpdatedAt)
+		}
 	}
 }
 
