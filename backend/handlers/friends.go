@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/lib"
 )
 
 const (
@@ -78,6 +81,88 @@ func RegisterFriendHandlers(se *core.ServeEvent, app core.App) {
 		}
 
 		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/friends/invite", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		data := struct {
+			Code string `json:"code"`
+		}{}
+		if err := e.BindBody(&data); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		normalizedCode := lib.NormalizeFriendCode(data.Code)
+		if normalizedCode == "" {
+			return apis.NewBadRequestError("Friend code is required.", nil)
+		}
+		if len(normalizedCode) != lib.FriendCodeLength {
+			return apis.NewBadRequestError("Friend code is invalid.", nil)
+		}
+
+		responsePayload := friendsListItem{}
+		err := app.RunInTransaction(func(txApp core.App) error {
+			targetUser, err := txApp.FindFirstRecordByFilter(
+				"users",
+				"friendCode = {:code}",
+				dbx.Params{"code": normalizedCode},
+			)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return apis.NewNotFoundError("Friend code not found.", nil)
+				}
+				return apis.NewApiError(500, "failed to look up friend code", err)
+			}
+			if targetUser == nil {
+				return apis.NewNotFoundError("Friend code not found.", nil)
+			}
+
+			if strings.TrimSpace(targetUser.Id) == strings.TrimSpace(e.Auth.Id) {
+				return apis.NewBadRequestError("Cannot add yourself as a friend.", nil)
+			}
+
+			existing, err := findFriendshipBetweenUsers(txApp, e.Auth.Id, targetUser.Id)
+			if err != nil {
+				return apis.NewApiError(500, "failed to resolve friendship", err)
+			}
+			if existing != nil {
+				return apis.NewBadRequestError("Friend request already exists.", nil)
+			}
+
+			collection, err := txApp.FindCollectionByNameOrId("friendships")
+			if err != nil {
+				return apis.NewApiError(500, "friendships collection missing", err)
+			}
+
+			record := core.NewRecord(collection)
+			record.Set("user", e.Auth.Id)
+			record.Set("friend", targetUser.Id)
+			record.Set("status", "pending")
+
+			if err := txApp.Save(record); err != nil {
+				if isUniqueConstraintError(err) {
+					return apis.NewBadRequestError("Friend request already exists.", nil)
+				}
+				return apis.NewApiError(500, "failed to create friend request", err)
+			}
+
+			responsePayload = friendsListItem{
+				ID:          record.Id,
+				UserID:      targetUser.Id,
+				DisplayName: lib.ResolveUserDisplayName(targetUser),
+				Status:      friendsSectionStatus(friendsSectionSent),
+				CreatedAt:   record.GetString("created"),
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
 	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/friends/suggestions/accept", func(e *core.RequestEvent) error {

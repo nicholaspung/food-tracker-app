@@ -10,13 +10,6 @@ export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {
   closed: 'Closed',
 };
 
-export const FEEDBACK_STATUS_OPTIONS: readonly FeedbackStatus[] = [
-  'open',
-  'in_progress',
-  'resolved',
-  'closed',
-] as const;
-
 export function resolveFeedbackStatusTone(status: FeedbackStatus): StatusPillTone {
   if (status === 'in_progress') {
     return 'warning';

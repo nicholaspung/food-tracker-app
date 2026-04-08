@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -18,19 +18,14 @@ import {
   buildPocketBaseFileUrl,
   createDefaultRestaurantList,
   deleteRestaurantList,
-  getRestaurantListItemLinkFoodItemIds,
-  getRestaurantListById,
-  listMyBookmarkedListItemLinksForFoodItemIds,
+  getRestaurantListDetailPage,
   listRestaurantListsPage,
-  listRestaurantListItemsPage,
-  listVisitPhotosForFoodItemIds,
   moveRestaurantListRestaurant,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
-  type VisitPhotoRecord,
+  type RestaurantListDetailPhotoPreviewRecord,
 } from '../features';
-import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -177,20 +172,6 @@ function formatFullDateLabel(value: string | undefined): string | null {
 function normalizeMenuItemKey(value: string): string {
   const trimmed = value.trim().toLowerCase();
   return trimmed || value;
-}
-
-function resolveExpandedPhotoOwnerName(photo: VisitPhotoRecord): string | null {
-  const displayName = photo.expand?.user?.name?.trim();
-  if (displayName) {
-    return displayName;
-  }
-
-  const email = photo.expand?.user?.email?.trim();
-  if (email) {
-    return email.split('@')[0] || null;
-  }
-
-  return null;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -580,94 +561,63 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
 
-  const listQuery = useQuery({
-    queryKey: ['feature', 'restaurantList', listId],
-    queryFn: () => getRestaurantListById(listId),
-  });
-
-  const listItemsQuery = useInfiniteQuery({
-    queryKey: ['feature', 'restaurantListItems', listId, 'paginated'],
-    queryFn: ({ pageParam }) => listRestaurantListItemsPage(listId, { page: pageParam, pageSize: 20 }),
-    enabled: !!listQuery.data,
+  const detailQuery = useInfiniteQuery({
+    queryKey: ['feature', 'restaurantListDetail', listId, 'paginated'],
+    queryFn: ({ pageParam }) => getRestaurantListDetailPage(listId, { page: pageParam, pageSize: 20 }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
 
+  const listItemsState = usePaginatedQueryState({
+    data: detailQuery.data,
+    enabled: true,
+    isError: detailQuery.isError,
+    isFetching: detailQuery.isFetching,
+    isLoading: detailQuery.isLoading,
+    isSuccess: detailQuery.isSuccess,
+  });
+
+  const list = detailQuery.data?.pages[0]?.list ?? null;
+  const isOwner = Boolean(list && user?.id && list.userId === user.id);
+  const shouldLoadMyLists = Boolean(user?.id && saveBookmarkTarget && list && list.userId !== user.id);
   const myListsQuery = useInfiniteQuery({
     queryKey: ['feature', 'restaurantLists', 'my', 'paginated'],
     queryFn: ({ pageParam }) => listRestaurantListsPage({ scope: 'my', page: pageParam, pageSize: 20 }),
-    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
+    enabled: shouldLoadMyLists,
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const listItemsState = usePaginatedQueryState({
-    data: listItemsQuery.data,
-    enabled: Boolean(listQuery.data),
-    isError: listItemsQuery.isError,
-    isFetching: listItemsQuery.isFetching,
-    isLoading: listItemsQuery.isLoading,
-    isSuccess: listItemsQuery.isSuccess,
-  });
   const myListsState = usePaginatedQueryState({
     data: myListsQuery.data,
-    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
+    enabled: shouldLoadMyLists,
     isError: myListsQuery.isError,
     isFetching: myListsQuery.isFetching,
     isLoading: myListsQuery.isLoading,
     isSuccess: myListsQuery.isSuccess,
   });
 
-  const list = listQuery.data;
-  const isOwner = Boolean(list && user?.id && list.userId === user.id);
   const listItems = listItemsState.items;
   const hasBlockingListItemsError = listItemsState.hasBlockingError;
   const hasListItemsRefreshError = listItemsState.hasRefreshError;
-  const visibleFoodItemIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    for (const listItem of listItems ?? []) {
-      const bookmarkedItems = Array.isArray(listItem.bookmarkedItems) ? listItem.bookmarkedItems : [];
-      for (const item of bookmarkedItems) {
-        ids.add(item.id);
-        if (item.userFoodItemId) {
-          ids.add(item.userFoodItemId);
-        }
-      }
-    }
-
-    return Array.from(ids);
-  }, [listItems]);
-
-  const myBookmarkedLinksQuery = useIncrementalIdQuery({
-    queryKey: ['feature', 'myBookmarkedListItemLinks', 'restaurantList', listId, user?.id ?? 'anonymous'],
-    ids: visibleFoodItemIds,
-    enabled: Boolean(user?.id && listQuery.data && listQuery.data.userId !== user.id),
-    fetchByIds: listMyBookmarkedListItemLinksForFoodItemIds,
-    getRecordIds: getRestaurantListItemLinkFoodItemIds,
-    getRecordKey: (link) => link.id,
-  });
-
-  const visitPhotosQuery = useIncrementalIdQuery({
-    queryKey: ['feature', 'visitPhotos', 'foodItems', 'restaurantList', listId],
-    ids: visibleFoodItemIds,
-    enabled: Boolean(listQuery.data),
-    fetchByIds: listVisitPhotosForFoodItemIds,
-    getRecordIds: (photo) => (photo.food_item ? [photo.food_item] : []),
-    getRecordKey: (photo) => photo.id,
-  });
-
   const myLists = myListsState.items;
   const savedListIdsByBookmarkLookupId = useMemo(() => {
     const mapping = new Map<string, Set<string>>();
-    for (const link of myBookmarkedLinksQuery.data ?? []) {
-      for (const bookmarkLookupId of getRestaurantListItemLinkFoodItemIds(link)) {
+    for (const page of detailQuery.data?.pages ?? []) {
+      for (const [bookmarkLookupId, rawListIds] of Object.entries(
+        page.bookmarkState.savedListIdsByBookmarkLookupId,
+      )) {
         const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
-        listIds.add(link.listId);
+        for (const candidateListId of rawListIds) {
+          if (!candidateListId?.trim()) {
+            continue;
+          }
+          listIds.add(candidateListId);
+        }
         mapping.set(bookmarkLookupId, listIds);
       }
     }
     return mapping;
-  }, [myBookmarkedLinksQuery.data]);
+  }, [detailQuery.data]);
 
   const savedBookmarkLookupIds = useMemo(() => {
     const ids = new Set<string>();
@@ -679,6 +629,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const defaultList = useMemo(() => myLists.find((candidate) => candidate.isDefault), [myLists]);
   const nonDefaultLists = useMemo(() => myLists.filter((candidate) => !candidate.isDefault), [myLists]);
+  const isLoadingMyLists = shouldLoadMyLists && myListsQuery.isLoading && myLists.length === 0;
   const alreadySavedListIdsForTarget = useMemo(() => {
     if (!saveBookmarkTarget) {
       return new Set<string>();
@@ -753,20 +704,22 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   }, [listItems]);
 
   const photosByFoodItemId = useMemo(() => {
-    const map = new Map<string, VisitPhotoRecord[]>();
+    const map = new Map<string, RestaurantListDetailPhotoPreviewRecord[]>();
 
-    for (const photo of visitPhotosQuery.data ?? []) {
-      if (!photo.food_item) {
-        continue;
+    for (const page of detailQuery.data?.pages ?? []) {
+      for (const photo of page.photoPreviews) {
+        if (!photo.food_item) {
+          continue;
+        }
+
+        const existing = map.get(photo.food_item) ?? [];
+        existing.push(photo);
+        map.set(photo.food_item, existing);
       }
-
-      const existing = map.get(photo.food_item) ?? [];
-      existing.push(photo);
-      map.set(photo.food_item, existing);
     }
 
     return map;
-  }, [visitPhotosQuery.data]);
+  }, [detailQuery.data]);
 
   const buildOwnerDisplayItems = (items: GroupedBookmarkedItem[]): OwnerDisplayItem[] => {
     const rows = new Map<string, OwnerDisplayItem>();
@@ -849,7 +802,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
       const photos = photosByFoodItemId.get(foodItemId) ?? [];
       for (const photo of photos) {
-        const ownerLabel = resolveExpandedPhotoOwnerName(photo) || fallbackOwnerLabel;
+        const ownerLabel = photo.ownerName?.trim() || fallbackOwnerLabel;
         entriesById.set(photo.id, {
           id: photo.id,
           url: buildPocketBaseFileUrl({
@@ -900,7 +853,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const subtitle = useMemo(() => {
     const restaurantCount = groupedRestaurants.length;
-    const countLabel = `${restaurantCount}${listItemsQuery.hasNextPage ? '+' : ''} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
+    const countLabel = `${restaurantCount}${detailQuery.hasNextPage ? '+' : ''} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
     if (!list) {
       return countLabel;
     }
@@ -914,7 +867,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     const ownerName = list.ownerName ?? 'Unknown user';
     const baseLabel = `${ownerName}'s list · ${countLabel}`;
     return descriptionLabel ? `${baseLabel}\n${descriptionLabel}` : baseLabel;
-  }, [groupedRestaurants.length, isOwner, list, listItemsQuery.hasNextPage]);
+  }, [detailQuery.hasNextPage, groupedRestaurants.length, isOwner, list]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -924,6 +877,24 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
     navigation.navigate('Lists');
   };
+
+  const invalidateCurrentListDetailQueries = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+    ]);
+  }, [listId, queryClient]);
+
+  const invalidateSaveTargetQueries = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
+      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
+    ]);
+  }, [listId, queryClient]);
 
   const deleteList = async () => {
     if (!list || !isOwner || list.isDefault) {
@@ -944,6 +915,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
         queryClient.removeQueries({ queryKey: ['feature', 'restaurantList', list.id] });
         queryClient.removeQueries({ queryKey: ['feature', 'restaurantListItems', list.id] });
+        queryClient.removeQueries({ queryKey: ['feature', 'restaurantListDetail', list.id] });
         setIsDeleteConfirmVisible(false);
         showQueuedOfflineAlert('List delete');
         navigation.navigate('Lists');
@@ -955,6 +927,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
       queryClient.removeQueries({ queryKey: ['feature', 'restaurantList', list.id] });
       queryClient.removeQueries({ queryKey: ['feature', 'restaurantListItems', list.id] });
+      queryClient.removeQueries({ queryKey: ['feature', 'restaurantListDetail', list.id] });
       setIsDeleteConfirmVisible(false);
       navigation.navigate('Lists');
     } catch (error) {
@@ -998,20 +971,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     try {
       if (!isOnline) {
         await queueFeatureOutbox('list.restaurant.reorder', { listId, restaurantId, direction });
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
-        ]);
+        await invalidateCurrentListDetailQueries();
         showQueuedOfflineAlert('List reorder');
         return;
       }
 
       await queueWrite('list.restaurant.reorder');
       await moveRestaurantListRestaurant({ listId, restaurantId, direction });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
-      ]);
+      await invalidateCurrentListDetailQueries();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not reorder restaurant.';
       setErrorMessage(message);
@@ -1038,12 +1005,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           listItemId: input.listItemId,
           foodItemId: input.foodItemId,
         });
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-        ]);
+        await invalidateCurrentListDetailQueries();
         showQueuedOfflineAlert('List update');
         return true;
       }
@@ -1054,12 +1016,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         listItemId: input.listItemId,
         foodItemId: input.foodItemId,
       });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-      ]);
+      await invalidateCurrentListDetailQueries();
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
@@ -1082,24 +1039,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     try {
       if (!isOnline) {
         await queueFeatureOutbox('list.restaurant.remove.user', { listId, listItemId });
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-        ]);
+        await invalidateCurrentListDetailQueries();
         showQueuedOfflineAlert('List update');
         return true;
       }
 
       await queueWrite('list.restaurant.remove.user');
       await removeRestaurantListUserRating(listId, listItemId);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-      ]);
+      await invalidateCurrentListDetailQueries();
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
@@ -1242,11 +1189,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           });
         }
 
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'myBookmarkedListItemLinks'] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-        ]);
+        await invalidateSaveTargetQueries();
 
         setSaveBookmarkTarget(null);
         setSelectedSaveListIds(new Set());
@@ -1267,11 +1210,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         });
       }
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'myBookmarkedListItemLinks'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-      ]);
+      await invalidateSaveTargetQueries();
 
       setSaveBookmarkTarget(null);
       setSelectedSaveListIds(new Set());
@@ -1305,11 +1244,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             sourceUserId: list?.userId,
           });
 
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['feature', 'myBookmarkedListItemLinks'] }),
-            queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
-            queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-          ]);
+          await invalidateSaveTargetQueries();
           setSaveBookmarkTarget(null);
           setSelectedSaveListIds(new Set());
           setSaveModalError(null);
@@ -1354,7 +1289,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     await saveBookmarkToLists(targetListIds);
   };
 
-  if (listQuery.isLoading || listItemsQuery.isLoading) {
+  if (detailQuery.isLoading) {
     return (
       <FeatureDetailScreenScaffold onBackPress={handleBack} title="List">
         <Skeleton height={20} />
@@ -1363,14 +1298,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     );
   }
 
-  if (listQuery.isError || hasBlockingListItemsError) {
+  if (hasBlockingListItemsError) {
     return (
       <FeatureDetailScreenScaffold onBackPress={handleBack} title="List">
         <ErrorState
           description="Could not load list detail."
           onRetry={() => {
-            void listQuery.refetch();
-            void listItemsQuery.refetch();
+            void detailQuery.refetch();
           }}
           title="List detail unavailable"
         />
@@ -1431,35 +1365,19 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         <PageErrorToast errorMessage={errorMessage} title="List update failed" />
         <PageErrorToast
           actionLabel="Retry"
-          errorMessage={hasListItemsRefreshError ? 'Could not refresh all list items. Showing saved data.' : null}
+          errorMessage={hasListItemsRefreshError ? 'Could not refresh list detail. Showing saved data.' : null}
           onAction={() => {
-            void listItemsQuery.refetch();
+            void detailQuery.refetch();
           }}
-          title="List items unavailable"
+          title="List detail unavailable"
         />
         <PageErrorToast
           actionLabel="Retry"
-          errorMessage={!isOwner && myListsQuery.isError ? 'Could not load your lists.' : null}
+          errorMessage={shouldLoadMyLists && myListsQuery.isError ? 'Could not load your lists.' : null}
           onAction={() => {
             void myListsQuery.refetch();
           }}
           title="Lists unavailable"
-        />
-        <PageErrorToast
-          actionLabel="Retry"
-          errorMessage={!isOwner && myBookmarkedLinksQuery.isError ? 'Could not load bookmark status.' : null}
-          onAction={() => {
-            void myBookmarkedLinksQuery.refetch();
-          }}
-          title="Bookmark status unavailable"
-        />
-        <PageErrorToast
-          actionLabel="Retry"
-          errorMessage={visitPhotosQuery.isError ? 'Could not load menu item photos.' : null}
-          onAction={() => {
-            void visitPhotosQuery.refetch();
-          }}
-          title="Photos unavailable"
         />
 
         {isOwner ? (
@@ -1519,7 +1437,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                           <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
                         </Pressable>
                       ) : null}
-                      {groupIndex < groupedRestaurants.length - 1 || listItemsQuery.hasNextPage ? (
+                      {groupIndex < groupedRestaurants.length - 1 || detailQuery.hasNextPage ? (
                         <Pressable
                           accessibilityLabel={`Move ${group.restaurantName} down`}
                           accessibilityRole="button"
@@ -1751,12 +1669,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           })
         )}
 
-        {groupedRestaurants.length > 0 && listItemsQuery.hasNextPage ? (
+        {groupedRestaurants.length > 0 && detailQuery.hasNextPage ? (
           <Button
-            label={listItemsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more restaurants'}
-            loading={listItemsQuery.isFetchingNextPage}
+            label={detailQuery.isFetchingNextPage ? 'Loading more...' : 'Load more restaurants'}
+            loading={detailQuery.isFetchingNextPage}
             onPress={() => {
-              void listItemsQuery.fetchNextPage();
+              void detailQuery.fetchNextPage();
             }}
             variant="secondary"
           />
@@ -1854,10 +1772,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           disabled={
             isSavingBookmark ||
             !saveBookmarkTarget ||
+            isLoadingMyLists ||
             Boolean(defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id))
           }
           label={
-            defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id)
+            isLoadingMyLists
+              ? 'Loading your lists...'
+              : defaultList?.id && alreadySavedListIdsForTarget.has(defaultList.id)
               ? 'Already in "Saved" list'
               : defaultList
                 ? 'Quick Save to "Saved" list'
@@ -1869,7 +1790,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           variant="secondary"
         />
 
-        {nonDefaultLists.length > 0 ? (
+        {isLoadingMyLists ? (
+          <Text tone="secondary">Loading your lists...</Text>
+        ) : nonDefaultLists.length > 0 ? (
           <>
             <SectionHeader style={styles.saveListHeader} title="Or choose lists" titleTone="secondary" />
             <View style={styles.saveListRows}>

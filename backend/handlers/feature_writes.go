@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -114,6 +115,7 @@ type billParticipantResponse struct {
 	ID                    string   `json:"id"`
 	Name                  string   `json:"name"`
 	UserID                string   `json:"userId,omitempty"`
+	FriendshipID          string   `json:"friendshipId,omitempty"`
 	AmountOwed            float64  `json:"amountOwed"`
 	CustomTipContribution *float64 `json:"customTipContribution,omitempty"`
 	PaidStatus            string   `json:"paidStatus"`
@@ -155,6 +157,7 @@ type billResponse struct {
 // RegisterFeatureWriteHandlers registers authenticated transactional write endpoints for visit and bill flows.
 func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 	registerRestaurantWriteHandlers(se, app)
+	registerRestaurantListWriteHandlers(se, app)
 
 	se.Router.POST("/api/visits", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
@@ -238,7 +241,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 				return err
 			}
 
-			responsePayload, err = buildBillResponse(txApp, billRecord)
+			responsePayload, err = buildBillResponse(txApp, billRecord, e.Auth.Id)
 			if err != nil {
 				return apis.NewApiError(500, "failed to load created bill", err)
 			}
@@ -273,7 +276,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 				return err
 			}
 
-			responsePayload, err = buildBillResponse(txApp, billRecord)
+			responsePayload, err = buildBillResponse(txApp, billRecord, e.Auth.Id)
 			if err != nil {
 				return apis.NewApiError(500, "failed to load updated bill", err)
 			}
@@ -860,7 +863,7 @@ func buildVisitResponse(app core.App, visitRecord *core.Record, authRecord *core
 	return response, nil
 }
 
-func buildBillResponse(app core.App, billRecord *core.Record) (billResponse, error) {
+func buildBillResponse(app core.App, billRecord *core.Record, viewerUserID string) (billResponse, error) {
 	participants, err := listBillParticipants(app, billRecord.Id)
 	if err != nil {
 		return billResponse{}, err
@@ -871,22 +874,9 @@ func buildBillResponse(app core.App, billRecord *core.Record) (billResponse, err
 		return billResponse{}, err
 	}
 
-	userRecords := make(map[string]*core.Record, len(participants))
-	for _, participant := range participants {
-		userID := strings.TrimSpace(participant.GetString("user"))
-		if userID == "" {
-			continue
-		}
-		if _, exists := userRecords[userID]; exists {
-			continue
-		}
-		userRecord, userErr := app.FindRecordById("users", userID)
-		if userErr != nil && !errors.Is(userErr, sql.ErrNoRows) {
-			return billResponse{}, userErr
-		}
-		if userRecord != nil {
-			userRecords[userID] = userRecord
-		}
+	userRecordsByID, friendshipIDsByUserID, err := loadBillParticipantDisplayData(app, viewerUserID, participants)
+	if err != nil {
+		return billResponse{}, err
 	}
 
 	responseParticipants := make([]billParticipantResponse, 0, len(participants))
@@ -894,7 +884,7 @@ func buildBillResponse(app core.App, billRecord *core.Record) (billResponse, err
 		userID := strings.TrimSpace(participant.GetString("user"))
 		name := strings.TrimSpace(participant.GetString("participant_name"))
 		if name == "" {
-			if userRecord := userRecords[userID]; userRecord != nil {
+			if userRecord := userRecordsByID[userID]; userRecord != nil {
 				name = strings.TrimSpace(userRecord.GetString("name"))
 				if name == "" {
 					email := strings.TrimSpace(userRecord.GetString("email"))
@@ -912,6 +902,7 @@ func buildBillResponse(app core.App, billRecord *core.Record) (billResponse, err
 			ID:                    participant.Id,
 			Name:                  name,
 			UserID:                userID,
+			FriendshipID:          friendshipIDsByUserID[userID],
 			AmountOwed:            sanitizeCurrency(participant.GetFloat("amount_owed")),
 			CustomTipContribution: sanitizeOptionalCurrencyResponse(participant.Get("custom_tip_contribution")),
 			PaidStatus:            normalizePaidStatus(participant.GetString("paid_status")),
@@ -947,6 +938,103 @@ func buildBillResponse(app core.App, billRecord *core.Record) (billResponse, err
 		CreatedAt:       billRecord.GetString("created"),
 		UpdatedAt:       billRecord.GetString("updated"),
 	}, nil
+}
+
+func loadBillParticipantDisplayData(
+	app core.App,
+	viewerUserID string,
+	participants []*core.Record,
+) (map[string]*core.Record, map[string]string, error) {
+	userIDs := extractRelationFieldValues(participants, "user")
+	userRecords, err := findRecordsByRelationValues(app, "users", "id", userIDs, "")
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, err
+	}
+
+	userRecordsByID := mapRecordsByID(userRecords)
+	friendshipIDsByUserID := map[string]string{}
+
+	if strings.TrimSpace(viewerUserID) == "" {
+		return userRecordsByID, friendshipIDsByUserID, nil
+	}
+
+	friendshipRecordsByUserID, err := findAcceptedFriendshipRecordsByUserID(app, viewerUserID, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for userID, friendshipRecord := range friendshipRecordsByUserID {
+		friendshipIDsByUserID[userID] = friendshipRecord.Id
+	}
+
+	return userRecordsByID, friendshipIDsByUserID, nil
+}
+
+func findAcceptedFriendshipRecordsByUserID(
+	app core.App,
+	viewerUserID string,
+	otherUserIDs []string,
+) (map[string]*core.Record, error) {
+	normalizedOtherUserIDs := make([]string, 0, len(otherUserIDs))
+	seen := map[string]struct{}{}
+	for _, otherUserID := range otherUserIDs {
+		trimmedOtherUserID := strings.TrimSpace(otherUserID)
+		if trimmedOtherUserID == "" || trimmedOtherUserID == viewerUserID {
+			continue
+		}
+		if _, exists := seen[trimmedOtherUserID]; exists {
+			continue
+		}
+
+		seen[trimmedOtherUserID] = struct{}{}
+		normalizedOtherUserIDs = append(normalizedOtherUserIDs, trimmedOtherUserID)
+	}
+
+	if len(normalizedOtherUserIDs) == 0 {
+		return map[string]*core.Record{}, nil
+	}
+
+	filterClauses := make([]string, 0, len(normalizedOtherUserIDs))
+	params := dbx.Params{"viewerUserId": viewerUserID}
+	for index, otherUserID := range normalizedOtherUserIDs {
+		paramKey := fmt.Sprintf("otherUserId%d", index)
+		params[paramKey] = otherUserID
+		filterClauses = append(
+			filterClauses,
+			fmt.Sprintf(
+				"((user = {:viewerUserId} && friend = {:%s}) || (user = {:%s} && friend = {:viewerUserId}))",
+				paramKey,
+				paramKey,
+			),
+		)
+	}
+
+	friendshipRecords, err := app.FindRecordsByFilter(
+		"friendships",
+		"status = 'accepted' && ("+strings.Join(filterClauses, " || ")+")",
+		"",
+		len(normalizedOtherUserIDs),
+		0,
+		params,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	friendshipRecordsByUserID := make(map[string]*core.Record, len(friendshipRecords))
+	for _, friendshipRecord := range friendshipRecords {
+		otherUserID := strings.TrimSpace(friendshipRecord.GetString("user"))
+		if otherUserID == viewerUserID {
+			otherUserID = strings.TrimSpace(friendshipRecord.GetString("friend"))
+		}
+		if otherUserID == "" {
+			continue
+		}
+
+		friendshipRecordsByUserID[otherUserID] = friendshipRecord
+	}
+
+	return friendshipRecordsByUserID, nil
 }
 
 func listFoodItemsForVisit(app core.App, visitID string) ([]*core.Record, error) {

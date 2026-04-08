@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -142,6 +144,8 @@ type homeFeedResponse struct {
 
 // RegisterFeatureSummaryHandlers registers authenticated summary endpoints used by mobile surfaces.
 func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
+	registerRestaurantListDetailSummaryHandler(se, app)
+
 	se.Router.GET("/api/notes/summary", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
@@ -197,6 +201,34 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, summary)
 	})
+
+	se.Router.GET("/api/bills/{billId}", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		billID := strings.TrimSpace(e.Request.PathValue("billId"))
+		if billID == "" {
+			return apis.NewBadRequestError("billId is required", nil)
+		}
+
+		billRecord, err := findAccessibleBillRecord(app, billID, e.Auth.Id)
+		if err != nil {
+			log.Printf("Failed to load bill detail for user %s and bill %s: %v", e.Auth.Id, billID, err)
+			return apis.NewApiError(500, "failed to load bill detail", err)
+		}
+		if billRecord == nil {
+			return apis.NewNotFoundError("bill not found", nil)
+		}
+
+		response, err := buildBillResponse(app, billRecord, e.Auth.Id)
+		if err != nil {
+			log.Printf("Failed to build bill detail payload for user %s and bill %s: %v", e.Auth.Id, billID, err)
+			return apis.NewApiError(500, "failed to load bill detail", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
 
 	se.Router.GET("/api/home-feed", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
@@ -453,6 +485,41 @@ func getBillListSummary(app core.App, userID string) ([]billListSummaryResponse,
 	}
 
 	return result, nil
+}
+
+func findAccessibleBillRecord(app core.App, billID string, userID string) (*core.Record, error) {
+	billRecord, err := app.FindRecordById("bills", billID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	if strings.TrimSpace(billRecord.GetString("creator_user")) == userID {
+		return billRecord, nil
+	}
+
+	participantRecords, err := app.FindRecordsByFilter(
+		"bill_participants",
+		"bill = {:billId} && user = {:userId}",
+		"",
+		1,
+		0,
+		dbx.Params{
+			"billId": billID,
+			"userId": userID,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(participantRecords) == 0 {
+		return nil, nil
+	}
+
+	return billRecord, nil
 }
 
 func normalizeHomeFeedScope(raw string) (string, error) {

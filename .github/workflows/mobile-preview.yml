@@ -85,6 +85,9 @@ jobs:
       - name: Typecheck mobile app
         run: pnpm mobile:typecheck
 
+      - name: Check mobile unused exports
+        run: pnpm mobile:unused-exports
+
       - name: Resolve mobile release target
         id: release_target
         shell: bash

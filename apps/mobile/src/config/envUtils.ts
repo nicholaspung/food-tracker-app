@@ -15,7 +15,7 @@ export function readOptionalEnvValue(value: string | undefined): string | undefi
   return trimmedValue ? trimmedValue : undefined;
 }
 
-export function readBooleanEnvValue(value: string | undefined): boolean {
+function readBooleanEnvValue(value: string | undefined): boolean {
   const normalizedValue = value?.trim().toLowerCase();
   return normalizedValue === '1' || normalizedValue === 'true' || normalizedValue === 'yes';
 }
@@ -39,11 +39,11 @@ export function normalizeAppEnvironment(value: string | undefined): AppEnvironme
   }
 }
 
-export function resolveConfiguredAppEnvironment(source?: EnvSource): AppEnvironment {
+function resolveConfiguredAppEnvironment(source?: EnvSource): AppEnvironment {
   return normalizeAppEnvironment(readOptionalEnvValue(source?.EXPO_PUBLIC_APP_ENV)) ?? 'local';
 }
 
-export function isScreenshotReviewModeRequested(source?: EnvSource): boolean {
+function isScreenshotReviewModeRequested(source?: EnvSource): boolean {
   return readBooleanEnvValue(source?.EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE);
 }
 

@@ -53,8 +53,10 @@ type restaurantSearchResult struct {
 }
 
 type placesSearchResponse struct {
-	Places      []placeResult            `json:"places"`
-	Restaurants []restaurantSearchResult `json:"restaurants"`
+	Places           []placeResult             `json:"places"`
+	Restaurants      []restaurantSearchResult  `json:"restaurants"`
+	ResolvedLocation *placeLocation            `json:"resolvedLocation,omitempty"`
+	Usage            *lib.MonthlyUsageSnapshot `json:"usage,omitempty"`
 }
 
 func buildPlacesSearchResponse(
@@ -80,6 +82,20 @@ func buildPlacesSearchResponse(
 		Places:      placesResult,
 		Restaurants: restaurants,
 	}, nil
+}
+
+func loadMonthlyUsageSnapshot(app core.App, authRecord *core.Record) *lib.MonthlyUsageSnapshot {
+	if authRecord == nil {
+		return nil
+	}
+
+	snapshot, err := lib.GetMonthlyUsageSnapshot(app, authRecord)
+	if err != nil {
+		log.Printf("Failed to load monthly usage snapshot for user %s: %v", authRecord.Id, err)
+		return nil
+	}
+
+	return snapshot
 }
 
 func mapGooglePlaceResult(place *placespb.Place, useShortFormattedAddress bool) placeResult {
@@ -145,15 +161,15 @@ func syncGooglePlaceRestaurants(
 	now := time.Now().UTC()
 	results := make([]restaurantSearchResult, 0, len(dedupedPlaces))
 
-		for _, place := range dedupedPlaces {
-			existing := existingByPlaceID[place.PlaceID]
-			if existing != nil {
-				if shouldRefreshGooglePlaceRestaurant(existing) {
-					applyGooglePlaceToRestaurantRecord(existing, place, now)
-					if err := app.Save(existing); err != nil {
-						log.Printf("Failed to update cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
-					}
+	for _, place := range dedupedPlaces {
+		existing := existingByPlaceID[place.PlaceID]
+		if existing != nil {
+			if shouldRefreshGooglePlaceRestaurant(existing) {
+				applyGooglePlaceToRestaurantRecord(existing, place, now)
+				if err := app.Save(existing); err != nil {
+					log.Printf("Failed to update cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
 				}
+			}
 
 			results = append(results, mapRestaurantSearchResult(existing))
 			continue
@@ -161,22 +177,22 @@ func syncGooglePlaceRestaurants(
 
 		if strings.TrimSpace(place.Name) == "" {
 			continue
-			}
+		}
 
-			record := core.NewRecord(restaurantsCollection)
-			applyGooglePlaceToRestaurantRecord(record, place, now)
-			if err := app.Save(record); err != nil {
-				if isUniqueConstraintError(err) {
-					refetchedByPlaceID, refetchErr := findRestaurantsByPlaceID(app, []placeResult{place})
-					if refetchErr == nil && refetchedByPlaceID[place.PlaceID] != nil {
-						results = append(results, mapRestaurantSearchResult(refetchedByPlaceID[place.PlaceID]))
-						continue
-					}
+		record := core.NewRecord(restaurantsCollection)
+		applyGooglePlaceToRestaurantRecord(record, place, now)
+		if err := app.Save(record); err != nil {
+			if isUniqueConstraintError(err) {
+				refetchedByPlaceID, refetchErr := findRestaurantsByPlaceID(app, []placeResult{place})
+				if refetchErr == nil && refetchedByPlaceID[place.PlaceID] != nil {
+					results = append(results, mapRestaurantSearchResult(refetchedByPlaceID[place.PlaceID]))
+					continue
 				}
-
-				log.Printf("Failed to create cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
-				continue
 			}
+
+			log.Printf("Failed to create cached restaurant for place %s (%s): %v", place.Name, place.PlaceID, err)
+			continue
+		}
 
 		existingByPlaceID[place.PlaceID] = record
 		results = append(results, mapRestaurantSearchResult(record))
@@ -457,6 +473,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			log.Printf("Failed to normalize nearby places: %v", err)
 			return apis.NewApiError(500, "failed to normalize nearby places", err)
 		}
+		responsePayload.Usage = loadMonthlyUsageSnapshot(e.App, authRecord)
 
 		return e.JSON(200, responsePayload)
 	})
@@ -478,9 +495,10 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 
 		// Parse request body
 		var requestData struct {
-			Query    string `json:"query"`
-			Location string `json:"location"`
-			Radius   int    `json:"radius"` // in meters
+			Query        string `json:"query"`
+			Location     string `json:"location"`
+			LocationText string `json:"locationText"`
+			Radius       int    `json:"radius"` // in meters
 		}
 
 		if err := e.BindBody(&requestData); err != nil {
@@ -493,12 +511,16 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		}
 		requestData.Query = query
 
-		if strings.TrimSpace(requestData.Location) != "" {
-			location, err := normalizeBoundedString(requestData.Location, "location", maxPlacesLocationLength)
+		locationText := requestData.LocationText
+		if strings.TrimSpace(locationText) == "" {
+			locationText = requestData.Location
+		}
+		if strings.TrimSpace(locationText) != "" {
+			location, err := normalizeBoundedString(locationText, "locationText", maxPlacesLocationLength)
 			if err != nil {
 				return apis.NewBadRequestError(err.Error(), nil)
 			}
-			requestData.Location = location
+			locationText = location
 		}
 
 		radius, err := normalizePlacesRadius(requestData.Radius, 5000)
@@ -518,7 +540,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		log.Printf(
 			"Searching places by text with has_query=%t has_location_bias=%t radius=%d",
 			requestData.Query != "",
-			requestData.Location != "",
+			locationText != "",
 			requestData.Radius,
 		)
 
@@ -540,31 +562,40 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		}
 
 		// If location is provided, add location bias
-		if requestData.Location != "" {
+		var resolvedLocation *placeLocation
+		if locationText != "" {
 			// Use old Maps client for geocoding (Geocoding API is separate)
 			mapsClient, err := maps.NewClient(maps.WithAPIKey(placesAPIKey), maps.WithHTTPClient(geocodeHTTPClient))
 			if err == nil {
 				geocodeReq := &maps.GeocodingRequest{
-					Address: requestData.Location,
+					Address: locationText,
 				}
 				geocodeResp, err := mapsClient.Geocode(ctx, geocodeReq)
 				if err == nil && len(geocodeResp) > 0 {
 					location := geocodeResp[0].Geometry.Location
 					log.Printf("Resolved location bias for text search")
+					resolvedLocation = &placeLocation{
+						Lat: location.Lat,
+						Lng: location.Lng,
+					}
 
 					// Add location bias with circle
 					searchReq.LocationBias = &placespb.SearchTextRequest_LocationBias{
 						Type: &placespb.SearchTextRequest_LocationBias_Circle{
 							Circle: &placespb.Circle{
 								Center: &latlng.LatLng{
-									Latitude:  location.Lat,
-									Longitude: location.Lng,
+									Latitude:  resolvedLocation.Lat,
+									Longitude: resolvedLocation.Lng,
 								},
 								Radius: float64(requestData.Radius),
 							},
 						},
 					}
+				} else if err != nil {
+					log.Printf("Failed to geocode location bias for text search: %v", err)
 				}
+			} else {
+				log.Printf("Failed to create Google Maps client for text search bias: %v", err)
 			}
 		}
 
@@ -592,7 +623,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 				Success:     false,
 				ErrorType:   fmt.Sprintf("%T", err),
 				ResultCount: 0,
-				HasLocation: requestData.Location != "",
+				HasLocation: locationText != "",
 			})
 
 			return apis.NewApiError(500, "failed to search places", err)
@@ -606,7 +637,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			DurationMs:  durationMs,
 			Success:     true,
 			ResultCount: len(resp.Places),
-			HasLocation: requestData.Location != "",
+			HasLocation: locationText != "",
 		})
 
 		responsePayload, err := buildPlacesSearchResponse(e.App, authRecord, resp.Places, false)
@@ -614,6 +645,8 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 			log.Printf("Failed to normalize text search places: %v", err)
 			return apis.NewApiError(500, "failed to normalize places", err)
 		}
+		responsePayload.ResolvedLocation = resolvedLocation
+		responsePayload.Usage = loadMonthlyUsageSnapshot(e.App, authRecord)
 
 		return e.JSON(200, responsePayload)
 	})

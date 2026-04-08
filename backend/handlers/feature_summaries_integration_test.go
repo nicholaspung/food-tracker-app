@@ -298,6 +298,168 @@ func TestBillsSummaryEndpoint(t *testing.T) {
 	}
 }
 
+func TestBillDetailEndpointReturnsNestedDataAndParticipantDisplayMetadata(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	participant, participantToken := createAuthUser(t, server.app, false, false)
+	_, outsiderToken := createAuthUser(t, server.app, false, false)
+
+	participant.Set("name", "Casey Friend")
+	if err := server.app.Save(participant); err != nil {
+		t.Fatalf("failed to update participant name: %v", err)
+	}
+
+	friendship := createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   owner.Id,
+		"friend": participant.Id,
+		"status": "accepted",
+	})
+
+	bill := createCollectionRecord(t, server.app, "bills", map[string]any{
+		"bill_name":         "Team Dinner",
+		"creator_user":      owner.Id,
+		"total_amount":      54,
+		"tax":               4,
+		"tip":               8,
+		"fees":              2,
+		"split_mode":        "itemized",
+		"extras_split_mode": "proportional",
+		"status":            "active",
+	})
+
+	ownerParticipant := createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             bill.Id,
+		"user":             owner.Id,
+		"participant_name": owner.GetString("name"),
+		"amount_owed":      22,
+		"paid_status":      "pending",
+	})
+	friendParticipant := createCollectionRecord(t, server.app, "bill_participants", map[string]any{
+		"bill":             bill.Id,
+		"user":             participant.Id,
+		"participant_name": participant.GetString("name"),
+		"amount_owed":      32,
+		"paid_status":      "paid",
+	})
+
+	createCollectionRecord(t, server.app, "bill_items", map[string]any{
+		"bill":        bill.Id,
+		"item_name":   "Shared Plates",
+		"price":       54,
+		"assigned_to": []string{ownerParticipant.Id, friendParticipant.Id},
+		"split_mode":  "simple",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/bills/"+bill.Id,
+		ownerToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		ID           string `json:"id"`
+		Title        string `json:"title"`
+		Status       string `json:"status"`
+		Participants []struct {
+			ID           string  `json:"id"`
+			UserID       string  `json:"userId"`
+			FriendshipID string  `json:"friendshipId"`
+			Name         string  `json:"name"`
+			AmountOwed   float64 `json:"amountOwed"`
+			PaidStatus   string  `json:"paidStatus"`
+		} `json:"participants"`
+		Items []struct {
+			ID                       string   `json:"id"`
+			ItemName                 string   `json:"itemName"`
+			AssignedToParticipantIDs []string `json:"assignedToParticipantIds"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse bill detail payload: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.ID != bill.Id || payload.Title != "Team Dinner" || payload.Status != "open" {
+		t.Fatalf("unexpected bill detail payload: %#v", payload)
+	}
+	if len(payload.Participants) != 2 {
+		t.Fatalf("expected 2 participants, got %#v", payload.Participants)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 item, got %#v", payload.Items)
+	}
+
+	participantByID := make(map[string]struct {
+		UserID       string
+		FriendshipID string
+		Name         string
+		AmountOwed   float64
+		PaidStatus   string
+	}, len(payload.Participants))
+	for _, participantPayload := range payload.Participants {
+		participantByID[participantPayload.ID] = struct {
+			UserID       string
+			FriendshipID string
+			Name         string
+			AmountOwed   float64
+			PaidStatus   string
+		}{
+			UserID:       participantPayload.UserID,
+			FriendshipID: participantPayload.FriendshipID,
+			Name:         participantPayload.Name,
+			AmountOwed:   participantPayload.AmountOwed,
+			PaidStatus:   participantPayload.PaidStatus,
+		}
+	}
+
+	if ownerPayload := participantByID[ownerParticipant.Id]; ownerPayload.UserID != owner.Id || ownerPayload.FriendshipID != "" {
+		t.Fatalf("expected owner participant without friendship metadata, got %#v", ownerPayload)
+	}
+	if friendPayload := participantByID[friendParticipant.Id]; friendPayload.UserID != participant.Id ||
+		friendPayload.FriendshipID != friendship.Id ||
+		friendPayload.Name != "Casey Friend" ||
+		friendPayload.AmountOwed != 32 ||
+		friendPayload.PaidStatus != "paid" {
+		t.Fatalf("unexpected friend participant payload: %#v", friendPayload)
+	}
+
+	if payload.Items[0].ItemName != "Shared Plates" ||
+		len(payload.Items[0].AssignedToParticipantIDs) != 2 ||
+		payload.Items[0].AssignedToParticipantIDs[0] != ownerParticipant.Id ||
+		payload.Items[0].AssignedToParticipantIDs[1] != friendParticipant.Id {
+		t.Fatalf("unexpected item payload: %#v", payload.Items[0])
+	}
+
+	participantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/bills/"+bill.Id,
+		participantToken,
+		"",
+	)
+	if participantResponse.Code != http.StatusOK {
+		t.Fatalf("expected participant access to succeed, got %d: %s", participantResponse.Code, participantResponse.Body.String())
+	}
+
+	outsiderResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/bills/"+bill.Id,
+		outsiderToken,
+		"",
+	)
+	if outsiderResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected outsider access to be denied with 404, got %d: %s", outsiderResponse.Code, outsiderResponse.Body.String())
+	}
+}
+
 func TestRecentRestaurantsEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

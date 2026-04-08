@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -209,5 +210,147 @@ func TestFriendsListEndpointSupportsSearchAndUserIDFilters(t *testing.T) {
 	}
 	if userIDItem["userId"] != appleFriend.Id {
 		t.Fatalf("expected apple friend from userIds filter, got %#v", userIDItem["userId"])
+	}
+}
+
+func TestInviteFriendEndpointCreatesPendingRequestFromFriendCode(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFriendHandlers(se, app)
+	})
+
+	requester, requesterToken := createAuthUser(t, server.app, false, false)
+	target, _ := createAuthUser(t, server.app, false, false)
+	target.Set("name", "Target Friend")
+	target.Set("friendCode", "FRND1234")
+	if err := server.app.Save(target); err != nil {
+		t.Fatalf("failed to update target user: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/friends/invite",
+		requesterToken,
+		`{"code":" frnd1234 "}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := parseJSONMap(t, response.Body.Bytes())
+	if payload["userId"] != target.Id {
+		t.Fatalf("expected invited user id %s, got %#v", target.Id, payload["userId"])
+	}
+	if payload["displayName"] != "Target Friend" {
+		t.Fatalf("expected displayName Target Friend, got %#v", payload["displayName"])
+	}
+	if payload["status"] != "pending_sent" {
+		t.Fatalf("expected pending_sent status, got %#v", payload["status"])
+	}
+
+	friendship, err := server.app.FindFirstRecordByFilter(
+		"friendships",
+		"((user = {:leftUser} && friend = {:rightUser}) || (user = {:rightUser} && friend = {:leftUser}))",
+		map[string]any{
+			"leftUser":  requester.Id,
+			"rightUser": target.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to load created friendship: %v", err)
+	}
+
+	if friendship.GetString("user") != requester.Id {
+		t.Fatalf("expected requester to be sender, got %q", friendship.GetString("user"))
+	}
+	if friendship.GetString("friend") != target.Id {
+		t.Fatalf("expected target to be receiver, got %q", friendship.GetString("friend"))
+	}
+	if friendship.GetString("status") != "pending" {
+		t.Fatalf("expected pending friendship, got %q", friendship.GetString("status"))
+	}
+}
+
+func TestInviteFriendEndpointRejectsSelfInviteCode(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFriendHandlers(se, app)
+	})
+
+	requester, requesterToken := createAuthUser(t, server.app, false, false)
+	requester.Set("friendCode", "SELF1234")
+	if err := server.app.Save(requester); err != nil {
+		t.Fatalf("failed to update requester friend code: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/friends/invite",
+		requesterToken,
+		`{"code":"SELF1234"}`,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := parseJSONMap(t, response.Body.Bytes())
+	if payload["message"] != "Cannot add yourself as a friend." {
+		t.Fatalf("expected self-invite error, got %#v", payload["message"])
+	}
+}
+
+func TestInviteFriendEndpointRejectsDuplicateFriendshipPair(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFriendHandlers(se, app)
+	})
+
+	requester, requesterToken := createAuthUser(t, server.app, false, false)
+	target, _ := createAuthUser(t, server.app, false, false)
+	target.Set("friendCode", "DUPL1234")
+	if err := server.app.Save(target); err != nil {
+		t.Fatalf("failed to update target friend code: %v", err)
+	}
+
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   requester.Id,
+		"friend": target.Id,
+		"status": "pending",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/friends/invite",
+		requesterToken,
+		fmt.Sprintf(`{"code":"%s"}`, "DUPL1234"),
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+
+	payload := parseJSONMap(t, response.Body.Bytes())
+	if payload["message"] != "Friend request already exists." {
+		t.Fatalf("expected duplicate error, got %#v", payload["message"])
+	}
+
+	rows, err := server.app.FindRecordsByFilter(
+		"friendships",
+		"((user = {:leftUser} && friend = {:rightUser}) || (user = {:rightUser} && friend = {:leftUser}))",
+		"",
+		0,
+		0,
+		map[string]any{
+			"leftUser":  requester.Id,
+			"rightUser": target.Id,
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to list friendship rows: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected duplicate invite attempt to keep 1 row, found %d", len(rows))
 	}
 }

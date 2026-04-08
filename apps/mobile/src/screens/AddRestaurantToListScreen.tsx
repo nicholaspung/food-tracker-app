@@ -13,12 +13,10 @@ import {
 } from '../components/shared';
 import {
   addRestaurantVisitRatingsToList,
-  listRestaurantListItemLinksForRestaurantIds,
-  listRestaurantListNotesForRestaurantIds,
-  listVisitsPage,
-  type VisitRecord,
+  listRestaurantListVisitedRestaurantsPage,
+  type RestaurantListVisitedRestaurantCandidate,
+  type RestaurantListVisitedRestaurantFoodItem,
 } from '../features';
-import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -26,7 +24,6 @@ import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -37,28 +34,10 @@ type AddRestaurantToListScreenProps = NativeStackScreenProps<
   'AddRestaurantToList'
 >;
 
-interface RestaurantFoodItemOption {
-  id: string;
-  name: string;
-  rating: number;
-  notes?: string;
-  visitedAt: string;
-}
-
-interface VisitedRestaurantOption {
-  id: string;
-  name: string;
-  location?: string;
-  cuisineType?: string;
-  itemCount: number;
-  visitDates: string[];
-  foodItems: RestaurantFoodItemOption[];
-}
-
 interface GroupedFoodItemsByDate {
   dayKey: string;
   visitDate: string;
-  items: RestaurantFoodItemOption[];
+  items: RestaurantListVisitedRestaurantFoodItem[];
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -187,101 +166,6 @@ function toDayKey(value: string): string {
   return `${year}-${month}-${day}`;
 }
 
-function buildVisitedRestaurants(
-  visits: VisitRecord[],
-  currentUserId: string | undefined,
-): VisitedRestaurantOption[] {
-  if (!currentUserId) {
-    return [];
-  }
-
-  const restaurants = new Map<
-    string,
-    {
-      id: string;
-      name: string;
-      location?: string;
-      cuisineType?: string;
-      itemCount: number;
-      visitDates: Set<string>;
-      foodItems: Map<string, RestaurantFoodItemOption>;
-      latestVisitAt: string;
-    }
-  >();
-
-  for (const visit of visits) {
-    if (!visit.restaurantId || visit.userId !== currentUserId) {
-      continue;
-    }
-
-    const visitTimestamp = visit.visitedAt || visit.createdAt;
-    if (!visitTimestamp) {
-      continue;
-    }
-
-    const existing = restaurants.get(visit.restaurantId);
-    const nextLatestVisit =
-      !existing ||
-      toTimestamp(visitTimestamp) > toTimestamp(existing.latestVisitAt)
-        ? visitTimestamp
-        : existing.latestVisitAt;
-
-    const nextRestaurant = existing ?? {
-      id: visit.restaurantId,
-      name: visit.restaurantName,
-      location: visit.restaurantLocation,
-      cuisineType: visit.restaurantCuisineType,
-      itemCount: 0,
-      visitDates: new Set<string>(),
-      foodItems: new Map<string, RestaurantFoodItemOption>(),
-      latestVisitAt: visitTimestamp,
-    };
-
-    nextRestaurant.latestVisitAt = nextLatestVisit;
-    nextRestaurant.visitDates.add(visitTimestamp);
-    nextRestaurant.itemCount += visit.items.length;
-
-    for (const item of visit.items) {
-      if (!item.id) {
-        continue;
-      }
-
-      if (!nextRestaurant.foodItems.has(item.id)) {
-        nextRestaurant.foodItems.set(item.id, {
-          id: item.id,
-          name: item.name,
-          notes: item.notes,
-          rating: item.rating,
-          visitedAt: visitTimestamp,
-        });
-      }
-    }
-
-    restaurants.set(visit.restaurantId, nextRestaurant);
-  }
-
-  return Array.from(restaurants.values())
-    .map((restaurant) => ({
-      id: restaurant.id,
-      name: restaurant.name,
-      location: restaurant.location,
-      cuisineType: restaurant.cuisineType,
-      itemCount: restaurant.itemCount,
-      visitDates: Array.from(restaurant.visitDates).sort(
-        (left, right) => toTimestamp(right) - toTimestamp(left),
-      ),
-      foodItems: Array.from(restaurant.foodItems.values()).sort(
-        (left, right) =>
-          toTimestamp(right.visitedAt) - toTimestamp(left.visitedAt),
-      ),
-    }))
-    .sort(
-      (left, right) =>
-        toTimestamp(right.visitDates[0] ?? "") -
-        toTimestamp(left.visitDates[0] ?? ""),
-    );
-}
-
 export function AddRestaurantToListScreen({
   navigation,
   route,
@@ -289,7 +173,6 @@ export function AddRestaurantToListScreen({
   const { listId } = route.params;
   const theme = useTheme();
   const styles = useStyles();
-  const { user } = useAuth();
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
@@ -306,11 +189,10 @@ export function AddRestaurantToListScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const trimmedSearchQuery = searchQuery.trim();
 
-  const visitsQuery = useInfiniteQuery({
-    queryKey: ["feature", "visits", "mine", "paginated", trimmedSearchQuery],
+  const restaurantsQuery = useInfiniteQuery({
+    queryKey: ["feature", "restaurantListVisitedRestaurants", listId, trimmedSearchQuery, "paginated"],
     queryFn: ({ pageParam }) =>
-      listVisitsPage({
-        scope: "mine",
+      listRestaurantListVisitedRestaurantsPage(listId, {
         page: pageParam,
         pageSize: 20,
         search: trimmedSearchQuery || undefined,
@@ -319,63 +201,16 @@ export function AddRestaurantToListScreen({
     getNextPageParam: (lastPage) =>
       lastPage.hasNextPage ? lastPage.page + 1 : undefined,
   });
-  const visitsState = usePaginatedQueryState({
-    data: visitsQuery.data,
-    isError: visitsQuery.isError,
-    isFetching: visitsQuery.isFetching,
-    isLoading: visitsQuery.isLoading,
-    isSuccess: visitsQuery.isSuccess,
+  const restaurantsState = usePaginatedQueryState({
+    data: restaurantsQuery.data,
+    isError: restaurantsQuery.isError,
+    isFetching: restaurantsQuery.isFetching,
+    isLoading: restaurantsQuery.isLoading,
+    isSuccess: restaurantsQuery.isSuccess,
   });
 
-  const loadedVisits = visitsState.items;
-  const hasBlockingVisitsError = visitsState.hasBlockingError;
-
-  const visitedRestaurants = useMemo(
-    () => buildVisitedRestaurants(loadedVisits, user?.id),
-    [loadedVisits, user?.id],
-  );
-  const visibleRestaurantIds = useMemo(
-    () => visitedRestaurants.map((restaurant) => restaurant.id),
-    [visitedRestaurants],
-  );
-
-  const listItemLinksQuery = useIncrementalIdQuery({
-    queryKey: ['feature', 'restaurantListItemLinks', listId, 'visibleRestaurants'],
-    ids: visibleRestaurantIds,
-    fetchByIds: (restaurantIds) => listRestaurantListItemLinksForRestaurantIds(listId, restaurantIds),
-    getRecordIds: (link) => [link.restaurantId],
-    getRecordKey: (link) => link.id,
-  });
-
-  const restaurantNotesQuery = useIncrementalIdQuery({
-    queryKey: ['feature', 'restaurantListNotes', listId, 'visibleRestaurants'],
-    ids: visibleRestaurantIds,
-    fetchByIds: (restaurantIds) => listRestaurantListNotesForRestaurantIds(listId, restaurantIds),
-    getRecordIds: (noteRecord) => [noteRecord.restaurantId],
-    getRecordKey: (noteRecord) => noteRecord.restaurantId,
-  });
-
-  const existingRestaurantIds = useMemo(() => {
-    return new Set(
-      (listItemLinksQuery.data ?? []).map((item) => item.restaurantId),
-    );
-  }, [listItemLinksQuery.data]);
-
-  const existingFoodItemIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const item of listItemLinksQuery.data ?? []) {
-      if (item.foodItemId) {
-        ids.add(item.foodItemId);
-      }
-      if (item.userFoodItemId) {
-        ids.add(item.userFoodItemId);
-      }
-      for (const recommendedItemId of item.recommendedItemIds ?? []) {
-        ids.add(recommendedItemId);
-      }
-    }
-    return ids;
-  }, [listItemLinksQuery.data]);
+  const visitedRestaurants = restaurantsState.items;
+  const hasBlockingVisitedRestaurantsError = restaurantsState.hasBlockingError;
 
   const selectedRestaurant = useMemo(
     () =>
@@ -385,16 +220,19 @@ export function AddRestaurantToListScreen({
     [selectedRestaurantId, visitedRestaurants],
   );
 
-  const selectedRestaurantAlreadyInList = Boolean(
-    selectedRestaurant?.id && existingRestaurantIds.has(selectedRestaurant.id),
+  const selectedRestaurantExistingFoodItemIds = useMemo(
+    () => new Set(selectedRestaurant?.linkedFoodItemIds ?? []),
+    [selectedRestaurant?.linkedFoodItemIds],
   );
+
+  const selectedRestaurantAlreadyInList = selectedRestaurant?.alreadyInList === true;
 
   const selectedNewFoodItemIds = useMemo(
     () =>
       selectedFoodItemIds.filter(
-        (foodItemId) => !existingFoodItemIds.has(foodItemId),
+        (foodItemId) => !selectedRestaurantExistingFoodItemIds.has(foodItemId),
       ),
-    [existingFoodItemIds, selectedFoodItemIds],
+    [selectedFoodItemIds, selectedRestaurantExistingFoodItemIds],
   );
 
   const groupedFoodItems = useMemo<GroupedFoodItemsByDate[]>(() => {
@@ -435,18 +273,6 @@ export function AddRestaurantToListScreen({
       }));
   }, [selectedRestaurant]);
 
-  const existingRestaurantNoteById = useMemo(() => {
-    const noteByRestaurantId = new Map<string, string>();
-    for (const restaurantNote of restaurantNotesQuery.data ?? []) {
-      const trimmedNote = restaurantNote.note.trim();
-      if (!trimmedNote || noteByRestaurantId.has(restaurantNote.restaurantId)) {
-        continue;
-      }
-      noteByRestaurantId.set(restaurantNote.restaurantId, trimmedNote);
-    }
-    return noteByRestaurantId;
-  }, [restaurantNotesQuery.data]);
-
   const handleBackToListDetail = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -456,7 +282,8 @@ export function AddRestaurantToListScreen({
     navigation.navigate("ListDetail", { listId });
   };
 
-  const handleSelectRestaurant = (restaurant: VisitedRestaurantOption) => {
+  const handleSelectRestaurant = (restaurant: RestaurantListVisitedRestaurantCandidate) => {
+    const existingFoodItemIds = new Set(restaurant.linkedFoodItemIds);
     const availableItemCount = restaurant.foodItems.filter(
       (item) => !existingFoodItemIds.has(item.id),
     ).length;
@@ -464,13 +291,13 @@ export function AddRestaurantToListScreen({
       source: 'AddRestaurantToListScreen',
       listId,
       restaurantId: restaurant.id,
-      alreadyInList: existingRestaurantIds.has(restaurant.id),
+      alreadyInList: restaurant.alreadyInList === true,
       availableItemCount,
     });
     setErrorMessage(null);
     setSelectedRestaurantId(restaurant.id);
     setSelectedFoodItemIds([]);
-    setNote(existingRestaurantNoteById.get(restaurant.id) ?? "");
+    setNote(restaurant.existingNote ?? "");
     setNoteDirty(false);
   };
 
@@ -483,7 +310,7 @@ export function AddRestaurantToListScreen({
   };
 
   const handleToggleFoodItem = (foodItemId: string) => {
-    if (existingFoodItemIds.has(foodItemId)) {
+    if (selectedRestaurantExistingFoodItemIds.has(foodItemId)) {
       return;
     }
 
@@ -558,10 +385,13 @@ export function AddRestaurantToListScreen({
             queryKey: ["feature", "restaurantListItems", listId],
           }),
           queryClient.invalidateQueries({
+            queryKey: ["feature", "restaurantListDetail", listId],
+          }),
+          queryClient.invalidateQueries({
             queryKey: ["feature", "restaurantListItemLinks", listId],
           }),
           queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantListNotes", listId],
+            queryKey: ["feature", "restaurantListVisitedRestaurants", listId],
           }),
           queryClient.invalidateQueries({
             queryKey: ["feature", "restaurantLists"],
@@ -590,10 +420,13 @@ export function AddRestaurantToListScreen({
           queryKey: ["feature", "restaurantListItems", listId],
         }),
         queryClient.invalidateQueries({
+          queryKey: ["feature", "restaurantListDetail", listId],
+        }),
+        queryClient.invalidateQueries({
           queryKey: ["feature", "restaurantListItemLinks", listId],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantListNotes", listId],
+          queryKey: ["feature", "restaurantListVisitedRestaurants", listId],
         }),
         queryClient.invalidateQueries({
           queryKey: ["feature", "restaurantLists"],
@@ -688,38 +521,16 @@ export function AddRestaurantToListScreen({
       <PageErrorToast
         actionLabel="Retry"
         errorMessage={
-          hasBlockingVisitsError
-            ? "Could not load your visits."
-            : visitsState.hasRefreshError
-              ? "Could not refresh your visits. Showing saved data."
+          hasBlockingVisitedRestaurantsError
+            ? "Could not load your visited restaurants."
+            : restaurantsState.hasRefreshError
+              ? "Could not refresh your visited restaurants. Showing saved data."
               : null
         }
         onAction={() => {
-          void visitsQuery.refetch();
+          void restaurantsQuery.refetch();
         }}
-        title="Visits unavailable"
-      />
-
-      <PageErrorToast
-        actionLabel="Retry"
-        errorMessage={
-          listItemLinksQuery.isError ? "Could not load list item state." : null
-        }
-        onAction={() => {
-          void listItemLinksQuery.refetch();
-        }}
-        title="List state unavailable"
-      />
-
-      <PageErrorToast
-        actionLabel="Retry"
-        errorMessage={
-          restaurantNotesQuery.isError ? "Could not load current notes for this list." : null
-        }
-        onAction={() => {
-          void restaurantNotesQuery.refetch();
-        }}
-        title="Notes unavailable"
+        title="Restaurants unavailable"
       />
 
       {!selectedRestaurant ? (
@@ -733,7 +544,7 @@ export function AddRestaurantToListScreen({
             value={searchQuery}
           />
 
-          {visitsQuery.isLoading || listItemLinksQuery.isLoading || restaurantNotesQuery.isLoading ? (
+          {restaurantsQuery.isLoading ? (
             <View style={styles.cardList}>
               <Skeleton height={90} />
               <Skeleton height={90} />
@@ -741,12 +552,8 @@ export function AddRestaurantToListScreen({
             </View>
           ) : null}
 
-          {!visitsQuery.isLoading &&
-          !listItemLinksQuery.isLoading &&
-          !restaurantNotesQuery.isLoading &&
-          !hasBlockingVisitsError &&
-          !listItemLinksQuery.isError &&
-          !restaurantNotesQuery.isError &&
+          {!restaurantsQuery.isLoading &&
+          !hasBlockingVisitedRestaurantsError &&
           visitedRestaurants.length === 0 ? (
             <EmptyState
               description={
@@ -762,21 +569,18 @@ export function AddRestaurantToListScreen({
             />
           ) : null}
 
-          {!visitsQuery.isLoading &&
-          !listItemLinksQuery.isLoading &&
-          !restaurantNotesQuery.isLoading &&
-          !hasBlockingVisitsError &&
-          !listItemLinksQuery.isError &&
-          !restaurantNotesQuery.isError &&
+          {!restaurantsQuery.isLoading &&
+          !hasBlockingVisitedRestaurantsError &&
           visitedRestaurants.length > 0 ? (
             <View style={styles.cardList}>
               {visitedRestaurants.map((restaurant, restaurantIndex) => {
+                const existingFoodItemIds = new Set(restaurant.linkedFoodItemIds);
                 const availableItemCount = restaurant.foodItems.filter(
                   (item) => !existingFoodItemIds.has(item.id),
                 ).length;
                 const allItemsAdded =
                   restaurant.foodItems.length > 0 && availableItemCount === 0;
-                const alreadyAdded = existingRestaurantIds.has(restaurant.id);
+                const alreadyAdded = restaurant.alreadyInList === true;
 
                 const metadataLabel = `${restaurant.itemCount} ${restaurant.itemCount === 1 ? "rated item" : "rated items"}`;
 
@@ -829,16 +633,16 @@ export function AddRestaurantToListScreen({
                   </Card>
                 );
               })}
-              {visitsQuery.hasNextPage ? (
+              {restaurantsQuery.hasNextPage ? (
                 <Button
                   label={
-                    visitsQuery.isFetchingNextPage
+                    restaurantsQuery.isFetchingNextPage
                       ? "Loading more restaurants..."
                       : "Load more restaurants"
                   }
-                  loading={visitsQuery.isFetchingNextPage}
+                  loading={restaurantsQuery.isFetchingNextPage}
                   onPress={() => {
-                    void visitsQuery.fetchNextPage();
+                    void restaurantsQuery.fetchNextPage();
                   }}
                   variant="secondary"
                 />
@@ -909,7 +713,7 @@ export function AddRestaurantToListScreen({
 
                     <View style={styles.cardList}>
                       {group.items.map((item) => {
-                        const isAlreadyAdded = existingFoodItemIds.has(item.id);
+                        const isAlreadyAdded = selectedRestaurantExistingFoodItemIds.has(item.id);
                         const isSelected = selectedFoodItemIds.includes(
                           item.id,
                         );

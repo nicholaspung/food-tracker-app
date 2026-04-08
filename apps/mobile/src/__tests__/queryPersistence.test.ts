@@ -3,6 +3,7 @@ import { persistQueryClientRestore, persistQueryClientSave } from '@tanstack/que
 import { QueryClient } from '@tanstack/react-query';
 
 import { feedbackQueryKeys } from '../features/store/feedbackQuery';
+import { WHATS_NEW_SEEN_QUERY_KEY } from '../lib/whatsNewState';
 import { queryPersister, sanitizePersistedClient, shouldPersistQuery } from '../providers/queryPersistence';
 
 describe('React Query persistence', () => {
@@ -133,13 +134,18 @@ describe('React Query persistence', () => {
       ],
       pageParams: [1],
     });
+    sourceClient.setQueryData(feedbackQueryKeys.summary, {
+      allCount: 4,
+      activeCount: 2,
+    });
     sourceClient.setQueryData(['feature', 'profile'], {
-      displayName: 'Should not persist',
+      displayName: 'Should persist',
       bio: 'Private bio',
       favoriteCuisine: 'Sushi',
       location: 'San Francisco',
       receiveMarketingEmails: true,
     });
+    sourceClient.setQueryData(WHATS_NEW_SEEN_QUERY_KEY, '2026.03');
     sourceClient.setQueryData(['feature', 'feedback', 'thread_1'], {
       id: 'thread_1',
       description: 'Thread detail should not persist',
@@ -206,7 +212,15 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(feedbackQueryKeys.list)).toEqual(
       sourceClient.getQueryData(feedbackQueryKeys.list),
     );
-    expect(restoredClient.getQueryData(['feature', 'profile'])).toBeUndefined();
+    expect(restoredClient.getQueryData(feedbackQueryKeys.summary)).toEqual(
+      sourceClient.getQueryData(feedbackQueryKeys.summary),
+    );
+    expect(restoredClient.getQueryData(['feature', 'profile'])).toEqual(
+      sourceClient.getQueryData(['feature', 'profile']),
+    );
+    expect(restoredClient.getQueryData(WHATS_NEW_SEEN_QUERY_KEY)).toEqual(
+      sourceClient.getQueryData(WHATS_NEW_SEEN_QUERY_KEY),
+    );
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'friends', 'paginated', 'friends', 'bill-picker', 'tay'])).toBeUndefined();
 

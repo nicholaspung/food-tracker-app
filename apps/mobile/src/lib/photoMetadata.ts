@@ -86,7 +86,7 @@ function parseCreationTimestamp(rawValue: unknown): Date | null {
   return parsed;
 }
 
-export function extractPhotoCaptureDate(asset: ImagePicker.ImagePickerAsset): Date | null {
+function extractPhotoCaptureDate(asset: ImagePicker.ImagePickerAsset): Date | null {
   const creationTime = parseCreationTimestamp(
     (asset as ImagePicker.ImagePickerAsset & { creationTime?: number }).creationTime,
   );

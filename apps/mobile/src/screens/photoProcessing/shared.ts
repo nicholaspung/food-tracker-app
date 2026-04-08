@@ -104,12 +104,6 @@ export interface QuickTrackReviewEntry {
   form: QuickTrackFormValues;
 }
 
-export function buildScannedItemNames(seedLabel: string): string[] {
-  const normalized = seedLabel.replace(/\.[^/.]+$/, '').trim();
-  const base = normalized || 'Scanned Item';
-  return [`${base} #1`, `${base} #2`, `${base} #3`];
-}
-
 function formatReviewEntryDateLabel(value: string, fallbackDate: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {

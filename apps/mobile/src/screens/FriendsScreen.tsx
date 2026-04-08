@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
@@ -205,8 +204,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
-  const isFocused = useIsFocused();
-  const hasHandledCurrentFocusRef = useRef(false);
 
   const [mainTab, setMainTab] = useState<MainTab>('friends-list');
   const [friendsSubTab, setFriendsSubTab] = useState<FriendsSubTab>('friends');
@@ -239,8 +236,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     isLoading: friendsQuery.isLoading,
     isSuccess: friendsQuery.isSuccess,
   });
-  const { fetchStatus: friendsFetchStatus, refetch: refetchFriends } = friendsQuery;
-  const { fetchStatus: friendsSummaryFetchStatus, refetch: refetchFriendsSummary } = friendsSummaryQuery;
   const visibleFriends = friendsState.items;
   const acceptedFriendsCount =
     friendsSummaryQuery.data?.friendsCount ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
@@ -300,38 +295,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       initialFriendsSubTab: undefined,
     });
   }, [navigation, route.params]);
-
-  useEffect(() => {
-    if (!isFocused) {
-      hasHandledCurrentFocusRef.current = false;
-      return;
-    }
-
-    if (hasHandledCurrentFocusRef.current) {
-      return;
-    }
-
-    hasHandledCurrentFocusRef.current = true;
-
-    if (friendsSummaryFetchStatus === 'idle') {
-      void refetchFriendsSummary();
-    }
-
-    if (mainTab !== 'friends-list') {
-      return;
-    }
-
-    if (friendsFetchStatus === 'idle') {
-      void refetchFriends();
-    }
-  }, [
-    friendsFetchStatus,
-    friendsSummaryFetchStatus,
-    isFocused,
-    mainTab,
-    refetchFriends,
-    refetchFriendsSummary,
-  ]);
 
   const styles = useStyles();
 

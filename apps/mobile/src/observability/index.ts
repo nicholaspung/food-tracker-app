@@ -4,8 +4,6 @@ import { Platform } from 'react-native';
 
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
-import type { AuthUser } from '../types/auth';
-export { MOBILE_RETENTION_DASHBOARD_SCHEMA } from './retentionDashboardSchema';
 
 type JsonValue =
   | string
@@ -57,15 +55,6 @@ export function initializeObservability(): void {
   }
 
   initialized = true;
-}
-
-export function identifyObservabilityUser(user: AuthUser): void {
-  void user;
-}
-
-export function clearObservabilityUser(): void {
-  // Preserve the anonymous PostHog identity so flows remain attributable without
-  // linking analytics to an authenticated account.
 }
 
 export function resetObservabilityIdentity(): void {

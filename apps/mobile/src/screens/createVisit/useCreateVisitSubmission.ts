@@ -260,9 +260,14 @@ export function useCreateVisitSubmission({
               listItemId: sourceListItemId,
               userFoodItemId: createdItemId,
             });
-            await queryClient.invalidateQueries({
-              queryKey: ['feature', 'restaurantListItems'],
-            });
+            await Promise.all([
+              queryClient.invalidateQueries({
+                queryKey: ['feature', 'restaurantListItems'],
+              }),
+              queryClient.invalidateQueries({
+                queryKey: ['feature', 'restaurantListDetail'],
+              }),
+            ]);
           } catch {
             // Keep visit creation successful even when link-back fails.
           }

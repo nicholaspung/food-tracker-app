@@ -1,47 +1,34 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   View,
 } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
 import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  ConfirmDestructiveModal,
   EmptyState,
   FeedHeaderControls,
   HomeBetaQuickTrackFeedCard,
   HomeBetaVisitFeedCard,
   HomeFeedVisitEntryCard,
   HomeQuickTrackEntryCard,
-  OptionList,
-  OptionListRow,
-  PhotoViewerModal,
-  ReportContentModal,
   Skeleton,
   TabRootScreenScaffold,
   type FeedModeValue,
   type FeedTypeFilterValue,
-  type HomeBetaFeedPhotoRecord,
 } from '../components/shared';
 import {
-  buildPocketBaseFileUrl,
-  type ContentReportReasonCode,
   createFriendSuggestionAcceptance,
-  deleteQuickTrack,
-  deleteVisit,
   getAuthenticatedUserIdOrNull,
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
-  reportContent,
   type QuickTrackRecord,
   type VisitRecord,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
-import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import {
   clearPendingFriendSuggestion,
   getPendingFriendSuggestion,
@@ -53,14 +40,15 @@ import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Modal, Text } from '../ui';
+import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { HomeFeedActionModals } from './home/HomeFeedActionModals';
+import { type VisitPhotoRecord } from './home/shared';
+import { useHomeFeedActionController } from './home/useHomeFeedActionController';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type FeedMode = FeedModeValue;
 type TypeFilter = FeedTypeFilterValue;
-
-type VisitPhotoRecord = HomeBetaFeedPhotoRecord;
 
 interface BaseFeedItem {
   id: string;
@@ -82,28 +70,6 @@ interface QuickTrackFeedItem extends BaseFeedItem {
 }
 
 type FeedItem = VisitFeedItem | QuickTrackFeedItem;
-type PendingDeleteTarget =
-  | {
-      id: string;
-      kind: 'visit';
-      itemName: string;
-    }
-  | {
-      id: string;
-      kind: 'quick-track';
-      itemName: string;
-    };
-type PendingReportTarget =
-  | {
-      id: string;
-      kind: 'visit';
-      itemName: string;
-    }
-  | {
-      id: string;
-      kind: 'quick-track';
-      itemName: string;
-    };
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
 
 interface GroupedMonth {
@@ -406,7 +372,6 @@ function compareBetaFeedItems(left: FeedItem, right: FeedItem): number {
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
-  const isFocused = useIsFocused();
   const canViewBetaFeed = Boolean(user?.isAdmin);
   const queryClient = useQueryClient();
   const queueWrite = useQueuedWrite();
@@ -417,22 +382,15 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
-  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
-  const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
-  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [friendSuggestion, setFriendSuggestion] = useState<PendingFriendSuggestion | null>(null);
   const [friendSuggestionErrorMessage, setFriendSuggestionErrorMessage] = useState<string | null>(null);
   const [isApplyingFriendSuggestion, setIsApplyingFriendSuggestion] = useState(false);
-  const [pendingDeleteTarget, setPendingDeleteTarget] = useState<PendingDeleteTarget | null>(null);
-  const [isDeletingTarget, setIsDeletingTarget] = useState(false);
-  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
-  const [pendingReportMenuTarget, setPendingReportMenuTarget] = useState<PendingReportTarget | null>(null);
-  const [pendingReportTarget, setPendingReportTarget] = useState<PendingReportTarget | null>(null);
-  const [reportReasonCode, setReportReasonCode] = useState<ContentReportReasonCode | null>(null);
-  const [reportNotes, setReportNotes] = useState('');
-  const [reportErrorMessage, setReportErrorMessage] = useState<string | null>(null);
-  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
-  const hasHandledCurrentFocusRef = useRef(false);
+  const homeFeedActions = useHomeFeedActionController({
+    isOnline,
+    queryClient,
+    queueFeatureOutbox,
+    queueWrite,
+  });
   const effectiveFeedMode: FeedMode =
     !canViewBetaFeed && feedMode === 'beta' ? 'mine' : feedMode;
   const feedScope = effectiveFeedMode === 'friends' ? 'friends' : effectiveFeedMode === 'beta' ? 'all' : 'mine';
@@ -636,24 +594,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     });
   }, [groupedMonths]);
 
-  useEffect(() => {
-    if (!isFocused) {
-      hasHandledCurrentFocusRef.current = false;
-      return;
-    }
-
-    if (hasHandledCurrentFocusRef.current) {
-      return;
-    }
-
-    if (homeFeedQuery.fetchStatus !== 'idle') {
-      return;
-    }
-
-    hasHandledCurrentFocusRef.current = true;
-    void homeFeedQuery.refetch();
-  }, [homeFeedQuery, isFocused]);
-
   const filteredVisitCount = useMemo(
     () => filteredFeed.filter((entry) => entry.source === 'visit').length,
     [filteredFeed],
@@ -732,170 +672,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     [],
   );
-
-  const handleDeleteQuickTrack = useCallback(
-    async (quickTrackId: string) => {
-      if (!isOnline) {
-        await queueFeatureOutbox('quick-track.delete', { quickTrackId });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-        showQueuedOfflineAlert('Quick track delete');
-        return;
-      }
-
-      await queueWrite('quick-track.delete');
-      await deleteQuickTrack(quickTrackId);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-    },
-    [isOnline, queryClient, queueFeatureOutbox, queueWrite],
-  );
-
-  const promptDeleteQuickTrack = useCallback((quickTrackId: string, itemName: string) => {
-    setDeleteErrorMessage(null);
-    setPendingDeleteTarget({
-      id: quickTrackId,
-      itemName,
-      kind: 'quick-track',
-    });
-  }, []);
-
-  const closeDeleteModal = useCallback(() => {
-    if (isDeletingTarget) {
-      return;
-    }
-
-    setPendingDeleteTarget(null);
-  }, [isDeletingTarget]);
-
-  const handleDeleteVisit = useCallback(
-    async (visitId: string) => {
-      if (!isOnline) {
-        await queueFeatureOutbox('visit.delete', { visitId });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-        showQueuedOfflineAlert('Visit delete');
-        return;
-      }
-
-      await queueWrite('visit.delete');
-      await deleteVisit(visitId);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-    },
-    [isOnline, queryClient, queueFeatureOutbox, queueWrite],
-  );
-
-  const promptDeleteVisit = useCallback((visitId: string, itemName: string) => {
-    setDeleteErrorMessage(null);
-    setPendingDeleteTarget({
-      id: visitId,
-      itemName,
-      kind: 'visit',
-    });
-  }, []);
-
-  const confirmDeleteTarget = useCallback(async () => {
-    if (!pendingDeleteTarget || isDeletingTarget) {
-      return;
-    }
-
-    setIsDeletingTarget(true);
-
-    try {
-      if (pendingDeleteTarget.kind === 'visit') {
-        await handleDeleteVisit(pendingDeleteTarget.id);
-      } else {
-        await handleDeleteQuickTrack(pendingDeleteTarget.id);
-      }
-
-      setPendingDeleteTarget(null);
-      setDeleteErrorMessage(null);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : pendingDeleteTarget.kind === 'visit'
-            ? 'Could not delete visit.'
-            : 'Could not delete quick track.';
-      setDeleteErrorMessage(message);
-    } finally {
-      setIsDeletingTarget(false);
-    }
-  }, [handleDeleteQuickTrack, handleDeleteVisit, isDeletingTarget, pendingDeleteTarget]);
-
-  const promptReportMenuTarget = useCallback((target: PendingReportTarget) => {
-    setPendingReportMenuTarget(target);
-  }, []);
-
-  const closeReportMenu = useCallback(() => {
-    setPendingReportMenuTarget(null);
-  }, []);
-
-  const promptReportTarget = useCallback((target: PendingReportTarget) => {
-    setPendingReportTarget(target);
-    setReportReasonCode(null);
-    setReportNotes('');
-    setReportErrorMessage(null);
-  }, []);
-
-  const openReportModalFromMenu = useCallback(() => {
-    if (!pendingReportMenuTarget) {
-      return;
-    }
-
-    const target = pendingReportMenuTarget;
-    setPendingReportMenuTarget(null);
-    promptReportTarget(target);
-  }, [pendingReportMenuTarget, promptReportTarget]);
-
-  const closeReportModal = useCallback(() => {
-    if (isSubmittingReport) {
-      return;
-    }
-
-    setPendingReportTarget(null);
-    setReportReasonCode(null);
-    setReportNotes('');
-    setReportErrorMessage(null);
-  }, [isSubmittingReport]);
-
-  const submitReport = useCallback(async () => {
-    if (!pendingReportTarget || !reportReasonCode || isSubmittingReport) {
-      return;
-    }
-
-    if (!isOnline) {
-      setReportErrorMessage('Connect to the internet to submit a report.');
-      return;
-    }
-
-    setReportErrorMessage(null);
-    setIsSubmittingReport(true);
-
-    try {
-      await queueWrite('content.report');
-      await reportContent({
-        contentType: pendingReportTarget.kind,
-        recordId: pendingReportTarget.id,
-        reasonCode: reportReasonCode,
-        notes: reportNotes.trim() || undefined,
-      });
-
-      closeReportModal();
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not submit report.';
-      setReportErrorMessage(message);
-    } finally {
-      setIsSubmittingReport(false);
-    }
-  }, [
-    closeReportModal,
-    isOnline,
-    isSubmittingReport,
-    pendingReportTarget,
-    queryClient,
-    queueWrite,
-    reportNotes,
-    reportReasonCode,
-  ]);
 
   const handleSharePhoto = useCallback(
     ({
@@ -976,30 +752,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     },
     [buildVisitShareItems, navigation],
   );
-
-  const openPhotoViewer = useCallback((photos: VisitPhotoRecord[], initialIndex = 0) => {
-    if (photos.length === 0) {
-      return;
-    }
-
-    const urls = photos.map((photo) =>
-      buildPocketBaseFileUrl({
-        collectionId: photo.collectionId,
-        collectionName: photo.collectionName ?? 'visit_photos',
-        recordId: photo.id,
-        filename: photo.photo,
-      }),
-    );
-    const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
-
-    setPhotoViewerUrls(urls);
-    setPhotoViewerInitialIndex(boundedIndex);
-    setPhotoViewerVisible(true);
-  }, []);
-
-  const closePhotoViewer = useCallback(() => {
-    setPhotoViewerVisible(false);
-  }, []);
 
   const handleToggleFilters = () => {
     setFiltersExpanded((previous) => {
@@ -1116,7 +868,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             onDelete={
               !feedItem.isFriend
                 ? () => {
-                    promptDeleteVisit(visit.id, visit.restaurantName);
+                    homeFeedActions.promptDeleteVisit(visit.id, visit.restaurantName);
                   }
                 : undefined
             }
@@ -1130,11 +882,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                   }
                 : undefined
             }
-            onOpenPhotoViewer={openPhotoViewer}
+            onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
             onMoreActions={
               feedItem.isFriend
                 ? () => {
-                    promptReportMenuTarget({
+                    homeFeedActions.promptReportMenuTarget({
                       id: visit.id,
                       itemName: visit.restaurantName,
                       kind: 'visit',
@@ -1169,7 +921,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           onDelete={
             !feedItem.isFriend
               ? () => {
-                  promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
+                  homeFeedActions.promptDeleteQuickTrack(
+                    quickTrack.id,
+                    quickTrack.itemName,
+                  );
                 }
               : undefined
           }
@@ -1185,7 +940,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           onMoreActions={
             feedItem.isFriend
               ? () => {
-                  promptReportMenuTarget({
+                  homeFeedActions.promptReportMenuTarget({
                     id: quickTrack.id,
                     itemName: quickTrack.itemName,
                     kind: 'quick-track',
@@ -1193,7 +948,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                 }
               : undefined
           }
-          onOpenPhotoViewer={openPhotoViewer}
+          onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
           onSharePhoto={handleSharePhoto}
           photos={quickTrackPhotos}
           quickTrack={quickTrack}
@@ -1207,12 +962,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       buildVisitShareItems,
       handleSharePhoto,
       handleShareVisit,
+      homeFeedActions,
       navigation,
-      openPhotoViewer,
       photosByFoodItem,
-      promptDeleteQuickTrack,
-      promptDeleteVisit,
-      promptReportMenuTarget,
     ],
   );
 
@@ -1281,7 +1033,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             void homeFeedQuery.refetch();
           }}
         />
-        <PageErrorToast errorMessage={deleteErrorMessage} title="Delete failed" />
+        <PageErrorToast
+          errorMessage={homeFeedActions.deleteErrorMessage}
+          title="Delete failed"
+        />
         <PageErrorToast errorMessage={friendSuggestionErrorMessage} title="Friend suggestion unavailable" />
         {friendSuggestion ? (
           <View style={styles.infoCard}>
@@ -1407,7 +1162,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                       onDelete={
                         !feedItem.isFriend
                           ? () => {
-                              promptDeleteVisit(visit.id, visit.restaurantName);
+                              homeFeedActions.promptDeleteVisit(
+                                visit.id,
+                                visit.restaurantName,
+                              );
                             }
                           : undefined
                       }
@@ -1421,7 +1179,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                             }
                           : undefined
                       }
-                      onOpenPhotoViewer={openPhotoViewer}
+                      onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
                       onSharePhoto={handleSharePhoto}
                       onShareVisit={showVisitShare ? () => handleShareVisit(visit) : undefined}
                       ownerLabel={ownerLabel}
@@ -1447,7 +1205,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                     onDelete={
                       !feedItem.isFriend
                         ? () => {
-                            promptDeleteQuickTrack(quickTrack.id, quickTrack.itemName);
+                            homeFeedActions.promptDeleteQuickTrack(
+                              quickTrack.id,
+                              quickTrack.itemName,
+                            );
                           }
                         : undefined
                     }
@@ -1460,7 +1221,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                           }
                         : undefined
                     }
-                    onOpenPhotoViewer={openPhotoViewer}
+                    onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
                     onSharePhoto={handleSharePhoto}
                     ownerLabel={ownerLabel}
                     photos={quickTrackPhotos}
@@ -1546,109 +1307,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
       </View>
 
-      <PhotoViewerModal
-        initialIndex={photoViewerInitialIndex}
-        onRequestClose={closePhotoViewer}
-        urls={photoViewerUrls}
-        visible={photoViewerVisible}
-      />
-      <Modal
-        description={
-          pendingReportMenuTarget?.itemName?.trim()
-            ? `Choose an action for "${pendingReportMenuTarget.itemName.trim()}".`
-            : pendingReportMenuTarget?.kind === 'quick-track'
-              ? 'Choose an action for this quick track.'
-              : 'Choose an action for this visit.'
-        }
-        onRequestClose={closeReportMenu}
-        secondaryAction={{
-          accessibilityLabel: 'Cancel',
-          label: 'Cancel',
-          onPress: closeReportMenu,
-          testID: 'home-feed-actions-modal-cancel-button',
-        }}
-        testID="home-feed-actions-modal"
-        title={pendingReportMenuTarget?.kind === 'quick-track' ? 'Quick Track Actions' : 'Visit Actions'}
-        visible={pendingReportMenuTarget !== null}
-      >
-        <OptionList>
-          <OptionListRow
-            accessibilityLabel={
-              pendingReportMenuTarget?.kind === 'quick-track' ? 'Report quick track' : 'Report visit'
-            }
-            iconColor={theme.colors.text.danger}
-            iconName="flag-outline"
-            isLast
-            onPress={openReportModalFromMenu}
-            testID="home-feed-actions-modal-report-button"
-            title={pendingReportMenuTarget?.kind === 'quick-track' ? 'Report Quick Track' : 'Report Visit'}
-            titleStyle={styles.reportActionTitle}
-          />
-        </OptionList>
-      </Modal>
-      <ReportContentModal
-        contentLabel={pendingReportTarget?.itemName?.trim() || (pendingReportTarget?.kind === 'visit' ? 'Visit' : 'Quick Track')}
-        contentType={pendingReportTarget?.kind ?? 'visit'}
-        errorMessage={reportErrorMessage}
-        isOnline={isOnline}
-        isSubmitting={isSubmittingReport}
-        notes={reportNotes}
-        onCancel={closeReportModal}
-        onChangeNotes={(value) => {
-          setReportNotes(value);
-          if (reportErrorMessage) {
-            setReportErrorMessage(null);
-          }
-        }}
-        onChangeReasonCode={(value) => {
-          setReportReasonCode(value);
-          if (reportErrorMessage) {
-            setReportErrorMessage(null);
-          }
-        }}
-        onSubmit={() => {
-          void submitReport();
-        }}
-        selectedReasonCode={reportReasonCode}
-        testID="home-report-content-modal"
-        visible={pendingReportTarget !== null}
-      />
-      <ConfirmDestructiveModal
-        cancelLabel={pendingDeleteTarget?.kind === 'visit' ? 'Keep Visit' : 'Keep Quick Track'}
-        confirmLabel={pendingDeleteTarget?.kind === 'visit' ? 'Delete Visit' : 'Delete Quick Track'}
-        confirmLoadingLabel="Deleting..."
-        description={
-          pendingDeleteTarget?.kind === 'visit'
-            ? pendingDeleteTarget.itemName.trim()
-              ? `Delete your visit for "${pendingDeleteTarget.itemName}"? This removes the visit and all associated items/photos.`
-              : 'Delete this visit? This removes the visit and all associated items/photos.'
-            : pendingDeleteTarget?.itemName?.trim()
-              ? `Delete "${pendingDeleteTarget.itemName}"? This will permanently remove the quick-track item.`
-              : 'Delete this quick track? This will permanently remove the quick-track item.'
-        }
-        disabled={!pendingDeleteTarget}
-        loading={isDeletingTarget}
-        onCancel={closeDeleteModal}
-        onConfirm={() => {
-          void confirmDeleteTarget();
-        }}
-        testID={
-          pendingDeleteTarget?.kind === 'visit'
-            ? 'home-delete-visit-confirmation-modal'
-            : 'home-delete-quick-track-confirmation-modal'
-        }
-        title={pendingDeleteTarget?.kind === 'visit' ? 'Delete Visit?' : 'Delete Quick Track?'}
-        visible={pendingDeleteTarget !== null}
-      >
-        {pendingDeleteTarget?.kind === 'visit' ? (
-          <View
-            collapsable={false}
-            pointerEvents="none"
-            style={styles.deleteConfirmationModalSentinel}
-            testID="home-delete-confirmation-open"
-          />
-        ) : null}
-      </ConfirmDestructiveModal>
+      <HomeFeedActionModals controller={homeFeedActions} isOnline={isOnline} />
     </TabRootScreenScaffold>
   );
 }

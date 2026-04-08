@@ -15,7 +15,7 @@ export interface LocalPhotoFile {
   mimeType: string;
 }
 
-export function inferLocalPhotoMimeType(uri: string): string {
+function inferLocalPhotoMimeType(uri: string): string {
   const normalizedUri = uri.toLowerCase();
   if (normalizedUri.endsWith('.png')) {
     return 'image/png';

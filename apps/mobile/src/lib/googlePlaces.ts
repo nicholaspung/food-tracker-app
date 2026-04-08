@@ -1,14 +1,13 @@
-import type { RestaurantRecord } from '../features';
+import type { MonthlyUsageSnapshot, RestaurantRecord } from '../features';
 import { pb } from './pocketbase';
 
 interface PlacesApiResponse {
   restaurants?: RestaurantRecord[];
-}
-
-interface GeocodeApiResponse {
-  found?: boolean;
-  lat?: number;
-  lng?: number;
+  resolvedLocation?: {
+    lat?: number;
+    lng?: number;
+  };
+  usage?: MonthlyUsageSnapshot;
 }
 
 export interface NearbySearchParams {
@@ -19,8 +18,17 @@ export interface NearbySearchParams {
 
 export interface TextSearchParams {
   query: string;
-  location?: string;
+  locationText?: string;
   radius?: number;
+}
+
+export interface PlacesSearchResult {
+  restaurants: RestaurantRecord[];
+  usageSnapshot: MonthlyUsageSnapshot | null;
+}
+
+export interface TextPlacesSearchResult extends PlacesSearchResult {
+  resolvedLocation: { lat: number; lng: number } | null;
 }
 
 function normalizeRestaurantRecord(record: RestaurantRecord): RestaurantRecord {
@@ -58,68 +66,43 @@ async function postPlacesRequest<ResponseType>(path: string, payload: object): P
   return (await response.json()) as ResponseType;
 }
 
-function compareRestaurantRecords(left: RestaurantRecord, right: RestaurantRecord): number {
-  const nameComparison = left.name.localeCompare(right.name, undefined, {
-    sensitivity: 'base',
-  });
-  if (nameComparison !== 0) {
-    return nameComparison;
-  }
-
-  return left.id.localeCompare(right.id);
-}
-
-export function mergeRestaurantSearchResults(
-  currentRestaurants: RestaurantRecord[] | undefined,
-  nextRestaurants: RestaurantRecord[],
-): RestaurantRecord[] {
-  const merged = new Map<string, RestaurantRecord>();
-
-  for (const restaurant of currentRestaurants ?? []) {
-    merged.set(restaurant.id, normalizeRestaurantRecord(restaurant));
-  }
-
-  for (const restaurant of nextRestaurants) {
-    merged.set(restaurant.id, normalizeRestaurantRecord(restaurant));
-  }
-
-  return Array.from(merged.values()).sort(compareRestaurantRecords);
-}
-
-export async function geocodeLocation(location: string): Promise<{ lat: number; lng: number } | null> {
-  if (!location.trim()) {
-    return null;
-  }
-
-  const response = await postPlacesRequest<GeocodeApiResponse>('/api/places/geocode', {
-    location: location.trim(),
-  });
-
-  if (!response.found || typeof response.lat !== 'number' || typeof response.lng !== 'number') {
-    return null;
-  }
-
-  return { lat: response.lat, lng: response.lng };
-}
-
-export async function searchAndCacheNearbyRestaurants(params: NearbySearchParams): Promise<RestaurantRecord[]> {
+export async function searchAndCacheNearbyRestaurants(
+  params: NearbySearchParams,
+): Promise<PlacesSearchResult> {
   const response = await postPlacesRequest<PlacesApiResponse>('/api/places/nearby', {
     latitude: params.latitude,
     longitude: params.longitude,
     radius: params.radius ?? 5000,
   });
 
-  return (response.restaurants ?? []).map(normalizeRestaurantRecord);
+  return {
+    restaurants: (response.restaurants ?? []).map(normalizeRestaurantRecord),
+    usageSnapshot: response.usage ?? null,
+  };
 }
 
-export async function searchAndCacheRestaurantsByText(params: TextSearchParams): Promise<RestaurantRecord[]> {
+export async function searchAndCacheRestaurantsByText(
+  params: TextSearchParams,
+): Promise<TextPlacesSearchResult> {
   const response = await postPlacesRequest<PlacesApiResponse>('/api/places/search', {
     query: params.query,
-    location: params.location ?? '',
+    locationText: params.locationText ?? '',
     radius: params.radius ?? 5000,
   });
 
-  return (response.restaurants ?? []).map(normalizeRestaurantRecord);
+  const resolvedLocation =
+    typeof response.resolvedLocation?.lat === 'number' && typeof response.resolvedLocation?.lng === 'number'
+      ? {
+          lat: response.resolvedLocation.lat,
+          lng: response.resolvedLocation.lng,
+        }
+      : null;
+
+  return {
+    resolvedLocation,
+    restaurants: (response.restaurants ?? []).map(normalizeRestaurantRecord),
+    usageSnapshot: response.usage ?? null,
+  };
 }
 
 export function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {

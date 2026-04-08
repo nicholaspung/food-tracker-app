@@ -11,11 +11,11 @@ function getExpoBuildVersion(): string | null {
   return typeof versionCode === 'number' ? String(versionCode) : null;
 }
 
-export function getAppVersion(): string {
+function getAppVersion(): string {
   return Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? 'Unknown';
 }
 
-export function getAppBuildVersion(): string {
+function getAppBuildVersion(): string {
   return Application.nativeBuildVersion ?? getExpoBuildVersion() ?? 'Unknown';
 }
 

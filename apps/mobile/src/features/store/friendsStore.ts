@@ -40,16 +40,6 @@ interface FriendshipRecord {
   };
 }
 
-interface FriendCodeLookupResponse {
-  found: boolean;
-  user?: {
-    id: string;
-    displayName?: string;
-    email?: string;
-    name?: string;
-  };
-}
-
 interface FriendListApiItem {
   id: string;
   userId: string;
@@ -67,13 +57,11 @@ interface FriendListApiResponse {
   hasNextPage: boolean;
 }
 
-function resolveFriendName(user: FriendshipUser | FriendCodeLookupResponse['user'] | undefined): string {
+function resolveFriendName(user: FriendshipUser | undefined): string {
   const trimmedName =
     user && 'name' in user && typeof user.name === 'string' && user.name.trim()
       ? user.name.trim()
-      : user && 'displayName' in user && typeof user.displayName === 'string' && user.displayName.trim()
-        ? user.displayName.trim()
-        : '';
+      : '';
   if (trimmedName) {
     return trimmedName;
   }
@@ -86,7 +74,7 @@ function resolveFriendName(user: FriendshipUser | FriendCodeLookupResponse['user
   return 'Unknown';
 }
 
-function resolveFriendEmail(user: FriendshipUser | FriendCodeLookupResponse['user'] | undefined): string {
+function resolveFriendEmail(user: FriendshipUser | undefined): string {
   return user?.email?.trim().toLowerCase() ?? '';
 }
 
@@ -198,58 +186,20 @@ export async function getFriendsCountSummary(): Promise<FriendsCountSummary> {
 
 export async function inviteFriend(input: InviteFriendInput): Promise<FriendRecord> {
   return trackFeatureMutation('friend.invite', async () => {
-    const currentUserId = getAuthenticatedUserId();
     const normalizedCode = input.code.trim().toUpperCase();
 
     if (!normalizedCode) {
       throw new Error('Friend code is required.');
     }
 
-    const response = await pb.send<FriendCodeLookupResponse>(
-      `/api/users/by-friend-code/${encodeURIComponent(normalizedCode)}`,
-      { method: 'GET' },
-    );
-
-    if (!response?.found || !response.user?.id) {
-      throw new Error('Friend code not found.');
-    }
-
-    if (response.user.id === currentUserId) {
-      throw new Error('Cannot add yourself as a friend.');
-    }
-
-    const existing = await pb.collection('friendships').getList<FriendshipRecord>(1, 1, {
-      filter: `(user = "${currentUserId}" && friend = "${response.user.id}") || (user = "${response.user.id}" && friend = "${currentUserId}")`,
+    const response = await sendApiRequest<FriendListApiItem>('/api/friends/invite', {
+      method: 'POST',
+      body: {
+        code: normalizedCode,
+      },
     });
 
-    if (existing.totalItems > 0) {
-      throw new Error('Friend request already exists.');
-    }
-
-    const createdFriendship = await pb.collection('friendships').create<FriendshipRecord>(
-      {
-        user: currentUserId,
-        friend: response.user.id,
-        status: 'pending',
-      },
-      {
-        expand: 'user,friend',
-      },
-    );
-
-    const mapped = mapFriendshipRecord(createdFriendship, currentUserId);
-    if (mapped) {
-      return mapped;
-    }
-
-    return {
-      id: createdFriendship.id,
-      userId: response.user.id,
-      name: resolveFriendName(response.user),
-      email: resolveFriendEmail(response.user),
-      status: 'pending_sent',
-      createdAt: createdFriendship.created,
-    };
+    return mapFriendListApiItem(response);
   });
 }
 

@@ -1,6 +1,3 @@
-export { MutationReplayService } from './MutationReplayService';
-export { SQLiteMutationQueueStore } from './SQLiteMutationQueueStore';
-export { createFetchMutationTransport } from './fetchMutationTransport';
 export { syncEngine } from './syncEngine';
 export type {
   EnqueueMutationInput,

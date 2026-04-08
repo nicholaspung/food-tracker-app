@@ -16,7 +16,7 @@ interface BottomTabNavigationProps {
   onNavigate: (route: BottomTabRoute) => void;
 }
 
-export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = {
+const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList)[]> = {
   Home: ['Home'],
   AddVisit: [
     'AddVisit',
@@ -53,7 +53,7 @@ export const TAB_ACTIVE_ROUTES: Record<BottomTabRoute, (keyof RootStackParamList
   ],
 };
 
-export const BOTTOM_TAB_ROUTES: BottomTabRoute[] = ['Home', 'AddVisit', 'Friends', 'Misc', 'Profile'];
+const BOTTOM_TAB_ROUTES: BottomTabRoute[] = ['Home', 'AddVisit', 'Friends', 'Misc', 'Profile'];
 
 const useStyles = createThemedStyles((theme, bottomPadding: number) => ({
   container: {

@@ -33,16 +33,12 @@ function hasRolePreviewOverrides(settings: RolePreviewSettings): boolean {
   return settings.viewAsNonAdmin || settings.viewAsNonSubscriber;
 }
 
-export function getRolePreviewSettings(): RolePreviewSettings {
-  return rolePreviewSettingsCache;
-}
-
-export function setRolePreviewSettingsCache(settings: RolePreviewSettings): RolePreviewSettings {
+function setRolePreviewSettingsCache(settings: RolePreviewSettings): RolePreviewSettings {
   rolePreviewSettingsCache = normalizeRolePreviewSettings(settings);
   return rolePreviewSettingsCache;
 }
 
-export function clearRolePreviewSettingsCache(): RolePreviewSettings {
+function clearRolePreviewSettingsCache(): RolePreviewSettings {
   rolePreviewSettingsCache = DEFAULT_ROLE_PREVIEW_SETTINGS;
   return rolePreviewSettingsCache;
 }

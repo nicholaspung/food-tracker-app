@@ -1,0 +1,556 @@
+package handlers_test
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+
+	"myapp/handlers"
+	"myapp/hooks"
+)
+
+func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+		hooks.RegisterRestaurantListCountHooks(app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	viewer, viewerToken := createAuthUser(t, server.app, false, false)
+	_, strangerToken := createAuthUser(t, server.app, false, false)
+
+	owner.Set("name", "List Owner")
+	viewer.Set("name", "Saved Viewer")
+	if err := server.app.Save(owner); err != nil {
+		t.Fatalf("failed to save owner: %v", err)
+	}
+	if err := server.app.Save(viewer); err != nil {
+		t.Fatalf("failed to save viewer: %v", err)
+	}
+
+	createFriendshipRecord(t, server.app, owner.Id, viewer.Id, "accepted")
+
+	restaurantA := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Shared Noodles",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+	restaurantB := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Shared Dumplings",
+		"location":   "Oakland, CA",
+		"visibility": "public",
+	})
+
+	sharedList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":        "Friend Faves",
+		"description": "Shared for detail endpoint coverage",
+		"user":        owner.Id,
+		"visibility":  "friends",
+	})
+
+	ownerVisitA := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantA.Id,
+		"user":       owner.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	ownerFoodItemA := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  ownerVisitA.Id,
+		"user":   owner.Id,
+		"name":   "Spicy Ramen",
+		"rating": 5,
+	})
+	insertVisitPhotoRowRaw(t, server.app, owner.Id, ownerVisitA.Id, ownerFoodItemA.Id)
+
+	ownerVisitB := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantB.Id,
+		"user":       owner.Id,
+		"visitDate":  "2026-04-01 19:00:00.000Z",
+		"visibility": "friends",
+	})
+	ownerFoodItemB := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  ownerVisitB.Id,
+		"user":   owner.Id,
+		"name":   "Soup Dumplings",
+		"rating": 4,
+	})
+
+	firstListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       sharedList.Id,
+		"restaurant": restaurantA.Id,
+		"addedBy":    owner.Id,
+		"sourceUser": owner.Id,
+		"foodItem":   ownerFoodItemA.Id,
+		"position":   1,
+		"note":       "Order this first",
+	})
+	secondListItem := createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       sharedList.Id,
+		"restaurant": restaurantB.Id,
+		"addedBy":    owner.Id,
+		"sourceUser": owner.Id,
+		"foodItem":   ownerFoodItemB.Id,
+		"position":   2,
+	})
+
+	viewerSavedList := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"user":       viewer.Id,
+		"visibility": "private",
+		"isDefault":  true,
+	})
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":       viewerSavedList.Id,
+		"restaurant": restaurantA.Id,
+		"addedBy":    viewer.Id,
+		"foodItem":   ownerFoodItemA.Id,
+		"position":   1,
+	})
+
+	viewerResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurant-lists/"+sharedList.Id+"/detail?page=1&pageSize=1",
+		viewerToken,
+		"",
+	)
+	if viewerResponse.Code != http.StatusOK {
+		t.Fatalf("expected viewer response 200 OK, got %d: %s", viewerResponse.Code, viewerResponse.Body.String())
+	}
+
+	var viewerPayload struct {
+		List struct {
+			ID              string `json:"id"`
+			Name            string `json:"name"`
+			UserID          string `json:"userId"`
+			OwnerName       string `json:"ownerName"`
+			RestaurantCount int    `json:"restaurantCount"`
+			MenuItemCount   int    `json:"menuItemCount"`
+		} `json:"list"`
+		Items []struct {
+			ID              string `json:"id"`
+			RestaurantID    string `json:"restaurantId"`
+			RestaurantName  string `json:"restaurantName"`
+			SourceUserID    string `json:"sourceUserId"`
+			SourceUserName  string `json:"sourceUserName"`
+			BookmarkedItems []struct {
+				ID             string  `json:"id"`
+				Name           string  `json:"name"`
+				Rating         float64 `json:"rating"`
+				SourceUserID   string  `json:"sourceUserId"`
+				SourceUserName string  `json:"sourceUserName"`
+			} `json:"bookmarkedItems"`
+		} `json:"items"`
+		Page          int  `json:"page"`
+		PageSize      int  `json:"pageSize"`
+		TotalItems    int  `json:"totalItems"`
+		TotalPages    int  `json:"totalPages"`
+		HasNextPage   bool `json:"hasNextPage"`
+		BookmarkState struct {
+			SavedListIDsByBookmarkLookupID map[string][]string `json:"savedListIdsByBookmarkLookupId"`
+		} `json:"bookmarkState"`
+		PhotoPreviews []struct {
+			ID string `json:"id"`
+		} `json:"photoPreviews"`
+	}
+	if err := json.Unmarshal(viewerResponse.Body.Bytes(), &viewerPayload); err != nil {
+		t.Fatalf("failed to decode viewer payload: %v; body=%s", err, viewerResponse.Body.String())
+	}
+
+	if viewerPayload.List.ID != sharedList.Id || viewerPayload.List.Name != "Friend Faves" {
+		t.Fatalf("unexpected list payload: %#v", viewerPayload.List)
+	}
+	if viewerPayload.List.UserID != owner.Id || viewerPayload.List.OwnerName != "List Owner" {
+		t.Fatalf("unexpected owner info: %#v", viewerPayload.List)
+	}
+	if viewerPayload.List.RestaurantCount != 2 || viewerPayload.List.MenuItemCount != 2 {
+		t.Fatalf("expected list counts to be updated, got %#v", viewerPayload.List)
+	}
+	if viewerPayload.Page != 1 || viewerPayload.PageSize != 1 || viewerPayload.TotalItems != 2 || viewerPayload.TotalPages != 2 || !viewerPayload.HasNextPage {
+		t.Fatalf("unexpected pagination payload: %#v", viewerPayload)
+	}
+	if len(viewerPayload.Items) != 1 {
+		t.Fatalf("expected one paginated item, got %#v", viewerPayload.Items)
+	}
+	if viewerPayload.Items[0].ID != firstListItem.Id || viewerPayload.Items[0].RestaurantID != restaurantA.Id {
+		t.Fatalf("unexpected first list item payload: %#v", viewerPayload.Items[0])
+	}
+	if len(viewerPayload.Items[0].BookmarkedItems) != 1 {
+		t.Fatalf("expected one bookmarked item, got %#v", viewerPayload.Items[0].BookmarkedItems)
+	}
+	if viewerPayload.Items[0].BookmarkedItems[0].ID != ownerFoodItemA.Id || viewerPayload.Items[0].BookmarkedItems[0].Name != "Spicy Ramen" {
+		t.Fatalf("unexpected bookmarked item payload: %#v", viewerPayload.Items[0].BookmarkedItems[0])
+	}
+	if viewerPayload.Items[0].BookmarkedItems[0].SourceUserID != owner.Id || viewerPayload.Items[0].BookmarkedItems[0].SourceUserName != "List Owner" {
+		t.Fatalf("expected source user attribution, got %#v", viewerPayload.Items[0].BookmarkedItems[0])
+	}
+	if got := viewerPayload.BookmarkState.SavedListIDsByBookmarkLookupID[ownerFoodItemA.Id]; len(got) != 1 || got[0] != viewerSavedList.Id {
+		t.Fatalf("expected bookmark state for %s, got %#v", ownerFoodItemA.Id, viewerPayload.BookmarkState.SavedListIDsByBookmarkLookupID)
+	}
+	if len(viewerPayload.PhotoPreviews) != 0 {
+		t.Fatalf("expected viewer photo previews to be empty because photos are owner-only, got %#v", viewerPayload.PhotoPreviews)
+	}
+
+	ownerResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurant-lists/"+sharedList.Id+"/detail?page=1&pageSize=2",
+		ownerToken,
+		"",
+	)
+	if ownerResponse.Code != http.StatusOK {
+		t.Fatalf("expected owner response 200 OK, got %d: %s", ownerResponse.Code, ownerResponse.Body.String())
+	}
+
+	var ownerPayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		PhotoPreviews []struct {
+			ID         string `json:"id"`
+			FoodItemID string `json:"food_item"`
+			OwnerName  string `json:"ownerName"`
+			Photo      string `json:"photo"`
+		} `json:"photoPreviews"`
+		BookmarkState struct {
+			SavedListIDsByBookmarkLookupID map[string][]string `json:"savedListIdsByBookmarkLookupId"`
+		} `json:"bookmarkState"`
+	}
+	if err := json.Unmarshal(ownerResponse.Body.Bytes(), &ownerPayload); err != nil {
+		t.Fatalf("failed to decode owner payload: %v; body=%s", err, ownerResponse.Body.String())
+	}
+
+	if len(ownerPayload.Items) != 2 || ownerPayload.Items[0].ID != firstListItem.Id || ownerPayload.Items[1].ID != secondListItem.Id {
+		t.Fatalf("expected both owner items, got %#v", ownerPayload.Items)
+	}
+	if len(ownerPayload.PhotoPreviews) != 1 {
+		t.Fatalf("expected a single owner photo preview, got %#v", ownerPayload.PhotoPreviews)
+	}
+	if ownerPayload.PhotoPreviews[0].FoodItemID != ownerFoodItemA.Id || ownerPayload.PhotoPreviews[0].OwnerName != "List Owner" {
+		t.Fatalf("unexpected owner photo preview payload: %#v", ownerPayload.PhotoPreviews[0])
+	}
+	if ownerPayload.PhotoPreviews[0].Photo != "test-photo.jpg" {
+		t.Fatalf("expected photo filename test-photo.jpg, got %#v", ownerPayload.PhotoPreviews[0])
+	}
+	if len(ownerPayload.BookmarkState.SavedListIDsByBookmarkLookupID) != 0 {
+		t.Fatalf("expected owner bookmark state to be empty, got %#v", ownerPayload.BookmarkState)
+	}
+
+	strangerResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurant-lists/"+sharedList.Id+"/detail?page=1&pageSize=1",
+		strangerToken,
+		"",
+	)
+	if strangerResponse.Code != http.StatusNotFound {
+		t.Fatalf("expected stranger response 404 Not Found, got %d: %s", strangerResponse.Code, strangerResponse.Body.String())
+	}
+}
+
+func TestRestaurantListVisitedRestaurantsEndpointReturnsAnnotatedCandidates(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	annotatedRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Sushi Corner",
+		"location":    "San Francisco, CA",
+		"cuisineType": "Japanese",
+		"visibility":  "public",
+	})
+	otherRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Burger Barn",
+		"location":    "Oakland, CA",
+		"cuisineType": "American",
+		"visibility":  "public",
+	})
+
+	olderVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(annotatedRestaurant),
+		"user":       user.Id,
+		"visitDate":  "2026-04-02 18:30:00.000Z",
+		"visibility": "private",
+	})
+	newerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(annotatedRestaurant),
+		"user":       user.Id,
+		"visitDate":  "2026-04-05 18:30:00.000Z",
+		"visibility": "private",
+	})
+	otherVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(otherRestaurant),
+		"user":       user.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "private",
+	})
+
+	recommendedItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  olderVisit.Id,
+		"user":   user.Id,
+		"name":   "Miso Soup",
+		"rating": 4,
+		"notes":  "Savory broth",
+	})
+	sourceItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  newerVisit.Id,
+		"user":   user.Id,
+		"name":   "Spicy Tuna Roll",
+		"rating": 5,
+	})
+	userLinkedItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  newerVisit.Id,
+		"user":   user.Id,
+		"name":   "Yuzu Soda",
+		"rating": 3,
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  otherVisit.Id,
+		"user":   user.Id,
+		"name":   "Fries",
+		"rating": 4,
+	})
+
+	createCollectionRecord(t, server.app, "list_items", map[string]any{
+		"list":             list.Id,
+		"restaurant":       annotatedRestaurant.Id,
+		"addedBy":          user.Id,
+		"position":         1,
+		"foodItem":         sourceItem.Id,
+		"userFoodItem":     userLinkedItem.Id,
+		"recommendedItems": []string{recommendedItem.Id},
+		"note":             "Already bookmarked",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants?page=1&pageSize=1", list.Id),
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                string   `json:"id"`
+			Name              string   `json:"name"`
+			ItemCount         int      `json:"itemCount"`
+			VisitDates        []string `json:"visitDates"`
+			AlreadyInList     bool     `json:"alreadyInList"`
+			ExistingNote      string   `json:"existingNote"`
+			LinkedFoodItemIDs []string `json:"linkedFoodItemIds"`
+			FoodItems         []struct {
+				ID        string `json:"id"`
+				Name      string `json:"name"`
+				VisitedAt string `json:"visitedAt"`
+			} `json:"foodItems"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.Page != 1 || payload.PageSize != 1 {
+		t.Fatalf("unexpected pagination metadata: %#v", payload)
+	}
+	if payload.TotalItems != 2 || payload.TotalPages != 2 || !payload.HasNextPage {
+		t.Fatalf("unexpected pagination summary: %#v", payload)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 restaurant candidate, got %d: %#v", len(payload.Items), payload.Items)
+	}
+
+	item := payload.Items[0]
+	if item.ID != annotatedRestaurant.Id || item.Name != "Sushi Corner" {
+		t.Fatalf("expected annotated restaurant first, got %#v", item)
+	}
+	if !item.AlreadyInList || item.ExistingNote != "Already bookmarked" {
+		t.Fatalf("expected list annotation metadata, got %#v", item)
+	}
+	if item.ItemCount != 3 || len(item.FoodItems) != 3 {
+		t.Fatalf("expected 3 rated items, got %#v", item)
+	}
+	if len(item.VisitDates) != 2 || item.VisitDates[0] != "2026-04-05 18:30:00.000Z" || item.VisitDates[1] != "2026-04-02 18:30:00.000Z" {
+		t.Fatalf("expected visit dates ordered newest first, got %#v", item.VisitDates)
+	}
+
+	foodItemIDs := extractVisitedRestaurantCandidateFoodItemIDs(item.FoodItems)
+	if !containsVisitedRestaurantString(item.LinkedFoodItemIDs, recommendedItem.Id) ||
+		!containsVisitedRestaurantString(item.LinkedFoodItemIDs, sourceItem.Id) ||
+		!containsVisitedRestaurantString(item.LinkedFoodItemIDs, userLinkedItem.Id) {
+		t.Fatalf("expected linked food item ids to include existing list links, got %#v", item.LinkedFoodItemIDs)
+	}
+	if !containsVisitedRestaurantString(foodItemIDs, recommendedItem.Id) ||
+		!containsVisitedRestaurantString(foodItemIDs, sourceItem.Id) ||
+		!containsVisitedRestaurantString(foodItemIDs, userLinkedItem.Id) {
+		t.Fatalf("expected restaurant food items in response, got %#v", item.FoodItems)
+	}
+}
+
+func TestRestaurantListVisitedRestaurantsEndpointSearchesRestaurantAndFoodItemMetadata(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Saved",
+		"visibility": "private",
+		"user":       user.Id,
+	})
+	ramenRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Ramen House",
+		"location":    "San Jose, CA",
+		"cuisineType": "Japanese",
+		"visibility":  "public",
+	})
+	burgerRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":        "Burger Barn",
+		"location":    "Berkeley, CA",
+		"cuisineType": "American",
+		"visibility":  "public",
+	})
+
+	ramenVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": ramenRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-06 18:30:00.000Z",
+		"visibility": "private",
+	})
+	burgerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": burgerRestaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "private",
+	})
+
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  ramenVisit.Id,
+		"user":   user.Id,
+		"name":   "Shoyu Ramen",
+		"rating": 5,
+		"notes":  "Rich broth and great noodles",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  burgerVisit.Id,
+		"user":   user.Id,
+		"name":   "Double Burger",
+		"rating": 4,
+	})
+
+	searchByItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants?search=broth", list.Id),
+		token,
+		"",
+	)
+	if searchByItemResponse.Code != http.StatusOK {
+		t.Fatalf("expected item search 200 OK, got %d: %s", searchByItemResponse.Code, searchByItemResponse.Body.String())
+	}
+
+	var itemSearchPayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(searchByItemResponse.Body.Bytes(), &itemSearchPayload); err != nil {
+		t.Fatalf("failed to parse item search response JSON: %v; body=%s", err, searchByItemResponse.Body.String())
+	}
+
+	if itemSearchPayload.TotalItems != 1 || len(itemSearchPayload.Items) != 1 || itemSearchPayload.Items[0].ID != ramenRestaurant.Id {
+		t.Fatalf("expected broth search to match only the ramen restaurant, got %#v", itemSearchPayload)
+	}
+
+	searchByRestaurantResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants?search=burger", list.Id),
+		token,
+		"",
+	)
+	if searchByRestaurantResponse.Code != http.StatusOK {
+		t.Fatalf("expected restaurant search 200 OK, got %d: %s", searchByRestaurantResponse.Code, searchByRestaurantResponse.Body.String())
+	}
+
+	var restaurantSearchPayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(searchByRestaurantResponse.Body.Bytes(), &restaurantSearchPayload); err != nil {
+		t.Fatalf("failed to parse restaurant search response JSON: %v; body=%s", err, searchByRestaurantResponse.Body.String())
+	}
+
+	if restaurantSearchPayload.TotalItems != 1 || len(restaurantSearchPayload.Items) != 1 || restaurantSearchPayload.Items[0].ID != burgerRestaurant.Id {
+		t.Fatalf("expected burger search to match only the burger restaurant, got %#v", restaurantSearchPayload)
+	}
+}
+
+func TestRestaurantListVisitedRestaurantsEndpointRequiresListOwnership(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	owner, _ := createAuthUser(t, server.app, false, false)
+	_, otherToken := createAuthUser(t, server.app, false, false)
+
+	list := createCollectionRecord(t, server.app, "restaurant_lists", map[string]any{
+		"name":       "Private List",
+		"visibility": "private",
+		"user":       owner.Id,
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants", list.Id),
+		otherToken,
+		"",
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-owner, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func extractVisitedRestaurantCandidateFoodItemIDs(items []struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	VisitedAt string `json:"visitedAt"`
+}) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		result = append(result, item.ID)
+	}
+
+	return result
+}
+
+func containsVisitedRestaurantString(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+
+	return false
+}

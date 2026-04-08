@@ -5,6 +5,8 @@ import type {
   ContentReportReasonCode,
   FeedbackRecord,
   NoteRecord,
+  RestaurantListItemRecord,
+  RestaurantListRecord,
   VisitItem,
   VisitRecord,
 } from '../models';
@@ -88,6 +90,27 @@ export interface RestaurantListItemLinkRecord {
   recommendedItemIds?: string[];
 }
 
+export interface RestaurantListVisitedRestaurantFoodItem {
+  id: string;
+  name: string;
+  rating: number;
+  notes?: string;
+  visitedAt: string;
+}
+
+export interface RestaurantListVisitedRestaurantCandidate {
+  id: string;
+  name: string;
+  location?: string;
+  cuisineType?: string;
+  itemCount: number;
+  visitDates: string[];
+  foodItems: RestaurantListVisitedRestaurantFoodItem[];
+  alreadyInList: boolean;
+  existingNote?: string;
+  linkedFoodItemIds: string[];
+}
+
 export interface AddRestaurantVisitRatingsToListInput {
   listId: string;
   restaurantId: string;
@@ -161,6 +184,20 @@ export interface RestaurantVisitStatsSummary {
   friendCount: number;
 }
 
+export interface RestaurantListDetailBookmarkState {
+  savedListIdsByBookmarkLookupId: Record<string, string[]>;
+}
+
+export interface RestaurantListDetailPhotoPreviewRecord extends VisitPhotoRecord {
+  ownerName?: string;
+}
+
+export interface RestaurantListDetailPage extends PaginatedResult<RestaurantListItemRecord> {
+  list: RestaurantListRecord | null;
+  bookmarkState: RestaurantListDetailBookmarkState;
+  photoPreviews: RestaurantListDetailPhotoPreviewRecord[];
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   page: number;
@@ -191,6 +228,10 @@ export interface ListQuickTracksPageInput extends PaginationInput {
 
 export interface ListRestaurantListsPageInput extends PaginationInput {
   scope?: 'my' | 'friends';
+  search?: string;
+}
+
+export interface ListRestaurantListVisitedRestaurantsPageInput extends PaginationInput {
   search?: string;
 }
 
@@ -429,12 +470,14 @@ export {
   createRestaurantList,
   deleteRestaurantList,
   getRestaurantListById,
+  getRestaurantListDetailPage,
   getRestaurantListItemLinkFoodItemIds,
   linkVisitToListBookmark,
   listMyBookmarkedListItemLinksForFoodItemIds,
   listRestaurantListItemLinksForRestaurantIds,
   listRestaurantListItemsPage,
   listRestaurantListNotesForRestaurantIds,
+  listRestaurantListVisitedRestaurantsPage,
   listRestaurantListsPage,
   moveRestaurantListRestaurant,
   removeRestaurantFromList,

@@ -13,7 +13,7 @@ export const RATING_OPTIONS = [
   { value: 5, label: 'Eat often' },
 ] as const satisfies readonly RatingOption[];
 
-export const RATING_LABELS = RATING_OPTIONS.map((option) => option.label);
+const RATING_LABELS = RATING_OPTIONS.map((option) => option.label);
 
 export function getRatingLabel(rating: number): string {
   return RATING_LABELS[rating - 1] ?? 'Unknown';

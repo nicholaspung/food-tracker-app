@@ -6,8 +6,8 @@ import { defaultShouldDehydrateQuery, type Query, type QueryKey } from '@tanstac
 import type { FeedbackRecord, NoteRecord } from '../features/models';
 import { isFeedbackListQueryKey } from '../features/store/feedbackQuery';
 
-export const LEGACY_QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v1';
-export const QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v2';
+const LEGACY_QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v1';
+const QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v2';
 
 function isFeatureQueryKey(queryKey: QueryKey): queryKey is readonly [string, ...unknown[]] {
   return Array.isArray(queryKey) && queryKey[0] === 'feature';
@@ -49,12 +49,24 @@ function isPaginatedFeedbackListQuery(queryKey: QueryKey): boolean {
   return isFeedbackListQueryKey(queryKey);
 }
 
+function isFeedbackSummaryQuery(queryKey: QueryKey): boolean {
+  return hasQueryKeyPrefix(queryKey, ['feature', 'feedback', 'summary']) && queryKey.length === 3;
+}
+
 function isPaginatedHomeFeedQuery(queryKey: QueryKey): boolean {
   return hasQueryKeyPrefix(queryKey, ['feature', 'homeFeed', 'paginated']);
 }
 
 function isHomeFeedPhotosQuery(queryKey: QueryKey): boolean {
   return hasQueryKeyPrefix(queryKey, ['feature', 'visitPhotos', 'feedItems']) && queryKey.length === 4;
+}
+
+function isProfileQuery(queryKey: QueryKey): boolean {
+  return hasQueryKeyPrefix(queryKey, ['feature', 'profile']) && queryKey.length === 2;
+}
+
+function isWhatsNewSeenVersionQuery(queryKey: QueryKey): boolean {
+  return hasQueryKeyPrefix(queryKey, ['feature', 'whats-new-seen-version']) && queryKey.length === 2;
 }
 
 function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
@@ -80,8 +92,16 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
     case 'restaurantLists':
     case 'restaurantListItemCounts.v2':
       return true;
+    case 'profile':
+      return isProfileQuery(queryKey);
     case 'feedback':
-      return isLegacyFeedbackListQuery(queryKey) || isPaginatedFeedbackListQuery(queryKey);
+      return (
+        isLegacyFeedbackListQuery(queryKey) ||
+        isPaginatedFeedbackListQuery(queryKey) ||
+        isFeedbackSummaryQuery(queryKey)
+      );
+    case 'whats-new-seen-version':
+      return isWhatsNewSeenVersionQuery(queryKey);
     default:
       return false;
   }

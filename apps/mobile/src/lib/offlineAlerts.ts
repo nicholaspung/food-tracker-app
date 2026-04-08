@@ -10,7 +10,7 @@ export interface QueuedOfflineAlertOptions {
   message?: string;
 }
 
-export function buildQueuedOfflineMessage(subject: string): string {
+function buildQueuedOfflineMessage(subject: string): string {
   const trimmedSubject = subject.trim().replace(/\.+$/, '');
   const resolvedSubject = trimmedSubject.length > 0 ? trimmedSubject : DEFAULT_SUBJECT;
   return `${resolvedSubject} ${QUEUED_OFFLINE_SUFFIX}`;

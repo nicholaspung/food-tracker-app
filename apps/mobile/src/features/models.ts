@@ -252,6 +252,7 @@ export interface BillParticipantRecord {
   id: string;
   name: string;
   userId?: string;
+  friendshipId?: string;
   amountOwed: number;
   customTipContribution?: number;
   paidStatus: 'pending' | 'paid';

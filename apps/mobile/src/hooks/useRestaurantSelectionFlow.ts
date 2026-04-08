@@ -16,6 +16,7 @@ import {
   formatLimitExceededMessage,
   listMenuItemsForRestaurant,
   listRecentRestaurants,
+  type MonthlyUsageSnapshot,
   parseLimitExceededError,
   searchRestaurantsPage,
   type LimitExceededPayload,
@@ -24,7 +25,6 @@ import {
 } from '../features';
 import { useForegroundLocationCapture } from './useForegroundLocationCapture';
 import {
-  geocodeLocation,
   searchAndCacheNearbyRestaurants,
   searchAndCacheRestaurantsByText,
 } from '../lib/googlePlaces';
@@ -40,6 +40,7 @@ import {
 import { useDebouncedValue } from './useDebouncedValue';
 
 const FREE_SEARCH_WARNING_THRESHOLD = 2;
+const MONTHLY_USAGE_QUERY_KEY = ['feature', 'usage', 'monthly', 'actual'] as const;
 const RESTAURANT_SELECTION_PAGE_SIZE = 12;
 const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
 const RESTAURANT_SEARCH_DEBOUNCE_MS = 250;
@@ -250,6 +251,18 @@ function resolveSavedRestaurantsUiState(
       : recentRestaurantsIsLoading,
     savedRestaurantsTitle: shouldQuerySavedRestaurantsBySearch ? 'Matching restaurants' : 'Recent restaurants',
   };
+}
+
+function syncMonthlyUsageSnapshot(
+  queryClient: QueryClient,
+  snapshot: MonthlyUsageSnapshot | null,
+): boolean {
+  if (!snapshot) {
+    return false;
+  }
+
+  queryClient.setQueryData(MONTHLY_USAGE_QUERY_KEY, snapshot);
+  return true;
 }
 
 export function useSavedRestaurantSuggestions({
@@ -507,25 +520,23 @@ export function useRestaurantSelectionFlow({
       resetLocationPermissionNeedsSettings();
 
       let didAttemptPlacesQuery = false;
+      let didSyncMonthlyUsageSnapshot = false;
 
       try {
-        let nextReferenceCoords = effectiveReferenceCoords;
-        if (trimmedLocation) {
-          nextReferenceCoords = await geocodeLocation(trimmedLocation);
-        }
-
-        setReferenceCoords(nextReferenceCoords);
         didAttemptPlacesQuery = true;
 
-        const results = await searchAndCacheRestaurantsByText({
-          location: trimmedLocation || undefined,
+        const { resolvedLocation, restaurants, usageSnapshot } = await searchAndCacheRestaurantsByText({
+          locationText: trimmedLocation || undefined,
           query: trimmedSearchQuery || 'food',
           radius: 5000,
         });
+        didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(queryClient, usageSnapshot);
 
-        setSearchResults(results);
+        setReferenceCoords(trimmedLocation ? resolvedLocation : effectiveReferenceCoords);
+
+        setSearchResults(restaurants);
         return {
-          results,
+          results: restaurants,
           status: 'success',
         };
       } catch (error) {
@@ -544,7 +555,7 @@ export function useRestaurantSelectionFlow({
         };
       } finally {
         setIsSearchingRestaurants(false);
-        if (didAttemptPlacesQuery) {
+        if (didAttemptPlacesQuery && !didSyncMonthlyUsageSnapshot) {
           await queryClient.invalidateQueries({
             queryKey: ['feature', 'usage', 'monthly'],
           });
@@ -606,20 +617,22 @@ export function useRestaurantSelectionFlow({
     setReferenceCoords(coords);
 
     let didAttemptPlacesQuery = false;
+    let didSyncMonthlyUsageSnapshot = false;
 
     try {
       setIsSearchingNearbyRestaurants(true);
       didAttemptPlacesQuery = true;
 
-      const results = await searchAndCacheNearbyRestaurants({
+      const { restaurants, usageSnapshot } = await searchAndCacheNearbyRestaurants({
         latitude: coords.lat,
         longitude: coords.lng,
         radius: 5000,
       });
+      didSyncMonthlyUsageSnapshot = syncMonthlyUsageSnapshot(queryClient, usageSnapshot);
 
-      setNearbyResults(results);
+      setNearbyResults(restaurants);
       return {
-        results,
+        results: restaurants,
         status: 'success',
       };
     } catch (error) {
@@ -638,7 +651,7 @@ export function useRestaurantSelectionFlow({
       };
     } finally {
       setIsSearchingNearbyRestaurants(false);
-      if (didAttemptPlacesQuery) {
+      if (didAttemptPlacesQuery && !didSyncMonthlyUsageSnapshot) {
         await queryClient.invalidateQueries({
           queryKey: ['feature', 'usage', 'monthly'],
         });

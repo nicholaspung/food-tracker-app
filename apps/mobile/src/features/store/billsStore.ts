@@ -18,12 +18,6 @@ export type {
   UpdateBillInput,
 } from './featureStore';
 
-interface BillParticipantCollectionUserExpand {
-  id: string;
-  name?: string;
-  email?: string;
-}
-
 interface BillCollectionRecord {
   id: string;
   creator_user: string;
@@ -51,9 +45,6 @@ interface BillParticipantCollectionRecord {
   custom_tip_contribution?: number | null;
   created: string;
   updated: string;
-  expand?: {
-    user?: BillParticipantCollectionUserExpand;
-  };
 }
 
 interface BillItemCollectionRecord {
@@ -69,6 +60,49 @@ interface BillItemCollectionRecord {
     value: number;
   }[] | null;
   created: string;
+}
+
+interface BillItemSplitApiResponse {
+  participantId?: string;
+  type?: 'percentage' | 'amount';
+  value?: number;
+}
+
+interface BillItemApiResponse {
+  id: string;
+  itemName: string;
+  price: number;
+  assignedToParticipantIds?: string[];
+  splitMode?: 'simple' | 'advanced';
+  splitConfig?: BillItemSplitApiResponse[] | null;
+}
+
+interface BillParticipantApiResponse {
+  id: string;
+  name: string;
+  userId?: string;
+  friendshipId?: string;
+  amountOwed: number;
+  customTipContribution?: number | null;
+  paidStatus?: BillParticipantRecord['paidStatus'];
+}
+
+interface BillApiResponse {
+  id: string;
+  title: string;
+  restaurantName?: string;
+  createdByUserId: string;
+  totalAmount?: number;
+  items: BillItemApiResponse[];
+  participants: BillParticipantApiResponse[];
+  tax?: number;
+  tip?: number;
+  fees?: number;
+  splitMode?: BillRecord['splitMode'];
+  extrasSplitMode?: BillRecord['extrasSplitMode'];
+  status?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface BillListSummaryApiResponseItem {
@@ -102,63 +136,53 @@ function sanitizeCurrency(value: number | null | undefined): number {
   return Math.round(value * 100) / 100;
 }
 
-function normalizeBillRecordStatus(status: BillCollectionRecord['status']): BillRecord['status'] {
+function normalizeBillStatus(status: string | undefined): BillRecord['status'] {
   return status === 'settled' ? 'settled' : 'open';
 }
 
-function resolveBillParticipantName(record: BillParticipantCollectionRecord): string {
-  const explicitName = record.participant_name?.trim();
-  if (explicitName) {
-    return explicitName;
-  }
-
-  const expandedName = record.expand?.user?.name?.trim();
-  if (expandedName) {
-    return expandedName;
-  }
-
-  const expandedEmail = record.expand?.user?.email?.trim();
-  if (expandedEmail) {
-    return expandedEmail.split('@')[0];
-  }
-
-  return 'Unknown';
-}
-
-function mapBillParticipantRecord(record: BillParticipantCollectionRecord): BillParticipantRecord {
+function mapBillParticipantApiRecord(record: BillParticipantApiResponse): BillParticipantRecord {
   const customTipContribution =
-    typeof record.custom_tip_contribution === 'number'
-      ? sanitizeCurrency(record.custom_tip_contribution)
+    typeof record.customTipContribution === 'number'
+      ? sanitizeCurrency(record.customTipContribution)
       : undefined;
 
   return {
     id: record.id,
-    name: resolveBillParticipantName(record),
-    userId: record.user ?? undefined,
-    amountOwed: sanitizeCurrency(record.amount_owed),
+    name: record.name.trim() || 'Unknown',
+    userId: record.userId?.trim() || undefined,
+    friendshipId: record.friendshipId?.trim() || undefined,
+    amountOwed: sanitizeCurrency(record.amountOwed),
     customTipContribution,
-    paidStatus: record.paid_status === 'paid' ? 'paid' : 'pending',
+    paidStatus: record.paidStatus === 'paid' ? 'paid' : 'pending',
   };
 }
 
-function mapBillItemRecord(record: BillItemCollectionRecord): BillItemRecord {
-  const normalizedSplitConfig = Array.isArray(record.split_config)
-    ? record.split_config
-        .filter((entry) => {
+function mapBillItemApiRecord(record: BillItemApiResponse): BillItemRecord {
+  const normalizedSplitConfig: BillItemRecord['splitConfig'] = Array.isArray(record.splitConfig)
+    ? record.splitConfig
+        .filter(
+          (
+            entry,
+          ): entry is {
+            participantId: string;
+            type: 'percentage' | 'amount';
+            value: number;
+          } => {
           if (!entry || typeof entry !== 'object') {
             return false;
           }
 
-          if (typeof entry.participant_id !== 'string' || !entry.participant_id) {
+          if (typeof entry.participantId !== 'string' || !entry.participantId) {
             return false;
           }
 
           const isSupportedType = entry.type === 'percentage' || entry.type === 'amount';
           const isValidValue = typeof entry.value === 'number' && Number.isFinite(entry.value);
           return isSupportedType && isValidValue;
-        })
+          },
+        )
         .map((entry) => ({
-          participantId: entry.participant_id,
+          participantId: entry.participantId,
           type: entry.type,
           value: sanitizeCurrency(entry.value),
         }))
@@ -166,39 +190,39 @@ function mapBillItemRecord(record: BillItemCollectionRecord): BillItemRecord {
 
   return {
     id: record.id,
-    itemName: record.item_name,
+    itemName: record.itemName.trim(),
     price: sanitizeCurrency(record.price),
-    assignedToParticipantIds: Array.isArray(record.assigned_to) ? record.assigned_to : [],
-    splitMode: record.split_mode === 'advanced' ? 'advanced' : 'simple',
+    assignedToParticipantIds: Array.isArray(record.assignedToParticipantIds)
+      ? record.assignedToParticipantIds
+      : [],
+    splitMode: record.splitMode === 'advanced' ? 'advanced' : 'simple',
     splitConfig: normalizedSplitConfig,
   };
 }
 
-function mapBillRecord(
-  bill: BillCollectionRecord,
-  participants: BillParticipantCollectionRecord[],
-  items: BillItemCollectionRecord[],
-): BillRecord {
-  const billTax = sanitizeCurrency(bill.tax);
-  const billTip = sanitizeCurrency(bill.tip);
-  const billFees = sanitizeCurrency(bill.fees);
-
+function mapBillApiResponse(bill: BillApiResponse): BillRecord {
   return {
     id: bill.id,
-    title: bill.bill_name,
-    restaurantName: bill.bill_name,
-    createdByUserId: bill.creator_user,
-    totalAmount: sanitizeCurrency(bill.total_amount),
-    items: items.map(mapBillItemRecord),
-    participants: participants.map(mapBillParticipantRecord),
-    tax: billTax,
-    tip: billTip,
-    fees: billFees,
-    splitMode: bill.split_mode,
-    extrasSplitMode: bill.extras_split_mode,
-    status: normalizeBillRecordStatus(bill.status),
-    createdAt: bill.created,
-    updatedAt: bill.updated,
+    title: bill.title.trim(),
+    restaurantName: bill.restaurantName?.trim() || bill.title.trim(),
+    createdByUserId: bill.createdByUserId,
+    totalAmount:
+      typeof bill.totalAmount === 'number' ? sanitizeCurrency(bill.totalAmount) : undefined,
+    items: Array.isArray(bill.items) ? bill.items.map(mapBillItemApiRecord) : [],
+    participants: Array.isArray(bill.participants)
+      ? bill.participants.map(mapBillParticipantApiRecord)
+      : [],
+    tax: sanitizeCurrency(bill.tax),
+    tip: sanitizeCurrency(bill.tip),
+    fees: sanitizeCurrency(bill.fees),
+    splitMode:
+      bill.splitMode === 'custom' || bill.splitMode === 'itemized' || bill.splitMode === 'even'
+        ? bill.splitMode
+        : undefined,
+    extrasSplitMode: bill.extrasSplitMode === 'proportional' ? 'proportional' : 'equal',
+    status: normalizeBillStatus(bill.status),
+    createdAt: bill.createdAt,
+    updatedAt: bill.updatedAt,
   };
 }
 
@@ -206,7 +230,7 @@ function mapBillListSummaryApiItem(item: BillListSummaryApiResponseItem): BillLi
   return {
     id: item.id,
     title: item.title,
-    status: item.status === 'settled' ? 'settled' : 'open',
+    status: normalizeBillStatus(item.status),
     participantCount: parseCount(item.participantCount),
     pendingOtherParticipantCount: parseCount(item.pendingOtherParticipantCount),
     youOwe: sanitizeCurrency(item.youOwe),
@@ -223,7 +247,6 @@ async function listBillParticipantsForBillId(
   return listCollectionRecords<BillParticipantCollectionRecord>('bill_participants', {
     filter: `bill = "${billId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
     sort: 'created',
-    expand: 'user',
   });
 }
 
@@ -235,15 +258,6 @@ async function listBillItemsForBillId(
     sort: 'created',
     fields: BILL_ITEM_LIST_FIELDS,
   });
-}
-
-async function mapBillWithRelations(bill: BillCollectionRecord): Promise<BillRecord> {
-  const [participants, items] = await Promise.all([
-    listBillParticipantsForBillId(bill.id),
-    listBillItemsForBillId(bill.id),
-  ]);
-
-  return mapBillRecord(bill, participants, items);
 }
 
 export async function listBillSummaries(): Promise<BillListSummary[]> {
@@ -264,8 +278,10 @@ export async function getBillById(billId: string): Promise<BillRecord | null> {
   }
 
   try {
-    const bill = await pb.collection('bills').getOne<BillCollectionRecord>(billId);
-    return mapBillWithRelations(bill);
+    const response = await sendApiRequest<BillApiResponse>(`/api/bills/${encodeURIComponent(billId)}`, {
+      method: 'GET',
+    });
+    return mapBillApiResponse(response);
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;
@@ -285,7 +301,7 @@ export async function createBill(input: CreateBillInput): Promise<BillRecord> {
         throw new Error('Bill title is required.');
       }
 
-      return sendApiRequest<BillRecord>('/api/bills', {
+      const response = await sendApiRequest<BillApiResponse>('/api/bills', {
         method: 'POST',
         body: {
           title: trimmedTitle,
@@ -323,6 +339,8 @@ export async function createBill(input: CreateBillInput): Promise<BillRecord> {
           extrasSplitMode: input.extrasSplitMode,
         },
       });
+
+      return mapBillApiResponse(response);
     },
     {
       itemCount: input.items.length,
@@ -336,7 +354,7 @@ export async function updateBill(billId: string, updates: UpdateBillInput): Prom
   return trackFeatureMutation(
     'bill.update',
     async () => {
-      return sendApiRequest<BillRecord>(`/api/bills/${encodeURIComponent(billId)}`, {
+      const response = await sendApiRequest<BillApiResponse>(`/api/bills/${encodeURIComponent(billId)}`, {
         method: 'PUT',
         body: {
           title: updates.title?.trim(),
@@ -374,6 +392,8 @@ export async function updateBill(billId: string, updates: UpdateBillInput): Prom
           status: updates.status,
         },
       });
+
+      return mapBillApiResponse(response);
     },
     {
       hasTitleUpdate: updates.title !== undefined,

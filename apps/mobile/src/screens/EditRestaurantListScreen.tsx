@@ -124,6 +124,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
 
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
         ]);
         trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
@@ -142,6 +143,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
       ]);
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {

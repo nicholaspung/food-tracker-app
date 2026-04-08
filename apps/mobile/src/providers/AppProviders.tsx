@@ -1,5 +1,5 @@
 import { persistQueryClient } from '@tanstack/query-persist-client-core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
@@ -30,6 +30,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     initializeObservability();
+    focusManager.setFocused(appStateRef.current === 'active');
     setObservabilityContext({
       appState: appStateRef.current,
       sessionActive: true,
@@ -97,6 +98,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener('change', (nextState) => {
       const previousState = appStateRef.current;
       appStateRef.current = nextState;
+      focusManager.setFocused(nextState === 'active');
       setObservabilityContext({
         appState: nextState,
       });

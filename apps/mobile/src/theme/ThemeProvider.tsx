@@ -157,7 +157,7 @@ const themes: Record<ThemeName, Theme> = {
   sunrise: createTheme('sunrise', paletteTokens.sunrise),
 };
 
-export const ACTIVE_THEME_NAME: ThemeName = defaultThemeName;
+const ACTIVE_THEME_NAME: ThemeName = defaultThemeName;
 
 const ThemeContext = createContext<Theme | null>(null);
 
@@ -178,9 +178,3 @@ export function useTheme(): Theme {
 
   return context;
 }
-
-export function useThemeName(): ThemeName {
-  return useTheme().name;
-}
-
-export const themeNames = Object.keys(themes) as ThemeName[];

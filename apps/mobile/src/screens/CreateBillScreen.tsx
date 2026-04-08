@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ConfirmDestructiveModal,
   FeatureFormScreenScaffold,
@@ -11,20 +11,15 @@ import {
   OptionListRow,
   PageErrorToast,
   SegmentedControl,
-  Skeleton,
   StatusPill,
 } from '../components/shared';
 import {
   createBill,
   createEntityId,
-  getBillById,
-  listFriendsByUserIds,
-  listFriendsPage,
   updateBill,
   type BillItemRecord,
   type BillItemSplitConfig,
   type BillParticipantRecord,
-  type BillRecord,
   type FriendRecord,
 } from '../features';
 import {
@@ -35,7 +30,6 @@ import {
   createBillApiMutationInput,
   updateBillApiMutationInput,
 } from '../features/store/featureOutboxOperations';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -44,36 +38,34 @@ import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useSync } from '../providers/SyncProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, Input, Text } from '../ui';
+import { Card, Input, Text } from '../ui';
+import { BillParticipantPickerSection } from './createBill/BillParticipantPickerSection';
+import { BillPayerAndTotalsSection } from './createBill/BillPayerAndTotalsSection';
+import {
+  areStringArraysEqual,
+  buildDefaultAdvancedSplits,
+  formatPercentageDisplay,
+  getAdvancedSplitRawValue,
+  inferEditSplitMode,
+  isAdvancedSplitLocked,
+  normalizeFriendName,
+  normalizeNameKey,
+  redistributeAdvancedSplits,
+  resolveSplitTarget,
+  roundToCurrency,
+  sanitizeParticipantName,
+  setAdvancedSplitLocked,
+  setAdvancedSplitRawValue,
+  toCurrencyInput,
+  type CreateBillSplitMode,
+  type DraftAdvancedSplitEntry,
+  type DraftAdvancedSplitType,
+  type DraftBillItem,
+  type OwedAmountEntry,
+} from './createBill/shared';
+import { useCreateBillParticipantsController } from './createBill/useCreateBillParticipantsController';
 
 type CreateBillScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBill'>;
-type CreateBillSplitMode = 'equal' | 'custom' | 'manual';
-type DraftAdvancedSplitType = 'percentage' | 'amount';
-
-interface DraftAdvancedSplitEntry {
-  participantId: string;
-  percentageValue: string;
-  amountValue: string;
-  percentageLocked: boolean;
-  amountLocked: boolean;
-}
-
-interface DraftBillItem {
-  id: string;
-  name: string;
-  price: string;
-  splitMode: 'simple' | 'advanced';
-  assignedParticipantIds: string[];
-  advancedSplitType: DraftAdvancedSplitType;
-  advancedSplits: DraftAdvancedSplitEntry[];
-}
-
-interface DraftParticipant {
-  id: string;
-  name: string;
-  userId?: string;
-  isCurrentUser: boolean;
-}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -364,227 +356,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
-function isLikelyUserId(value: string): boolean {
-  return /^[a-z0-9]{15}$/i.test(value.trim());
-}
-
-function isSyntheticFriendEmail(value: string | undefined): boolean {
-  const normalized = value?.trim().toLowerCase() ?? '';
-  return normalized.endsWith('@friend.local') || normalized.endsWith('@invite.local');
-}
-
-function sanitizeParticipantName(value: string, fallback: string): string {
-  const trimmedValue = value.trim();
-  if (!trimmedValue || isLikelyUserId(trimmedValue)) {
-    return fallback;
-  }
-
-  return trimmedValue;
-}
-
-function normalizeFriendName(friend: FriendRecord): string {
-  const trimmedName = friend.name.trim();
-  if (trimmedName) {
-    return sanitizeParticipantName(trimmedName, 'Friend');
-  }
-
-  const trimmedEmail = friend.email.trim();
-  if (trimmedEmail && !isSyntheticFriendEmail(trimmedEmail)) {
-    return sanitizeParticipantName(trimmedEmail.split('@')[0] ?? '', 'Friend');
-  }
-
-  return 'Friend';
-}
-
-function mergeFriendCollections(...collections: readonly FriendRecord[][]): FriendRecord[] {
-  const friendsById = new Map<string, FriendRecord>();
-  collections.forEach((collection) => {
-    collection.forEach((friend) => {
-      friendsById.set(friend.id, friend);
-    });
-  });
-  return Array.from(friendsById.values());
-}
-
-function normalizeNameKey(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function toCurrencyInput(value: number): string {
-  return value.toFixed(2);
-}
-
-function roundToCurrency(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function formatPercentageDisplay(value: number): string {
-  if (!Number.isFinite(value)) {
-    return '0%';
-  }
-
-  if (value <= 0) {
-    return '0%';
-  }
-
-  return `${Math.ceil(value)}%`;
-}
-
-function getAdvancedSplitRawValue(
-  split: DraftAdvancedSplitEntry,
-  splitType: DraftAdvancedSplitType,
-): string {
-  return splitType === 'percentage' ? split.percentageValue : split.amountValue;
-}
-
-function isAdvancedSplitLocked(
-  split: DraftAdvancedSplitEntry,
-  splitType: DraftAdvancedSplitType,
-): boolean {
-  return splitType === 'percentage' ? split.percentageLocked : split.amountLocked;
-}
-
-function setAdvancedSplitRawValue(
-  split: DraftAdvancedSplitEntry,
-  splitType: DraftAdvancedSplitType,
-  value: string,
-): DraftAdvancedSplitEntry {
-  return splitType === 'percentage'
-    ? { ...split, percentageValue: value }
-    : { ...split, amountValue: value };
-}
-
-function setAdvancedSplitLocked(
-  split: DraftAdvancedSplitEntry,
-  splitType: DraftAdvancedSplitType,
-  isLocked: boolean,
-): DraftAdvancedSplitEntry {
-  return splitType === 'percentage'
-    ? { ...split, percentageLocked: isLocked }
-    : { ...split, amountLocked: isLocked };
-}
-
-function resolveSplitTarget(
-  splitType: DraftAdvancedSplitType,
-  totalAmount: number,
-): number {
-  if (splitType === 'percentage') {
-    return 100;
-  }
-
-  return Number.isFinite(totalAmount) && totalAmount > 0 ? roundToCurrency(totalAmount) : 0;
-}
-
-function redistributeAdvancedSplits(
-  splits: DraftAdvancedSplitEntry[],
-  splitType: DraftAdvancedSplitType,
-  totalAmount: number,
-): DraftAdvancedSplitEntry[] {
-  if (splits.length === 0) {
-    return splits;
-  }
-
-  const target = resolveSplitTarget(splitType, totalAmount);
-  const unlockedIndexes: number[] = [];
-  let lockedTotal = 0;
-
-  splits.forEach((split, index) => {
-    if (!isAdvancedSplitLocked(split, splitType)) {
-      unlockedIndexes.push(index);
-      return;
-    }
-
-    const parsedValue = Number(getAdvancedSplitRawValue(split, splitType));
-    if (Number.isFinite(parsedValue) && parsedValue >= 0) {
-      lockedTotal += parsedValue;
-    }
-  });
-
-  if (unlockedIndexes.length === 0) {
-    return splits;
-  }
-
-  const remaining = roundToCurrency(Math.max(0, target - lockedTotal));
-  const evenValue = unlockedIndexes.length > 0 ? remaining / unlockedIndexes.length : 0;
-  let distributed = 0;
-
-  const nextSplits = splits.map((split, index) => {
-    if (!unlockedIndexes.includes(index)) {
-      return split;
-    }
-
-    const roundedValue = roundToCurrency(evenValue);
-    distributed += roundedValue;
-    return setAdvancedSplitRawValue(split, splitType, toCurrencyInput(roundedValue));
-  });
-
-  const roundingDifference = roundToCurrency(remaining - distributed);
-  if (Math.abs(roundingDifference) > 0) {
-    const firstUnlockedIndex = unlockedIndexes[0];
-    const currentValue = Number(getAdvancedSplitRawValue(nextSplits[firstUnlockedIndex], splitType));
-    const normalizedCurrentValue = Number.isFinite(currentValue) ? currentValue : 0;
-    const adjustedValue = Math.max(0, roundToCurrency(normalizedCurrentValue + roundingDifference));
-    nextSplits[firstUnlockedIndex] = setAdvancedSplitRawValue(
-      nextSplits[firstUnlockedIndex],
-      splitType,
-      toCurrencyInput(adjustedValue),
-    );
-  }
-
-  return nextSplits;
-}
-
-function buildDefaultAdvancedSplits(
-  participantIds: string[],
-  totalAmount: number,
-): DraftAdvancedSplitEntry[] {
-  const baseSplits: DraftAdvancedSplitEntry[] = participantIds.map((participantId) => ({
-    participantId,
-    percentageValue: '',
-    amountValue: '',
-    percentageLocked: false,
-    amountLocked: false,
-  }));
-
-  const withEvenPercentages = redistributeAdvancedSplits(baseSplits, 'percentage', totalAmount);
-  return redistributeAdvancedSplits(withEvenPercentages, 'amount', totalAmount);
-}
-
-function areStringArraysEqual(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function inferEditSplitMode(bill: BillRecord): CreateBillSplitMode {
-  if (bill.splitMode === 'itemized' || bill.extrasSplitMode === 'proportional') {
-    return 'custom';
-  }
-
-  if (bill.splitMode === 'custom') {
-    return 'manual';
-  }
-
-  if (bill.participants.length <= 1) {
-    return 'equal';
-  }
-
-  const baselineAmount = roundToCurrency(bill.participants[0]?.amountOwed ?? 0);
-  const allEqual = bill.participants.every(
-    (participant) => Math.abs(roundToCurrency(participant.amountOwed) - baselineAmount) < 0.01,
-  );
-
-  return allEqual ? 'equal' : 'manual';
-}
-
 export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
@@ -597,8 +368,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const [splitMode, setSplitMode] = useState<CreateBillSplitMode>('equal');
   const [billTitle, setBillTitle] = useState('');
-  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
-  const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [equalTotalInput, setEqualTotalInput] = useState('');
   const [draftItemName, setDraftItemName] = useState('');
   const [draftItemPrice, setDraftItemPrice] = useState('');
@@ -611,150 +380,62 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [isCustomTipEnabled, setIsCustomTipEnabled] = useState(false);
   const [customTipSplitType, setCustomTipSplitType] = useState<DraftAdvancedSplitType>('amount');
   const [customTipSplits, setCustomTipSplits] = useState<DraftAdvancedSplitEntry[]>([]);
-  const [payerParticipantId, setPayerParticipantId] = useState('');
-  const [isPayerDropdownOpen, setIsPayerDropdownOpen] = useState(false);
   const [owedAmountOverrides, setOwedAmountOverrides] = useState<Record<string, string>>({});
   const [participantRecordIdByDraftId, setParticipantRecordIdByDraftId] = useState<Record<string, string>>({});
   const [isEditHydrated, setIsEditHydrated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<DraftBillItem | null>(null);
-  const [cachedFriendRecordsById, setCachedFriendRecordsById] = useState<Record<string, FriendRecord>>({});
-  const normalizedFriendSearchQuery = friendSearchQuery.trim();
 
-  const friendsQuery = useInfiniteQuery({
-    queryKey: ['feature', 'friends', 'paginated', 'friends', 'bill-picker', normalizedFriendSearchQuery],
-    queryFn: ({ pageParam }) =>
-      listFriendsPage({
-        section: 'friends',
-        page: pageParam,
-        pageSize: 20,
-        search: normalizedFriendSearchQuery || undefined,
-      }),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
-    refetchOnReconnect: 'always',
-  });
-  const friendsState = usePaginatedQueryState({
-    data: friendsQuery.data,
-    isError: friendsQuery.isError,
-    isFetching: friendsQuery.isFetching,
-    isLoading: friendsQuery.isLoading,
-    isSuccess: friendsQuery.isSuccess,
+  const currentUserName = sanitizeParticipantName(
+    user?.name?.trim() || user?.email?.split('@')[0] || 'You',
+    'You',
+  );
+  const currentUserDraftId = user?.id ? `user:${user.id}` : 'user:self';
+  const {
+    acceptedFriends,
+    billQuery,
+    friendSearchQuery,
+    friendsQuery,
+    hasBlockingFriendsError,
+    hasFriendsRefreshError,
+    isPayerDropdownOpen,
+    normalizedFriendSearchQuery,
+    participants,
+    payerParticipantId,
+    selectedFriendIds,
+    shouldShowFriendSearch,
+    totalAcceptedFriends,
+    toggleFriend,
+    visibleFriends,
+    setFriendSearchQuery,
+    setIsPayerDropdownOpen,
+    setPayerParticipantId,
+    setSelectedFriendIds,
+  } = useCreateBillParticipantsController({
+    currentUserDraftId,
+    currentUserId: user?.id,
+    currentUserName,
+    editBillId,
+    isEditMode,
+    onToggleFriend: ({ friend, nextSelectedFriendIds, wasSelected }) => {
+      trackObservabilityEvent('CREATE_BILL_FRIEND_TOGGLED', {
+        source: 'CreateBillScreen',
+        friendId: friend.id,
+        selected: !wasSelected,
+        selectedFriendCount: nextSelectedFriendIds.length,
+      });
+    },
   });
 
-  const billQuery = useQuery({
-    queryKey: ['feature', 'bill', editBillId],
-    queryFn: () => getBillById(editBillId as string),
-    enabled: isEditMode,
-  });
-
-  const billParticipantUserIds = useMemo(() => {
-    const userIds = new Set<string>();
-    (billQuery.data?.participants ?? []).forEach((participant) => {
-      const participantUserId = participant.userId?.trim();
-      if (!participantUserId || participantUserId === user?.id) {
-        return;
-      }
-      userIds.add(participantUserId);
-    });
-    return Array.from(userIds).sort();
-  }, [billQuery.data?.participants, user?.id]);
-  const billParticipantFriendsQuery = useQuery({
-    queryKey: ['feature', 'friends', 'selected', 'bill', billParticipantUserIds],
-    queryFn: () => listFriendsByUserIds(billParticipantUserIds),
-    enabled: isEditMode && billParticipantUserIds.length > 0,
-    refetchOnReconnect: 'always',
-  });
-  const selectableFriends = friendsState.items;
-  const billParticipantFriends = useMemo(
-    () => billParticipantFriendsQuery.data ?? [],
-    [billParticipantFriendsQuery.data],
-  );
-  const acceptedFriends = useMemo(
-    () => mergeFriendCollections(Object.values(cachedFriendRecordsById), billParticipantFriends, selectableFriends),
-    [billParticipantFriends, cachedFriendRecordsById, selectableFriends],
-  );
-  const acceptedFriendRecordById = useMemo(
-    () => new Map(acceptedFriends.map((friend) => [friend.id, friend])),
-    [acceptedFriends],
-  );
   const billNumericInputProps = {
     showInlineKeyboardDismissButton: false,
     useDefaultReturnKeyType: false,
   } as const;
-  const totalAcceptedFriends = friendsState.totalItems;
-  const shouldShowFriendSearch = normalizedFriendSearchQuery.length > 0 || totalAcceptedFriends > 5;
   const isEqualSplitMode = splitMode === 'equal';
   const isCustomSplitMode = splitMode === 'custom';
   const isManualSplitMode = splitMode === 'manual';
   const extrasSplitMode: 'equal' | 'proportional' = isCustomSplitMode ? 'proportional' : 'equal';
-  const visibleFriends = selectableFriends;
-  const hasBlockingFriendsError = friendsState.hasBlockingError;
-  const hasFriendsRefreshError = friendsState.hasRefreshError;
-
-  const currentUserName = sanitizeParticipantName(user?.name?.trim() || user?.email?.split('@')[0] || 'You', 'You');
-  const currentUserDraftId = user?.id ? `user:${user.id}` : 'user:self';
-
-  const participants = useMemo<DraftParticipant[]>(() => {
-    const mappedParticipants: DraftParticipant[] = [
-      {
-        id: currentUserDraftId,
-        name: currentUserName,
-        userId: user?.id,
-        isCurrentUser: true,
-      },
-    ];
-
-    selectedFriendIds.forEach((friendId) => {
-      const friend = acceptedFriendRecordById.get(friendId);
-      if (!friend) {
-        return;
-      }
-
-      if (!friend.userId?.trim()) {
-        return;
-      }
-
-      mappedParticipants.push({
-        id: `user:${friend.id}`,
-        name: normalizeFriendName(friend),
-        userId: friend.userId,
-        isCurrentUser: false,
-      });
-    });
-
-    return mappedParticipants;
-  }, [acceptedFriendRecordById, currentUserDraftId, currentUserName, selectedFriendIds, user?.id]);
-
-  useEffect(() => {
-    setCachedFriendRecordsById((currentRecords) => {
-      const nextFriends = mergeFriendCollections(billParticipantFriends, selectableFriends);
-      if (nextFriends.length === 0) {
-        return currentRecords;
-      }
-
-      const nextRecords = { ...currentRecords };
-      let didChange = false;
-      nextFriends.forEach((friend) => {
-        const existingFriend = currentRecords[friend.id];
-        if (
-          existingFriend?.userId === friend.userId &&
-          existingFriend?.name === friend.name &&
-          existingFriend?.email === friend.email &&
-          existingFriend?.status === friend.status &&
-          existingFriend?.createdAt === friend.createdAt
-        ) {
-          return;
-        }
-
-        nextRecords[friend.id] = friend;
-        didChange = true;
-      });
-
-      return didChange ? nextRecords : currentRecords;
-    });
-  }, [billParticipantFriends, selectableFriends]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -763,8 +444,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
     setSplitMode('equal');
     setBillTitle('');
-    setSelectedFriendIds([]);
-    setFriendSearchQuery('');
     setEqualTotalInput('');
     setDraftItemName('');
     setDraftItemPrice('');
@@ -777,8 +456,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setIsCustomTipEnabled(false);
     setCustomTipSplitType('amount');
     setCustomTipSplits([]);
-    setPayerParticipantId('');
-    setIsPayerDropdownOpen(false);
     setOwedAmountOverrides({});
     setParticipantRecordIdByDraftId({});
     setErrorMessage(null);
@@ -790,7 +467,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       return;
     }
 
-    if (friendsQuery.isLoading || billParticipantFriendsQuery.isLoading || billQuery.isLoading) {
+    if (friendsQuery.isLoading || billQuery.isLoading) {
       return;
     }
 
@@ -1004,30 +681,16 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     acceptedFriends,
     billQuery.data,
     billQuery.isLoading,
-    billParticipantFriendsQuery.isLoading,
     currentUserDraftId,
     friendsQuery.isLoading,
     isEditHydrated,
     isEditMode,
+    setFriendSearchQuery,
+    setIsPayerDropdownOpen,
+    setPayerParticipantId,
+    setSelectedFriendIds,
     user?.id,
   ]);
-
-  useEffect(() => {
-    if (participants.length === 0) {
-      setPayerParticipantId('');
-      return;
-    }
-
-    setPayerParticipantId((currentValue) =>
-      participants.some((participant) => participant.id === currentValue)
-        ? currentValue
-        : participants[0].id,
-    );
-  }, [participants]);
-
-  useEffect(() => {
-    setIsPayerDropdownOpen(false);
-  }, [participants]);
 
   const parsedTax = useMemo(() => Number(taxInput || '0'), [taxInput]);
   const parsedTip = useMemo(() => Number(tipInput || '0'), [tipInput]);
@@ -1351,7 +1014,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     previewTotal,
   ]);
 
-  const owedAmountEntries = useMemo(
+  const owedAmountEntries = useMemo<OwedAmountEntry[]>(
     () =>
       participants.map((participant) => {
         const fallbackValue = toCurrencyInput(suggestedAmounts.get(participant.id) ?? 0);
@@ -1477,8 +1140,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
   const styles = useStyles();
 
-  const selectedPayer = participants.find((participant) => participant.id === payerParticipantId);
-  const selectedPayerLabel = selectedPayer?.name ?? 'Select payer';
   const trackSubmitValidationFailed = (reason: string) => {
     trackObservabilityEvent('CREATE_BILL_SUBMIT_VALIDATION_FAILED', {
       source: 'CreateBillScreen',
@@ -1487,40 +1148,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       splitMode,
       selectedFriendCount: selectedFriendIds.length,
       itemCount: items.length,
-    });
-  };
-
-  const toggleFriend = (friend: FriendRecord) => {
-    setCachedFriendRecordsById((currentRecords) => {
-      const existingFriend = currentRecords[friend.id];
-      if (
-        existingFriend?.userId === friend.userId &&
-        existingFriend?.name === friend.name &&
-        existingFriend?.email === friend.email &&
-        existingFriend?.status === friend.status &&
-        existingFriend?.createdAt === friend.createdAt
-      ) {
-        return currentRecords;
-      }
-
-      return {
-        ...currentRecords,
-        [friend.id]: friend,
-      };
-    });
-
-    setSelectedFriendIds((currentIds) => {
-      const wasSelected = currentIds.includes(friend.id);
-      const nextIds = wasSelected
-        ? currentIds.filter((currentId) => currentId !== friend.id)
-        : [...currentIds, friend.id];
-      trackObservabilityEvent('CREATE_BILL_FRIEND_TOGGLED', {
-        source: 'CreateBillScreen',
-        friendId: friend.id,
-        selected: !wasSelected,
-        selectedFriendCount: nextIds.length,
-      });
-      return nextIds;
     });
   };
 
@@ -2326,100 +1953,26 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         />
       </Card>
 
-      <Card style={styles.sectionCard}>
-        <View style={styles.sectionTitleRow}>
-          <Ionicons color={theme.colors.text.secondary} name="people-outline" size={16} />
-          <Text style={styles.sectionTitle} variant="titleSm">Select Friends</Text>
-        </View>
-        <Text style={styles.sectionHint} variant="bodySmCompact">You are always included in the bill.</Text>
-        {shouldShowFriendSearch ? (
-          <Input
-            containerStyle={styles.friendSearchInput}
-            onChangeText={setFriendSearchQuery}
-            placeholder="Search friends"
-            value={friendSearchQuery}
-          />
-        ) : null}
-
-        {friendsQuery.isLoading ? (
-          <View style={styles.loadingRow}>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </View>
-        ) : null}
-
-        {!friendsQuery.isLoading && hasBlockingFriendsError ? (
-          <>
-            <Text style={styles.sectionHint} variant="bodySmCompact">
-              Could not load your friend list right now.
-            </Text>
-            <Button
-              label="Retry"
-              onPress={() => {
-                void friendsQuery.refetch();
-              }}
-              style={styles.loadMoreButton}
-              variant="secondary"
-            />
-          </>
-        ) : null}
-
-        {!friendsQuery.isLoading && !hasBlockingFriendsError && normalizedFriendSearchQuery.length === 0 && totalAcceptedFriends === 0 ? (
-          <Text style={styles.sectionHint} variant="bodySmCompact">
-            No friends available. Add friends first to split a bill.
-          </Text>
-        ) : null}
-
-        {!friendsQuery.isLoading && !hasBlockingFriendsError && normalizedFriendSearchQuery.length > 0 && visibleFriends.length === 0 ? (
-          <Text style={styles.sectionHint} variant="bodySmCompact">No friends match your search.</Text>
-        ) : null}
-
-        {!friendsQuery.isLoading && !hasBlockingFriendsError && visibleFriends.length > 0 ? (
-          <OptionList>
-            {visibleFriends.map((friend, index) => {
-              const isSelected = selectedFriendIds.includes(friend.id);
-              const friendSubtitle = isSyntheticFriendEmail(friend.email) ? undefined : friend.email;
-              return (
-                <OptionListRow
-                  chevron={false}
-                  isLast={index === visibleFriends.length - 1}
-                  key={friend.id}
-                  leading={(
-                    <Ionicons
-                      color={isSelected ? theme.colors.text.brand : theme.colors.text.muted}
-                      name={isSelected ? 'checkbox' : 'square-outline'}
-                      size={20}
-                    />
-                  )}
-                  onPress={() => {
-                    toggleFriend(friend);
-                  }}
-                  style={isSelected ? styles.friendRowSelected : undefined}
-                  subtitle={friendSubtitle}
-                  title={normalizeFriendName(friend)}
-                />
-              );
-            })}
-          </OptionList>
-        ) : null}
-
-        {!friendsQuery.isLoading && !hasBlockingFriendsError && visibleFriends.length > 0 && friendsQuery.hasNextPage ? (
-          <Button
-            label={friendsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more friends'}
-            loading={friendsQuery.isFetchingNextPage}
-            onPress={() => {
-              void friendsQuery.fetchNextPage();
-            }}
-            style={styles.loadMoreButton}
-            variant="secondary"
-          />
-        ) : null}
-
-        <Text style={styles.selectedFriendsSummary} variant="bodySmCompact">
-          {selectedFriendIds.length} friend{selectedFriendIds.length === 1 ? '' : 's'} selected
-        </Text>
-      </Card>
+      <BillParticipantPickerSection
+        friendSearchQuery={friendSearchQuery}
+        hasBlockingFriendsError={hasBlockingFriendsError}
+        isFetchingNextPage={friendsQuery.isFetchingNextPage}
+        isLoading={friendsQuery.isLoading}
+        normalizedFriendSearchQuery={normalizedFriendSearchQuery}
+        selectedFriendIds={selectedFriendIds}
+        shouldShowFriendSearch={shouldShowFriendSearch}
+        totalAcceptedFriends={totalAcceptedFriends}
+        visibleFriends={visibleFriends}
+        onChangeFriendSearchQuery={setFriendSearchQuery}
+        onLoadMore={() => {
+          void friendsQuery.fetchNextPage();
+        }}
+        onRetry={() => {
+          void friendsQuery.refetch();
+        }}
+        onToggleFriend={toggleFriend}
+        showLoadMore={visibleFriends.length > 0 && Boolean(friendsQuery.hasNextPage)}
+      />
 
       {(isEqualSplitMode || isManualSplitMode) ? (
         <Card style={styles.sectionCard}>
@@ -2887,147 +2440,30 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         </Card>
       ) : null}
 
-      <Card style={styles.sectionCard}>
-        <View style={styles.sectionTitleRow} testID="bill-payer-owed-section">
-          <Ionicons color={theme.colors.text.secondary} name="wallet-outline" size={16} />
-          <Text style={styles.sectionTitle} variant="titleSm">Payer & Owed Amounts</Text>
-        </View>
-
-        <View style={styles.payerSection}>
-          <View style={styles.subsectionTitleRow}>
-            <Ionicons color={theme.colors.text.info} name="person-outline" size={15} />
-            <Text style={styles.subsectionTitle} variant="bodyMdBold">Step 1: Who paid the bill?</Text>
-            <StatusPill label="Required" tone="info" />
-          </View>
-          <Text style={styles.sectionHint} variant="bodySmCompact">
-            Choose the payer first. Owed amounts below depend on this selection.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setIsPayerDropdownOpen((currentValue) => !currentValue);
-            }}
-            style={[
-              styles.payerDropdownTrigger,
-              isPayerDropdownOpen ? styles.payerDropdownTriggerOpen : null,
-            ]}
-          >
-            <Text numberOfLines={1} style={styles.payerDropdownLabel} variant="bodyLgComfortable">
-              {selectedPayerLabel}
-            </Text>
-            <Ionicons
-              color={theme.colors.text.muted}
-              name={isPayerDropdownOpen ? 'chevron-up' : 'chevron-down'}
-              size={18}
-            />
-          </Pressable>
-
-          {isPayerDropdownOpen ? (
-            <OptionList style={styles.payerOptionsList}>
-              {participants.map((participant, index) => {
-                const isSelected = participant.id === payerParticipantId;
-                return (
-                  <OptionListRow
-                    chevron={false}
-                    isLast={index === participants.length - 1}
-                    key={participant.id}
-                    onPress={() => {
-                      setPayerParticipantId(participant.id);
-                      setIsPayerDropdownOpen(false);
-                    }}
-                    rightAccessory={
-                      isSelected ? (
-                        <Ionicons color={theme.colors.text.info} name="checkmark" size={18} />
-                      ) : null
-                    }
-                    title={participant.name}
-                  />
-                );
-              })}
-            </OptionList>
-          ) : null}
-        </View>
-
-        <View style={styles.owedSection}>
-          <View style={styles.subsectionTitleRow}>
-            <Ionicons color={theme.colors.text.secondary} name="list-outline" size={15} />
-            <Text style={styles.subsectionTitle} variant="bodyMdBold">
-              {isEqualSplitMode
-                ? 'Step 2: Auto-split owed amounts'
-                : isManualSplitMode
-                  ? 'Step 2: Enter owed amounts'
-                  : 'Step 2: Calculated owed amounts'}
-            </Text>
-          </View>
-          <Text style={styles.sectionHint} variant="bodySmCompact">
-            {isEqualSplitMode
-              ? 'Equal split automatically calculates each person\'s owed amount from the total bill price.'
-              : isManualSplitMode
-                ? 'Enter each person\'s share. Values must add up to the total bill price.'
-                : 'Amounts are calculated from item assignments, tax, tip, and fees.'}
-          </Text>
-          {owedAmountEntries.map((entry, index) => {
-            const isPayer = entry.participant.id === payerParticipantId;
-            return (
-              <View key={entry.participant.id} style={styles.owedRow}>
-                <View style={styles.owedParticipantInfo}>
-                  <View style={styles.owedParticipantTitleRow}>
-                    <Text variant="label">{entry.participant.name}</Text>
-                    <StatusPill label={isPayer ? 'Paid' : 'Unpaid'} tone={isPayer ? 'success' : 'muted'} />
-                  </View>
-                  <Text style={styles.sectionHint} variant="bodySmCompact">
-                    {isPayer ? 'Marked paid when the bill is created.' : 'Will start as unpaid.'}
-                  </Text>
-                </View>
-                {isManualSplitMode ? (
-                  <Input
-                    containerStyle={styles.owedAmountInput}
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) => {
-                      setOwedAmountOverrides((currentValue) => ({
-                        ...currentValue,
-                        [entry.participant.id]: value,
-                      }));
-                    }}
-                    placeholder="0.00"
-                    testID={`bill-owed-amount-input-${index}`}
-                    {...billNumericInputProps}
-                    value={entry.inputValue}
-                  />
-                ) : (
-                  <Text style={styles.owedAmountValue} variant="bodyLgTightBold">
-                    {formatCurrency(entry.amount)}
-                  </Text>
-                )}
-              </View>
-            );
-          })}
-        </View>
-
-        <View
-          style={[
-            styles.totalsPanel,
-            totalsMatch ? styles.totalsPanelMatch : styles.totalsPanelMismatch,
-          ]}
-        >
-          <View style={styles.totalsPanelHeader}>
-            <Text style={styles.totalsLabelStrong} variant="bodyMdBold">Bill Total Check</Text>
-            <StatusPill label={totalsMatch ? 'Balanced' : 'Mismatch'} tone={totalsMatch ? 'success' : 'warning'} />
-          </View>
-          <View style={styles.totalsRowStrong}>
-            <Text style={styles.totalsLabelStrong} variant="bodyMdBold">Bill total</Text>
-            <Text style={styles.totalsValueStrong} variant="bodyLgBold">{formatCurrency(previewTotal)}</Text>
-          </View>
-          <View style={styles.totalsDivider} />
-          <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel} variant="label">Owed total</Text>
-            <Text style={styles.totalsValue} variant="labelStrong">{formatCurrency(owedTotal)}</Text>
-          </View>
-          <Text tone={totalsMatch ? 'success' : 'danger'}>
-            {totalsMatch ? 'Owed amounts match the bill total.' : 'Owed amounts must match the bill total.'}
-          </Text>
-        </View>
-      </Card>
+      <BillPayerAndTotalsSection
+        isEqualSplitMode={isEqualSplitMode}
+        isManualSplitMode={isManualSplitMode}
+        isPayerDropdownOpen={isPayerDropdownOpen}
+        owedAmountEntries={owedAmountEntries}
+        owedTotal={owedTotal}
+        participants={participants}
+        payerParticipantId={payerParticipantId}
+        previewTotal={previewTotal}
+        totalsMatch={totalsMatch}
+        onChangeOwedAmount={(participantId, value) => {
+          setOwedAmountOverrides((currentValue) => ({
+            ...currentValue,
+            [participantId]: value,
+          }));
+        }}
+        onSelectPayer={(participantId) => {
+          setPayerParticipantId(participantId);
+          setIsPayerDropdownOpen(false);
+        }}
+        onTogglePayerDropdown={() => {
+          setIsPayerDropdownOpen((currentValue) => !currentValue);
+        }}
+      />
 
       <PageErrorToast
         actionLabel="Retry"

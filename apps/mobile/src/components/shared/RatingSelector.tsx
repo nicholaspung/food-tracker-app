@@ -4,8 +4,6 @@ import { getRatingColor, RATING_OPTIONS } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme, type Theme } from '../../theme';
 import { Text } from '../../ui';
 
-export { RATING_OPTIONS };
-
 export function resolveRatingColor(theme: Theme, rating: number): string {
   return getRatingColor(theme, rating);
 }

@@ -240,7 +240,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const isFocused = useIsFocused();
   const messagesScrollRef = useRef<ScrollView>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasHandledCurrentFocusRef = useRef(false);
   const feedbackId = route.params.feedbackId;
   const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
 
@@ -291,27 +290,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const hasBlockingMessagesError = messagesState.hasBlockingError;
   const hasMessagesRefreshError = messagesState.hasRefreshError;
   const latestMessageId = displayedMessages[displayedMessages.length - 1]?.id;
-
-  useEffect(() => {
-    if (!isFocused) {
-      hasHandledCurrentFocusRef.current = false;
-      return;
-    }
-
-    if (hasHandledCurrentFocusRef.current) {
-      return;
-    }
-
-    hasHandledCurrentFocusRef.current = true;
-
-    if (feedbackQuery.fetchStatus === 'idle') {
-      void feedbackQuery.refetch();
-    }
-
-    if (messagesQuery.fetchStatus === 'idle') {
-      void messagesQuery.refetch();
-    }
-  }, [feedbackQuery, isFocused, messagesQuery]);
 
   const scheduleScrollToLatestMessage = useCallback((animated = true, delay = 0) => {
     if (scrollTimeoutRef.current) {

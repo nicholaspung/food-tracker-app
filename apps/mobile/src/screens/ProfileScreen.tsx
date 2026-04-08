@@ -309,6 +309,8 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const accountCreated = formatDisplayDate(authRecord?.created, {
     fallback: "Unknown",
   });
+  const hasBlockingProfileError = profileQuery.isError && !profileQuery.data;
+  const hasProfileRefreshError = profileQuery.isError && Boolean(profileQuery.data);
   const inviteCodes = inviteCodesQuery.data ?? [];
   const hasBlockingInviteQueryError =
     inviteCodesQuery.isError && inviteCodes.length === 0;
@@ -526,7 +528,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     );
   }
 
-  if (profileQuery.isError) {
+  if (hasBlockingProfileError) {
     return (
       <Screen>
         <ErrorState
@@ -549,6 +551,19 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       <TabBrandHeader subtitle="Your account information" title="Profile" />
 
       <View style={styles.body}>
+        <PageErrorToast
+          actionLabel="Retry"
+          errorMessage={
+            hasProfileRefreshError
+              ? "Could not refresh profile. Showing saved data."
+              : null
+          }
+          onAction={() => {
+            void profileQuery.refetch();
+          }}
+          title="Profile may be stale"
+        />
+
         <Card style={styles.sectionCard}>
           <Text style={styles.sectionTitle} variant="cardTitle">Quick Actions</Text>
           <OptionList>

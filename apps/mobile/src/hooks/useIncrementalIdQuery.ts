@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { type QueryKey, useQuery, useQueryClient } from '@tanstack/react-query';
 
-interface IncrementalIdQueryState<TRecord, TId extends string> {
-  loadedIds: TId[];
-  records: TRecord[];
-}
+import {
+  createEmptyIncrementalIdQueryState,
+  filterRecordsByIds,
+  type IncrementalIdQueryState,
+  updateIncrementalIdQueryState,
+  pruneIncrementalIdQueryState,
+} from './incrementalIdQueryState';
 
 interface UseIncrementalIdQueryOptions<TRecord, TId extends string> {
   enabled?: boolean;
@@ -12,73 +15,8 @@ interface UseIncrementalIdQueryOptions<TRecord, TId extends string> {
   getRecordIds: (record: TRecord) => readonly TId[];
   getRecordKey: (record: TRecord) => string;
   ids: readonly TId[];
+  maxRetainedHistoryIds?: number;
   queryKey: QueryKey;
-}
-
-function filterRecordsByIds<TRecord, TId extends string>(
-  records: readonly TRecord[],
-  ids: readonly TId[],
-  getRecordIds: (record: TRecord) => readonly TId[],
-): TRecord[] {
-  if (records.length === 0 || ids.length === 0) {
-    return [];
-  }
-
-  const targetIds = new Set(ids);
-
-  return records.filter((record) => {
-    for (const recordId of getRecordIds(record)) {
-      if (targetIds.has(recordId)) {
-        return true;
-      }
-    }
-
-    return false;
-  });
-}
-
-function mergeRecords<TRecord>(
-  records: readonly TRecord[],
-  incomingRecords: readonly TRecord[],
-  getRecordKey: (record: TRecord) => string,
-): TRecord[] {
-  const mergedRecords = new Map<string, TRecord>();
-
-  for (const record of records) {
-    mergedRecords.set(getRecordKey(record), record);
-  }
-
-  for (const record of incomingRecords) {
-    mergedRecords.set(getRecordKey(record), record);
-  }
-
-  return Array.from(mergedRecords.values());
-}
-
-function updateQueryState<TRecord, TId extends string>(
-  currentState: IncrementalIdQueryState<TRecord, TId>,
-  fetchedIds: readonly TId[],
-  fetchedRecords: readonly TRecord[],
-  getRecordIds: (record: TRecord) => readonly TId[],
-  getRecordKey: (record: TRecord) => string,
-): IncrementalIdQueryState<TRecord, TId> {
-  const fetchedIdSet = new Set(fetchedIds);
-  const preservedRecords = currentState.records.filter((record) => {
-    for (const recordId of getRecordIds(record)) {
-      if (fetchedIdSet.has(recordId)) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-
-  const loadedIds = Array.from(new Set([...currentState.loadedIds, ...fetchedIds]));
-
-  return {
-    loadedIds,
-    records: mergeRecords(preservedRecords, fetchedRecords, getRecordKey),
-  };
 }
 
 export function useIncrementalIdQuery<TRecord, TId extends string>({
@@ -87,19 +25,34 @@ export function useIncrementalIdQuery<TRecord, TId extends string>({
   getRecordIds,
   getRecordKey,
   ids,
+  maxRetainedHistoryIds,
   queryKey,
 }: UseIncrementalIdQueryOptions<TRecord, TId>) {
   const queryClient = useQueryClient();
   const incrementalIdsRef = useRef<TId[] | null>(null);
   const uniqueIds = useMemo(() => Array.from(new Set(ids)), [ids]);
+  const getRecordIdsRef = useRef(getRecordIds);
+  const getRecordKeyRef = useRef(getRecordKey);
   const latestIdsRef = useRef(uniqueIds);
+  const queryKeySignature = JSON.stringify(queryKey);
+  const stableQueryKeyRef = useRef(queryKey);
+  const stableQueryKeySignatureRef = useRef(queryKeySignature);
+  const uniqueIdsKey = useMemo(() => uniqueIds.join('\u0000'), [uniqueIds]);
 
+  if (stableQueryKeySignatureRef.current !== queryKeySignature) {
+    stableQueryKeyRef.current = queryKey;
+    stableQueryKeySignatureRef.current = queryKeySignature;
+  }
+
+  getRecordIdsRef.current = getRecordIds;
+  getRecordKeyRef.current = getRecordKey;
   latestIdsRef.current = uniqueIds;
+  const stableQueryKey = stableQueryKeyRef.current;
 
   const isEnabled = enabled && uniqueIds.length > 0;
 
   const query = useQuery<IncrementalIdQueryState<TRecord, TId>>({
-    queryKey,
+    queryKey: stableQueryKey,
     enabled: isEnabled,
     queryFn: async () => {
       const incrementalIds = incrementalIdsRef.current;
@@ -109,28 +62,30 @@ export function useIncrementalIdQuery<TRecord, TId extends string>({
         incrementalIds && incrementalIds.length > 0 ? incrementalIds : latestIdsRef.current;
 
       if (targetIds.length === 0) {
-        return {
-          loadedIds: [],
-          records: [],
-        } satisfies IncrementalIdQueryState<TRecord, TId>;
+        return createEmptyIncrementalIdQueryState<TRecord, TId>();
       }
 
       const fetchedRecords = await fetchByIds([...targetIds]);
       const currentState =
-        queryClient.getQueryData<IncrementalIdQueryState<TRecord, TId>>(queryKey) ??
-        ({
-          loadedIds: [],
-          records: [],
-        } satisfies IncrementalIdQueryState<TRecord, TId>);
+        queryClient.getQueryData<IncrementalIdQueryState<TRecord, TId>>(stableQueryKey) ??
+        createEmptyIncrementalIdQueryState<TRecord, TId>();
 
-      return updateQueryState(currentState, targetIds, fetchedRecords, getRecordIds, getRecordKey);
+      return updateIncrementalIdQueryState(
+        currentState,
+        targetIds,
+        fetchedRecords,
+        latestIdsRef.current,
+        getRecordIdsRef.current,
+        getRecordKeyRef.current,
+        maxRetainedHistoryIds,
+      );
     },
   });
 
   const visibleRecords = useMemo(
     () =>
-      query.data ? filterRecordsByIds(query.data.records, uniqueIds, getRecordIds) : undefined,
-    [getRecordIds, query.data, uniqueIds],
+      query.data ? filterRecordsByIds(query.data.records, uniqueIds, getRecordIdsRef.current) : undefined,
+    [query.data, uniqueIds],
   );
 
   const missingIds = useMemo(() => {
@@ -140,6 +95,24 @@ export function useIncrementalIdQuery<TRecord, TId extends string>({
 
   const missingIdsKey = useMemo(() => missingIds.join('\u0000'), [missingIds]);
   const { fetchStatus, isError, refetch } = query;
+
+  useEffect(() => {
+    const currentState = queryClient.getQueryData<IncrementalIdQueryState<TRecord, TId>>(stableQueryKey);
+    if (!currentState) {
+      return;
+    }
+
+    const nextState = pruneIncrementalIdQueryState(
+      currentState,
+      latestIdsRef.current,
+      getRecordIdsRef.current,
+      maxRetainedHistoryIds,
+    );
+
+    if (nextState !== currentState) {
+      queryClient.setQueryData(stableQueryKey, nextState);
+    }
+  }, [maxRetainedHistoryIds, queryClient, stableQueryKey, uniqueIdsKey]);
 
   useEffect(() => {
     if (!isEnabled || missingIds.length === 0) {
