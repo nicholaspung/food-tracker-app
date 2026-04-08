@@ -4,7 +4,7 @@ export interface IncrementalIdQueryState<TRecord, TId extends string> {
 }
 
 // Retain the current visible IDs plus a bounded tail of recent historical IDs.
-export const DEFAULT_INCREMENTAL_ID_QUERY_HISTORY_LIMIT = 200;
+const DEFAULT_INCREMENTAL_ID_QUERY_HISTORY_LIMIT = 200;
 
 function areArraysShallowEqual<T>(left: readonly T[], right: readonly T[]): boolean {
   if (left === right) {
