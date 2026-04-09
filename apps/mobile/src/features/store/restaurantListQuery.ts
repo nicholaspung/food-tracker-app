@@ -36,11 +36,11 @@ function removeQueryKeys(queryClient: QueryClient, queryKeys: readonly QueryKey[
   }
 }
 
-export function getRestaurantListCollectionInvalidationKeys(scope?: RestaurantListScope): QueryKey[] {
+function getRestaurantListCollectionInvalidationKeys(scope?: RestaurantListScope): QueryKey[] {
   return [scope ? restaurantListQueryKeys.scope(scope) : restaurantListQueryKeys.root];
 }
 
-export function getRestaurantListMetadataInvalidationKeys(listId: string): QueryKey[] {
+function getRestaurantListMetadataInvalidationKeys(listId: string): QueryKey[] {
   return [
     restaurantListQueryKeys.list(listId),
     restaurantListQueryKeys.detail(listId),
@@ -67,7 +67,7 @@ export function getRestaurantListContentInvalidationKeys(
   return queryKeys;
 }
 
-export function getRestaurantListSaveTargetInvalidationKeys(listId: string): QueryKey[] {
+function getRestaurantListSaveTargetInvalidationKeys(listId: string): QueryKey[] {
   return [restaurantListQueryKeys.detail(listId), restaurantListQueryKeys.scope('my')];
 }
 
