@@ -5,28 +5,29 @@ import type {
   ListNotesPageInput,
   MarkNoteUsedInput,
   NoteCountSummary,
+  NoteOverviewItemRecord,
+  NoteOverviewPage,
   NotePhotoRecord,
   NotePhotoUploadInput,
-  PaginatedResult,
   UpdateNoteInput,
 } from './featureStore';
 import {
   buildOrFilter,
   createEmptyPaginatedResult,
-  escapeFilterValue,
   getAuthenticatedUserId,
   isNotFoundError,
-  mapPaginatedResult,
   resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { listCollectionPage, listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 
 export type {
   CreateNoteInput,
   ListNotesPageInput,
   MarkNoteUsedInput,
   NoteCountSummary,
+  NoteOverviewItemRecord,
+  NoteOverviewPage,
   NotePhotoRecord,
   UpdateNoteInput,
 } from './featureStore';
@@ -51,6 +52,36 @@ interface NoteCollectionRecord {
   expand?: {
     restaurant?: RestaurantCollectionRecord;
   };
+}
+
+interface NoteOverviewPhotoPreviewApiRecord {
+  id: string;
+  photo: string;
+  count: number;
+}
+
+interface NoteOverviewApiRecord {
+  id: string;
+  content: string;
+  locationText?: string;
+  status?: 'draft' | 'used';
+  restaurantId?: string;
+  restaurantName?: string;
+  usedInVisitId?: string;
+  usedInFoodItemId?: string;
+  createdAt: string;
+  updatedAt: string;
+  photoPreview?: NoteOverviewPhotoPreviewApiRecord;
+}
+
+interface NoteOverviewApiResponse {
+  items?: NoteOverviewApiRecord[];
+  summary?: NoteCountSummary;
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
 }
 
 function normalizeNoteStatus(status: unknown): NoteRecord['status'] {
@@ -104,6 +135,42 @@ function mapNoteCollectionRecord(record: NoteCollectionRecord): NoteRecord {
     usedInFoodItemId: record.usedInFoodItem,
     createdAt: record.created,
     updatedAt: record.updated,
+  };
+}
+
+function mapNoteOverviewApiRecord(record: NoteOverviewApiRecord): NoteOverviewItemRecord {
+  const normalizedContent = record.content?.trim() ?? '';
+
+  return {
+    id: record.id,
+    title: buildNoteTitle(normalizedContent),
+    content: normalizedContent,
+    locationText: record.locationText?.trim() || undefined,
+    status: normalizeNoteStatus(record.status),
+    restaurantId: record.restaurantId?.trim() || undefined,
+    restaurantName: record.restaurantName?.trim() || undefined,
+    usedInVisitId: record.usedInVisitId?.trim() || undefined,
+    usedInFoodItemId: record.usedInFoodItemId?.trim() || undefined,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    photoPreview: record.photoPreview
+      ? {
+          id: record.photoPreview.id,
+          photo: record.photoPreview.photo,
+          count: record.photoPreview.count,
+        }
+      : undefined,
+  };
+}
+
+function createEmptyNoteOverviewPage(input?: ListNotesPageInput): NoteOverviewPage {
+  return {
+    ...createEmptyPaginatedResult<NoteOverviewItemRecord>(input),
+    summary: {
+      allCount: 0,
+      draftCount: 0,
+      usedCount: 0,
+    },
   };
 }
 
@@ -312,7 +379,7 @@ export async function listNotePhotosForNote(noteId: string): Promise<NotePhotoRe
   return listNotePhotosForNoteIds([trimmedNoteId]);
 }
 
-export async function listNotePhotosForNoteIds(noteIds: string[]): Promise<NotePhotoRecord[]> {
+async function listNotePhotosForNoteIds(noteIds: string[]): Promise<NotePhotoRecord[]> {
   if (!pb.authStore.record?.id || noteIds.length === 0) {
     return [];
   }
@@ -332,41 +399,35 @@ export async function listNotePhotosForNoteIds(noteIds: string[]): Promise<NoteP
   return records;
 }
 
-export async function listNotesPage(input?: ListNotesPageInput): Promise<PaginatedResult<NoteRecord>> {
+export async function listNotesOverviewPage(input?: ListNotesPageInput): Promise<NoteOverviewPage> {
   if (!pb.authStore.record?.id) {
-    return createEmptyPaginatedResult(input);
+    return createEmptyNoteOverviewPage(input);
   }
 
   const { page, pageSize } = resolvePaginationInput(input);
-  const currentUserId = getAuthenticatedUserId();
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
   const status = input?.status === 'draft' || input?.status === 'used' ? input.status : 'all';
-  const filter =
-    status === 'all'
-      ? `user = "${escapedCurrentUserId}"`
-      : `user = "${escapedCurrentUserId}" && status = "${status}"`;
 
-  const pageResult = await listCollectionPage<NoteCollectionRecord>('notes', {
-    page,
-    pageSize,
-    filter,
-    expand: 'restaurant',
-    sort: '-updated,-created',
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    status,
   });
 
-  return mapPaginatedResult(pageResult, pageResult.items.map(mapNoteCollectionRecord));
-}
+  const response = await sendApiRequest<NoteOverviewApiResponse>(`/api/notes/overview?${query.toString()}`, {
+    method: 'GET',
+  });
 
-export async function getNoteCountSummary(): Promise<NoteCountSummary> {
-  if (!pb.authStore.record?.id) {
-    return {
+  return {
+    items: (response.items ?? []).map(mapNoteOverviewApiRecord),
+    summary: response.summary ?? {
       allCount: 0,
       draftCount: 0,
       usedCount: 0,
-    };
-  }
-
-  return sendApiRequest<NoteCountSummary>('/api/notes/summary', {
-    method: 'GET',
-  });
+    },
+    page: response.page ?? page,
+    pageSize: response.pageSize ?? pageSize,
+    totalItems: response.totalItems ?? 0,
+    totalPages: response.totalPages ?? 0,
+    hasNextPage: response.hasNextPage ?? false,
+  };
 }

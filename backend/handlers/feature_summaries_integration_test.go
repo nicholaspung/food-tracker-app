@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -49,6 +51,119 @@ func TestNotesSummaryEndpoint(t *testing.T) {
 	assertFloatEquals(t, body["allCount"], 3)
 	assertFloatEquals(t, body["draftCount"], 2)
 	assertFloatEquals(t, body["usedCount"], 1)
+}
+
+func TestNotesOverviewEndpointReturnsSummaryAndPhotoPreviewMetadata(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Preview Cafe",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+
+	draftNote := createNoteRecord(t, server.app, user.Id, "draft")
+	draftNote.Set("content", "Draft note overview")
+	draftNote.Set("location_text", "Window booth")
+	draftNote.Set("restaurant", restaurant.Id)
+	if err := server.app.Save(draftNote); err != nil {
+		t.Fatalf("failed to update draft note: %v", err)
+	}
+
+	usedNote := createNoteRecord(t, server.app, user.Id, "used")
+	usedNote.Set("content", "Used note overview")
+	if err := server.app.Save(usedNote); err != nil {
+		t.Fatalf("failed to update used note: %v", err)
+	}
+
+	otherUserNote := createNoteRecord(t, server.app, otherUser.Id, "draft")
+	insertNotePhotoRowRaw(t, server.app, otherUser.Id, otherUserNote.Id, "other-user-photo.jpg", "2026-01-01T07:00:00Z")
+
+	firstPreviewID := insertNotePhotoRowRaw(
+		t,
+		server.app,
+		user.Id,
+		draftNote.Id,
+		"draft-photo-a.jpg",
+		"2026-01-01T08:00:00Z",
+	)
+	insertNotePhotoRowRaw(t, server.app, user.Id, draftNote.Id, "draft-photo-b.jpg", "2026-01-01T09:00:00Z")
+	insertNotePhotoRowRaw(t, server.app, user.Id, usedNote.Id, "used-photo.jpg", "2026-01-01T10:00:00Z")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=draft&page=1&pageSize=10",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID             string `json:"id"`
+			Content        string `json:"content"`
+			LocationText   string `json:"locationText"`
+			Status         string `json:"status"`
+			RestaurantID   string `json:"restaurantId"`
+			RestaurantName string `json:"restaurantName"`
+			PhotoPreview   *struct {
+				ID    string `json:"id"`
+				Photo string `json:"photo"`
+				Count int    `json:"count"`
+			} `json:"photoPreview"`
+		} `json:"items"`
+		Summary struct {
+			AllCount   int `json:"allCount"`
+			DraftCount int `json:"draftCount"`
+			UsedCount  int `json:"usedCount"`
+		} `json:"summary"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode notes overview payload: %v", err)
+	}
+
+	if payload.Page != 1 || payload.PageSize != 10 {
+		t.Fatalf("expected page=1 pageSize=10, got page=%d pageSize=%d", payload.Page, payload.PageSize)
+	}
+	if payload.TotalItems != 1 || payload.TotalPages != 1 || payload.HasNextPage {
+		t.Fatalf(
+			"expected single draft page, got totalItems=%d totalPages=%d hasNextPage=%v",
+			payload.TotalItems,
+			payload.TotalPages,
+			payload.HasNextPage,
+		)
+	}
+	if payload.Summary.AllCount != 2 || payload.Summary.DraftCount != 1 || payload.Summary.UsedCount != 1 {
+		t.Fatalf("unexpected summary payload: %#v", payload.Summary)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 draft note, got %#v", payload.Items)
+	}
+
+	item := payload.Items[0]
+	if item.ID != draftNote.Id || item.Status != "draft" || item.Content != "Draft note overview" {
+		t.Fatalf("unexpected draft note payload: %#v", item)
+	}
+	if item.LocationText != "Window booth" || item.RestaurantID != restaurant.Id || item.RestaurantName != "Preview Cafe" {
+		t.Fatalf("expected mapped restaurant/location metadata, got %#v", item)
+	}
+	if item.PhotoPreview == nil {
+		t.Fatalf("expected photo preview metadata for draft note, got %#v", item)
+	}
+	if item.PhotoPreview.ID != firstPreviewID || item.PhotoPreview.Photo != "draft-photo-a.jpg" || item.PhotoPreview.Count != 2 {
+		t.Fatalf("unexpected draft photo preview payload: %#v", item.PhotoPreview)
+	}
 }
 
 func TestFriendsSummaryEndpoint(t *testing.T) {
@@ -1424,7 +1539,7 @@ func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testin
 	}
 }
 
-func createNoteRecord(t *testing.T, app core.App, userID string, status string) {
+func createNoteRecord(t *testing.T, app core.App, userID string, status string) *core.Record {
 	t.Helper()
 
 	collection, err := app.FindCollectionByNameOrId("notes")
@@ -1440,6 +1555,43 @@ func createNoteRecord(t *testing.T, app core.App, userID string, status string) 
 	if err := app.Save(record); err != nil {
 		t.Fatalf("failed to create note: %v", err)
 	}
+
+	return record
+}
+
+func insertNotePhotoRowRaw(
+	t *testing.T,
+	app core.App,
+	userID string,
+	noteID string,
+	photoName string,
+	createdAt string,
+) string {
+	t.Helper()
+
+	recordID := fmt.Sprintf("np_%d", time.Now().UnixNano())
+	resolvedCreatedAt := strings.TrimSpace(createdAt)
+	if resolvedCreatedAt == "" {
+		resolvedCreatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
+	if _, err := app.DB().NewQuery(`
+		INSERT INTO note_photos (id, photo, caption, note, user, created, updated)
+		VALUES ({:id}, {:photo}, '', {:note}, {:user}, {:created}, {:updated})
+	`).
+		Bind(dbx.Params{
+			"id":      recordID,
+			"photo":   photoName,
+			"note":    noteID,
+			"user":    userID,
+			"created": resolvedCreatedAt,
+			"updated": resolvedCreatedAt,
+		}).
+		Execute(); err != nil {
+		t.Fatalf("failed to insert note_photo row: %v", err)
+	}
+
+	return recordID
 }
 
 func createFriendshipRecord(t *testing.T, app core.App, userID string, friendID string, status string) {

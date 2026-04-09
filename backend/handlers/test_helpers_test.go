@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -81,6 +83,45 @@ func performJSONRequest(
 
 	req := httptest.NewRequest(method, path, reader)
 	req.Header.Set("Content-Type", "application/json")
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, req)
+	return recorder
+}
+
+func performMultipartRequest(
+	t *testing.T,
+	mux http.Handler,
+	method string,
+	path string,
+	authToken string,
+	fieldName string,
+	filename string,
+	fileContents []byte,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	part, err := writer.CreateFormFile(fieldName, filename)
+	if err != nil {
+		t.Fatalf("failed to create multipart form file: %v", err)
+	}
+
+	if _, err := io.Copy(part, bytes.NewReader(fileContents)); err != nil {
+		t.Fatalf("failed to write multipart form file: %v", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close multipart writer: %v", err)
+	}
+
+	req := httptest.NewRequest(method, path, &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 	if authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}

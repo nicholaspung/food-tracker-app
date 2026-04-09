@@ -24,6 +24,12 @@ import { normalizeAuthUser, type AuthUser } from '../types/auth';
 type AuthStatus = 'bootstrapping' | 'authenticated' | 'unauthenticated';
 type RolePreviewSettingKey = keyof RolePreviewSettings;
 export const AUTH_EMAIL_UNVERIFIED_ERROR = 'AUTH_EMAIL_UNVERIFIED';
+export interface AuthBootstrapResult {
+  authRecord: RecordModel;
+  authToken: string;
+  user: AuthUser;
+}
+export type AuthBootstrap = () => AuthBootstrapResult | null;
 
 interface AuthContextValue {
   status: AuthStatus;
@@ -40,30 +46,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const SCREENSHOT_REVIEW_AUTH_TOKEN = 'screenshot-review-mode';
-
-function createScreenshotReviewAuthRecord(): RecordModel | null {
-  if (!__DEV__) {
-    return null;
-  }
-
-  return {
-    collectionId: 'users',
-    collectionName: 'users',
-    id: 'screenshot-review-user',
-    email: 'screenshots@yummyrecs.local',
-    name: 'Screenshot Review',
-    friendCode: 'LOCAL000',
-    verified: true,
-    isAdmin: true,
-    isSubscriber: true,
-    isBetaUser: true,
-    defaultListVisibility: 'friends',
-    defaultVisitVisibility: 'friends',
-    defaultRestaurantVisibility: 'friends',
-    created: '2026-01-01T12:00:00.000Z',
-  };
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -226,7 +208,12 @@ function resolveAuthUserTier(user: AuthUser | null): 'admin' | 'subscriber' | 'f
   return 'free';
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+interface AuthProviderProps {
+  children: React.ReactNode;
+  screenshotReviewBootstrap?: AuthBootstrap;
+}
+
+export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProviderProps) {
   const [status, setStatus] = useState<AuthStatus>('bootstrapping');
   const [actualUser, setActualUser] = useState<AuthUser | null>(null);
   const [rolePreviewSettings, setRolePreviewSettings] = useState<RolePreviewSettings>(
@@ -272,16 +259,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         if (env.isScreenshotReviewMode) {
-          const screenshotReviewAuthRecord = createScreenshotReviewAuthRecord();
-          const screenshotReviewUser = normalizeAuthUser(screenshotReviewAuthRecord);
+          const screenshotReviewAuth = screenshotReviewBootstrap?.();
 
-          if (!screenshotReviewAuthRecord || !screenshotReviewUser) {
+          if (!screenshotReviewAuth) {
             logger.warn('[AuthProvider] Screenshot review mode is only available in development bundles.');
           } else {
-            pb.authStore.save(SCREENSHOT_REVIEW_AUTH_TOKEN, screenshotReviewAuthRecord);
+            pb.authStore.save(
+              screenshotReviewAuth.authToken,
+              screenshotReviewAuth.authRecord,
+            );
 
             if (isMounted) {
-              setActualUser(screenshotReviewUser);
+              setActualUser(screenshotReviewAuth.user);
               setStatus('authenticated');
               setAuthError(null);
             }
@@ -357,7 +346,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false;
       unsubscribe();
     };
-  }, [syncAuthSnapshot]);
+  }, [screenshotReviewBootstrap, syncAuthSnapshot]);
 
   useEffect(() => {
     const isRolePreviewActive =

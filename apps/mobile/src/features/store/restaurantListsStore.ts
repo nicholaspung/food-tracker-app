@@ -7,11 +7,9 @@ import type {
 import type {
   RestaurantListCandidateRestaurantsResult,
   RestaurantListDetailRecord,
-  RestaurantListDetailPage,
   AddRestaurantVisitRatingsToListInput,
   CreateRestaurantListInput,
   LinkVisitToListBookmarkInput,
-  ListRestaurantListVisitedRestaurantsPageInput,
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
   PaginatedResult,
@@ -25,7 +23,6 @@ import type {
 import {
   buildAnyMatchFilter,
   buildOrFilter,
-  buildSearchFilter,
   combineFilterClauses,
   combineOrFilterClauses,
   createEmptyPaginatedResult,
@@ -67,11 +64,6 @@ export type {
 interface PageInputLike {
   page?: number;
   pageSize?: number;
-}
-
-interface AcceptedFriendshipRecord {
-  user: string;
-  friend: string;
 }
 
 interface RestaurantListDetailApiListRecord {
@@ -144,15 +136,6 @@ interface RestaurantListCandidateRestaurantsApiResponse {
   items?: RestaurantListVisitedRestaurantCandidateApiRecord[];
 }
 
-interface RestaurantListVisitedRestaurantsPageApiResponse {
-  items?: RestaurantListVisitedRestaurantCandidateApiRecord[];
-  page: number;
-  pageSize: number;
-  totalItems: number;
-  totalPages: number;
-  hasNextPage: boolean;
-}
-
 interface RestaurantListVisitedRestaurantCandidateApiRecord {
   id: string;
   name: string;
@@ -185,18 +168,16 @@ interface RestaurantListMutationListApiResponse {
   items?: RestaurantListDetailApiItemRecord[];
 }
 
-const RESTAURANT_LIST_ITEM_LINK_FIELDS = 'id,list,restaurant,foodItem,userFoodItem,sourceUser,recommendedItems';
-
-function resolveAcceptedFriendIds(
-  friendships: AcceptedFriendshipRecord[],
-  currentUserId: string,
-): string[] {
-  return Array.from(
-    new Set(
-      friendships.map((friendship) => (friendship.user === currentUserId ? friendship.friend : friendship.user)),
-    ),
-  );
+interface RestaurantListsPageApiResponse {
+  items?: RestaurantListDetailApiListRecord[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
 }
+
+const RESTAURANT_LIST_ITEM_LINK_FIELDS = 'id,list,restaurant,foodItem,userFoodItem,sourceUser,recommendedItems';
 
 function getDefaultRestaurantVisibility(): 'private' | 'friends' | 'public' {
   const value = pb.authStore.record?.defaultRestaurantVisibility;
@@ -491,19 +472,6 @@ function mapRestaurantListMutationListItems(
   return (response.items ?? []).map(mapRestaurantListDetailItemRecord);
 }
 
-async function listAcceptedFriendships(): Promise<AcceptedFriendshipRecord[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const currentUserId = getAuthenticatedUserId();
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  return listCollectionRecords<AcceptedFriendshipRecord>('friendships', {
-    filter: `(user = "${escapedCurrentUserId}" || friend = "${escapedCurrentUserId}") && status = "accepted"`,
-    fields: 'user,friend',
-  });
-}
-
 export async function listRestaurantListsPage(
   input?: ListRestaurantListsPageInput,
 ): Promise<PaginatedResult<RestaurantListRecord>> {
@@ -512,58 +480,29 @@ export async function listRestaurantListsPage(
   }
 
   const { page, pageSize } = resolvePaginationInput(input);
-  const currentUserId = getAuthenticatedUserId();
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
   const scope = input?.scope === 'friends' ? 'friends' : 'my';
-  const searchFilter = buildSearchFilter(['name', 'description'], input?.search ?? '');
-
-  let filter: string | undefined;
-  let expand: string | undefined;
-
-  if (scope === 'my') {
-    filter = combineFilterClauses(`user = "${escapedCurrentUserId}"`, searchFilter);
-  } else {
-    const friendships = await listAcceptedFriendships();
-    const friendIds = resolveAcceptedFriendIds(friendships, currentUserId);
-
-    if (friendIds.length === 0) {
-      return createEmptyPaginatedResult(input);
-    }
-
-    const matchingOwnerIds = input?.search?.trim()
-      ? Array.from(
-          new Set(
-            (
-              await listCollectionRecords<Pick<CollectionUserExpand, 'id'>>('users', {
-                filter: buildSearchFilter(['name', 'email'], input.search) ?? undefined,
-                fields: 'id',
-              })
-            )
-              .map((record) => record.id)
-              .filter((recordId) => friendIds.includes(recordId)),
-          ),
-        )
-      : [];
-
-    const friendFilter = friendIds.map((friendId) => `user = "${escapeFilterValue(friendId)}"`).join(' || ');
-    const ownerSearchFilter = matchingOwnerIds.length > 0 ? buildOrFilter('user', matchingOwnerIds) : undefined;
-    const combinedSearchFilter =
-      searchFilter && ownerSearchFilter
-        ? `(${searchFilter} || ${ownerSearchFilter})`
-        : searchFilter ?? ownerSearchFilter;
-    filter = combineFilterClauses(`(${friendFilter})`, 'visibility = "friends"', combinedSearchFilter);
-    expand = 'user';
+  const query = new URLSearchParams({
+    scope,
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  const trimmedSearch = input?.search?.trim();
+  if (trimmedSearch) {
+    query.set('search', trimmedSearch);
   }
 
-  const pageResult = await listCollectionPage<RestaurantListCollectionRecord>('restaurant_lists', {
-    page,
-    pageSize,
-    filter,
-    expand,
-    sort: scope === 'my' ? '-isDefault,-updated' : '-updated',
+  const response = await sendApiRequest<RestaurantListsPageApiResponse>(`/api/restaurant-lists?${query.toString()}`, {
+    method: 'GET',
   });
 
-  return mapPaginatedResult(pageResult, pageResult.items.map(mapRestaurantListCollectionRecord));
+  return {
+    items: (response.items ?? []).map(mapRestaurantListDetailApiListRecord),
+    page: response.page,
+    pageSize: response.pageSize,
+    totalItems: response.totalItems,
+    totalPages: response.totalPages,
+    hasNextPage: response.hasNextPage,
+  };
 }
 
 export async function getRestaurantListById(listId: string): Promise<RestaurantListRecord | null> {
@@ -612,27 +551,6 @@ export async function getRestaurantListDetail(listId: string): Promise<Restauran
   }
 }
 
-export async function getRestaurantListDetailPage(
-  listId: string,
-  input?: PageInputLike,
-): Promise<RestaurantListDetailPage> {
-  const detail = await getRestaurantListDetail(listId);
-  const items = detail.items;
-  const { page, pageSize } = resolvePaginationInput(input);
-
-  return {
-    list: detail.list,
-    items,
-    page: items.length > 0 ? page : 0,
-    pageSize: items.length > 0 ? Math.max(items.length, pageSize) : 0,
-    totalItems: items.length,
-    totalPages: items.length > 0 ? 1 : 0,
-    hasNextPage: false,
-    bookmarkState: detail.bookmarkState,
-    photoPreviews: detail.photoPreviews,
-  };
-}
-
 export async function getRestaurantListCandidateRestaurants(
   listId: string,
   search?: string,
@@ -669,54 +587,6 @@ export async function getRestaurantListCandidateRestaurants(
   } catch (error) {
     if (isNotFoundError(error)) {
       return createEmptyRestaurantListCandidateRestaurants();
-    }
-
-    throw error;
-  }
-}
-
-export async function listRestaurantListVisitedRestaurantsPage(
-  listId: string,
-  input?: ListRestaurantListVisitedRestaurantsPageInput,
-): Promise<PaginatedResult<RestaurantListVisitedRestaurantCandidate>> {
-  if (!pb.authStore.record?.id) {
-    return createEmptyPaginatedResult(input);
-  }
-
-  const trimmedListId = listId.trim();
-  if (!trimmedListId) {
-    return createEmptyPaginatedResult(input);
-  }
-
-  const { page, pageSize } = resolvePaginationInput(input);
-  const query = new URLSearchParams({
-    page: String(page),
-    pageSize: String(pageSize),
-  });
-  const trimmedSearch = input?.search?.trim();
-  if (trimmedSearch) {
-    query.set('search', trimmedSearch);
-  }
-
-  try {
-    const response = await sendApiRequest<RestaurantListVisitedRestaurantsPageApiResponse>(
-      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/visited-restaurants?${query.toString()}`,
-      {
-        method: 'GET',
-      },
-    );
-
-    return {
-      items: (response.items ?? []).map(mapRestaurantListVisitedRestaurantCandidateRecord),
-      page: response.page,
-      pageSize: response.pageSize,
-      totalItems: response.totalItems,
-      totalPages: response.totalPages,
-      hasNextPage: response.hasNextPage,
-    };
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return createEmptyPaginatedResult(input);
     }
 
     throw error;

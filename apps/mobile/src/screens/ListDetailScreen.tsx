@@ -19,9 +19,14 @@ import {
   createDefaultRestaurantList,
   deleteRestaurantList,
   getRestaurantListDetail,
+  invalidateRestaurantListCollectionQueries,
+  invalidateRestaurantListContentQueries,
+  invalidateRestaurantListSaveTargetQueries,
   moveRestaurantListRestaurant,
   removeRestaurantListSourceRating,
+  removeRestaurantListQueries,
   removeRestaurantListUserRating,
+  restaurantListQueryKeys,
   saveRestaurantFoodItemToList,
   type RestaurantListDetailPhotoPreviewRecord,
 } from '../features';
@@ -561,7 +566,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
 
   const detailQuery = useQuery({
-    queryKey: ['feature', 'restaurantListDetail', listId],
+    queryKey: restaurantListQueryKeys.detail(listId),
     queryFn: () => getRestaurantListDetail(listId),
   });
 
@@ -856,21 +861,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   };
 
   const invalidateCurrentListDetailQueries = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItems', listId] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListItemLinks', listId] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-    ]);
+    await invalidateRestaurantListContentQueries(queryClient, listId);
   }, [listId, queryClient]);
 
   const invalidateSaveTargetQueries = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists', 'my'] }),
-      queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-    ]);
+    await invalidateRestaurantListSaveTargetQueries(queryClient, listId);
   }, [listId, queryClient]);
 
   const deleteList = async () => {
@@ -889,10 +884,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     try {
       if (!isOnline) {
         await queueFeatureOutbox('list.delete', { listId: list.id });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
-        queryClient.removeQueries({ queryKey: ['feature', 'restaurantList', list.id] });
-        queryClient.removeQueries({ queryKey: ['feature', 'restaurantListItems', list.id] });
-        queryClient.removeQueries({ queryKey: ['feature', 'restaurantListDetail', list.id] });
+        await invalidateRestaurantListCollectionQueries(queryClient);
+        removeRestaurantListQueries(queryClient, list.id);
         setIsDeleteConfirmVisible(false);
         showQueuedOfflineAlert('List delete');
         navigation.navigate('Lists');
@@ -901,10 +894,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
       await queueWrite('list.delete');
       await deleteRestaurantList(list.id);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
-      queryClient.removeQueries({ queryKey: ['feature', 'restaurantList', list.id] });
-      queryClient.removeQueries({ queryKey: ['feature', 'restaurantListItems', list.id] });
-      queryClient.removeQueries({ queryKey: ['feature', 'restaurantListDetail', list.id] });
+      await invalidateRestaurantListCollectionQueries(queryClient);
+      removeRestaurantListQueries(queryClient, list.id);
       setIsDeleteConfirmVisible(false);
       navigation.navigate('Lists');
     } catch (error) {

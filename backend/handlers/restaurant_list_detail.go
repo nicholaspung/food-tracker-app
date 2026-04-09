@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	defaultRestaurantListsPageSize      = 20
+	maxRestaurantListsPageSize          = 50
 	defaultRestaurantListDetailPageSize = 20
 	maxRestaurantListDetailPageSize     = 50
 )
@@ -76,6 +78,15 @@ type restaurantListDetailPhotoPreviewResponse struct {
 	CollectionName string `json:"collectionName,omitempty"`
 	Created        string `json:"created"`
 	OwnerName      string `json:"ownerName,omitempty"`
+}
+
+type restaurantListsPageResponse struct {
+	Items       []restaurantListDetailListResponse `json:"items"`
+	Page        int                                `json:"page"`
+	PageSize    int                                `json:"pageSize"`
+	TotalItems  int                                `json:"totalItems"`
+	TotalPages  int                                `json:"totalPages"`
+	HasNextPage bool                               `json:"hasNextPage"`
 }
 
 type restaurantListDetailResponse struct {
@@ -150,7 +161,52 @@ type restaurantListVisitedRestaurantCandidateFoodItemRow struct {
 	FoodItemNotes  string  `db:"foodItemNotes"`
 }
 
+type restaurantListsPageRow struct {
+	ID              string `db:"id"`
+	Name            string `db:"name"`
+	Description     string `db:"description"`
+	Visibility      string `db:"visibility"`
+	UserID          string `db:"userId"`
+	OwnerName       string `db:"ownerName"`
+	OwnerEmail      string `db:"ownerEmail"`
+	IsDefault       bool   `db:"isDefault"`
+	CoverImage      string `db:"coverImage"`
+	RestaurantCount int    `db:"restaurantCount"`
+	MenuItemCount   int    `db:"menuItemCount"`
+	CreatedAt       string `db:"createdAt"`
+	UpdatedAt       string `db:"updatedAt"`
+}
+
 func registerRestaurantListDetailSummaryHandler(se *core.ServeEvent, app core.App) {
+	se.Router.GET("/api/restaurant-lists", func(e *core.RequestEvent) error {
+		scope, err := normalizeRestaurantListsScope(e.Request.URL.Query().Get("scope"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		page, pageSize, err := parseRestaurantListsPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := listRestaurantListsPageResponse(
+			app,
+			e.Auth.Id,
+			scope,
+			page,
+			pageSize,
+			e.Request.URL.Query().Get("search"),
+		)
+		if err != nil {
+			return apis.NewApiError(500, "failed to load restaurant lists", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
 	se.Router.GET("/api/restaurant-lists/{listId}/detail", func(e *core.RequestEvent) error {
 		listID := strings.TrimSpace(e.Request.PathValue("listId"))
 		if listID == "" {
@@ -224,6 +280,230 @@ func registerRestaurantListDetailSummaryHandler(se *core.ServeEvent, app core.Ap
 
 		return e.JSON(200, response)
 	}).Bind(apis.RequireAuth())
+}
+
+func normalizeRestaurantListsScope(raw string) (string, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "my":
+		return "my", nil
+	case "friends":
+		return "friends", nil
+	default:
+		return "", fmt.Errorf("invalid restaurant list scope")
+	}
+}
+
+func parseRestaurantListsPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page := 1
+	if strings.TrimSpace(pageRaw) != "" {
+		parsedPage, err := strconv.Atoi(pageRaw)
+		if err != nil || parsedPage < 1 {
+			return 0, 0, fmt.Errorf("invalid page")
+		}
+		page = parsedPage
+	}
+
+	pageSize := defaultRestaurantListsPageSize
+	if strings.TrimSpace(pageSizeRaw) != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeRaw)
+		if err != nil || parsedPageSize < 1 {
+			return 0, 0, fmt.Errorf("invalid pageSize")
+		}
+
+		if parsedPageSize > maxRestaurantListsPageSize {
+			pageSize = maxRestaurantListsPageSize
+		} else {
+			pageSize = parsedPageSize
+		}
+	}
+
+	return page, pageSize, nil
+}
+
+func listRestaurantListsPageResponse(
+	app core.App,
+	userID string,
+	scope string,
+	page int,
+	pageSize int,
+	search string,
+) (restaurantListsPageResponse, error) {
+	response := restaurantListsPageResponse{
+		Items:    []restaurantListDetailListResponse{},
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	filterSQL, params := buildRestaurantListsPageFilter(userID, scope, search)
+
+	totalItems, err := countRestaurantListsForPage(app, filterSQL, params)
+	if err != nil {
+		return response, err
+	}
+
+	totalPages := 0
+	if totalItems > 0 {
+		totalPages = (totalItems + pageSize - 1) / pageSize
+	}
+	response.TotalItems = totalItems
+	response.TotalPages = totalPages
+	response.HasNextPage = totalPages > 0 && page < totalPages
+
+	if totalItems == 0 {
+		return response, nil
+	}
+
+	rows, err := findRestaurantListsForPage(app, filterSQL, params, scope, page, pageSize)
+	if err != nil {
+		return response, err
+	}
+
+	items := make([]restaurantListDetailListResponse, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, restaurantListDetailListResponse{
+			ID:              row.ID,
+			Name:            strings.TrimSpace(row.Name),
+			Description:     strings.TrimSpace(row.Description),
+			Visibility:      normalizeRestaurantListDetailVisibility(row.Visibility),
+			UserID:          strings.TrimSpace(row.UserID),
+			OwnerName:       resolveFriendDisplayName(row.OwnerName, row.OwnerEmail),
+			IsDefault:       row.IsDefault,
+			CoverImage:      strings.TrimSpace(row.CoverImage),
+			RestaurantCount: row.RestaurantCount,
+			MenuItemCount:   row.MenuItemCount,
+			CreatedAt:       strings.TrimSpace(row.CreatedAt),
+			UpdatedAt:       defaultString(strings.TrimSpace(row.UpdatedAt), strings.TrimSpace(row.CreatedAt)),
+		})
+	}
+
+	response.Items = items
+	return response, nil
+}
+
+func buildRestaurantListsPageFilter(userID string, scope string, search string) (string, dbx.Params) {
+	params := dbx.Params{
+		"userId": userID,
+	}
+	conditions := []string{
+		`COALESCE(rl.moderationStatus, '') IN ('', 'active', 'reviewed')`,
+	}
+
+	normalizedSearch := strings.ToLower(strings.TrimSpace(search))
+
+	switch scope {
+	case "friends":
+		conditions = append(conditions, `rl.visibility = 'friends'`)
+		conditions = append(conditions, `rl.user != {:userId}`)
+		conditions = append(conditions, `EXISTS (
+			SELECT 1
+			FROM friendships f
+			WHERE f.status = 'accepted'
+				AND (
+					(f.user = rl.user AND f.friend = {:userId}) OR
+					(f.friend = rl.user AND f.user = {:userId})
+				)
+		)`)
+
+		if normalizedSearch != "" {
+			params["search"] = "%" + escapeFriendsSearchValue(normalizedSearch) + "%"
+			conditions = append(
+				conditions,
+				`(
+					LOWER(COALESCE(rl.name, '')) LIKE {:search} ESCAPE '\' OR
+					LOWER(COALESCE(rl.description, '')) LIKE {:search} ESCAPE '\' OR
+					LOWER(COALESCE(owners.name, '')) LIKE {:search} ESCAPE '\' OR
+					LOWER(COALESCE(owners.email, '')) LIKE {:search} ESCAPE '\'
+				)`,
+			)
+		}
+	default:
+		conditions = append(conditions, `rl.user = {:userId}`)
+
+		if normalizedSearch != "" {
+			params["search"] = "%" + escapeFriendsSearchValue(normalizedSearch) + "%"
+			conditions = append(
+				conditions,
+				`(
+					LOWER(COALESCE(rl.name, '')) LIKE {:search} ESCAPE '\' OR
+					LOWER(COALESCE(rl.description, '')) LIKE {:search} ESCAPE '\'
+				)`,
+			)
+		}
+	}
+
+	return strings.Join(conditions, " AND "), params
+}
+
+func countRestaurantListsForPage(app core.App, filterSQL string, params dbx.Params) (int, error) {
+	var totalItems int
+	err := app.DB().NewQuery(`
+		SELECT COUNT(*)
+		FROM restaurant_lists rl
+		LEFT JOIN users owners ON owners.id = rl.user
+		WHERE ` + filterSQL).
+		Bind(params).
+		Row(&totalItems)
+	return totalItems, err
+}
+
+func findRestaurantListsForPage(
+	app core.App,
+	filterSQL string,
+	params dbx.Params,
+	scope string,
+	page int,
+	pageSize int,
+) ([]restaurantListsPageRow, error) {
+	offset := (page - 1) * pageSize
+	orderBy := `
+		COALESCE(NULLIF(TRIM(rl.updated), ''), rl.created) DESC,
+		rl.id DESC
+	`
+	if scope == "my" {
+		orderBy = `
+			COALESCE(rl.isDefault, 0) DESC,
+			COALESCE(NULLIF(TRIM(rl.updated), ''), rl.created) DESC,
+			rl.id DESC
+		`
+	}
+
+	queryParams := dbx.Params{
+		"limit":  pageSize,
+		"offset": offset,
+	}
+	for key, value := range params {
+		queryParams[key] = value
+	}
+
+	rows := []restaurantListsPageRow{}
+	err := app.DB().NewQuery(`
+		SELECT
+			rl.id AS [[id]],
+			rl.name AS [[name]],
+			rl.description AS [[description]],
+			rl.visibility AS [[visibility]],
+			rl.user AS [[userId]],
+			owners.name AS [[ownerName]],
+			owners.email AS [[ownerEmail]],
+			COALESCE(rl.isDefault, 0) AS [[isDefault]],
+			rl.coverImage AS [[coverImage]],
+			COALESCE(rl.restaurantCount, 0) AS [[restaurantCount]],
+			COALESCE(rl.menuItemCount, 0) AS [[menuItemCount]],
+			rl.created AS [[createdAt]],
+			COALESCE(NULLIF(TRIM(rl.updated), ''), rl.created) AS [[updatedAt]]
+		FROM restaurant_lists rl
+		LEFT JOIN users owners ON owners.id = rl.user
+		WHERE ` + filterSQL + `
+		ORDER BY ` + orderBy + `
+		LIMIT {:limit} OFFSET {:offset}
+	`).
+		Bind(queryParams).
+		All(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows, nil
 }
 
 func getRestaurantListDetailHydratedResponse(

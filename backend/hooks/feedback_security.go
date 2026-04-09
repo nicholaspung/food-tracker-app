@@ -1,20 +1,9 @@
 package hooks
 
 import (
-	"fmt"
-	"sort"
-	"strings"
-
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
-
-var userEditableFeedbackFields = map[string]struct{}{
-	"admin_reply_deadline_at": {},
-	"admin_unread_count":      {},
-	"last_message_at":         {},
-	"user_unread_count":       {},
-}
 
 var feedbackUpdateIgnoredFields = map[string]struct{}{
 	"updated": {},
@@ -27,7 +16,7 @@ func RegisterFeedbackSecurityHooks(app core.App) {
 	})
 }
 
-// EnforceFeedbackUpdateRequestSecurity ensures only admins can modify thread ownership or metadata fields.
+// EnforceFeedbackUpdateRequestSecurity ensures direct feedback thread updates remain admin-only.
 func EnforceFeedbackUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 	if e.HasSuperuserAuth() {
 		return e.Next()
@@ -46,21 +35,5 @@ func EnforceFeedbackUpdateRequestSecurity(e *core.RecordRequestEvent) error {
 		return e.Next()
 	}
 
-	blockedFields := make([]string, 0)
-	for _, field := range changedFields {
-		if _, ok := userEditableFeedbackFields[field]; ok {
-			continue
-		}
-		blockedFields = append(blockedFields, field)
-	}
-
-	if len(blockedFields) > 0 {
-		sort.Strings(blockedFields)
-		return apis.NewForbiddenError(
-			fmt.Sprintf("only admins can modify %s", strings.Join(blockedFields, ", ")),
-			nil,
-		)
-	}
-
-	return e.Next()
+	return apis.NewForbiddenError("only admins can update feedback threads directly", nil)
 }

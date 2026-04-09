@@ -5,13 +5,17 @@ import { trackObservabilityEvent } from '../../observability';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-export interface ApiRequestInit {
+interface PocketBaseRequestOptions {
+  signal?: AbortSignal;
+}
+
+export interface ApiRequestInit extends PocketBaseRequestOptions {
   method: HttpMethod;
   body?: unknown;
   headers?: Record<string, string>;
 }
 
-interface CollectionListOptions {
+interface CollectionListOptions extends PocketBaseRequestOptions {
   filter?: string;
   sort?: string;
   expand?: string;
@@ -19,7 +23,7 @@ interface CollectionListOptions {
   pageSize?: number;
 }
 
-interface CollectionPageOptions {
+interface CollectionPageOptions extends PocketBaseRequestOptions {
   filter?: string;
   sort?: string;
   expand?: string;
@@ -28,12 +32,12 @@ interface CollectionPageOptions {
   pageSize?: number;
 }
 
-interface CollectionGetOptions {
+interface CollectionGetOptions extends PocketBaseRequestOptions {
   expand?: string;
   fields?: string;
 }
 
-interface CollectionUpdateOptions {
+interface CollectionUpdateOptions extends PocketBaseRequestOptions {
   expand?: string;
   fields?: string;
 }
@@ -58,14 +62,19 @@ export async function listCollectionRecords<T>(
   collectionName: string,
   options?: CollectionListOptions,
 ): Promise<T[]> {
-  const { pageSize = 100, ...listOptions } = options ?? {};
+  const { pageSize = 100, signal, ...listOptions } = options ?? {};
   const normalizedPageSize = Number.isFinite(pageSize) ? Math.max(1, Math.floor(pageSize)) : 100;
   const sanitizedListOptions = sanitizeCollectionOptions(listOptions);
+  const requestOptions = signal ? { ...sanitizedListOptions, signal } : sanitizedListOptions;
   const records: T[] = [];
   let page = 1;
 
   while (true) {
-    const response = await pb.collection(collectionName).getList<T>(page, normalizedPageSize, sanitizedListOptions);
+    const response = await pb.collection(collectionName).getList<T>(
+      page,
+      normalizedPageSize,
+      requestOptions,
+    );
     records.push(...response.items);
 
     if (response.items.length === 0 || page >= response.totalPages) {
@@ -91,14 +100,15 @@ export async function listCollectionPage<T>(
   collectionName: string,
   options?: CollectionPageOptions,
 ): Promise<CollectionPageResult<T>> {
-  const { page = 1, pageSize = 20, ...listOptions } = options ?? {};
+  const { page = 1, pageSize = 20, signal, ...listOptions } = options ?? {};
   const normalizedPage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
   const normalizedPageSize = Number.isFinite(pageSize) ? Math.max(1, Math.floor(pageSize)) : 20;
   const sanitizedListOptions = sanitizeCollectionOptions(listOptions);
+  const requestOptions = signal ? { ...sanitizedListOptions, signal } : sanitizedListOptions;
   const response = await pb.collection(collectionName).getList<T>(
     normalizedPage,
     normalizedPageSize,
-    sanitizedListOptions,
+    requestOptions,
   );
 
   return {
@@ -197,6 +207,7 @@ export async function sendApiRequest<T = unknown>(
     method: HttpMethod;
     body?: unknown;
     headers?: Record<string, string>;
+    signal?: AbortSignal;
   } = {
     method: init.method,
   };
@@ -207,6 +218,9 @@ export async function sendApiRequest<T = unknown>(
   }
   if (headers) {
     options.headers = headers;
+  }
+  if (init.signal) {
+    options.signal = init.signal;
   }
 
   try {

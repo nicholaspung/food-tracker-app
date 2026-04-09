@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"encoding/base64"
 	"net/http"
 	"testing"
 
@@ -9,6 +10,8 @@ import (
 	"myapp/handlers"
 	"myapp/lib"
 )
+
+const onePixelJPEGBase64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxAQEBAQEBAVFRUVFRUVFRUVFRUVFRUVFRUWFhUVFRUYHSggGBolGxUVITEhJSkrLi4uFx8zODMsNygtLisBCgoKDg0OGhAQGi0fHyUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAAEAAQMBIgACEQEDEQH/xAAbAAABBQEBAAAAAAAAAAAAAAAFAAIDBAYBB//EADQQAAIBAwMCBAQEBgMAAAAAAAECAwAEEQUSITFBEyJRYXGBkQYyobHB0fAjQlJicuHw/8QAGQEBAAMBAQAAAAAAAAAAAAAAAAECBAMF/8QAIhEBAQACAgICAgMAAAAAAAAAAAECEQMhEjEEE0FRImFx/9oADAMBAAIRAxEAPwD3qIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgP/Z"
 
 func TestPlacesEndpointsBlockFreeUsersAtMonthlyLimit(t *testing.T) {
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-key")
@@ -69,71 +72,113 @@ func TestPlacesEndpointsBlockFreeUsersAtMonthlyLimit(t *testing.T) {
 	}
 }
 
-func TestParseMenuConsumesAndEnforcesMonthlyLimit(t *testing.T) {
-	t.Setenv("GEMINI_API_KEY", "")
+func TestMenuScanEndpointsDoNotConsumeUsageForInvalidUploads(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "test-key")
 
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterMenuParsingHandlers(se, app)
 	})
 
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "parse menu", path: "/api/parse-menu"},
+		{name: "find restaurant name", path: "/api/find-restaurant-name"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			user, token := createAuthUser(t, server.app, false, false)
+			seedMonthlyUsage(t, server.app, user.Id, 0, 0, 4)
+
+			response := performMultipartRequest(
+				t,
+				server.mux,
+				http.MethodPost,
+				tc.path,
+				token,
+				"image",
+				"upload.jpg",
+				[]byte("not actually an image"),
+			)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400 from %s, got %d, body=%s", tc.path, response.Code, response.Body.String())
+			}
+
+			snapshot, err := lib.GetMonthlyUsageSnapshot(server.app, user)
+			if err != nil {
+				t.Fatalf("failed to load usage snapshot: %v", err)
+			}
+			if snapshot.Usage.MenuScans != 4 {
+				t.Fatalf("expected menu_scans usage to stay at 4 after invalid upload, got %d", snapshot.Usage.MenuScans)
+			}
+		})
+	}
+}
+
+func TestParseMenuBlocksUsersAtMonthlyLimitAfterValidation(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "test-key")
+
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterMenuParsingHandlers(se, app)
+	})
+
+	jpegData := decodeUsageFixture(t, onePixelJPEGBase64)
+
 	freeUser, freeToken := createAuthUser(t, server.app, false, false)
-	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 4)
+	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 5)
 
-	firstResponse := performJSONRequest(
+	freeResponse := performMultipartRequest(
 		t,
 		server.mux,
 		http.MethodPost,
 		"/api/parse-menu",
 		freeToken,
-		"",
+		"image",
+		"menu.jpg",
+		jpegData,
 	)
-	if firstResponse.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 (missing GEMINI key), got %d, body=%s", firstResponse.Code, firstResponse.Body.String())
+	if freeResponse.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 from /api/parse-menu for free user, got %d, body=%s", freeResponse.Code, freeResponse.Body.String())
 	}
-
-	snapshotAfterFirst, err := lib.GetMonthlyUsageSnapshot(server.app, freeUser)
-	if err != nil {
-		t.Fatalf("failed to load usage snapshot: %v", err)
-	}
-	if snapshotAfterFirst.Usage.MenuScans != 5 {
-		t.Fatalf("expected menu_scans usage=5 after first attempt, got %d", snapshotAfterFirst.Usage.MenuScans)
-	}
-
-	secondResponse := performJSONRequest(
-		t,
-		server.mux,
-		http.MethodPost,
-		"/api/parse-menu",
-		freeToken,
-		"",
-	)
-	if secondResponse.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 after free user reached limit, got %d, body=%s", secondResponse.Code, secondResponse.Body.String())
+	freeData := parseJSONMap(t, freeResponse.Body.Bytes())
+	if freeData["metric"] != "menu_scans" {
+		t.Fatalf("expected menu_scans metric, got %v", freeData["metric"])
 	}
 
 	subscriberUser, subscriberToken := createAuthUser(t, server.app, false, true)
 	seedMonthlyUsage(t, server.app, subscriberUser.Id, 0, 0, 100)
-	subscriberResponse := performJSONRequest(
+
+	subscriberResponse := performMultipartRequest(
 		t,
 		server.mux,
 		http.MethodPost,
 		"/api/parse-menu",
 		subscriberToken,
-		"",
+		"image",
+		"menu.jpg",
+		jpegData,
 	)
 	if subscriberResponse.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 for subscriber at 100 limit, got %d, body=%s", subscriberResponse.Code, subscriberResponse.Body.String())
+		t.Fatalf("expected 429 from /api/parse-menu for subscriber at limit, got %d, body=%s", subscriberResponse.Code, subscriberResponse.Body.String())
+	}
+	subscriberData := parseJSONMap(t, subscriberResponse.Body.Bytes())
+	if subscriberData["metric"] != "menu_scans" {
+		t.Fatalf("expected menu_scans metric, got %v", subscriberData["metric"])
 	}
 
+	t.Setenv("GEMINI_API_KEY", "")
 	adminUser, adminToken := createAuthUser(t, server.app, true, true)
 	seedMonthlyUsage(t, server.app, adminUser.Id, 0, 0, 1000)
-	adminResponse := performJSONRequest(
+
+	adminResponse := performMultipartRequest(
 		t,
 		server.mux,
 		http.MethodPost,
 		"/api/parse-menu",
 		adminToken,
-		"",
+		"image",
+		"menu.jpg",
+		jpegData,
 	)
 	if adminResponse.Code == http.StatusTooManyRequests {
 		t.Fatalf("expected admin not to be rate-limited, body=%s", adminResponse.Body.String())
@@ -141,22 +186,25 @@ func TestParseMenuConsumesAndEnforcesMonthlyLimit(t *testing.T) {
 }
 
 func TestFindRestaurantNameBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
-	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "test-key")
 
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterMenuParsingHandlers(se, app)
 	})
 
+	jpegData := decodeUsageFixture(t, onePixelJPEGBase64)
 	freeUser, freeToken := createAuthUser(t, server.app, false, false)
 	seedMonthlyUsage(t, server.app, freeUser.Id, 0, 0, 5)
 
-	response := performJSONRequest(
+	response := performMultipartRequest(
 		t,
 		server.mux,
 		http.MethodPost,
 		"/api/find-restaurant-name",
 		freeToken,
-		"",
+		"image",
+		"restaurant.jpg",
+		jpegData,
 	)
 	if response.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected 429 from /api/find-restaurant-name, got %d, body=%s", response.Code, response.Body.String())
@@ -176,13 +224,15 @@ func TestConvertHEICBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
 	freeUser, freeToken := createAuthUser(t, server.app, false, false)
 	seedMonthlyUsageWithHEIC(t, server.app, freeUser.Id, 0, 0, 0, 100)
 
-	response := performJSONRequest(
+	response := performMultipartRequest(
 		t,
 		server.mux,
 		http.MethodPost,
 		"/api/convert-heic",
 		freeToken,
-		"",
+		"image",
+		"upload.heic",
+		[]byte("\x00\x00\x00\x18ftypheic"),
 	)
 	if response.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected 429 from /api/convert-heic, got %d, body=%s", response.Code, response.Body.String())
@@ -192,4 +242,45 @@ func TestConvertHEICBlocksFreeUsersAtMonthlyLimit(t *testing.T) {
 	if data["metric"] != "heic_conversions" {
 		t.Fatalf("expected heic_conversions metric, got %v", data["metric"])
 	}
+}
+
+func TestConvertHEICReleasesUsageWhenDecodeFails(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterMenuParsingHandlers(se, app)
+	})
+
+	user, token := createAuthUser(t, server.app, false, false)
+
+	response := performMultipartRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/convert-heic",
+		token,
+		"image",
+		"broken.heic",
+		[]byte("\x00\x00\x00\x18ftypheic"),
+	)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 from /api/convert-heic decode failure, got %d, body=%s", response.Code, response.Body.String())
+	}
+
+	snapshot, err := lib.GetMonthlyUsageSnapshot(server.app, user)
+	if err != nil {
+		t.Fatalf("failed to load usage snapshot: %v", err)
+	}
+	if snapshot.Usage.HEICConversions != 0 {
+		t.Fatalf("expected HEIC conversion usage to be released after decode failure, got %d", snapshot.Usage.HEICConversions)
+	}
+}
+
+func decodeUsageFixture(t *testing.T, encoded string) []byte {
+	t.Helper()
+
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("failed to decode fixture: %v", err)
+	}
+
+	return data
 }

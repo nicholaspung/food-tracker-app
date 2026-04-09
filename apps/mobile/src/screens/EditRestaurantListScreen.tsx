@@ -12,7 +12,13 @@ import {
   type VisibilityOptionValue,
   Skeleton,
 } from '../components/shared';
-import { getRestaurantListById, updateRestaurantList, type RestaurantListRecord } from '../features';
+import {
+  getRestaurantListById,
+  invalidateRestaurantListMetadataQueries,
+  restaurantListQueryKeys,
+  updateRestaurantList,
+  type RestaurantListRecord,
+} from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -55,7 +61,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const listQuery = useQuery({
-    queryKey: ['feature', 'restaurantList', listId],
+    queryKey: restaurantListQueryKeys.list(listId),
     queryFn: () => getRestaurantListById(listId),
   });
 
@@ -122,11 +128,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
           updates: listUpdateInput,
         });
 
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-        ]);
+        await invalidateRestaurantListMetadataQueries(queryClient, listId);
         trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'EditRestaurantListScreen',
           listId,
@@ -141,11 +143,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
       await queueWrite('list.update');
       await updateRestaurantList(listId, listUpdateInput);
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantList', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantListDetail', listId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] }),
-      ]);
+      await invalidateRestaurantListMetadataQueries(queryClient, listId);
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
         source: 'EditRestaurantListScreen',
         listId,

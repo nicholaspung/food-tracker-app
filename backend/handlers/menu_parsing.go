@@ -29,14 +29,6 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
 
-		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricHEICConversions, 1); err != nil {
-			if limitErr, ok := lib.AsLimitExceededError(err); ok {
-				return e.JSON(429, limitErr.Payload())
-			}
-			log.Printf("Failed to consume HEIC conversion usage for user %s: %v", authRecord.Id, err)
-			return apis.NewApiError(500, "failed to process usage limit", err)
-		}
-
 		// Parse multipart form
 		if err := e.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
 			return apis.NewBadRequestError("failed to parse multipart form", err)
@@ -65,6 +57,16 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
+		usageReservation, err := newUsageReservation(e.App, authRecord, lib.UsageMetricHEICConversions, 1)
+		if err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to reserve HEIC conversion usage for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
+		}
+		defer usageReservation.ReleaseIfNeeded()
+
 		log.Printf("Converting HEIC image upload (size=%d mime=%s)", len(heicData), detectedMimeType)
 
 		// Decode HEIC image
@@ -82,6 +84,7 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 		}
 
 		log.Printf("Successfully converted HEIC image to JPEG (outputSize=%d)", jpegBuffer.Len())
+		usageReservation.Commit()
 
 		// Return JPEG image
 		e.Response.Header().Set("Content-Type", "image/jpeg")
@@ -97,14 +100,6 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 		authRecord := e.Auth
 		if authRecord == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
-		}
-
-		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricMenuScans, 1); err != nil {
-			if limitErr, ok := lib.AsLimitExceededError(err); ok {
-				return e.JSON(429, limitErr.Payload())
-			}
-			log.Printf("Failed to consume menu scan usage for user %s: %v", authRecord.Id, err)
-			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
 		// Check if user is admin for debug mode
@@ -142,6 +137,16 @@ func RegisterMenuParsingHandlers(se *core.ServeEvent, _ core.App) {
 		if err != nil {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
+
+		usageReservation, err := newUsageReservation(e.App, authRecord, lib.UsageMetricMenuScans, 1)
+		if err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to reserve menu scan usage for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
+		}
+		defer usageReservation.ReleaseIfNeeded()
 
 		log.Printf("Parsing menu image with Gemini (size=%d mime=%s)", len(imageData), mimeType)
 
@@ -260,6 +265,7 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			log.Printf("Image is not a menu - Gemini returned error response")
 
 			// Include debug data in error response for admins
+			usageReservation.Commit()
 			if isAdmin {
 				return e.JSON(400, map[string]any{
 					"error": "Image is not a menu",
@@ -298,6 +304,7 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 			response["debug"] = debugData
 		}
 
+		usageReservation.Commit()
 		return e.JSON(200, response)
 	})
 
@@ -307,14 +314,6 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 		authRecord := e.Auth
 		if authRecord == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
-		}
-
-		if _, err := lib.ConsumeUsage(e.App, authRecord, lib.UsageMetricMenuScans, 1); err != nil {
-			if limitErr, ok := lib.AsLimitExceededError(err); ok {
-				return e.JSON(429, limitErr.Payload())
-			}
-			log.Printf("Failed to consume restaurant-name scan usage for user %s: %v", authRecord.Id, err)
-			return apis.NewApiError(500, "failed to process usage limit", err)
 		}
 
 		// Get Gemini API key from environment
@@ -349,6 +348,16 @@ Only output the CSV table or the JSON format, no need to explain what's happenin
 		if err != nil {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
+
+		usageReservation, err := newUsageReservation(e.App, authRecord, lib.UsageMetricMenuScans, 1)
+		if err != nil {
+			if limitErr, ok := lib.AsLimitExceededError(err); ok {
+				return e.JSON(429, limitErr.Payload())
+			}
+			log.Printf("Failed to reserve restaurant-name scan usage for user %s: %v", authRecord.Id, err)
+			return apis.NewApiError(500, "failed to process usage limit", err)
+		}
+		defer usageReservation.ReleaseIfNeeded()
 
 		log.Printf("Finding restaurant name with Gemini (size=%d mime=%s)", len(imageData), mimeType)
 
@@ -517,6 +526,54 @@ Analyze the image now and respond with JSON only.`
 		})
 
 		// Return the parsed JSON response
+		usageReservation.Commit()
 		return e.JSON(200, jsonResponse)
 	})
+}
+
+type usageReservation struct {
+	app       core.App
+	user      *core.Record
+	metric    lib.UsageMetric
+	amount    int
+	committed bool
+}
+
+func newUsageReservation(
+	app core.App,
+	user *core.Record,
+	metric lib.UsageMetric,
+	amount int,
+) (*usageReservation, error) {
+	if _, err := lib.ReserveUsage(app, user, metric, amount); err != nil {
+		return nil, err
+	}
+
+	return &usageReservation{
+		app:    app,
+		user:   user,
+		metric: metric,
+		amount: amount,
+	}, nil
+}
+
+func (r *usageReservation) Commit() {
+	if r == nil {
+		return
+	}
+
+	r.committed = true
+}
+
+func (r *usageReservation) ReleaseIfNeeded() {
+	if r == nil || r.committed {
+		return
+	}
+
+	if err := lib.ReleaseUsage(r.app, r.user, r.metric, r.amount); err != nil {
+		log.Printf("Failed to release reserved usage metric=%s for user %s: %v", r.metric, r.user.Id, err)
+		return
+	}
+
+	r.committed = true
 }

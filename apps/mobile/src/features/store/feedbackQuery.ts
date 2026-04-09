@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryKey } from '@tanstack/react-query';
 
-import type { FeedbackRecord } from '../models';
+import type { FeedbackMessageRecord, FeedbackRecord } from '../models';
 
 import type { PaginatedResult } from './featureStore';
 
@@ -11,9 +11,11 @@ export const feedbackQueryKeys = {
   list: ['feature', 'feedback', 'all', 'paginated'] as const,
   summary: ['feature', 'feedback', 'summary'] as const,
   detail: (feedbackId: string) => ['feature', 'feedback', feedbackId] as const,
+  messages: (feedbackId: string) => ['feature', 'feedback-messages', feedbackId] as const,
 };
 
 export type FeedbackListQueryData = InfiniteData<PaginatedResult<FeedbackRecord>, number>;
+export type FeedbackMessageListQueryData = InfiniteData<PaginatedResult<FeedbackMessageRecord>, number>;
 
 export function isFeedbackListQueryKey(queryKey: QueryKey): boolean {
   return (
@@ -23,12 +25,12 @@ export function isFeedbackListQueryKey(queryKey: QueryKey): boolean {
   );
 }
 
-function buildFeedbackPage(input: {
-  items: FeedbackRecord[];
+function buildFeedbackPage<T>(input: {
+  items: T[];
   page: number;
   pageSize: number;
   totalItems: number;
-}): PaginatedResult<FeedbackRecord> {
+}): PaginatedResult<T> {
   const totalPages = Math.max(1, Math.ceil(input.totalItems / input.pageSize));
 
   return {
@@ -41,43 +43,61 @@ function buildFeedbackPage(input: {
   };
 }
 
-export function prependFeedbackListItem(
-  currentData: FeedbackListQueryData | undefined,
-  createdFeedback: FeedbackRecord,
-): FeedbackListQueryData {
+export function mergeFeedbackRecord(
+  currentFeedback: FeedbackRecord | undefined,
+  nextFeedback: FeedbackRecord,
+): FeedbackRecord {
+  if (!currentFeedback) {
+    return nextFeedback;
+  }
+
+  return {
+    ...currentFeedback,
+    ...nextFeedback,
+    userEmail: nextFeedback.userEmail ?? currentFeedback.userEmail,
+    userName: nextFeedback.userName ?? currentFeedback.userName,
+  };
+}
+
+function mergeFeedbackMessageRecord(
+  currentMessage: FeedbackMessageRecord | undefined,
+  nextMessage: FeedbackMessageRecord,
+): FeedbackMessageRecord {
+  if (!currentMessage) {
+    return nextMessage;
+  }
+
+  return {
+    ...currentMessage,
+    ...nextMessage,
+    userEmail: nextMessage.userEmail ?? currentMessage.userEmail,
+    userName: nextMessage.userName ?? currentMessage.userName,
+  };
+}
+
+function rebuildInfiniteQueryData<T>(
+  currentData: InfiniteData<PaginatedResult<T>, number> | undefined,
+  nextItems: T[],
+  totalItems: number,
+  defaultPageSize = DEFAULT_FEEDBACK_PAGE_SIZE,
+): InfiniteData<PaginatedResult<T>, number> {
   const currentPages = currentData?.pages ?? [];
   if (currentPages.length === 0) {
     return {
       pages: [
         buildFeedbackPage({
-          items: [createdFeedback],
+          items: nextItems.slice(0, defaultPageSize),
           page: 1,
-          pageSize: DEFAULT_FEEDBACK_PAGE_SIZE,
-          totalItems: 1,
+          pageSize: defaultPageSize,
+          totalItems,
         }),
       ],
       pageParams: [1],
     };
   }
 
-  const flattenedItems = currentPages.flatMap((page) => page.items);
-  const alreadyExists = flattenedItems.some((item) => item.id === createdFeedback.id);
-  const previousTotalItems = currentPages[0]?.totalItems ?? flattenedItems.length;
-  const nextTotalItems = alreadyExists ? previousTotalItems : previousTotalItems + 1;
-  const nextItems = [createdFeedback];
-  const seenIds = new Set<string>([createdFeedback.id]);
-
-  for (const item of flattenedItems) {
-    if (seenIds.has(item.id)) {
-      continue;
-    }
-
-    seenIds.add(item.id);
-    nextItems.push(item);
-  }
-
   const allPagesLoaded = !currentPages[currentPages.length - 1]?.hasNextPage;
-  const nextPages: PaginatedResult<FeedbackRecord>[] = [];
+  const nextPages: PaginatedResult<T>[] = [];
   let itemOffset = 0;
 
   for (const page of currentPages) {
@@ -89,7 +109,7 @@ export function prependFeedbackListItem(
         items: pageItems,
         page: page.page,
         pageSize: page.pageSize,
-        totalItems: nextTotalItems,
+        totalItems,
       }),
     );
   }
@@ -106,7 +126,7 @@ export function prependFeedbackListItem(
           items: pageItems,
           page: nextPageNumber,
           pageSize: lastPage.pageSize,
-          totalItems: nextTotalItems,
+          totalItems,
         }),
       );
       nextPageNumber += 1;
@@ -117,4 +137,60 @@ export function prependFeedbackListItem(
     pages: nextPages,
     pageParams: nextPages.map((page, index) => currentData?.pageParams[index] ?? page.page),
   };
+}
+
+export function upsertFeedbackListItem(
+  currentData: FeedbackListQueryData | undefined,
+  nextFeedback: FeedbackRecord,
+  options?: {
+    insertIfMissing?: boolean;
+    moveToFront?: boolean;
+  },
+): FeedbackListQueryData | undefined {
+  const currentItems = currentData?.pages.flatMap((page) => page.items) ?? [];
+  const existingIndex = currentItems.findIndex((item) => item.id === nextFeedback.id);
+
+  if (existingIndex === -1 && options?.insertIfMissing !== true) {
+    return currentData;
+  }
+
+  const mergedFeedback =
+    existingIndex === -1 ? nextFeedback : mergeFeedbackRecord(currentItems[existingIndex], nextFeedback);
+  const filteredItems = currentItems.filter((item) => item.id !== nextFeedback.id);
+  const nextItems =
+    existingIndex === -1 || options?.moveToFront === true
+      ? [mergedFeedback, ...filteredItems]
+      : currentItems.map((item) => (item.id === nextFeedback.id ? mergedFeedback : item));
+  const currentTotalItems = currentData?.pages[0]?.totalItems ?? currentItems.length;
+  const nextTotalItems = existingIndex === -1 ? currentTotalItems + 1 : currentTotalItems;
+
+  return rebuildInfiniteQueryData(currentData, nextItems, nextTotalItems);
+}
+
+export function prependFeedbackListItem(
+  currentData: FeedbackListQueryData | undefined,
+  createdFeedback: FeedbackRecord,
+): FeedbackListQueryData {
+  return (
+    upsertFeedbackListItem(currentData, createdFeedback, {
+      insertIfMissing: true,
+      moveToFront: true,
+    }) ??
+    rebuildInfiniteQueryData(undefined, [createdFeedback], 1)
+  );
+}
+
+export function prependFeedbackMessageListItem(
+  currentData: FeedbackMessageListQueryData | undefined,
+  nextMessage: FeedbackMessageRecord,
+): FeedbackMessageListQueryData {
+  const currentItems = currentData?.pages.flatMap((page) => page.items) ?? [];
+  const existingIndex = currentItems.findIndex((item) => item.id === nextMessage.id);
+  const mergedMessage =
+    existingIndex === -1 ? nextMessage : mergeFeedbackMessageRecord(currentItems[existingIndex], nextMessage);
+  const nextItems = [mergedMessage, ...currentItems.filter((item) => item.id !== nextMessage.id)];
+  const currentTotalItems = currentData?.pages[0]?.totalItems ?? currentItems.length;
+  const nextTotalItems = existingIndex === -1 ? currentTotalItems + 1 : currentTotalItems;
+
+  return rebuildInfiniteQueryData(currentData, nextItems, nextTotalItems);
 }

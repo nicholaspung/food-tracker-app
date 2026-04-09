@@ -14,6 +14,8 @@ import {
 import {
   addRestaurantVisitRatingsToList,
   getRestaurantListCandidateRestaurants,
+  invalidateRestaurantListContentQueries,
+  restaurantListQueryKeys,
   type RestaurantListVisitedRestaurantCandidate,
   type RestaurantListVisitedRestaurantFoodItem,
 } from '../features';
@@ -190,7 +192,7 @@ export function AddRestaurantToListScreen({
   const trimmedSearchQuery = searchQuery.trim();
 
   const restaurantsQuery = useQuery({
-    queryKey: ["feature", "restaurantListCandidateRestaurants", listId, trimmedSearchQuery],
+    queryKey: restaurantListQueryKeys.candidateRestaurants(listId, trimmedSearchQuery),
     queryFn: () =>
       getRestaurantListCandidateRestaurants(
         listId,
@@ -373,26 +375,9 @@ export function AddRestaurantToListScreen({
 
       if (!isOnline) {
         await queueFeatureOutbox("list.restaurant.add", addInput);
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantList", listId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantListItems", listId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantListDetail", listId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantListItemLinks", listId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantListCandidateRestaurants", listId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantLists"],
-          }),
-        ]);
+        await invalidateRestaurantListContentQueries(queryClient, listId, {
+          includeCandidateRestaurants: true,
+        });
         trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
           source: 'AddRestaurantToListScreen',
           listId,
@@ -408,26 +393,9 @@ export function AddRestaurantToListScreen({
       await queueWrite("list.restaurant.add");
       await addRestaurantVisitRatingsToList(addInput);
 
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantList", listId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantListItems", listId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantListDetail", listId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantListItemLinks", listId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantListCandidateRestaurants", listId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantLists"],
-        }),
-      ]);
+      await invalidateRestaurantListContentQueries(queryClient, listId, {
+        includeCandidateRestaurants: true,
+      });
 
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_SUCCEEDED', {
         source: 'AddRestaurantToListScreen',

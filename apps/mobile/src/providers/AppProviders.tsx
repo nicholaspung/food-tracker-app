@@ -7,7 +7,7 @@ import { logger } from '../lib/logger';
 import { initializeObservability, setObservabilityContext, trackObservabilityEvent } from '../observability';
 import { SplashScreen } from '../screens/SplashScreen';
 import { queryPersister, removeLegacyQueryCache, shouldPersistQuery } from './queryPersistence';
-import { AuthProvider } from './AuthProvider';
+import { AuthProvider, type AuthBootstrap } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { ErrorToastProvider } from './ErrorToastProvider';
 import { SyncProvider } from './SyncProvider';
@@ -21,7 +21,12 @@ const queryClient = new QueryClient({
   },
 });
 
-export function AppProviders({ children }: { children: React.ReactNode }) {
+interface AppProvidersProps {
+  children: React.ReactNode;
+  screenshotReviewBootstrap?: AuthBootstrap;
+}
+
+export function AppProviders({ children, screenshotReviewBootstrap }: AppProvidersProps) {
   const [isQueryPersistenceReady, setIsQueryPersistenceReady] = useState(false);
   const appStartedAtRef = useRef(Date.now());
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -148,7 +153,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <SyncProvider>
           {isQueryPersistenceReady ? (
-            <AuthProvider>
+            <AuthProvider screenshotReviewBootstrap={screenshotReviewBootstrap}>
               <ErrorToastProvider>{children}</ErrorToastProvider>
             </AuthProvider>
           ) : (

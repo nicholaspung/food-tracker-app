@@ -70,6 +70,30 @@ describe('pocketbaseGateway', () => {
     });
   });
 
+  it('forwards AbortSignal to paginated collection requests', async () => {
+    const abortController = new AbortController();
+
+    mockedPocketbaseModule.__mockGetList.mockResolvedValue({
+      items: [],
+      page: 1,
+      perPage: 20,
+      totalItems: 0,
+      totalPages: 1,
+    });
+
+    await listCollectionPage('restaurants', {
+      page: 1,
+      pageSize: 20,
+      filter: 'name ~ "pizza"',
+      signal: abortController.signal,
+    });
+
+    expect(mockedPocketbaseModule.__mockGetList).toHaveBeenCalledWith(1, 20, {
+      filter: 'name ~ "pizza"',
+      signal: abortController.signal,
+    });
+  });
+
   it('omits undefined filters from multi-page collection requests', async () => {
     const mockCollection = mockedPocketbaseModule.pb.collection as jest.Mock;
 

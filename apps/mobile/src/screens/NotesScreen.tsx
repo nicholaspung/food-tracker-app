@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -19,13 +19,12 @@ import {
 import {
   buildPocketBaseFileUrl,
   deleteNote,
-  getNoteCountSummary,
-  listNotePhotosForNoteIds,
-  listNotesPage,
+  listNotePhotosForNote,
+  listNotesOverviewPage,
+  type NoteOverviewItemRecord,
   type NotePhotoRecord,
   type NoteRecord,
 } from '../features';
-import { useIncrementalIdQuery } from '../hooks/useIncrementalIdQuery';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
@@ -74,6 +73,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   photoWrap: {
     position: 'relative',
+  },
+  photoWrapLoading: {
+    opacity: 0.6,
   },
   photoThumb: {
     backgroundColor: theme.colors.border.subtle,
@@ -171,28 +173,25 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [pendingDeleteNote, setPendingDeleteNote] = useState<NoteRecord | null>(null);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
+  const [loadingPhotoNoteId, setLoadingPhotoNoteId] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const noteStatusFilter = resolveNoteStatusFilter(activeFilter);
 
   const notesQuery = useInfiniteQuery({
-    queryKey: ['feature', 'notes', 'paginated', noteStatusFilter],
+    queryKey: ['feature', 'notes', 'overview', noteStatusFilter],
     queryFn: ({ pageParam }) =>
-      listNotesPage({
+      listNotesOverviewPage({
         page: pageParam,
         pageSize: 20,
         status: noteStatusFilter,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
-  });
-  const notesSummaryQuery = useQuery({
-    queryKey: ['feature', 'notes', 'summary'],
-    queryFn: getNoteCountSummary,
   });
   const notesState = usePaginatedQueryState({
     data: notesQuery.data,
@@ -202,29 +201,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     isSuccess: notesQuery.isSuccess,
   });
   const notes = notesState.items;
-  const visibleNoteIds = useMemo(() => notes.map((note) => note.id), [notes]);
-
-  const notePhotosQuery = useIncrementalIdQuery({
-    queryKey: ['feature', 'notePhotos', 'notes'],
-    ids: visibleNoteIds,
-    fetchByIds: listNotePhotosForNoteIds,
-    getRecordIds: (photo) => [photo.note],
-    getRecordKey: (photo) => photo.id,
-  });
-  const hasNotesRefreshError = notesState.hasRefreshError || notePhotosQuery.isError;
-  const unusedCount = notesSummaryQuery.data?.draftCount ?? notes.filter((note) => note.status === 'draft').length;
-  const usedCount = notesSummaryQuery.data?.usedCount ?? notes.filter((note) => note.status === 'used').length;
-  const allCount = notesSummaryQuery.data?.allCount ?? notes.length;
-
-  const notePhotosByNoteId = useMemo(() => {
-    const map = new Map<string, NotePhotoRecord[]>();
-    for (const photo of notePhotosQuery.data ?? []) {
-      const existing = map.get(photo.note) ?? [];
-      existing.push(photo);
-      map.set(photo.note, existing);
-    }
-    return map;
-  }, [notePhotosQuery.data]);
+  const noteSummary = notesQuery.data?.pages[0]?.summary;
+  const unusedCount = noteSummary?.draftCount ?? notes.filter((note) => note.status === 'draft').length;
+  const usedCount = noteSummary?.usedCount ?? notes.filter((note) => note.status === 'used').length;
+  const allCount = noteSummary?.allCount ?? notes.length;
 
   const filterOptions = useMemo<readonly SegmentedControlOption<NotesFilter>[]>(
     () => [
@@ -274,6 +254,32 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     setPendingDeleteNote(null);
   }, [isDeletingNote]);
 
+  const handleOpenNotePhotos = useCallback(async (note: NoteOverviewItemRecord) => {
+    if (!note.photoPreview) {
+      return;
+    }
+
+    setActionErrorMessage(null);
+    setLoadingPhotoNoteId(note.id);
+
+    try {
+      const notePhotos = await queryClient.fetchQuery({
+        queryKey: ['feature', 'notePhotos', note.id],
+        queryFn: () => listNotePhotosForNote(note.id),
+      });
+      if (notePhotos.length === 0) {
+        setActionErrorMessage('Could not load note photos.');
+        return;
+      }
+      openPhotoViewer(notePhotos);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load note photos.';
+      setActionErrorMessage(message);
+    } finally {
+      setLoadingPhotoNoteId((current) => (current === note.id ? null : current));
+    }
+  }, [openPhotoViewer, queryClient]);
+
   const handleDelete = useCallback(async () => {
     if (!pendingDeleteNote) {
       return;
@@ -284,7 +290,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       wasUsed: pendingDeleteNote.status === 'used',
     });
 
-    setErrorMessage(null);
+    setActionErrorMessage(null);
     setIsDeletingNote(true);
 
     try {
@@ -308,7 +314,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       setPendingDeleteNote(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete note.';
-      setErrorMessage(message);
+      setActionErrorMessage(message);
     } finally {
       setIsDeletingNote(false);
     }
@@ -349,26 +355,20 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           value={activeFilter}
         />
 
-        {errorMessage ? <ErrorState description={errorMessage} title="Notes update failed" /> : null}
+        {actionErrorMessage ? <ErrorState description={actionErrorMessage} title="Notes action failed" /> : null}
 
         <PageErrorToast
           errorMessage={
             notesState.hasBlockingError
               ? 'Could not load notes.'
-              : hasNotesRefreshError
-                ? notePhotosQuery.isError
-                  ? 'Could not refresh note photos. Showing saved notes.'
-                  : 'Could not refresh notes. Showing saved data.'
+              : notesState.hasRefreshError
+                ? 'Could not refresh notes. Showing saved data.'
                 : null
           }
           title="Notes unavailable"
           actionLabel="Retry"
           onAction={() => {
             void notesQuery.refetch();
-            void notesSummaryQuery.refetch();
-            if (visibleNoteIds.length > 0) {
-              void notePhotosQuery.refetch();
-            }
           }}
         />
 
@@ -385,10 +385,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
             description="Could not load notes."
             onRetry={() => {
               void notesQuery.refetch();
-              void notesSummaryQuery.refetch();
-              if (visibleNoteIds.length > 0) {
-                void notePhotosQuery.refetch();
-              }
             }}
             title="Notes unavailable"
           />
@@ -417,13 +413,13 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
         {!notesQuery.isLoading && !notesState.hasBlockingError
           ? notes.map((note) => {
-              const notePhotos = notePhotosByNoteId.get(note.id) ?? [];
-              const primaryPhoto = notePhotos[0];
-              const thumbnailUrl = primaryPhoto
+              const photoPreview = note.photoPreview;
+              const extraPhotoCount = photoPreview ? Math.max(photoPreview.count - 1, 0) : 0;
+              const thumbnailUrl = photoPreview
                 ? buildPocketBaseFileUrl({
                     collectionName: 'note_photos',
-                    recordId: primaryPhoto.id,
-                    filename: primaryPhoto.photo,
+                    recordId: photoPreview.id,
+                    filename: photoPreview.photo,
                     thumb: '100x100',
                   })
                 : null;
@@ -481,7 +477,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                             source: 'NotesScreen',
                             noteStatus: note.status,
                           });
-                          setErrorMessage(null);
+                          setActionErrorMessage(null);
                           setPendingDeleteNote(note);
                         }}
                         style={styles.iconAction}
@@ -496,16 +492,20 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                     {thumbnailUrl ? (
                       <Pressable
                         accessibilityLabel={`View photos for note ${note.id}`}
+                        disabled={loadingPhotoNoteId === note.id}
                         onPress={() => {
-                          openPhotoViewer(notePhotos);
+                          void handleOpenNotePhotos(note);
                         }}
-                        style={styles.photoWrap}
+                        style={[
+                          styles.photoWrap,
+                          loadingPhotoNoteId === note.id ? styles.photoWrapLoading : null,
+                        ]}
                       >
                         <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
-                        {notePhotos.length > 1 ? (
+                        {extraPhotoCount > 0 ? (
                           <View style={styles.photoCountBadge}>
                             <Text style={styles.photoCountText} variant="captionStrong">
-                              +{notePhotos.length - 1}
+                              +{extraPhotoCount}
                             </Text>
                           </View>
                         ) : null}

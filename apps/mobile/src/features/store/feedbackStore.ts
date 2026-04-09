@@ -61,6 +61,28 @@ interface FeedbackMessageCollectionRecord {
   };
 }
 
+interface FeedbackReplyResponse {
+  feedback: FeedbackCollectionRecord;
+  message: FeedbackMessageCollectionRecord;
+  success: boolean;
+}
+
+interface MarkFeedbackAsReadResponse {
+  feedback: FeedbackCollectionRecord;
+  markedRead?: boolean;
+  success: boolean;
+}
+
+interface FeedbackMarkReadResult {
+  feedback: FeedbackRecord;
+  markedRead: boolean;
+}
+
+interface FeedbackReplyResult {
+  feedback: FeedbackRecord;
+  message: FeedbackMessageRecord;
+}
+
 function normalizeFeedbackStatus(status: unknown): FeedbackRecord['status'] {
   if (status === 'open' || status === 'in_progress' || status === 'resolved' || status === 'closed') {
     return status;
@@ -243,54 +265,46 @@ export async function listFeedbackMessagesPage(
   return mapPaginatedResult(pageResult, pageResult.items.map(mapFeedbackMessageRecord));
 }
 
-export async function markFeedbackAsRead(feedbackId: string): Promise<boolean> {
+export async function markFeedbackAsRead(feedbackId: string): Promise<FeedbackMarkReadResult> {
   return trackFeatureMutation('feedback.mark_read', async () => {
-    const feedback = await getFeedbackById(feedbackId);
-    if (feedback.userUnreadCount > 0) {
-      await pb.collection('feedback').update(feedbackId, {
-        user_unread_count: 0,
-      });
-      return true;
-    }
+    const response = await sendApiRequest<MarkFeedbackAsReadResponse>(
+      `/api/feedback/${encodeURIComponent(feedbackId)}/mark-read`,
+      {
+        method: 'POST',
+      },
+    );
 
-    return false;
+    return {
+      feedback: mapFeedbackRecord(response.feedback),
+      markedRead: response.markedRead === true,
+    };
   });
 }
 
-export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Promise<void> {
+export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Promise<FeedbackReplyResult> {
   return trackFeatureMutation(
     'feedback.message.send',
     async () => {
-      const userId = getAuthenticatedUserId();
       const trimmedMessage = input.message.trim();
 
       if (!trimmedMessage) {
         throw new Error('Message is required.');
       }
 
-      const feedback = await getFeedbackById(input.feedbackId);
+      const response = await sendApiRequest<FeedbackReplyResponse>(
+        `/api/feedback/${encodeURIComponent(input.feedbackId)}/reply`,
+        {
+          method: 'POST',
+          body: {
+            message: trimmedMessage,
+          },
+        },
+      );
 
-      await pb.collection('feedback_messages').create({
-        feedback: input.feedbackId,
-        user: userId,
-        message: trimmedMessage,
-        is_admin_message: false,
-      });
-
-      const feedbackUpdate: Record<string, string | number> = {
-        last_message_at: nowIso(),
-        admin_unread_count: feedback.adminUnreadCount + 1,
+      return {
+        feedback: mapFeedbackRecord(response.feedback),
+        message: mapFeedbackMessageRecord(response.message),
       };
-
-      const hasActiveAssignedAdmin =
-        Boolean(feedback.assignedAdminId) &&
-        (!feedback.adminReplyDeadlineAt || new Date(feedback.adminReplyDeadlineAt).getTime() > Date.now());
-
-      if (hasActiveAssignedAdmin) {
-        feedbackUpdate.admin_reply_deadline_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      }
-
-      await pb.collection('feedback').update(input.feedbackId, feedbackUpdate);
     },
     {
       messageLength: input.message.trim().length,

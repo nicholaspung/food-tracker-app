@@ -23,6 +23,8 @@ const defaultRecentRestaurantLimit = 12
 const maxRecentRestaurantLimit = 24
 const defaultHomeFeedPageSize = 20
 const maxHomeFeedPageSize = 50
+const defaultNotesPageSize = 20
+const maxNotesPageSize = 50
 const defaultVisitsPageSize = 20
 const maxVisitsPageSize = 50
 
@@ -30,6 +32,36 @@ type noteSummaryResponse struct {
 	AllCount   int `db:"allCount" json:"allCount"`
 	DraftCount int `db:"draftCount" json:"draftCount"`
 	UsedCount  int `db:"usedCount" json:"usedCount"`
+}
+
+type notesOverviewPhotoPreviewResponse struct {
+	ID    string `json:"id"`
+	Photo string `json:"photo"`
+	Count int    `json:"count"`
+}
+
+type notesOverviewItemResponse struct {
+	ID               string                             `json:"id"`
+	Content          string                             `json:"content"`
+	LocationText     string                             `json:"locationText,omitempty"`
+	Status           string                             `json:"status"`
+	RestaurantID     string                             `json:"restaurantId,omitempty"`
+	RestaurantName   string                             `json:"restaurantName,omitempty"`
+	UsedInVisitID    string                             `json:"usedInVisitId,omitempty"`
+	UsedInFoodItemID string                             `json:"usedInFoodItemId,omitempty"`
+	CreatedAt        string                             `json:"createdAt"`
+	UpdatedAt        string                             `json:"updatedAt"`
+	PhotoPreview     *notesOverviewPhotoPreviewResponse `json:"photoPreview,omitempty"`
+}
+
+type notesOverviewResponse struct {
+	Items       []notesOverviewItemResponse `json:"items"`
+	Summary     noteSummaryResponse         `json:"summary"`
+	Page        int                         `json:"page"`
+	PageSize    int                         `json:"pageSize"`
+	TotalItems  int                         `json:"totalItems"`
+	TotalPages  int                         `json:"totalPages"`
+	HasNextPage bool                        `json:"hasNextPage"`
 }
 
 type friendsSummaryResponse struct {
@@ -174,6 +206,33 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, summary)
 	})
+
+	se.Router.GET("/api/notes/overview", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		status, err := normalizeNotesStatus(e.Request.URL.Query().Get("status"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		page, pageSize, err := parseNotesPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := getNotesOverviewResponse(app, e.Auth.Id, page, pageSize, status)
+		if err != nil {
+			log.Printf("Failed to load notes overview for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load notes overview", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
 
 	se.Router.GET("/api/friends/summary", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
@@ -585,6 +644,46 @@ func normalizeVisitsScope(raw string) (string, error) {
 	}
 }
 
+func normalizeNotesStatus(raw string) (string, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "all":
+		return "all", nil
+	case "draft":
+		return "draft", nil
+	case "used":
+		return "used", nil
+	default:
+		return "", fmt.Errorf("invalid note status")
+	}
+}
+
+func parseNotesPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page := 1
+	if strings.TrimSpace(pageRaw) != "" {
+		parsedPage, err := strconv.Atoi(pageRaw)
+		if err != nil || parsedPage < 1 {
+			return 0, 0, fmt.Errorf("invalid page")
+		}
+		page = parsedPage
+	}
+
+	pageSize := defaultNotesPageSize
+	if strings.TrimSpace(pageSizeRaw) != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeRaw)
+		if err != nil || parsedPageSize < 1 {
+			return 0, 0, fmt.Errorf("invalid pageSize")
+		}
+
+		if parsedPageSize > maxNotesPageSize {
+			pageSize = maxNotesPageSize
+		} else {
+			pageSize = parsedPageSize
+		}
+	}
+
+	return page, pageSize, nil
+}
+
 func parseVisitsPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
 	page := 1
 	if strings.TrimSpace(pageRaw) != "" {
@@ -769,6 +868,124 @@ func getVisitsPageResponse(
 	}
 
 	return response, nil
+}
+
+func getNotesOverviewResponse(
+	app core.App,
+	userID string,
+	page int,
+	pageSize int,
+	status string,
+) (notesOverviewResponse, error) {
+	response := notesOverviewResponse{
+		Items:    []notesOverviewItemResponse{},
+		Summary:  noteSummaryResponse{},
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	summary, err := getNoteSummary(app, userID)
+	if err != nil {
+		return response, err
+	}
+	response.Summary = summary
+
+	switch status {
+	case "draft":
+		response.TotalItems = summary.DraftCount
+	case "used":
+		response.TotalItems = summary.UsedCount
+	default:
+		response.TotalItems = summary.AllCount
+	}
+
+	if response.TotalItems == 0 {
+		return response, nil
+	}
+
+	response.TotalPages = (response.TotalItems + pageSize - 1) / pageSize
+	response.HasNextPage = page < response.TotalPages
+
+	filter := "user = {:userId}"
+	params := dbx.Params{
+		"userId": userID,
+	}
+	if status == "draft" || status == "used" {
+		filter += " && status = {:status}"
+		params["status"] = status
+	}
+
+	noteRecords, err := app.FindRecordsByFilter(
+		"notes",
+		filter,
+		"-updated,-created",
+		pageSize,
+		(page-1)*pageSize,
+		params,
+	)
+	if err != nil {
+		return response, err
+	}
+	if len(noteRecords) == 0 {
+		return response, nil
+	}
+
+	noteIDs := make([]string, 0, len(noteRecords))
+	restaurantIDs := make([]string, 0, len(noteRecords))
+	restaurantIDSet := map[string]struct{}{}
+	for _, note := range noteRecords {
+		noteIDs = append(noteIDs, note.Id)
+		restaurantIDs = appendUniqueTrimmedID(restaurantIDs, restaurantIDSet, note.GetString("restaurant"))
+	}
+
+	restaurantRecords, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	if err != nil {
+		return response, err
+	}
+	restaurantsByID := mapRecordsByID(restaurantRecords)
+
+	photoRecords, err := findRecordsByRelationValues(app, "note_photos", "note", noteIDs, "note,created")
+	if err != nil {
+		return response, err
+	}
+	photosByNoteID := groupRecordsByField(photoRecords, "note")
+
+	response.Items = make([]notesOverviewItemResponse, 0, len(noteRecords))
+	for _, note := range noteRecords {
+		restaurantID := strings.TrimSpace(note.GetString("restaurant"))
+		item := notesOverviewItemResponse{
+			ID:               note.Id,
+			Content:          strings.TrimSpace(note.GetString("content")),
+			LocationText:     strings.TrimSpace(note.GetString("location_text")),
+			Status:           normalizeNoteStatusValue(note.GetString("status")),
+			RestaurantID:     restaurantID,
+			RestaurantName:   resolveRestaurantName(restaurantsByID[restaurantID]),
+			UsedInVisitID:    strings.TrimSpace(note.GetString("usedInVisit")),
+			UsedInFoodItemID: strings.TrimSpace(note.GetString("usedInFoodItem")),
+			CreatedAt:        strings.TrimSpace(note.GetString("created")),
+			UpdatedAt:        strings.TrimSpace(note.GetString("updated")),
+		}
+
+		if notePhotos := photosByNoteID[note.Id]; len(notePhotos) > 0 {
+			item.PhotoPreview = &notesOverviewPhotoPreviewResponse{
+				ID:    notePhotos[0].Id,
+				Photo: strings.TrimSpace(notePhotos[0].GetString("photo")),
+				Count: len(notePhotos),
+			}
+		}
+
+		response.Items = append(response.Items, item)
+	}
+
+	return response, nil
+}
+
+func normalizeNoteStatusValue(status string) string {
+	if strings.TrimSpace(status) == "used" {
+		return "used"
+	}
+
+	return "draft"
 }
 
 func parseHomeFeedPagination(pageRaw string, pageSizeRaw string) (int, int, error) {

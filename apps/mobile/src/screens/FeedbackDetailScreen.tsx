@@ -13,11 +13,17 @@ import {
   StatusPill,
 } from '../components/shared';
 import {
+  type FeedbackMessageListQueryData,
+  type FeedbackListQueryData,
+  type FeedbackRecord,
   feedbackQueryKeys,
   getFeedbackById,
   listFeedbackMessagesPage,
   markFeedbackAsRead,
+  mergeFeedbackRecord,
+  prependFeedbackMessageListItem,
   sendFeedbackMessage,
+  upsertFeedbackListItem,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
@@ -253,7 +259,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   });
 
   const messagesQuery = useInfiniteQuery({
-    queryKey: ['feature', 'feedback-messages', feedbackId],
+    queryKey: feedbackQueryKeys.messages(feedbackId),
     queryFn: ({ pageParam }) =>
       listFeedbackMessagesPage(feedbackId, {
         page: pageParam,
@@ -291,6 +297,21 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const hasMessagesRefreshError = messagesState.hasRefreshError;
   const latestMessageId = displayedMessages[displayedMessages.length - 1]?.id;
 
+  const applyFeedbackThreadUpdate = useCallback(
+    (nextFeedback: FeedbackRecord, options?: { moveToFront?: boolean }) => {
+      queryClient.setQueryData(
+        feedbackQueryKeys.detail(feedbackId),
+        (currentFeedback: FeedbackRecord | undefined) => mergeFeedbackRecord(currentFeedback, nextFeedback),
+      );
+      queryClient.setQueryData<FeedbackListQueryData | undefined>(feedbackQueryKeys.list, (currentFeedback) =>
+        upsertFeedbackListItem(currentFeedback, nextFeedback, {
+          moveToFront: options?.moveToFront,
+        }),
+      );
+    },
+    [feedbackId, queryClient],
+  );
+
   const scheduleScrollToLatestMessage = useCallback((animated = true, delay = 0) => {
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
@@ -303,7 +324,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   }, []);
 
   useEffect(() => {
-    if (!isFocused || !feedbackQuery.data) {
+    if (!isFocused || !feedbackQuery.data || feedbackQuery.data.userUnreadCount <= 0) {
       return;
     }
 
@@ -311,13 +332,12 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
     const markRead = async () => {
       try {
-        const didMarkAsRead = await markFeedbackAsRead(feedbackId);
-        if (isCancelled || !didMarkAsRead) {
+        const result = await markFeedbackAsRead(feedbackId);
+        if (isCancelled || !result.markedRead) {
           return;
         }
 
-        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.root });
-        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.detail(feedbackId) });
+        applyFeedbackThreadUpdate(result.feedback);
       } catch {
         // Keep thread available even if read-marking fails.
       }
@@ -328,7 +348,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     return () => {
       isCancelled = true;
     };
-  }, [feedbackId, feedbackQuery.data, isFocused, queryClient]);
+  }, [applyFeedbackThreadUpdate, feedbackId, feedbackQuery.data, isFocused]);
 
   useEffect(() => {
     if (!latestMessageId) {
@@ -380,7 +400,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
           message: draftMessage,
         });
         setDraftMessage('');
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback-messages', feedbackId] });
+        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.messages(feedbackId) });
         trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
           source: 'FeedbackDetailScreen',
           feedbackId,
@@ -390,15 +410,17 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       }
 
       await queueWrite('feedback.message.send');
-      await sendFeedbackMessage({
+      const result = await sendFeedbackMessage({
         feedbackId,
         message: draftMessage,
       });
 
       setDraftMessage('');
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'feedback-messages', feedbackId] });
-      await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.root });
-      await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.detail(feedbackId) });
+      applyFeedbackThreadUpdate(result.feedback, { moveToFront: true });
+      queryClient.setQueryData<FeedbackMessageListQueryData | undefined>(
+        feedbackQueryKeys.messages(feedbackId),
+        (currentMessages) => prependFeedbackMessageListItem(currentMessages, result.message),
+      );
       trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
         source: 'FeedbackDetailScreen',
         feedbackId,

@@ -1,4 +1,5 @@
 import {
+  type QueryFunctionContext,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -44,6 +45,7 @@ const MONTHLY_USAGE_QUERY_KEY = ['feature', 'usage', 'monthly', 'actual'] as con
 const RESTAURANT_SELECTION_PAGE_SIZE = 12;
 const MIN_SERVER_RESTAURANT_SEARCH_LENGTH = 2;
 const RESTAURANT_SEARCH_DEBOUNCE_MS = 250;
+type RestaurantSearchQueryKey = readonly ['feature', 'restaurants', 'search', string, number, number];
 
 interface RestaurantSelectionUsageOptions {
   enforceQuota: boolean;
@@ -186,15 +188,19 @@ export function buildRestaurantSearchQueryOptions({
   pageSize?: number;
   search: string;
 }) {
+  const queryKey = ['feature', 'restaurants', 'search', search, 1, pageSize] as const;
+
   return {
     enabled,
-    queryFn: async () =>
+    queryFn: async ({
+      signal,
+    }: QueryFunctionContext<RestaurantSearchQueryKey>) =>
       searchRestaurantsPage({
         page: 1,
         pageSize,
         search,
-      }),
-    queryKey: ['feature', 'restaurants', 'search', search, 1, pageSize] as const,
+      }, { signal }),
+    queryKey,
   };
 }
 

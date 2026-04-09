@@ -1,4 +1,4 @@
-export interface IncrementalIdQueryState<TRecord, TId extends string> {
+interface IncrementalIdQueryState<TRecord, TId extends string> {
   loadedIds: TId[];
   records: TRecord[];
 }
@@ -95,14 +95,6 @@ function normalizeHistoryLimit(maxRetainedHistoryIds: number): number {
   return Math.max(0, Math.floor(maxRetainedHistoryIds));
 }
 
-export function createEmptyIncrementalIdQueryState<TRecord, TId extends string>():
-  IncrementalIdQueryState<TRecord, TId> {
-  return {
-    loadedIds: [],
-    records: [],
-  };
-}
-
 export function pruneIncrementalIdQueryState<TRecord, TId extends string>(
   currentState: IncrementalIdQueryState<TRecord, TId>,
   visibleIds: readonly TId[],
@@ -179,5 +171,3 @@ export function updateIncrementalIdQueryState<TRecord, TId extends string>(
     maxRetainedHistoryIds,
   );
 }
-
-export { filterRecordsByIds };

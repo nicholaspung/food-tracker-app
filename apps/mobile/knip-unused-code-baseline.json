@@ -47,8 +47,6 @@
     "export:apps/mobile/src/features/store/visitsStore.ts#listVisitsPage",
     "export:apps/mobile/src/hooks/useRestaurantSelectionFlow.ts#buildRecentRestaurantsQueryOptions",
     "export:apps/mobile/src/hooks/useRestaurantSelectionFlow.ts#buildRestaurantMenuItemsQueryOptions",
-    "export:apps/mobile/src/hooks/useRestaurantSelectionFlow.ts#buildRestaurantSearchQueryOptions",
-    "export:apps/mobile/src/screens/AccessDeniedScreen.tsx#AccessDeniedScreen",
-    "file:apps/mobile/e2e/review-ui/app.js"
+    "export:apps/mobile/src/screens/AccessDeniedScreen.tsx#AccessDeniedScreen"
   ]
 }

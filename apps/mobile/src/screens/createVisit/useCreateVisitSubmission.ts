@@ -6,6 +6,7 @@ import {
   formatLimitExceededMessage,
   linkVisitToListBookmark,
   parseLimitExceededError,
+  restaurantListQueryKeys,
   updateVisit,
   type MonthlyUsageSnapshot,
   type UpdateVisitInput,
@@ -262,10 +263,10 @@ export function useCreateVisitSubmission({
             });
             await Promise.all([
               queryClient.invalidateQueries({
-                queryKey: ['feature', 'restaurantListItems'],
+                queryKey: restaurantListQueryKeys.itemsRoot,
               }),
               queryClient.invalidateQueries({
-                queryKey: ['feature', 'restaurantListDetail'],
+                queryKey: restaurantListQueryKeys.detailRoot,
               }),
             ]);
           } catch {

@@ -232,6 +232,7 @@ func main() {
 	hooks.RegisterUserProfileSecurityHooks(app)
 	hooks.RegisterRestaurantListCountHooks(app)
 	hooks.RegisterFeedbackSecurityHooks(app)
+	hooks.RegisterFeedbackMessageSecurityHooks(app)
 	hooks.RegisterModerationHooks(app)
 	hooks.RegisterAuditHooks(app)
 

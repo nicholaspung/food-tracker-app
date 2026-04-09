@@ -57,6 +57,10 @@ interface RestaurantUpsertApiRecord {
   updated?: string;
 }
 
+interface SearchRestaurantsPageOptions {
+  signal?: AbortSignal;
+}
+
 export interface UpsertRestaurantInput {
   restaurantName: string;
   location?: string;
@@ -135,6 +139,7 @@ export async function upsertRestaurantRecord(input: UpsertRestaurantInput): Prom
 
 export async function searchRestaurantsPage(
   input: SearchRestaurantsPageInput,
+  options?: SearchRestaurantsPageOptions,
 ): Promise<PaginatedResult<RestaurantRecord>> {
   if (!pb.authStore.record?.id) {
     return createEmptyPaginatedResult(input);
@@ -152,6 +157,7 @@ export async function searchRestaurantsPage(
     filter: buildSearchFilter(['name', 'location', 'cuisineType'], trimmedSearch),
     sort: 'name',
     fields: RESTAURANT_LIST_FIELDS,
+    signal: options?.signal,
   });
 
   return mapPaginatedResult(pageResult, pageResult.items.map(mapRestaurantCollectionRecord));

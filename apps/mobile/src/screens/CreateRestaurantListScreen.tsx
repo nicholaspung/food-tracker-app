@@ -9,7 +9,12 @@ import {
   VisibilityOptionSelector,
   type VisibilityOptionValue,
 } from '../components/shared';
-import { createRestaurantList, resolveDefaultListVisibilityFromAuth, type RestaurantListRecord } from '../features';
+import {
+  createRestaurantList,
+  invalidateRestaurantListCollectionQueries,
+  resolveDefaultListVisibilityFromAuth,
+  type RestaurantListRecord,
+} from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -95,7 +100,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
 
       if (!isOnline) {
         await queueFeatureOutbox('list.create', listInput);
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+        await invalidateRestaurantListCollectionQueries(queryClient);
         trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'CreateRestaurantListScreen',
           queued: true,
@@ -109,7 +114,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
       await queueWrite('list.create');
       const createdList = await createRestaurantList(listInput);
 
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+      await invalidateRestaurantListCollectionQueries(queryClient);
       trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
         source: 'CreateRestaurantListScreen',
         queued: false,

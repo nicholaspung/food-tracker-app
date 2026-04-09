@@ -154,6 +154,16 @@ export interface NoteCountSummary {
   usedCount: number;
 }
 
+export interface NotePhotoPreviewSummary {
+  id: string;
+  photo: string;
+  count: number;
+}
+
+export interface NoteOverviewItemRecord extends NoteRecord {
+  photoPreview?: NotePhotoPreviewSummary;
+}
+
 export interface FriendsCountSummary {
   friendsCount: number;
   requestsCount: number;
@@ -218,6 +228,10 @@ export interface PaginatedResult<T> {
   totalItems: number;
   totalPages: number;
   hasNextPage: boolean;
+}
+
+export interface NoteOverviewPage extends PaginatedResult<NoteOverviewItemRecord> {
+  summary: NoteCountSummary;
 }
 
 interface PaginationInput {
@@ -479,14 +493,12 @@ export {
   getRestaurantListCandidateRestaurants,
   getRestaurantListDetail,
   getRestaurantListById,
-  getRestaurantListDetailPage,
   getRestaurantListItemLinkFoodItemIds,
   linkVisitToListBookmark,
   listMyBookmarkedListItemLinksForFoodItemIds,
   listRestaurantListItemLinksForRestaurantIds,
   listRestaurantListItemsPage,
   listRestaurantListNotesForRestaurantIds,
-  listRestaurantListVisitedRestaurantsPage,
   listRestaurantListsPage,
   moveRestaurantListRestaurant,
   removeRestaurantFromList,
@@ -500,10 +512,8 @@ export {
   createNote,
   deleteNote,
   getNoteById,
-  getNoteCountSummary,
   listNotePhotosForNote,
-  listNotePhotosForNoteIds,
-  listNotesPage,
+  listNotesOverviewPage,
   markNoteUsed,
   updateNote,
 } from './notesStore';

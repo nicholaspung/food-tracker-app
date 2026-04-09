@@ -17,7 +17,9 @@ import {
 import { env } from '../config/env';
 import {
   createDefaultRestaurantList,
+  invalidateRestaurantListCollectionQueries,
   listRestaurantListsPage,
+  restaurantListQueryKeys,
   type RestaurantListRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
@@ -307,7 +309,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const trimmedSearchQuery = searchQuery.trim();
 
   const myListsQuery = useInfiniteQuery({
-    queryKey: ['feature', 'restaurantLists', 'my', 'paginated', trimmedSearchQuery],
+    queryKey: restaurantListQueryKeys.paginated('my', trimmedSearchQuery),
     queryFn: ({ pageParam }) =>
       listRestaurantListsPage({
         scope: 'my',
@@ -321,7 +323,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   });
 
   const friendsListsQuery = useInfiniteQuery({
-    queryKey: ['feature', 'restaurantLists', 'friends', 'paginated', trimmedSearchQuery],
+    queryKey: restaurantListQueryKeys.paginated('friends', trimmedSearchQuery),
     queryFn: ({ pageParam }) =>
       listRestaurantListsPage({
         scope: 'friends',
@@ -381,13 +383,13 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       try {
         if (!isOnline) {
           await queueFeatureOutbox('list.default.create', {});
-          await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+          await invalidateRestaurantListCollectionQueries(queryClient, 'my');
           return;
         }
 
         await queueWrite('list.default.create');
         await createDefaultRestaurantList();
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'restaurantLists'] });
+        await invalidateRestaurantListCollectionQueries(queryClient, 'my');
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not prepare your Saved list.';
         setErrorMessage(message);
