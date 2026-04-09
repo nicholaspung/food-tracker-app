@@ -1,0 +1,40 @@
+name: Mobile Native Entrypoint Guard
+
+on:
+  pull_request:
+    paths:
+      - "app.config.js"
+      - "app.json"
+      - "ios/**"
+      - "package.json"
+      - "scripts/verify-mobile-native-entrypoint.mjs"
+      - ".github/workflows/mobile-native-entrypoint-guard.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "app.config.js"
+      - "app.json"
+      - "ios/**"
+      - "package.json"
+      - "scripts/verify-mobile-native-entrypoint.mjs"
+      - ".github/workflows/mobile-native-entrypoint-guard.yml"
+  workflow_dispatch:
+
+jobs:
+  verify-native-entrypoint:
+    name: Verify Mobile Native Entrypoint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Verify native mobile entrypoint
+        run: node scripts/verify-mobile-native-entrypoint.mjs

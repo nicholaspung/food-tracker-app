@@ -34,9 +34,9 @@ export async function deleteAccount(currentPassword: string): Promise<void> {
 
     await sendApiRequest('/api/account/delete', {
       method: 'POST',
-      body: JSON.stringify({
+      body: {
         currentPassword,
-      }),
+      },
     });
   });
 }

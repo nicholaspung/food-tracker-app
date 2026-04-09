@@ -227,7 +227,7 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.muted,
   },
   destructiveButton: {
-    backgroundColor: theme.colors.text.danger,
+    backgroundColor: theme.colors.fill.danger,
   },
   deleteTriggerButton: {
     minHeight: 36,

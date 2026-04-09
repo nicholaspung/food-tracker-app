@@ -74,8 +74,8 @@ const useStyles = createThemedStyles((theme) => ({
     paddingVertical: theme.spacing.xs,
   },
   messageBubbleMine: {
-    backgroundColor: theme.colors.text.brand,
-    borderColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.fill.brand,
+    borderColor: theme.colors.fill.brand,
   },
   messageBubbleOther: {
     backgroundColor: theme.colors.background.surface,

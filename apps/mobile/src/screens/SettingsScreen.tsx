@@ -6,10 +6,12 @@ import type { RecordModel } from 'pocketbase';
 
 import { BackHeaderScreenScaffold, EmptyState, SectionCard, Skeleton, VisibilityOptionSelector } from '../components/shared';
 import { getCollectionRecord, saveAuthRecord, updateCollectionRecord } from '../features';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { getAuthRecord } from '../features/store/pocketbaseGateway';
+import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -70,7 +72,8 @@ function mapUserSettings(record: UserSettingsRecord): UserSettings {
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const styles = useStyles();
   const { user } = useAuth();
-  const queueWrite = useQueuedWrite();
+  const { isOnline } = useConnectivity();
+  const queueFeatureOutbox = useFeatureOutboxQueue();
   const queryClient = useQueryClient();
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>('friends');
   const [restaurantVisibility, setRestaurantVisibility] = useState<RestaurantVisibility>('private');
@@ -133,17 +136,50 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       restaurantVisibility,
       listVisibility,
       hasPendingChanges,
+      isOnline,
     });
     setIsSaving(true);
 
     try {
-      await queueWrite('settings.visibility.save');
-
-      const updatedRecord = await updateCollectionRecord<RecordModel & UserSettingsRecord>('users', user.id, {
+      const settingsUpdate = {
         defaultListVisibility: listVisibility,
         defaultRestaurantVisibility: restaurantVisibility,
         defaultVisitVisibility: visitVisibility,
-      });
+      };
+
+      if (!isOnline) {
+        await queueFeatureOutbox('settings.visibility.save', {
+          userId: user.id,
+          ...settingsUpdate,
+        });
+
+        const currentAuthRecord = getAuthRecord();
+        if (currentAuthRecord) {
+          saveAuthRecord({
+            ...(currentAuthRecord as RecordModel),
+            ...settingsUpdate,
+          } as RecordModel);
+        }
+
+        const nextSettings = mapUserSettings(settingsUpdate);
+        queryClient.setQueryData(['feature', 'settings', user.id], nextSettings);
+        trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
+          source: 'SettingsScreen',
+          userId: user.id,
+          visitVisibility,
+          restaurantVisibility,
+          listVisibility,
+          queued: true,
+        });
+        setSuccessMessage('Settings saved offline and will sync when you reconnect.');
+        return;
+      }
+
+      const updatedRecord = await updateCollectionRecord<RecordModel & UserSettingsRecord>(
+        'users',
+        user.id,
+        settingsUpdate,
+      );
 
       const nextSettings = mapUserSettings(updatedRecord);
       saveAuthRecord(updatedRecord);
@@ -155,6 +191,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         visitVisibility,
         restaurantVisibility,
         listVisibility,
+        queued: false,
       });
       setSuccessMessage('Settings saved successfully.');
     } catch (error) {
@@ -163,6 +200,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
       trackObservabilityEvent('SETTINGS_SAVE_FAILED', {
         source: 'SettingsScreen',
         userId: user.id,
+        isOnline,
         error: message,
       });
     } finally {

@@ -37,8 +37,9 @@
     "mobile:screenshots:review": "node scripts/mobile-screenshot-review-server.mjs",
     "mobile:typecheck": "pnpm --filter @food-tracker/mobile typecheck",
     "mobile:test": "pnpm --filter @food-tracker/mobile test",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "mobile:verify-native-entrypoint": "node scripts/verify-mobile-native-entrypoint.mjs",
+    "android": "pnpm mobile:android",
+    "ios": "pnpm mobile:ios"
   },
   "devDependencies": {
     "browser-sync": "^3.0.3",

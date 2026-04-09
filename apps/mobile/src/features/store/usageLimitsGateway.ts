@@ -128,7 +128,9 @@ export function formatLimitExceededMessage(payload: LimitExceededPayload): strin
   }
 
   if (payload.metric === 'photo_uploads') {
-    return `Photo upload limit reached (${payload.limit}).`;
+    return payload.message === 'Monthly photo upload limit reached.'
+      ? `Photo upload limit reached (${payload.limit}).`
+      : payload.message;
   }
 
   return payload.message;

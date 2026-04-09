@@ -26,6 +26,13 @@ export interface Theme {
       inverse: string;
       overlay: string;
     };
+    fill: {
+      brand: string;
+      info: string;
+      warning: string;
+      danger: string;
+      success: string;
+    };
     text: {
       primary: string;
       secondary: string;
@@ -41,6 +48,7 @@ export interface Theme {
       default: string;
       subtle: string;
       strong: string;
+      brand: string;
       warning: string;
       danger: string;
       success: string;
@@ -82,6 +90,14 @@ export interface Theme {
 }
 
 function createTheme(name: ThemeName, palette: PaletteTokens): Theme {
+  const solidFill = {
+    brand: palette.brand,
+    info: palette.infoText,
+    warning: palette.warningText,
+    danger: palette.dangerText,
+    success: palette.successText,
+  } as const;
+
   return {
     name,
     spacing: spacingTokens,
@@ -96,6 +112,7 @@ function createTheme(name: ThemeName, palette: PaletteTokens): Theme {
         inverse: palette.backgroundInverse,
         overlay: palette.overlay,
       },
+      fill: solidFill,
       text: {
         primary: palette.textPrimary,
         secondary: palette.textSecondary,
@@ -111,13 +128,14 @@ function createTheme(name: ThemeName, palette: PaletteTokens): Theme {
         default: palette.borderDefault,
         subtle: palette.borderSubtle,
         strong: palette.borderStrong,
+        brand: solidFill.brand,
         warning: palette.warningBorder,
         danger: palette.dangerBorder,
         success: palette.successBorder,
         info: palette.infoBorder,
       },
       button: {
-        primaryBg: palette.brand,
+        primaryBg: solidFill.brand,
         primaryPressed: palette.brandStrong,
         primaryDisabledBg: palette.borderStrong,
         primaryText: palette.textInverse,

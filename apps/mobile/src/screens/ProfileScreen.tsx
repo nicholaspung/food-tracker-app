@@ -78,7 +78,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
   optionBadge: {
     alignItems: 'center',
-    backgroundColor: theme.colors.text.danger,
+    backgroundColor: theme.colors.fill.danger,
     borderRadius: theme.radii.pill,
     justifyContent: 'center',
     minWidth: 22,
@@ -89,7 +89,7 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.inverse,
   },
   optionDot: {
-    backgroundColor: theme.colors.text.danger,
+    backgroundColor: theme.colors.fill.danger,
     borderRadius: theme.radii.pill,
     height: 8,
     width: 8,

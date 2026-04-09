@@ -144,11 +144,11 @@ const useStyles = createThemedStyles((
     width: 20,
   },
   cardRadioOuterSelected: {
-    backgroundColor: theme.colors.text.brand,
-    borderColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.fill.brand,
+    borderColor: theme.colors.fill.brand,
   },
   cardRadioInner: {
-    backgroundColor: theme.colors.text.inverse,
+    backgroundColor: theme.colors.background.surface,
     borderRadius: theme.radii.pill,
     height: 8,
     width: 8,

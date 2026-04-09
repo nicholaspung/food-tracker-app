@@ -871,7 +871,7 @@ export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
     summary:
       'Free users now have monthly limits on photo uploads, restaurant searches, and menu scans, with live estimates and clear warnings before you reach a limit. Subscribers and admins are unaffected.',
     features: [
-      'Free users can upload up to 5 photos per month across visits, quick tracks, and photo processing.',
+      'Free users can upload up to 5 photos per month across visits, quick tracks, notes, and photo processing.',
       'Free users have monthly caps on Google Places restaurant searches (text and GPS nearby).',
       'Free users have a monthly cap on AI menu photo scans.',
       'Live photo estimate shown on Visit, Quick Track, and Photo Processing screens.',

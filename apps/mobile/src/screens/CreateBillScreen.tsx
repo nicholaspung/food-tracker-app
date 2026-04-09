@@ -98,7 +98,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
   addItemButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.button.primaryBg,
     borderRadius: theme.radii.md,
     justifyContent: 'center',
     minHeight: theme.sizes.inputMinHeight,
@@ -153,8 +153,8 @@ const useStyles = createThemedStyles((theme) => ({
     paddingVertical: theme.spacing.xxs,
   },
   assignmentChipSelected: {
-    backgroundColor: theme.colors.text.brand,
-    borderColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.fill.brand,
+    borderColor: theme.colors.fill.brand,
   },
   assignmentChipLabel: {
     color: theme.colors.text.secondary,

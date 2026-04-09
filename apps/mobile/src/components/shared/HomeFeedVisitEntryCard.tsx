@@ -94,7 +94,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
   friendBadge: {
     backgroundColor: theme.colors.status.infoBg,
-    borderColor: theme.colors.text.brand,
+    borderColor: theme.colors.border.brand,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
     paddingHorizontal: theme.spacing.xs,

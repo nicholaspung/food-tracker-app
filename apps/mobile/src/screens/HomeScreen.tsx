@@ -194,8 +194,8 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.xs,
   },
   quickActionPrimary: {
-    backgroundColor: theme.colors.text.brand,
-    borderColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.button.primaryBg,
+    borderColor: theme.colors.button.primaryBg,
   },
   quickActionLabel: {
     color: theme.colors.text.primary,

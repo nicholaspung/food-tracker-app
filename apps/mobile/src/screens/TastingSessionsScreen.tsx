@@ -9,7 +9,6 @@ import {
   joinTastingSession,
   listTastingSessions,
 } from '../features';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { useSavedRestaurantSuggestions } from '../hooks/useRestaurantSelectionFlow';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -49,7 +48,6 @@ const useStyles = createThemedStyles((theme) => ({
 export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps) {
   const styles = useStyles();
   const { user } = useAuth();
-  const queueWrite = useQueuedWrite();
   const queryClient = useQueryClient();
 
   const sessionsQuery = useQuery({
@@ -106,7 +104,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     });
 
     try {
-      await queueWrite('tasting-session.create');
       const session = await createTastingSession({
         name,
         restaurantName,
@@ -153,7 +150,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     });
 
     try {
-      await queueWrite('tasting-session.join');
       const session = await joinTastingSession({
         inviteCode: joinCode.trim().toUpperCase(),
         userId: user.id,

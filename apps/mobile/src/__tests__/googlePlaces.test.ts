@@ -1,3 +1,4 @@
+import * as pocketbaseModule from '../lib/pocketbase';
 import { searchAndCacheNearbyRestaurants, searchAndCacheRestaurantsByText } from '../lib/googlePlaces';
 
 jest.mock('../lib/pocketbase', () => ({
@@ -5,66 +6,67 @@ jest.mock('../lib/pocketbase', () => ({
     authStore: {
       token: 'test-token',
     },
-    baseUrl: 'https://example.com',
+    send: jest.fn(),
   },
+  __mockSend: jest.fn(),
+}));
+
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
 }));
 
 describe('googlePlaces', () => {
-  const originalFetch = globalThis.fetch;
-  const fetchMock = jest.fn();
+  const mockedPocketbaseModule = pocketbaseModule as typeof pocketbaseModule & {
+    __mockSend: jest.Mock;
+  };
 
   beforeEach(() => {
-    fetchMock.mockReset();
-    globalThis.fetch = fetchMock as typeof globalThis.fetch;
-  });
-
-  afterAll(() => {
-    globalThis.fetch = originalFetch;
+    const mockSend = mockedPocketbaseModule.pb.send as jest.Mock;
+    mockSend.mockImplementation(mockedPocketbaseModule.__mockSend);
+    mockSend.mockClear();
+    mockedPocketbaseModule.__mockSend.mockReset();
   });
 
   it('posts text search with locationText and returns resolved coordinates plus usage', async () => {
-    fetchMock.mockResolvedValue({
-      json: async () => ({
-        resolvedLocation: {
-          lat: 37.7749,
-          lng: -122.4194,
+    mockedPocketbaseModule.__mockSend.mockResolvedValue({
+      resolvedLocation: {
+        lat: 37.7749,
+        lng: -122.4194,
+      },
+      restaurants: [
+        {
+          city: 'San Francisco, CA',
+          cuisineType: 'Pizza',
+          id: 'rest_1',
+          isGooglePlace: true,
+          latitude: 37.78,
+          location: 'San Francisco, CA',
+          longitude: -122.42,
+          name: 'Tony Pizza',
+          placeId: 'google-place-1',
+          visibility: 'public',
         },
-        restaurants: [
-          {
-            city: 'San Francisco, CA',
-            cuisineType: 'Pizza',
-            id: 'rest_1',
-            isGooglePlace: true,
-            latitude: 37.78,
-            location: 'San Francisco, CA',
-            longitude: -122.42,
-            name: 'Tony Pizza',
-            placeId: 'google-place-1',
-            visibility: 'public',
-          },
-        ],
+      ],
+      usage: {
+        limits: {
+          menuScansMonthly: 5,
+          photoUploadsMonthly: 5,
+          photoUploadsPerRecord: 1,
+          placesQueriesMonthly: 100,
+        },
+        monthKey: '2026-04',
+        remaining: {
+          menuScansMonthly: 5,
+          photoUploadsMonthly: 5,
+          placesQueriesMonthly: 58,
+        },
         usage: {
-          limits: {
-            menuScansMonthly: 5,
-            photoUploadsMonthly: 5,
-            photoUploadsPerRecord: 1,
-            placesQueriesMonthly: 100,
-          },
-          monthKey: '2026-04',
-          remaining: {
-            menuScansMonthly: 5,
-            photoUploadsMonthly: 5,
-            placesQueriesMonthly: 58,
-          },
-          usage: {
-            menuScans: 0,
-            photoUploads: 0,
-            placesQueries: 42,
-          },
-          userTier: 'free',
+          menuScans: 0,
+          photoUploads: 0,
+          placesQueries: 42,
         },
-      }),
-      ok: true,
+        userTier: 'free',
+      },
     });
 
     const result = await searchAndCacheRestaurantsByText({
@@ -73,10 +75,15 @@ describe('googlePlaces', () => {
       radius: 4000,
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://example.com/api/places/search',
+    expect(mockedPocketbaseModule.__mockSend).toHaveBeenCalledTimes(1);
+    expect(mockedPocketbaseModule.__mockSend).toHaveBeenCalledWith(
+      '/api/places/search',
       expect.objectContaining({
+        body: {
+          locationText: 'San Francisco, CA',
+          query: 'pizza',
+          radius: 4000,
+        },
         headers: {
           Authorization: 'Bearer test-token',
           'Content-Type': 'application/json',
@@ -84,11 +91,6 @@ describe('googlePlaces', () => {
         method: 'POST',
       }),
     );
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      locationText: 'San Francisco, CA',
-      query: 'pizza',
-      radius: 4000,
-    });
     expect(result.resolvedLocation).toEqual({
       lat: 37.7749,
       lng: -122.4194,
@@ -104,40 +106,37 @@ describe('googlePlaces', () => {
   });
 
   it('returns nearby results with the updated usage snapshot', async () => {
-    fetchMock.mockResolvedValue({
-      json: async () => ({
-        restaurants: [
-          {
-            city: 'Los Angeles, CA',
-            id: 'rest_2',
-            isGooglePlace: true,
-            location: 'Los Angeles, CA',
-            name: 'Coffee Spot',
-            visibility: 'public',
-          },
-        ],
-        usage: {
-          limits: {
-            menuScansMonthly: 5,
-            photoUploadsMonthly: 5,
-            photoUploadsPerRecord: 1,
-            placesQueriesMonthly: 100,
-          },
-          monthKey: '2026-04',
-          remaining: {
-            menuScansMonthly: 5,
-            photoUploadsMonthly: 5,
-            placesQueriesMonthly: 57,
-          },
-          usage: {
-            menuScans: 0,
-            photoUploads: 0,
-            placesQueries: 43,
-          },
-          userTier: 'free',
+    mockedPocketbaseModule.__mockSend.mockResolvedValue({
+      restaurants: [
+        {
+          city: 'Los Angeles, CA',
+          id: 'rest_2',
+          isGooglePlace: true,
+          location: 'Los Angeles, CA',
+          name: 'Coffee Spot',
+          visibility: 'public',
         },
-      }),
-      ok: true,
+      ],
+      usage: {
+        limits: {
+          menuScansMonthly: 5,
+          photoUploadsMonthly: 5,
+          photoUploadsPerRecord: 1,
+          placesQueriesMonthly: 100,
+        },
+        monthKey: '2026-04',
+        remaining: {
+          menuScansMonthly: 5,
+          photoUploadsMonthly: 5,
+          placesQueriesMonthly: 57,
+        },
+        usage: {
+          menuScans: 0,
+          photoUploads: 0,
+          placesQueries: 43,
+        },
+        userTier: 'free',
+      },
     });
 
     const result = await searchAndCacheNearbyRestaurants({
@@ -146,7 +145,22 @@ describe('googlePlaces', () => {
       radius: 5000,
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockedPocketbaseModule.__mockSend).toHaveBeenCalledTimes(1);
+    expect(mockedPocketbaseModule.__mockSend).toHaveBeenCalledWith(
+      '/api/places/nearby',
+      expect.objectContaining({
+        body: {
+          latitude: 34.0522,
+          longitude: -118.2437,
+          radius: 5000,
+        },
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      }),
+    );
     expect(result.usageSnapshot?.remaining.placesQueriesMonthly).toBe(57);
     expect(result.restaurants).toEqual([
       expect.objectContaining({

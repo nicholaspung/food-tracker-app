@@ -37,4 +37,21 @@ describe('usageLimitsGateway helpers', () => {
     expect(payload).not.toBeNull();
     expect(formatLimitExceededMessage(payload!)).toBe('Search limit reached for this month (100).');
   });
+
+  it('preserves contextual photo limit messages for per-record failures', () => {
+    const payload = parseLimitExceededError({
+      data: {
+        code: 'LIMIT_EXCEEDED',
+        message: 'Photo upload limit reached for this note (1).',
+        metric: 'photo_uploads',
+        limit: 1,
+        used: 1,
+        remaining: 0,
+        monthKey: '2026-02',
+      },
+    });
+
+    expect(payload).not.toBeNull();
+    expect(formatLimitExceededMessage(payload!)).toBe('Photo upload limit reached for this note (1).');
+  });
 });

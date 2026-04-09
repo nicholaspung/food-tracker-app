@@ -14,7 +14,6 @@ import {
   submitTastingRating,
   type TastingSessionItem,
 } from '../features';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -59,7 +58,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const { sessionId } = route.params;
   const styles = useStyles();
   const { user } = useAuth();
-  const queueWrite = useQueuedWrite();
   const queryClient = useQueryClient();
 
   const sessionQuery = useQuery({
@@ -143,7 +141,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     setErrorMessage(null);
 
     try {
-      await queueWrite('tasting-session.invite.regenerate');
       await regenerateTastingInviteCode(sessionId);
       await refreshSession();
     } catch (error) {
@@ -161,7 +158,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     setErrorMessage(null);
 
     try {
-      await queueWrite('tasting-session.item.add');
       await addTastingItem(sessionId, {
         name: newItemName,
         description: newItemDescription,
@@ -184,7 +180,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     setErrorMessage(null);
 
     try {
-      await queueWrite('tasting-session.item.delete');
       await deleteTastingItem(sessionId, itemId, currentParticipant.id);
       await refreshSession();
     } catch (error) {
@@ -207,7 +202,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     setErrorMessage(null);
 
     try {
-      await queueWrite('tasting-session.rating.submit');
       await submitTastingRating(sessionId, itemId, {
         participantId: currentParticipant.id,
         rating: ratingDraft,
@@ -231,7 +225,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     setErrorMessage(null);
 
     try {
-      await queueWrite('tasting-session.status.advance');
       await setTastingSessionStatus(sessionId, nextStatus);
       await refreshSession();
     } catch (error) {
@@ -244,7 +237,6 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     setErrorMessage(null);
 
     try {
-      await queueWrite('tasting-session.results.save-visit');
       await saveTastingResultsToVisitHistory(sessionId);
       await Promise.all([
         refreshSession(),

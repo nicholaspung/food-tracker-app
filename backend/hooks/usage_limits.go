@@ -12,15 +12,49 @@ import (
 	"myapp/lib"
 )
 
+type photoCreateLimitConfig struct {
+	relationField        string
+	relationRequiredMsg  string
+	perRecordScopeLabel  string
+	countExistingRecords func(app core.App, userID string, relationID string) (int, error)
+}
+
 // RegisterUsageLimitHooks registers record lifecycle hooks related to usage limiting.
 func RegisterUsageLimitHooks(app core.App) {
 	app.OnRecordCreateRequest("visit_photos").BindFunc(func(e *core.RecordRequestEvent) error {
 		return EnforceVisitPhotoCreateRequestLimits(e)
 	})
+
+	app.OnRecordCreateRequest("note_photos").BindFunc(func(e *core.RecordRequestEvent) error {
+		return EnforceNotePhotoCreateRequestLimits(e)
+	})
 }
 
 // EnforceVisitPhotoCreateRequestLimits applies role-based per-record and monthly limits to visit_photos create requests.
 func EnforceVisitPhotoCreateRequestLimits(e *core.RecordRequestEvent) error {
+	return enforcePhotoCreateRequestLimits(e, photoCreateLimitConfig{
+		relationField:       "food_item",
+		relationRequiredMsg: "food_item is required",
+		perRecordScopeLabel: "item",
+		countExistingRecords: func(app core.App, userID string, relationID string) (int, error) {
+			return countVisitPhotosForFoodItem(app, userID, relationID)
+		},
+	})
+}
+
+// EnforceNotePhotoCreateRequestLimits applies role-based per-record and monthly limits to note_photos create requests.
+func EnforceNotePhotoCreateRequestLimits(e *core.RecordRequestEvent) error {
+	return enforcePhotoCreateRequestLimits(e, photoCreateLimitConfig{
+		relationField:       "note",
+		relationRequiredMsg: "note is required",
+		perRecordScopeLabel: "note",
+		countExistingRecords: func(app core.App, userID string, relationID string) (int, error) {
+			return countNotePhotosForNote(app, userID, relationID)
+		},
+	})
+}
+
+func enforcePhotoCreateRequestLimits(e *core.RecordRequestEvent, config photoCreateLimitConfig) error {
 	authRecord := e.Auth
 	if authRecord == nil {
 		return apis.NewUnauthorizedError("authentication required", nil)
@@ -28,10 +62,10 @@ func EnforceVisitPhotoCreateRequestLimits(e *core.RecordRequestEvent) error {
 
 	userTier := lib.ResolveUserTier(authRecord)
 	effectiveLimits := lib.ResolveEffectiveLimits(userTier)
-	foodItemID := strings.TrimSpace(e.Record.GetString("food_item"))
+	relationID := strings.TrimSpace(e.Record.GetString(config.relationField))
 
-	if foodItemID == "" {
-		return apis.NewBadRequestError("food_item is required", nil)
+	if relationID == "" {
+		return apis.NewBadRequestError(config.relationRequiredMsg, nil)
 	}
 
 	originalApp := e.App
@@ -50,9 +84,16 @@ func EnforceVisitPhotoCreateRequestLimits(e *core.RecordRequestEvent) error {
 		}
 
 		if effectiveLimits.PhotoUploadsPerRecord != nil {
-			existingCount, err := countVisitPhotosForFoodItem(txApp, authRecord.Id, foodItemID)
+			existingCount, err := config.countExistingRecords(txApp, authRecord.Id, relationID)
 			if err != nil {
-				log.Printf("Failed to check visit photo count for user=%s food_item=%s: %v", authRecord.Id, foodItemID, err)
+				log.Printf(
+					"Failed to check %s photo count for user=%s %s=%s: %v",
+					config.perRecordScopeLabel,
+					authRecord.Id,
+					config.relationField,
+					relationID,
+					err,
+				)
 				return apis.NewApiError(500, "failed to validate photo upload limits", err)
 			}
 
@@ -64,7 +105,7 @@ func EnforceVisitPhotoCreateRequestLimits(e *core.RecordRequestEvent) error {
 					Remaining: 0,
 					MonthKey:  lib.CurrentUTCMonthKey(),
 					UserTier:  userTier,
-					Message:   fmt.Sprintf("Photo upload limit reached for this item (%d).", *effectiveLimits.PhotoUploadsPerRecord),
+					Message:   fmt.Sprintf("Photo upload limit reached for this %s (%d).", config.perRecordScopeLabel, *effectiveLimits.PhotoUploadsPerRecord),
 				}
 
 				return apis.NewTooManyRequestsError(limitErr.Message, limitErr.Payload())
@@ -87,6 +128,24 @@ func countVisitPhotosForFoodItem(app core.App, userID string, foodItemID string)
 		Bind(dbx.Params{
 			"userId":     userID,
 			"foodItemId": foodItemID,
+		}).
+		Row(&count)
+
+	return count, err
+}
+
+func countNotePhotosForNote(app core.App, userID string, noteID string) (int, error) {
+	var count int
+
+	err := app.DB().NewQuery(`
+		SELECT COUNT(1)
+		FROM note_photos
+		WHERE user = {:userId}
+		  AND note = {:noteId}
+	`).
+		Bind(dbx.Params{
+			"userId": userID,
+			"noteId": noteID,
 		}).
 		Row(&count)
 

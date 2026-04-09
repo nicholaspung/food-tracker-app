@@ -109,8 +109,8 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.sm,
   },
   filtersToggleActive: {
-    backgroundColor: theme.colors.text.brand,
-    borderColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.fill.brand,
+    borderColor: theme.colors.fill.brand,
   },
   filtersToggleLabel: {
     color: theme.colors.text.primary,

@@ -31,7 +31,7 @@ const useStyles = createThemedStyles((theme, isVertical: boolean) => ({
   },
   cardPressed: {
     backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.text.brand,
+    borderColor: theme.colors.border.brand,
   },
   cardDisabled: {
     opacity: 0.55,

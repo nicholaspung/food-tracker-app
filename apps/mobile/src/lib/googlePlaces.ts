@@ -1,5 +1,5 @@
 import type { MonthlyUsageSnapshot, RestaurantRecord } from '../features';
-import { pb } from './pocketbase';
+import { sendApiRequest } from '../features/store/pocketbaseGateway';
 
 interface PlacesApiResponse {
   restaurants?: RestaurantRecord[];
@@ -48,31 +48,16 @@ function normalizeRestaurantRecord(record: RestaurantRecord): RestaurantRecord {
   };
 }
 
-async function postPlacesRequest<ResponseType>(path: string, payload: object): Promise<ResponseType> {
-  const response = await fetch(`${pb.baseUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: pb.authStore.token ? `Bearer ${pb.authStore.token}` : '',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `Request failed (${response.status}).`);
-  }
-
-  return (await response.json()) as ResponseType;
-}
-
 export async function searchAndCacheNearbyRestaurants(
   params: NearbySearchParams,
 ): Promise<PlacesSearchResult> {
-  const response = await postPlacesRequest<PlacesApiResponse>('/api/places/nearby', {
-    latitude: params.latitude,
-    longitude: params.longitude,
-    radius: params.radius ?? 5000,
+  const response = await sendApiRequest<PlacesApiResponse>('/api/places/nearby', {
+    method: 'POST',
+    body: {
+      latitude: params.latitude,
+      longitude: params.longitude,
+      radius: params.radius ?? 5000,
+    },
   });
 
   return {
@@ -84,10 +69,13 @@ export async function searchAndCacheNearbyRestaurants(
 export async function searchAndCacheRestaurantsByText(
   params: TextSearchParams,
 ): Promise<TextPlacesSearchResult> {
-  const response = await postPlacesRequest<PlacesApiResponse>('/api/places/search', {
-    query: params.query,
-    locationText: params.locationText ?? '',
-    radius: params.radius ?? 5000,
+  const response = await sendApiRequest<PlacesApiResponse>('/api/places/search', {
+    method: 'POST',
+    body: {
+      query: params.query,
+      locationText: params.locationText ?? '',
+      radius: params.radius ?? 5000,
+    },
   });
 
   const resolvedLocation =

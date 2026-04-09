@@ -10,9 +10,12 @@ import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../
 import {
   buildPocketBaseFileUrl,
   createNote,
+  formatLimitExceededMessage,
   getNoteById,
   listNotePhotosForNote,
+  parseLimitExceededError,
   updateNote,
+  useMonthlyUsage,
   type NotePhotoUploadInput,
 } from '../features';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
@@ -22,6 +25,7 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -36,8 +40,13 @@ interface DraftNotePhoto {
 }
 
 const CONTENT_MAX_LENGTH = 2000;
+const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const LOCATION_MAX_LENGTH = 200;
 const MAX_NOTE_PHOTOS = 20;
+
+function formatPhotoPerNoteLimitMessage(limit: number): string {
+  return `You can add up to ${limit} photo${limit === 1 ? '' : 's'} per note.`;
+}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -175,8 +184,23 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const queueWrite = useQueuedWrite();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
+  const { actualUser, user } = useAuth();
   const queryClient = useQueryClient();
   const cameraRef = useRef<CameraView | null>(null);
+  const isActualAdmin = actualUser?.isAdmin === true;
+  const isDisplayAdminUser = user?.isAdmin === true;
+  const isDisplaySubscriberUser = user?.isSubscriber === true;
+  const isDisplayFreeUser = !isDisplayAdminUser && !isDisplaySubscriberUser;
+  const usagePreviewTier = isActualAdmin && !isDisplayAdminUser
+    ? (isDisplaySubscriberUser ? 'subscriber' : 'free')
+    : null;
+  const monthlyUsage = useMonthlyUsage({
+    viewAsTier: usagePreviewTier,
+  });
+  const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
+  const estimatedFreePhotoRemaining = isDisplayFreeUser
+    ? monthlyUsage.snapshot?.remaining.photoUploadsMonthly ?? null
+    : null;
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
     requestPermission: requestPhotoPickerPermission,
@@ -214,6 +238,12 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     return (notePhotosQuery.data ?? []).filter((photo) => !deletedIds.has(photo.id));
   }, [notePhotosQuery.data, photosToDelete]);
 
+  const perNotePhotoLimit =
+    typeof monthlyUsage.snapshot?.limits.photoUploadsPerRecord === 'number'
+      ? Math.min(MAX_NOTE_PHOTOS, monthlyUsage.snapshot.limits.photoUploadsPerRecord)
+      : isDisplayFreeUser
+        ? 1
+        : MAX_NOTE_PHOTOS;
   const totalPhotoCount = existingPhotos.length + newPhotos.length;
 
   useEffect(() => {
@@ -245,10 +275,52 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     setNewPhotos((current) => current.filter((photo) => photo.id !== photoId));
   }, []);
 
+  const ensureCanAddPhoto = useCallback(() => {
+    if (totalPhotoCount >= perNotePhotoLimit) {
+      trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'client_estimate',
+        limit: perNotePhotoLimit,
+        metric: 'photo_uploads_per_record',
+        remaining: Math.max(perNotePhotoLimit - totalPhotoCount, 0),
+        source: 'NoteEditorScreen',
+        used: totalPhotoCount,
+      });
+      setErrorMessage(formatPhotoPerNoteLimitMessage(perNotePhotoLimit));
+      return false;
+    }
+
+    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot) {
+      const estimatedUsedWithDraftUploads = monthlyUsage.snapshot.usage.photoUploads + newPhotos.length;
+      if (estimatedUsedWithDraftUploads + 1 > FREE_MONTHLY_PHOTO_LIMIT) {
+        const remaining = Math.max(FREE_MONTHLY_PHOTO_LIMIT - estimatedUsedWithDraftUploads, 0);
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'NoteEditorScreen',
+          used: estimatedUsedWithDraftUploads,
+        });
+        setErrorMessage(
+          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }, [
+    isDisplayFreeUser,
+    monthlyUsage.snapshot,
+    newPhotos.length,
+    perNotePhotoLimit,
+    shouldEnforceUsageLimitsClientSide,
+    totalPhotoCount,
+  ]);
+
   const addDraftPhoto = useCallback(
     (asset: { uri: string; fileName?: string | null; mimeType?: string | null }) => {
-      if (totalPhotoCount >= MAX_NOTE_PHOTOS) {
-        setErrorMessage(`You can add up to ${MAX_NOTE_PHOTOS} photos per note.`);
+      if (!ensureCanAddPhoto()) {
         return;
       }
 
@@ -270,19 +342,18 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       setErrorMessage(null);
       resetPhotoPermissionNeedsSettings();
     },
-    [resetPhotoPermissionNeedsSettings, totalPhotoCount],
+    [ensureCanAddPhoto, resetPhotoPermissionNeedsSettings],
   );
 
   const handleOpenPhotoSourcePicker = useCallback(() => {
-    if (totalPhotoCount >= MAX_NOTE_PHOTOS) {
-      setErrorMessage(`You can add up to ${MAX_NOTE_PHOTOS} photos per note.`);
+    if (!ensureCanAddPhoto()) {
       return;
     }
 
     resetPhotoPermissionNeedsSettings();
     setErrorMessage(null);
     setIsPhotoSourcePickerOpen(true);
-  }, [resetPhotoPermissionNeedsSettings, totalPhotoCount]);
+  }, [ensureCanAddPhoto, resetPhotoPermissionNeedsSettings]);
 
   const handleOpenCamera = useCallback(async () => {
     trackObservabilityEvent('NOTE_CAMERA_OPEN_STARTED', {
@@ -290,8 +361,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     });
     setIsPhotoSourcePickerOpen(false);
 
-    if (totalPhotoCount >= MAX_NOTE_PHOTOS) {
-      setErrorMessage(`You can add up to ${MAX_NOTE_PHOTOS} photos per note.`);
+    if (!ensureCanAddPhoto()) {
       return;
     }
 
@@ -310,7 +380,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       source: 'NoteEditorScreen',
     });
     setIsCameraOpen(true);
-  }, [requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings, totalPhotoCount]);
+  }, [ensureCanAddPhoto, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings]);
 
   const handlePickFromPhotoLibrary = useCallback(async () => {
     trackObservabilityEvent('NOTE_LIBRARY_PICK_STARTED', {
@@ -318,8 +388,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     });
     setIsPhotoSourcePickerOpen(false);
 
-    if (totalPhotoCount >= MAX_NOTE_PHOTOS) {
-      setErrorMessage(`You can add up to ${MAX_NOTE_PHOTOS} photos per note.`);
+    if (!ensureCanAddPhoto()) {
       return;
     }
 
@@ -369,7 +438,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       });
       setErrorMessage(message);
     }
-  }, [addDraftPhoto, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings, totalPhotoCount]);
+  }, [addDraftPhoto, ensureCanAddPhoto, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings]);
 
   const handleCapturePhoto = useCallback(async () => {
     if (!cameraRef.current) {
@@ -414,6 +483,33 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       deletePhotoIds: photosToDelete,
     };
 
+    if (totalPhotoCount > perNotePhotoLimit) {
+      setErrorMessage(formatPhotoPerNoteLimitMessage(perNotePhotoLimit));
+      return;
+    }
+
+    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && uploadPhotos.length > 0 && monthlyUsage.snapshot) {
+      const estimatedTotalAfterSubmit = monthlyUsage.snapshot.usage.photoUploads + uploadPhotos.length;
+      if (estimatedTotalAfterSubmit > FREE_MONTHLY_PHOTO_LIMIT) {
+        const remaining = Math.max(
+          FREE_MONTHLY_PHOTO_LIMIT - monthlyUsage.snapshot.usage.photoUploads,
+          0,
+        );
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining,
+          source: 'NoteEditorScreen',
+          used: monthlyUsage.snapshot.usage.photoUploads,
+        });
+        setErrorMessage(
+          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
+        );
+        return;
+      }
+    }
+
     setErrorMessage(null);
     setIsSubmitting(true);
 
@@ -442,32 +538,62 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         await createNote(noteCreateInput);
       }
 
-      await Promise.all([
+      const invalidations: Promise<unknown>[] = [
         queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'note', noteId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos', noteId] }),
-      ]);
+      ];
+
+      if (uploadPhotos.length > 0) {
+        invalidations.push(
+          queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
+        );
+      }
+
+      await Promise.all(invalidations);
 
       navigation.navigate('Notes');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save note.';
+      const limitPayload = parseLimitExceededError(error);
+      if (limitPayload) {
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'server',
+          limit: limitPayload.limit,
+          metric: limitPayload.metric,
+          monthKey: limitPayload.monthKey,
+          remaining: limitPayload.remaining,
+          source: 'NoteEditorScreen',
+          used: limitPayload.used,
+          userTier: limitPayload.userTier ?? null,
+        });
+      }
+      const message = limitPayload
+        ? formatLimitExceededMessage(limitPayload)
+        : error instanceof Error
+          ? error.message
+          : 'Could not save note.';
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
     }
   }, [
     content,
+    isDisplayFreeUser,
     isEditing,
+    monthlyUsage.snapshot,
     locationText,
     navigation,
     newPhotos,
     noteId,
     isOnline,
+    perNotePhotoLimit,
     photosToDelete,
     queryClient,
     queueFeatureOutbox,
     queueWrite,
+    shouldEnforceUsageLimitsClientSide,
+    totalPhotoCount,
   ]);
 
   if (isEditing && noteQuery.isLoading) {
@@ -583,6 +709,23 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           </Text>
         </Card>
 
+        {!isOnline && isDisplayFreeUser ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="warning">
+              Offline estimate may be stale. Backend limits are enforced when sync runs.
+            </Text>
+          </Card>
+        ) : null}
+
+        {isDisplayFreeUser ? (
+          <Card style={styles.sectionCard} tone="muted">
+            <Text tone="secondary">
+              Monthly photo estimate:{' '}
+              {estimatedFreePhotoRemaining === null ? 'unknown' : `${estimatedFreePhotoRemaining} left`}.
+            </Text>
+          </Card>
+        ) : null}
+
         {isEditing && noteQuery.data?.status === 'used' ? (
           <Card tone="success">
             <Text tone="success">
@@ -626,7 +769,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
               <Text variant="label">Photos (Optional)</Text>
             </View>
             <Text tone="muted" variant="bodySm">
-              {totalPhotoCount}/{MAX_NOTE_PHOTOS}
+              {totalPhotoCount}/{perNotePhotoLimit}
             </Text>
           </View>
 
@@ -684,16 +827,17 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
             onPress={() => {
               handleOpenPhotoSourcePicker();
             }}
-            style={[styles.addPhotoButton, totalPhotoCount >= MAX_NOTE_PHOTOS ? styles.addPhotoButtonDisabled : null]}
+            style={[styles.addPhotoButton, totalPhotoCount >= perNotePhotoLimit ? styles.addPhotoButtonDisabled : null]}
           >
             <Ionicons color={theme.colors.text.muted} name="add-outline" size={20} />
             <Text tone="secondary">
-              {totalPhotoCount >= MAX_NOTE_PHOTOS ? 'Photo limit reached' : 'Add photo'}
+              {totalPhotoCount >= perNotePhotoLimit ? 'Photo limit reached' : 'Add photo'}
             </Text>
           </Pressable>
 
           <Text tone="muted" variant="bodySm">
-            Choose camera or photo library.
+            Up to {perNotePhotoLimit} photo{perNotePhotoLimit === 1 ? '' : 's'} per note. Choose camera or photo
+            library.
           </Text>
           {notePhotosQuery.isError ? (
             <Text tone="danger" variant="bodySm">

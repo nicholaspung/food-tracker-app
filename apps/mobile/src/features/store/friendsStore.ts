@@ -213,9 +213,9 @@ export async function createFriendSuggestionAcceptance(input: { inviterId: strin
 
     await sendApiRequest('/api/friends/suggestions/accept', {
       method: 'POST',
-      body: JSON.stringify({
+      body: {
         inviterId,
-      }),
+      },
     });
   });
 }

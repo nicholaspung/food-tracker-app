@@ -1,13 +1,19 @@
 import * as pocketbaseModule from '../lib/pocketbase';
-import { listCollectionPage, listCollectionRecords } from '../features/store/pocketbaseGateway';
+import { trackObservabilityEvent } from '../observability';
+import { listCollectionPage, listCollectionRecords, sendApiRequest } from '../features/store/pocketbaseGateway';
 
 jest.mock('../lib/pocketbase', () => ({
   pb: {
+    authStore: {
+      token: 'test-token',
+    },
     collection: jest.fn(() => ({
       getList: jest.fn(),
     })),
+    send: jest.fn(),
   },
   __mockGetList: jest.fn(),
+  __mockSend: jest.fn(),
 }));
 
 jest.mock('../observability', () => ({
@@ -16,17 +22,26 @@ jest.mock('../observability', () => ({
 
 const mockedPocketbaseModule = pocketbaseModule as typeof pocketbaseModule & {
   __mockGetList: jest.Mock;
+  __mockSend: jest.Mock;
 };
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+  typeof trackObservabilityEvent
+>;
 
 describe('pocketbaseGateway', () => {
   beforeEach(() => {
     const mockCollection = mockedPocketbaseModule.pb.collection as jest.Mock;
+    const mockSend = mockedPocketbaseModule.pb.send as jest.Mock;
 
     mockCollection.mockImplementation(() => ({
       getList: mockedPocketbaseModule.__mockGetList,
     }));
     mockCollection.mockClear();
+    mockSend.mockImplementation(mockedPocketbaseModule.__mockSend);
+    mockSend.mockClear();
     mockedPocketbaseModule.__mockGetList.mockReset();
+    mockedPocketbaseModule.__mockSend.mockReset();
+    mockedTrackObservabilityEvent.mockReset();
   });
 
   it('omits undefined filters from paginated collection requests', async () => {
@@ -76,5 +91,36 @@ describe('pocketbaseGateway', () => {
     expect(mockedPocketbaseModule.__mockGetList).toHaveBeenCalledWith(1, 50, {
       fields: 'visit',
     });
+  });
+
+  it('adds bearer auth and json content-type to api requests', async () => {
+    mockedPocketbaseModule.__mockSend.mockResolvedValue({ success: true });
+
+    await sendApiRequest('/api/friends/invite', {
+      method: 'POST',
+      body: {
+        code: 'FRIEND1',
+      },
+    });
+
+    expect(mockedPocketbaseModule.__mockSend).toHaveBeenCalledWith('/api/friends/invite', {
+      body: {
+        code: 'FRIEND1',
+      },
+      headers: {
+        Authorization: 'Bearer test-token',
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+    });
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'DIRECT_API_REQUEST_SUCCEEDED',
+      expect.objectContaining({
+        hasBody: true,
+        isAuthenticated: true,
+        method: 'POST',
+        path: '/api/friends/invite',
+      }),
+    );
   });
 });

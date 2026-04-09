@@ -1,7 +1,8 @@
-import { ClientResponseError } from 'pocketbase';
+import { ClientResponseError, type RecordModel } from 'pocketbase';
 
 import { env } from '../../config/env';
 import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
+import { saveAuthRecord, updateCollectionRecord } from './pocketbaseGateway';
 import type { BillParticipantRecord, BillRecord } from '../models';
 import {
   addRestaurantVisitRatingsToList,
@@ -134,7 +135,15 @@ interface FriendRemoveOperationPayload {
   friendId: string;
 }
 
+interface SettingsVisibilitySaveOperationPayload {
+  userId: string;
+  defaultVisitVisibility: 'friends' | 'private';
+  defaultRestaurantVisibility: 'private' | 'friends';
+  defaultListVisibility: 'private' | 'friends';
+}
+
 export interface FeatureOutboxOperationPayloadMap {
+  'settings.visibility.save': SettingsVisibilitySaveOperationPayload;
   'visit.create': CreateVisitInput;
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
@@ -174,6 +183,7 @@ export type FeatureOutboxOperationPayload<TName extends FeatureOutboxOperationNa
   FeatureOutboxOperationPayloadMap[TName];
 
 const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
+  'settings.visibility.save',
   'visit.create',
   'visit.update',
   'visit.delete',
@@ -309,6 +319,20 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
   const payload = parseMutationPayload(mutation.body);
 
   switch (operationName) {
+    case 'settings.visibility.save': {
+      const settingsPayload = payload as SettingsVisibilitySaveOperationPayload;
+      const updatedRecord = await updateCollectionRecord<RecordModel>(
+        'users',
+        settingsPayload.userId,
+        {
+          defaultListVisibility: settingsPayload.defaultListVisibility,
+          defaultRestaurantVisibility: settingsPayload.defaultRestaurantVisibility,
+          defaultVisitVisibility: settingsPayload.defaultVisitVisibility,
+        },
+      );
+      saveAuthRecord(updatedRecord);
+      return true;
+    }
     case 'visit.create':
       await createVisit(payload as CreateVisitInput);
       return true;

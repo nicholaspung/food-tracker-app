@@ -72,7 +72,7 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xs,
   },
   firstViewBadge: {
-    backgroundColor: theme.colors.text.danger,
+    backgroundColor: theme.colors.fill.danger,
     borderRadius: theme.radii.pill,
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: 3,

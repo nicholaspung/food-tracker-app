@@ -114,6 +114,7 @@ This checklist is intended to help review the React Native app for screen regres
 - [ ] `P0` Note creation succeeds online.
 - [ ] `P0` Note creation queues successfully offline.
 - [ ] `P0` Note editing succeeds online.
+- [ ] `P1` Note photo uploads enforce free-tier monthly and per-note limits.
 - [ ] `P0` Note editing queues successfully offline.
 - [ ] `P1` Note editor can add photos from camera.
 - [ ] `P1` Note editor can add photos from library.

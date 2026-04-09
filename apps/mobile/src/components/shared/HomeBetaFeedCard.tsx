@@ -224,7 +224,7 @@ const useStyles = createThemedStyles((theme) => ({
     width: 6,
   },
   indicatorDotActive: {
-    backgroundColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.fill.brand,
     width: 18,
   },
   contentBlock: {

@@ -1136,7 +1136,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     : 'Track menu items from your saved photos'
                 }
                 disabled={isPreparingNotePhotos}
-                iconBackground={theme.colors.text.info}
+                iconBackground={theme.colors.fill.info}
                 iconColor={theme.colors.text.inverse}
                 iconName="restaurant-outline"
                 onPress={() => {
@@ -1165,7 +1165,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     : 'Rate each photo as an individual item'
                 }
                 disabled={isPreparingNotePhotos}
-                iconBackground={theme.colors.text.success}
+                iconBackground={theme.colors.fill.success}
                 iconColor={theme.colors.text.inverse}
                 iconName="flash-outline"
                 onPress={() => {

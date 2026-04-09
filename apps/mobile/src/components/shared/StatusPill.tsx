@@ -49,32 +49,32 @@ function resolveToneColors(
   if (variant === 'solid') {
     if (tone === 'info') {
       return {
-        backgroundColor: theme.colors.text.info,
-        borderColor: theme.colors.text.info,
+        backgroundColor: theme.colors.fill.info,
+        borderColor: theme.colors.fill.info,
         textColor: theme.colors.text.inverse,
       };
     }
 
     if (tone === 'warning') {
       return {
-        backgroundColor: theme.colors.text.warning,
-        borderColor: theme.colors.text.warning,
+        backgroundColor: theme.colors.fill.warning,
+        borderColor: theme.colors.fill.warning,
         textColor: theme.colors.text.inverse,
       };
     }
 
     if (tone === 'success') {
       return {
-        backgroundColor: theme.colors.text.success,
-        borderColor: theme.colors.text.success,
+        backgroundColor: theme.colors.fill.success,
+        borderColor: theme.colors.fill.success,
         textColor: theme.colors.text.inverse,
       };
     }
 
     if (tone === 'danger') {
       return {
-        backgroundColor: theme.colors.text.danger,
-        borderColor: theme.colors.text.danger,
+        backgroundColor: theme.colors.fill.danger,
+        borderColor: theme.colors.fill.danger,
         textColor: theme.colors.text.inverse,
       };
     }
@@ -88,8 +88,8 @@ function resolveToneColors(
     }
 
     return {
-      backgroundColor: theme.colors.text.brand,
-      borderColor: theme.colors.text.brand,
+      backgroundColor: theme.colors.fill.brand,
+      borderColor: theme.colors.fill.brand,
       textColor: theme.colors.text.inverse,
     };
   }

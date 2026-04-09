@@ -157,7 +157,7 @@ const useStyles = createThemedStyles((theme, carouselCardWidth: number) => ({
     width: 8,
   },
   indicatorDotActive: {
-    backgroundColor: theme.colors.text.brand,
+    backgroundColor: theme.colors.fill.brand,
     width: 18,
   },
   indicatorButton: {

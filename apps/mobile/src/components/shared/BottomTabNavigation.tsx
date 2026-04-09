@@ -92,7 +92,7 @@ const useStyles = createThemedStyles((theme, bottomPadding: number) => ({
   },
   badge: {
     alignItems: 'center',
-    backgroundColor: theme.colors.text.danger,
+    backgroundColor: theme.colors.fill.danger,
     borderRadius: theme.radii.pill,
     height: 18,
     justifyContent: 'center',

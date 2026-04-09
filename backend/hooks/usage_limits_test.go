@@ -76,6 +76,31 @@ func insertVisitPhotoRowRaw(t *testing.T, app core.App, userID string, foodItemI
 	return recordID
 }
 
+func insertNotePhotoRowRaw(t *testing.T, app core.App, userID string, noteID string) string {
+	t.Helper()
+
+	recordID := fmt.Sprintf("np_%d", time.Now().UnixNano())
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	if _, err := app.DB().NewQuery(`
+		INSERT INTO note_photos (id, photo, caption, note, user, created, updated)
+		VALUES ({:id}, {:photo}, '', {:note}, {:user}, {:created}, {:updated})
+	`).
+		Bind(dbx.Params{
+			"id":      recordID,
+			"photo":   "test-photo.jpg",
+			"note":    noteID,
+			"user":    userID,
+			"created": now,
+			"updated": now,
+		}).
+		Execute(); err != nil {
+		t.Fatalf("failed to insert note_photo row: %v", err)
+	}
+
+	return recordID
+}
+
 func triggerVisitPhotoCreateHook(
 	t *testing.T,
 	app core.App,
@@ -118,6 +143,54 @@ func triggerVisitPhotoCreateHook(
 
 		if persistRecord {
 			insertVisitPhotoRowRaw(t, e.App, user.Id, foodItemID)
+		}
+
+		return nil
+	})
+}
+
+func triggerNotePhotoCreateHook(
+	t *testing.T,
+	app core.App,
+	user *core.Record,
+	noteID string,
+	persistRecord bool,
+	nextErr error,
+) error {
+	t.Helper()
+
+	notePhotosCollection, err := app.FindCollectionByNameOrId("note_photos")
+	if err != nil {
+		t.Fatalf("failed to resolve note_photos collection: %v", err)
+	}
+
+	record := core.NewRecord(notePhotosCollection)
+	record.Set("user", user.Id)
+	record.Set("note", noteID)
+	record.Set("photo", "test-photo.jpg")
+
+	request := httptest.NewRequest(http.MethodPost, "/api/collections/note_photos/records", nil)
+	response := httptest.NewRecorder()
+	requestEvent := &core.RequestEvent{
+		App:  app,
+		Auth: user,
+	}
+	requestEvent.Request = request
+	requestEvent.Response = response
+
+	event := &core.RecordRequestEvent{
+		RequestEvent: requestEvent,
+		Record:       record,
+	}
+	event.Collection = notePhotosCollection
+
+	return app.OnRecordCreateRequest().Trigger(event, func(e *core.RecordRequestEvent) error {
+		if nextErr != nil {
+			return nextErr
+		}
+
+		if persistRecord {
+			insertNotePhotoRowRaw(t, e.App, user.Id, noteID)
 		}
 
 		return nil
@@ -191,6 +264,60 @@ func TestHookFreeUserSixthMonthlyPhotoBlocked(t *testing.T) {
 	}
 	if snapshot.Usage.PhotoUploads != 5 {
 		t.Fatalf("expected usage=5 after sixth block, got %d", snapshot.Usage.PhotoUploads)
+	}
+}
+
+func TestHookFreeUserSecondNotePhotoSameNoteBlocked(t *testing.T) {
+	app := newHookTestApp(t)
+	user := createHookUser(t, app, false, false)
+	noteID := "note_same"
+
+	if err := triggerNotePhotoCreateHook(t, app, user, noteID, true, nil); err != nil {
+		t.Fatalf("first create should succeed: %v", err)
+	}
+
+	err := triggerNotePhotoCreateHook(t, app, user, noteID, false, nil)
+	payload := expectTooManyRequests(t, err)
+	if payload["metric"] != string(lib.UsageMetricPhotoUploads) {
+		t.Fatalf("expected photo_uploads metric, got %v", payload["metric"])
+	}
+
+	snapshot, snapshotErr := lib.GetMonthlyUsageSnapshot(app, user)
+	if snapshotErr != nil {
+		t.Fatalf("failed to load usage snapshot: %v", snapshotErr)
+	}
+	if snapshot.Usage.PhotoUploads != 1 {
+		t.Fatalf("expected monthly photo usage=1, got %d", snapshot.Usage.PhotoUploads)
+	}
+}
+
+func TestHookNotePhotosShareMonthlyQuotaWithVisitPhotos(t *testing.T) {
+	app := newHookTestApp(t)
+	user := createHookUser(t, app, false, false)
+
+	for i := 0; i < 4; i++ {
+		foodItemID := fmt.Sprintf("shared_food_%d", i)
+		if err := triggerVisitPhotoCreateHook(t, app, user, foodItemID, true, nil); err != nil {
+			t.Fatalf("visit create %d should succeed: %v", i+1, err)
+		}
+	}
+
+	if err := triggerNotePhotoCreateHook(t, app, user, "shared_note_1", true, nil); err != nil {
+		t.Fatalf("fifth combined photo should succeed: %v", err)
+	}
+
+	err := triggerNotePhotoCreateHook(t, app, user, "shared_note_2", false, nil)
+	payload := expectTooManyRequests(t, err)
+	if payload["limit"] != 5 {
+		t.Fatalf("expected limit=5, got %v", payload["limit"])
+	}
+
+	snapshot, snapshotErr := lib.GetMonthlyUsageSnapshot(app, user)
+	if snapshotErr != nil {
+		t.Fatalf("failed to load usage snapshot: %v", snapshotErr)
+	}
+	if snapshot.Usage.PhotoUploads != 5 {
+		t.Fatalf("expected shared usage=5 after sixth block, got %d", snapshot.Usage.PhotoUploads)
 	}
 }
 

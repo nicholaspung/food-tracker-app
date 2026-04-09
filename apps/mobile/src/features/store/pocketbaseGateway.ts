@@ -1,9 +1,15 @@
-import type { RecordModel } from 'pocketbase';
+import { ClientResponseError, type RecordModel } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
 import { trackObservabilityEvent } from '../../observability';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export interface ApiRequestInit {
+  method: HttpMethod;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
 
 interface CollectionListOptions {
   filter?: string;
@@ -185,32 +191,38 @@ export async function getCollectionCount(collectionName: string, filter?: string
 
 export async function sendApiRequest<T = unknown>(
   path: string,
-  init: {
-    method: HttpMethod;
-    body?: unknown;
-  },
+  init: ApiRequestInit,
 ): Promise<T> {
   const options: {
     method: HttpMethod;
     body?: unknown;
+    headers?: Record<string, string>;
   } = {
     method: init.method,
   };
+  const headers = resolveApiRequestHeaders(init);
 
   if (init.body !== undefined) {
     options.body = init.body;
+  }
+  if (headers) {
+    options.headers = headers;
   }
 
   try {
     const response = await pb.send<T>(path, options);
     trackObservabilityEvent('DIRECT_API_REQUEST_SUCCEEDED', {
       method: init.method,
+      hasBody: init.body !== undefined,
+      isAuthenticated: Boolean(headers?.Authorization),
       path,
     });
     return response;
   } catch (error) {
     trackObservabilityEvent('DIRECT_API_REQUEST_FAILED', {
       method: init.method,
+      hasBody: init.body !== undefined,
+      isAuthenticated: Boolean(headers?.Authorization),
       path,
       ...resolveErrorProperties(error),
     });
@@ -322,7 +334,24 @@ export async function confirmUserEmailVerification(token: string): Promise<void>
   }
 }
 
-function resolveErrorProperties(error: unknown): { errorMessage: string; errorType: string } {
+function resolveErrorProperties(error: unknown): {
+  errorMessage: string;
+  errorType: string;
+  statusCode?: number;
+} {
+  if (error instanceof ClientResponseError) {
+    const statusCode = Number.isFinite(error.status) && error.status > 0 ? error.status : undefined;
+
+    return {
+      errorMessage:
+        typeof error.response?.message === 'string' && error.response.message.trim().length > 0
+          ? error.response.message
+          : error.message,
+      errorType: 'ClientResponseError',
+      statusCode,
+    };
+  }
+
   if (error instanceof Error) {
     return {
       errorMessage: error.message,
@@ -334,4 +363,28 @@ function resolveErrorProperties(error: unknown): { errorMessage: string; errorTy
     errorMessage: String(error),
     errorType: 'unknown_error',
   };
+}
+
+function resolveApiRequestHeaders(init: ApiRequestInit): Record<string, string> | undefined {
+  const headers = { ...(init.headers ?? {}) };
+  const authToken = pb.authStore.token?.trim();
+
+  if (authToken && !hasHeader(headers, 'Authorization')) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  if (init.body !== undefined && !isFormDataBody(init.body) && !hasHeader(headers, 'Content-Type')) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
+function hasHeader(headers: Record<string, string>, targetHeader: string): boolean {
+  const normalizedTarget = targetHeader.toLowerCase();
+  return Object.keys(headers).some((header) => header.toLowerCase() === normalizedTarget);
+}
+
+function isFormDataBody(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
 }
