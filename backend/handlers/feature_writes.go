@@ -87,6 +87,10 @@ type billUpdateRequest struct {
 	Status          *string                        `json:"status"`
 }
 
+type billParticipantPaidStatusUpdateRequest struct {
+	PaidStatus string `json:"paidStatus"`
+}
+
 type billParticipantWriteRequest struct {
 	ID                    string   `json:"id"`
 	Name                  string   `json:"name"`
@@ -272,6 +276,71 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 		var responsePayload billResponse
 		if err := app.RunInTransaction(func(txApp core.App) error {
 			billRecord, err := updateBillTransaction(txApp, e.Auth, billID, requestBody)
+			if err != nil {
+				return err
+			}
+
+			responsePayload, err = buildBillResponse(txApp, billRecord, e.Auth.Id)
+			if err != nil {
+				return apis.NewApiError(500, "failed to load updated bill", err)
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.DELETE("/api/bills/{billId}", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		billID := strings.TrimSpace(e.Request.PathValue("billId"))
+		if billID == "" {
+			return apis.NewBadRequestError("billId is required", nil)
+		}
+
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			return deleteBillTransaction(txApp, e.Auth, billID)
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, map[string]any{"success": true})
+	}).Bind(apis.RequireAuth())
+
+	se.Router.PATCH("/api/bills/{billId}/participants/{participantId}/paid-status", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		billID := strings.TrimSpace(e.Request.PathValue("billId"))
+		if billID == "" {
+			return apis.NewBadRequestError("billId is required", nil)
+		}
+
+		participantID := strings.TrimSpace(e.Request.PathValue("participantId"))
+		if participantID == "" {
+			return apis.NewBadRequestError("participantId is required", nil)
+		}
+
+		requestBody := billParticipantPaidStatusUpdateRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		var responsePayload billResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			billRecord, err := updateBillParticipantPaidStatusTransaction(
+				txApp,
+				e.Auth,
+				billID,
+				participantID,
+				requestBody,
+			)
 			if err != nil {
 				return err
 			}
@@ -611,6 +680,108 @@ func updateBillTransaction(
 		requestedItems,
 	); err != nil {
 		return nil, err
+	}
+
+	return billRecord, nil
+}
+
+func deleteBillTransaction(app core.App, authRecord *core.Record, billID string) error {
+	billRecord, err := app.FindRecordById("bills", billID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return apis.NewNotFoundError("bill not found", err)
+		}
+
+		return apis.NewApiError(500, "failed to load bill", err)
+	}
+
+	if billRecord.GetString("creator_user") != authRecord.Id {
+		return apis.NewForbiddenError("only the bill creator can delete this bill", nil)
+	}
+
+	items, err := listBillItems(app, billID)
+	if err != nil {
+		return apis.NewApiError(500, "failed to load bill items", err)
+	}
+
+	participants, err := listBillParticipants(app, billID)
+	if err != nil {
+		return apis.NewApiError(500, "failed to load bill participants", err)
+	}
+
+	for _, item := range items {
+		if err := app.Delete(item); err != nil {
+			return apis.NewApiError(500, "failed to delete bill item", err)
+		}
+	}
+
+	for _, participant := range participants {
+		if err := app.Delete(participant); err != nil {
+			return apis.NewApiError(500, "failed to delete bill participant", err)
+		}
+	}
+
+	if err := app.Delete(billRecord); err != nil {
+		return apis.NewApiError(500, "failed to delete bill", err)
+	}
+
+	return nil
+}
+
+func updateBillParticipantPaidStatusTransaction(
+	app core.App,
+	authRecord *core.Record,
+	billID string,
+	participantID string,
+	requestBody billParticipantPaidStatusUpdateRequest,
+) (*core.Record, error) {
+	billRecord, err := app.FindRecordById("bills", billID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("bill not found", err)
+		}
+
+		return nil, apis.NewApiError(500, "failed to load bill", err)
+	}
+
+	participantRecord, err := app.FindRecordById("bill_participants", participantID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apis.NewNotFoundError("bill participant not found", err)
+		}
+
+		return nil, apis.NewApiError(500, "failed to load bill participant", err)
+	}
+
+	if participantRecord.GetString("bill") != billID {
+		return nil, apis.NewNotFoundError("bill participant not found", nil)
+	}
+
+	isCreator := strings.TrimSpace(billRecord.GetString("creator_user")) == authRecord.Id
+	isSelfParticipant := strings.TrimSpace(participantRecord.GetString("user")) == authRecord.Id
+	if !isCreator && !isSelfParticipant {
+		return nil, apis.NewForbiddenError("you can only update your own participant status", nil)
+	}
+
+	nextPaidStatus := normalizePaidStatus(requestBody.PaidStatus)
+	if !isCreator && nextPaidStatus != "paid" {
+		return nil, apis.NewForbiddenError("participants can only mark themselves as paid", nil)
+	}
+
+	participantRecord.Set("paid_status", nextPaidStatus)
+	participantRecord.Set("paid_date", paidDateValue(nextPaidStatus))
+	if err := app.Save(participantRecord); err != nil {
+		return nil, apis.NewApiError(500, "failed to update bill participant", err)
+	}
+
+	participants, err := listBillParticipants(app, billID)
+	if err != nil {
+		return nil, apis.NewApiError(500, "failed to load bill participants", err)
+	}
+
+	billRecord.Set("status", deriveBillStatusFromParticipantRecords(participants))
+	if err := app.Save(billRecord); err != nil {
+		return nil, apis.NewApiError(500, "failed to update bill status", err)
 	}
 
 	return billRecord, nil
@@ -1150,6 +1321,20 @@ func deriveBillStatusFromParticipants(participants []billParticipantWriteRequest
 
 	for _, participant := range participants {
 		if normalizePaidStatus(participant.PaidStatus) != "paid" {
+			return "active"
+		}
+	}
+
+	return "settled"
+}
+
+func deriveBillStatusFromParticipantRecords(participants []*core.Record) string {
+	if len(participants) == 0 {
+		return "active"
+	}
+
+	for _, participant := range participants {
+		if normalizePaidStatus(participant.GetString("paid_status")) != "paid" {
 			return "active"
 		}
 	}

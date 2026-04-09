@@ -5,6 +5,8 @@ import type {
   RestaurantListRecord,
 } from '../models';
 import type {
+  RestaurantListCandidateRestaurantsResult,
+  RestaurantListDetailRecord,
   RestaurantListDetailPage,
   AddRestaurantVisitRatingsToListInput,
   CreateRestaurantListInput,
@@ -45,6 +47,8 @@ import type {
 import { upsertRestaurantRecord } from './restaurantsStore';
 
 export type {
+  RestaurantListCandidateRestaurantsResult,
+  RestaurantListDetailRecord,
   RestaurantListDetailPage,
   AddRestaurantVisitRatingsToListInput,
   CreateRestaurantListInput,
@@ -128,15 +132,25 @@ interface RestaurantListDetailApiPhotoPreviewRecord {
 interface RestaurantListDetailApiResponse {
   list: RestaurantListDetailApiListRecord;
   items?: RestaurantListDetailApiItemRecord[];
+  bookmarkState?: {
+    savedListIdsByBookmarkLookupId?: Record<string, string[] | undefined>;
+  };
+  photoPreviews?: RestaurantListDetailApiPhotoPreviewRecord[];
+  viewerLists?: RestaurantListDetailApiListRecord[];
+}
+
+interface RestaurantListCandidateRestaurantsApiResponse {
+  list: RestaurantListDetailApiListRecord;
+  items?: RestaurantListVisitedRestaurantCandidateApiRecord[];
+}
+
+interface RestaurantListVisitedRestaurantsPageApiResponse {
+  items?: RestaurantListVisitedRestaurantCandidateApiRecord[];
   page: number;
   pageSize: number;
   totalItems: number;
   totalPages: number;
   hasNextPage: boolean;
-  bookmarkState?: {
-    savedListIdsByBookmarkLookupId?: Record<string, string[] | undefined>;
-  };
-  photoPreviews?: RestaurantListDetailApiPhotoPreviewRecord[];
 }
 
 interface RestaurantListVisitedRestaurantCandidateApiRecord {
@@ -158,18 +172,16 @@ interface RestaurantListVisitedRestaurantCandidateApiRecord {
   linkedFoodItemIds?: string[];
 }
 
-interface RestaurantListVisitedRestaurantsPageApiResponse {
-  items?: RestaurantListVisitedRestaurantCandidateApiRecord[];
-  page: number;
-  pageSize: number;
-  totalItems: number;
-  totalPages: number;
-  hasNextPage: boolean;
-}
-
 interface RestaurantListMutationGroupApiResponse {
+  list?: RestaurantListDetailApiListRecord;
   listId: string;
   restaurantId: string;
+  items?: RestaurantListDetailApiItemRecord[];
+}
+
+interface RestaurantListMutationListApiResponse {
+  list: RestaurantListDetailApiListRecord;
+  listId: string;
   items?: RestaurantListDetailApiItemRecord[];
 }
 
@@ -375,14 +387,22 @@ export function getRestaurantListItemLinkFoodItemIds(
   return Array.from(foodItemIds);
 }
 
-function createEmptyRestaurantListDetailPage(input?: PageInputLike): RestaurantListDetailPage {
+function createEmptyRestaurantListDetail(): RestaurantListDetailRecord {
   return {
-    ...createEmptyPaginatedResult<RestaurantListItemRecord>(input),
     list: null,
+    items: [],
     bookmarkState: {
       savedListIdsByBookmarkLookupId: {},
     },
     photoPreviews: [],
+    viewerLists: [],
+  };
+}
+
+function createEmptyRestaurantListCandidateRestaurants(): RestaurantListCandidateRestaurantsResult {
+  return {
+    list: null,
+    items: [],
   };
 }
 
@@ -433,6 +453,40 @@ function buildRestaurantListItemLinkFoodItemLookupFilter(foodItemIds: string[]):
 
 function mapRestaurantListMutationGroupItems(
   response: RestaurantListMutationGroupApiResponse,
+): RestaurantListItemRecord[] {
+  return (response.items ?? []).map(mapRestaurantListDetailItemRecord);
+}
+
+function mapRestaurantListDetailResponse(response: RestaurantListDetailApiResponse): RestaurantListDetailRecord {
+  const savedListIdsByBookmarkLookupId = Object.fromEntries(
+    Object.entries(response.bookmarkState?.savedListIdsByBookmarkLookupId ?? {}).map(([bookmarkLookupId, listIds]) => [
+      bookmarkLookupId,
+      (listIds ?? []).map((candidate) => candidate.trim()).filter((candidate) => candidate.length > 0),
+    ]),
+  );
+
+  return {
+    list: mapRestaurantListDetailApiListRecord(response.list),
+    items: (response.items ?? []).map(mapRestaurantListDetailItemRecord),
+    bookmarkState: {
+      savedListIdsByBookmarkLookupId,
+    },
+    photoPreviews: (response.photoPreviews ?? []).map((photoPreview) => ({
+      id: photoPreview.id,
+      food_item: photoPreview.food_item?.trim() || undefined,
+      user: photoPreview.user?.trim() || undefined,
+      photo: photoPreview.photo,
+      collectionId: photoPreview.collectionId?.trim() || undefined,
+      collectionName: photoPreview.collectionName?.trim() || undefined,
+      created: photoPreview.created,
+      ownerName: photoPreview.ownerName?.trim() || undefined,
+    })),
+    viewerLists: (response.viewerLists ?? []).map(mapRestaurantListDetailApiListRecord),
+  };
+}
+
+function mapRestaurantListMutationListItems(
+  response: RestaurantListMutationListApiResponse,
 ): RestaurantListItemRecord[] {
   return (response.items ?? []).map(mapRestaurantListDetailItemRecord);
 }
@@ -530,65 +584,91 @@ export async function getRestaurantListById(listId: string): Promise<RestaurantL
   }
 }
 
-export async function getRestaurantListDetailPage(
-  listId: string,
-  input?: PageInputLike,
-): Promise<RestaurantListDetailPage> {
+export async function getRestaurantListDetail(listId: string): Promise<RestaurantListDetailRecord> {
   if (!pb.authStore.record?.id) {
-    return createEmptyRestaurantListDetailPage(input);
+    return createEmptyRestaurantListDetail();
   }
 
   const trimmedListId = listId.trim();
   if (!trimmedListId) {
-    return createEmptyRestaurantListDetailPage(input);
+    return createEmptyRestaurantListDetail();
   }
-
-  const { page, pageSize } = resolvePaginationInput(input);
-  const query = new URLSearchParams({
-    page: String(page),
-    pageSize: String(pageSize),
-  });
 
   try {
     const response = await sendApiRequest<RestaurantListDetailApiResponse>(
-      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/detail?${query.toString()}`,
+      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/detail`,
       {
         method: 'GET',
       },
     );
 
-    const savedListIdsByBookmarkLookupId = Object.fromEntries(
-      Object.entries(response.bookmarkState?.savedListIdsByBookmarkLookupId ?? {}).map(([bookmarkLookupId, listIds]) => [
-        bookmarkLookupId,
-        (listIds ?? []).map((candidate) => candidate.trim()).filter((candidate) => candidate.length > 0),
-      ]),
+    return mapRestaurantListDetailResponse(response);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return createEmptyRestaurantListDetail();
+    }
+
+    throw error;
+  }
+}
+
+export async function getRestaurantListDetailPage(
+  listId: string,
+  input?: PageInputLike,
+): Promise<RestaurantListDetailPage> {
+  const detail = await getRestaurantListDetail(listId);
+  const items = detail.items;
+  const { page, pageSize } = resolvePaginationInput(input);
+
+  return {
+    list: detail.list,
+    items,
+    page: items.length > 0 ? page : 0,
+    pageSize: items.length > 0 ? Math.max(items.length, pageSize) : 0,
+    totalItems: items.length,
+    totalPages: items.length > 0 ? 1 : 0,
+    hasNextPage: false,
+    bookmarkState: detail.bookmarkState,
+    photoPreviews: detail.photoPreviews,
+  };
+}
+
+export async function getRestaurantListCandidateRestaurants(
+  listId: string,
+  search?: string,
+): Promise<RestaurantListCandidateRestaurantsResult> {
+  if (!pb.authStore.record?.id) {
+    return createEmptyRestaurantListCandidateRestaurants();
+  }
+
+  const trimmedListId = listId.trim();
+  if (!trimmedListId) {
+    return createEmptyRestaurantListCandidateRestaurants();
+  }
+
+  const query = new URLSearchParams();
+  const trimmedSearch = search?.trim();
+  if (trimmedSearch) {
+    query.set('search', trimmedSearch);
+  }
+
+  const querySuffix = query.toString() ? `?${query.toString()}` : '';
+
+  try {
+    const response = await sendApiRequest<RestaurantListCandidateRestaurantsApiResponse>(
+      `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/candidate-restaurants${querySuffix}`,
+      {
+        method: 'GET',
+      },
     );
 
     return {
       list: mapRestaurantListDetailApiListRecord(response.list),
-      items: (response.items ?? []).map(mapRestaurantListDetailItemRecord),
-      page: response.page,
-      pageSize: response.pageSize,
-      totalItems: response.totalItems,
-      totalPages: response.totalPages,
-      hasNextPage: response.hasNextPage,
-      bookmarkState: {
-        savedListIdsByBookmarkLookupId,
-      },
-      photoPreviews: (response.photoPreviews ?? []).map((photoPreview) => ({
-        id: photoPreview.id,
-        food_item: photoPreview.food_item?.trim() || undefined,
-        user: photoPreview.user?.trim() || undefined,
-        photo: photoPreview.photo,
-        collectionId: photoPreview.collectionId?.trim() || undefined,
-        collectionName: photoPreview.collectionName?.trim() || undefined,
-        created: photoPreview.created,
-        ownerName: photoPreview.ownerName?.trim() || undefined,
-      })),
+      items: (response.items ?? []).map(mapRestaurantListVisitedRestaurantCandidateRecord),
     };
   } catch (error) {
     if (isNotFoundError(error)) {
-      return createEmptyRestaurantListDetailPage(input);
+      return createEmptyRestaurantListCandidateRestaurants();
     }
 
     throw error;
@@ -1045,11 +1125,11 @@ export async function addRestaurantVisitRatingsToList(
 
 export async function moveRestaurantListRestaurant(
   input: MoveRestaurantListRestaurantInput,
-): Promise<void> {
+): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation(
     'restaurant_list.restaurant.move',
     async () => {
-      const currentUserId = getAuthenticatedUserId();
+      getAuthenticatedUserId();
       const listId = input.listId.trim();
       const restaurantId = input.restaurantId.trim();
       const direction = input.direction;
@@ -1066,82 +1146,18 @@ export async function moveRestaurantListRestaurant(
         throw new Error('Direction must be up or down.');
       }
 
-      const list = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
-        fields: 'id,user',
-      });
-      if (list.user !== currentUserId) {
-        throw new Error('You can only reorder restaurants in your own lists.');
-      }
-
-      const listItems = await listCollectionRecords<Pick<ListItemCollectionRecord, 'id' | 'restaurant' | 'position' | 'created'>>(
-        'list_items',
+      const response = await sendApiRequest<RestaurantListMutationListApiResponse>(
+        `/api/restaurant-lists/${encodeURIComponent(listId)}/restaurants/reorder`,
         {
-          filter: `list = "${escapeFilterValue(listId)}"`,
-          sort: 'position,created',
-          fields: 'id,restaurant,position,created',
+          method: 'POST',
+          body: {
+            restaurantId,
+            direction,
+          },
         },
       );
 
-      if (listItems.length < 2) {
-        return;
-      }
-
-      const listItemIdsByRestaurant = new Map<
-        string,
-        Pick<ListItemCollectionRecord, 'id' | 'restaurant' | 'position' | 'created'>[]
-      >();
-      const restaurantOrder: string[] = [];
-      for (const item of listItems) {
-        const existingItems = listItemIdsByRestaurant.get(item.restaurant);
-        if (existingItems) {
-          existingItems.push(item);
-          continue;
-        }
-
-        listItemIdsByRestaurant.set(item.restaurant, [item]);
-        restaurantOrder.push(item.restaurant);
-      }
-
-      const currentIndex = restaurantOrder.indexOf(restaurantId);
-      if (currentIndex === -1) {
-        return;
-      }
-
-      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-      if (targetIndex < 0 || targetIndex >= restaurantOrder.length) {
-        return;
-      }
-
-      const [movedRestaurantId] = restaurantOrder.splice(currentIndex, 1);
-      if (!movedRestaurantId) {
-        return;
-      }
-      restaurantOrder.splice(targetIndex, 0, movedRestaurantId);
-
-      const reorderedItems: Pick<ListItemCollectionRecord, 'id' | 'restaurant' | 'position' | 'created'>[] = [];
-      for (const orderedRestaurantId of restaurantOrder) {
-        const itemsForRestaurant = listItemIdsByRestaurant.get(orderedRestaurantId);
-        if (!itemsForRestaurant) {
-          continue;
-        }
-        reorderedItems.push(...itemsForRestaurant);
-      }
-
-      for (let index = 0; index < reorderedItems.length; index += 1) {
-        const listItem = reorderedItems[index];
-        if (!listItem) {
-          continue;
-        }
-
-        const nextPosition = index + 1;
-        if (listItem.position === nextPosition) {
-          continue;
-        }
-
-        await pb.collection('list_items').update<ListItemCollectionRecord>(listItem.id, {
-          position: nextPosition,
-        });
-      }
+      return mapRestaurantListMutationListItems(response);
     },
     {
       direction: input.direction,
@@ -1174,7 +1190,7 @@ export async function removeRestaurantFromList(
 
 export async function removeRestaurantListSourceRating(
   input: RemoveRestaurantListSourceRatingInput,
-): Promise<void> {
+): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation('restaurant_list.source_rating.remove', async () => {
     getAuthenticatedUserId();
 
@@ -1186,62 +1202,30 @@ export async function removeRestaurantListSourceRating(
     }
 
     try {
-      const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId, {
-        fields: 'id,list,foodItem,recommendedItems,userFoodItem,sourceUser',
-      });
+      const response = await sendApiRequest<RestaurantListMutationGroupApiResponse>(
+        `/api/restaurant-lists/${encodeURIComponent(listId)}/list-items/${encodeURIComponent(listItemId)}/remove-source-rating`,
+        {
+          method: 'POST',
+          body: {
+            foodItemId,
+          },
+        },
+      );
 
-      if (listItem.list !== listId) {
-        throw new Error('List item not found.');
-      }
-
-      let nextFoodItem = listItem.foodItem?.trim() || '';
-      let nextUserFoodItem = listItem.userFoodItem?.trim() || '';
-      let nextSourceUser = listItem.sourceUser?.trim() || '';
-      let nextRecommendedItems = (listItem.recommendedItems ?? [])
-        .map((itemId) => itemId?.trim())
-        .filter((itemId): itemId is string => Boolean(itemId));
-
-      const isPrimaryFoodItem = nextFoodItem === foodItemId;
-      const hasLegacyFoodItem = nextRecommendedItems.includes(foodItemId);
-
-      if (!isPrimaryFoodItem && !hasLegacyFoodItem) {
-        return;
-      }
-
-      if (isPrimaryFoodItem) {
-        nextFoodItem = '';
-      } else {
-        nextRecommendedItems = nextRecommendedItems.filter((itemId) => itemId !== foodItemId);
-      }
-
-      const hasSourceItems = Boolean(nextFoodItem) || nextRecommendedItems.length > 0;
-      if (!hasSourceItems) {
-        if (nextUserFoodItem) {
-          nextFoodItem = nextUserFoodItem;
-          nextUserFoodItem = '';
-          nextSourceUser = '';
-        } else {
-          await pb.collection('list_items').delete(listItemId);
-          return;
-        }
-      }
-
-      await pb.collection('list_items').update<ListItemCollectionRecord>(listItemId, {
-        foodItem: nextFoodItem || null,
-        recommendedItems: nextRecommendedItems,
-        sourceUser: nextSourceUser || null,
-        userFoodItem: nextUserFoodItem || null,
-      });
+      return mapRestaurantListMutationGroupItems(response);
     } catch (error) {
       if (isNotFoundError(error)) {
-        return;
+        return [];
       }
       throw error;
     }
   });
 }
 
-export async function removeRestaurantListUserRating(listId: string, listItemId: string): Promise<void> {
+export async function removeRestaurantListUserRating(
+  listId: string,
+  listItemId: string,
+): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation('restaurant_list.user_rating.remove', async () => {
     getAuthenticatedUserId();
 
@@ -1252,33 +1236,17 @@ export async function removeRestaurantListUserRating(listId: string, listItemId:
     }
 
     try {
-      const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(trimmedListItemId, {
-        fields: 'id,list,foodItem,recommendedItems,userFoodItem',
-      });
+      const response = await sendApiRequest<RestaurantListMutationGroupApiResponse>(
+        `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/list-items/${encodeURIComponent(trimmedListItemId)}/remove-user-rating`,
+        {
+          method: 'POST',
+        },
+      );
 
-      if (listItem.list !== trimmedListId) {
-        throw new Error('List item not found.');
-      }
-
-      if (!listItem.userFoodItem?.trim()) {
-        return;
-      }
-
-      const hasSourceItems =
-        Boolean(listItem.foodItem?.trim()) ||
-        (listItem.recommendedItems ?? []).some((itemId) => Boolean(itemId?.trim()));
-
-      if (!hasSourceItems) {
-        await pb.collection('list_items').delete(trimmedListItemId);
-        return;
-      }
-
-      await pb.collection('list_items').update<ListItemCollectionRecord>(trimmedListItemId, {
-        userFoodItem: null,
-      });
+      return mapRestaurantListMutationGroupItems(response);
     } catch (error) {
       if (isNotFoundError(error)) {
-        return;
+        return [];
       }
       throw error;
     }

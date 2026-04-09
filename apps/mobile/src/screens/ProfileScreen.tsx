@@ -8,7 +8,6 @@ import {
   View,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { RecordModel } from 'pocketbase';
 
 import {
   ConfirmDestructiveModal,
@@ -30,8 +29,6 @@ import {
   getProfile,
   listInviteCodes,
   lockInviteCode,
-  saveAuthRecord,
-  updateCollectionRecord,
   updateProfile,
 } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -408,25 +405,11 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         throw new Error("Name cannot be empty.");
       }
 
-      if (!user?.id) {
-        throw new Error("Could not find user account.");
-      }
-
-      const updatedUserRecord = await updateCollectionRecord<RecordModel>(
-        "users",
-        user.id,
-        {
-          name: trimmedName,
-        },
-      );
-
-      await updateProfile({
+      const updatedProfile = await updateProfile({
         displayName: trimmedName,
       });
 
-      saveAuthRecord(updatedUserRecord);
-
-      return trimmedName;
+      return updatedProfile.displayName.trim() || trimmedName;
     },
     onSuccess: (nextName) => {
       setAccountNameErrorMessage(null);

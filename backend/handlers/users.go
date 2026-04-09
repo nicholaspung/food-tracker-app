@@ -36,6 +36,7 @@ type adminContentModerationInput struct {
 // RegisterUserHandlers registers all user management endpoints.
 func RegisterUserHandlers(se *core.ServeEvent, app core.App) {
 	registerAccountDeletionHandler(se, app)
+	registerSelfProfileHandlers(se, app)
 
 	se.Router.GET("/api/admin/users", func(e *core.RequestEvent) error {
 		if err := requireAdmin(e); err != nil {

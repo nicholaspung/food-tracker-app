@@ -198,6 +198,19 @@ export interface RestaurantListDetailPage extends PaginatedResult<RestaurantList
   photoPreviews: RestaurantListDetailPhotoPreviewRecord[];
 }
 
+export interface RestaurantListDetailRecord {
+  list: RestaurantListRecord | null;
+  items: RestaurantListItemRecord[];
+  bookmarkState: RestaurantListDetailBookmarkState;
+  photoPreviews: RestaurantListDetailPhotoPreviewRecord[];
+  viewerLists: RestaurantListRecord[];
+}
+
+export interface RestaurantListCandidateRestaurantsResult {
+  list: RestaurantListRecord | null;
+  items: RestaurantListVisitedRestaurantCandidate[];
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   page: number;
@@ -365,24 +378,18 @@ export interface SendFeedbackMessageInput {
 export interface CreateTastingSessionInput {
   name: string;
   restaurantName: string;
-  createdByUserId: string;
-  createdByName: string;
 }
 
 export interface JoinTastingSessionInput {
   inviteCode: string;
-  userId: string;
-  participantName: string;
 }
 
 export interface AddTastingItemInput {
   name: string;
   description?: string;
-  createdByParticipantId: string;
 }
 
 export interface SubmitTastingRatingInput {
-  participantId: string;
   rating: number;
   note?: string;
 }
@@ -416,22 +423,22 @@ export interface UpdateBillInput {
 export {
   clearPhotoDraft,
   createEntityId,
-  createTastingSession,
   getPhotoDraft,
-  getProfile,
   getStore,
+  savePhotoDraft,
+} from './featureStoreRuntime';
+export { getProfile, updateProfile } from './profileApiStore';
+export {
+  addTastingItem,
+  createTastingSession,
+  deleteTastingItem,
   getTastingSessionById,
   joinTastingSession,
   listTastingSessions,
   regenerateTastingInviteCode,
-  savePhotoDraft,
-  saveTastingResultsToVisitHistory,
   setTastingSessionStatus,
   submitTastingRating,
-  updateProfile,
-  addTastingItem,
-  deleteTastingItem,
-} from './featureStoreRuntime';
+} from './tastingSessionsApiStore';
 export {
   deleteAccount,
   generateInviteCodes,
@@ -469,6 +476,8 @@ export {
   createDefaultRestaurantList,
   createRestaurantList,
   deleteRestaurantList,
+  getRestaurantListCandidateRestaurants,
+  getRestaurantListDetail,
   getRestaurantListById,
   getRestaurantListDetailPage,
   getRestaurantListItemLinkFoodItemIds,

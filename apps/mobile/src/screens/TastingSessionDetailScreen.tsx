@@ -1,27 +1,41 @@
+import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Share, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, FeatureDetailScreenScaffold, Skeleton } from '../components/shared';
+import {
+  ConfirmDestructiveModal,
+  EmptyState,
+  ErrorState,
+  FeatureDetailScreenScaffold,
+  Skeleton,
+  StatusPill,
+} from '../components/shared';
 import {
   addTastingItem,
   deleteTastingItem,
   getTastingSessionById,
   regenerateTastingInviteCode,
-  saveTastingResultsToVisitHistory,
   setTastingSessionStatus,
   submitTastingRating,
   type TastingSessionItem,
+  type TastingSessionStatus,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type TastingSessionDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'TastingSessionDetail'>;
+
+interface PendingDeleteItemState {
+  id: string;
+  name: string;
+}
 
 function getAverageRating(item: TastingSessionItem): number {
   if (item.ratings.length === 0) {
@@ -41,6 +55,28 @@ function getControversyScore(item: TastingSessionItem): number {
   return Math.max(...ratings) - Math.min(...ratings);
 }
 
+function formatTastingSessionStatusLabel(status: TastingSessionStatus): string {
+  switch (status) {
+    case 'adding_items':
+      return 'Adding Items';
+    case 'rating':
+      return 'Rating';
+    case 'completed':
+      return 'Completed';
+  }
+}
+
+function resolveTastingSessionStatusTone(status: TastingSessionStatus): 'info' | 'warning' | 'success' {
+  switch (status) {
+    case 'adding_items':
+      return 'info';
+    case 'rating':
+      return 'warning';
+    case 'completed':
+      return 'success';
+  }
+}
+
 const useStyles = createThemedStyles((theme) => ({
   container: {
     gap: theme.spacing.md,
@@ -52,11 +88,18 @@ const useStyles = createThemedStyles((theme) => ({
   rowAction: {
     flex: 1,
   },
+  statusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
 }));
 
 export function TastingSessionDetailScreen({ navigation, route }: TastingSessionDetailScreenProps) {
   const { sessionId } = route.params;
   const styles = useStyles();
+  const { isOnline } = useConnectivity();
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -71,6 +114,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const [ratingNoteDrafts, setRatingNoteDrafts] = useState<Record<string, string>>({});
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<PendingDeleteItemState | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
 
   const currentParticipant = useMemo(() => {
     const session = sessionQuery.data;
@@ -78,12 +123,57 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       return null;
     }
 
-    return (
-      session.participants.find((participant) => participant.userId === user.id) ??
-      session.participants[0] ??
-      null
-    );
+    return session.participants.find((participant) => participant.userId === user.id) ?? null;
   }, [sessionQuery.data, user]);
+
+  const isLeader = Boolean(sessionQuery.data && user && sessionQuery.data.createdByUserId === user.id);
+  const hasBlockingSessionError = sessionQuery.isError && !sessionQuery.data;
+  const hasSessionRefreshError = sessionQuery.isError && Boolean(sessionQuery.data);
+
+  useEffect(() => {
+    const session = sessionQuery.data;
+    if (!session || !currentParticipant) {
+      return;
+    }
+
+    setRatingDrafts((currentDraftValues) => {
+      let hasChanged = false;
+      const nextDraftValues = { ...currentDraftValues };
+
+      session.items.forEach((item) => {
+        const existingRating = item.ratings.find(
+          (rating) => rating.participantId === currentParticipant.id,
+        );
+        if (!existingRating || currentDraftValues[item.id] !== undefined) {
+          return;
+        }
+
+        nextDraftValues[item.id] = String(existingRating.rating);
+        hasChanged = true;
+      });
+
+      return hasChanged ? nextDraftValues : currentDraftValues;
+    });
+
+    setRatingNoteDrafts((currentDraftValues) => {
+      let hasChanged = false;
+      const nextDraftValues = { ...currentDraftValues };
+
+      session.items.forEach((item) => {
+        const existingRating = item.ratings.find(
+          (rating) => rating.participantId === currentParticipant.id,
+        );
+        if (!existingRating || currentDraftValues[item.id] !== undefined) {
+          return;
+        }
+
+        nextDraftValues[item.id] = existingRating.note ?? '';
+        hasChanged = true;
+      });
+
+      return hasChanged ? nextDraftValues : currentDraftValues;
+    });
+  }, [currentParticipant, sessionQuery.data]);
 
   const ratingProgress = useMemo(() => {
     const session = sessionQuery.data;
@@ -104,7 +194,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const resultsSummary = useMemo(() => {
     const session = sessionQuery.data;
     if (!session) {
-      return { favorites: [] as TastingSessionItem[], controversial: [] as TastingSessionItem[] };
+      return { controversial: [] as TastingSessionItem[], favorites: [] as TastingSessionItem[] };
     }
 
     const favorites = [...session.items]
@@ -116,8 +206,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       .slice(0, 3);
 
     return {
-      favorites,
       controversial,
+      favorites,
     };
   }, [sessionQuery.data]);
 
@@ -137,7 +227,56 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     ]);
   };
 
+  const handleCopyInviteCode = async () => {
+    const session = sessionQuery.data;
+    if (!session?.inviteCode) {
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(session.inviteCode);
+      setCopyStatus('Invite code copied.');
+    } catch (error) {
+      setCopyStatus(error instanceof Error ? error.message : 'Could not copy invite code.');
+    }
+  };
+
+  const handleShareInviteCode = async () => {
+    const session = sessionQuery.data;
+    if (!session?.inviteCode) {
+      return;
+    }
+
+    trackObservabilityEvent('TASTING_INVITE_SHARE_STARTED', {
+      source: 'TastingSessionDetailScreen',
+    });
+
+    try {
+      const shareResult = await Share.share({
+        message: `Join my tasting session with code: ${session.inviteCode}`,
+      });
+
+      trackObservabilityEvent('TASTING_INVITE_SHARE_COMPLETED', {
+        action: shareResult.action,
+        source: 'TastingSessionDetailScreen',
+      });
+      setCopyStatus('Invite ready to share.');
+    } catch (error) {
+      trackObservabilityEvent('TASTING_INVITE_SHARE_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        source: 'TastingSessionDetailScreen',
+      });
+      setCopyStatus('Could not open the share sheet.');
+    }
+  };
+
   const handleRegenerateCode = async () => {
+    if (!isOnline) {
+      setErrorMessage('Tasting sessions require an internet connection.');
+      return;
+    }
+
     setErrorMessage(null);
 
     try {
@@ -150,6 +289,11 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   };
 
   const handleAddItem = async () => {
+    if (!isOnline) {
+      setErrorMessage('Tasting sessions require an internet connection.');
+      return;
+    }
+
     if (!newItemName.trim() || !currentParticipant) {
       setErrorMessage('Item name is required.');
       return;
@@ -159,9 +303,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
     try {
       await addTastingItem(sessionId, {
-        name: newItemName,
         description: newItemDescription,
-        createdByParticipantId: currentParticipant.id,
+        name: newItemName,
       });
       setNewItemName('');
       setNewItemDescription('');
@@ -172,24 +315,39 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }
   };
 
-  const handleDeleteItem = async (itemId: string) => {
-    if (!currentParticipant) {
+  const handleConfirmDeleteItem = async () => {
+    if (!pendingDeleteItem) {
+      return;
+    }
+
+    if (!isOnline) {
+      setErrorMessage('Tasting sessions require an internet connection.');
       return;
     }
 
     setErrorMessage(null);
+    setIsDeletingItem(true);
 
     try {
-      await deleteTastingItem(sessionId, itemId, currentParticipant.id);
+      await deleteTastingItem(sessionId, pendingDeleteItem.id);
+      setPendingDeleteItem(null);
       await refreshSession();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete item.';
       setErrorMessage(message);
+    } finally {
+      setIsDeletingItem(false);
     }
   };
 
   const handleSubmitRating = async (itemId: string) => {
+    if (!isOnline) {
+      setErrorMessage('Tasting sessions require an internet connection.');
+      return;
+    }
+
     if (!currentParticipant) {
+      setErrorMessage('You must be a participant to rate items.');
       return;
     }
 
@@ -203,9 +361,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
     try {
       await submitTastingRating(sessionId, itemId, {
-        participantId: currentParticipant.id,
-        rating: ratingDraft,
         note: ratingNoteDrafts[itemId]?.trim() || undefined,
+        rating: ratingDraft,
       });
       await refreshSession();
     } catch (error) {
@@ -220,7 +377,12 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       return;
     }
 
-    const nextStatus = session.status === 'lobby' ? 'rating' : 'completed';
+    if (!isOnline) {
+      setErrorMessage('Tasting sessions require an internet connection.');
+      return;
+    }
+
+    const nextStatus = session.status === 'adding_items' ? 'rating' : 'completed';
 
     setErrorMessage(null);
 
@@ -233,67 +395,18 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }
   };
 
-  const handleSaveResultsToVisitHistory = async () => {
-    setErrorMessage(null);
-
-    try {
-      await saveTastingResultsToVisitHistory(sessionId);
-      await Promise.all([
-        refreshSession(),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
-      ]);
-      navigation.navigate('Home');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save results to visit history.';
-      setErrorMessage(message);
-    }
-  };
-
-  const shareInviteCode = async () => {
-    const session = sessionQuery.data;
-    if (!session) {
-      return;
-    }
-
-    trackObservabilityEvent('TASTING_INVITE_SHARE_STARTED', {
-      source: 'TastingSessionDetailScreen',
-    });
-    try {
-      const shareResult = await Share.share({
-        message: `Join my tasting session with code: ${session.inviteCode}`,
-      });
-      trackObservabilityEvent('TASTING_INVITE_SHARE_COMPLETED', {
-        action: shareResult.action,
-        source: 'TastingSessionDetailScreen',
-      });
-    } catch (error) {
-      trackObservabilityEvent('TASTING_INVITE_SHARE_FAILED', {
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-        source: 'TastingSessionDetailScreen',
-      });
-      setCopyStatus('Share sheet was canceled.');
-    }
-  };
-
   if (sessionQuery.isLoading) {
     return (
-      <FeatureDetailScreenScaffold
-        onBackPress={handleBackPress}
-        title="Tasting Session"
-      >
+      <FeatureDetailScreenScaffold onBackPress={handleBackPress} title="Tasting Session">
         <Skeleton height={20} />
         <Skeleton height={20} />
       </FeatureDetailScreenScaffold>
     );
   }
 
-  if (sessionQuery.isError) {
+  if (hasBlockingSessionError) {
     return (
-      <FeatureDetailScreenScaffold
-        onBackPress={handleBackPress}
-        title="Tasting Session"
-      >
+      <FeatureDetailScreenScaffold onBackPress={handleBackPress} title="Tasting Session">
         <ErrorState
           description="Could not load the tasting session."
           onRetry={() => {
@@ -307,10 +420,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
   if (!sessionQuery.data) {
     return (
-      <FeatureDetailScreenScaffold
-        onBackPress={handleBackPress}
-        title="Tasting Session"
-      >
+      <FeatureDetailScreenScaffold onBackPress={handleBackPress} title="Tasting Session">
         <EmptyState
           actionLabel="Back to Sessions"
           onAction={() => {
@@ -323,6 +433,11 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   }
 
   const session = sessionQuery.data;
+  const canManageInviteCode = isLeader && session.status === 'adding_items' && Boolean(session.inviteCode);
+  const canAdvanceStatus =
+    isLeader && (session.status === 'adding_items' || session.status === 'rating') && isOnline;
+  const canAddItems = session.status === 'adding_items' && Boolean(currentParticipant) && isOnline;
+  const canRateItems = session.status === 'rating' && Boolean(currentParticipant) && isOnline;
 
   return (
     <FeatureDetailScreenScaffold
@@ -332,69 +447,122 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       title={session.name}
     >
       <PageErrorToast errorMessage={errorMessage} title="Session update failed" />
+      <PageErrorToast
+        actionLabel="Retry"
+        errorMessage={
+          hasSessionRefreshError ? 'Could not refresh the tasting session. Showing saved data.' : null
+        }
+        onAction={() => {
+          void sessionQuery.refetch();
+        }}
+        title="Session may be stale"
+      />
+
+      {!isOnline ? (
+        <Text tone="warning">
+          Tasting session changes require internet connection. Any details already loaded here remain
+          visible while offline.
+        </Text>
+      ) : null}
 
       <Card>
-        <Text variant="label">Lobby</Text>
-        <Text tone="secondary">Status: {session.status}</Text>
-        <Text variant="titleMd">Invite code: {session.inviteCode}</Text>
-        {copyStatus ? <Text tone="muted">{copyStatus}</Text> : null}
-
-        <View style={styles.row}>
-          <Button
-            label="Copy Code"
-            onPress={() => {
-              setCopyStatus('Invite code copied to clipboard-ready state.');
-            }}
-            style={styles.rowAction}
-            variant="secondary"
-          />
-          <Button
-            label="Share"
-            onPress={() => {
-              void shareInviteCode();
-            }}
-            style={styles.rowAction}
-            variant="secondary"
+        <View style={styles.statusRow}>
+          <Text variant="label">Session</Text>
+          <StatusPill
+            label={formatTastingSessionStatusLabel(session.status)}
+            tone={resolveTastingSessionStatusTone(session.status)}
           />
         </View>
 
-        <Button
-          label="Regenerate Code"
-          onPress={() => {
-            void handleRegenerateCode();
-          }}
-          variant="secondary"
-        />
+        {canManageInviteCode ? (
+          <>
+            <Text variant="titleMd">Invite code: {session.inviteCode}</Text>
+            {copyStatus ? <Text tone="muted">{copyStatus}</Text> : null}
+            <View style={styles.row}>
+              <Button
+                label="Copy Code"
+                onPress={() => {
+                  void handleCopyInviteCode();
+                }}
+                style={styles.rowAction}
+                variant="secondary"
+              />
+              <Button
+                label="Share"
+                onPress={() => {
+                  void handleShareInviteCode();
+                }}
+                style={styles.rowAction}
+                variant="secondary"
+              />
+            </View>
+
+            <Button
+              disabled={!isOnline}
+              label="Regenerate Code"
+              onPress={() => {
+                void handleRegenerateCode();
+              }}
+              variant="secondary"
+            />
+          </>
+        ) : isLeader ? (
+          <Text tone="secondary">Invite codes close once the session moves out of adding items.</Text>
+        ) : (
+          <Text tone="secondary">Only the session leader can manage invite codes.</Text>
+        )}
 
         <Text variant="label">Participants</Text>
         {session.participants.map((participant) => (
           <ListItem
             key={participant.id}
-            description={participant.userId ?? 'guest'}
+            description={participant.userId ?? 'participant'}
             title={participant.name}
-            trailing={<Text tone="muted">Joined</Text>}
+            trailing={
+              participant.userId === user?.id ? <Text tone="muted">You</Text> : <Text tone="muted">Joined</Text>
+            }
           />
         ))}
 
-        <Button
-          label={session.status === 'lobby' ? 'Start Rating' : 'Complete Session'}
-          onPress={() => {
-            void handleAdvanceStatus();
-          }}
-        />
+        {canAdvanceStatus ? (
+          <Button
+            label={session.status === 'adding_items' ? 'Start Rating' : 'Complete Session'}
+            onPress={() => {
+              void handleAdvanceStatus();
+            }}
+          />
+        ) : isLeader ? (
+          <Text tone="secondary">
+            {session.status === 'completed'
+              ? 'This session is finished.'
+              : 'Reconnect to move the session forward.'}
+          </Text>
+        ) : (
+          <Text tone="secondary">Only the leader can move the session forward.</Text>
+        )}
       </Card>
 
       <Card>
         <Text variant="label">Item Management</Text>
-        <Input label="Item name" onChangeText={setNewItemName} placeholder="Add tasting item" value={newItemName} />
+        {session.status !== 'adding_items' ? (
+          <Text tone="secondary">Items are locked once rating begins.</Text>
+        ) : null}
         <Input
+          editable={session.status === 'adding_items' && isOnline}
+          label="Item name"
+          onChangeText={setNewItemName}
+          placeholder="Add tasting item"
+          value={newItemName}
+        />
+        <Input
+          editable={session.status === 'adding_items' && isOnline}
           label="Description"
           onChangeText={setNewItemDescription}
           placeholder="Optional notes"
           value={newItemDescription}
         />
         <Button
-          disabled={!newItemName.trim()}
+          disabled={!canAddItems || !newItemName.trim()}
           label="Add Item"
           onPress={() => {
             void handleAddItem();
@@ -406,20 +574,38 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
           <EmptyState description="Add at least one item to begin." title="No tasting items" />
         ) : (
           session.items.map((item) => {
-            const canDelete = currentParticipant?.id === item.createdByParticipantId;
-            const avgRating = getAverageRating(item);
+            const yourRating = currentParticipant
+              ? item.ratings.find((rating) => rating.participantId === currentParticipant.id)
+              : undefined;
+            const canDelete =
+              session.status === 'adding_items' &&
+              isOnline &&
+              (isLeader || currentParticipant?.id === item.createdByParticipantId);
+
             return (
               <Card key={item.id} tone="muted">
                 <ListItem
                   description={item.description ?? 'No description'}
                   title={item.name}
-                  trailing={<Text tone="muted">Avg {avgRating.toFixed(1)}</Text>}
+                  trailing={
+                    session.status === 'completed' ? (
+                      <Text tone="muted">Avg {getAverageRating(item).toFixed(1)}</Text>
+                    ) : yourRating ? (
+                      <Text tone="muted">Rated</Text>
+                    ) : (
+                      <Text tone="muted">Pending</Text>
+                    )
+                  }
                 />
                 {canDelete ? (
                   <Button
                     label="Delete Item"
                     onPress={() => {
-                      void handleDeleteItem(item.id);
+                      setErrorMessage(null);
+                      setPendingDeleteItem({
+                        id: item.id,
+                        name: item.name,
+                      });
                     }}
                     variant="secondary"
                   />
@@ -435,83 +621,130 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
         <Text tone="secondary">
           Progress: {ratingProgress.rated}/{ratingProgress.total} items rated
         </Text>
+        {session.status === 'adding_items' ? (
+          <Text tone="secondary">The leader needs to start rating before scores can be submitted.</Text>
+        ) : null}
+        {session.status === 'completed' ? (
+          <Text tone="secondary">Ratings are locked because the session is complete.</Text>
+        ) : null}
 
-        {session.items.map((item) => (
-          <Card key={`rating_${item.id}`} tone="muted">
-            <Text variant="label">{item.name}</Text>
-            <Input
-              keyboardType="decimal-pad"
-              label="Rating"
-              onChangeText={(value) => {
-                setRatingDrafts((currentDrafts) => ({
-                  ...currentDrafts,
-                  [item.id]: value,
-                }));
-              }}
-              placeholder="1-5"
-              value={ratingDrafts[item.id] ?? ''}
-            />
-            <Input
-              label="Notes"
-              onChangeText={(value) => {
-                setRatingNoteDrafts((currentDrafts) => ({
-                  ...currentDrafts,
-                  [item.id]: value,
-                }));
-              }}
-              placeholder="Optional tasting notes"
-              value={ratingNoteDrafts[item.id] ?? ''}
-            />
-            <Button
-              label="Save Rating"
-              onPress={() => {
-                void handleSubmitRating(item.id);
-              }}
-              variant="secondary"
-            />
-          </Card>
-        ))}
+        {session.items.length === 0 ? (
+          <EmptyState description="Add items before collecting ratings." title="No items to rate" />
+        ) : (
+          session.items.map((item) => {
+            const savedRating = currentParticipant
+              ? item.ratings.find((rating) => rating.participantId === currentParticipant.id)
+              : undefined;
+
+            return (
+              <Card key={`rating_${item.id}`} tone="muted">
+                <Text variant="label">{item.name}</Text>
+                {savedRating ? (
+                  <Text tone="secondary">
+                    Saved rating: {savedRating.rating}
+                    {savedRating.note ? ` • ${savedRating.note}` : ''}
+                  </Text>
+                ) : null}
+                <Input
+                  editable={canRateItems}
+                  keyboardType="decimal-pad"
+                  label="Rating"
+                  onChangeText={(value) => {
+                    setRatingDrafts((currentDrafts) => ({
+                      ...currentDrafts,
+                      [item.id]: value,
+                    }));
+                  }}
+                  placeholder="1-5"
+                  value={ratingDrafts[item.id] ?? ''}
+                />
+                <Input
+                  editable={canRateItems}
+                  label="Notes"
+                  onChangeText={(value) => {
+                    setRatingNoteDrafts((currentDrafts) => ({
+                      ...currentDrafts,
+                      [item.id]: value,
+                    }));
+                  }}
+                  placeholder="Optional tasting notes"
+                  value={ratingNoteDrafts[item.id] ?? ''}
+                />
+                <Button
+                  disabled={!canRateItems}
+                  label="Save Rating"
+                  onPress={() => {
+                    void handleSubmitRating(item.id);
+                  }}
+                  variant="secondary"
+                />
+              </Card>
+            );
+          })
+        )}
       </Card>
 
       <Card>
         <Text variant="label">Results</Text>
 
-        <Text tone="secondary">Favorites</Text>
-        {resultsSummary.favorites.length === 0 ? (
-          <Text tone="muted">No ratings yet.</Text>
+        {session.status !== 'completed' ? (
+          <Text tone="secondary">Group results appear after the leader completes the session.</Text>
         ) : (
-          resultsSummary.favorites.map((item) => (
-            <ListItem
-              key={`favorite_${item.id}`}
-              description={item.description}
-              title={item.name}
-              trailing={<Text tone="success">Avg {getAverageRating(item).toFixed(1)}</Text>}
-            />
-          ))
-        )}
+          <>
+            <Text tone="secondary">Favorites</Text>
+            {resultsSummary.favorites.length === 0 ? (
+              <Text tone="muted">No ratings yet.</Text>
+            ) : (
+              resultsSummary.favorites.map((item) => (
+                <ListItem
+                  key={`favorite_${item.id}`}
+                  description={item.description}
+                  title={item.name}
+                  trailing={<Text tone="success">Avg {getAverageRating(item).toFixed(1)}</Text>}
+                />
+              ))
+            )}
 
-        <Text tone="secondary">Controversial Items</Text>
-        {resultsSummary.controversial.length === 0 ? (
-          <Text tone="muted">Need at least two ratings per item.</Text>
-        ) : (
-          resultsSummary.controversial.map((item) => (
-            <ListItem
-              key={`controversial_${item.id}`}
-              description={item.description}
-              title={item.name}
-              trailing={<Text tone="warning">Spread {getControversyScore(item).toFixed(1)}</Text>}
-            />
-          ))
+            <Text tone="secondary">Controversial Items</Text>
+            {resultsSummary.controversial.length === 0 ? (
+              <Text tone="muted">Need at least two ratings per item.</Text>
+            ) : (
+              resultsSummary.controversial.map((item) => (
+                <ListItem
+                  key={`controversial_${item.id}`}
+                  description={item.description}
+                  title={item.name}
+                  trailing={<Text tone="warning">Spread {getControversyScore(item).toFixed(1)}</Text>}
+                />
+              ))
+            )}
+          </>
         )}
-
-        <Button
-          disabled={session.status !== 'completed'}
-          label="Save to Visit History"
-          onPress={() => {
-            void handleSaveResultsToVisitHistory();
-          }}
-        />
       </Card>
+
+      <ConfirmDestructiveModal
+        cancelLabel="Keep Item"
+        confirmLabel="Delete Item"
+        confirmLoadingLabel="Deleting..."
+        description={
+          pendingDeleteItem
+            ? `Delete ${pendingDeleteItem.name} from this tasting session?`
+            : 'Delete this item from the tasting session?'
+        }
+        loading={isDeletingItem}
+        onCancel={() => {
+          if (isDeletingItem) {
+            return;
+          }
+
+          setPendingDeleteItem(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmDeleteItem();
+        }}
+        title="Delete Item?"
+        visible={Boolean(pendingDeleteItem)}
+      />
     </FeatureDetailScreenScaffold>
   );
 }

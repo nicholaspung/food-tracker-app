@@ -27,10 +27,26 @@ type restaurantListAddRatingsRequest struct {
 	Note         *string  `json:"note"`
 }
 
+type restaurantListReorderRequest struct {
+	RestaurantID string `json:"restaurantId"`
+	Direction    string `json:"direction"`
+}
+
+type restaurantListRemoveSourceRatingRequest struct {
+	FoodItemID string `json:"foodItemId"`
+}
+
 type restaurantListMutationGroupResponse struct {
+	List         restaurantListDetailListResponse   `json:"list"`
 	ListID       string                             `json:"listId"`
 	RestaurantID string                             `json:"restaurantId"`
 	Items        []restaurantListDetailItemResponse `json:"items"`
+}
+
+type restaurantListMutationListResponse struct {
+	List   restaurantListDetailListResponse   `json:"list"`
+	ListID string                             `json:"listId"`
+	Items  []restaurantListDetailItemResponse `json:"items"`
 }
 
 func registerRestaurantListWriteHandlers(se *core.ServeEvent, app core.App) {
@@ -85,6 +101,127 @@ func registerRestaurantListWriteHandlers(se *core.ServeEvent, app core.App) {
 		var responsePayload restaurantListMutationGroupResponse
 		if err := app.RunInTransaction(func(txApp core.App) error {
 			restaurantID, err := addRestaurantListRatingsTransaction(txApp, e.Auth, listID, requestBody)
+			if err != nil {
+				return err
+			}
+
+			responsePayload, err = buildRestaurantListMutationGroupResponse(
+				txApp,
+				e.Auth.Id,
+				e.Auth.GetBool("isAdmin"),
+				listID,
+				restaurantID,
+			)
+			if err != nil {
+				return apis.NewApiError(500, "failed to load updated restaurant list items", err)
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/restaurant-lists/{listId}/restaurants/reorder", func(e *core.RequestEvent) error {
+		listID := strings.TrimSpace(e.Request.PathValue("listId"))
+		if listID == "" {
+			return apis.NewBadRequestError("listId is required", nil)
+		}
+
+		requestBody := restaurantListReorderRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		var responsePayload restaurantListMutationListResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			if err := reorderRestaurantListTransaction(txApp, e.Auth, listID, requestBody); err != nil {
+				return err
+			}
+
+			var err error
+			responsePayload, err = buildRestaurantListMutationListResponse(
+				txApp,
+				e.Auth.Id,
+				e.Auth.GetBool("isAdmin"),
+				listID,
+			)
+			if err != nil {
+				return apis.NewApiError(500, "failed to load reordered restaurant list items", err)
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/restaurant-lists/{listId}/list-items/{listItemId}/remove-source-rating", func(e *core.RequestEvent) error {
+		listID := strings.TrimSpace(e.Request.PathValue("listId"))
+		if listID == "" {
+			return apis.NewBadRequestError("listId is required", nil)
+		}
+
+		listItemID := strings.TrimSpace(e.Request.PathValue("listItemId"))
+		if listItemID == "" {
+			return apis.NewBadRequestError("listItemId is required", nil)
+		}
+
+		requestBody := restaurantListRemoveSourceRatingRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		var responsePayload restaurantListMutationGroupResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			restaurantID, err := removeRestaurantListSourceRatingTransaction(
+				txApp,
+				e.Auth,
+				listID,
+				listItemID,
+				requestBody,
+			)
+			if err != nil {
+				return err
+			}
+
+			responsePayload, err = buildRestaurantListMutationGroupResponse(
+				txApp,
+				e.Auth.Id,
+				e.Auth.GetBool("isAdmin"),
+				listID,
+				restaurantID,
+			)
+			if err != nil {
+				return apis.NewApiError(500, "failed to load updated restaurant list items", err)
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/restaurant-lists/{listId}/list-items/{listItemId}/remove-user-rating", func(e *core.RequestEvent) error {
+		listID := strings.TrimSpace(e.Request.PathValue("listId"))
+		if listID == "" {
+			return apis.NewBadRequestError("listId is required", nil)
+		}
+
+		listItemID := strings.TrimSpace(e.Request.PathValue("listItemId"))
+		if listItemID == "" {
+			return apis.NewBadRequestError("listItemId is required", nil)
+		}
+
+		var responsePayload restaurantListMutationGroupResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			restaurantID, err := removeRestaurantListUserRatingTransaction(txApp, e.Auth, listID, listItemID)
 			if err != nil {
 				return err
 			}
@@ -352,6 +489,93 @@ func addRestaurantListRatingsTransaction(
 	return restaurantID, nil
 }
 
+func reorderRestaurantListTransaction(
+	app core.App,
+	authRecord *core.Record,
+	listID string,
+	requestBody restaurantListReorderRequest,
+) error {
+	listRecord, err := findOwnedRestaurantListRecord(app, listID, authRecord.Id)
+	if err != nil {
+		return err
+	}
+
+	restaurantID := strings.TrimSpace(requestBody.RestaurantID)
+	if restaurantID == "" {
+		return apis.NewBadRequestError("restaurantId is required", nil)
+	}
+
+	direction := strings.TrimSpace(requestBody.Direction)
+	if direction != "up" && direction != "down" {
+		return apis.NewBadRequestError("direction must be up or down", nil)
+	}
+
+	listItems, err := listRestaurantListMutationItemRecords(app, listRecord.Id)
+	if err != nil {
+		return apis.NewApiError(500, "failed to load restaurant list items", err)
+	}
+	if len(listItems) < 2 {
+		return nil
+	}
+
+	listItemsByRestaurant := make(map[string][]*core.Record)
+	restaurantOrder := make([]string, 0, len(listItems))
+	for _, listItem := range listItems {
+		itemRestaurantID := strings.TrimSpace(listItem.GetString("restaurant"))
+		if itemRestaurantID == "" {
+			continue
+		}
+
+		if existingItems := listItemsByRestaurant[itemRestaurantID]; existingItems != nil {
+			listItemsByRestaurant[itemRestaurantID] = append(existingItems, listItem)
+			continue
+		}
+
+		listItemsByRestaurant[itemRestaurantID] = []*core.Record{listItem}
+		restaurantOrder = append(restaurantOrder, itemRestaurantID)
+	}
+
+	currentIndex := -1
+	for index, orderedRestaurantID := range restaurantOrder {
+		if orderedRestaurantID == restaurantID {
+			currentIndex = index
+			break
+		}
+	}
+	if currentIndex == -1 {
+		return nil
+	}
+
+	targetIndex := currentIndex - 1
+	if direction == "down" {
+		targetIndex = currentIndex + 1
+	}
+	if targetIndex < 0 || targetIndex >= len(restaurantOrder) {
+		return nil
+	}
+
+	restaurantOrder[currentIndex], restaurantOrder[targetIndex] = restaurantOrder[targetIndex], restaurantOrder[currentIndex]
+
+	reorderedItems := make([]*core.Record, 0, len(listItems))
+	for _, orderedRestaurantID := range restaurantOrder {
+		reorderedItems = append(reorderedItems, listItemsByRestaurant[orderedRestaurantID]...)
+	}
+
+	for index, listItem := range reorderedItems {
+		nextPosition := index + 1
+		if listItem.GetInt("position") == nextPosition {
+			continue
+		}
+
+		listItem.Set("position", nextPosition)
+		if err := app.Save(listItem); err != nil {
+			return apis.NewApiError(500, "failed to reorder restaurant list items", err)
+		}
+	}
+
+	return nil
+}
+
 func linkRestaurantListVisitTransaction(
 	app core.App,
 	authRecord *core.Record,
@@ -406,6 +630,144 @@ func linkRestaurantListVisitTransaction(
 	}
 
 	return listID, restaurantID, nil
+}
+
+func removeRestaurantListSourceRatingTransaction(
+	app core.App,
+	authRecord *core.Record,
+	listID string,
+	listItemID string,
+	requestBody restaurantListRemoveSourceRatingRequest,
+) (string, error) {
+	if _, err := findOwnedRestaurantListRecord(app, listID, authRecord.Id); err != nil {
+		return "", err
+	}
+
+	foodItemID := strings.TrimSpace(requestBody.FoodItemID)
+	if foodItemID == "" {
+		return "", apis.NewBadRequestError("foodItemId is required", nil)
+	}
+
+	listItemRecord, err := app.FindRecordById("list_items", listItemID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", apis.NewApiError(500, "failed to load restaurant list item", err)
+	}
+
+	if strings.TrimSpace(listItemRecord.GetString("list")) != listID {
+		return "", apis.NewNotFoundError("list item not found", nil)
+	}
+
+	restaurantID := strings.TrimSpace(listItemRecord.GetString("restaurant"))
+	nextFoodItem := strings.TrimSpace(listItemRecord.GetString("foodItem"))
+	nextUserFoodItem := strings.TrimSpace(listItemRecord.GetString("userFoodItem"))
+	nextSourceUser := strings.TrimSpace(listItemRecord.GetString("sourceUser"))
+	nextRecommendedItems := normalizeUniqueTrimmedIDs(listItemRecord.GetStringSlice("recommendedItems"))
+
+	isPrimaryFoodItem := nextFoodItem == foodItemID
+	hasRecommendedFoodItem := false
+	for _, recommendedItemID := range nextRecommendedItems {
+		if recommendedItemID == foodItemID {
+			hasRecommendedFoodItem = true
+			break
+		}
+	}
+
+	if !isPrimaryFoodItem && !hasRecommendedFoodItem {
+		return restaurantID, nil
+	}
+
+	if isPrimaryFoodItem {
+		nextFoodItem = ""
+	} else {
+		filteredRecommendedItems := make([]string, 0, len(nextRecommendedItems))
+		for _, recommendedItemID := range nextRecommendedItems {
+			if recommendedItemID == foodItemID {
+				continue
+			}
+			filteredRecommendedItems = append(filteredRecommendedItems, recommendedItemID)
+		}
+		nextRecommendedItems = filteredRecommendedItems
+	}
+
+	hasSourceItems := nextFoodItem != "" || len(nextRecommendedItems) > 0
+	if !hasSourceItems {
+		if nextUserFoodItem != "" {
+			nextFoodItem = nextUserFoodItem
+			nextUserFoodItem = ""
+			nextSourceUser = ""
+		} else {
+			if err := app.Delete(listItemRecord); err != nil {
+				return "", apis.NewApiError(500, "failed to remove restaurant list source rating", err)
+			}
+			return restaurantID, nil
+		}
+	}
+
+	listItemRecord.Set("foodItem", emptyStringToNil(nextFoodItem))
+	listItemRecord.Set("recommendedItems", nextRecommendedItems)
+	listItemRecord.Set("sourceUser", emptyStringToNil(nextSourceUser))
+	listItemRecord.Set("userFoodItem", emptyStringToNil(nextUserFoodItem))
+	if err := app.Save(listItemRecord); err != nil {
+		return "", apis.NewApiError(500, "failed to remove restaurant list source rating", err)
+	}
+
+	return restaurantID, nil
+}
+
+func removeRestaurantListUserRatingTransaction(
+	app core.App,
+	authRecord *core.Record,
+	listID string,
+	listItemID string,
+) (string, error) {
+	if _, err := findOwnedRestaurantListRecord(app, listID, authRecord.Id); err != nil {
+		return "", err
+	}
+
+	listItemRecord, err := app.FindRecordById("list_items", listItemID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", apis.NewApiError(500, "failed to load restaurant list item", err)
+	}
+
+	if strings.TrimSpace(listItemRecord.GetString("list")) != listID {
+		return "", apis.NewNotFoundError("list item not found", nil)
+	}
+
+	restaurantID := strings.TrimSpace(listItemRecord.GetString("restaurant"))
+	if strings.TrimSpace(listItemRecord.GetString("userFoodItem")) == "" {
+		return restaurantID, nil
+	}
+
+	hasSourceItems := strings.TrimSpace(listItemRecord.GetString("foodItem")) != ""
+	if !hasSourceItems {
+		for _, recommendedItemID := range listItemRecord.GetStringSlice("recommendedItems") {
+			if strings.TrimSpace(recommendedItemID) == "" {
+				continue
+			}
+			hasSourceItems = true
+			break
+		}
+	}
+
+	if !hasSourceItems {
+		if err := app.Delete(listItemRecord); err != nil {
+			return "", apis.NewApiError(500, "failed to remove restaurant list user rating", err)
+		}
+		return restaurantID, nil
+	}
+
+	listItemRecord.Set("userFoodItem", nil)
+	if err := app.Save(listItemRecord); err != nil {
+		return "", apis.NewApiError(500, "failed to remove restaurant list user rating", err)
+	}
+
+	return restaurantID, nil
 }
 
 func findOwnedRestaurantListRecord(app core.App, listID string, userID string) (*core.Record, error) {
@@ -584,6 +946,17 @@ func collectRestaurantListLinkedFoodItemIDs(records []*core.Record) map[string]s
 	return result
 }
 
+func listRestaurantListMutationItemRecords(app core.App, listID string) ([]*core.Record, error) {
+	return app.FindRecordsByFilter(
+		"list_items",
+		"list = {:listId}",
+		"position,-created",
+		2000,
+		0,
+		dbx.Params{"listId": listID},
+	)
+}
+
 func buildRestaurantListMutationGroupResponse(
 	app core.App,
 	userID string,
@@ -597,7 +970,51 @@ func buildRestaurantListMutationGroupResponse(
 		Items:        []restaurantListDetailItemResponse{},
 	}
 
+	listRecord, err := app.FindRecordById("restaurant_lists", listID)
+	if err != nil {
+		return response, err
+	}
+	response.List = buildRestaurantListDetailListResponse(listRecord)
+
+	if restaurantID == "" {
+		return response, nil
+	}
+
 	listItemRecords, err := listRestaurantListGroupRecords(app, listID, restaurantID, "position,-created")
+	if err != nil {
+		return response, err
+	}
+	if len(listItemRecords) == 0 {
+		return response, nil
+	}
+
+	itemResponses, err := buildRestaurantListDetailItemResponses(app, userID, isAdmin, listItemRecords)
+	if err != nil {
+		return response, err
+	}
+
+	response.Items = itemResponses
+	return response, nil
+}
+
+func buildRestaurantListMutationListResponse(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	listID string,
+) (restaurantListMutationListResponse, error) {
+	response := restaurantListMutationListResponse{
+		ListID: listID,
+		Items:  []restaurantListDetailItemResponse{},
+	}
+
+	listRecord, err := app.FindRecordById("restaurant_lists", listID)
+	if err != nil {
+		return response, err
+	}
+	response.List = buildRestaurantListDetailListResponse(listRecord)
+
+	listItemRecords, err := listRestaurantListMutationItemRecords(app, listID)
 	if err != nil {
 		return response, err
 	}

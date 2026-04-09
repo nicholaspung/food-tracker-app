@@ -7,60 +7,15 @@ import type {
 } from './featureStore';
 import {
   isNotFoundError,
-  nowIso,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import { sendApiRequest } from './pocketbaseGateway';
 
 export type {
   BillListSummary,
   CreateBillInput,
   UpdateBillInput,
 } from './featureStore';
-
-interface BillCollectionRecord {
-  id: string;
-  creator_user: string;
-  bill_name: string;
-  total_amount: number;
-  tax?: number;
-  tip?: number;
-  fees?: number;
-  split_mode: 'even' | 'itemized' | 'custom';
-  extras_split_mode: BillRecord['extrasSplitMode'];
-  status: 'active' | 'settled' | 'cancelled';
-  created: string;
-  updated: string;
-}
-
-interface BillParticipantCollectionRecord {
-  id: string;
-  bill: string;
-  user?: string | null;
-  participant_name?: string;
-  amount_owed: number;
-  paid_status: BillParticipantRecord['paidStatus'];
-  paid_date?: string | null;
-  payment_method?: string | null;
-  custom_tip_contribution?: number | null;
-  created: string;
-  updated: string;
-}
-
-interface BillItemCollectionRecord {
-  id: string;
-  bill: string;
-  item_name: string;
-  price: number;
-  assigned_to: string[];
-  split_mode?: 'simple' | 'advanced';
-  split_config?: {
-    participant_id: string;
-    type: 'percentage' | 'amount';
-    value: number;
-  }[] | null;
-  created: string;
-}
 
 interface BillItemSplitApiResponse {
   participantId?: string;
@@ -117,8 +72,6 @@ interface BillListSummaryApiResponseItem {
   createdAt?: string;
   updatedAt?: string;
 }
-
-const BILL_ITEM_LIST_FIELDS = 'id,bill,item_name,price,assigned_to,split_mode,split_config,created';
 
 function parseCount(value: unknown): number {
   if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -239,25 +192,6 @@ function mapBillListSummaryApiItem(item: BillListSummaryApiResponseItem): BillLi
     createdAt: typeof item.createdAt === 'string' ? item.createdAt : '',
     updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : '',
   };
-}
-
-async function listBillParticipantsForBillId(
-  billId: string,
-): Promise<BillParticipantCollectionRecord[]> {
-  return listCollectionRecords<BillParticipantCollectionRecord>('bill_participants', {
-    filter: `bill = "${billId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
-    sort: 'created',
-  });
-}
-
-async function listBillItemsForBillId(
-  billId: string,
-): Promise<BillItemCollectionRecord[]> {
-  return listCollectionRecords<BillItemCollectionRecord>('bill_items', {
-    filter: `bill = "${billId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
-    sort: 'created',
-    fields: BILL_ITEM_LIST_FIELDS,
-  });
 }
 
 export async function listBillSummaries(): Promise<BillListSummary[]> {
@@ -413,39 +347,10 @@ export async function updateBill(billId: string, updates: UpdateBillInput): Prom
 
 export async function deleteBill(billId: string): Promise<void> {
   return trackFeatureMutation('bill.delete', async () => {
-    const [participants, items] = await Promise.all([
-      listBillParticipantsForBillId(billId),
-      listBillItemsForBillId(billId),
-    ]);
-
-    await Promise.all(
-      items.map(async (item) => {
-        try {
-          await pb.collection('bill_items').delete(item.id);
-        } catch (error) {
-          if (isNotFoundError(error)) {
-            return;
-          }
-          throw error;
-        }
-      }),
-    );
-
-    await Promise.all(
-      participants.map(async (participant) => {
-        try {
-          await pb.collection('bill_participants').delete(participant.id);
-        } catch (error) {
-          if (isNotFoundError(error)) {
-            return;
-          }
-          throw error;
-        }
-      }),
-    );
-
     try {
-      await pb.collection('bills').delete(billId);
+      await sendApiRequest(`/api/bills/${encodeURIComponent(billId)}`, {
+        method: 'DELETE',
+      });
     } catch (error) {
       if (isNotFoundError(error)) {
         return;
@@ -463,25 +368,17 @@ export async function markBillParticipantPaid(
   return trackFeatureMutation(
     'bill.participant.mark_paid',
     async () => {
-      await pb.collection('bill_participants').update<BillParticipantCollectionRecord>(participantId, {
-        paid_status: paidStatus,
-        paid_date: paidStatus === 'paid' ? nowIso() : null,
-      });
+      const response = await sendApiRequest<BillApiResponse>(
+        `/api/bills/${encodeURIComponent(billId)}/participants/${encodeURIComponent(participantId)}/paid-status`,
+        {
+          method: 'PATCH',
+          body: {
+            paidStatus,
+          },
+        },
+      );
 
-      const participants = await listBillParticipantsForBillId(billId);
-      const nextStatus: BillCollectionRecord['status'] =
-        participants.every((participant) => participant.paid_status === 'paid') ? 'settled' : 'active';
-
-      await pb.collection('bills').update<BillCollectionRecord>(billId, {
-        status: nextStatus,
-      });
-
-      const hydratedBill = await getBillById(billId);
-      if (!hydratedBill) {
-        throw new Error('Updated bill could not be loaded.');
-      }
-
-      return hydratedBill;
+      return mapBillApiResponse(response);
     },
     {
       paidStatus,

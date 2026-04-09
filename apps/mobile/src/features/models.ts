@@ -218,7 +218,7 @@ export interface TastingSessionItem {
   createdAt: string;
 }
 
-export type TastingSessionStatus = 'lobby' | 'rating' | 'completed';
+export type TastingSessionStatus = 'adding_items' | 'rating' | 'completed';
 
 export interface TastingSessionRecord {
   id: string;
@@ -287,8 +287,6 @@ export interface FeatureStore {
   restaurantLists: RestaurantListRecord[];
   notes: NoteRecord[];
   friends: FriendRecord[];
-  profile: ProfileRecord;
   feedback: FeedbackRecord[];
-  tastingSessions: TastingSessionRecord[];
   bills: BillRecord[];
 }

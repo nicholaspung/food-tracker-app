@@ -1,18 +1,12 @@
 import { pb } from '../../lib/pocketbase';
-import type {
-  CollectionPageResult,
-} from './pocketbaseGateway';
-import { listCollectionPage, listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 import {
   buildOrFilter,
-  buildSearchFilter,
-  combineFilterClauses,
   createEmptyPaginatedResult,
   escapeFilterValue,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
-  mapPaginatedResult,
   nowIso,
   normalizeModerationContentStatus,
   normalizeQuickTrackVisibility,
@@ -30,7 +24,6 @@ import type {
 import { markNoteUsed } from './notesStore';
 import type {
   FoodItemCollectionRecord,
-  RestaurantCollectionRecord,
   VisitCollectionRecord,
 } from './pocketbaseRecordTypes';
 import type {
@@ -45,6 +38,39 @@ export type {
   UpdateVisitInput,
   VisitPhotoRecord,
 } from './featureStore';
+
+interface VisitApiItemRecord {
+  id: string;
+  name: string;
+  rating: number;
+  description?: string;
+  notes?: string;
+}
+
+interface VisitApiRecord {
+  id: string;
+  restaurantId?: string;
+  restaurantName?: string;
+  restaurantLocation?: string;
+  restaurantCuisineType?: string;
+  visitedAt: string;
+  items?: VisitApiItemRecord[];
+  userId?: string;
+  userName?: string;
+  visibility?: 'friends' | 'private' | 'public';
+  moderationStatus?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface VisitsPageApiResponse {
+  items?: VisitApiRecord[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+}
 
 function mapVisitItemRecord(record: FoodItemCollectionRecord): VisitItem {
   return {
@@ -75,65 +101,29 @@ function mapVisitCollectionRecord(visit: VisitCollectionRecord, visitItems: Food
   };
 }
 
-async function listFoodItemsForVisitIds(visitIds: string[]): Promise<FoodItemCollectionRecord[]> {
-  if (visitIds.length === 0) {
-    return [];
-  }
-
-  const records: FoodItemCollectionRecord[] = [];
-  const chunkSize = 20;
-
-  for (let index = 0; index < visitIds.length; index += chunkSize) {
-    const chunk = visitIds.slice(index, index + chunkSize);
-    const chunkRecords = await listCollectionRecords<FoodItemCollectionRecord>('food_items', {
-      filter: buildOrFilter('visit', chunk),
-      sort: '-created',
-      fields: 'id,name,rating,description,notes,visit',
-    });
-    records.push(...chunkRecords);
-  }
-
-  return records;
-}
-
-async function listRestaurantIdsMatchingSearch(search: string): Promise<string[]> {
-  const searchFilter = buildSearchFilter(['name', 'location', 'cuisineType'], search);
-  if (!searchFilter) {
-    return [];
-  }
-
-  const records = await listCollectionRecords<Pick<RestaurantCollectionRecord, 'id'>>('restaurants', {
-    filter: searchFilter,
-    fields: 'id',
-  });
-
-  return Array.from(new Set(records.map((record) => record.id)));
-}
-
-async function listVisitIdsMatchingSearch(
-  search: string,
-  scope: 'all' | 'mine' | 'friends',
-  currentUserId: string,
-): Promise<string[]> {
-  const searchFilter = buildSearchFilter(['name', 'notes'], search);
-  if (!searchFilter) {
-    return [];
-  }
-
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  const scopeFilter =
-    scope === 'mine'
-      ? `user = "${escapedCurrentUserId}"`
-      : scope === 'friends'
-        ? `user != "${escapedCurrentUserId}"`
-        : undefined;
-
-  const records = await listCollectionRecords<Pick<FoodItemCollectionRecord, 'visit'>>('food_items', {
-    filter: combineFilterClauses('visit != ""', 'isQuickTrack != true', scopeFilter, searchFilter),
-    fields: 'visit',
-  });
-
-  return Array.from(new Set(records.map((record) => record.visit).filter((visitId): visitId is string => Boolean(visitId))));
+function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
+  return {
+    id: record.id,
+    restaurantId: record.restaurantId?.trim() || undefined,
+    restaurantName: record.restaurantName?.trim() || 'Unknown Restaurant',
+    restaurantLocation: record.restaurantLocation?.trim() || undefined,
+    restaurantCuisineType: record.restaurantCuisineType?.trim() || undefined,
+    visitedAt: record.visitedAt,
+    items: (record.items ?? []).map((item) => ({
+      id: item.id,
+      name: item.name.trim(),
+      rating: item.rating,
+      description: item.description?.trim() || undefined,
+      notes: item.notes?.trim() || undefined,
+    })),
+    source: 'visit',
+    userId: record.userId?.trim() || undefined,
+    userName: record.userName?.trim() || undefined,
+    visibility: normalizeQuickTrackVisibility(record.visibility),
+    moderationStatus: normalizeModerationContentStatus(record.moderationStatus),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
 }
 
 export async function listVisitsPage(input?: ListVisitsPageInput): Promise<PaginatedResult<VisitRecord>> {
@@ -142,62 +132,33 @@ export async function listVisitsPage(input?: ListVisitsPageInput): Promise<Pagin
   }
 
   const { page, pageSize } = resolvePaginationInput(input);
-  const currentUserId = getAuthenticatedUserId();
-  const scope = input?.scope ?? 'all';
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  const scopeFilter =
-    scope === 'mine'
-      ? `user = "${escapedCurrentUserId}"`
-      : scope === 'friends'
-        ? `user != "${escapedCurrentUserId}"`
-        : undefined;
-  const trimmedSearch = input?.search?.trim() ?? '';
-  let searchFilter: string | undefined;
-  if (trimmedSearch) {
-    const [matchingRestaurantIds, matchingVisitIds] = await Promise.all([
-      listRestaurantIdsMatchingSearch(trimmedSearch),
-      listVisitIdsMatchingSearch(trimmedSearch, scope, currentUserId),
-    ]);
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  const scope = input?.scope?.trim();
+  const trimmedSearch = input?.search?.trim();
 
-    const searchClauses = [
-      matchingRestaurantIds.length > 0 ? buildOrFilter('restaurant', matchingRestaurantIds) : undefined,
-      matchingVisitIds.length > 0 ? buildOrFilter('id', matchingVisitIds) : undefined,
-    ].filter((clause): clause is string => Boolean(clause));
-
-    if (searchClauses.length === 0) {
-      return createEmptyPaginatedResult(input);
-    }
-
-    searchFilter = searchClauses.length > 1 ? `(${searchClauses.join(' || ')})` : searchClauses[0];
+  if (scope) {
+    query.set('scope', scope);
   }
 
-  const pageResult = await listCollectionPage<VisitCollectionRecord>('visits', {
-    page,
-    pageSize,
-    filter: combineFilterClauses(scopeFilter, searchFilter),
-    expand: 'restaurant,user',
-    sort: '-visitDate',
+  if (trimmedSearch) {
+    query.set('search', trimmedSearch);
+  }
+
+  const response = await sendApiRequest<VisitsPageApiResponse>(`/api/visits?${query.toString()}`, {
+    method: 'GET',
   });
 
-  if (pageResult.items.length === 0) {
-    return mapPaginatedResult(pageResult as CollectionPageResult<VisitCollectionRecord>, []);
-  }
-
-  const visitItems = await listFoodItemsForVisitIds(pageResult.items.map((visit) => visit.id));
-  const itemsByVisitId = new Map<string, FoodItemCollectionRecord[]>();
-  for (const item of visitItems) {
-    if (!item.visit) {
-      continue;
-    }
-    const existingItems = itemsByVisitId.get(item.visit) ?? [];
-    existingItems.push(item);
-    itemsByVisitId.set(item.visit, existingItems);
-  }
-
-  return mapPaginatedResult(
-    pageResult as CollectionPageResult<VisitCollectionRecord>,
-    pageResult.items.map((visit) => mapVisitCollectionRecord(visit, itemsByVisitId.get(visit.id) ?? [])),
-  );
+  return {
+    items: (response.items ?? []).map(mapVisitApiRecord),
+    page: response.page,
+    pageSize: response.pageSize,
+    totalItems: response.totalItems,
+    totalPages: response.totalPages,
+    hasNextPage: response.hasNextPage,
+  };
 }
 
 export async function getVisitById(visitId: string): Promise<VisitRecord | null> {

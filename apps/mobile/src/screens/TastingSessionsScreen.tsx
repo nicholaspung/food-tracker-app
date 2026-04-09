@@ -3,16 +3,25 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { BackHeaderScreenScaffold, EmptyState, Skeleton } from '../components/shared';
+import {
+  BackHeaderScreenScaffold,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  StatusPill,
+} from '../components/shared';
 import {
   createTastingSession,
   joinTastingSession,
   listTastingSessions,
+  type TastingSessionRecord,
+  type TastingSessionStatus,
 } from '../features';
 import { useSavedRestaurantSuggestions } from '../hooks/useRestaurantSelectionFlow';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -21,15 +30,10 @@ type TastingSessionsScreenProps = NativeStackScreenProps<RootStackParamList, 'Ta
 
 type SessionFilter = 'active' | 'completed';
 
+const EMPTY_TASTING_SESSIONS: TastingSessionRecord[] = [];
 const RESTAURANT_SUGGESTION_LIMIT = 3;
 
 const useStyles = createThemedStyles((theme) => ({
-  screenContent: {
-    backgroundColor: theme.colors.background.muted,
-    gap: 0,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
   body: {
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
@@ -45,8 +49,31 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
+function formatTastingSessionStatusLabel(status: TastingSessionStatus): string {
+  switch (status) {
+    case 'adding_items':
+      return 'Adding Items';
+    case 'rating':
+      return 'Rating';
+    case 'completed':
+      return 'Completed';
+  }
+}
+
+function resolveTastingSessionStatusTone(status: TastingSessionStatus): 'info' | 'warning' | 'success' {
+  switch (status) {
+    case 'adding_items':
+      return 'info';
+    case 'rating':
+      return 'warning';
+    case 'completed':
+      return 'success';
+  }
+}
+
 export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps) {
   const styles = useStyles();
+  const { isOnline } = useConnectivity();
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -72,25 +99,35 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     searchQuery: restaurantSearch,
   });
 
+  const sessions = sessionsQuery.data ?? EMPTY_TASTING_SESSIONS;
+  const hasBlockingSessionsError = sessionsQuery.isError && sessions.length === 0;
+  const hasSessionsRefreshError = sessionsQuery.isError && sessions.length > 0;
+
   const filteredSessions = useMemo(() => {
-    const sessions = sessionsQuery.data ?? [];
     if (filter === 'completed') {
       return sessions.filter((session) => session.status === 'completed');
     }
 
-    return sessions.filter((session) => session.status === 'lobby' || session.status === 'rating');
-  }, [filter, sessionsQuery.data]);
+    return sessions.filter(
+      (session) => session.status === 'adding_items' || session.status === 'rating',
+    );
+  }, [filter, sessions]);
 
   const handleCreate = async () => {
     const name = createName.trim();
     const restaurantName = selectedRestaurant.trim();
 
+    if (!isOnline) {
+      setErrorMessage('Tasting sessions require an internet connection.');
+      return;
+    }
+
     if (!name || !restaurantName || !user) {
       trackObservabilityEvent('TASTING_SESSION_CREATE_VALIDATION_FAILED', {
-        source: 'TastingSessionsScreen',
         hasName: Boolean(name),
         hasRestaurant: Boolean(restaurantName),
         hasUser: Boolean(user),
+        source: 'TastingSessionsScreen',
       });
       setErrorMessage('Session name, restaurant, and signed-in user are required.');
       return;
@@ -98,8 +135,8 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
     setErrorMessage(null);
     trackObservabilityEvent('TASTING_SESSION_CREATE_STARTED', {
-      source: 'TastingSessionsScreen',
       restaurantName,
+      source: 'TastingSessionsScreen',
       userId: user.id,
     });
 
@@ -107,8 +144,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       const session = await createTastingSession({
         name,
         restaurantName,
-        createdByUserId: user.id,
-        createdByName: user.name ?? user.email,
       });
 
       setCreateName('');
@@ -117,26 +152,31 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] });
       trackObservabilityEvent('TASTING_SESSION_CREATE_SUCCEEDED', {
-        source: 'TastingSessionsScreen',
         sessionId: session.id,
+        source: 'TastingSessionsScreen',
       });
       navigation.navigate('TastingSessionDetail', { sessionId: session.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not create session.';
       setErrorMessage(message);
       trackObservabilityEvent('TASTING_SESSION_CREATE_FAILED', {
-        source: 'TastingSessionsScreen',
         error: message,
+        source: 'TastingSessionsScreen',
       });
     }
   };
 
   const handleJoin = async () => {
+    if (!isOnline) {
+      setErrorMessage('Tasting sessions require an internet connection.');
+      return;
+    }
+
     if (!joinCode.trim() || !user) {
       trackObservabilityEvent('TASTING_SESSION_JOIN_VALIDATION_FAILED', {
-        source: 'TastingSessionsScreen',
         hasInviteCode: Boolean(joinCode.trim()),
         hasUser: Boolean(user),
+        source: 'TastingSessionsScreen',
       });
       setErrorMessage('Join code is required.');
       return;
@@ -144,34 +184,59 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
     setErrorMessage(null);
     trackObservabilityEvent('TASTING_SESSION_JOIN_STARTED', {
+      inviteCodeLength: joinCode.trim().length,
       source: 'TastingSessionsScreen',
       userId: user.id,
-      inviteCodeLength: joinCode.trim().length,
     });
 
     try {
       const session = await joinTastingSession({
         inviteCode: joinCode.trim().toUpperCase(),
-        userId: user.id,
-        participantName: user.name ?? user.email,
       });
 
       setJoinCode('');
       await queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] });
       trackObservabilityEvent('TASTING_SESSION_JOIN_SUCCEEDED', {
-        source: 'TastingSessionsScreen',
         sessionId: session.id,
+        source: 'TastingSessionsScreen',
       });
       navigation.navigate('TastingSessionDetail', { sessionId: session.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not join session.';
       setErrorMessage(message);
       trackObservabilityEvent('TASTING_SESSION_JOIN_FAILED', {
-        source: 'TastingSessionsScreen',
         error: message,
+        source: 'TastingSessionsScreen',
       });
     }
   };
+
+  if (hasBlockingSessionsError) {
+    return (
+      <BackHeaderScreenScaffold
+        bodyStyle={styles.body}
+        contentBackgroundTone="muted"
+        onBackPress={() => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+            return;
+          }
+
+          navigation.navigate('Profile');
+        }}
+        subtitle="Create or join a tasting session with your group."
+        title="Group Tastings"
+      >
+        <ErrorState
+          description="Could not load tasting sessions."
+          onRetry={() => {
+            void sessionsQuery.refetch();
+          }}
+          title="Sessions unavailable"
+        />
+      </BackHeaderScreenScaffold>
+    );
+  }
 
   return (
     <BackHeaderScreenScaffold
@@ -189,14 +254,21 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       title="Group Tastings"
     >
       <View style={styles.body}>
+        {!isOnline ? (
+          <Text tone="warning">
+            Tasting sessions require internet connection. You can still open any sessions already
+            loaded on this device.
+          </Text>
+        ) : null}
+
         <View style={styles.row}>
           <Button
             label="Active"
             onPress={() => {
               trackObservabilityEvent('TASTING_SESSIONS_FILTER_CHANGED', {
-                source: 'TastingSessionsScreen',
-                previousFilter: filter,
                 nextFilter: 'active',
+                previousFilter: filter,
+                source: 'TastingSessionsScreen',
               });
               setFilter('active');
             }}
@@ -207,9 +279,9 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
             label="Completed"
             onPress={() => {
               trackObservabilityEvent('TASTING_SESSIONS_FILTER_CHANGED', {
-                source: 'TastingSessionsScreen',
-                previousFilter: filter,
                 nextFilter: 'completed',
+                previousFilter: filter,
+                source: 'TastingSessionsScreen',
               });
               setFilter('completed');
             }}
@@ -263,7 +335,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
             </Text>
           ) : null}
 
-          {filteredRestaurants.slice(0, 3).map((restaurant) => (
+          {filteredRestaurants.slice(0, RESTAURANT_SUGGESTION_LIMIT).map((restaurant) => (
             <Button
               key={restaurant.id}
               label={`Use ${restaurant.name}`}
@@ -275,7 +347,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           ))}
 
           <Button
-            disabled={!createName.trim() || !selectedRestaurant.trim()}
+            disabled={!isOnline || !createName.trim() || !selectedRestaurant.trim()}
             label="Create Session"
             onPress={() => {
               void handleCreate();
@@ -295,7 +367,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
             value={joinCode}
           />
           <Button
-            disabled={joinCode.trim().length !== 6}
+            disabled={!isOnline || joinCode.trim().length !== 6}
             label="Join"
             onPress={() => {
               void handleJoin();
@@ -305,6 +377,18 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
         </Card>
 
         <PageErrorToast errorMessage={errorMessage} title="Session action failed" />
+        <PageErrorToast
+          actionLabel="Retry"
+          errorMessage={
+            hasSessionsRefreshError
+              ? 'Could not refresh tasting sessions. Showing saved data.'
+              : null
+          }
+          onAction={() => {
+            void sessionsQuery.refetch();
+          }}
+          title="Sessions may be stale"
+        />
 
         {sessionsQuery.isLoading ? (
           <>
@@ -313,35 +397,31 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
           </>
         ) : null}
 
-        <PageErrorToast
-          errorMessage={sessionsQuery.isError ? 'Could not load tasting sessions.' : null}
-          title="Sessions unavailable"
-          actionLabel="Retry"
-          onAction={() => {
-            void sessionsQuery.refetch();
-          }}
-        />
-
-        {!sessionsQuery.isLoading && !sessionsQuery.isError && filteredSessions.length === 0 ? (
+        {!sessionsQuery.isLoading && filteredSessions.length === 0 ? (
           <EmptyState description="No sessions found for the current filter." title="No sessions" />
         ) : null}
 
-        {!sessionsQuery.isLoading && !sessionsQuery.isError
+        {!sessionsQuery.isLoading
           ? filteredSessions.map((session) => (
               <Card key={session.id} tone={session.status === 'completed' ? 'success' : 'info'}>
                 <ListItem
                   description={`${session.restaurantName} | ${session.participants.length} participants`}
                   title={session.name}
-                  trailing={<Text tone="muted">{session.status}</Text>}
+                  trailing={
+                    <StatusPill
+                      label={formatTastingSessionStatusLabel(session.status)}
+                      tone={resolveTastingSessionStatusTone(session.status)}
+                    />
+                  }
                 />
                 <Button
                   label="Open Session"
                   onPress={() => {
                     trackObservabilityEvent('TASTING_SESSION_OPENED', {
-                      source: 'TastingSessionsScreen',
-                      sessionId: session.id,
-                      status: session.status,
                       filter,
+                      sessionId: session.id,
+                      source: 'TastingSessionsScreen',
+                      status: session.status,
                     });
                     navigation.navigate('TastingSessionDetail', { sessionId: session.id });
                   }}

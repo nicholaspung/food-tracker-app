@@ -23,6 +23,8 @@ const defaultRecentRestaurantLimit = 12
 const maxRecentRestaurantLimit = 24
 const defaultHomeFeedPageSize = 20
 const maxHomeFeedPageSize = 50
+const defaultVisitsPageSize = 20
+const maxVisitsPageSize = 50
 
 type noteSummaryResponse struct {
 	AllCount   int `db:"allCount" json:"allCount"`
@@ -142,6 +144,19 @@ type homeFeedResponse struct {
 	TotalVisits      int                            `json:"totalVisits"`
 }
 
+type visitsPageResponse struct {
+	Items       []visitResponse `json:"items"`
+	Page        int             `json:"page"`
+	PageSize    int             `json:"pageSize"`
+	TotalItems  int             `json:"totalItems"`
+	TotalPages  int             `json:"totalPages"`
+	HasNextPage bool            `json:"hasNextPage"`
+}
+
+type visitPageRow struct {
+	RecordID string `db:"recordId"`
+}
+
 // RegisterFeatureSummaryHandlers registers authenticated summary endpoints used by mobile surfaces.
 func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 	registerRestaurantListDetailSummaryHandler(se, app)
@@ -225,6 +240,41 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			log.Printf("Failed to build bill detail payload for user %s and bill %s: %v", e.Auth.Id, billID, err)
 			return apis.NewApiError(500, "failed to load bill detail", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/visits", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		scope, err := normalizeVisitsScope(e.Request.URL.Query().Get("scope"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		page, pageSize, err := parseVisitsPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := getVisitsPageResponse(
+			app,
+			e.Auth.Id,
+			e.Auth.GetBool("isAdmin"),
+			page,
+			pageSize,
+			scope,
+			e.Request.URL.Query().Get("search"),
+		)
+		if err != nil {
+			log.Printf("Failed to load visits page for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to load visits", err)
 		}
 
 		return e.JSON(200, response)
@@ -522,6 +572,46 @@ func findAccessibleBillRecord(app core.App, billID string, userID string) (*core
 	return billRecord, nil
 }
 
+func normalizeVisitsScope(raw string) (string, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "all":
+		return "all", nil
+	case "mine":
+		return "mine", nil
+	case "friends":
+		return "friends", nil
+	default:
+		return "", fmt.Errorf("invalid visit scope")
+	}
+}
+
+func parseVisitsPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page := 1
+	if strings.TrimSpace(pageRaw) != "" {
+		parsedPage, err := strconv.Atoi(pageRaw)
+		if err != nil || parsedPage < 1 {
+			return 0, 0, fmt.Errorf("invalid page")
+		}
+		page = parsedPage
+	}
+
+	pageSize := defaultVisitsPageSize
+	if strings.TrimSpace(pageSizeRaw) != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeRaw)
+		if err != nil || parsedPageSize < 1 {
+			return 0, 0, fmt.Errorf("invalid pageSize")
+		}
+
+		if parsedPageSize > maxVisitsPageSize {
+			pageSize = maxVisitsPageSize
+		} else {
+			pageSize = parsedPageSize
+		}
+	}
+
+	return page, pageSize, nil
+}
+
 func normalizeHomeFeedScope(raw string) (string, error) {
 	switch strings.TrimSpace(raw) {
 	case "", "all":
@@ -546,6 +636,139 @@ func normalizeHomeFeedTypeFilter(raw string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid home feed typeFilter")
 	}
+}
+
+func getVisitsPageResponse(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	page int,
+	pageSize int,
+	scope string,
+	search string,
+) (visitsPageResponse, error) {
+	response := visitsPageResponse{
+		Items:    []visitResponse{},
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	totalItems, err := countVisitsPageEntries(app, userID, isAdmin, scope, search)
+	if err != nil {
+		return response, err
+	}
+
+	totalPages := 0
+	if totalItems > 0 {
+		totalPages = (totalItems + pageSize - 1) / pageSize
+	}
+	response.TotalItems = totalItems
+	response.TotalPages = totalPages
+	response.HasNextPage = page < totalPages
+
+	if totalItems == 0 {
+		return response, nil
+	}
+
+	rows, err := listVisitPageRows(app, userID, isAdmin, page, pageSize, scope, search)
+	if err != nil {
+		return response, err
+	}
+	if len(rows) == 0 {
+		return response, nil
+	}
+
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin {
+		acceptedFriendIDs, err = listAcceptedFriendIDs(app, userID)
+		if err != nil {
+			return response, err
+		}
+	}
+
+	visitIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		visitIDs = append(visitIDs, row.RecordID)
+	}
+
+	visitRecords, err := findRecordsByIDs(app, "visits", visitIDs)
+	if err != nil {
+		return response, err
+	}
+	visitRecordsByID := mapRecordsByID(visitRecords)
+
+	visitItemRecords, err := findRecordsByRelationValues(app, "food_items", "visit", visitIDs, "-created")
+	if err != nil {
+		return response, err
+	}
+
+	filteredVisitItems := make([]*core.Record, 0, len(visitItemRecords))
+	for _, record := range visitItemRecords {
+		if record.GetBool("isQuickTrack") {
+			continue
+		}
+		filteredVisitItems = append(filteredVisitItems, record)
+	}
+	visitItemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
+
+	restaurantIDs := make([]string, 0, len(visitRecords))
+	restaurantIDSet := map[string]struct{}{}
+	userIDs := make([]string, 0, len(visitRecords))
+	userIDSet := map[string]struct{}{}
+	for _, visit := range visitRecords {
+		restaurantIDs = appendUniqueTrimmedID(restaurantIDs, restaurantIDSet, visit.GetString("restaurant"))
+
+		ownerID := strings.TrimSpace(visit.GetString("user"))
+		if isAdmin || ownerID == userID || hasAcceptedFriend(acceptedFriendIDs, ownerID) {
+			userIDs = appendUniqueTrimmedID(userIDs, userIDSet, ownerID)
+		}
+	}
+
+	restaurantRecords, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	if err != nil {
+		return response, err
+	}
+	userRecords, err := findRecordsByIDs(app, "users", userIDs)
+	if err != nil {
+		return response, err
+	}
+
+	restaurantsByID := mapRecordsByID(restaurantRecords)
+	usersByID := mapRecordsByID(userRecords)
+
+	response.Items = make([]visitResponse, 0, len(rows))
+	for _, row := range rows {
+		visit := visitRecordsByID[row.RecordID]
+		if visit == nil {
+			continue
+		}
+
+		restaurant := restaurantsByID[visit.GetString("restaurant")]
+		ownerID := strings.TrimSpace(visit.GetString("user"))
+		userName := ""
+		if isAdmin || ownerID == userID || hasAcceptedFriend(acceptedFriendIDs, ownerID) {
+			userName = resolveHomeFeedUserName(usersByID[ownerID])
+		}
+
+		response.Items = append(response.Items, visitResponse{
+			ID:                    visit.Id,
+			RestaurantID:          visit.GetString("restaurant"),
+			RestaurantName:        defaultString(resolveRestaurantName(restaurant), "Unknown Restaurant"),
+			RestaurantLocation:    resolveRestaurantLocation(restaurant),
+			RestaurantCuisineType: resolveRestaurantCuisine(restaurant),
+			VisitedAt:             defaultString(strings.TrimSpace(visit.GetString("visitDate")), visit.GetString("created")),
+			Items:                 mapHomeFeedVisitItems(visitItemsByVisitID[visit.Id]),
+			Source:                "visit",
+			UserID:                ownerID,
+			UserName:              userName,
+			Visibility:            strings.TrimSpace(visit.GetString("visibility")),
+			ModerationStatus:      strings.TrimSpace(visit.GetString("moderationStatus")),
+			CreatedAt:             visit.GetString("created"),
+			UpdatedAt:             visit.GetString("updated"),
+		})
+	}
+
+	return response, nil
 }
 
 func parseHomeFeedPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
@@ -782,6 +1005,92 @@ func getHomeFeedResponse(
 	return response, nil
 }
 
+func countVisitsPageEntries(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	scope string,
+	search string,
+) (int, error) {
+	row := struct {
+		Count int `db:"count"`
+	}{}
+
+	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		)
+		SELECT COUNT(*) AS [[count]]
+		FROM visits
+		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+		WHERE ` + buildVisitsPageAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search)
+
+	err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"userId":     userID,
+			"searchLike": buildHomeFeedSearchLike(search),
+		}).
+		One(&row)
+	if err != nil {
+		return 0, err
+	}
+
+	return row.Count, nil
+}
+
+func listVisitPageRows(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	page int,
+	pageSize int,
+	scope string,
+	search string,
+) ([]visitPageRow, error) {
+	query := `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		)
+		SELECT visits.id AS [[recordId]]
+		FROM visits
+		LEFT JOIN restaurants ON restaurants.id = visits.restaurant
+		WHERE ` + buildVisitsPageAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search) + `
+		ORDER BY
+			COALESCE(NULLIF(visits.visitDate, ''), visits.created) DESC,
+			visits.created DESC,
+			visits.id DESC
+		LIMIT {:limit}
+		OFFSET {:offset}
+	`
+
+	rows := []visitPageRow{}
+	err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"userId":     userID,
+			"searchLike": buildHomeFeedSearchLike(search),
+			"limit":      pageSize,
+			"offset":     (page - 1) * pageSize,
+		}).
+		All(&rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows, nil
+}
+
 func countHomeFeedEntries(
 	app core.App,
 	userID string,
@@ -933,6 +1242,37 @@ func buildHomeFeedVisitAccessCondition(scope string, isAdmin bool) string {
 		return friendCondition
 	default:
 		return `( (` + ownerCondition + `) OR (` + friendCondition + `) )`
+	}
+}
+
+func buildVisitsPageAccessCondition(scope string, isAdmin bool) string {
+	if isAdmin {
+		switch scope {
+		case "mine":
+			return `visits.user = {:userId}`
+		case "friends":
+			return `visits.user != {:userId}`
+		default:
+			return `1 = 1`
+		}
+	}
+
+	ownerCondition := `visits.user = {:userId} AND ` + ownerAccessibleVisitModerationCondition
+	visibleSharedCondition := `visits.user != {:userId} AND ` + visibleVisitModerationCondition + ` AND (
+		visits.visibility = 'public'
+		OR (
+			visits.visibility = 'friends'
+			AND visits.user IN (SELECT friendId FROM accepted_friends)
+		)
+	)`
+
+	switch scope {
+	case "mine":
+		return ownerCondition
+	case "friends":
+		return visibleSharedCondition
+	default:
+		return `( (` + ownerCondition + `) OR (` + visibleSharedCondition + `) )`
 	}
 }
 

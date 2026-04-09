@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   EmptyState,
@@ -13,11 +13,11 @@ import {
 } from '../components/shared';
 import {
   addRestaurantVisitRatingsToList,
-  listRestaurantListVisitedRestaurantsPage,
+  getRestaurantListCandidateRestaurants,
   type RestaurantListVisitedRestaurantCandidate,
   type RestaurantListVisitedRestaurantFoodItem,
 } from '../features';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { useQueryListState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -26,7 +26,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, Input, Text } from '../ui';
+import { Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type AddRestaurantToListScreenProps = NativeStackScreenProps<
@@ -189,20 +189,16 @@ export function AddRestaurantToListScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const trimmedSearchQuery = searchQuery.trim();
 
-  const restaurantsQuery = useInfiniteQuery({
-    queryKey: ["feature", "restaurantListVisitedRestaurants", listId, trimmedSearchQuery, "paginated"],
-    queryFn: ({ pageParam }) =>
-      listRestaurantListVisitedRestaurantsPage(listId, {
-        page: pageParam,
-        pageSize: 20,
-        search: trimmedSearchQuery || undefined,
-      }),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.hasNextPage ? lastPage.page + 1 : undefined,
+  const restaurantsQuery = useQuery({
+    queryKey: ["feature", "restaurantListCandidateRestaurants", listId, trimmedSearchQuery],
+    queryFn: () =>
+      getRestaurantListCandidateRestaurants(
+        listId,
+        trimmedSearchQuery || undefined,
+      ),
   });
-  const restaurantsState = usePaginatedQueryState({
-    data: restaurantsQuery.data,
+  const restaurantsState = useQueryListState({
+    data: restaurantsQuery.data?.items,
     isError: restaurantsQuery.isError,
     isFetching: restaurantsQuery.isFetching,
     isLoading: restaurantsQuery.isLoading,
@@ -391,7 +387,7 @@ export function AddRestaurantToListScreen({
             queryKey: ["feature", "restaurantListItemLinks", listId],
           }),
           queryClient.invalidateQueries({
-            queryKey: ["feature", "restaurantListVisitedRestaurants", listId],
+            queryKey: ["feature", "restaurantListCandidateRestaurants", listId],
           }),
           queryClient.invalidateQueries({
             queryKey: ["feature", "restaurantLists"],
@@ -426,7 +422,7 @@ export function AddRestaurantToListScreen({
           queryKey: ["feature", "restaurantListItemLinks", listId],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["feature", "restaurantListVisitedRestaurants", listId],
+          queryKey: ["feature", "restaurantListCandidateRestaurants", listId],
         }),
         queryClient.invalidateQueries({
           queryKey: ["feature", "restaurantLists"],
@@ -633,20 +629,6 @@ export function AddRestaurantToListScreen({
                   </Card>
                 );
               })}
-              {restaurantsQuery.hasNextPage ? (
-                <Button
-                  label={
-                    restaurantsQuery.isFetchingNextPage
-                      ? "Loading more restaurants..."
-                      : "Load more restaurants"
-                  }
-                  loading={restaurantsQuery.isFetchingNextPage}
-                  onPress={() => {
-                    void restaurantsQuery.fetchNextPage();
-                  }}
-                  variant="secondary"
-                />
-              ) : null}
             </View>
           ) : null}
         </>

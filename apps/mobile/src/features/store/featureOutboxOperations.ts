@@ -310,6 +310,33 @@ export function updateBillApiMutationInput(
   };
 }
 
+export function deleteBillApiMutationInput(billId: string): EnqueueMutationInput {
+  return {
+    method: 'DELETE',
+    url: `${env.apiBaseUrl}/api/bills/${encodeURIComponent(billId)}`,
+    headers: {
+      'X-Mobile-Write-Operation': 'bill.delete',
+    },
+  };
+}
+
+export function updateBillParticipantPaidStatusApiMutationInput(
+  billId: string,
+  participantId: string,
+  paidStatus: BillParticipantRecord['paidStatus'],
+): EnqueueMutationInput {
+  return {
+    method: 'PATCH',
+    url: `${env.apiBaseUrl}/api/bills/${encodeURIComponent(billId)}/participants/${encodeURIComponent(participantId)}/paid-status`,
+    headers: {
+      'X-Mobile-Write-Operation': 'bill.participant.toggle-paid',
+    },
+    body: {
+      paidStatus,
+    },
+  };
+}
+
 export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Promise<boolean> {
   const operationName = parseFeatureOutboxOperationName(mutation.url);
   if (!operationName) {

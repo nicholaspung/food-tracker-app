@@ -460,6 +460,320 @@ func TestBillDetailEndpointReturnsNestedDataAndParticipantDisplayMetadata(t *tes
 	}
 }
 
+func TestVisitsPageEndpointSearchesAcrossRestaurantsAndItemsWithPagination(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	searchByRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Broth Bar",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+	})
+	searchByItem := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Noodle House",
+		"location":   "San Diego, CA",
+		"visibility": "public",
+	})
+	nonMatchRestaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Pizza Town",
+		"location":   "San Jose, CA",
+		"visibility": "public",
+	})
+
+	restaurantMatchVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": searchByRestaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-05 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  restaurantMatchVisit.Id,
+		"user":   friend.Id,
+		"name":   "Garlic Toast",
+		"rating": 4,
+		"notes":  "crispy and buttery",
+	})
+
+	itemMatchVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": searchByItem.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	itemMatchFoodItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  itemMatchVisit.Id,
+		"user":   friend.Id,
+		"name":   "Chicken Soup",
+		"rating": 5,
+		"notes":  "rich broth with herbs",
+	})
+
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": nonMatchRestaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  itemMatchVisit.Id,
+		"user":   friend.Id,
+		"name":   "Steamed Dumplings",
+		"rating": 4,
+		"notes":  "great texture",
+	})
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=1&pageSize=1&scope=friends&search=broth",
+		token,
+		"",
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first response 200 OK, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	var firstPayload struct {
+		Items []struct {
+			ID             string `json:"id"`
+			RestaurantName string `json:"restaurantName"`
+			Items          []struct {
+				ID    string `json:"id"`
+				Name  string `json:"name"`
+				Notes string `json:"notes"`
+			} `json:"items"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first visits payload: %v; body=%s", err, firstResponse.Body.String())
+	}
+
+	if firstPayload.Page != 1 || firstPayload.PageSize != 1 || firstPayload.TotalItems != 2 || firstPayload.TotalPages != 2 || !firstPayload.HasNextPage {
+		t.Fatalf("unexpected first visits pagination payload: %#v", firstPayload)
+	}
+	if len(firstPayload.Items) != 1 || firstPayload.Items[0].ID != restaurantMatchVisit.Id {
+		t.Fatalf("expected newest restaurant-name match first, got %#v", firstPayload.Items)
+	}
+	if firstPayload.Items[0].RestaurantName != "Broth Bar" {
+		t.Fatalf("expected restaurant search match to retain restaurant metadata, got %#v", firstPayload.Items[0])
+	}
+
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=2&pageSize=1&scope=friends&search=broth",
+		token,
+		"",
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second response 200 OK, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	var secondPayload struct {
+		Items []struct {
+			ID             string `json:"id"`
+			RestaurantName string `json:"restaurantName"`
+			Items          []struct {
+				ID    string `json:"id"`
+				Name  string `json:"name"`
+				Notes string `json:"notes"`
+			} `json:"items"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse second visits payload: %v; body=%s", err, secondResponse.Body.String())
+	}
+
+	if secondPayload.Page != 2 || secondPayload.PageSize != 1 || secondPayload.TotalItems != 2 || secondPayload.TotalPages != 2 || secondPayload.HasNextPage {
+		t.Fatalf("unexpected second visits pagination payload: %#v", secondPayload)
+	}
+	if len(secondPayload.Items) != 1 || secondPayload.Items[0].ID != itemMatchVisit.Id {
+		t.Fatalf("expected item-note search match second, got %#v", secondPayload.Items)
+	}
+	if len(secondPayload.Items[0].Items) != 2 {
+		t.Fatalf("expected hydrated visit items in second page payload, got %#v", secondPayload.Items[0].Items)
+	}
+
+	foundItemMatch := false
+	for _, item := range secondPayload.Items[0].Items {
+		if item.ID == itemMatchFoodItem.Id && item.Name == "Chicken Soup" && item.Notes == "rich broth with herbs" {
+			foundItemMatch = true
+		}
+	}
+	if !foundItemMatch {
+		t.Fatalf("expected paged search result to include hydrated matching food item, got %#v", secondPayload.Items[0].Items)
+	}
+}
+
+func TestVisitsPageEndpointAppliesScopeVisibilityAndModeration(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	pendingFriend, _ := createAuthUser(t, server.app, false, false)
+
+	friend.Set("name", "Visible Friend")
+	if err := server.app.Save(friend); err != nil {
+		t.Fatalf("failed to update friend name: %v", err)
+	}
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+	createFriendshipRecord(t, server.app, user.Id, pendingFriend.Id, "pending")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Scope Cafe",
+		"location":   "Portland, OR",
+		"visibility": "public",
+	})
+
+	ownUnderReviewVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       restaurant.Id,
+		"user":             user.Id,
+		"visitDate":        "2026-04-05 18:30:00.000Z",
+		"visibility":       "private",
+		"moderationStatus": "under_review",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  ownUnderReviewVisit.Id,
+		"user":   user.Id,
+		"name":   "Owner Pasta",
+		"rating": 5,
+	})
+
+	visibleFriendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  visibleFriendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Friend Soup",
+		"rating": 4,
+	})
+
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-03 18:30:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant":       restaurant.Id,
+		"user":             friend.Id,
+		"visitDate":        "2026-04-02 18:30:00.000Z",
+		"visibility":       "friends",
+		"moderationStatus": "hidden",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       pendingFriend.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+
+	allResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=1&pageSize=10&scope=all",
+		token,
+		"",
+	)
+	if allResponse.Code != http.StatusOK {
+		t.Fatalf("expected all response 200 OK, got %d: %s", allResponse.Code, allResponse.Body.String())
+	}
+
+	var allPayload struct {
+		Items []struct {
+			ID               string `json:"id"`
+			UserName         string `json:"userName"`
+			ModerationStatus string `json:"moderationStatus"`
+		} `json:"items"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(allResponse.Body.Bytes(), &allPayload); err != nil {
+		t.Fatalf("failed to parse all visits payload: %v; body=%s", err, allResponse.Body.String())
+	}
+
+	if allPayload.TotalItems != 2 || len(allPayload.Items) != 2 {
+		t.Fatalf("expected only owner and accepted-friend visits in all scope, got %#v", allPayload)
+	}
+	if allPayload.Items[0].ID != ownUnderReviewVisit.Id || allPayload.Items[0].ModerationStatus != "under_review" {
+		t.Fatalf("expected owner under-review visit first, got %#v", allPayload.Items)
+	}
+	if allPayload.Items[1].ID != visibleFriendVisit.Id || allPayload.Items[1].UserName != "Visible Friend" {
+		t.Fatalf("expected visible friend visit second with friend name, got %#v", allPayload.Items)
+	}
+
+	mineResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=1&pageSize=10&scope=mine",
+		token,
+		"",
+	)
+	if mineResponse.Code != http.StatusOK {
+		t.Fatalf("expected mine response 200 OK, got %d: %s", mineResponse.Code, mineResponse.Body.String())
+	}
+
+	var minePayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(mineResponse.Body.Bytes(), &minePayload); err != nil {
+		t.Fatalf("failed to parse mine visits payload: %v; body=%s", err, mineResponse.Body.String())
+	}
+
+	if minePayload.TotalItems != 1 || len(minePayload.Items) != 1 || minePayload.Items[0].ID != ownUnderReviewVisit.Id {
+		t.Fatalf("expected only owner visit in mine scope, got %#v", minePayload)
+	}
+
+	friendsResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits?page=1&pageSize=10&scope=friends",
+		token,
+		"",
+	)
+	if friendsResponse.Code != http.StatusOK {
+		t.Fatalf("expected friends response 200 OK, got %d: %s", friendsResponse.Code, friendsResponse.Body.String())
+	}
+
+	var friendsPayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(friendsResponse.Body.Bytes(), &friendsPayload); err != nil {
+		t.Fatalf("failed to parse friends visits payload: %v; body=%s", err, friendsResponse.Body.String())
+	}
+
+	if friendsPayload.TotalItems != 1 || len(friendsPayload.Items) != 1 || friendsPayload.Items[0].ID != visibleFriendVisit.Id {
+		t.Fatalf("expected only accepted friend visit in friends scope, got %#v", friendsPayload)
+	}
+}
+
 func TestRecentRestaurantsEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

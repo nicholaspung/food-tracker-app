@@ -12,7 +12,7 @@ import (
 	"myapp/hooks"
 )
 
-func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *testing.T) {
+func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerLists(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFeatureSummaryHandlers(se, app)
 		hooks.RegisterRestaurantListCountHooks(app)
@@ -114,7 +114,7 @@ func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *te
 		t,
 		server.mux,
 		http.MethodGet,
-		"/api/restaurant-lists/"+sharedList.Id+"/detail?page=1&pageSize=1",
+		"/api/restaurant-lists/"+sharedList.Id+"/detail",
 		viewerToken,
 		"",
 	)
@@ -145,17 +145,17 @@ func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *te
 				SourceUserName string  `json:"sourceUserName"`
 			} `json:"bookmarkedItems"`
 		} `json:"items"`
-		Page          int  `json:"page"`
-		PageSize      int  `json:"pageSize"`
-		TotalItems    int  `json:"totalItems"`
-		TotalPages    int  `json:"totalPages"`
-		HasNextPage   bool `json:"hasNextPage"`
 		BookmarkState struct {
 			SavedListIDsByBookmarkLookupID map[string][]string `json:"savedListIdsByBookmarkLookupId"`
 		} `json:"bookmarkState"`
 		PhotoPreviews []struct {
 			ID string `json:"id"`
 		} `json:"photoPreviews"`
+		ViewerLists []struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			IsDefault bool   `json:"isDefault"`
+		} `json:"viewerLists"`
 	}
 	if err := json.Unmarshal(viewerResponse.Body.Bytes(), &viewerPayload); err != nil {
 		t.Fatalf("failed to decode viewer payload: %v; body=%s", err, viewerResponse.Body.String())
@@ -170,14 +170,14 @@ func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *te
 	if viewerPayload.List.RestaurantCount != 2 || viewerPayload.List.MenuItemCount != 2 {
 		t.Fatalf("expected list counts to be updated, got %#v", viewerPayload.List)
 	}
-	if viewerPayload.Page != 1 || viewerPayload.PageSize != 1 || viewerPayload.TotalItems != 2 || viewerPayload.TotalPages != 2 || !viewerPayload.HasNextPage {
-		t.Fatalf("unexpected pagination payload: %#v", viewerPayload)
-	}
-	if len(viewerPayload.Items) != 1 {
-		t.Fatalf("expected one paginated item, got %#v", viewerPayload.Items)
+	if len(viewerPayload.Items) != 2 {
+		t.Fatalf("expected hydrated list items, got %#v", viewerPayload.Items)
 	}
 	if viewerPayload.Items[0].ID != firstListItem.Id || viewerPayload.Items[0].RestaurantID != restaurantA.Id {
 		t.Fatalf("unexpected first list item payload: %#v", viewerPayload.Items[0])
+	}
+	if viewerPayload.Items[1].ID != secondListItem.Id || viewerPayload.Items[1].RestaurantID != restaurantB.Id {
+		t.Fatalf("unexpected second list item payload: %#v", viewerPayload.Items[1])
 	}
 	if len(viewerPayload.Items[0].BookmarkedItems) != 1 {
 		t.Fatalf("expected one bookmarked item, got %#v", viewerPayload.Items[0].BookmarkedItems)
@@ -194,12 +194,15 @@ func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *te
 	if len(viewerPayload.PhotoPreviews) != 0 {
 		t.Fatalf("expected viewer photo previews to be empty because photos are owner-only, got %#v", viewerPayload.PhotoPreviews)
 	}
+	if len(viewerPayload.ViewerLists) != 1 || viewerPayload.ViewerLists[0].ID != viewerSavedList.Id || !viewerPayload.ViewerLists[0].IsDefault {
+		t.Fatalf("expected hydrated viewer save targets, got %#v", viewerPayload.ViewerLists)
+	}
 
 	ownerResponse := performJSONRequest(
 		t,
 		server.mux,
 		http.MethodGet,
-		"/api/restaurant-lists/"+sharedList.Id+"/detail?page=1&pageSize=2",
+		"/api/restaurant-lists/"+sharedList.Id+"/detail",
 		ownerToken,
 		"",
 	)
@@ -220,6 +223,9 @@ func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *te
 		BookmarkState struct {
 			SavedListIDsByBookmarkLookupID map[string][]string `json:"savedListIdsByBookmarkLookupId"`
 		} `json:"bookmarkState"`
+		ViewerLists []struct {
+			ID string `json:"id"`
+		} `json:"viewerLists"`
 	}
 	if err := json.Unmarshal(ownerResponse.Body.Bytes(), &ownerPayload); err != nil {
 		t.Fatalf("failed to decode owner payload: %v; body=%s", err, ownerResponse.Body.String())
@@ -240,12 +246,15 @@ func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *te
 	if len(ownerPayload.BookmarkState.SavedListIDsByBookmarkLookupID) != 0 {
 		t.Fatalf("expected owner bookmark state to be empty, got %#v", ownerPayload.BookmarkState)
 	}
+	if len(ownerPayload.ViewerLists) != 0 {
+		t.Fatalf("expected owner viewer lists to be empty, got %#v", ownerPayload.ViewerLists)
+	}
 
 	strangerResponse := performJSONRequest(
 		t,
 		server.mux,
 		http.MethodGet,
-		"/api/restaurant-lists/"+sharedList.Id+"/detail?page=1&pageSize=1",
+		"/api/restaurant-lists/"+sharedList.Id+"/detail",
 		strangerToken,
 		"",
 	)
@@ -254,7 +263,7 @@ func TestRestaurantListDetailEndpointReturnsPaginatedItemsAndBookmarkState(t *te
 	}
 }
 
-func TestRestaurantListVisitedRestaurantsEndpointReturnsAnnotatedCandidates(t *testing.T) {
+func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
 
@@ -336,7 +345,7 @@ func TestRestaurantListVisitedRestaurantsEndpointReturnsAnnotatedCandidates(t *t
 		t,
 		server.mux,
 		http.MethodGet,
-		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants?page=1&pageSize=1", list.Id),
+		fmt.Sprintf("/api/restaurant-lists/%s/candidate-restaurants", list.Id),
 		token,
 		"",
 	)
@@ -345,6 +354,9 @@ func TestRestaurantListVisitedRestaurantsEndpointReturnsAnnotatedCandidates(t *t
 	}
 
 	var payload struct {
+		List struct {
+			ID string `json:"id"`
+		} `json:"list"`
 		Items []struct {
 			ID                string   `json:"id"`
 			Name              string   `json:"name"`
@@ -359,24 +371,16 @@ func TestRestaurantListVisitedRestaurantsEndpointReturnsAnnotatedCandidates(t *t
 				VisitedAt string `json:"visitedAt"`
 			} `json:"foodItems"`
 		} `json:"items"`
-		Page        int  `json:"page"`
-		PageSize    int  `json:"pageSize"`
-		TotalItems  int  `json:"totalItems"`
-		TotalPages  int  `json:"totalPages"`
-		HasNextPage bool `json:"hasNextPage"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
 	}
 
-	if payload.Page != 1 || payload.PageSize != 1 {
-		t.Fatalf("unexpected pagination metadata: %#v", payload)
+	if payload.List.ID != list.Id {
+		t.Fatalf("expected target list metadata, got %#v", payload.List)
 	}
-	if payload.TotalItems != 2 || payload.TotalPages != 2 || !payload.HasNextPage {
-		t.Fatalf("unexpected pagination summary: %#v", payload)
-	}
-	if len(payload.Items) != 1 {
-		t.Fatalf("expected 1 restaurant candidate, got %d: %#v", len(payload.Items), payload.Items)
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected hydrated candidate restaurants, got %d: %#v", len(payload.Items), payload.Items)
 	}
 
 	item := payload.Items[0]
@@ -406,7 +410,7 @@ func TestRestaurantListVisitedRestaurantsEndpointReturnsAnnotatedCandidates(t *t
 	}
 }
 
-func TestRestaurantListVisitedRestaurantsEndpointSearchesRestaurantAndFoodItemMetadata(t *testing.T) {
+func TestRestaurantListCandidateRestaurantsEndpointSearchesRestaurantAndFoodItemMetadata(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
 
@@ -459,7 +463,7 @@ func TestRestaurantListVisitedRestaurantsEndpointSearchesRestaurantAndFoodItemMe
 		t,
 		server.mux,
 		http.MethodGet,
-		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants?search=broth", list.Id),
+		fmt.Sprintf("/api/restaurant-lists/%s/candidate-restaurants?search=broth", list.Id),
 		token,
 		"",
 	)
@@ -471,13 +475,12 @@ func TestRestaurantListVisitedRestaurantsEndpointSearchesRestaurantAndFoodItemMe
 		Items []struct {
 			ID string `json:"id"`
 		} `json:"items"`
-		TotalItems int `json:"totalItems"`
 	}
 	if err := json.Unmarshal(searchByItemResponse.Body.Bytes(), &itemSearchPayload); err != nil {
 		t.Fatalf("failed to parse item search response JSON: %v; body=%s", err, searchByItemResponse.Body.String())
 	}
 
-	if itemSearchPayload.TotalItems != 1 || len(itemSearchPayload.Items) != 1 || itemSearchPayload.Items[0].ID != ramenRestaurant.Id {
+	if len(itemSearchPayload.Items) != 1 || itemSearchPayload.Items[0].ID != ramenRestaurant.Id {
 		t.Fatalf("expected broth search to match only the ramen restaurant, got %#v", itemSearchPayload)
 	}
 
@@ -485,7 +488,7 @@ func TestRestaurantListVisitedRestaurantsEndpointSearchesRestaurantAndFoodItemMe
 		t,
 		server.mux,
 		http.MethodGet,
-		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants?search=burger", list.Id),
+		fmt.Sprintf("/api/restaurant-lists/%s/candidate-restaurants?search=burger", list.Id),
 		token,
 		"",
 	)
@@ -497,18 +500,17 @@ func TestRestaurantListVisitedRestaurantsEndpointSearchesRestaurantAndFoodItemMe
 		Items []struct {
 			ID string `json:"id"`
 		} `json:"items"`
-		TotalItems int `json:"totalItems"`
 	}
 	if err := json.Unmarshal(searchByRestaurantResponse.Body.Bytes(), &restaurantSearchPayload); err != nil {
 		t.Fatalf("failed to parse restaurant search response JSON: %v; body=%s", err, searchByRestaurantResponse.Body.String())
 	}
 
-	if restaurantSearchPayload.TotalItems != 1 || len(restaurantSearchPayload.Items) != 1 || restaurantSearchPayload.Items[0].ID != burgerRestaurant.Id {
+	if len(restaurantSearchPayload.Items) != 1 || restaurantSearchPayload.Items[0].ID != burgerRestaurant.Id {
 		t.Fatalf("expected burger search to match only the burger restaurant, got %#v", restaurantSearchPayload)
 	}
 }
 
-func TestRestaurantListVisitedRestaurantsEndpointRequiresListOwnership(t *testing.T) {
+func TestRestaurantListCandidateRestaurantsEndpointRequiresListOwnership(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	owner, _ := createAuthUser(t, server.app, false, false)
 	_, otherToken := createAuthUser(t, server.app, false, false)
@@ -523,7 +525,7 @@ func TestRestaurantListVisitedRestaurantsEndpointRequiresListOwnership(t *testin
 		t,
 		server.mux,
 		http.MethodGet,
-		fmt.Sprintf("/api/restaurant-lists/%s/visited-restaurants", list.Id),
+		fmt.Sprintf("/api/restaurant-lists/%s/candidate-restaurants", list.Id),
 		otherToken,
 		"",
 	)

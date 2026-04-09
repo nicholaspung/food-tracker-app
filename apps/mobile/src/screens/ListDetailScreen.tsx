@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   ConfirmDestructiveModal,
@@ -18,15 +18,14 @@ import {
   buildPocketBaseFileUrl,
   createDefaultRestaurantList,
   deleteRestaurantList,
-  getRestaurantListDetailPage,
-  listRestaurantListsPage,
+  getRestaurantListDetail,
   moveRestaurantListRestaurant,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
   type RestaurantListDetailPhotoPreviewRecord,
 } from '../features';
-import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { useQueryListState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -561,15 +560,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
 
-  const detailQuery = useInfiniteQuery({
-    queryKey: ['feature', 'restaurantListDetail', listId, 'paginated'],
-    queryFn: ({ pageParam }) => getRestaurantListDetailPage(listId, { page: pageParam, pageSize: 20 }),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
+  const detailQuery = useQuery({
+    queryKey: ['feature', 'restaurantListDetail', listId],
+    queryFn: () => getRestaurantListDetail(listId),
   });
 
-  const listItemsState = usePaginatedQueryState({
-    data: detailQuery.data,
+  const listItemsState = useQueryListState({
+    data: detailQuery.data?.items,
     enabled: true,
     isError: detailQuery.isError,
     isFetching: detailQuery.isFetching,
@@ -577,44 +574,25 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     isSuccess: detailQuery.isSuccess,
   });
 
-  const list = detailQuery.data?.pages[0]?.list ?? null;
+  const list = detailQuery.data?.list ?? null;
   const isOwner = Boolean(list && user?.id && list.userId === user.id);
-  const shouldLoadMyLists = Boolean(user?.id && saveBookmarkTarget && list && list.userId !== user.id);
-  const myListsQuery = useInfiniteQuery({
-    queryKey: ['feature', 'restaurantLists', 'my', 'paginated'],
-    queryFn: ({ pageParam }) => listRestaurantListsPage({ scope: 'my', page: pageParam, pageSize: 20 }),
-    enabled: shouldLoadMyLists,
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
-  });
-  const myListsState = usePaginatedQueryState({
-    data: myListsQuery.data,
-    enabled: shouldLoadMyLists,
-    isError: myListsQuery.isError,
-    isFetching: myListsQuery.isFetching,
-    isLoading: myListsQuery.isLoading,
-    isSuccess: myListsQuery.isSuccess,
-  });
 
   const listItems = listItemsState.items;
   const hasBlockingListItemsError = listItemsState.hasBlockingError;
   const hasListItemsRefreshError = listItemsState.hasRefreshError;
-  const myLists = myListsState.items;
   const savedListIdsByBookmarkLookupId = useMemo(() => {
     const mapping = new Map<string, Set<string>>();
-    for (const page of detailQuery.data?.pages ?? []) {
-      for (const [bookmarkLookupId, rawListIds] of Object.entries(
-        page.bookmarkState.savedListIdsByBookmarkLookupId,
-      )) {
-        const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
-        for (const candidateListId of rawListIds) {
-          if (!candidateListId?.trim()) {
-            continue;
-          }
-          listIds.add(candidateListId);
+    for (const [bookmarkLookupId, rawListIds] of Object.entries(
+      detailQuery.data?.bookmarkState.savedListIdsByBookmarkLookupId ?? {},
+    )) {
+      const listIds = mapping.get(bookmarkLookupId) ?? new Set<string>();
+      for (const candidateListId of rawListIds) {
+        if (!candidateListId?.trim()) {
+          continue;
         }
-        mapping.set(bookmarkLookupId, listIds);
+        listIds.add(candidateListId);
       }
+      mapping.set(bookmarkLookupId, listIds);
     }
     return mapping;
   }, [detailQuery.data]);
@@ -627,9 +605,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     return ids;
   }, [savedListIdsByBookmarkLookupId]);
 
+  const myLists = useMemo(() => detailQuery.data?.viewerLists ?? [], [detailQuery.data?.viewerLists]);
   const defaultList = useMemo(() => myLists.find((candidate) => candidate.isDefault), [myLists]);
   const nonDefaultLists = useMemo(() => myLists.filter((candidate) => !candidate.isDefault), [myLists]);
-  const isLoadingMyLists = shouldLoadMyLists && myListsQuery.isLoading && myLists.length === 0;
+  const isLoadingMyLists = Boolean(saveBookmarkTarget && !isOwner && detailQuery.isLoading && myLists.length === 0);
   const alreadySavedListIdsForTarget = useMemo(() => {
     if (!saveBookmarkTarget) {
       return new Set<string>();
@@ -706,16 +685,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const photosByFoodItemId = useMemo(() => {
     const map = new Map<string, RestaurantListDetailPhotoPreviewRecord[]>();
 
-    for (const page of detailQuery.data?.pages ?? []) {
-      for (const photo of page.photoPreviews) {
-        if (!photo.food_item) {
-          continue;
-        }
-
-        const existing = map.get(photo.food_item) ?? [];
-        existing.push(photo);
-        map.set(photo.food_item, existing);
+    for (const photo of detailQuery.data?.photoPreviews ?? []) {
+      if (!photo.food_item) {
+        continue;
       }
+
+      const existing = map.get(photo.food_item) ?? [];
+      existing.push(photo);
+      map.set(photo.food_item, existing);
     }
 
     return map;
@@ -852,8 +829,8 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const styles = useStyles();
 
   const subtitle = useMemo(() => {
-    const restaurantCount = groupedRestaurants.length;
-    const countLabel = `${restaurantCount}${detailQuery.hasNextPage ? '+' : ''} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
+    const restaurantCount = list?.restaurantCount ?? groupedRestaurants.length;
+    const countLabel = `${restaurantCount} ${restaurantCount === 1 ? 'restaurant' : 'restaurants'}`;
     if (!list) {
       return countLabel;
     }
@@ -867,7 +844,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     const ownerName = list.ownerName ?? 'Unknown user';
     const baseLabel = `${ownerName}'s list · ${countLabel}`;
     return descriptionLabel ? `${baseLabel}\n${descriptionLabel}` : baseLabel;
-  }, [detailQuery.hasNextPage, groupedRestaurants.length, isOwner, list]);
+  }, [groupedRestaurants.length, isOwner, list]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -1373,9 +1350,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         />
         <PageErrorToast
           actionLabel="Retry"
-          errorMessage={shouldLoadMyLists && myListsQuery.isError ? 'Could not load your lists.' : null}
+          errorMessage={saveBookmarkTarget && !isOwner && detailQuery.isError ? 'Could not load your lists.' : null}
           onAction={() => {
-            void myListsQuery.refetch();
+            void detailQuery.refetch();
           }}
           title="Lists unavailable"
         />
@@ -1437,7 +1414,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                           <Ionicons color={theme.colors.text.primary} name="chevron-up" size={14} />
                         </Pressable>
                       ) : null}
-                      {groupIndex < groupedRestaurants.length - 1 || detailQuery.hasNextPage ? (
+                      {groupIndex < groupedRestaurants.length - 1 ? (
                         <Pressable
                           accessibilityLabel={`Move ${group.restaurantName} down`}
                           accessibilityRole="button"
@@ -1669,16 +1646,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           })
         )}
 
-        {groupedRestaurants.length > 0 && detailQuery.hasNextPage ? (
-          <Button
-            label={detailQuery.isFetchingNextPage ? 'Loading more...' : 'Load more restaurants'}
-            loading={detailQuery.isFetchingNextPage}
-            onPress={() => {
-              void detailQuery.fetchNextPage();
-            }}
-            variant="secondary"
-          />
-        ) : null}
       </View>
 
       <PhotoViewerModal
@@ -1845,17 +1812,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             titleTone="secondary"
           />
         )}
-
-        {!isOwner && myListsQuery.hasNextPage ? (
-          <Button
-            label={myListsQuery.isFetchingNextPage ? 'Loading more lists...' : 'Load more lists'}
-            loading={myListsQuery.isFetchingNextPage}
-            onPress={() => {
-              void myListsQuery.fetchNextPage();
-            }}
-            variant="secondary"
-          />
-        ) : null}
 
         {saveModalError ? <Text style={styles.saveModalError}>{saveModalError}</Text> : null}
       </Modal>

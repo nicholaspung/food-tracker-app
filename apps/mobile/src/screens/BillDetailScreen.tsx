@@ -24,13 +24,18 @@ import {
   type BillRecord,
 } from '../features';
 import { formatCurrency, validateBillTotal } from '../features/bills/billCalculations';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
+import {
+  deleteBillApiMutationInput,
+  updateBillApiMutationInput,
+  updateBillParticipantPaidStatusApiMutationInput,
+} from '../features/store/featureOutboxOperations';
 import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { useSync } from '../providers/SyncProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 
@@ -256,8 +261,8 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
+  const { enqueueMutation } = useSync();
   const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
@@ -368,10 +373,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
     try {
       if (!isOnline) {
-        await queueFeatureOutbox('bill.status.toggle', {
-          billId,
-          status: nextStatus,
-        });
+        await enqueueMutation(updateBillApiMutationInput(billId, { status: nextStatus }));
         await refreshBill();
         trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
@@ -428,11 +430,9 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
     try {
       if (!isOnline) {
-        await queueFeatureOutbox('bill.participant.toggle-paid', {
-          billId,
-          participantId,
-          paidStatus: nextPaidStatus,
-        });
+        await enqueueMutation(
+          updateBillParticipantPaidStatusApiMutationInput(billId, participantId, nextPaidStatus),
+        );
         await refreshBill();
         trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
@@ -485,7 +485,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
     try {
       if (!isOnline) {
-        await queueFeatureOutbox('bill.delete', { billId: bill.id });
+        await enqueueMutation(deleteBillApiMutationInput(bill.id));
         await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
         queryClient.removeQueries({ queryKey: ['feature', 'bill', bill.id] });
         trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {

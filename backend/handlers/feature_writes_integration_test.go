@@ -26,8 +26,9 @@ type billResponsePayload struct {
 	Title        string `json:"title"`
 	Status       string `json:"status"`
 	Participants []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		PaidStatus string `json:"paidStatus"`
 	} `json:"participants"`
 	Items []struct {
 		ID                       string   `json:"id"`
@@ -434,6 +435,162 @@ func TestBillUpdateEndpointRequiresCreatorAndRollsBackOnInvalidNestedItem(t *tes
 	}
 	if count := countRecordsByFilter(t, server.app, "bill_items", "bill = {:billId}", map[string]any{"billId": bill.Id}); count != 1 {
 		t.Fatalf("expected 1 bill item after rollback, got %d", count)
+	}
+}
+
+func TestBillDeleteEndpointDeletesNestedRecords(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, true)
+	_, intruderToken := createAuthUser(t, server.app, false, true)
+
+	bill := seedBillRecord(t, server.app, creator.Id, "Delete Me")
+	participant := seedBillParticipantRecord(t, server.app, bill.Id, creator.Id, creator.GetString("name"), 18.5, "pending")
+	seedBillParticipantRecord(t, server.app, bill.Id, "", "Friend", 14.25, "pending")
+	seedBillItemRecord(t, server.app, bill.Id, "Shared Plate", 32.75, []string{participant.Id}, "simple", nil)
+
+	forbiddenResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/bills/"+bill.Id,
+		intruderToken,
+		"",
+	)
+	if forbiddenResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", forbiddenResponse.Code, forbiddenResponse.Body.String())
+	}
+
+	deleteResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodDelete,
+		"/api/bills/"+bill.Id,
+		creatorToken,
+		"",
+	)
+	if deleteResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", deleteResponse.Code, deleteResponse.Body.String())
+	}
+
+	if count := countRecordsByFilter(t, server.app, "bills", "id = {:billId}", map[string]any{"billId": bill.Id}); count != 0 {
+		t.Fatalf("expected bill to be deleted, got %d remaining", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "bill_participants", "bill = {:billId}", map[string]any{"billId": bill.Id}); count != 0 {
+		t.Fatalf("expected bill participants to be deleted, got %d remaining", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "bill_items", "bill = {:billId}", map[string]any{"billId": bill.Id}); count != 0 {
+		t.Fatalf("expected bill items to be deleted, got %d remaining", count)
+	}
+}
+
+func TestBillParticipantPaidStatusEndpointUpdatesBillTransactionally(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, creatorToken := createAuthUser(t, server.app, false, true)
+
+	bill := seedBillRecord(t, server.app, creator.Id, "Settle Up")
+	seedBillParticipantRecord(t, server.app, bill.Id, creator.Id, creator.GetString("name"), 18.5, "paid")
+	friendParticipant := seedBillParticipantRecord(t, server.app, bill.Id, "", "Friend", 18.5, "pending")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/bills/"+bill.Id+"/participants/"+friendParticipant.Id+"/paid-status",
+		creatorToken,
+		`{"paidStatus":"paid"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload billResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse bill payload: %v", err)
+	}
+
+	if payload.Status != "settled" {
+		t.Fatalf("expected bill status to be settled, got %q", payload.Status)
+	}
+
+	friendPayloadFound := false
+	for _, participant := range payload.Participants {
+		if participant.ID != friendParticipant.Id {
+			continue
+		}
+
+		friendPayloadFound = true
+		if participant.PaidStatus != "paid" {
+			t.Fatalf("expected participant payload to be paid, got %q", participant.PaidStatus)
+		}
+	}
+	if !friendPayloadFound {
+		t.Fatalf("expected updated participant %q in response", friendParticipant.Id)
+	}
+
+	reloadedBill, err := server.app.FindRecordById("bills", bill.Id)
+	if err != nil {
+		t.Fatalf("failed to reload bill: %v", err)
+	}
+	if got := reloadedBill.GetString("status"); got != "settled" {
+		t.Fatalf("expected persisted bill status settled, got %q", got)
+	}
+
+	reloadedParticipant, err := server.app.FindRecordById("bill_participants", friendParticipant.Id)
+	if err != nil {
+		t.Fatalf("failed to reload participant: %v", err)
+	}
+	if got := reloadedParticipant.GetString("paid_status"); got != "paid" {
+		t.Fatalf("expected persisted participant status paid, got %q", got)
+	}
+}
+
+func TestBillParticipantPaidStatusEndpointAllowsSelfMarkPaidButNotUnpaid(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	creator, _ := createAuthUser(t, server.app, false, true)
+	participantUser, participantToken := createAuthUser(t, server.app, false, true)
+
+	bill := seedBillRecord(t, server.app, creator.Id, "Self Service")
+	seedBillParticipantRecord(t, server.app, bill.Id, creator.Id, creator.GetString("name"), 18.5, "paid")
+	participant := seedBillParticipantRecord(
+		t,
+		server.app,
+		bill.Id,
+		participantUser.Id,
+		participantUser.GetString("name"),
+		18.5,
+		"pending",
+	)
+
+	paidResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/bills/"+bill.Id+"/participants/"+participant.Id+"/paid-status",
+		participantToken,
+		`{"paidStatus":"paid"}`,
+	)
+	if paidResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", paidResponse.Code, paidResponse.Body.String())
+	}
+
+	unpaidResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPatch,
+		"/api/bills/"+bill.Id+"/participants/"+participant.Id+"/paid-status",
+		participantToken,
+		`{"paidStatus":"pending"}`,
+	)
+	if unpaidResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", unpaidResponse.Code, unpaidResponse.Body.String())
+	}
+
+	reloadedParticipant, err := server.app.FindRecordById("bill_participants", participant.Id)
+	if err != nil {
+		t.Fatalf("failed to reload participant: %v", err)
+	}
+	if got := reloadedParticipant.GetString("paid_status"); got != "paid" {
+		t.Fatalf("expected participant to remain paid, got %q", got)
 	}
 }
 
