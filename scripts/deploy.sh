@@ -284,6 +284,57 @@ site_domain() {
     esac
 }
 
+create_directory_snapshot_archive() {
+    local source_dir="$1"
+    local archive_path="$2"
+    local source_name
+    local snapshot_root
+    local snapshot_dir
+    local rsync_output
+    local rsync_exit_code
+
+    source_name=$(basename "$source_dir")
+    snapshot_root=$(mktemp -d "/tmp/food-tracker-backup-${source_name}.XXXXXX")
+    snapshot_dir="$snapshot_root/$source_name"
+    mkdir -p "$snapshot_dir"
+
+    if command -v rsync &> /dev/null; then
+        if rsync_output=$(rsync -a "$source_dir/" "$snapshot_dir/" 2>&1); then
+            :
+        else
+            rsync_exit_code=$?
+            if [ "$rsync_exit_code" -eq 24 ]; then
+                warn "Live files changed while snapshotting $source_name; continuing with the captured snapshot"
+                if [ -n "$rsync_output" ]; then
+                    printf '%s\n' "$rsync_output" | tee -a "$LOG_FILE"
+                fi
+            else
+                if [ -n "$rsync_output" ]; then
+                    printf '%s\n' "$rsync_output" | tee -a "$LOG_FILE" >&2
+                fi
+                rm -rf "$snapshot_root"
+                error "Failed to snapshot $source_name before archiving"
+                exit 1
+            fi
+        fi
+    else
+        warn "rsync is unavailable; falling back to cp -a for $source_name backup"
+        if ! cp -a "$source_dir/." "$snapshot_dir/"; then
+            rm -rf "$snapshot_root"
+            error "Failed to snapshot $source_name before archiving"
+            exit 1
+        fi
+    fi
+
+    if ! tar -czf "$archive_path" -C "$snapshot_root" "$source_name"; then
+        rm -rf "$snapshot_root"
+        error "Failed to archive $source_name snapshot"
+        exit 1
+    fi
+
+    rm -rf "$snapshot_root"
+}
+
 validate_site_source() {
     local site_key="$1"
     local source_dir
@@ -495,7 +546,7 @@ create_backup() {
 
     local pb_data_dir="backend/pb_data_${ENVIRONMENT}"
     if [ -d "$APP_DIR/$pb_data_dir" ]; then
-        tar -czf "$backup_path/pb_data_backup.tar.gz" -C "$APP_DIR/backend" "pb_data_${ENVIRONMENT}"
+        create_directory_snapshot_archive "$APP_DIR/$pb_data_dir" "$backup_path/pb_data_backup.tar.gz"
         log "PocketBase data backed up to $backup_path/pb_data_backup.tar.gz"
     fi
 
