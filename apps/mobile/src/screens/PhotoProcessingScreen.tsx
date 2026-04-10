@@ -876,6 +876,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           allowsMultipleSelection: source === 'gallery',
           selectionLimit: 20,
           exif: true,
+          quality: source === 'gallery' ? 0.7 : 0.8,
         });
         if (result.status === 'permission_denied') {
           trackObservabilityEvent('PHOTO_PROCESSING_MULTI_PERMISSION_DENIED', {

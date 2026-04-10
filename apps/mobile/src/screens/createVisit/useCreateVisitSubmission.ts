@@ -85,6 +85,7 @@ export function useCreateVisitSubmission({
   const invalidateVisitQueries = useCallback(
     async (options?: { visitId?: string; includeUsage?: boolean; sourceNoteId?: string }) => {
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({
           queryKey: ['feature', 'restaurants', 'visitStats'],

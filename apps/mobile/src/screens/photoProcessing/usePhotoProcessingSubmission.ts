@@ -335,6 +335,7 @@ export function usePhotoProcessingSubmission({
       }
 
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
