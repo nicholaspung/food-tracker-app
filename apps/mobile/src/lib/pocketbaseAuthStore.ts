@@ -3,16 +3,19 @@ import type { SecureStoreOptions } from 'expo-secure-store';
 import type * as SecureStoreModule from 'expo-secure-store';
 import { BaseAuthStore, type RecordModel } from 'pocketbase';
 
+import { env } from '../config/env';
+import { getEnvironmentStorageKey, isCurrentBackendUrl } from '../config/persistence';
 import { logger } from './logger';
 
 interface PersistedAuthState {
+  backendUrl?: string;
   token: string;
   record: RecordModel | null;
 }
 
 type SecureStoreModuleType = typeof SecureStoreModule;
-const DEFAULT_AUTH_STORAGE_KEY = 'food_tracker_pb_auth';
-const AUTH_KEYCHAIN_SERVICE = 'food_tracker_mobile_auth';
+const DEFAULT_AUTH_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_pb_auth');
+const AUTH_KEYCHAIN_SERVICE = getEnvironmentStorageKey('food_tracker_mobile_auth');
 
 let cachedSecureStoreModule: SecureStoreModuleType | null | undefined;
 
@@ -73,6 +76,11 @@ export class SecureStoreAuthStore extends BaseAuthStore {
       }
 
       const parsed = JSON.parse(serialized) as PersistedAuthState;
+      if (parsed.backendUrl && !isCurrentBackendUrl(parsed.backendUrl)) {
+        await this.clearPersistedStorage();
+        return;
+      }
+
       if (!parsed.token) {
         await this.clearPersistedStorage();
         return;
@@ -93,6 +101,7 @@ export class SecureStoreAuthStore extends BaseAuthStore {
       }
 
       const serialized = JSON.stringify({
+        backendUrl: env.pocketbaseUrl,
         token: this.token,
         record: this.record,
       } satisfies PersistedAuthState);

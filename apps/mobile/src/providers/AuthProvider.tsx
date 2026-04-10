@@ -188,6 +188,18 @@ function formatAuthDiagnostics(error: unknown): string {
   return ['Sign-in failed for an unknown reason.', `Backend: ${backendUrl}`].join('\n');
 }
 
+function shouldClearCachedSessionAfterRefreshFailure(error: unknown): boolean {
+  if (error instanceof ClientResponseError) {
+    return [400, 401, 403, 404].includes(error.status);
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return /auth|token|unauthorized|forbidden|expired|invalid/i.test(error.message);
+}
+
 function getCurrentUser(): AuthUser | null {
   return normalizeAuthUser(pb.authStore.record as Record<string, unknown> | null);
 }
@@ -302,6 +314,9 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
             await pb.collection('users').authRefresh();
           } catch (refreshError) {
             refreshFailed = true;
+            if (shouldClearCachedSessionAfterRefreshFailure(refreshError)) {
+              pb.authStore.clear();
+            }
             logger.warn('[AuthProvider] authRefresh failed, using cached session:', refreshError);
           }
         }

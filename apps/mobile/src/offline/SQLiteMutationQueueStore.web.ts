@@ -6,7 +6,9 @@ import type {
   QueuedMutation,
 } from './types';
 
-const STORAGE_KEY = 'food_tracker_mobile_web_offline_queue_v1';
+import { getEnvironmentStorageKey } from '../config/persistence';
+
+const STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_web_offline_queue_v1');
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 export class SQLiteMutationQueueStore implements MutationQueueStore {

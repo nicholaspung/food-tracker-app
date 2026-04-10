@@ -68,7 +68,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
     navigation.navigate('Profile');
   };
 
-  const showVersionDetails = otaUpdateState.shouldAutoExpand && isVersionExpanded;
+  const showVersionDetails = isVersionExpanded;
 
   return (
     <BackHeaderScreenScaffold
@@ -81,17 +81,13 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
       <SectionCard title="App Information">
         <OptionList>
           <OptionListRow
-            chevron={otaUpdateState.shouldAutoExpand ? (showVersionDetails ? 'up' : 'down') : false}
+            chevron={showVersionDetails ? 'up' : 'down'}
             connected={showVersionDetails}
             iconName="phone-portrait-outline"
             isLast={!showVersionDetails}
-            onPress={
-              otaUpdateState.shouldAutoExpand
-                ? () => {
-                    setIsVersionExpanded((current) => !current);
-                  }
-                : undefined
-            }
+            onPress={() => {
+              setIsVersionExpanded((current) => !current);
+            }}
             rightAccessory={<Text style={styles.metaValue}>{appVersionLabel}</Text>}
             subtitle={getVersionSubtitle({
               hasAvailableUpdate: otaUpdateState.hasAvailableUpdate,

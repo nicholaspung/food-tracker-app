@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { getEnvironmentStorageKey } from '../../config/persistence';
 import type {
   FeatureStore,
   FeedbackRecord,
@@ -16,7 +17,7 @@ import type {
 import { nowIso } from './featureStoreShared';
 import { createPhotoDraftStore } from './photoDraftStore';
 
-const FEATURE_STORE_KEY = 'food_tracker_mobile_phase4_store_v1';
+const FEATURE_STORE_KEY = getEnvironmentStorageKey('food_tracker_mobile_phase4_store_v1');
 
 let cachedStore: FeatureStore | null = null;
 

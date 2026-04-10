@@ -7,6 +7,7 @@ describe('SecureStoreAuthStore', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     await SecureStore.deleteItemAsync('test_auth_key');
+    await SecureStore.deleteItemAsync('test_auth_key_backend_mismatch');
     await SecureStore.deleteItemAsync('test_auth_key_clear');
     await SecureStore.deleteItemAsync('test_auth_key_migrate');
   });
@@ -82,13 +83,36 @@ describe('SecureStoreAuthStore', () => {
     expect(restoredStore.record).toBeNull();
   });
 
+  it('drops persisted auth state that belongs to a different backend', async () => {
+    await SecureStore.setItemAsync(
+      'test_auth_key_backend_mismatch',
+      JSON.stringify({
+        backendUrl: 'https://beta.app.yummyrecs.com',
+        token: 'beta_jwt',
+        record: {
+          id: 'user_beta',
+          email: 'beta@example.com',
+          verified: true,
+        },
+      }),
+    );
+
+    const store = new SecureStoreAuthStore('test_auth_key_backend_mismatch');
+    await store.waitUntilReady();
+
+    expect(store.token).toBe('');
+    expect(store.record).toBeNull();
+    expect(await SecureStore.getItemAsync('test_auth_key_backend_mismatch')).toBeNull();
+  });
+
   it('falls back to AsyncStorage when the SecureStore native module is unavailable', async () => {
     jest.resetModules();
     jest.doMock('expo-secure-store', () => {
       throw new Error("Cannot find native module 'ExpoSecureStore'");
     });
 
-    const { SecureStoreAuthStore: FallbackAuthStore } = await import('../lib/pocketbaseAuthStore');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { SecureStoreAuthStore: FallbackAuthStore } = require('../lib/pocketbaseAuthStore');
 
     const store = new FallbackAuthStore('test_auth_key_fallback');
     await store.waitUntilReady();

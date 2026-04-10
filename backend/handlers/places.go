@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -57,6 +58,10 @@ type placesSearchResponse struct {
 	Restaurants      []restaurantSearchResult  `json:"restaurants"`
 	ResolvedLocation *placeLocation            `json:"resolvedLocation,omitempty"`
 	Usage            *lib.MonthlyUsageSnapshot `json:"usage,omitempty"`
+}
+
+func newPlacesAPIClient(ctx context.Context, apiKey string) (*places.Client, error) {
+	return places.NewClient(ctx, option.WithAPIKey(apiKey))
 }
 
 func buildPlacesSearchResponse(
@@ -406,7 +411,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		// Initialize new Places API client
 		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
 		defer cancel()
-		placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey), option.WithHTTPClient(placesHTTPClient))
+		placesClient, err := newPlacesAPIClient(ctx, placesAPIKey)
 		if err != nil {
 			log.Printf("Failed to create Places API client: %v", err)
 			return apis.NewApiError(500, "failed to initialize Google Places API", err)
@@ -547,7 +552,7 @@ func RegisterPlacesHandlers(se *core.ServeEvent, _ core.App) {
 		// Initialize new Places API client
 		ctx, cancel := requestContextWithTimeout(e, googlePlacesRequestTimeout)
 		defer cancel()
-		placesClient, err := places.NewClient(ctx, option.WithAPIKey(placesAPIKey), option.WithHTTPClient(placesHTTPClient))
+		placesClient, err := newPlacesAPIClient(ctx, placesAPIKey)
 		if err != nil {
 			log.Printf("Failed to create Places API client: %v", err)
 			return apis.NewApiError(500, "failed to initialize Google Places API", err)

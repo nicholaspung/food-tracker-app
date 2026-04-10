@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
 
+import { env } from '../../config/env';
 import { trackObservabilityEvent } from '../../observability';
 import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
@@ -21,6 +22,8 @@ export interface OtaUpdateStatusState {
   currentChannel: string;
   currentRuntimeVersion: string;
   currentPublishedAt: string;
+  configuredBackendUrl: string;
+  configuredEnvironment: string;
   latestAvailableLabel: string;
   statusText: string | null;
   buttonLabel: string;
@@ -297,6 +300,8 @@ export function useOtaUpdateStatus(source: string): OtaUpdateStatusState {
   return {
     buttonLabel,
     currentAppVersion,
+    configuredBackendUrl: env.apiBaseUrl,
+    configuredEnvironment: env.environment,
     currentBuildVersion,
     currentChannel: currentlyRunning.channel ?? 'unknown',
     currentOtaLabel,
@@ -369,6 +374,24 @@ export function OtaUpdateStatusDetails({ state }: { state: OtaUpdateStatusState 
           <Text style={styles.metaValue} variant="bodyMdSemiBold">
             {state.currentChannel}
           </Text>
+        </View>
+        <View style={styles.metaRow}>
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel} tone="muted" variant="bodySmSemiBold">
+              Environment
+            </Text>
+            <Text style={styles.metaValue} variant="bodyMdSemiBold">
+              {state.configuredEnvironment}
+            </Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel} tone="muted" variant="bodySmSemiBold">
+              Backend
+            </Text>
+            <Text style={styles.metaValue} variant="bodyMdSemiBold">
+              {state.configuredBackendUrl}
+            </Text>
+          </View>
         </View>
         {state.statusText ? (
           <View style={styles.metaItem}>

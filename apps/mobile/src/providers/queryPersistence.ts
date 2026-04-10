@@ -3,11 +3,15 @@ import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persi
 import type { PersistedClient } from '@tanstack/query-persist-client-core';
 import { defaultShouldDehydrateQuery, type Query, type QueryKey } from '@tanstack/react-query';
 
+import { getEnvironmentStorageKey } from '../config/persistence';
 import type { FeedbackRecord, NoteRecord } from '../features/models';
 import { isFeedbackListQueryKey } from '../features/store/feedbackQuery';
 
-const LEGACY_QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v1';
-const QUERY_CACHE_STORAGE_KEY = 'food_tracker_mobile_query_cache_v2';
+const LEGACY_QUERY_CACHE_STORAGE_KEYS = [
+  'food_tracker_mobile_query_cache_v1',
+  'food_tracker_mobile_query_cache_v2',
+];
+const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2');
 
 function isFeatureQueryKey(queryKey: QueryKey): queryKey is readonly [string, ...unknown[]] {
   return Array.isArray(queryKey) && queryKey[0] === 'feature';
@@ -208,7 +212,7 @@ export function sanitizePersistedClient(persistedClient: PersistedClient): Persi
 }
 
 export async function removeLegacyQueryCache(): Promise<void> {
-  await AsyncStorage.removeItem(LEGACY_QUERY_CACHE_STORAGE_KEY);
+  await Promise.all(LEGACY_QUERY_CACHE_STORAGE_KEYS.map((storageKey) => AsyncStorage.removeItem(storageKey)));
 }
 
 export const queryPersister = createAsyncStoragePersister({

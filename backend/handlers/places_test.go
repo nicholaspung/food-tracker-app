@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -9,6 +10,16 @@ import (
 	_ "myapp/migrations"
 	"myapp/testutil"
 )
+
+func TestNewPlacesAPIClientInitializesWithAPIKey(t *testing.T) {
+	client, err := newPlacesAPIClient(context.Background(), "test-key")
+	if err != nil {
+		t.Fatalf("expected newPlacesAPIClient to initialize, got %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("expected close to succeed, got %v", err)
+	}
+}
 
 func TestSyncGooglePlaceRestaurantsReusesCanonicalRecordsAcrossUsers(t *testing.T) {
 	app := testutil.NewTestApp(t)
