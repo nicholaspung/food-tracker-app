@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
@@ -54,6 +54,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
   });
 
   const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const filteredBills = useMemo(() => {
     const bills = billsState.items;
@@ -77,9 +78,19 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     return bills;
   }, [activeFilter, billsState.items]);
   const styles = useStyles();
+  const handleRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await billsQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [billsQuery]);
 
   return (
     <BackHeaderScreenScaffold
+      onRefresh={handleRefresh}
       onBackPress={() => {
         if (navigation.canGoBack()) {
           navigation.goBack();
@@ -87,6 +98,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
         }
         navigation.navigate('Misc');
       }}
+      refreshing={isPullRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           label="Create Bill"

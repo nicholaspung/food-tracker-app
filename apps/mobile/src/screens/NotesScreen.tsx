@@ -180,6 +180,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const noteStatusFilter = resolveNoteStatusFilter(activeFilter);
 
   const notesQuery = useInfiniteQuery({
@@ -319,12 +320,23 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       setIsDeletingNote(false);
     }
   }, [isOnline, pendingDeleteNote, queryClient, queueFeatureOutbox, queueWrite]);
+  const handleRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await notesQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [notesQuery]);
 
   return (
     <FeatureDetailScreenScaffold
+      onRefresh={handleRefresh}
       onBackPress={() => {
         navigation.navigate('AddVisit');
       }}
+      refreshing={isPullRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           accessibilityLabel="Create note"

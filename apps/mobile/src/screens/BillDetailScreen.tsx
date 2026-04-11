@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -276,6 +276,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const [updatingParticipantId, setUpdatingParticipantId] = useState<string | null>(null);
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const [isDeletingBill, setIsDeletingBill] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const bill = billQuery.data;
   const isCreator = bill?.createdByUserId === user?.id;
@@ -520,10 +521,20 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
       setIsDeletingBill(false);
     }
   };
+  const handleRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await billQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [billQuery]);
 
   return (
     <FeatureDetailScreenScaffold
       keyboardAware
+      onRefresh={handleRefresh}
       onBackPress={() => {
         if (navigation.canGoBack()) {
           navigation.goBack();
@@ -531,6 +542,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         }
         navigation.navigate('Bills');
       }}
+      refreshing={isPullRefreshing}
       rightAccessory={
         bill ? (
           <View style={styles.headerRightRow}>

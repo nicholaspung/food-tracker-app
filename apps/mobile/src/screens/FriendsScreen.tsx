@@ -210,6 +210,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [pendingRemoveFriend, setPendingRemoveFriend] = useState<FriendRecord | null>(null);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const friendsSummaryQuery = useQuery({
     queryKey: ['feature', 'friends', 'summary'],
     queryFn: getFriendsCountSummary,
@@ -356,6 +357,20 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     }
 
     setPendingRemoveFriend(null);
+  };
+  const handleRefresh = async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      const refreshJobs: Promise<unknown>[] = [friendsSummaryQuery.refetch()];
+      if (mainTab === 'friends-list') {
+        refreshJobs.push(friendsQuery.refetch());
+      }
+
+      await Promise.all(refreshJobs);
+    } finally {
+      setIsPullRefreshing(false);
+    }
   };
 
   const handleConfirmRemoveFriend = async () => {
@@ -568,6 +583,8 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
       keyboardAware
+      onRefresh={handleRefresh}
+      refreshing={isPullRefreshing}
       scrollUnderlayColor={theme.colors.background.muted}
       testID="friends-screen"
     >

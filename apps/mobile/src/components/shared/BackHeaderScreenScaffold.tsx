@@ -23,6 +23,8 @@ export interface BackHeaderScreenScaffoldProps {
   headerVariant?: 'large' | 'compact';
   scroll?: boolean;
   keyboardAware?: boolean;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   contentBackgroundTone?: ContentBackgroundTone;
   contentStyle?: StyleProp<ViewStyle>;
   bodyStyle?: StyleProp<ViewStyle>;
@@ -54,6 +56,8 @@ export function BackHeaderScreenScaffold({
   headerVariant = 'large',
   scroll = true,
   keyboardAware = true,
+  onRefresh,
+  refreshing = false,
   contentBackgroundTone = 'muted',
   contentStyle,
   bodyStyle,
@@ -78,7 +82,9 @@ export function BackHeaderScreenScaffold({
       contentStyle={[styles.screenContent, contentStyle]}
       edges={['top']}
       keyboardAware={keyboardAware}
+      onRefresh={onRefresh}
       padded={false}
+      refreshing={refreshing}
       scroll={scroll}
       scrollUnderlayColor={scroll ? backgroundColor : undefined}
       scrollUnderlayTopInset={scroll ? scrollUnderlayTopInset : undefined}

@@ -17,6 +17,14 @@ on:
         required: false
         type: boolean
         default: false
+      build_platform:
+        description: "Choose which native platform preview builds should target"
+        required: false
+        type: choice
+        default: ios
+        options:
+          - ios
+          - all
       deploy_target:
         description: "Choose which hosted backend this internal mobile release should target"
         required: false
@@ -107,6 +115,23 @@ jobs:
               ;;
           esac
 
+      - name: Resolve mobile build platform
+        id: build_platform
+        shell: bash
+        run: |
+          BUILD_PLATFORM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_platform || 'ios' }}"
+
+          case "$BUILD_PLATFORM" in
+            all)
+              echo "build_platform=all" >> "$GITHUB_OUTPUT"
+              echo "platform_label=iOS and Android" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "build_platform=ios" >> "$GITHUB_OUTPUT"
+              echo "platform_label=iOS" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
       - name: Detect mobile release type
         id: release_type
         shell: bash
@@ -148,7 +173,7 @@ jobs:
         run: |
           cd apps/mobile
           eas build \
-            --platform all \
+            --platform "${{ steps.build_platform.outputs.build_platform }}" \
             --profile "${{ steps.release_target.outputs.build_profile }}" \
             --non-interactive \
             --no-wait
@@ -158,7 +183,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ steps.release_type.outputs.publish_mode }}" = "build" ]; then
-            echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} build because native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
+            echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
             echo "Install the new build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Published an OTA update to the ${{ steps.release_target.outputs.ota_channel }} channel." >> "$GITHUB_STEP_SUMMARY"

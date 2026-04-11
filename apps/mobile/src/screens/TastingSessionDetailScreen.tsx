@@ -116,6 +116,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<PendingDeleteItemState | null>(null);
   const [isDeletingItem, setIsDeletingItem] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const currentParticipant = useMemo(() => {
     const session = sessionQuery.data;
@@ -225,6 +226,15 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSessions'] }),
       queryClient.invalidateQueries({ queryKey: ['feature', 'tastingSession', sessionId] }),
     ]);
+  };
+  const handleRefresh = async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await sessionQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
   };
 
   const handleCopyInviteCode = async () => {
@@ -442,7 +452,9 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   return (
     <FeatureDetailScreenScaffold
       bodyStyle={styles.container}
+      onRefresh={handleRefresh}
       onBackPress={handleBackPress}
+      refreshing={isPullRefreshing}
       subtitle={session.restaurantName}
       title={session.name}
     >

@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -89,6 +89,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const [joinCode, setJoinCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasActivatedRestaurantSuggestions, setHasActivatedRestaurantSuggestions] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const {
     savedRestaurantRecords: filteredRestaurants,
     savedRestaurantsErrorMessage: restaurantSuggestionsErrorMessage,
@@ -102,6 +103,15 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const sessions = sessionsQuery.data ?? EMPTY_TASTING_SESSIONS;
   const hasBlockingSessionsError = sessionsQuery.isError && sessions.length === 0;
   const hasSessionsRefreshError = sessionsQuery.isError && sessions.length > 0;
+  const handleRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await sessionsQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [sessionsQuery]);
 
   const filteredSessions = useMemo(() => {
     if (filter === 'completed') {
@@ -216,6 +226,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
       <BackHeaderScreenScaffold
         bodyStyle={styles.body}
         contentBackgroundTone="muted"
+        onRefresh={handleRefresh}
         onBackPress={() => {
           if (navigation.canGoBack()) {
             navigation.goBack();
@@ -224,6 +235,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
           navigation.navigate('Profile');
         }}
+        refreshing={isPullRefreshing}
         subtitle="Create or join a tasting session with your group."
         title="Group Tastings"
       >
@@ -242,6 +254,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
       contentBackgroundTone="muted"
+      onRefresh={handleRefresh}
       onBackPress={() => {
         if (navigation.canGoBack()) {
           navigation.goBack();
@@ -250,6 +263,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
         navigation.navigate('Profile');
       }}
+      refreshing={isPullRefreshing}
       subtitle="Create or join a tasting session with your group."
       title="Group Tastings"
     >

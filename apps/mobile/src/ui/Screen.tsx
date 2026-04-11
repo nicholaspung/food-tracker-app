@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, RefreshControl, StyleSheet, View } from 'react-native';
 import {
   KeyboardAvoidingView,
   KeyboardAwareScrollView,
@@ -27,6 +27,8 @@ interface ScreenProps {
   scrollUnderlayColor?: string;
   scrollUnderlayTopInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   scrollEventThrottle?: number;
   testID?: string;
 }
@@ -46,6 +48,8 @@ export function Screen({
   scrollUnderlayColor,
   scrollUnderlayTopInset = 0,
   onScroll,
+  onRefresh,
+  refreshing = false,
   scrollEventThrottle = 16,
   testID,
 }: PropsWithChildren<ScreenProps>) {
@@ -81,6 +85,17 @@ export function Screen({
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       keyboardShouldPersistTaps="handled"
       onScroll={onScroll}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            colors={[theme.colors.text.brand]}
+            onRefresh={onRefresh}
+            progressBackgroundColor={theme.colors.background.surface}
+            refreshing={refreshing}
+            tintColor={theme.colors.text.brand}
+          />
+        ) : undefined
+      }
       scrollEventThrottle={scrollEventThrottle}
       style={[styles.keyboardContainer, scrollStyle]}
     >

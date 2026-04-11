@@ -1,7 +1,7 @@
 import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, RefreshControl, ScrollView, View } from 'react-native';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 
@@ -31,7 +31,7 @@ import { useQueuedWrite } from '../features/store/useQueuedWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { createThemedStyles } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Button, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
@@ -238,6 +238,7 @@ function formatRelativeReplyTime(value: string, isMine: boolean): string {
 }
 
 export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreenProps) {
+  const theme = useTheme();
   const styles = useStyles();
   const queryClient = useQueryClient();
   const queueFeatureOutbox = useFeatureOutboxQueue();
@@ -252,6 +253,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const [draftMessage, setDraftMessage] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const feedbackQuery = useQuery({
     queryKey: feedbackQueryKeys.detail(feedbackId),
@@ -447,6 +449,15 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
     navigation.navigate('Feedback');
   };
+  const handleRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await Promise.all([feedbackQuery.refetch(), messagesQuery.refetch()]);
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [feedbackQuery, messagesQuery]);
 
   return (
     <FeatureDetailScreenScaffold
@@ -495,6 +506,15 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.messagesContent}
+              refreshControl={
+                <RefreshControl
+                  colors={[theme.colors.text.brand]}
+                  onRefresh={handleRefresh}
+                  progressBackgroundColor={theme.colors.background.surface}
+                  refreshing={isPullRefreshing}
+                  tintColor={theme.colors.text.brand}
+                />
+              }
               ref={messagesScrollRef}
               style={styles.messagesContainer}
             >

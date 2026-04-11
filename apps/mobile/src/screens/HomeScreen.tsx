@@ -345,13 +345,8 @@ function buildQuickTrackFeedItem(
   };
 }
 
-function getFeedItemCreatedAt(feedItem: FeedItem): string {
-  return feedItem.source === 'visit' ? feedItem.visit.createdAt : feedItem.quickTrack.createdAt;
-}
-
 function formatMineEntryFooterLabel(feedItem: FeedItem): string {
-  const createdAt = getFeedItemCreatedAt(feedItem);
-  return formatEntryDateLabel(createdAt) || createdAt;
+  return formatEntryDateLabel(feedItem.eventAt) || feedItem.eventAt;
 }
 
 function compareBetaFeedItems(left: FeedItem, right: FeedItem): number {
@@ -385,6 +380,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const [friendSuggestion, setFriendSuggestion] = useState<PendingFriendSuggestion | null>(null);
   const [friendSuggestionErrorMessage, setFriendSuggestionErrorMessage] = useState<string | null>(null);
   const [isApplyingFriendSuggestion, setIsApplyingFriendSuggestion] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const homeFeedActions = useHomeFeedActionController({
     isOnline,
     queryClient,
@@ -446,6 +442,15 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const isLoading = homeFeedQuery.isLoading;
   const hasBlockingFeedError = homeFeedState.hasBlockingError;
   const hasFeedRefreshError = homeFeedState.hasRefreshError;
+  const handleRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await homeFeedQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [homeFeedQuery]);
 
   useEffect(() => {
     let isMounted = true;
@@ -989,6 +994,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
+      onRefresh={handleRefresh}
+      refreshing={isPullRefreshing}
       scrollUnderlayColor={colors.screenBackground}
       testID="home-screen"
     >

@@ -564,6 +564,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: restaurantListQueryKeys.detail(listId),
@@ -1256,6 +1257,15 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
     await saveBookmarkToLists(targetListIds);
   };
+  const handleRefresh = useCallback(async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await detailQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [detailQuery]);
 
   if (detailQuery.isLoading) {
     return (
@@ -1294,7 +1304,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   return (
     <FeatureDetailScreenScaffold
+      onRefresh={handleRefresh}
       onBackPress={handleBack}
+      refreshing={isPullRefreshing}
       rightAccessory={
         isOwner && !list.isDefault ? (
           <View style={styles.headerRightRow}>

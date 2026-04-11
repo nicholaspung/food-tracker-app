@@ -305,6 +305,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const hasTriedCreatingDefault = useRef(false);
   const trimmedSearchQuery = searchQuery.trim();
 
@@ -439,6 +440,15 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
   const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);
   const hasSearch = trimmedSearchQuery.length > 0;
+  const handleRefresh = async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await activeQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  };
 
   const handleTabChange = (tab: ListTab) => {
     trackObservabilityEvent('LISTS_TAB_CHANGED', {
@@ -584,9 +594,11 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
       keyboardAware
+      onRefresh={handleRefresh}
       onBackPress={() => {
         navigation.navigate('Misc');
       }}
+      refreshing={isPullRefreshing}
       rightAccessory={
         activeTab === 'my' ? (
           <HeaderAccessoryButton

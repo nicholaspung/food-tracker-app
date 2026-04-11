@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, View } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -39,6 +40,7 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const feedbackQuery = useInfiniteQuery({
     queryKey: feedbackQueryKeys.list,
     queryFn: ({ pageParam }) =>
@@ -64,13 +66,24 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const handleBackToProfile = () => {
     navigation.navigate('Profile');
   };
+  const handleRefresh = async () => {
+    setIsPullRefreshing(true);
+
+    try {
+      await feedbackQuery.refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  };
 
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
       contentBackgroundTone="app"
       keyboardAware
+      onRefresh={handleRefresh}
       onBackPress={handleBackToProfile}
+      refreshing={isPullRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           accessibilityLabel="Create feedback"
