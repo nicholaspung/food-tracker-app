@@ -1,23 +1,17 @@
 import { pb } from '../../lib/pocketbase';
-import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import { sendApiRequest } from './pocketbaseGateway';
 import {
-  buildOrFilter,
-  createEmptyPaginatedResult,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
   normalizeModerationContentStatus,
   normalizeQuickTrackVisibility,
   nowIso,
-  resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
 import type {
   CreateVisitInput,
-  ListVisitsPageInput,
-  PaginatedResult,
   UpdateVisitInput,
-  VisitPhotoRecord,
 } from './featureStore';
 import { markNoteUsed } from './notesStore';
 import type { VisitRecord } from '../models';
@@ -25,9 +19,7 @@ import { uploadVisitPhotos } from './visitPhotoUploads';
 
 export type {
   CreateVisitInput,
-  ListVisitsPageInput,
   UpdateVisitInput,
-  VisitPhotoRecord,
 } from './featureStore';
 
 interface VisitApiItemRecord {
@@ -54,15 +46,6 @@ interface VisitApiRecord {
   updatedAt: string;
 }
 
-interface VisitsPageApiResponse {
-  items?: VisitApiRecord[];
-  page: number;
-  pageSize: number;
-  totalItems: number;
-  totalPages: number;
-  hasNextPage: boolean;
-}
-
 function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
   return {
     id: record.id,
@@ -85,41 +68,6 @@ function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
     moderationStatus: normalizeModerationContentStatus(record.moderationStatus),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-  };
-}
-
-export async function listVisitsPage(input?: ListVisitsPageInput): Promise<PaginatedResult<VisitRecord>> {
-  if (!pb.authStore.record?.id) {
-    return createEmptyPaginatedResult(input);
-  }
-
-  const { page, pageSize } = resolvePaginationInput(input);
-  const query = new URLSearchParams({
-    page: String(page),
-    pageSize: String(pageSize),
-  });
-  const scope = input?.scope?.trim();
-  const trimmedSearch = input?.search?.trim();
-
-  if (scope) {
-    query.set('scope', scope);
-  }
-
-  if (trimmedSearch) {
-    query.set('search', trimmedSearch);
-  }
-
-  const response = await sendApiRequest<VisitsPageApiResponse>(`/api/visits?${query.toString()}`, {
-    method: 'GET',
-  });
-
-  return {
-    items: (response.items ?? []).map(mapVisitApiRecord),
-    page: response.page,
-    pageSize: response.pageSize,
-    totalItems: response.totalItems,
-    totalPages: response.totalPages,
-    hasNextPage: response.hasNextPage,
   };
 }
 
@@ -256,25 +204,4 @@ export async function deleteVisit(visitId: string): Promise<void> {
       throw error;
     }
   });
-}
-
-export async function listVisitPhotosForFoodItemIds(foodItemIds: string[]): Promise<VisitPhotoRecord[]> {
-  if (!pb.authStore.record?.id || foodItemIds.length === 0) {
-    return [];
-  }
-
-  const records: VisitPhotoRecord[] = [];
-  const chunkSize = 20;
-
-  for (let index = 0; index < foodItemIds.length; index += chunkSize) {
-    const chunk = foodItemIds.slice(index, index + chunkSize);
-    const chunkRecords = await listCollectionRecords<VisitPhotoRecord>('visit_photos', {
-      filter: buildOrFilter('food_item', chunk),
-      sort: '-created',
-      expand: 'user',
-    });
-    records.push(...chunkRecords);
-  }
-
-  return records;
 }

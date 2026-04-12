@@ -143,17 +143,6 @@ export function buildOrFilter(fieldName: string, values: string[]): string {
   return values.length > 1 ? `(${filter})` : filter;
 }
 
-export function buildSearchFilter(fieldNames: string[], search: string): string | undefined {
-  const trimmedSearch = search.trim();
-  if (!trimmedSearch) {
-    return undefined;
-  }
-
-  const escapedSearch = escapeFilterValue(trimmedSearch);
-  const filter = fieldNames.map((fieldName) => `${fieldName} ~ "${escapedSearch}"`).join(' || ');
-  return fieldNames.length > 1 ? `(${filter})` : filter;
-}
-
 export function resolveExpandedUserName(
   user: { name?: string; email?: string } | undefined,
 ): string | undefined {

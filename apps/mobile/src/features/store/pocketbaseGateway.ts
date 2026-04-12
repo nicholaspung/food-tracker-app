@@ -175,20 +175,6 @@ export async function updateCollectionRecord<T>(
   }
 }
 
-export async function getCollectionCount(
-  collectionName: string,
-  filter?: string,
-  options?: PocketBaseRequestOptions,
-): Promise<number> {
-  const requestOptions = sanitizeCollectionOptions({ filter });
-  const response = await pb.collection(collectionName).getList(
-    1,
-    1,
-    options?.signal ? { ...requestOptions, signal: options.signal } : requestOptions,
-  );
-  return response.totalItems;
-}
-
 export async function sendApiRequest<T = unknown>(
   path: string,
   init: ApiRequestInit,

@@ -215,17 +215,6 @@ export async function getFeedbackCountSummary(options?: ReadRequestOptions): Pro
   });
 }
 
-export async function getFeedbackById(
-  feedbackId: string,
-  options?: ReadRequestOptions,
-): Promise<FeedbackRecord> {
-  const detail = await getFeedbackThreadDetail(feedbackId, {
-    signal: options?.signal,
-  });
-
-  return detail.feedback;
-}
-
 export async function getFeedbackThreadDetail(
   feedbackId: string,
   options?: ReadRequestOptions,

@@ -1,9 +1,9 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
-import {
+const {
   assertSafeMobileReleaseBuildBackendConfiguration,
   assertSafeScreenshotReviewBuild,
-} from './src/config/envUtils';
+}: typeof import('./src/config/envUtils') = require('./src/config/envUtils.ts');
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   assertSafeScreenshotReviewBuild(process.env);

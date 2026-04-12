@@ -522,7 +522,6 @@ export {
 
 export {
   createFeedback,
-  getFeedbackById,
   getFeedbackCountSummary,
   getFeedbackThreadDetail,
   listFeedbackMessagesPage,
