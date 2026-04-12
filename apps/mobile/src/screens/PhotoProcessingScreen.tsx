@@ -35,16 +35,15 @@ import {
 } from '../components/shared';
 import {
   createCollectionRecord,
-  getNoteById,
+  getNoteDetail,
   getAuthenticatedUserIdOrNull,
-  listNotePhotosForNote,
   updateCollectionRecord,
   type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { notesQueryKeys } from '../features/store/notesQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
@@ -250,8 +249,7 @@ export function PhotoProcessingScreen(screenProps: PhotoProcessingScreenProps) {
 function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -271,14 +269,9 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
-  const linkedNoteQuery = useQuery({
-    queryKey: ['feature', 'note', sourceNoteId],
-    queryFn: () => (sourceNoteId ? getNoteById(sourceNoteId) : Promise.resolve(null)),
-    enabled: isNoteDrivenFlow,
-  });
-  const notePhotosQuery = useQuery({
-    queryKey: ['feature', 'notePhotos', sourceNoteId],
-    queryFn: () => listNotePhotosForNote(sourceNoteId ?? ''),
+  const noteDetailQuery = useQuery({
+    queryKey: sourceNoteId ? notesQueryKeys.detail(sourceNoteId) : ['feature', 'notes', 'detail', ''],
+    queryFn: ({ signal }) => (sourceNoteId ? getNoteDetail(sourceNoteId, { signal }) : Promise.resolve(null)),
     enabled: isNoteDrivenFlow,
   });
 
@@ -384,10 +377,10 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       placesQueriesRemaining,
     },
   });
-  const hasNotePhotos = (notePhotosQuery.data?.length ?? 0) > 0;
-  const notePhotoCount = notePhotosQuery.data?.length ?? 0;
-  const isBlockingNotePhotoLoad = isNoteDrivenFlow && notePhotosQuery.isLoading && !notePhotosQuery.data;
-  const hasBlockingNotePhotoError = isNoteDrivenFlow && notePhotosQuery.isError && !notePhotosQuery.data;
+  const hasNotePhotos = (noteDetailQuery.data?.photos.length ?? 0) > 0;
+  const notePhotoCount = noteDetailQuery.data?.photos.length ?? 0;
+  const isBlockingNotePhotoLoad = isNoteDrivenFlow && noteDetailQuery.isLoading && !noteDetailQuery.data;
+  const hasBlockingNotePhotoError = isNoteDrivenFlow && noteDetailQuery.isError && !noteDetailQuery.data;
 
   useEffect(() => {
     if (!sourceNoteId) {
@@ -517,7 +510,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
       try {
         if (photos.length === 0) {
-          const hydratedPhotos = await hydrateDraftPhotosFromNote(sourceNoteId, notePhotosQuery.data ?? []);
+          const hydratedPhotos = await hydrateDraftPhotosFromNote(sourceNoteId, noteDetailQuery.data?.photos ?? []);
           replacePhotos(hydratedPhotos);
         } else {
           resetProcessingForms();
@@ -535,7 +528,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     },
     [
       hasNotePhotos,
-      notePhotosQuery.data,
+      noteDetailQuery.data?.photos,
       photos.length,
       replacePhotos,
       resetFlowSelectionState,
@@ -693,8 +686,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       photos,
       processType,
       queryClient,
-      queueFeatureOutbox,
-      queueWrite,
       quickTrackForms,
       restaurantForms,
       setErrorMessage,
@@ -702,6 +693,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       sourceNoteId,
       shouldEnforceUsageLimitsClientSide,
       visitVisibility,
+      writeFeature,
     });
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
@@ -1064,8 +1056,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     : undefined;
   const linkedNoteCard = isNoteDrivenFlow ? (
     <LinkedNoteCard
-      isLoading={linkedNoteQuery.isLoading}
-      note={linkedNoteQuery.data}
+      isLoading={noteDetailQuery.isLoading}
+      note={noteDetailQuery.data?.note}
       testID="linked-note-card"
       titleAccessory={
         step === 'choice' && hasNotePhotos ? (
@@ -1121,8 +1113,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
             <ErrorState
               description="Could not load note photos."
               onRetry={() => {
-                void linkedNoteQuery.refetch();
-                void notePhotosQuery.refetch();
+                void noteDetailQuery.refetch();
               }}
               title="Note unavailable"
             />

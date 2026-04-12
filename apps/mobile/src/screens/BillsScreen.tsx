@@ -43,7 +43,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function BillsScreen({ navigation }: BillsScreenProps) {
   const billsQuery = useQuery({
     queryKey: ['feature', 'bills'],
-    queryFn: listBillSummaries,
+    queryFn: ({ signal }) => listBillSummaries({ signal }),
   });
   const billsState = useQueryListState({
     data: billsQuery.data,

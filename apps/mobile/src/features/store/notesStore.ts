@@ -4,6 +4,7 @@ import type {
   CreateNoteInput,
   ListNotesPageInput,
   MarkNoteUsedInput,
+  NoteDetailRecord,
   NoteCountSummary,
   NoteOverviewItemRecord,
   NoteOverviewPage,
@@ -25,12 +26,17 @@ export type {
   CreateNoteInput,
   ListNotesPageInput,
   MarkNoteUsedInput,
+  NoteDetailRecord,
   NoteCountSummary,
   NoteOverviewItemRecord,
   NoteOverviewPage,
   NotePhotoRecord,
   UpdateNoteInput,
 } from './featureStore';
+
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
 
 interface RestaurantCollectionRecord {
   name?: string;
@@ -82,6 +88,11 @@ interface NoteOverviewApiResponse {
   totalItems?: number;
   totalPages?: number;
   hasNextPage?: boolean;
+}
+
+interface NoteDetailApiResponse {
+  note?: NoteOverviewApiRecord | null;
+  photos?: NotePhotoRecord[];
 }
 
 function normalizeNoteStatus(status: unknown): NoteRecord['status'] {
@@ -205,7 +216,7 @@ async function uploadNotePhotos(
   }
 }
 
-export async function getNoteById(noteId: string): Promise<NoteRecord | null> {
+export async function getNoteById(noteId: string, options?: ReadRequestOptions): Promise<NoteRecord | null> {
   if (!pb.authStore.record?.id) {
     return null;
   }
@@ -213,12 +224,49 @@ export async function getNoteById(noteId: string): Promise<NoteRecord | null> {
   try {
     const record = await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
       expand: 'restaurant',
+      signal: options?.signal,
     });
     return mapNoteCollectionRecord(record);
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;
     }
+    throw error;
+  }
+}
+
+export async function getNoteDetail(
+  noteId: string,
+  options?: ReadRequestOptions,
+): Promise<NoteDetailRecord | null> {
+  if (!pb.authStore.record?.id) {
+    return null;
+  }
+
+  const trimmedNoteId = noteId.trim();
+  if (!trimmedNoteId) {
+    return null;
+  }
+
+  try {
+    const response = await sendApiRequest<NoteDetailApiResponse>(`/api/notes/${encodeURIComponent(trimmedNoteId)}`, {
+      method: 'GET',
+      signal: options?.signal,
+    });
+
+    if (!response.note) {
+      return null;
+    }
+
+    return {
+      note: mapNoteOverviewApiRecord(response.note),
+      photos: response.photos ?? [],
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+
     throw error;
   }
 }
@@ -370,16 +418,22 @@ export async function markNoteUsed(input: MarkNoteUsedInput): Promise<void> {
   );
 }
 
-export async function listNotePhotosForNote(noteId: string): Promise<NotePhotoRecord[]> {
+export async function listNotePhotosForNote(
+  noteId: string,
+  options?: ReadRequestOptions,
+): Promise<NotePhotoRecord[]> {
   const trimmedNoteId = noteId.trim();
   if (!trimmedNoteId) {
     return [];
   }
 
-  return listNotePhotosForNoteIds([trimmedNoteId]);
+  return listNotePhotosForNoteIds([trimmedNoteId], options);
 }
 
-async function listNotePhotosForNoteIds(noteIds: string[]): Promise<NotePhotoRecord[]> {
+async function listNotePhotosForNoteIds(
+  noteIds: string[],
+  options?: ReadRequestOptions,
+): Promise<NotePhotoRecord[]> {
   if (!pb.authStore.record?.id || noteIds.length === 0) {
     return [];
   }
@@ -392,6 +446,7 @@ async function listNotePhotosForNoteIds(noteIds: string[]): Promise<NotePhotoRec
       filter: buildOrFilter('note', chunk),
       sort: 'created',
       fields: 'id,note,photo,created',
+      signal: options?.signal,
     });
     records.push(...chunkRecords);
   }
@@ -415,19 +470,16 @@ export async function listNotesOverviewPage(input?: ListNotesPageInput): Promise
 
   const response = await sendApiRequest<NoteOverviewApiResponse>(`/api/notes/overview?${query.toString()}`, {
     method: 'GET',
+    signal: input?.signal,
   });
 
   return {
     items: (response.items ?? []).map(mapNoteOverviewApiRecord),
-    summary: response.summary ?? {
-      allCount: 0,
-      draftCount: 0,
-      usedCount: 0,
-    },
+    summary: response.summary,
     page: response.page ?? page,
     pageSize: response.pageSize ?? pageSize,
-    totalItems: response.totalItems ?? 0,
-    totalPages: response.totalPages ?? 0,
+    totalItems: response.totalItems,
+    totalPages: response.totalPages,
     hasNextPage: response.hasNextPage ?? false,
   };
 }

@@ -165,7 +165,7 @@ export type NearbyRestaurantSearchResult =
       status: 'error';
     };
 
-export function buildRecentRestaurantsQueryOptions({
+function buildRecentRestaurantsQueryOptions({
   enabled,
   limit = RESTAURANT_SELECTION_PAGE_SIZE,
 }: {
@@ -174,7 +174,7 @@ export function buildRecentRestaurantsQueryOptions({
 }) {
   return {
     enabled,
-    queryFn: () => listRecentRestaurants({ limit }),
+    queryFn: ({ signal }: QueryFunctionContext) => listRecentRestaurants({ limit, signal }),
     queryKey: ['feature', 'restaurants', 'recent', limit] as const,
   };
 }
@@ -204,7 +204,7 @@ export function buildRestaurantSearchQueryOptions({
   };
 }
 
-export function buildRestaurantMenuItemsQueryOptions({
+function buildRestaurantMenuItemsQueryOptions({
   enabled,
   isOnline,
   queryClient,
@@ -217,7 +217,7 @@ export function buildRestaurantMenuItemsQueryOptions({
 }) {
   return {
     enabled,
-    queryFn: async (): Promise<MenuItemRecord[]> => {
+    queryFn: async ({ signal }: QueryFunctionContext): Promise<MenuItemRecord[]> => {
       if (!selectedRestaurantId) {
         return [];
       }
@@ -226,7 +226,7 @@ export function buildRestaurantMenuItemsQueryOptions({
         return queryClient.getQueryData<MenuItemRecord[]>(['feature', 'menuItems', selectedRestaurantId]) ?? [];
       }
 
-      return listMenuItemsForRestaurant(selectedRestaurantId);
+      return listMenuItemsForRestaurant(selectedRestaurantId, { signal });
     },
     queryKey: ['feature', 'menuItems', selectedRestaurantId ?? ''] as const,
   };

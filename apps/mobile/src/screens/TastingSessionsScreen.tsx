@@ -79,7 +79,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
 
   const sessionsQuery = useQuery({
     queryKey: ['feature', 'tastingSessions'],
-    queryFn: listTastingSessions,
+    queryFn: ({ signal }) => listTastingSessions({ signal }),
   });
 
   const [filter, setFilter] = useState<SessionFilter>('active');

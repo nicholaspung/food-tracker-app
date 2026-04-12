@@ -32,7 +32,7 @@ import {
 } from '../features';
 import { useQueryListState } from '../hooks/useListQueryState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -547,7 +547,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
+  const trackWriteTelemetry = useWriteTelemetry();
   const queueFeatureOutbox = useFeatureOutboxQueue();
   const { isOnline } = useConnectivity();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -568,7 +568,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   const detailQuery = useQuery({
     queryKey: restaurantListQueryKeys.detail(listId),
-    queryFn: () => getRestaurantListDetail(listId),
+    queryFn: ({ signal }) => getRestaurantListDetail(listId, { signal }),
   });
 
   const listItemsState = useQueryListState({
@@ -893,7 +893,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         return;
       }
 
-      await queueWrite('list.delete');
+      await trackWriteTelemetry('list.delete');
       await deleteRestaurantList(list.id);
       await invalidateRestaurantListCollectionQueries(queryClient);
       removeRestaurantListQueries(queryClient, list.id);
@@ -945,7 +945,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         return;
       }
 
-      await queueWrite('list.restaurant.reorder');
+      await trackWriteTelemetry('list.restaurant.reorder');
       await moveRestaurantListRestaurant({ listId, restaurantId, direction });
       await invalidateCurrentListDetailQueries();
     } catch (error) {
@@ -979,7 +979,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         return true;
       }
 
-      await queueWrite('list.restaurant.remove.source');
+      await trackWriteTelemetry('list.restaurant.remove.source');
       await removeRestaurantListSourceRating({
         listId,
         listItemId: input.listItemId,
@@ -1013,7 +1013,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         return true;
       }
 
-      await queueWrite('list.restaurant.remove.user');
+      await trackWriteTelemetry('list.restaurant.remove.user');
       await removeRestaurantListUserRating(listId, listItemId);
       await invalidateCurrentListDetailQueries();
       return true;
@@ -1167,7 +1167,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         return;
       }
 
-      await queueWrite('list.bookmark.save');
+      await trackWriteTelemetry('list.bookmark.save');
 
       for (const targetListId of targetListIds) {
         await saveRestaurantFoodItemToList({
@@ -1221,7 +1221,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           return;
         }
 
-        await queueWrite('list.default.create');
+        await trackWriteTelemetry('list.default.create');
         const createdDefaultList = await createDefaultRestaurantList();
         targetDefaultListId = createdDefaultList.id;
       } catch (error) {

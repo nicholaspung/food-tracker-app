@@ -1,7 +1,7 @@
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable } from 'react-native';
 import type { PressableProps, StyleProp, ViewStyle } from 'react-native';
 
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Text } from './Text';
 
 type ButtonVariant = 'primary' | 'secondary';
@@ -15,6 +15,28 @@ export interface ButtonProps extends Pick<PressableProps, 'accessibilityLabel' |
   style?: StyleProp<ViewStyle>;
 }
 
+const useStyles = createThemedStyles((theme, variant: ButtonVariant) => ({
+  button: {
+    minHeight: variant === 'primary' ? theme.sizes.buttonHeight : theme.sizes.secondaryButtonHeight,
+    borderRadius: theme.radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.md,
+    borderWidth: variant === 'secondary' ? 1 : 0,
+    borderColor: variant === 'secondary' ? theme.colors.button.secondaryBorder : 'transparent',
+    backgroundColor: variant === 'primary' ? theme.colors.button.primaryBg : theme.colors.button.secondaryBg,
+  },
+  pressed: {
+    backgroundColor: variant === 'primary' ? theme.colors.button.primaryPressed : theme.colors.button.secondaryPressed,
+  },
+  disabled: {
+    backgroundColor:
+      variant === 'primary' ? theme.colors.button.primaryDisabledBg : theme.colors.button.secondaryDisabledBg,
+    borderColor: variant === 'secondary' ? theme.colors.border.subtle : 'transparent',
+    opacity: 0.9,
+  },
+}));
+
 export function Button({
   label,
   onPress,
@@ -27,32 +49,7 @@ export function Button({
 }: ButtonProps) {
   const theme = useTheme();
   const isDisabled = disabled || loading;
-
-  const styles = StyleSheet.create({
-    button: {
-      minHeight: variant === 'primary' ? theme.sizes.buttonHeight : theme.sizes.secondaryButtonHeight,
-      borderRadius: theme.radii.md,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: theme.spacing.md,
-      borderWidth: variant === 'secondary' ? 1 : 0,
-      borderColor: variant === 'secondary' ? theme.colors.button.secondaryBorder : 'transparent',
-      backgroundColor:
-        variant === 'primary' ? theme.colors.button.primaryBg : theme.colors.button.secondaryBg,
-    },
-    pressed: {
-      backgroundColor:
-        variant === 'primary' ? theme.colors.button.primaryPressed : theme.colors.button.secondaryPressed,
-    },
-    disabled: {
-      backgroundColor:
-        variant === 'primary'
-          ? theme.colors.button.primaryDisabledBg
-          : theme.colors.button.secondaryDisabledBg,
-      borderColor: variant === 'secondary' ? theme.colors.border.subtle : 'transparent',
-      opacity: 0.9,
-    },
-  });
+  const styles = useStyles(variant);
 
   return (
     <Pressable

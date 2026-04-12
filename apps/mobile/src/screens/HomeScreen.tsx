@@ -20,15 +20,18 @@ import {
 } from '../components/shared';
 import {
   createFriendSuggestionAcceptance,
+  friendsQueryKeys,
   getAuthenticatedUserIdOrNull,
+  homeFeedQueryKeys,
+  invalidateHomeFeedQueries,
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
   type QuickTrackRecord,
   type VisitRecord,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import {
   clearPendingFriendSuggestion,
   getPendingFriendSuggestion,
@@ -369,8 +372,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const { user } = useAuth();
   const canViewBetaFeed = Boolean(user?.isAdmin);
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
+  const trackWriteTelemetry = useWriteTelemetry();
   const { isOnline } = useConnectivity();
   const [feedMode, setFeedMode] = useState<FeedMode>('mine');
   const [searchQuery, setSearchQuery] = useState('');
@@ -384,8 +387,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const homeFeedActions = useHomeFeedActionController({
     isOnline,
     queryClient,
-    queueFeatureOutbox,
-    queueWrite,
+    trackWriteTelemetry,
+    writeFeature,
   });
   const effectiveFeedMode: FeedMode =
     !canViewBetaFeed && feedMode === 'beta' ? 'mine' : feedMode;
@@ -398,17 +401,18 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     HomeFeedPageResult,
     Error,
     InfiniteData<HomeFeedPageResult, HomeFeedCursor | undefined>,
-    string[],
+    ReturnType<typeof homeFeedQueryKeys.paginated>,
     HomeFeedCursor | undefined
   >({
-    queryKey: ['feature', 'homeFeed', 'paginated', feedScope, typeFilter, trimmedSearchQuery],
+    queryKey: homeFeedQueryKeys.paginated(feedScope, typeFilter, trimmedSearchQuery),
     initialPageParam: undefined as HomeFeedCursor | undefined,
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       listHomeFeedPage({
         cursor: pageParam,
         pageSize: BETA_FEED_PAGE_SIZE,
         scope: feedScope,
         search: trimmedSearchQuery || undefined,
+        signal,
         typeFilter,
       }),
     getNextPageParam: (lastPage) => lastPage.cursor,
@@ -821,12 +825,12 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     });
 
     try {
-      await queueWrite('friend.suggestion.accept');
+      await trackWriteTelemetry('friend.suggestion.accept');
       await createFriendSuggestionAcceptance({ inviterId: friendSuggestion.inviterId });
       await clearPendingFriendSuggestion();
       setFriendSuggestion(null);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
+      await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
+      await invalidateHomeFeedQueries(queryClient);
       trackObservabilityEvent('FRIEND_SUGGESTION_ACCEPT_SUCCEEDED', {
         source: 'HomeScreen',
       });
@@ -840,7 +844,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     } finally {
       setIsApplyingFriendSuggestion(false);
     }
-  }, [friendSuggestion, isOnline, queryClient, queueWrite]);
+  }, [friendSuggestion, isOnline, queryClient, trackWriteTelemetry]);
 
   const renderStandardFeedEntry = useCallback(
     ({

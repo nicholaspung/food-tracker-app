@@ -25,6 +25,8 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 	var seenFlagsBody string
 	var seenFlagsAuthorization string
 	var seenFlagsForwardedFor string
+	var seenFlagsReferer string
+	var seenFlagsUserAgent string
 	var seenConfigPath string
 	var seenUnexpectedPath string
 
@@ -46,6 +48,8 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 			seenFlagsBody = string(body)
 			seenFlagsAuthorization = r.Header.Get("Authorization")
 			seenFlagsForwardedFor = r.Header.Get("X-Forwarded-For")
+			seenFlagsReferer = r.Header.Get("Referer")
+			seenFlagsUserAgent = r.Header.Get("User-Agent")
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
@@ -97,11 +101,14 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 
 	flagsRequest := httptest.NewRequest(
 		http.MethodPost,
-		"/api/visit-insights/flags/?v=2",
+		"/api/analytics/flags/?v=2",
 		bytes.NewBufferString(`{"token":"phc_test","distinct_id":"user_123"}`),
 	)
+	flagsRequest.Header.Set("Accept", "application/json")
 	flagsRequest.Header.Set("Content-Type", "application/json")
 	flagsRequest.Header.Set("Authorization", "Bearer upstream-should-not-see-this")
+	flagsRequest.Header.Set("Referer", "https://app.yummyrecs.com/visits")
+	flagsRequest.Header.Set("User-Agent", "YummyRecsTest/1.0")
 	flagsRequest.Header.Set("X-Forwarded-For", "198.51.100.9")
 	flagsRequest.RemoteAddr = "203.0.113.25:43123"
 
@@ -113,7 +120,7 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 
 	configRequest := httptest.NewRequest(
 		http.MethodGet,
-		"/api/visit-insights/array/phc_test/config",
+		"/api/analytics/array/phc_test/config",
 		nil,
 	)
 	configResponse := httptest.NewRecorder()
@@ -135,8 +142,16 @@ func TestPostHogProxyForwardsFlagsAndConfigRoutes(t *testing.T) {
 		t.Fatalf("expected authorization header to be stripped, got %q", seenFlagsAuthorization)
 	}
 
-	if seenFlagsForwardedFor != "203.0.113.25" {
-		t.Fatalf("expected forwarded IP to come from the server request context, got %q", seenFlagsForwardedFor)
+	if seenFlagsForwardedFor != "" {
+		t.Fatalf("expected forwarded IP header to be stripped, got %q", seenFlagsForwardedFor)
+	}
+
+	if seenFlagsReferer != "" {
+		t.Fatalf("expected referer header to be stripped, got %q", seenFlagsReferer)
+	}
+
+	if seenFlagsUserAgent != "" {
+		t.Fatalf("expected user-agent header to be stripped, got %q", seenFlagsUserAgent)
 	}
 
 	if seenConfigPath != "/array/phc_test/config" {
@@ -183,7 +198,7 @@ func TestPostHogProxyRejectsNonAllowlistedRoutes(t *testing.T) {
 		t,
 		server.mux,
 		http.MethodPost,
-		"/api/visit-insights/projects/",
+		"/api/analytics/projects/",
 		"",
 		`{"token":"phc_test"}`,
 	)
@@ -220,7 +235,7 @@ func TestPostHogProxyRejectsOversizedBodies(t *testing.T) {
 	oversizedBody := bytes.Repeat([]byte("a"), 513<<10)
 	request := httptest.NewRequest(
 		http.MethodPost,
-		"/api/visit-insights/e/",
+		"/api/analytics/e/",
 		bytes.NewReader(oversizedBody),
 	)
 	request.Header.Set("Content-Type", "application/json")
@@ -258,7 +273,7 @@ func TestPostHogProxyRouteRateLimitBlocksBurstRequests(t *testing.T) {
 
 	server.app.Settings().RateLimits.Enabled = true
 	server.app.Settings().RateLimits.Rules = []core.RateLimitRule{
-		{Label: "POST /api/visit-insights/", Duration: 60, MaxRequests: 2},
+		{Label: "POST /api/analytics/", Duration: 60, MaxRequests: 2},
 	}
 
 	for i := 0; i < 2; i++ {
@@ -266,7 +281,7 @@ func TestPostHogProxyRouteRateLimitBlocksBurstRequests(t *testing.T) {
 			t,
 			server.mux,
 			http.MethodPost,
-			"/api/visit-insights/e/",
+			"/api/analytics/e/",
 			"",
 			`{"event":"test"}`,
 		)
@@ -279,7 +294,7 @@ func TestPostHogProxyRouteRateLimitBlocksBurstRequests(t *testing.T) {
 		t,
 		server.mux,
 		http.MethodPost,
-		"/api/visit-insights/e/",
+		"/api/analytics/e/",
 		"",
 		`{"event":"test"}`,
 	)

@@ -5,13 +5,11 @@ import {
   buildPocketBaseFileUrl,
   deleteQuickTrack,
   deleteVisit,
+  invalidateHomeFeedQueries,
   reportContent,
   type ContentReportReasonCode,
 } from '../../features';
-import type {
-  FeatureOutboxOperationName,
-  FeatureOutboxOperationPayload,
-} from '../../features/store/featureOutboxOperations';
+import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import type {
   PendingDeleteTarget,
@@ -19,16 +17,11 @@ import type {
   VisitPhotoRecord,
 } from './shared';
 
-type QueueFeatureOutbox = <TName extends FeatureOutboxOperationName>(
-  operationName: TName,
-  payload: FeatureOutboxOperationPayload<TName>,
-) => Promise<void>;
-
 interface UseHomeFeedActionControllerParams {
   isOnline: boolean;
   queryClient: QueryClient;
-  queueFeatureOutbox: QueueFeatureOutbox;
-  queueWrite: (operationName: string) => Promise<void>;
+  trackWriteTelemetry: (operationName: string) => Promise<void>;
+  writeFeature: OfflineAwareFeatureWrite;
 }
 
 export interface HomeFeedActionController {
@@ -62,8 +55,8 @@ export interface HomeFeedActionController {
 export function useHomeFeedActionController({
   isOnline,
   queryClient,
-  queueFeatureOutbox,
-  queueWrite,
+  trackWriteTelemetry,
+  writeFeature,
 }: UseHomeFeedActionControllerParams): HomeFeedActionController {
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
@@ -87,39 +80,51 @@ export function useHomeFeedActionController({
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
   const invalidateHomeFeed = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] });
+    await invalidateHomeFeedQueries(queryClient);
   }, [queryClient]);
 
   const handleDeleteQuickTrack = useCallback(
     async (quickTrackId: string) => {
-      if (!isOnline) {
-        await queueFeatureOutbox('quick-track.delete', { quickTrackId });
+      const deleteResult = await writeFeature({
+        operationName: 'quick-track.delete',
+        offline: {
+          strategy: 'outbox',
+          payload: { quickTrackId },
+        },
+        execute: () => deleteQuickTrack(quickTrackId),
+      });
+
+      if (deleteResult.status === 'queued') {
         await invalidateHomeFeed();
         showQueuedOfflineAlert('Quick track delete');
         return;
       }
 
-      await queueWrite('quick-track.delete');
-      await deleteQuickTrack(quickTrackId);
       await invalidateHomeFeed();
     },
-    [invalidateHomeFeed, isOnline, queueFeatureOutbox, queueWrite],
+    [invalidateHomeFeed, writeFeature],
   );
 
   const handleDeleteVisit = useCallback(
     async (visitId: string) => {
-      if (!isOnline) {
-        await queueFeatureOutbox('visit.delete', { visitId });
+      const deleteResult = await writeFeature({
+        operationName: 'visit.delete',
+        offline: {
+          strategy: 'outbox',
+          payload: { visitId },
+        },
+        execute: () => deleteVisit(visitId),
+      });
+
+      if (deleteResult.status === 'queued') {
         await invalidateHomeFeed();
         showQueuedOfflineAlert('Visit delete');
         return;
       }
 
-      await queueWrite('visit.delete');
-      await deleteVisit(visitId);
       await invalidateHomeFeed();
     },
-    [invalidateHomeFeed, isOnline, queueFeatureOutbox, queueWrite],
+    [invalidateHomeFeed, writeFeature],
   );
 
   const promptDeleteQuickTrack = useCallback(
@@ -235,7 +240,7 @@ export function useHomeFeedActionController({
     setIsSubmittingReport(true);
 
     try {
-      await queueWrite('content.report');
+      await trackWriteTelemetry('content.report');
       await reportContent({
         contentType: pendingReportTarget.kind,
         recordId: pendingReportTarget.id,
@@ -258,9 +263,9 @@ export function useHomeFeedActionController({
     isOnline,
     isSubmittingReport,
     pendingReportTarget,
-    queueWrite,
     reportNotes,
     reportReasonCode,
+    trackWriteTelemetry,
   ]);
 
   const changeReportNotes = useCallback((value: string) => {

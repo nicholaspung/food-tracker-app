@@ -23,8 +23,8 @@ import {
   useMonthlyUsage,
   type VisitPhotoUploadInput,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   formatDateToLocalDateString,
@@ -71,8 +71,7 @@ function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUp
 export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -98,7 +97,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
 
   const linkedNoteQuery = useQuery({
     queryKey: ['feature', 'note', sourceNoteId],
-    queryFn: () => (sourceNoteId ? getNoteById(sourceNoteId) : Promise.resolve(null)),
+    queryFn: ({ signal }) => (sourceNoteId ? getNoteById(sourceNoteId, { signal }) : Promise.resolve(null)),
     enabled: Boolean(sourceNoteId),
   });
   const returnToPrevious = route.params?.returnToPrevious === true;
@@ -349,16 +348,21 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         sourceNoteId,
       });
 
-      if (!isOnline) {
-        await queueFeatureOutbox('quick-track.create', quickTrackInput);
+      const createResult = await writeFeature({
+        operationName: 'quick-track.create',
+        offline: {
+          strategy: 'outbox',
+          payload: quickTrackInput,
+        },
+        execute: () => createQuickTrack(quickTrackInput),
+      });
+
+      if (createResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
         showQueuedOfflineAlert('Quick track');
         navigation.navigate('Home');
         return;
       }
-
-      await queueWrite('quick-track.create');
-      await createQuickTrack(quickTrackInput);
 
       const invalidations: Promise<unknown>[] = [
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
@@ -369,6 +373,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       if (sourceNoteId) {
         invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }));
         invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'note', sourceNoteId] }));
+        invalidations.push(queryClient.invalidateQueries({ queryKey: notesQueryKeys.detail(sourceNoteId) }));
       }
 
       await Promise.all(invalidations);

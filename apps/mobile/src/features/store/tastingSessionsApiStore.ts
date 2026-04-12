@@ -15,20 +15,29 @@ export type {
   SubmitTastingRatingInput,
 } from './featureStore';
 
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
+
 function encodePathSegment(value: string): string {
   return encodeURIComponent(value.trim());
 }
 
-export async function listTastingSessions(): Promise<TastingSessionRecord[]> {
+export async function listTastingSessions(options?: ReadRequestOptions): Promise<TastingSessionRecord[]> {
   return sendApiRequest<TastingSessionRecord[]>('/api/tasting-sessions', {
     method: 'GET',
+    signal: options?.signal,
   });
 }
 
-export async function getTastingSessionById(sessionId: string): Promise<TastingSessionRecord | null> {
+export async function getTastingSessionById(
+  sessionId: string,
+  options?: ReadRequestOptions,
+): Promise<TastingSessionRecord | null> {
   try {
     return await sendApiRequest<TastingSessionRecord>(`/api/tasting-sessions/${encodePathSegment(sessionId)}`, {
       method: 'GET',
+      signal: options?.signal,
     });
   } catch (error) {
     if (isNotFoundError(error)) {

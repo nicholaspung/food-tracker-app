@@ -5,14 +5,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { FeatureDetailScreenScaffold } from '../components/shared';
-import { inviteFriend } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { friendsQueryKeys, inviteFriend } from '../features';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -138,11 +137,10 @@ function generateFriendCode(userId: string | undefined): string {
 export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
+  const trackWriteTelemetry = useWriteTelemetry();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { isOnline } = useConnectivity();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanLockRef = useRef(false);
 
@@ -185,11 +183,25 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
     setIsSubmitting(true);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('friend.request.send', {
-          code: normalizedCode,
-        });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+      const requestResult = await writeFeature({
+        operationName: 'friend.request.send',
+        trackOnlineWrite: false,
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            code: normalizedCode,
+          },
+        },
+        execute: async () => {
+          await trackWriteTelemetry('friend.qr.scan');
+          return inviteFriend({
+            code: normalizedCode,
+          });
+        },
+      });
+
+      if (requestResult.status === 'queued') {
+        await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
         showQueuedOfflineAlert('Friend request');
         navigation.navigate('Friends', {
           initialFriendsSubTab: 'sent',
@@ -198,12 +210,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
         return;
       }
 
-      await queueWrite('friend.qr.scan');
-      await inviteFriend({
-        code: normalizedCode,
-      });
-
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+      await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
       trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
         source: 'QRScannerScreen',
       });

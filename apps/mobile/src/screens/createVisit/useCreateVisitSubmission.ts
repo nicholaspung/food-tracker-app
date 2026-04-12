@@ -4,6 +4,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   createVisit,
   formatLimitExceededMessage,
+  homeFeedQueryKeys,
   linkVisitToListBookmark,
   parseLimitExceededError,
   restaurantListQueryKeys,
@@ -15,11 +16,9 @@ import {
   createVisitApiMutationInput,
   updateVisitApiMutationInput,
 } from '../../features/store/featureOutboxOperations';
-import type {
-  FeatureOutboxOperationName,
-  FeatureOutboxOperationPayload,
-} from '../../features/store/featureOutboxOperations';
-import type { EnqueueMutationInput } from '../../offline/types';
+import { notesQueryKeys } from '../../features/store/notesQuery';
+import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
+import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import { trackObservabilityEvent } from '../../observability';
@@ -30,23 +29,14 @@ import {
   type VisitVisibility,
 } from './shared';
 
-type QueueFeatureOutbox = <TName extends FeatureOutboxOperationName>(
-  operationName: TName,
-  payload: FeatureOutboxOperationPayload<TName>,
-) => Promise<void>;
-
 interface UseCreateVisitSubmissionParams {
   draftItems: DraftVisitItem[];
   editVisitId?: string;
   isDisplayFreeUser: boolean;
   isEditMode: boolean;
-  isOnline: boolean;
   monthlyUsageSnapshot: MonthlyUsageSnapshot | null;
   navigation: CreateVisitNavigationProp;
   queryClient: QueryClient;
-  queueFeatureApiMutation: (input: EnqueueMutationInput) => Promise<unknown>;
-  queueFeatureOutbox: QueueFeatureOutbox;
-  queueWrite: (operationName: string) => Promise<void>;
   restaurantId: string | null;
   restaurantName: string;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
@@ -56,6 +46,7 @@ interface UseCreateVisitSubmissionParams {
   sourceListItemId: string | null;
   visitDate: string;
   visitVisibility: VisitVisibility;
+  writeFeature: OfflineAwareFeatureWrite;
 }
 
 export function useCreateVisitSubmission({
@@ -63,13 +54,9 @@ export function useCreateVisitSubmission({
   editVisitId,
   isDisplayFreeUser,
   isEditMode,
-  isOnline,
   monthlyUsageSnapshot,
   navigation,
   queryClient,
-  queueFeatureApiMutation,
-  queueFeatureOutbox,
-  queueWrite,
   restaurantId,
   restaurantName,
   setErrorMessage,
@@ -79,13 +66,15 @@ export function useCreateVisitSubmission({
   sourceListItemId,
   visitDate,
   visitVisibility,
+  writeFeature,
 }: UseCreateVisitSubmissionParams) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const trackWriteTelemetry = useWriteTelemetry();
 
   const invalidateVisitQueries = useCallback(
     async (options?: { visitId?: string; includeUsage?: boolean; sourceNoteId?: string }) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] }),
+        queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({
           queryKey: ['feature', 'restaurants', 'visitStats'],
@@ -109,6 +98,9 @@ export function useCreateVisitSubmission({
               queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
               queryClient.invalidateQueries({
                 queryKey: ['feature', 'note', options.sourceNoteId],
+              }),
+              queryClient.invalidateQueries({
+                queryKey: notesQueryKeys.detail(options.sourceNoteId),
               }),
             ]
           : []),
@@ -220,29 +212,46 @@ export function useCreateVisitSubmission({
           visibility: visitVisibility,
         };
 
-        if (!isOnline) {
-          await queueFeatureApiMutation(
-            updateVisitApiMutationInput(editVisitId, visitUpdateInput),
-          );
+        const updateResult = await writeFeature({
+          operationName: 'visit.update',
+          offline: {
+            strategy: 'api',
+            input: updateVisitApiMutationInput(editVisitId, visitUpdateInput),
+          },
+          execute: () => updateVisit(editVisitId, visitUpdateInput),
+        });
+
+        if (updateResult.status === 'queued') {
           await invalidateVisitQueries({ visitId: editVisitId });
           showQueuedOfflineAlert('Visit update');
           navigateAfterEdit();
           return;
         }
 
-        await queueWrite('visit.update');
-        await updateVisit(editVisitId, visitUpdateInput);
         await invalidateVisitQueries({ visitId: editVisitId });
         navigateAfterEdit();
         return;
       }
 
-      if (!isOnline) {
-        if (hasPhotoUploads || sourceNoteId) {
-          await queueFeatureOutbox('visit.create', visitInput);
-        } else {
-          await queueFeatureApiMutation(createVisitApiMutationInput(visitInput));
-        }
+      const createResult = hasPhotoUploads || sourceNoteId
+        ? await writeFeature({
+            operationName: 'visit.create',
+            offline: {
+              strategy: 'outbox',
+              payload: visitInput,
+            },
+            execute: () => createVisit(visitInput),
+          })
+        : await writeFeature({
+            operationName: 'visit.create',
+            offline: {
+              strategy: 'api',
+              input: createVisitApiMutationInput(visitInput),
+            },
+            execute: () => createVisit(visitInput),
+          });
+
+      if (createResult.status === 'queued') {
         setSourceListItemId(null);
         await invalidateVisitQueries({ sourceNoteId });
         showQueuedOfflineAlert('Visit');
@@ -250,14 +259,13 @@ export function useCreateVisitSubmission({
         return;
       }
 
-      await queueWrite('visit.create');
-      const createdVisit = await createVisit(visitInput);
+      const createdVisit = createResult.result;
 
       if (sourceListItemId && createdVisit.items.length > 0) {
         const createdItemId = createdVisit.items[0]?.id;
         if (createdItemId) {
           try {
-            await queueWrite('list.bookmark.link-visit');
+            await trackWriteTelemetry('list.bookmark.link-visit');
             await linkVisitToListBookmark({
               listItemId: sourceListItemId,
               userFoodItemId: createdItemId,
@@ -322,14 +330,10 @@ export function useCreateVisitSubmission({
     invalidateVisitQueries,
     isDisplayFreeUser,
     isEditMode,
-    isOnline,
     monthlyUsageSnapshot,
     navigation,
     navigateAfterEdit,
     queryClient,
-    queueFeatureApiMutation,
-    queueFeatureOutbox,
-    queueWrite,
     restaurantId,
     restaurantName,
     setErrorMessage,
@@ -337,8 +341,10 @@ export function useCreateVisitSubmission({
     shouldEnforceUsageLimitsClientSide,
     sourceNoteId,
     sourceListItemId,
+    trackWriteTelemetry,
     visitDate,
     visitVisibility,
+    writeFeature,
   ]);
 
   return {

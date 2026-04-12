@@ -15,6 +15,8 @@ export function useFeatureOutboxQueue() {
       operationName: TName,
       payload: FeatureOutboxOperationPayload<TName>,
     ): Promise<void> => {
+      // This is a low-level queue primitive. Screen flows should prefer
+      // useOfflineAwareFeatureWrite so online execution and offline replay stay coupled.
       await enqueueMutation(createFeatureOutboxMutationInput(operationName, payload));
     },
     [enqueueMutation],

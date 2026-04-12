@@ -81,6 +81,9 @@ export interface RestaurantRecord {
   longitude?: number;
   placeId?: string;
   isGooglePlace?: boolean;
+  userVisitCount?: number;
+  friendCount?: number;
+  hasPendingMenuReview?: boolean;
 }
 
 export interface RestaurantListRecord {

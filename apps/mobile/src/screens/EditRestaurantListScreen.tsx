@@ -19,8 +19,7 @@ import {
   updateRestaurantList,
   type RestaurantListRecord,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -50,8 +49,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
   const { listId } = route.params;
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
 
   const [name, setName] = useState('');
@@ -62,7 +60,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
 
   const listQuery = useQuery({
     queryKey: restaurantListQueryKeys.list(listId),
-    queryFn: () => getRestaurantListById(listId),
+    queryFn: ({ signal }) => getRestaurantListById(listId, { signal }),
   });
 
   useEffect(() => {
@@ -122,12 +120,19 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
         visibility,
       };
 
-      if (!isOnline) {
-        await queueFeatureOutbox('list.update', {
-          listId,
-          updates: listUpdateInput,
-        });
+      const updateResult = await writeFeature({
+        operationName: 'list.update',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            listId,
+            updates: listUpdateInput,
+          },
+        },
+        execute: () => updateRestaurantList(listId, listUpdateInput),
+      });
 
+      if (updateResult.status === 'queued') {
         await invalidateRestaurantListMetadataQueries(queryClient, listId);
         trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'EditRestaurantListScreen',
@@ -139,9 +144,6 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
         handleBack();
         return;
       }
-
-      await queueWrite('list.update');
-      await updateRestaurantList(listId, listUpdateInput);
 
       await invalidateRestaurantListMetadataQueries(queryClient, listId);
       trackObservabilityEvent('EDIT_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {

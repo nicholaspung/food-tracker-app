@@ -26,6 +26,7 @@ export interface MonthlyUsageSnapshot {
 }
 
 export interface MonthlyUsageRequestOptions {
+  signal?: AbortSignal;
   viewAsTier?: UsagePreviewTier;
 }
 
@@ -146,5 +147,6 @@ export async function getMonthlyUsage(
 
   return sendApiRequest<MonthlyUsageSnapshot>(path, {
     method: 'GET',
+    signal: options?.signal,
   });
 }

@@ -11,6 +11,7 @@ export const feedbackQueryKeys = {
   list: ['feature', 'feedback', 'all', 'paginated'] as const,
   summary: ['feature', 'feedback', 'summary'] as const,
   detail: (feedbackId: string) => ['feature', 'feedback', feedbackId] as const,
+  thread: (feedbackId: string) => ['feature', 'feedback-thread', feedbackId] as const,
   messages: (feedbackId: string) => ['feature', 'feedback-messages', feedbackId] as const,
 };
 
@@ -193,4 +194,27 @@ export function prependFeedbackMessageListItem(
   const nextTotalItems = existingIndex === -1 ? currentTotalItems + 1 : currentTotalItems;
 
   return rebuildInfiniteQueryData(currentData, nextItems, nextTotalItems);
+}
+
+export function replaceFeedbackMessageFirstPage(
+  currentData: FeedbackMessageListQueryData | undefined,
+  nextFirstPage: PaginatedResult<FeedbackMessageRecord>,
+): FeedbackMessageListQueryData {
+  if (!currentData || currentData.pages.length === 0) {
+    return {
+      pages: [nextFirstPage],
+      pageParams: [nextFirstPage.page],
+    };
+  }
+
+  const nextPages = [...currentData.pages];
+  nextPages[0] = nextFirstPage;
+
+  const nextPageParams = [...currentData.pageParams];
+  nextPageParams[0] = nextFirstPage.page;
+
+  return {
+    pages: nextPages,
+    pageParams: nextPageParams,
+  };
 }

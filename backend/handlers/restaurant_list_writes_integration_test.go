@@ -6,8 +6,19 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/pocketbase/pocketbase/core"
+
 	"myapp/handlers"
 )
+
+type restaurantListDetailPayload struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Visibility  string `json:"visibility"`
+	UserID      string `json:"userId"`
+	IsDefault   bool   `json:"isDefault"`
+}
 
 type restaurantListMutationGroupPayload struct {
 	List struct {
@@ -37,6 +48,99 @@ type restaurantListMutationListPayload struct {
 		RestaurantID string `json:"restaurantId"`
 		Position     int    `json:"position"`
 	} `json:"items"`
+}
+
+func TestRestaurantListDefaultEndpointIsIdempotent(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	firstResponse := performJSONRequest(t, server.mux, http.MethodPost, "/api/restaurant-lists/default", token, "")
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first request 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	secondResponse := performJSONRequest(t, server.mux, http.MethodPost, "/api/restaurant-lists/default", token, "")
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second request 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	var firstPayload restaurantListDetailPayload
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first default-list payload: %v", err)
+	}
+
+	var secondPayload restaurantListDetailPayload
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse second default-list payload: %v", err)
+	}
+
+	if firstPayload.ID == "" {
+		t.Fatal("expected created default list id to be present")
+	}
+	if secondPayload.ID != firstPayload.ID {
+		t.Fatalf("expected second request to reuse list %q, got %q", firstPayload.ID, secondPayload.ID)
+	}
+	if firstPayload.Name != "Saved" {
+		t.Fatalf("expected default list name Saved, got %q", firstPayload.Name)
+	}
+	if firstPayload.Description != "Items saved from other lists" {
+		t.Fatalf("expected default list description to match seed copy, got %q", firstPayload.Description)
+	}
+	if firstPayload.Visibility != "private" {
+		t.Fatalf("expected default list visibility private, got %q", firstPayload.Visibility)
+	}
+	if firstPayload.UserID != user.Id {
+		t.Fatalf("expected default list userId %q, got %q", user.Id, firstPayload.UserID)
+	}
+	if !firstPayload.IsDefault || !secondPayload.IsDefault {
+		t.Fatalf("expected endpoint to return isDefault=true, got first=%v second=%v", firstPayload.IsDefault, secondPayload.IsDefault)
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"restaurant_lists",
+		"user = {:userId} && isDefault = true",
+		map[string]any{"userId": user.Id},
+	); count != 1 {
+		t.Fatalf("expected exactly 1 default list after repeated calls, got %d", count)
+	}
+}
+
+func TestRestaurantListDefaultEndpointUsesUniqueDefaultIndex(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	response := performJSONRequest(t, server.mux, http.MethodPost, "/api/restaurant-lists/default", token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected request 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	restaurantListsCollection, err := server.app.FindCollectionByNameOrId("restaurant_lists")
+	if err != nil {
+		t.Fatalf("failed to resolve restaurant_lists collection: %v", err)
+	}
+
+	duplicateRecord := core.NewRecord(restaurantListsCollection)
+	duplicateRecord.Set("name", "Saved Copy")
+	duplicateRecord.Set("description", "Duplicate default")
+	duplicateRecord.Set("visibility", "private")
+	duplicateRecord.Set("user", user.Id)
+	duplicateRecord.Set("isDefault", true)
+
+	if err := server.app.Save(duplicateRecord); err == nil {
+		t.Fatal("expected duplicate default list save to fail with unique constraint")
+	}
+
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"restaurant_lists",
+		"user = {:userId} && isDefault = true",
+		map[string]any{"userId": user.Id},
+	); count != 1 {
+		t.Fatalf("expected unique index to preserve a single default list, got %d", count)
+	}
 }
 
 func TestRestaurantListSaveBookmarkEndpointDedupesExistingFoodItem(t *testing.T) {

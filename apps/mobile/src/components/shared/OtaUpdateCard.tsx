@@ -300,7 +300,7 @@ export function useOtaUpdateStatus(source: string): OtaUpdateStatusState {
   return {
     buttonLabel,
     currentAppVersion,
-    configuredBackendUrl: env.apiBaseUrl,
+    configuredBackendUrl: env.pocketbaseUrl,
     configuredEnvironment: env.environment,
     currentBuildVersion,
     currentChannel: currentlyRunning.channel ?? 'unknown',

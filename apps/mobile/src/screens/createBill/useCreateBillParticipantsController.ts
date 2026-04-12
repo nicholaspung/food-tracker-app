@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import {
+  friendsQueryKeys,
   getBillById,
   listFriendsPage,
   type FriendRecord,
 } from '../../features';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../../hooks/useListQueryState';
 import {
   mapBillParticipantToFriendRecord,
@@ -13,6 +15,21 @@ import {
   normalizeFriendName,
   type DraftParticipant,
 } from './shared';
+
+const FRIEND_SEARCH_DEBOUNCE_MS = 250;
+const MIN_SERVER_FRIEND_SEARCH_LENGTH = 2;
+
+function matchesFriendSearch(friend: FriendRecord, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    normalizeFriendName(friend).toLowerCase().includes(normalizedQuery) ||
+    friend.email.toLowerCase().includes(normalizedQuery)
+  );
+}
 
 interface ToggleFriendEvent {
   friend: FriendRecord;
@@ -46,22 +63,28 @@ export function useCreateBillParticipantsController({
   >({});
 
   const normalizedFriendSearchQuery = friendSearchQuery.trim();
+  const debouncedNormalizedFriendSearchQuery = useDebouncedValue(
+    normalizedFriendSearchQuery,
+    FRIEND_SEARCH_DEBOUNCE_MS,
+  );
+  const shouldQueryFriendsBySearch =
+    normalizedFriendSearchQuery.length >= MIN_SERVER_FRIEND_SEARCH_LENGTH &&
+    debouncedNormalizedFriendSearchQuery.length >=
+      MIN_SERVER_FRIEND_SEARCH_LENGTH &&
+    normalizedFriendSearchQuery === debouncedNormalizedFriendSearchQuery;
+  const activeFriendSearchQuery = shouldQueryFriendsBySearch
+    ? debouncedNormalizedFriendSearchQuery
+    : '';
 
   const friendsQuery = useInfiniteQuery({
-    queryKey: [
-      'feature',
-      'friends',
-      'paginated',
-      'friends',
-      'bill-picker',
-      normalizedFriendSearchQuery,
-    ],
-    queryFn: ({ pageParam }) =>
+    queryKey: friendsQueryKeys.paginated('friends', activeFriendSearchQuery),
+    queryFn: ({ pageParam, signal }) =>
       listFriendsPage({
         section: 'friends',
         page: pageParam,
         pageSize: 20,
-        search: normalizedFriendSearchQuery || undefined,
+        search: activeFriendSearchQuery || undefined,
+        signal,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -78,7 +101,7 @@ export function useCreateBillParticipantsController({
 
   const billQuery = useQuery({
     queryKey: ['feature', 'bill', editBillId],
-    queryFn: () => getBillById(editBillId as string),
+    queryFn: ({ signal }) => getBillById(editBillId as string, { signal }),
     enabled: isEditMode,
   });
 
@@ -109,7 +132,19 @@ export function useCreateBillParticipantsController({
   const totalAcceptedFriends = friendsState.totalItems;
   const shouldShowFriendSearch =
     normalizedFriendSearchQuery.length > 0 || totalAcceptedFriends > 5;
-  const visibleFriends = selectableFriends;
+  const visibleFriends = useMemo(() => {
+    if (shouldQueryFriendsBySearch || normalizedFriendSearchQuery.length === 0) {
+      return selectableFriends;
+    }
+
+    return selectableFriends.filter((friend) =>
+      matchesFriendSearch(friend, normalizedFriendSearchQuery),
+    );
+  }, [
+    normalizedFriendSearchQuery,
+    selectableFriends,
+    shouldQueryFriendsBySearch,
+  ]);
   const hasBlockingFriendsError = friendsState.hasBlockingError;
   const hasFriendsRefreshError = friendsState.hasRefreshError;
 

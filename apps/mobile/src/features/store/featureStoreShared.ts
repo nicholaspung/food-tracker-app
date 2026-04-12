@@ -1,7 +1,6 @@
 import { ClientResponseError } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
-import { resolveEffectiveAdminFlag } from '../../lib/rolePreview';
 import { trackObservabilityEvent } from '../../observability';
 import type { ModerationContentStatus } from '../models';
 import type { PaginatedResult } from './featureStore';
@@ -122,10 +121,6 @@ export function createEmptyPaginatedResult<T>(input?: PageInputLike): PaginatedR
   };
 }
 
-export function isCurrentUserAdmin(): boolean {
-  return resolveEffectiveAdminFlag(pb.authStore.record?.isAdmin === true);
-}
-
 export function getAuthenticatedUserId(): string {
   const userId = pb.authStore.record?.id;
   if (!userId) {
@@ -148,11 +143,6 @@ export function buildOrFilter(fieldName: string, values: string[]): string {
   return values.length > 1 ? `(${filter})` : filter;
 }
 
-export function buildAnyMatchFilter(fieldName: string, values: string[]): string {
-  const filter = values.map((value) => `${fieldName} ?= "${escapeFilterValue(value)}"`).join(' || ');
-  return values.length > 1 ? `(${filter})` : filter;
-}
-
 export function buildSearchFilter(fieldNames: string[], search: string): string | undefined {
   const trimmedSearch = search.trim();
   if (!trimmedSearch) {
@@ -162,30 +152,6 @@ export function buildSearchFilter(fieldNames: string[], search: string): string 
   const escapedSearch = escapeFilterValue(trimmedSearch);
   const filter = fieldNames.map((fieldName) => `${fieldName} ~ "${escapedSearch}"`).join(' || ');
   return fieldNames.length > 1 ? `(${filter})` : filter;
-}
-
-export function combineFilterClauses(...clauses: (string | undefined)[]): string | undefined {
-  const normalizedClauses = clauses
-    .map((clause) => clause?.trim())
-    .filter((clause): clause is string => Boolean(clause));
-
-  if (normalizedClauses.length === 0) {
-    return undefined;
-  }
-
-  return normalizedClauses.map((clause) => `(${clause})`).join(' && ');
-}
-
-export function combineOrFilterClauses(...clauses: (string | undefined)[]): string | undefined {
-  const normalizedClauses = clauses
-    .map((clause) => clause?.trim())
-    .filter((clause): clause is string => Boolean(clause));
-
-  if (normalizedClauses.length === 0) {
-    return undefined;
-  }
-
-  return normalizedClauses.map((clause) => `(${clause})`).join(' || ');
 }
 
 export function resolveExpandedUserName(

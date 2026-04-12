@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 
 import { env } from '../config/env';
-import { useTheme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 import { Text } from './Text';
 
 export interface InputProps extends Omit<TextInputProps, 'style'> {
@@ -23,6 +23,51 @@ const INLINE_DISMISS_KEYBOARD_TYPES = new Set<NonNullable<TextInputProps['keyboa
   'numeric',
   'phone-pad',
 ]);
+
+const useStyles = createThemedStyles((theme, hasError: boolean, isFocused: boolean) => ({
+  container: {
+    gap: theme.spacing.xs,
+  },
+  inputShell: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: hasError
+      ? theme.colors.border.danger
+      : isFocused
+        ? theme.colors.border.strong
+        : theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.background.surface,
+    flexDirection: 'row',
+    minHeight: theme.sizes.inputMinHeight,
+    paddingLeft: theme.spacing.md,
+    paddingRight: theme.spacing.xs,
+  },
+  multilineShell: {
+    alignItems: 'stretch',
+    paddingRight: theme.spacing.md,
+  },
+  input: {
+    color: theme.colors.text.primary,
+    flex: 1,
+    minHeight: theme.sizes.inputMinHeight,
+    paddingVertical: theme.spacing.sm,
+    ...theme.typography.bodyLg,
+  },
+  multilineInput: {
+    textAlignVertical: 'top',
+  },
+  dismissButton: {
+    alignItems: 'center',
+    borderRadius: theme.radii.pill,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  dismissButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+}));
 
 export function Input({
   label,
@@ -56,51 +101,7 @@ export function Input({
     props.editable !== false &&
     isNumericInput &&
     showInlineKeyboardDismissButton;
-
-  const styles = StyleSheet.create({
-    container: {
-      gap: theme.spacing.xs,
-    },
-    inputShell: {
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: errorText
-        ? theme.colors.border.danger
-        : isFocused
-          ? theme.colors.border.strong
-          : theme.colors.border.default,
-      borderRadius: theme.radii.md,
-      backgroundColor: theme.colors.background.surface,
-      flexDirection: 'row',
-      minHeight: theme.sizes.inputMinHeight,
-      paddingLeft: theme.spacing.md,
-      paddingRight: theme.spacing.xs,
-    },
-    multilineShell: {
-      alignItems: 'stretch',
-      paddingRight: theme.spacing.md,
-    },
-    input: {
-      color: theme.colors.text.primary,
-      flex: 1,
-      minHeight: theme.sizes.inputMinHeight,
-      paddingVertical: theme.spacing.sm,
-      ...theme.typography.bodyLg,
-    },
-    multilineInput: {
-      textAlignVertical: 'top',
-    },
-    dismissButton: {
-      alignItems: 'center',
-      borderRadius: theme.radii.pill,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
-    },
-    dismissButtonPressed: {
-      backgroundColor: theme.colors.background.muted,
-    },
-  });
+  const styles = useStyles(Boolean(errorText), isFocused);
 
   return (
     <View style={[styles.container, containerStyle]}>

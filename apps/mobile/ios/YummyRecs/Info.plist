@@ -57,8 +57,6 @@
     <string>Allow Yummy Recs to scan QR codes and capture food photos.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Allow Yummy Recs to use your GPS location for notes, quick tracks, and nearby restaurant search.</string>
-    <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>Allow Yummy Recs to save processed menu photos when needed.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Allow Yummy Recs to select food photos from your library.</string>
     <key>RCTNewArchEnabled</key>

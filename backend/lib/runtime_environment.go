@@ -62,7 +62,7 @@ func runtimeDefaultsForEnvironment(environment RuntimeEnvironment) RuntimeResour
 			Environment:   RuntimeEnvironmentBeta,
 			MarketingURL:  "https://beta.yummyrecs.com",
 			PocketBaseURL: "https://beta.app.yummyrecs.com",
-			PostHogHost:   "https://beta.app.yummyrecs.com/api/visit-insights",
+			PostHogHost:   "https://beta.app.yummyrecs.com/api/analytics",
 		}
 	case RuntimeEnvironmentProduction:
 		return RuntimeResources{
@@ -72,7 +72,7 @@ func runtimeDefaultsForEnvironment(environment RuntimeEnvironment) RuntimeResour
 			Environment:   RuntimeEnvironmentProduction,
 			MarketingURL:  "https://yummyrecs.com",
 			PocketBaseURL: "https://app.yummyrecs.com",
-			PostHogHost:   "https://app.yummyrecs.com/api/visit-insights",
+			PostHogHost:   "https://app.yummyrecs.com/api/analytics",
 		}
 	default:
 		return RuntimeResources{
@@ -82,7 +82,7 @@ func runtimeDefaultsForEnvironment(environment RuntimeEnvironment) RuntimeResour
 			Environment:   RuntimeEnvironmentLocal,
 			MarketingURL:  "http://localhost:4173",
 			PocketBaseURL: "http://127.0.0.1:8090",
-			PostHogHost:   "http://127.0.0.1:8090/api/visit-insights",
+			PostHogHost:   "http://127.0.0.1:8090/api/analytics",
 		}
 	}
 }

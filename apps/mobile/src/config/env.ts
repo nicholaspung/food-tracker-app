@@ -1,48 +1,15 @@
 import { Platform } from 'react-native';
 
 import {
-  type AppEnvironment,
+  MOBILE_ENVIRONMENT_DEFAULTS,
+  assertSafeMobileBackendConfiguration,
   type EnvSource,
-  normalizeAppEnvironment,
   readOptionalEnvValue,
+  type AppEnvironment,
+  normalizeAppEnvironment,
+  resolveMobileBackendConfiguration,
   resolveScreenshotReviewMode,
 } from './envUtils';
-
-interface MobileEnvironmentDefaults {
-  adminUrl: string;
-  apiBaseUrl: string;
-  appWebUrl: string;
-  marketingUrl: string;
-  pocketbaseUrl: string;
-  posthogHost: string;
-}
-
-const MOBILE_ENVIRONMENT_DEFAULTS: Record<AppEnvironment, MobileEnvironmentDefaults> = {
-  local: {
-    adminUrl: 'http://localhost:5173',
-    apiBaseUrl: 'http://127.0.0.1:8090',
-    appWebUrl: 'http://localhost:8081',
-    marketingUrl: 'http://localhost:4173',
-    pocketbaseUrl: 'http://127.0.0.1:8090',
-    posthogHost: 'http://127.0.0.1:8090/api/visit-insights',
-  },
-  beta: {
-    adminUrl: 'https://beta.admin.yummyrecs.com',
-    apiBaseUrl: 'https://beta.app.yummyrecs.com',
-    appWebUrl: 'https://beta.app.yummyrecs.com',
-    marketingUrl: 'https://beta.yummyrecs.com',
-    pocketbaseUrl: 'https://beta.app.yummyrecs.com',
-    posthogHost: 'https://beta.app.yummyrecs.com/api/visit-insights',
-  },
-  production: {
-    adminUrl: 'https://admin.yummyrecs.com',
-    apiBaseUrl: 'https://app.yummyrecs.com',
-    appWebUrl: 'https://app.yummyrecs.com',
-    marketingUrl: 'https://yummyrecs.com',
-    pocketbaseUrl: 'https://app.yummyrecs.com',
-    posthogHost: 'https://app.yummyrecs.com/api/visit-insights',
-  },
-};
 
 export interface MobileEnv {
   adminUrl: string;
@@ -123,13 +90,17 @@ export function loadMobileEnv(
   options?: LoadMobileEnvOptions,
 ): MobileEnv {
   const resolvedSource = source ?? expoPublicEnv;
+  const backendConfiguration = resolveMobileBackendConfiguration(resolvedSource);
   const environment = resolveAppEnvironment(resolvedSource, currentOrigin);
   const environmentDefaults = MOBILE_ENVIRONMENT_DEFAULTS[environment];
-
   const apiBaseUrl =
-    readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_API_BASE_URL) ?? environmentDefaults.apiBaseUrl;
+    backendConfiguration.environment === environment
+      ? backendConfiguration.apiBaseUrl
+      : readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_API_BASE_URL) ?? environmentDefaults.apiBaseUrl;
   const pocketbaseUrl =
-    readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POCKETBASE_URL) ?? environmentDefaults.pocketbaseUrl;
+    backendConfiguration.environment === environment
+      ? backendConfiguration.pocketbaseUrl
+      : readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POCKETBASE_URL) ?? environmentDefaults.pocketbaseUrl;
   const appWebUrl =
     readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_APP_WEB_URL) ?? environmentDefaults.appWebUrl;
   const adminUrl =
@@ -139,7 +110,7 @@ export function loadMobileEnv(
   const posthogHost =
     readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POSTHOG_HOST) ?? environmentDefaults.posthogHost;
 
-  return {
+  const mobileEnv = {
     adminUrl,
     apiBaseUrl,
     appWebUrl,
@@ -152,6 +123,14 @@ export function loadMobileEnv(
     posthogApiKey: readOptionalEnvValue(resolvedSource.EXPO_PUBLIC_POSTHOG_API_KEY) ?? '',
     posthogHost,
   };
+
+  assertSafeMobileBackendConfiguration({
+    apiBaseUrl: mobileEnv.apiBaseUrl,
+    environment: mobileEnv.environment,
+    pocketbaseUrl: mobileEnv.pocketbaseUrl,
+  });
+
+  return mobileEnv;
 }
 
 export const env = loadMobileEnv();

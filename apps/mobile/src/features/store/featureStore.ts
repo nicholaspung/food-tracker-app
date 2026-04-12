@@ -188,12 +188,6 @@ export interface BillListSummary {
   updatedAt: string;
 }
 
-export interface RestaurantVisitStatsSummary {
-  restaurantId: string;
-  userVisitCount: number;
-  friendCount: number;
-}
-
 export interface RestaurantListDetailBookmarkState {
   savedListIdsByBookmarkLookupId: Record<string, string[]>;
 }
@@ -230,13 +224,25 @@ export interface PaginatedResult<T> {
   hasNextPage: boolean;
 }
 
-export interface NoteOverviewPage extends PaginatedResult<NoteOverviewItemRecord> {
-  summary: NoteCountSummary;
+export interface NoteOverviewPage {
+  items: NoteOverviewItemRecord[];
+  summary?: NoteCountSummary;
+  page: number;
+  pageSize: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage: boolean;
+}
+
+export interface NoteDetailRecord {
+  note: NoteRecord;
+  photos: NotePhotoRecord[];
 }
 
 interface PaginationInput {
   page?: number;
   pageSize?: number;
+  signal?: AbortSignal;
 }
 
 export interface ListNotesPageInput extends PaginationInput {
@@ -268,6 +274,7 @@ export interface SearchRestaurantsPageInput extends PaginationInput {
 
 export interface ListRecentRestaurantsInput {
   limit?: number;
+  signal?: AbortSignal;
 }
 
 export interface RestaurantListRestaurantNoteRecord {
@@ -435,11 +442,7 @@ export interface UpdateBillInput {
 }
 
 export {
-  clearPhotoDraft,
   createEntityId,
-  getPhotoDraft,
-  getStore,
-  savePhotoDraft,
 } from './featureStoreRuntime';
 export { getProfile, updateProfile } from './profileApiStore';
 export {
@@ -464,28 +467,23 @@ export {
   createQuickTrack,
   deleteQuickTrack,
   getQuickTrackById,
-  listQuickTracksPage,
   updateQuickTrack,
 } from './quickTracksStore';
 export {
-  getRestaurantVisitStatsSummary,
-  hasPendingMenuReviewRequest,
   listMenuItemsForRestaurant,
   listRecentRestaurants,
   searchRestaurantsPage,
   upsertRestaurantRecord,
 } from './restaurantsStore';
+// eslint-disable-next-line import/no-unresolved
 export {
   createVisit,
   deleteVisit,
   getVisitById,
-  listVisitPhotosForFoodItemIds,
-  listVisitsPage,
   updateVisit,
 } from './visitsStore';
 
 export {
-  addRestaurantToList,
   addRestaurantVisitRatingsToList,
   createDefaultRestaurantList,
   createRestaurantList,
@@ -493,15 +491,9 @@ export {
   getRestaurantListCandidateRestaurants,
   getRestaurantListDetail,
   getRestaurantListById,
-  getRestaurantListItemLinkFoodItemIds,
   linkVisitToListBookmark,
-  listMyBookmarkedListItemLinksForFoodItemIds,
-  listRestaurantListItemLinksForRestaurantIds,
-  listRestaurantListItemsPage,
-  listRestaurantListNotesForRestaurantIds,
   listRestaurantListsPage,
   moveRestaurantListRestaurant,
-  removeRestaurantFromList,
   removeRestaurantListSourceRating,
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
@@ -511,6 +503,7 @@ export {
 export {
   createNote,
   deleteNote,
+  getNoteDetail,
   getNoteById,
   listNotePhotosForNote,
   listNotesOverviewPage,
@@ -522,7 +515,6 @@ export {
   createFriendSuggestionAcceptance,
   getFriendsCountSummary,
   inviteFriend,
-  listFriendsByUserIds,
   listFriendsPage,
   markFriendInviteAccepted,
   removeFriend,
@@ -532,12 +524,14 @@ export {
   createFeedback,
   getFeedbackById,
   getFeedbackCountSummary,
+  getFeedbackThreadDetail,
   listFeedbackMessagesPage,
   listFeedbackPage,
   markFeedbackAsRead,
   sendFeedbackMessage,
-  updateFeedbackStatus,
 } from './feedbackStore';
+
+export type { FeedbackThreadDetailResult } from './feedbackStore';
 
 export {
   createBill,

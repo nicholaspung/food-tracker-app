@@ -175,27 +175,17 @@ export async function updateCollectionRecord<T>(
   }
 }
 
-export async function deleteCollectionRecord(collectionName: string, recordId: string): Promise<void> {
-  try {
-    await pb.collection(collectionName).delete(recordId);
-    trackObservabilityEvent('DIRECT_WRITE_SUCCEEDED', {
-      collectionName,
-      operation: 'deleteCollectionRecord',
-      recordId,
-    });
-  } catch (error) {
-    trackObservabilityEvent('DIRECT_WRITE_FAILED', {
-      collectionName,
-      operation: 'deleteCollectionRecord',
-      recordId,
-      ...resolveErrorProperties(error),
-    });
-    throw error;
-  }
-}
-
-export async function getCollectionCount(collectionName: string, filter?: string): Promise<number> {
-  const response = await pb.collection(collectionName).getList(1, 1, sanitizeCollectionOptions({ filter }));
+export async function getCollectionCount(
+  collectionName: string,
+  filter?: string,
+  options?: PocketBaseRequestOptions,
+): Promise<number> {
+  const requestOptions = sanitizeCollectionOptions({ filter });
+  const response = await pb.collection(collectionName).getList(
+    1,
+    1,
+    options?.signal ? { ...requestOptions, signal: options.signal } : requestOptions,
+  );
   return response.totalItems;
 }
 
@@ -258,13 +248,6 @@ export function saveAuthRecord(record: RecordModel): void {
   }
 
   pb.authStore.save(pb.authStore.token, record);
-}
-
-export async function refreshAuthenticatedUserRecord(): Promise<RecordModel> {
-  const authData = await pb.collection('users').authRefresh();
-  const refreshedRecord = authData.record as RecordModel;
-  saveAuthRecord(refreshedRecord);
-  return refreshedRecord;
 }
 
 export function resolveDefaultVisitVisibilityFromAuth(): 'friends' | 'private' {

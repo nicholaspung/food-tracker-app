@@ -1,7 +1,10 @@
 import { loadMobileEnv, resolveAppEnvironment } from '../config/env';
 import {
+  assertSafeMobileBackendConfiguration,
+  assertSafeMobileReleaseBuildBackendConfiguration,
   assertSafeScreenshotReviewBuild,
   resolveScreenshotReviewMode,
+  shouldEnforceReleaseBuildBackendGuard,
   shouldEnforceScreenshotReviewBuildGuard,
 } from '../config/envUtils';
 
@@ -16,31 +19,59 @@ describe('loadMobileEnv', () => {
     expect(env.isScreenshotReviewMode).toBe(false);
     expect(env.marketingUrl).toBe('http://localhost:4173');
     expect(env.pocketbaseUrl).toBe('http://127.0.0.1:8090');
-    expect(env.posthogHost).toBe('http://127.0.0.1:8090/api/visit-insights');
+    expect(env.posthogHost).toBe('http://127.0.0.1:8090/api/analytics');
   });
 
   it('uses explicit environment values when provided', () => {
-    const env = loadMobileEnv({
-      EXPO_PUBLIC_APP_ENV: 'beta',
-      EXPO_PUBLIC_API_BASE_URL: 'https://api.yummyrecs.com',
-      EXPO_PUBLIC_ADMIN_URL: 'https://admin.yummyrecs.com',
-      EXPO_PUBLIC_APP_WEB_URL: 'https://app.yummyrecs.com',
-      EXPO_PUBLIC_MARKETING_URL: 'https://yummyrecs.com',
-      EXPO_PUBLIC_POCKETBASE_URL: 'https://pb.yummyrecs.com',
-      EXPO_PUBLIC_POSTHOG_API_KEY: 'test_key',
-      EXPO_PUBLIC_POSTHOG_HOST: 'https://analytics.yummyrecs.com',
-      EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
-    }, undefined, { isDevBuild: true });
+    const env = loadMobileEnv(
+      {
+        EXPO_PUBLIC_APP_ENV: 'beta',
+        EXPO_PUBLIC_API_BASE_URL: 'https://beta.app.yummyrecs.com',
+        EXPO_PUBLIC_ADMIN_URL: 'https://admin.yummyrecs.com',
+        EXPO_PUBLIC_APP_WEB_URL: 'https://app.yummyrecs.com',
+        EXPO_PUBLIC_MARKETING_URL: 'https://yummyrecs.com',
+        EXPO_PUBLIC_POCKETBASE_URL: 'https://beta.app.yummyrecs.com',
+        EXPO_PUBLIC_POSTHOG_API_KEY: 'test_key',
+        EXPO_PUBLIC_POSTHOG_HOST: 'https://analytics.yummyrecs.com',
+        EXPO_PUBLIC_SCREENSHOT_REVIEW_MODE: 'true',
+      },
+      undefined,
+      { isDevBuild: true },
+    );
 
     expect(env.environment).toBe('beta');
     expect(env.adminUrl).toBe('https://admin.yummyrecs.com');
-    expect(env.apiBaseUrl).toBe('https://api.yummyrecs.com');
+    expect(env.apiBaseUrl).toBe('https://beta.app.yummyrecs.com');
     expect(env.appWebUrl).toBe('https://app.yummyrecs.com');
     expect(env.isScreenshotReviewMode).toBe(true);
     expect(env.marketingUrl).toBe('https://yummyrecs.com');
-    expect(env.pocketbaseUrl).toBe('https://pb.yummyrecs.com');
+    expect(env.pocketbaseUrl).toBe('https://beta.app.yummyrecs.com');
     expect(env.posthogApiKey).toBe('test_key');
     expect(env.posthogHost).toBe('https://analytics.yummyrecs.com');
+  });
+
+  it('rejects non-local backend URL mismatches at startup', () => {
+    expect(() =>
+      loadMobileEnv({
+        EXPO_PUBLIC_APP_ENV: 'beta',
+        EXPO_PUBLIC_API_BASE_URL: 'https://api.yummyrecs.com',
+        EXPO_PUBLIC_POCKETBASE_URL: 'https://pb.yummyrecs.com',
+      }),
+    ).toThrow(
+      'Mobile backend config mismatch for beta: EXPO_PUBLIC_API_BASE_URL (https://api.yummyrecs.com) must match EXPO_PUBLIC_POCKETBASE_URL (https://pb.yummyrecs.com).',
+    );
+  });
+
+  it('rejects non-local backends that resolve to localhost', () => {
+    expect(() =>
+      loadMobileEnv({
+        EXPO_PUBLIC_APP_ENV: 'production',
+        EXPO_PUBLIC_API_BASE_URL: 'http://127.0.0.1:8090',
+        EXPO_PUBLIC_POCKETBASE_URL: 'http://127.0.0.1:8090',
+      }),
+    ).toThrow(
+      'Mobile production backend config must not resolve to a local URL. Received http://127.0.0.1:8090 and http://127.0.0.1:8090.',
+    );
   });
 
   it('disables screenshot review mode outside development bundles', () => {
@@ -65,7 +96,7 @@ describe('loadMobileEnv', () => {
     expect(env.appWebUrl).toBe('https://beta.app.yummyrecs.com');
     expect(env.adminUrl).toBe('https://beta.admin.yummyrecs.com');
     expect(env.marketingUrl).toBe('https://beta.yummyrecs.com');
-    expect(env.posthogHost).toBe('https://beta.app.yummyrecs.com/api/visit-insights');
+    expect(env.posthogHost).toBe('https://beta.app.yummyrecs.com/api/analytics');
   });
 });
 
@@ -130,6 +161,57 @@ describe('assertSafeScreenshotReviewBuild', () => {
     expect(
       shouldEnforceScreenshotReviewBuildGuard({
         NODE_ENV: 'development',
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('assertSafeMobileBackendConfiguration', () => {
+  it('allows local development backend divergence', () => {
+    expect(() =>
+      assertSafeMobileBackendConfiguration({
+        apiBaseUrl: 'http://localhost:3000',
+        environment: 'local',
+        pocketbaseUrl: 'http://127.0.0.1:8090',
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('assertSafeMobileReleaseBuildBackendConfiguration', () => {
+  it('rejects release-oriented builds that still resolve to local', () => {
+    expect(() =>
+      assertSafeMobileReleaseBuildBackendConfiguration({
+        EAS_BUILD_PROFILE: 'preview',
+      }),
+    ).toThrow(
+      'Release-oriented mobile builds must set EXPO_PUBLIC_APP_ENV to beta or production. Current config resolves to local.',
+    );
+  });
+
+  it('rejects mismatched preview backends during build', () => {
+    expect(() =>
+      assertSafeMobileReleaseBuildBackendConfiguration({
+        EAS_BUILD_PROFILE: 'preview',
+        EXPO_PUBLIC_APP_ENV: 'beta',
+        EXPO_PUBLIC_API_BASE_URL: 'https://api.yummyrecs.com',
+        EXPO_PUBLIC_POCKETBASE_URL: 'https://pb.yummyrecs.com',
+      }),
+    ).toThrow(
+      'Mobile backend config mismatch for beta: EXPO_PUBLIC_API_BASE_URL (https://api.yummyrecs.com) must match EXPO_PUBLIC_POCKETBASE_URL (https://pb.yummyrecs.com).',
+    );
+  });
+
+  it('detects release-oriented backend build contexts', () => {
+    expect(
+      shouldEnforceReleaseBuildBackendGuard({
+        EAS_BUILD_PROFILE: 'production',
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldEnforceReleaseBuildBackendGuard({
+        NODE_ENV: 'production',
       }),
     ).toBe(false);
   });

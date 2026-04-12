@@ -21,6 +21,14 @@ export type {
   ListFriendsPageInput,
 } from './featureStore';
 
+export interface FriendsPageResult extends PaginatedResult<FriendRecord> {
+  summary?: FriendsCountSummary;
+}
+
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
+
 interface FriendshipUser {
   id: string;
   name?: string;
@@ -55,6 +63,7 @@ interface FriendListApiResponse {
   totalItems: number;
   totalPages: number;
   hasNextPage: boolean;
+  summary?: FriendsCountSummary;
 }
 
 function resolveFriendName(user: FriendshipUser | undefined): string {
@@ -116,7 +125,7 @@ function mapFriendListApiItem(item: FriendListApiItem): FriendRecord {
   };
 }
 
-export async function listFriendsPage(input?: ListFriendsPageInput): Promise<PaginatedResult<FriendRecord>> {
+export async function listFriendsPage(input?: ListFriendsPageInput): Promise<FriendsPageResult> {
   if (!pb.authStore.record?.id) {
     return createEmptyPaginatedResult(input);
   }
@@ -140,37 +149,22 @@ export async function listFriendsPage(input?: ListFriendsPageInput): Promise<Pag
 
   const response = await sendApiRequest<FriendListApiResponse>(`/api/friends?${query.toString()}`, {
     method: 'GET',
+    signal: input?.signal,
   });
 
-  return mapPaginatedResult(response, response.items.map(mapFriendListApiItem));
+  const pageResult = mapPaginatedResult(response, response.items.map(mapFriendListApiItem));
+
+  if (!response.summary) {
+    return pageResult;
+  }
+
+  return {
+    ...pageResult,
+    summary: response.summary,
+  };
 }
 
-export async function listFriendsByUserIds(userIds: string[]): Promise<FriendRecord[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const normalizedUserIds = Array.from(new Set(userIds.map((userId) => userId.trim()).filter(Boolean)));
-  if (normalizedUserIds.length === 0) {
-    return [];
-  }
-
-  const items: FriendRecord[] = [];
-  for (let index = 0; index < normalizedUserIds.length; index += 100) {
-    const userIdChunk = normalizedUserIds.slice(index, index + 100);
-    const response = await listFriendsPage({
-      section: 'friends',
-      page: 1,
-      pageSize: userIdChunk.length,
-      userIds: userIdChunk,
-    });
-    items.push(...response.items);
-  }
-
-  return items;
-}
-
-export async function getFriendsCountSummary(): Promise<FriendsCountSummary> {
+export async function getFriendsCountSummary(options?: ReadRequestOptions): Promise<FriendsCountSummary> {
   if (!pb.authStore.record?.id) {
     return {
       friendsCount: 0,
@@ -181,6 +175,7 @@ export async function getFriendsCountSummary(): Promise<FriendsCountSummary> {
 
   return sendApiRequest<FriendsCountSummary>('/api/friends/summary', {
     method: 'GET',
+    signal: options?.signal,
   });
 }
 

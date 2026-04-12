@@ -106,11 +106,3 @@ export function getEffectiveAuthUser(
     isSubscriber: settings.viewAsNonSubscriber ? false : user.isSubscriber,
   };
 }
-
-export function resolveEffectiveAdminFlag(isAdmin: boolean): boolean {
-  if (!isAdmin) {
-    return false;
-  }
-
-  return rolePreviewSettingsCache.viewAsNonAdmin ? false : isAdmin;
-}

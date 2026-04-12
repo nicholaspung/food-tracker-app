@@ -40,12 +40,13 @@ type friendsListRow struct {
 }
 
 type friendsListResponse struct {
-	Items       []friendsListItem `json:"items"`
-	Page        int               `json:"page"`
-	PageSize    int               `json:"pageSize"`
-	TotalItems  int               `json:"totalItems"`
-	TotalPages  int               `json:"totalPages"`
-	HasNextPage bool              `json:"hasNextPage"`
+	Items       []friendsListItem       `json:"items"`
+	Summary     *friendsSummaryResponse `json:"summary,omitempty"`
+	Page        int                     `json:"page"`
+	PageSize    int                     `json:"pageSize"`
+	TotalItems  int                     `json:"totalItems"`
+	TotalPages  int                     `json:"totalPages"`
+	HasNextPage bool                    `json:"hasNextPage"`
 }
 
 type friendsListFilters struct {
@@ -364,14 +365,29 @@ func listFriendsPageResponse(
 		totalPages = (totalItems + pageSize - 1) / pageSize
 	}
 
-	return friendsListResponse{
+	response := friendsListResponse{
 		Items:       items,
 		Page:        page,
 		PageSize:    pageSize,
 		TotalItems:  totalItems,
 		TotalPages:  totalPages,
 		HasNextPage: totalPages > 0 && page < totalPages,
-	}, nil
+	}
+
+	if shouldIncludeFriendsSummary(page, filters) {
+		summary, err := getFriendsSummary(app, userID)
+		if err != nil {
+			return friendsListResponse{}, err
+		}
+
+		response.Summary = &summary
+	}
+
+	return response, nil
+}
+
+func shouldIncludeFriendsSummary(page int, filters friendsListFilters) bool {
+	return page == 1 && filters.Search == "" && len(filters.UserIDs) == 0
 }
 
 func buildFriendsSectionFilter(userID string, section string, filters friendsListFilters) (string, dbx.Params) {

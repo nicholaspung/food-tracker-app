@@ -7,6 +7,10 @@ import { getAuthRecord, saveAuthRecord, sendApiRequest } from './pocketbaseGatew
 
 export type { UpdateProfileInput } from './featureStore';
 
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
+
 function syncProfileIntoAuthRecord(profile: ProfileRecord): void {
   const authRecord = getAuthRecord();
   if (!authRecord) {
@@ -23,9 +27,10 @@ function syncProfileIntoAuthRecord(profile: ProfileRecord): void {
   });
 }
 
-export async function getProfile(): Promise<ProfileRecord> {
+export async function getProfile(options?: ReadRequestOptions): Promise<ProfileRecord> {
   return sendApiRequest<ProfileRecord>('/api/profile', {
     method: 'GET',
+    signal: options?.signal,
   });
 }
 

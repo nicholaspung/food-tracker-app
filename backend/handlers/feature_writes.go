@@ -64,6 +64,10 @@ type visitResponse struct {
 	UpdatedAt             string              `json:"updatedAt"`
 }
 
+type buildVisitResponseOptions struct {
+	ItemSort string
+}
+
 type billCreateRequest struct {
 	Title           string                        `json:"title"`
 	Items           []billItemWriteRequest        `json:"items"`
@@ -163,6 +167,34 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 	registerRestaurantWriteHandlers(se, app)
 	registerRestaurantListWriteHandlers(se, app)
 
+	se.Router.GET("/api/visits/{visitId}", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		visitID := strings.TrimSpace(e.Request.PathValue("visitId"))
+		if visitID == "" {
+			return apis.NewBadRequestError("visitId is required", nil)
+		}
+
+		visitRecord, err := app.FindRecordById("visits", visitID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return apis.NewNotFoundError("visit not found", nil)
+			}
+			return apis.NewApiError(500, "failed to load visit", err)
+		}
+
+		responsePayload, err := buildVisitResponse(app, visitRecord, e.Auth, buildVisitResponseOptions{
+			ItemSort: "-created",
+		})
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
 	se.Router.POST("/api/visits", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("authentication required", nil)
@@ -180,7 +212,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 				return err
 			}
 
-			responsePayload, err = buildVisitResponse(txApp, visitRecord, e.Auth)
+			responsePayload, err = buildVisitResponse(txApp, visitRecord, e.Auth, buildVisitResponseOptions{})
 			if err != nil {
 				return apis.NewApiError(500, "failed to load created visit", err)
 			}
@@ -215,7 +247,7 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 				return err
 			}
 
-			responsePayload, err = buildVisitResponse(txApp, visitRecord, e.Auth)
+			responsePayload, err = buildVisitResponse(txApp, visitRecord, e.Auth, buildVisitResponseOptions{})
 			if err != nil {
 				return apis.NewApiError(500, "failed to load updated visit", err)
 			}
@@ -974,19 +1006,62 @@ func syncBillChildren(
 	return participantIDRemap, participantIDsToDelete, nil
 }
 
-func buildVisitResponse(app core.App, visitRecord *core.Record, authRecord *core.Record) (visitResponse, error) {
+func buildVisitResponse(
+	app core.App,
+	visitRecord *core.Record,
+	viewerRecord *core.Record,
+	options buildVisitResponseOptions,
+) (visitResponse, error) {
+	if visitRecord == nil {
+		return visitResponse{}, apis.NewNotFoundError("visit not found", nil)
+	}
+	if viewerRecord == nil {
+		return visitResponse{}, apis.NewUnauthorizedError("authentication required", nil)
+	}
+
+	viewerUserID := strings.TrimSpace(viewerRecord.Id)
+	isAdmin := viewerRecord.GetBool("isAdmin")
+	acceptedFriendIDs := map[string]struct{}{}
+	visitOwnerID := strings.TrimSpace(visitRecord.GetString("user"))
+	if !isAdmin && visitOwnerID != "" && visitOwnerID != viewerUserID {
+		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
+		if err != nil {
+			return visitResponse{}, err
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
+	if !canAccessVisitRecord(visitRecord, viewerUserID, isAdmin, acceptedFriendIDs) {
+		return visitResponse{}, apis.NewNotFoundError("visit not found", nil)
+	}
+
 	restaurantRecord, err := app.FindRecordById("restaurants", visitRecord.GetString("restaurant"))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return visitResponse{}, err
 	}
 
-	items, err := listFoodItemsForVisit(app, visitRecord.Id)
+	ownerRecord := viewerRecord
+	if visitOwnerID != "" && visitOwnerID != viewerUserID {
+		ownerRecord, err = app.FindRecordById("users", visitOwnerID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return visitResponse{}, err
+		}
+	}
+
+	items, err := listFoodItemsForVisitWithSort(app, visitRecord.Id, options.ItemSort)
 	if err != nil {
 		return visitResponse{}, err
 	}
 
+	visitsByID := map[string]*core.Record{
+		visitRecord.Id: visitRecord,
+	}
 	responseItems := make([]visitItemResponse, 0, len(items))
 	for _, item := range items {
+		if !canAccessFoodItemRecord(item, visitsByID, viewerUserID, isAdmin, acceptedFriendIDs) {
+			continue
+		}
+
 		responseItems = append(responseItems, visitItemResponse{
 			ID:          item.Id,
 			Name:        item.GetString("name"),
@@ -996,14 +1071,6 @@ func buildVisitResponse(app core.App, visitRecord *core.Record, authRecord *core
 		})
 	}
 
-	userName := strings.TrimSpace(authRecord.GetString("name"))
-	if userName == "" {
-		email := strings.TrimSpace(authRecord.GetString("email"))
-		if email != "" {
-			userName = strings.Split(email, "@")[0]
-		}
-	}
-
 	response := visitResponse{
 		ID:           visitRecord.Id,
 		RestaurantID: visitRecord.GetString("restaurant"),
@@ -1011,7 +1078,7 @@ func buildVisitResponse(app core.App, visitRecord *core.Record, authRecord *core
 		Items:        responseItems,
 		Source:       "visit",
 		UserID:       visitRecord.GetString("user"),
-		UserName:     userName,
+		UserName:     resolveHomeFeedUserName(ownerRecord),
 		Visibility:   visitRecord.GetString("visibility"),
 		CreatedAt:    visitRecord.GetString("created"),
 		UpdatedAt:    visitRecord.GetString("updated"),
@@ -1209,9 +1276,52 @@ func findAcceptedFriendshipRecordsByUserID(
 }
 
 func listFoodItemsForVisit(app core.App, visitID string) ([]*core.Record, error) {
-	return app.FindRecordsByFilter("food_items", "visit = {:visitId}", "created", 200, 0, dbx.Params{
+	return listFoodItemsForVisitWithSort(app, visitID, "created")
+}
+
+func listFoodItemsForVisitWithSort(app core.App, visitID string, sort string) ([]*core.Record, error) {
+	resolvedSort := strings.TrimSpace(sort)
+	if resolvedSort == "" {
+		resolvedSort = "created"
+	}
+
+	return app.FindRecordsByFilter("food_items", "visit = {:visitId}", resolvedSort, 200, 0, dbx.Params{
 		"visitId": visitID,
 	})
+}
+
+func canAccessVisitRecord(
+	record *core.Record,
+	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
+) bool {
+	if record == nil {
+		return false
+	}
+
+	if isAdmin {
+		return true
+	}
+
+	ownerID := strings.TrimSpace(record.GetString("user"))
+	status := record.GetString("moderationStatus")
+	if ownerID == userID {
+		return isOwnerAccessibleModerationStatus(status)
+	}
+
+	if !isVisibleModerationStatus(status) {
+		return false
+	}
+
+	switch strings.TrimSpace(record.GetString("visibility")) {
+	case "public":
+		return true
+	case "friends":
+		return hasAcceptedFriend(acceptedFriendIDs, ownerID)
+	default:
+		return false
+	}
 }
 
 func listBillParticipants(app core.App, billID string) ([]*core.Record, error) {

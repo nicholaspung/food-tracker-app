@@ -27,15 +27,13 @@ import {
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
   getNoteById,
-  getRestaurantVisitStatsSummary,
   getVisitById,
-  hasPendingMenuReviewRequest,
   type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
+  type VisitItem,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
@@ -53,7 +51,6 @@ import { shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useSync } from '../providers/SyncProvider';
 import { CreateVisitReviewStep } from './createVisit/CreateVisitReviewStep';
 import {
   FREE_MONTHLY_PHOTO_LIMIT,
@@ -399,9 +396,7 @@ export function CreateVisitScreen({
 }: CreateVisitScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
-  const { enqueueMutation } = useSync();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const isActualAdmin = actualUser?.isAdmin === true;
@@ -512,57 +507,36 @@ export function CreateVisitScreen({
     menuItems: menuItemsQuery.data,
   });
   const currentUserId = getAuthenticatedUserIdOrNull() ?? "";
-  const restaurantStatIds = useMemo(() => {
-    return Array.from(
-      new Set(
-        loadedRestaurantRecords
-          .map((restaurant) => restaurant.id.trim())
-          .filter((restaurantId) => restaurantId.length > 0),
-      ),
-    ).sort();
-  }, [loadedRestaurantRecords]);
-  const restaurantStatsQuery = useQuery({
-    queryKey: ["feature", "restaurants", "visitStats", restaurantStatIds],
-    queryFn: async () => getRestaurantVisitStatsSummary(restaurantStatIds),
-    enabled: restaurantStatIds.length > 0,
-  });
-  const restaurantStatsById = useMemo(() => {
-    const stats = new Map<string, RestaurantStats>();
-    for (const summary of restaurantStatsQuery.data ?? []) {
-      stats.set(summary.restaurantId, {
-        userVisitCount: summary.userVisitCount,
-        friendCount: summary.friendCount,
+  const restaurantMetadataById = useMemo(() => {
+    const metadata = new Map<
+      string,
+      RestaurantStats & { hasPendingMenuReview: boolean }
+    >();
+    for (const restaurant of loadedRestaurantRecords) {
+      metadata.set(restaurant.id, {
+        userVisitCount: restaurant.userVisitCount ?? 0,
+        friendCount: restaurant.friendCount ?? 0,
+        hasPendingMenuReview: restaurant.hasPendingMenuReview === true,
       });
     }
-    return stats;
-  }, [restaurantStatsQuery.data]);
+    return metadata;
+  }, [loadedRestaurantRecords]);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const editVisitQuery = useQuery({
     queryKey: ["feature", "visit", editVisitId ?? ""],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!editVisitId) {
         return null;
       }
 
-      return getVisitById(editVisitId);
+      return getVisitById(editVisitId, { signal });
     },
     enabled: Boolean(editVisitId),
   });
   const linkedNoteQuery = useQuery({
     queryKey: ['feature', 'note', sourceNoteId],
-    queryFn: () => (sourceNoteId ? getNoteById(sourceNoteId) : Promise.resolve(null)),
+    queryFn: ({ signal }) => (sourceNoteId ? getNoteById(sourceNoteId, { signal }) : Promise.resolve(null)),
     enabled: Boolean(sourceNoteId),
-  });
-  const pendingMenuReviewQuery = useQuery({
-    queryKey: ["feature", "menuReview", "pending", selectedRestaurantId ?? ""],
-    queryFn: async () => {
-      if (!selectedRestaurantId) {
-        return false;
-      }
-
-      return hasPendingMenuReviewRequest(selectedRestaurantId);
-    },
-    enabled: step === 1 && Boolean(selectedRestaurantId) && isOnline,
   });
 
   useEffect(() => {
@@ -669,7 +643,7 @@ export function CreateVisitScreen({
     setRestaurantName(editVisitQuery.data.restaurantName);
     setSelectedRestaurantId(editVisitQuery.data.restaurantId ?? null);
     setDraftItems(
-      editVisitQuery.data.items.map((item) => ({
+      editVisitQuery.data.items.map((item: VisitItem) => ({
         id: item.id,
         name: item.name,
         rating: item.rating,
@@ -737,7 +711,11 @@ export function CreateVisitScreen({
     );
     return [...selected, ...unselected];
   }, [filteredMenuItems, isMenuItemSelected]);
-  const hasPendingMenuReview = pendingMenuReviewQuery.data === true;
+  const selectedRestaurantMetadata = selectedRestaurantId
+    ? restaurantMetadataById.get(selectedRestaurantId) ?? null
+    : null;
+  const hasPendingMenuReview =
+    selectedRestaurantMetadata?.hasPendingMenuReview === true;
 
   const styles = useStyles();
 
@@ -764,12 +742,18 @@ export function CreateVisitScreen({
   };
 
   const getRestaurantStats = (restaurantId: string): RestaurantStats => {
-    return (
-      restaurantStatsById.get(restaurantId) ?? {
+    const metadata = restaurantMetadataById.get(restaurantId);
+    if (!metadata) {
+      return {
         userVisitCount: 0,
         friendCount: 0,
-      }
-    );
+      };
+    }
+
+    return {
+      userVisitCount: metadata.userVisitCount,
+      friendCount: metadata.friendCount,
+    };
   };
 
   const renderRestaurantListDescription = (
@@ -1172,13 +1156,9 @@ export function CreateVisitScreen({
     editVisitId,
     isDisplayFreeUser,
     isEditMode,
-    isOnline,
     monthlyUsageSnapshot: monthlyUsage.snapshot,
     navigation,
     queryClient,
-    queueFeatureApiMutation: enqueueMutation,
-    queueFeatureOutbox,
-    queueWrite,
     restaurantId: selectedRestaurantId,
     restaurantName,
     setErrorMessage,
@@ -1188,6 +1168,7 @@ export function CreateVisitScreen({
     sourceListItemId,
     visitDate,
     visitVisibility,
+    writeFeature,
   });
 
   const handleBackPress = () => {

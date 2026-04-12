@@ -50,6 +50,23 @@ type restaurantListMutationListResponse struct {
 }
 
 func registerRestaurantListWriteHandlers(se *core.ServeEvent, app core.App) {
+	se.Router.POST("/api/restaurant-lists/default", func(e *core.RequestEvent) error {
+		var responsePayload restaurantListDetailListResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			listRecord, err := createOrGetDefaultRestaurantListTransaction(txApp, e.Auth)
+			if err != nil {
+				return err
+			}
+
+			responsePayload = buildRestaurantListDetailListResponse(listRecord)
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
 	se.Router.POST("/api/restaurant-lists/{listId}/bookmarks", func(e *core.RequestEvent) error {
 		listID := strings.TrimSpace(e.Request.PathValue("listId"))
 		if listID == "" {
@@ -770,6 +787,46 @@ func removeRestaurantListUserRatingTransaction(
 	return restaurantID, nil
 }
 
+func createOrGetDefaultRestaurantListTransaction(app core.App, authRecord *core.Record) (*core.Record, error) {
+	existingRecord, err := findDefaultRestaurantListRecordForUser(app, authRecord.Id)
+	if err != nil {
+		return nil, apis.NewApiError(500, "failed to load default restaurant list", err)
+	}
+	if existingRecord != nil {
+		return existingRecord, nil
+	}
+
+	restaurantListsCollection, err := app.FindCollectionByNameOrId("restaurant_lists")
+	if err != nil {
+		return nil, apis.NewApiError(500, "internal error", err)
+	}
+
+	record := core.NewRecord(restaurantListsCollection)
+	record.Set("name", "Saved")
+	record.Set("description", "Items saved from other lists")
+	record.Set("visibility", "private")
+	record.Set("user", authRecord.Id)
+	record.Set("isDefault", true)
+
+	if err := app.Save(record); err != nil {
+		if !isUniqueConstraintError(err) {
+			return nil, apis.NewApiError(500, "failed to create default restaurant list", err)
+		}
+
+		existingRecord, lookupErr := findDefaultRestaurantListRecordForUser(app, authRecord.Id)
+		if lookupErr != nil {
+			return nil, apis.NewApiError(500, "failed to load default restaurant list", lookupErr)
+		}
+		if existingRecord != nil {
+			return existingRecord, nil
+		}
+
+		return nil, apis.NewApiError(500, "failed to create default restaurant list", err)
+	}
+
+	return record, nil
+}
+
 func findOwnedRestaurantListRecord(app core.App, listID string, userID string) (*core.Record, error) {
 	record, err := app.FindRecordById("restaurant_lists", listID)
 	if err != nil {
@@ -781,6 +838,22 @@ func findOwnedRestaurantListRecord(app core.App, listID string, userID string) (
 
 	if strings.TrimSpace(record.GetString("user")) != userID {
 		return nil, apis.NewForbiddenError("you can only update your own restaurant lists", nil)
+	}
+
+	return record, nil
+}
+
+func findDefaultRestaurantListRecordForUser(app core.App, userID string) (*core.Record, error) {
+	record, err := app.FindFirstRecordByFilter(
+		"restaurant_lists",
+		"user = {:userId} && isDefault = true",
+		dbx.Params{"userId": userID},
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
 	}
 
 	return record, nil

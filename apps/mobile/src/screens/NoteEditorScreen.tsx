@@ -11,15 +11,14 @@ import {
   buildPocketBaseFileUrl,
   createNote,
   formatLimitExceededMessage,
-  getNoteById,
-  listNotePhotosForNote,
+  getNoteDetail,
   parseLimitExceededError,
   updateNote,
   useMonthlyUsage,
   type NotePhotoUploadInput,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
@@ -181,8 +180,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const styles = useStyles();
   const noteId = route.params?.noteId;
   const isEditing = Boolean(noteId);
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const { actualUser, user } = useAuth();
   const queryClient = useQueryClient();
@@ -212,15 +210,9 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     galleryRequiredMessage: 'Photo library permission is required to select photos.',
   });
 
-  const noteQuery = useQuery({
-    queryKey: ['feature', 'note', noteId],
-    queryFn: () => (noteId ? getNoteById(noteId) : Promise.resolve(null)),
-    enabled: Boolean(noteId),
-  });
-
-  const notePhotosQuery = useQuery({
-    queryKey: ['feature', 'notePhotos', noteId],
-    queryFn: () => listNotePhotosForNote(noteId ?? ''),
+  const noteDetailQuery = useQuery({
+    queryKey: noteId ? notesQueryKeys.detail(noteId) : ['feature', 'notes', 'detail', ''],
+    queryFn: ({ signal }) => (noteId ? getNoteDetail(noteId, { signal }) : Promise.resolve(null)),
     enabled: Boolean(noteId),
   });
 
@@ -235,8 +227,8 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
   const existingPhotos = useMemo(() => {
     const deletedIds = new Set(photosToDelete);
-    return (notePhotosQuery.data ?? []).filter((photo) => !deletedIds.has(photo.id));
-  }, [notePhotosQuery.data, photosToDelete]);
+    return (noteDetailQuery.data?.photos ?? []).filter((photo) => !deletedIds.has(photo.id));
+  }, [noteDetailQuery.data?.photos, photosToDelete]);
 
   const perNotePhotoLimit =
     typeof monthlyUsage.snapshot?.limits.photoUploadsPerRecord === 'number'
@@ -247,16 +239,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const totalPhotoCount = existingPhotos.length + newPhotos.length;
 
   useEffect(() => {
-    if (!noteQuery.data) {
+    if (!noteDetailQuery.data?.note) {
       return;
     }
 
-    setContent(noteQuery.data.content);
-    setLocationText(noteQuery.data.locationText ?? '');
+    setContent(noteDetailQuery.data.note.content);
+    setLocationText(noteDetailQuery.data.note.locationText ?? '');
     setPhotosToDelete([]);
     setNewPhotos([]);
     setErrorMessage(null);
-  }, [noteQuery.data]);
+  }, [noteDetailQuery.data?.note]);
 
   const closeEditor = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -514,35 +506,44 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     setIsSubmitting(true);
 
     try {
-      if (!isOnline) {
-        if (isEditing && noteId) {
-          await queueFeatureOutbox('note.update', {
-            noteId,
-            updates: noteUpdateInput,
+      const saveResult = isEditing && noteId
+        ? await writeFeature({
+            operationName: 'note.update',
+            offline: {
+              strategy: 'outbox',
+              payload: {
+                noteId,
+                updates: noteUpdateInput,
+              },
+            },
+            execute: () => updateNote(noteId, noteUpdateInput),
+          })
+        : await writeFeature({
+            operationName: 'note.create',
+            offline: {
+              strategy: 'outbox',
+              payload: noteCreateInput,
+            },
+            execute: () => createNote(noteCreateInput),
           });
-        } else {
-          await queueFeatureOutbox('note.create', noteCreateInput);
-        }
 
+      if (saveResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] });
         showQueuedOfflineAlert('Note');
         navigation.navigate('Notes');
         return;
       }
 
-      if (isEditing && noteId) {
-        await queueWrite('note.update');
-        await updateNote(noteId, noteUpdateInput);
-      } else {
-        await queueWrite('note.create');
-        await createNote(noteCreateInput);
-      }
-
       const invalidations: Promise<unknown>[] = [
         queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'note', noteId] }),
+        ...(noteId
+          ? [
+              queryClient.invalidateQueries({ queryKey: ['feature', 'note', noteId] }),
+              queryClient.invalidateQueries({ queryKey: notesQueryKeys.detail(noteId) }),
+            ]
+          : []),
         queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos', noteId] }),
+        ...(noteId ? [queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos', noteId] })] : []),
       ];
 
       if (uploadPhotos.length > 0) {
@@ -586,17 +587,15 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     navigation,
     newPhotos,
     noteId,
-    isOnline,
     perNotePhotoLimit,
     photosToDelete,
     queryClient,
-    queueFeatureOutbox,
-    queueWrite,
+    writeFeature,
     shouldEnforceUsageLimitsClientSide,
     totalPhotoCount,
   ]);
 
-  if (isEditing && noteQuery.isLoading) {
+  if (isEditing && noteDetailQuery.isLoading) {
     return (
       <FeatureFormScreenScaffold
         onBackPress={closeEditor}
@@ -620,14 +619,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     );
   }
 
-  if (isEditing && noteQuery.isError) {
+  if (isEditing && noteDetailQuery.isError) {
     return (
       <FeatureFormScreenScaffold
         onBackPress={closeEditor}
         primaryAction={{
           label: 'Retry',
           onPress: () => {
-            void noteQuery.refetch();
+            void noteDetailQuery.refetch();
           },
         }}
         secondaryAction={{
@@ -641,7 +640,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         <ErrorState
           description="Could not load note."
           onRetry={() => {
-            void noteQuery.refetch();
+            void noteDetailQuery.refetch();
           }}
           title="Note unavailable"
         />
@@ -649,7 +648,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     );
   }
 
-  if (isEditing && !noteQuery.data) {
+  if (isEditing && !noteDetailQuery.data?.note) {
     return (
       <FeatureFormScreenScaffold
         onBackPress={closeEditor}
@@ -726,7 +725,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           </Card>
         ) : null}
 
-        {isEditing && noteQuery.data?.status === 'used' ? (
+        {isEditing && noteDetailQuery.data?.note.status === 'used' ? (
           <Card tone="success">
             <Text tone="success">
               This note has already been used to track an item. You can still update it for reference.
@@ -839,11 +838,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
             Up to {perNotePhotoLimit} photo{perNotePhotoLimit === 1 ? '' : 's'} per note. Choose camera or photo
             library.
           </Text>
-          {notePhotosQuery.isError ? (
-            <Text tone="danger" variant="bodySm">
-              Existing photos could not be loaded.
-            </Text>
-          ) : null}
         </Card>
 
         {errorMessage ? (

@@ -14,16 +14,13 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const postHogProxyPrefix = "/api/visit-insights"
+const postHogProxyPrefix = "/api/analytics"
 
 const maxPostHogProxyBodyBytes int64 = 512 << 10
 
-// RegisterPostHogProxyHandlers registers the PostHog reverse proxy endpoints
-// This allows the frontend to send analytics events through our backend,
-// bypassing ad blockers and improving privacy
-//
-// Note: Uses /api/visit-insights path to blend in with the app's visit tracking
-// feature and avoid detection by ad blockers (they look for /analytics, /tracking, etc.)
+// RegisterPostHogProxyHandlers registers the PostHog reverse proxy endpoints.
+// This gives the app an explicit first-party analytics endpoint while keeping
+// the forwarded request metadata narrow and predictable.
 //
 // Following PostHog best practices:
 // - Routes static assets to us-assets.i.posthog.com
@@ -41,7 +38,7 @@ func RegisterPostHogProxyHandlers(e *core.ServeEvent) error {
 	posthogAssetsHost := strings.Replace(posthogHost, "i.posthog.com", "assets.i.posthog.com", 1)
 
 	// Static assets proxy (for PostHog JavaScript SDK and other static files)
-	// GET /api/visit-insights/static/* -> us-assets.i.posthog.com/static/*
+	// GET /api/analytics/static/* -> us-assets.i.posthog.com/static/*
 	e.Router.GET(postHogProxyPrefix+"/static/*", func(re *core.RequestEvent) error {
 		path := strings.TrimPrefix(re.Request.URL.Path, postHogProxyPrefix)
 		return proxyPostHogRequestGET(re, posthogAssetsHost+path)
@@ -52,7 +49,7 @@ func RegisterPostHogProxyHandlers(e *core.ServeEvent) error {
 	registerPostHogMethodProxy(e, http.MethodGet, posthogHost)
 	registerPostHogMethodProxy(e, http.MethodPost, posthogHost)
 
-	log.Printf("[PostHog Proxy] Registered visit-insights proxy endpoints")
+	log.Printf("[PostHog Proxy] Registered analytics proxy endpoints")
 	log.Printf("[PostHog Proxy] - API: %s", posthogHost)
 	log.Printf("[PostHog Proxy] - Assets: %s", posthogAssetsHost)
 	return nil
@@ -201,25 +198,16 @@ func proxyPostHogRequestGET(re *core.RequestEvent, targetURL string) error {
 }
 
 func forwardPostHogRequestHeaders(re *core.RequestEvent, proxyReq *http.Request) {
+	// Keep the upstream header surface intentionally small. The proxy forwards
+	// only the headers PostHog needs for content negotiation and request-body
+	// parsing. Client IP, referrer, authorization, cookies, and user-agent stay
+	// on our side of the proxy unless there is a concrete product need.
 	if contentType := re.Request.Header.Get("Content-Type"); contentType != "" {
 		proxyReq.Header.Set("Content-Type", contentType)
 	}
 
 	if accept := re.Request.Header.Get("Accept"); accept != "" {
 		proxyReq.Header.Set("Accept", accept)
-	}
-
-	if ua := re.Request.Header.Get("User-Agent"); ua != "" {
-		proxyReq.Header.Set("User-Agent", ua)
-	}
-
-	if realIP := strings.TrimSpace(re.RealIP()); realIP != "" {
-		proxyReq.Header.Set("X-Forwarded-For", realIP)
-		proxyReq.Header.Set("X-Real-IP", realIP)
-	}
-
-	if referer := re.Request.Header.Get("Referer"); referer != "" {
-		proxyReq.Header.Set("Referer", referer)
 	}
 }
 

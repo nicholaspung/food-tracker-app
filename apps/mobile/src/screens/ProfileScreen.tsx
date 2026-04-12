@@ -26,9 +26,11 @@ import {
   generateInviteCodes,
   getAuthRecord,
   getFeedbackCountSummary,
+  invalidateInviteCodesQueries,
   getProfile,
   listInviteCodes,
   lockInviteCode,
+  profileQueryKeys,
   updateProfile,
 } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -222,13 +224,13 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const isInitialUser = authRecord?.isInitialUser === true;
 
   const profileQuery = useQuery({
-    queryKey: ["feature", "profile"],
-    queryFn: getProfile,
+    queryKey: profileQueryKeys.profile,
+    queryFn: ({ signal }) => getProfile({ signal }),
   });
 
   const feedbackSummaryQuery = useQuery({
     queryKey: feedbackQueryKeys.summary,
-    queryFn: getFeedbackCountSummary,
+    queryFn: ({ signal }) => getFeedbackCountSummary({ signal }),
   });
   const whatsNewSeenVersionQuery = useQuery({
     queryKey: WHATS_NEW_SEEN_QUERY_KEY,
@@ -261,24 +263,20 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     string | null
   >(null);
   const inviteCodesQuery = useQuery({
-    queryKey: ["feature", "inviteCodes", user?.id ?? null],
-    queryFn: listInviteCodes,
+    queryKey: profileQueryKeys.inviteCodes(user?.id),
+    queryFn: ({ signal }) => listInviteCodes({ signal }),
     enabled: expandedPanels.invite && Boolean(user?.id),
   });
   const generateInviteCodesMutation = useMutation({
     mutationFn: generateInviteCodes,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["feature", "inviteCodes", user?.id ?? null],
-      });
+      await invalidateInviteCodesQueries(queryClient, user?.id);
     },
   });
   const lockInviteCodeMutation = useMutation({
     mutationFn: lockInviteCode,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["feature", "inviteCodes", user?.id ?? null],
-      });
+      await invalidateInviteCodesQueries(queryClient, user?.id);
     },
   });
 
@@ -417,7 +415,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       setEditedAccountName(nextName);
 
       queryClient.setQueryData(
-        ["feature", "profile"],
+        profileQueryKeys.profile,
         (currentProfile: unknown) => {
           const profile =
             currentProfile && typeof currentProfile === "object"

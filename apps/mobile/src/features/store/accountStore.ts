@@ -15,6 +15,10 @@ export type {
   ReportContentResult,
 } from './featureStore';
 
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
+
 interface InviteCodeListResponse {
   codes?: {
     id: string;
@@ -41,13 +45,14 @@ export async function deleteAccount(currentPassword: string): Promise<void> {
   });
 }
 
-export async function listInviteCodes(): Promise<InviteCodeRecord[]> {
+export async function listInviteCodes(options?: ReadRequestOptions): Promise<InviteCodeRecord[]> {
   if (!pb.authStore.record?.id) {
     return [];
   }
 
   const response = await sendApiRequest<InviteCodeListResponse>('/api/invite-codes', {
     method: 'GET',
+    signal: options?.signal,
   });
 
   return (response.codes ?? []).map((code) => ({

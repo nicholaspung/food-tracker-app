@@ -5,14 +5,13 @@ import {
   createQuickTrack,
   createVisit,
   formatLimitExceededMessage,
+  homeFeedQueryKeys,
   markNoteUsed,
   parseLimitExceededError,
   type MonthlyUsageSnapshot,
 } from '../../features';
-import type {
-  FeatureOutboxOperationName,
-  FeatureOutboxOperationPayload,
-} from '../../features/store/featureOutboxOperations';
+import { notesQueryKeys } from '../../features/store/notesQuery';
+import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import {
@@ -33,11 +32,6 @@ import {
 } from './shared';
 import { FREE_MONTHLY_PHOTO_LIMIT } from './shared';
 
-type QueueFeatureOutbox = <TName extends FeatureOutboxOperationName>(
-  operationName: TName,
-  payload: FeatureOutboxOperationPayload<TName>,
-) => Promise<void>;
-
 interface UsePhotoProcessingSubmissionParams {
   currentPhoto: DraftPhotoAsset | null;
   currentPhotoIndex: number;
@@ -51,8 +45,6 @@ interface UsePhotoProcessingSubmissionParams {
   photos: DraftPhotoAsset[];
   processType: ProcessType | null;
   queryClient: QueryClient;
-  queueFeatureOutbox: QueueFeatureOutbox;
-  queueWrite: (operationName: string) => Promise<void>;
   quickTrackForms: Record<string, QuickTrackFormValues>;
   restaurantForms: Record<string, RestaurantPhotoForm>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
@@ -60,6 +52,7 @@ interface UsePhotoProcessingSubmissionParams {
   sourceNoteId?: string;
   shouldEnforceUsageLimitsClientSide: boolean;
   visitVisibility: 'friends' | 'private';
+  writeFeature: OfflineAwareFeatureWrite;
 }
 
 export function usePhotoProcessingSubmission({
@@ -75,8 +68,6 @@ export function usePhotoProcessingSubmission({
   photos,
   processType,
   queryClient,
-  queueFeatureOutbox,
-  queueWrite,
   quickTrackForms,
   restaurantForms,
   setErrorMessage,
@@ -84,6 +75,7 @@ export function usePhotoProcessingSubmission({
   sourceNoteId,
   shouldEnforceUsageLimitsClientSide,
   visitVisibility,
+  writeFeature,
 }: UsePhotoProcessingSubmissionParams) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -209,25 +201,31 @@ export function usePhotoProcessingSubmission({
         })),
       };
 
-      if (!isOnline) {
-        await queueFeatureOutbox('visit.create', visitInput);
-        continue;
-      }
-
-      await queueWrite('visit.create');
-      await createVisit(visitInput);
+      await writeFeature({
+        operationName: 'visit.create',
+        offline: {
+          strategy: 'outbox',
+          payload: visitInput,
+        },
+        execute: () => createVisit(visitInput),
+      });
     }
 
     if (sourceNoteId && groupedVisits.size > 1) {
-      if (!isOnline) {
-        await queueFeatureOutbox('note.mark-used', {
-          noteId: sourceNoteId,
-        });
-      } else {
-        await markNoteUsed({
-          noteId: sourceNoteId,
-        });
-      }
+      await writeFeature({
+        operationName: 'note.mark-used',
+        trackOnlineWrite: false,
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            noteId: sourceNoteId,
+          },
+        },
+        execute: () =>
+          markNoteUsed({
+            noteId: sourceNoteId,
+          }),
+      });
     }
 
     trackObservabilityEvent('Photo Processing Completed', {
@@ -237,14 +235,12 @@ export function usePhotoProcessingSubmission({
       visitCount: groupedVisits.size,
     });
   }, [
-    isOnline,
     photos,
-    queueFeatureOutbox,
-    queueWrite,
     restaurantForms,
     sourceNoteId,
     validateRestaurantForm,
     visitVisibility,
+    writeFeature,
   ]);
 
   const submitQuickTrackItems = useCallback(async () => {
@@ -264,25 +260,31 @@ export function usePhotoProcessingSubmission({
         sourceNoteId: sourceNoteId && photos.length === 1 ? sourceNoteId : undefined,
       });
 
-      if (!isOnline) {
-        await queueFeatureOutbox('quick-track.create', quickTrackInput);
-        continue;
-      }
-
-      await queueWrite('quick-track.create');
-      await createQuickTrack(quickTrackInput);
+      await writeFeature({
+        operationName: 'quick-track.create',
+        offline: {
+          strategy: 'outbox',
+          payload: quickTrackInput,
+        },
+        execute: () => createQuickTrack(quickTrackInput),
+      });
     }
 
     if (sourceNoteId && photos.length > 1) {
-      if (!isOnline) {
-        await queueFeatureOutbox('note.mark-used', {
-          noteId: sourceNoteId,
-        });
-      } else {
-        await markNoteUsed({
-          noteId: sourceNoteId,
-        });
-      }
+      await writeFeature({
+        operationName: 'note.mark-used',
+        trackOnlineWrite: false,
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            noteId: sourceNoteId,
+          },
+        },
+        execute: () =>
+          markNoteUsed({
+            noteId: sourceNoteId,
+          }),
+      });
     }
 
     trackObservabilityEvent('Photo Processing Completed', {
@@ -290,7 +292,7 @@ export function usePhotoProcessingSubmission({
       source: 'PhotoProcessingScreen',
       itemCount: photos.length,
     });
-  }, [isOnline, photos, queueFeatureOutbox, queueWrite, quickTrackForms, sourceNoteId]);
+  }, [photos, quickTrackForms, sourceNoteId, writeFeature]);
 
   const handleSubmitAll = useCallback(async () => {
     if (!processType) {
@@ -335,7 +337,7 @@ export function usePhotoProcessingSubmission({
       }
 
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feature', 'homeFeed'] }),
+        queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
@@ -347,6 +349,9 @@ export function usePhotoProcessingSubmission({
               queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
               queryClient.invalidateQueries({
                 queryKey: ['feature', 'note', sourceNoteId],
+              }),
+              queryClient.invalidateQueries({
+                queryKey: notesQueryKeys.detail(sourceNoteId),
               }),
             ]
           : []),

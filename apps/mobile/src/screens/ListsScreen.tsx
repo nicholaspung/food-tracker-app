@@ -23,13 +23,11 @@ import {
   type RestaurantListRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 
@@ -297,9 +295,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const styles = useStyles();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
-  const { isOnline } = useConnectivity();
+  const writeFeature = useOfflineAwareFeatureWrite();
 
   const [activeTab, setActiveTab] = useState<ListTab>('my');
   const [searchQuery, setSearchQuery] = useState('');
@@ -311,12 +307,13 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
   const myListsQuery = useInfiniteQuery({
     queryKey: restaurantListQueryKeys.paginated('my', trimmedSearchQuery),
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       listRestaurantListsPage({
         scope: 'my',
         page: pageParam,
         pageSize: 20,
         search: trimmedSearchQuery || undefined,
+        signal,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
@@ -325,12 +322,13 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
   const friendsListsQuery = useInfiniteQuery({
     queryKey: restaurantListQueryKeys.paginated('friends', trimmedSearchQuery),
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       listRestaurantListsPage({
         scope: 'friends',
         page: pageParam,
         pageSize: 20,
         search: trimmedSearchQuery || undefined,
+        signal,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
@@ -382,14 +380,20 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
     void (async () => {
       try {
-        if (!isOnline) {
-          await queueFeatureOutbox('list.default.create', {});
+        const createResult = await writeFeature({
+          operationName: 'list.default.create',
+          offline: {
+            strategy: 'outbox',
+            payload: {},
+          },
+          execute: () => createDefaultRestaurantList(),
+        });
+
+        if (createResult.status === 'queued') {
           await invalidateRestaurantListCollectionQueries(queryClient, 'my');
           return;
         }
 
-        await queueWrite('list.default.create');
-        await createDefaultRestaurantList();
         await invalidateRestaurantListCollectionQueries(queryClient, 'my');
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not prepare your Saved list.';
@@ -407,10 +411,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     myListsQuery.data,
     myListsQuery.isError,
     myListsQuery.isLoading,
-    isOnline,
     queryClient,
-    queueFeatureOutbox,
-    queueWrite,
+    writeFeature,
   ]);
 
   const myLists = myListsState.items;

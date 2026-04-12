@@ -50,7 +50,7 @@ func TestValidateStartupConfigurationAcceptsCurrentRequiredConfig(t *testing.T) 
 	t.Setenv("FOOD_TRACKER_ADMIN_URL", "https://admin.example.com")
 	t.Setenv("FOOD_TRACKER_MARKETING_URL", "https://www.example.com")
 	t.Setenv("FOOD_TRACKER_POCKETBASE_URL", "https://pb.example.com")
-	t.Setenv("FOOD_TRACKER_POSTHOG_HOST", "https://app.example.com/api/visit-insights")
+	t.Setenv("FOOD_TRACKER_POSTHOG_HOST", "https://app.example.com/api/analytics")
 
 	if _, err := validateStartupConfiguration(); err != nil {
 		t.Fatalf("expected valid configuration to pass, got %v", err)

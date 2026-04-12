@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 
@@ -18,18 +18,18 @@ const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunc
 >;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
-describe('useQueuedWrite', () => {
+describe('useWriteTelemetry', () => {
   beforeEach(() => {
     mockedTrackObservabilityEvent.mockReset();
     mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
   });
 
   it('records an observability event without enqueueing a marker mutation', async () => {
-    let queueWrite: ReturnType<typeof useQueuedWrite> | null = null;
+    let trackWriteTelemetry: ReturnType<typeof useWriteTelemetry> | null = null;
     let renderer: ReactTestRenderer | null = null;
 
     function TestComponent() {
-      queueWrite = useQueuedWrite();
+      trackWriteTelemetry = useWriteTelemetry();
       return null;
     }
 
@@ -38,11 +38,11 @@ describe('useQueuedWrite', () => {
     });
 
     await act(async () => {
-      await queueWrite?.('bill.create');
+      await trackWriteTelemetry?.('bill.create');
     });
 
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('ONLINE_WRITE_MARKED', {
-      source: 'useQueuedWrite',
+      source: 'useWriteTelemetry',
       operationName: 'bill.create',
       isOnline: true,
     });

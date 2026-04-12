@@ -17,6 +17,10 @@ export type {
   UpdateBillInput,
 } from './featureStore';
 
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
+
 interface BillItemSplitApiResponse {
   participantId?: string;
   type?: 'percentage' | 'amount';
@@ -194,19 +198,23 @@ function mapBillListSummaryApiItem(item: BillListSummaryApiResponseItem): BillLi
   };
 }
 
-export async function listBillSummaries(): Promise<BillListSummary[]> {
+export async function listBillSummaries(options?: ReadRequestOptions): Promise<BillListSummary[]> {
   if (!pb.authStore.record?.id) {
     return [];
   }
 
   const response = await sendApiRequest<BillListSummaryApiResponseItem[]>('/api/bills/summary', {
     method: 'GET',
+    signal: options?.signal,
   });
 
   return response.map(mapBillListSummaryApiItem);
 }
 
-export async function getBillById(billId: string): Promise<BillRecord | null> {
+export async function getBillById(
+  billId: string,
+  options?: ReadRequestOptions,
+): Promise<BillRecord | null> {
   if (!pb.authStore.record?.id) {
     return null;
   }
@@ -214,6 +222,7 @@ export async function getBillById(billId: string): Promise<BillRecord | null> {
   try {
     const response = await sendApiRequest<BillApiResponse>(`/api/bills/${encodeURIComponent(billId)}`, {
       method: 'GET',
+      signal: options?.signal,
     });
     return mapBillApiResponse(response);
   } catch (error) {

@@ -58,7 +58,7 @@
 - Step 1. Add/confirm typed route params in `/Users/developer/programming/food-tracker-app/apps/mobile/src/navigation/RootNavigator.tsx` (`RootStackParamList`).
 - Step 2. Pick the correct scaffold (`TabRootScreenScaffold`, `BackHeaderScreenScaffold`, `FeatureFormScreenScaffold`, `FeatureDetailScreenScaffold`, or `FormScaffold`).
 - Step 3. Add reads with React Query using stable `['feature', ...]` keys.
-- Step 4. Add writes via feature-layer functions; for offline-sensitive writes, call `useQueuedWrite()` before/alongside the mutation flow.
+- Step 4. Add writes via feature-layer functions; for offline-sensitive writes, prefer `useOfflineAwareFeatureWrite()` so online execution and offline replay stay coupled. Use `useWriteTelemetry()` only for explicit online-only observability markers.
 - Step 5. Wire async UI states: loading (`Skeleton`/`LoadingOverlay`), empty (`EmptyState`), and error (`ErrorState`/`PageErrorToast`).
 - Step 6. Keep styles theme-token based with `useTheme()` and shared UI primitives/components.
 - Step 7. Apply domain-specific standards: rating UI uses `RatingPill` or `getRatingColor`/`getRatingLabel`, and status/visibility semantics use `StatusPill`, `VisibilityBadge`, and `VisibilityOptionSelector`.

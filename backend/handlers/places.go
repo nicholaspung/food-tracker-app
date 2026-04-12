@@ -41,16 +41,19 @@ type placeLocation struct {
 }
 
 type restaurantSearchResult struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	City          string   `json:"city,omitempty"`
-	Location      string   `json:"location,omitempty"`
-	CuisineType   string   `json:"cuisineType,omitempty"`
-	Visibility    string   `json:"visibility,omitempty"`
-	Latitude      *float64 `json:"latitude,omitempty"`
-	Longitude     *float64 `json:"longitude,omitempty"`
-	PlaceID       string   `json:"placeId,omitempty"`
-	IsGooglePlace bool     `json:"isGooglePlace"`
+	ID                   string   `json:"id"`
+	Name                 string   `json:"name"`
+	City                 string   `json:"city,omitempty"`
+	Location             string   `json:"location,omitempty"`
+	CuisineType          string   `json:"cuisineType,omitempty"`
+	Visibility           string   `json:"visibility,omitempty"`
+	Latitude             *float64 `json:"latitude,omitempty"`
+	Longitude            *float64 `json:"longitude,omitempty"`
+	PlaceID              string   `json:"placeId,omitempty"`
+	IsGooglePlace        bool     `json:"isGooglePlace"`
+	UserVisitCount       int      `json:"userVisitCount,omitempty"`
+	FriendCount          int      `json:"friendCount,omitempty"`
+	HasPendingMenuReview bool     `json:"hasPendingMenuReview,omitempty"`
 }
 
 type placesSearchResponse struct {

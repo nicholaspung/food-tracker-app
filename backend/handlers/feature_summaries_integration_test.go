@@ -166,6 +166,169 @@ func TestNotesOverviewEndpointReturnsSummaryAndPhotoPreviewMetadata(t *testing.T
 	}
 }
 
+func TestNotesOverviewEndpointOmitsSummaryMetadataBeyondFirstPage(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	firstNote := createNoteRecord(t, server.app, user.Id, "draft")
+	secondNote := createNoteRecord(t, server.app, user.Id, "draft")
+	thirdNote := createNoteRecord(t, server.app, user.Id, "draft")
+
+	firstNote.Set("content", "First note")
+	secondNote.Set("content", "Second note")
+	thirdNote.Set("content", "Third note")
+	if err := server.app.Save(firstNote); err != nil {
+		t.Fatalf("failed to update first note: %v", err)
+	}
+	if err := server.app.Save(secondNote); err != nil {
+		t.Fatalf("failed to update second note: %v", err)
+	}
+	if err := server.app.Save(thirdNote); err != nil {
+		t.Fatalf("failed to update third note: %v", err)
+	}
+
+	secondPageResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=draft&page=2&pageSize=1",
+		token,
+		"",
+	)
+	if secondPageResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", secondPageResponse.Code, secondPageResponse.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Page        int              `json:"page"`
+		PageSize    int              `json:"pageSize"`
+		HasNextPage bool             `json:"hasNextPage"`
+		Summary     *json.RawMessage `json:"summary"`
+		TotalItems  *int             `json:"totalItems"`
+		TotalPages  *int             `json:"totalPages"`
+	}
+	if err := json.Unmarshal(secondPageResponse.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode second notes overview payload: %v", err)
+	}
+
+	if payload.Page != 2 || payload.PageSize != 1 || !payload.HasNextPage {
+		t.Fatalf("unexpected second-page pagination payload: %#v", payload)
+	}
+	if payload.Summary != nil || payload.TotalItems != nil || payload.TotalPages != nil {
+		t.Fatalf("expected later notes page to omit summary totals, got %#v", payload)
+	}
+	if len(payload.Items) != 1 || payload.Items[0].ID == "" {
+		t.Fatalf("expected one note item on second page, got %#v", payload.Items)
+	}
+}
+
+func TestNoteDetailEndpointReturnsNoteAndPhotos(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Detail Cafe",
+		"location":   "Oakland, CA",
+		"visibility": "public",
+	})
+
+	note := createNoteRecord(t, server.app, user.Id, "draft")
+	note.Set("content", "Detail note body")
+	note.Set("location_text", "Outdoor patio")
+	note.Set("restaurant", restaurant.Id)
+	if err := server.app.Save(note); err != nil {
+		t.Fatalf("failed to update note: %v", err)
+	}
+
+	firstPhotoID := insertNotePhotoRowRaw(
+		t,
+		server.app,
+		user.Id,
+		note.Id,
+		"detail-photo-a.jpg",
+		"2026-01-01T08:00:00Z",
+	)
+	secondPhotoID := insertNotePhotoRowRaw(
+		t,
+		server.app,
+		user.Id,
+		note.Id,
+		"detail-photo-b.jpg",
+		"2026-01-01T09:00:00Z",
+	)
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/notes/"+note.Id, token, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Note *struct {
+			ID             string `json:"id"`
+			Content        string `json:"content"`
+			LocationText   string `json:"locationText"`
+			Status         string `json:"status"`
+			RestaurantID   string `json:"restaurantId"`
+			RestaurantName string `json:"restaurantName"`
+			CreatedAt      string `json:"createdAt"`
+			UpdatedAt      string `json:"updatedAt"`
+		} `json:"note"`
+		Photos []struct {
+			ID      string `json:"id"`
+			Note    string `json:"note"`
+			Photo   string `json:"photo"`
+			Created string `json:"created"`
+		} `json:"photos"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode note detail payload: %v", err)
+	}
+
+	if payload.Note == nil {
+		t.Fatalf("expected note detail payload, got %#v", payload)
+	}
+	if payload.Note.ID != note.Id || payload.Note.Content != "Detail note body" || payload.Note.Status != "draft" {
+		t.Fatalf("unexpected note payload: %#v", payload.Note)
+	}
+	if payload.Note.LocationText != "Outdoor patio" ||
+		payload.Note.RestaurantID != restaurant.Id ||
+		payload.Note.RestaurantName != "Detail Cafe" {
+		t.Fatalf("expected mapped note metadata, got %#v", payload.Note)
+	}
+	if payload.Note.CreatedAt == "" || payload.Note.UpdatedAt == "" {
+		t.Fatalf("expected timestamps in note payload, got %#v", payload.Note)
+	}
+	if len(payload.Photos) != 2 {
+		t.Fatalf("expected 2 note photos, got %#v", payload.Photos)
+	}
+	if payload.Photos[0].ID != firstPhotoID ||
+		payload.Photos[0].Note != note.Id ||
+		payload.Photos[0].Photo != "detail-photo-a.jpg" {
+		t.Fatalf("unexpected first note photo payload: %#v", payload.Photos[0])
+	}
+	if payload.Photos[1].ID != secondPhotoID ||
+		payload.Photos[1].Note != note.Id ||
+		payload.Photos[1].Photo != "detail-photo-b.jpg" {
+		t.Fatalf("unexpected second note photo payload: %#v", payload.Photos[1])
+	}
+}
+
+func TestNoteDetailEndpointHidesOtherUsersNotes(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	_, token := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
+
+	otherUserNote := createNoteRecord(t, server.app, otherUser.Id, "draft")
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/notes/"+otherUserNote.Id, token, "")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 Not Found, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestFriendsSummaryEndpoint(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
@@ -963,6 +1126,18 @@ func TestRecentRestaurantsEndpoint(t *testing.T) {
 		"visitDate":  "2026-04-02 18:30:00.000Z",
 		"visibility": "friends",
 	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantDeduped.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-01 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "menu_review_requests", map[string]any{
+		"restaurant":  restaurantDeduped.Id,
+		"requestedBy": user.Id,
+		"reason":      "Needs a menu review",
+		"status":      "pending",
+	})
 
 	response := performJSONRequest(
 		t,
@@ -977,13 +1152,16 @@ func TestRecentRestaurantsEndpoint(t *testing.T) {
 	}
 
 	var payload []struct {
-		ID            string `json:"id"`
-		Name          string `json:"name"`
-		Location      string `json:"location"`
-		Visibility    string `json:"visibility"`
-		CuisineType   string `json:"cuisineType"`
-		PlaceID       string `json:"placeId"`
-		IsGooglePlace bool   `json:"isGooglePlace"`
+		ID                   string `json:"id"`
+		Name                 string `json:"name"`
+		Location             string `json:"location"`
+		Visibility           string `json:"visibility"`
+		CuisineType          string `json:"cuisineType"`
+		PlaceID              string `json:"placeId"`
+		IsGooglePlace        bool   `json:"isGooglePlace"`
+		UserVisitCount       int    `json:"userVisitCount"`
+		FriendCount          int    `json:"friendCount"`
+		HasPendingMenuReview bool   `json:"hasPendingMenuReview"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to parse response JSON: %v; body=%s", err, response.Body.String())
@@ -1006,6 +1184,114 @@ func TestRecentRestaurantsEndpoint(t *testing.T) {
 		payload[1].PlaceID != "place-deduped" ||
 		!payload[1].IsGooglePlace {
 		t.Fatalf("unexpected restaurant payload: %#v", payload[1])
+	}
+	if payload[0].UserVisitCount != 1 || payload[0].FriendCount != 0 || payload[0].HasPendingMenuReview {
+		t.Fatalf("unexpected metadata for friend restaurant: %#v", payload[0])
+	}
+	if payload[1].UserVisitCount != 2 || payload[1].FriendCount != 1 || !payload[1].HasPendingMenuReview {
+		t.Fatalf("unexpected metadata for deduped restaurant: %#v", payload[1])
+	}
+}
+
+func TestRestaurantSearchEndpointReturnsInlineSelectionMetadata(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+	otherOwner, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurantAlpha := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Alpha Tacos",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+		"createdBy":  user.Id,
+	})
+	restaurantBravo := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Bravo Tacos",
+		"location":   "San Diego, CA",
+		"visibility": "friends",
+		"createdBy":  friend.Id,
+	})
+	createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Hidden Tacos",
+		"location":   "Portland, OR",
+		"visibility": "private",
+		"createdBy":  otherOwner.Id,
+	})
+
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantAlpha.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-06 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantBravo.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-05 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantBravo.Id,
+		"user":       friend.Id,
+		"visitDate":  "2026-04-04 18:30:00.000Z",
+		"visibility": "friends",
+	})
+	createCollectionRecord(t, server.app, "menu_review_requests", map[string]any{
+		"restaurant":  restaurantBravo.Id,
+		"requestedBy": user.Id,
+		"reason":      "Please review",
+		"status":      "pending",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/restaurants/search?search=tacos&page=1&pageSize=5",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                   string `json:"id"`
+			Name                 string `json:"name"`
+			UserVisitCount       int    `json:"userVisitCount"`
+			FriendCount          int    `json:"friendCount"`
+			HasPendingMenuReview bool   `json:"hasPendingMenuReview"`
+		} `json:"items"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse search response JSON: %v; body=%s", err, response.Body.String())
+	}
+
+	if payload.Page != 1 || payload.PageSize != 5 || payload.TotalItems != 2 || payload.TotalPages != 1 || payload.HasNextPage {
+		t.Fatalf("unexpected pagination payload: %#v", payload)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 visible search results, got %#v", payload.Items)
+	}
+	if payload.Items[0].ID != restaurantAlpha.Id || payload.Items[0].Name != "Alpha Tacos" {
+		t.Fatalf("expected alpha restaurant first, got %#v", payload.Items)
+	}
+	if payload.Items[0].UserVisitCount != 1 || payload.Items[0].FriendCount != 0 || payload.Items[0].HasPendingMenuReview {
+		t.Fatalf("unexpected alpha metadata: %#v", payload.Items[0])
+	}
+	if payload.Items[1].ID != restaurantBravo.Id || payload.Items[1].Name != "Bravo Tacos" {
+		t.Fatalf("expected bravo restaurant second, got %#v", payload.Items)
+	}
+	if payload.Items[1].UserVisitCount != 1 || payload.Items[1].FriendCount != 1 || !payload.Items[1].HasPendingMenuReview {
+		t.Fatalf("unexpected bravo metadata: %#v", payload.Items[1])
 	}
 }
 
@@ -1368,6 +1654,101 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	}
 	if searchPayload.TotalVisits != 1 || searchPayload.TotalQuickTracks != 0 {
 		t.Fatalf("unexpected search totals: %#v", searchPayload)
+	}
+}
+
+func TestHomeFeedEndpointOmitsTotalsBeyondFirstPage(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Paged Feed Cafe",
+		"location":   "Seattle, WA",
+		"visibility": "public",
+	})
+
+	firstVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-03 10:00:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  firstVisit.Id,
+		"user":   user.Id,
+		"name":   "First Dish",
+		"rating": 4,
+	})
+
+	secondVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurant.Id,
+		"user":       user.Id,
+		"visitDate":  "2026-04-02 10:00:00.000Z",
+		"visibility": "private",
+	})
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  secondVisit.Id,
+		"user":   user.Id,
+		"name":   "Second Dish",
+		"rating": 5,
+	})
+
+	quickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":          user.Id,
+		"name":          "Late Snack",
+		"rating":        3,
+		"isQuickTrack":  true,
+		"location_text": "Paged Feed Cafe",
+		"visibility":    "private",
+		"itemDate":      "2026-04-01 10:00:00.000Z",
+	})
+
+	secondPageResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=2&pageSize=1&scope=mine",
+		token,
+		"",
+	)
+	if secondPageResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", secondPageResponse.Code, secondPageResponse.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Source string `json:"source"`
+			Visit  *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+			QuickTrack *struct {
+				ID string `json:"id"`
+			} `json:"quickTrack"`
+		} `json:"items"`
+		Cursor *struct {
+			Page int `json:"page"`
+		} `json:"cursor"`
+		HasNextPage      bool `json:"hasNextPage"`
+		TotalVisits      *int `json:"totalVisits"`
+		TotalQuickTracks *int `json:"totalQuickTracks"`
+	}
+	if err := json.Unmarshal(secondPageResponse.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode second home feed payload: %v", err)
+	}
+
+	if !payload.HasNextPage || payload.Cursor == nil || payload.Cursor.Page != 3 {
+		t.Fatalf("expected second page to continue paginating, got %#v", payload)
+	}
+	if payload.TotalVisits != nil || payload.TotalQuickTracks != nil {
+		t.Fatalf("expected later home feed page to omit totals, got %#v", payload)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one entry on second page, got %#v", payload.Items)
+	}
+
+	entry := payload.Items[0]
+	if (entry.Visit == nil || entry.Visit.ID != secondVisit.Id) && (entry.QuickTrack == nil || entry.QuickTrack.ID != quickTrack.Id) {
+		t.Fatalf("expected a real feed entry on second page, got %#v", entry)
 	}
 }
 

@@ -15,8 +15,7 @@ import {
   resolveDefaultListVisibilityFromAuth,
   type RestaurantListRecord,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -49,8 +48,7 @@ function resolveDefaultListVisibility(): ListVisibility {
 export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListScreenProps) {
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
 
   const [name, setName] = useState('');
@@ -98,8 +96,16 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
         visibility,
       };
 
-      if (!isOnline) {
-        await queueFeatureOutbox('list.create', listInput);
+      const createResult = await writeFeature({
+        operationName: 'list.create',
+        offline: {
+          strategy: 'outbox',
+          payload: listInput,
+        },
+        execute: () => createRestaurantList(listInput),
+      });
+
+      if (createResult.status === 'queued') {
         await invalidateRestaurantListCollectionQueries(queryClient);
         trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'CreateRestaurantListScreen',
@@ -111,8 +117,7 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
         return;
       }
 
-      await queueWrite('list.create');
-      const createdList = await createRestaurantList(listInput);
+      const createdList = createResult.result;
 
       await invalidateRestaurantListCollectionQueries(queryClient);
       trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {

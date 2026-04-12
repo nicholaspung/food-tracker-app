@@ -3,15 +3,13 @@ import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 import {
   buildOrFilter,
   createEmptyPaginatedResult,
-  escapeFilterValue,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
-  nowIso,
   normalizeModerationContentStatus,
   normalizeQuickTrackVisibility,
+  nowIso,
   resolvePaginationInput,
-  resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
 import type {
@@ -22,14 +20,7 @@ import type {
   VisitPhotoRecord,
 } from './featureStore';
 import { markNoteUsed } from './notesStore';
-import type {
-  FoodItemCollectionRecord,
-  VisitCollectionRecord,
-} from './pocketbaseRecordTypes';
-import type {
-  VisitItem,
-  VisitRecord,
-} from '../models';
+import type { VisitRecord } from '../models';
 import { uploadVisitPhotos } from './visitPhotoUploads';
 
 export type {
@@ -70,35 +61,6 @@ interface VisitsPageApiResponse {
   totalItems: number;
   totalPages: number;
   hasNextPage: boolean;
-}
-
-function mapVisitItemRecord(record: FoodItemCollectionRecord): VisitItem {
-  return {
-    id: record.id,
-    name: record.name,
-    rating: record.rating,
-    description: record.description?.trim() || undefined,
-    notes: record.notes,
-  };
-}
-
-function mapVisitCollectionRecord(visit: VisitCollectionRecord, visitItems: FoodItemCollectionRecord[]): VisitRecord {
-  return {
-    id: visit.id,
-    restaurantId: visit.restaurant,
-    restaurantName: visit.expand?.restaurant?.name?.trim() || 'Unknown Restaurant',
-    restaurantLocation: visit.expand?.restaurant?.location?.trim() || undefined,
-    restaurantCuisineType: visit.expand?.restaurant?.cuisineType?.trim() || undefined,
-    visitedAt: visit.visitDate || visit.created,
-    items: visitItems.map(mapVisitItemRecord),
-    source: 'visit',
-    userId: visit.user,
-    userName: resolveExpandedUserName(visit.expand?.user),
-    visibility: normalizeQuickTrackVisibility(visit.visibility),
-    moderationStatus: normalizeModerationContentStatus(visit.moderationStatus),
-    createdAt: visit.created,
-    updatedAt: visit.updated,
-  };
 }
 
 function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
@@ -161,22 +123,20 @@ export async function listVisitsPage(input?: ListVisitsPageInput): Promise<Pagin
   };
 }
 
-export async function getVisitById(visitId: string): Promise<VisitRecord | null> {
+export async function getVisitById(
+  visitId: string,
+  options?: { signal?: AbortSignal },
+): Promise<VisitRecord | null> {
   if (!pb.authStore.record?.id) {
     return null;
   }
 
   try {
-    const visit = await pb.collection('visits').getOne<VisitCollectionRecord>(visitId, {
-      expand: 'restaurant,user',
+    const response = await sendApiRequest<VisitApiRecord>(`/api/visits/${encodeURIComponent(visitId)}`, {
+      method: 'GET',
+      signal: options?.signal,
     });
-    const visitItems = await listCollectionRecords<FoodItemCollectionRecord>('food_items', {
-      filter: `visit = "${escapeFilterValue(visitId)}"`,
-      sort: '-created',
-      fields: 'id,name,rating,description,notes,visit',
-    });
-
-    return mapVisitCollectionRecord(visit, visitItems);
+    return mapVisitApiRecord(response);
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;

@@ -2,36 +2,26 @@ import { pb } from '../../lib/pocketbase';
 import type { QuickTrackRecord } from '../models';
 import type {
   CreateQuickTrackInput,
-  ListQuickTracksPageInput,
-  PaginatedResult,
   UpdateQuickTrackInput,
 } from './featureStore';
 import { markNoteUsed } from './notesStore';
 import {
-  buildSearchFilter,
-  combineFilterClauses,
-  createEmptyPaginatedResult,
-  escapeFilterValue,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
-  mapPaginatedResult,
   nowIso,
   normalizeModerationContentStatus,
   normalizeQuickTrackVisibility,
-  resolvePaginationInput,
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
 import type {
   FoodItemCollectionRecord,
 } from './pocketbaseRecordTypes';
-import { listCollectionPage } from './pocketbaseGateway';
 import { uploadVisitPhotos } from './visitPhotoUploads';
 
 export type {
   CreateQuickTrackInput,
-  ListQuickTracksPageInput,
   UpdateQuickTrackInput,
 } from './featureStore';
 
@@ -53,36 +43,10 @@ function mapQuickTrackCollectionRecord(record: FoodItemCollectionRecord): QuickT
   };
 }
 
-export async function listQuickTracksPage(input?: ListQuickTracksPageInput): Promise<PaginatedResult<QuickTrackRecord>> {
-  if (!pb.authStore.record?.id) {
-    return createEmptyPaginatedResult(input);
-  }
-
-  const { page, pageSize } = resolvePaginationInput(input);
-  const currentUserId = getAuthenticatedUserId();
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  const scope = input?.scope ?? 'all';
-  const scopeFilter =
-    scope === 'mine'
-      ? `user = "${escapedCurrentUserId}"`
-      : scope === 'friends'
-        ? `user != "${escapedCurrentUserId}"`
-        : undefined;
-  const searchFilter = buildSearchFilter(['name', 'itemCategory', 'notes'], input?.search ?? '');
-  const filter = combineFilterClauses('isQuickTrack = true', scopeFilter, searchFilter);
-
-  const pageResult = await listCollectionPage<FoodItemCollectionRecord>('food_items', {
-    page,
-    pageSize,
-    filter,
-    expand: 'user,visit,visit.restaurant',
-    sort: '-itemDate,-created',
-  });
-
-  return mapPaginatedResult(pageResult, pageResult.items.map(mapQuickTrackCollectionRecord));
-}
-
-export async function getQuickTrackById(quickTrackId: string): Promise<QuickTrackRecord | null> {
+export async function getQuickTrackById(
+  quickTrackId: string,
+  options?: { signal?: AbortSignal },
+): Promise<QuickTrackRecord | null> {
   if (!pb.authStore.record?.id) {
     return null;
   }
@@ -90,6 +54,7 @@ export async function getQuickTrackById(quickTrackId: string): Promise<QuickTrac
   try {
     const record = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(quickTrackId, {
       expand: 'user,visit,visit.restaurant',
+      signal: options?.signal,
     });
     if (record.isQuickTrack !== true) {
       return null;

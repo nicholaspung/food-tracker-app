@@ -27,7 +27,7 @@ export function useMonthlyUsage(options?: UseMonthlyUsageOptions): UseMonthlyUsa
 
   const monthlyUsageQuery = useQuery({
     queryKey: ['feature', 'usage', 'monthly', cacheScope],
-    queryFn: () => getMonthlyUsage(viewAsTier ? { viewAsTier } : undefined),
+    queryFn: ({ signal }) => getMonthlyUsage(viewAsTier ? { signal, viewAsTier } : { signal }),
     enabled: Boolean(userId),
     retry: false,
   });

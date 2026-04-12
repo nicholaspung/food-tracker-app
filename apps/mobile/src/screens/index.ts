@@ -1,4 +1,3 @@
-export * from './AccessDeniedScreen';
 export * from './AddRestaurantToListScreen';
 export * from './AddVisitScreen';
 export * from './AboutScreen';

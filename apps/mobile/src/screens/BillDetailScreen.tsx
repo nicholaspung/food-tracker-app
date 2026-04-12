@@ -29,13 +29,12 @@ import {
   updateBillApiMutationInput,
   updateBillParticipantPaidStatusApiMutationInput,
 } from '../features/store/featureOutboxOperations';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useSync } from '../providers/SyncProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 
@@ -261,14 +260,13 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
-  const { enqueueMutation } = useSync();
-  const queueWrite = useQueuedWrite();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
   const billQuery = useQuery({
     queryKey: ['feature', 'bill', billId],
-    queryFn: () => getBillById(billId),
+    queryFn: ({ signal }) => getBillById(billId, { signal }),
   });
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -373,8 +371,19 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setIsUpdatingBillStatus(true);
 
     try {
-      if (!isOnline) {
-        await enqueueMutation(updateBillApiMutationInput(billId, { status: nextStatus }));
+      const updateResult = await writeFeature({
+        operationName: 'bill.status.toggle',
+        offline: {
+          strategy: 'api',
+          input: updateBillApiMutationInput(billId, { status: nextStatus }),
+        },
+        execute: () =>
+          updateBill(billId, {
+            status: nextStatus,
+          }),
+      });
+
+      if (updateResult.status === 'queued') {
         await refreshBill();
         trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
@@ -386,10 +395,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         return;
       }
 
-      await queueWrite('bill.status.toggle');
-      await updateBill(billId, {
-        status: nextStatus,
-      });
       await refreshBill();
       trackObservabilityEvent('BILL_DETAIL_STATUS_TOGGLE_SUCCEEDED', {
         source: 'BillDetailScreen',
@@ -430,10 +435,20 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setUpdatingParticipantId(participantId);
 
     try {
-      if (!isOnline) {
-        await enqueueMutation(
-          updateBillParticipantPaidStatusApiMutationInput(billId, participantId, nextPaidStatus),
-        );
+      const updateResult = await writeFeature({
+        operationName: 'bill.participant.toggle-paid',
+        offline: {
+          strategy: 'api',
+          input: updateBillParticipantPaidStatusApiMutationInput(
+            billId,
+            participantId,
+            nextPaidStatus,
+          ),
+        },
+        execute: () => markBillParticipantPaid(billId, participantId, nextPaidStatus),
+      });
+
+      if (updateResult.status === 'queued') {
         await refreshBill();
         trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
           source: 'BillDetailScreen',
@@ -446,8 +461,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         return;
       }
 
-      await queueWrite('bill.participant.toggle-paid');
-      await markBillParticipantPaid(billId, participantId, nextPaidStatus);
       await refreshBill();
       trackObservabilityEvent('BILL_DETAIL_PARTICIPANT_STATUS_TOGGLE_SUCCEEDED', {
         source: 'BillDetailScreen',
@@ -485,8 +498,16 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     setIsDeletingBill(true);
 
     try {
-      if (!isOnline) {
-        await enqueueMutation(deleteBillApiMutationInput(bill.id));
+      const deleteResult = await writeFeature({
+        operationName: 'bill.delete',
+        offline: {
+          strategy: 'api',
+          input: deleteBillApiMutationInput(bill.id),
+        },
+        execute: () => deleteBill(bill.id),
+      });
+
+      if (deleteResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
         queryClient.removeQueries({ queryKey: ['feature', 'bill', bill.id] });
         trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {
@@ -499,8 +520,6 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
         return;
       }
 
-      await queueWrite('bill.delete');
-      await deleteBill(bill.id);
       await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
       queryClient.removeQueries({ queryKey: ['feature', 'bill', bill.id] });
       trackObservabilityEvent('BILL_DETAIL_DELETE_SUCCEEDED', {

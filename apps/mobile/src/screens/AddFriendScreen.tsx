@@ -4,12 +4,10 @@ import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FeatureFormScreenScaffold, PageErrorToast } from '../components/shared';
-import { inviteFriend } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { friendsQueryKeys, inviteFriend } from '../features';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
@@ -47,9 +45,7 @@ function generateFriendCode(userId: string | undefined): string {
 export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
-  const { isOnline } = useConnectivity();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { user } = useAuth();
 
   const [friendCode, setFriendCode] = useState('');
@@ -91,17 +87,23 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
     setIsSubmitting(true);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('friend.request.send', { code: normalizedCode });
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+      const requestResult = await writeFeature({
+        operationName: 'friend.request.send',
+        offline: {
+          strategy: 'outbox',
+          payload: { code: normalizedCode },
+        },
+        execute: () => inviteFriend({ code: normalizedCode }),
+      });
+
+      if (requestResult.status === 'queued') {
+        await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
         showQueuedOfflineAlert('Friend request');
         handleRequestComplete();
         return;
       }
 
-      await queueWrite('friend.request.send');
-      await inviteFriend({ code: normalizedCode });
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+      await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
       handleRequestComplete();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not send friend request.';

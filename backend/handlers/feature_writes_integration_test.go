@@ -12,10 +12,13 @@ import (
 )
 
 type visitResponsePayload struct {
-	ID             string `json:"id"`
-	RestaurantName string `json:"restaurantName"`
-	Visibility     string `json:"visibility"`
-	Items          []struct {
+	ID                    string `json:"id"`
+	RestaurantName        string `json:"restaurantName"`
+	RestaurantLocation    string `json:"restaurantLocation"`
+	RestaurantCuisineType string `json:"restaurantCuisineType"`
+	UserName              string `json:"userName"`
+	Visibility            string `json:"visibility"`
+	Items                 []struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"items"`
@@ -211,6 +214,126 @@ func TestVisitCreateEndpointUsesProvidedRestaurantID(t *testing.T) {
 	}
 	if count := countRestaurantsByName(t, server.app, "Ignored New Name"); count != 0 {
 		t.Fatalf("expected 0 duplicate restaurants, got %d", count)
+	}
+}
+
+func TestVisitGetEndpointReturnsHydratedVisitDetail(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Noodle House")
+	restaurant.Set("location", "Oakland")
+	restaurant.Set("cuisineType", "Sichuan")
+	if err := server.app.Save(restaurant); err != nil {
+		t.Fatalf("failed to update restaurant metadata: %v", err)
+	}
+
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Spicy Wontons", 4)
+	seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Dan Dan Noodles", 5)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits/"+visit.Id,
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload visitResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse visit payload: %v", err)
+	}
+
+	if payload.RestaurantName != "Noodle House" {
+		t.Fatalf("expected restaurantName=Noodle House, got %q", payload.RestaurantName)
+	}
+	if payload.RestaurantLocation != "Oakland" {
+		t.Fatalf("expected restaurantLocation=Oakland, got %q", payload.RestaurantLocation)
+	}
+	if payload.RestaurantCuisineType != "Sichuan" {
+		t.Fatalf("expected restaurantCuisineType=Sichuan, got %q", payload.RestaurantCuisineType)
+	}
+	if payload.UserName != "Integration Test User" {
+		t.Fatalf("expected userName=Integration Test User, got %q", payload.UserName)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(payload.Items))
+	}
+	itemNames := []string{payload.Items[0].Name, payload.Items[1].Name}
+	if !containsString(itemNames, "Spicy Wontons") || !containsString(itemNames, "Dan Dan Noodles") {
+		t.Fatalf("expected both visit items in the response, got %#v", payload.Items)
+	}
+}
+
+func TestVisitGetEndpointFiltersItemsForFriends(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	friend, friendToken := createAuthUser(t, server.app, false, true)
+
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   owner.Id,
+		"friend": friend.Id,
+		"status": "accepted",
+	})
+
+	restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Shared Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "friends")
+	seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Visible Dish", 4)
+	filteredItem := seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Under Review Dish", 5)
+	filteredItem.Set("moderationStatus", "under_review")
+	if err := server.app.Save(filteredItem); err != nil {
+		t.Fatalf("failed to mark item under review: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits/"+visit.Id,
+		friendToken,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload visitResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse visit payload: %v", err)
+	}
+
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 visible item, got %d: %#v", len(payload.Items), payload.Items)
+	}
+	if payload.Items[0].Name != "Visible Dish" {
+		t.Fatalf("expected visible item to remain, got %#v", payload.Items)
+	}
+}
+
+func TestVisitGetEndpointHidesPrivateVisitsFromOtherUsers(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	_, otherToken := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, owner.Id, "Private Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, owner.Id, "private")
+	seedFoodItemRecord(t, server.app, visit.Id, owner.Id, "Secret Dish", 5)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/visits/"+visit.Id,
+		otherToken,
+		"",
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
 	}
 }
 
@@ -721,6 +844,16 @@ func seedBillRecord(t *testing.T, app core.App, creatorUserID string, title stri
 		t.Fatalf("failed to create bill: %v", err)
 	}
 	return record
+}
+
+func containsString(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+
+	return false
 }
 
 func seedBillParticipantRecord(

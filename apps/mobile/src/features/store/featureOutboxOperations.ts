@@ -1,4 +1,4 @@
-import { ClientResponseError, type RecordModel } from 'pocketbase';
+import type { RecordModel } from 'pocketbase';
 
 import { env } from '../../config/env';
 import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
@@ -218,11 +218,11 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'friend.request.cancel',
 ]);
 
-export function buildFeatureOutboxUrl(operationName: FeatureOutboxOperationName): string {
+function buildFeatureOutboxUrl(operationName: FeatureOutboxOperationName): string {
   return `${FEATURE_OUTBOX_URL_PREFIX}${operationName}`;
 }
 
-export function parseFeatureOutboxOperationName(url: string): FeatureOutboxOperationName | null {
+function parseFeatureOutboxOperationName(url: string): FeatureOutboxOperationName | null {
   if (!url.startsWith(FEATURE_OUTBOX_URL_PREFIX)) {
     return null;
   }
@@ -233,10 +233,6 @@ export function parseFeatureOutboxOperationName(url: string): FeatureOutboxOpera
   }
 
   return null;
-}
-
-export function isFeatureOutboxUrl(url: string): boolean {
-  return parseFeatureOutboxOperationName(url) !== null;
 }
 
 export function createFeatureOutboxMutationInput<TName extends FeatureOutboxOperationName>(
@@ -256,7 +252,7 @@ export function createFeatureOutboxMutationInput<TName extends FeatureOutboxOper
 export function createVisitApiMutationInput(payload: CreateVisitInput): EnqueueMutationInput {
   return {
     method: 'POST',
-    url: `${env.apiBaseUrl}/api/visits`,
+    url: `${env.pocketbaseUrl}/api/visits`,
     headers: {
       'X-Mobile-Write-Operation': 'visit.create',
     },
@@ -277,7 +273,7 @@ export function updateVisitApiMutationInput(
 ): EnqueueMutationInput {
   return {
     method: 'PUT',
-    url: `${env.apiBaseUrl}/api/visits/${encodeURIComponent(visitId)}`,
+    url: `${env.pocketbaseUrl}/api/visits/${encodeURIComponent(visitId)}`,
     headers: {
       'X-Mobile-Write-Operation': 'visit.update',
     },
@@ -288,7 +284,7 @@ export function updateVisitApiMutationInput(
 export function createBillApiMutationInput(payload: CreateBillInput): EnqueueMutationInput {
   return {
     method: 'POST',
-    url: `${env.apiBaseUrl}/api/bills`,
+    url: `${env.pocketbaseUrl}/api/bills`,
     headers: {
       'X-Mobile-Write-Operation': 'bill.create',
     },
@@ -302,7 +298,7 @@ export function updateBillApiMutationInput(
 ): EnqueueMutationInput {
   return {
     method: 'PUT',
-    url: `${env.apiBaseUrl}/api/bills/${encodeURIComponent(billId)}`,
+    url: `${env.pocketbaseUrl}/api/bills/${encodeURIComponent(billId)}`,
     headers: {
       'X-Mobile-Write-Operation': 'bill.update',
     },
@@ -313,7 +309,7 @@ export function updateBillApiMutationInput(
 export function deleteBillApiMutationInput(billId: string): EnqueueMutationInput {
   return {
     method: 'DELETE',
-    url: `${env.apiBaseUrl}/api/bills/${encodeURIComponent(billId)}`,
+    url: `${env.pocketbaseUrl}/api/bills/${encodeURIComponent(billId)}`,
     headers: {
       'X-Mobile-Write-Operation': 'bill.delete',
     },
@@ -327,7 +323,7 @@ export function updateBillParticipantPaidStatusApiMutationInput(
 ): EnqueueMutationInput {
   return {
     method: 'PATCH',
-    url: `${env.apiBaseUrl}/api/bills/${encodeURIComponent(billId)}/participants/${encodeURIComponent(participantId)}/paid-status`,
+    url: `${env.pocketbaseUrl}/api/bills/${encodeURIComponent(billId)}/participants/${encodeURIComponent(participantId)}/paid-status`,
     headers: {
       'X-Mobile-Write-Operation': 'bill.participant.toggle-paid',
     },
@@ -508,22 +504,6 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
     default:
       return false;
   }
-}
-
-export function isLikelyTransientMutationError(error: unknown): boolean {
-  if (error instanceof ClientResponseError) {
-    return error.status === 0 || error.status >= 500;
-  }
-
-  if (error instanceof TypeError) {
-    return /network|fetch/i.test(error.message);
-  }
-
-  if (error instanceof Error) {
-    return /network|offline|timed out|timeout/i.test(error.message);
-  }
-
-  return false;
 }
 
 function parseMutationPayload(value: string | null): unknown {

@@ -13,8 +13,8 @@ const (
 	menuReviewRouteLabel     = "POST /api/menu-review-requests"
 	menuItemsFromScanLabel   = "POST /api/menu-items/from-scan"
 	placesRoutesPrefixLabel  = "POST /api/places/"
-	postHogStaticRouteLabel  = "GET /api/visit-insights/static/"
-	postHogRoutePrefixLabel  = "/api/visit-insights/"
+	postHogStaticRouteLabel  = "GET /api/analytics/static/"
+	postHogRoutePrefixLabel  = "/api/analytics/"
 	tastingSessionJoinLabel  = "POST /api/tasting-sessions/join"
 	allAudience              = core.RateLimitRuleAudienceAll
 	guestAudience            = core.RateLimitRuleAudienceGuest

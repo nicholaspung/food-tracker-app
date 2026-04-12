@@ -11,8 +11,7 @@ import {
   type FeedbackListQueryData,
   prependFeedbackListItem,
 } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -40,8 +39,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) {
   const styles = useStyles();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
 
@@ -93,8 +91,16 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
         description: trimmedMessage,
       };
 
-      if (!isOnline) {
-        await queueFeatureOutbox('feedback.create', feedbackInput);
+      const createResult = await writeFeature({
+        operationName: 'feedback.create',
+        offline: {
+          strategy: 'outbox',
+          payload: feedbackInput,
+        },
+        execute: () => createFeedback(feedbackInput),
+      });
+
+      if (createResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.root });
         trackObservabilityEvent('FEEDBACK_SUBMIT_SUCCEEDED', {
           source: 'CreateFeedbackScreen',
@@ -105,8 +111,7 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
         return;
       }
 
-      await queueWrite('feedback.create');
-      const createdFeedback = await createFeedback(feedbackInput);
+      const createdFeedback = createResult.result;
 
       queryClient.setQueryData<FeedbackListQueryData>(feedbackQueryKeys.list, (currentFeedback) =>
         prependFeedbackListItem(currentFeedback, createdFeedback),

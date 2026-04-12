@@ -62,7 +62,7 @@ FOOD_TRACKER_APP_URL=http://localhost:8081
 FOOD_TRACKER_ADMIN_URL=http://localhost:5173
 FOOD_TRACKER_API_BASE_URL=http://127.0.0.1:8090
 FOOD_TRACKER_POCKETBASE_URL=http://127.0.0.1:8090
-FOOD_TRACKER_POSTHOG_HOST=http://127.0.0.1:8090/api/visit-insights
+FOOD_TRACKER_POSTHOG_HOST=http://127.0.0.1:8090/api/analytics
 GEMINI_API_KEY=
 GOOGLE_PLACES_API_KEY=
 POSTHOG_API_KEY=
@@ -73,6 +73,7 @@ Notes:
 
 - `GEMINI_API_KEY` and `GOOGLE_PLACES_API_KEY` are required for backend startup today.
 - `POSTHOG_API_KEY` is optional.
+- The first-party PostHog proxy lives at `/api/analytics` and forwards only `Content-Type` and `Accept`; it does not forward client IP, referrer, or user-agent headers.
 - During VPS deploys, `scripts/deploy.sh` writes `backend/.env` as a symlink to `/opt/food-tracker-secrets/{beta|production}/.env`.
 
 ## Shared Environment Modes
@@ -210,7 +211,7 @@ EXPO_PUBLIC_APP_WEB_URL=https://beta.app.yummyrecs.com
 EXPO_PUBLIC_ADMIN_URL=https://beta.admin.yummyrecs.com
 EXPO_PUBLIC_MARKETING_URL=https://beta.yummyrecs.com
 EXPO_PUBLIC_POSTHOG_API_KEY=
-EXPO_PUBLIC_POSTHOG_HOST=https://beta.app.yummyrecs.com/api/visit-insights
+EXPO_PUBLIC_POSTHOG_HOST=https://beta.app.yummyrecs.com/api/analytics
 ```
 
 Only `EXPO_PUBLIC_APP_ENV=beta` is strictly required for host selection in the current codebase. The URL overrides are recommended to keep EAS Update, EAS Build, and local reasoning aligned and explicit.
@@ -237,7 +238,7 @@ EXPO_PUBLIC_APP_WEB_URL=https://app.yummyrecs.com
 EXPO_PUBLIC_ADMIN_URL=https://admin.yummyrecs.com
 EXPO_PUBLIC_MARKETING_URL=https://yummyrecs.com
 EXPO_PUBLIC_POSTHOG_API_KEY=
-EXPO_PUBLIC_POSTHOG_HOST=https://app.yummyrecs.com/api/visit-insights
+EXPO_PUBLIC_POSTHOG_HOST=https://app.yummyrecs.com/api/analytics
 ```
 
 Optional PostHog build-time variables for production builds:

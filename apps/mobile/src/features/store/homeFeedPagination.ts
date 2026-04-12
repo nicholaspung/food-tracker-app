@@ -53,8 +53,8 @@ export interface HomeFeedPageResult {
   photoPreviews?: HomeFeedPhotoPreviewRecord[];
   cursor?: HomeFeedCursor;
   hasNextPage: boolean;
-  totalQuickTracks: number;
-  totalVisits: number;
+  totalQuickTracks?: number;
+  totalVisits?: number;
 }
 
 export interface ListHomeFeedPageInput {
@@ -62,6 +62,7 @@ export interface ListHomeFeedPageInput {
   pageSize?: number;
   scope?: HomeFeedScope;
   search?: string;
+  signal?: AbortSignal;
   typeFilter?: HomeFeedTypeFilter;
 }
 
@@ -241,6 +242,7 @@ export async function listHomeFeedPage(input?: ListHomeFeedPageInput): Promise<H
 
   const response = await sendApiRequest<HomeFeedPageResult>(`/api/home-feed?${query.toString()}`, {
     method: 'GET',
+    signal: input?.signal,
   });
 
   return {

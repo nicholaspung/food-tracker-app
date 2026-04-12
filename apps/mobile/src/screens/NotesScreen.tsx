@@ -26,12 +26,11 @@ import {
   type NoteRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { notesQueryKeys } from '../features/store/notesQuery';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -169,9 +168,7 @@ function formatTimeAgo(value: string): string {
 export function NotesScreen({ navigation }: NotesScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
-  const { isOnline } = useConnectivity();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [pendingDeleteNote, setPendingDeleteNote] = useState<NoteRecord | null>(null);
@@ -184,11 +181,12 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const noteStatusFilter = resolveNoteStatusFilter(activeFilter);
 
   const notesQuery = useInfiniteQuery({
-    queryKey: ['feature', 'notes', 'overview', noteStatusFilter],
-    queryFn: ({ pageParam }) =>
+    queryKey: notesQueryKeys.paginated(noteStatusFilter),
+    queryFn: ({ pageParam, signal }) =>
       listNotesOverviewPage({
         page: pageParam,
         pageSize: 20,
+        signal,
         status: noteStatusFilter,
       }),
     initialPageParam: 1,
@@ -266,7 +264,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     try {
       const notePhotos = await queryClient.fetchQuery({
         queryKey: ['feature', 'notePhotos', note.id],
-        queryFn: () => listNotePhotosForNote(note.id),
+        queryFn: ({ signal }) => listNotePhotosForNote(note.id, { signal }),
       });
       if (notePhotos.length === 0) {
         setActionErrorMessage('Could not load note photos.');
@@ -295,8 +293,16 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     setIsDeletingNote(true);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('note.delete', { noteId: pendingDeleteNote.id });
+      const deleteResult = await writeFeature({
+        operationName: 'note.delete',
+        offline: {
+          strategy: 'outbox',
+          payload: { noteId: pendingDeleteNote.id },
+        },
+        execute: () => deleteNote(pendingDeleteNote.id),
+      });
+
+      if (deleteResult.status === 'queued') {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
@@ -306,8 +312,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         return;
       }
 
-      await queueWrite('note.delete');
-      await deleteNote(pendingDeleteNote.id);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
@@ -319,7 +323,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     } finally {
       setIsDeletingNote(false);
     }
-  }, [isOnline, pendingDeleteNote, queryClient, queueFeatureOutbox, queueWrite]);
+  }, [pendingDeleteNote, queryClient, writeFeature]);
   const handleRefresh = useCallback(async () => {
     setIsPullRefreshing(true);
 

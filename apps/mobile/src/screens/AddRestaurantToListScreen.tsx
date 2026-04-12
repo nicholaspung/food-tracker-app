@@ -19,9 +19,9 @@ import {
   type RestaurantListVisitedRestaurantCandidate,
   type RestaurantListVisitedRestaurantFoodItem,
 } from '../features';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useQueryListState } from '../hooks/useListQueryState';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -41,6 +41,9 @@ interface GroupedFoodItemsByDate {
   visitDate: string;
   items: RestaurantListVisitedRestaurantFoodItem[];
 }
+
+const MIN_CANDIDATE_RESTAURANT_SEARCH_LENGTH = 2;
+const CANDIDATE_RESTAURANT_SEARCH_DEBOUNCE_MS = 250;
 
 const useStyles = createThemedStyles((theme) => ({
   section: {
@@ -168,6 +171,22 @@ function toDayKey(value: string): string {
   return `${year}-${month}-${day}`;
 }
 
+function matchesCandidateRestaurantSearch(
+  restaurant: RestaurantListVisitedRestaurantCandidate,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    restaurant.name.toLowerCase().includes(normalizedQuery) ||
+    (restaurant.location ?? '').toLowerCase().includes(normalizedQuery) ||
+    (restaurant.cuisineType ?? '').toLowerCase().includes(normalizedQuery)
+  );
+}
+
 export function AddRestaurantToListScreen({
   navigation,
   route,
@@ -175,8 +194,7 @@ export function AddRestaurantToListScreen({
   const { listId } = route.params;
   const theme = useTheme();
   const styles = useStyles();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
@@ -190,13 +208,28 @@ export function AddRestaurantToListScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const trimmedSearchQuery = searchQuery.trim();
+  const debouncedTrimmedSearchQuery = useDebouncedValue(
+    trimmedSearchQuery,
+    CANDIDATE_RESTAURANT_SEARCH_DEBOUNCE_MS,
+  );
+  const shouldQueryCandidateRestaurantsBySearch =
+    trimmedSearchQuery.length >= MIN_CANDIDATE_RESTAURANT_SEARCH_LENGTH &&
+    debouncedTrimmedSearchQuery.length >= MIN_CANDIDATE_RESTAURANT_SEARCH_LENGTH &&
+    trimmedSearchQuery === debouncedTrimmedSearchQuery;
+  const activeCandidateRestaurantSearchQuery = shouldQueryCandidateRestaurantsBySearch
+    ? debouncedTrimmedSearchQuery
+    : '';
 
   const restaurantsQuery = useQuery({
-    queryKey: restaurantListQueryKeys.candidateRestaurants(listId, trimmedSearchQuery),
-    queryFn: () =>
+    queryKey: restaurantListQueryKeys.candidateRestaurants(
+      listId,
+      activeCandidateRestaurantSearchQuery,
+    ),
+    queryFn: ({ signal }) =>
       getRestaurantListCandidateRestaurants(
         listId,
-        trimmedSearchQuery || undefined,
+        activeCandidateRestaurantSearchQuery || undefined,
+        { signal },
       ),
   });
   const restaurantsState = useQueryListState({
@@ -207,7 +240,22 @@ export function AddRestaurantToListScreen({
     isSuccess: restaurantsQuery.isSuccess,
   });
 
-  const visitedRestaurants = restaurantsState.items;
+  const visitedRestaurants = useMemo(() => {
+    if (
+      shouldQueryCandidateRestaurantsBySearch ||
+      trimmedSearchQuery.length === 0
+    ) {
+      return restaurantsState.items;
+    }
+
+    return restaurantsState.items.filter((restaurant) =>
+      matchesCandidateRestaurantSearch(restaurant, trimmedSearchQuery),
+    );
+  }, [
+    restaurantsState.items,
+    shouldQueryCandidateRestaurantsBySearch,
+    trimmedSearchQuery,
+  ]);
   const hasBlockingVisitedRestaurantsError = restaurantsState.hasBlockingError;
 
   const selectedRestaurant = useMemo(
@@ -373,8 +421,16 @@ export function AddRestaurantToListScreen({
         note: noteDirty ? note : undefined,
       };
 
-      if (!isOnline) {
-        await queueFeatureOutbox("list.restaurant.add", addInput);
+      const addResult = await writeFeature({
+        operationName: 'list.restaurant.add',
+        offline: {
+          strategy: 'outbox',
+          payload: addInput,
+        },
+        execute: () => addRestaurantVisitRatingsToList(addInput),
+      });
+
+      if (addResult.status === 'queued') {
         await invalidateRestaurantListContentQueries(queryClient, listId, {
           includeCandidateRestaurants: true,
         });
@@ -389,9 +445,6 @@ export function AddRestaurantToListScreen({
         handleBackToListDetail();
         return;
       }
-
-      await queueWrite("list.restaurant.add");
-      await addRestaurantVisitRatingsToList(addInput);
 
       await invalidateRestaurantListContentQueries(queryClient, listId, {
         includeCandidateRestaurants: true,

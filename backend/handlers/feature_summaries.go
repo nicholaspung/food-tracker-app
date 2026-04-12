@@ -21,6 +21,8 @@ const ownerAccessibleQuickTrackModerationCondition = `(food_items.moderationStat
 
 const defaultRecentRestaurantLimit = 12
 const maxRecentRestaurantLimit = 24
+const defaultRestaurantSearchPageSize = 20
+const maxRestaurantSearchPageSize = 50
 const defaultHomeFeedPageSize = 20
 const maxHomeFeedPageSize = 50
 const defaultNotesPageSize = 20
@@ -56,12 +58,24 @@ type notesOverviewItemResponse struct {
 
 type notesOverviewResponse struct {
 	Items       []notesOverviewItemResponse `json:"items"`
-	Summary     noteSummaryResponse         `json:"summary"`
+	Summary     *noteSummaryResponse        `json:"summary,omitempty"`
 	Page        int                         `json:"page"`
 	PageSize    int                         `json:"pageSize"`
-	TotalItems  int                         `json:"totalItems"`
-	TotalPages  int                         `json:"totalPages"`
+	TotalItems  *int                        `json:"totalItems,omitempty"`
+	TotalPages  *int                        `json:"totalPages,omitempty"`
 	HasNextPage bool                        `json:"hasNextPage"`
+}
+
+type noteDetailPhotoResponse struct {
+	ID      string `json:"id"`
+	Note    string `json:"note"`
+	Photo   string `json:"photo"`
+	Created string `json:"created"`
+}
+
+type noteDetailResponse struct {
+	Note   *notesOverviewItemResponse `json:"note,omitempty"`
+	Photos []noteDetailPhotoResponse  `json:"photos"`
 }
 
 type friendsSummaryResponse struct {
@@ -115,8 +129,36 @@ type restaurantVisitStatsResponse struct {
 	Stats []restaurantVisitStatsSummary `json:"stats"`
 }
 
+type restaurantSearchPageResponse struct {
+	Items       []restaurantSearchResult `json:"items"`
+	Page        int                      `json:"page"`
+	PageSize    int                      `json:"pageSize"`
+	TotalItems  int                      `json:"totalItems"`
+	TotalPages  int                      `json:"totalPages"`
+	HasNextPage bool                     `json:"hasNextPage"`
+}
+
 type recentRestaurantIDRow struct {
 	RestaurantID string `db:"restaurantId"`
+}
+
+type restaurantSearchIDRow struct {
+	RestaurantID string `db:"restaurantId"`
+}
+
+type restaurantSelectionSummaryRow struct {
+	RestaurantID         string          `db:"restaurantId"`
+	Name                 string          `db:"name"`
+	Location             string          `db:"location"`
+	CuisineType          string          `db:"cuisineType"`
+	Visibility           string          `db:"visibility"`
+	Latitude             sql.NullFloat64 `db:"latitude"`
+	Longitude            sql.NullFloat64 `db:"longitude"`
+	PlaceID              string          `db:"placeId"`
+	IsGooglePlace        bool            `db:"isGooglePlace"`
+	UserVisitCount       int             `db:"userVisitCount"`
+	FriendCount          int             `db:"friendCount"`
+	HasPendingMenuReview int             `db:"hasPendingMenuReview"`
 }
 
 type homeFeedEntryRow struct {
@@ -172,8 +214,8 @@ type homeFeedResponse struct {
 	PhotoPreviews    []homeFeedPhotoPreviewResponse `json:"photoPreviews"`
 	Cursor           *homeFeedCursorResponse        `json:"cursor,omitempty"`
 	HasNextPage      bool                           `json:"hasNextPage"`
-	TotalQuickTracks int                            `json:"totalQuickTracks"`
-	TotalVisits      int                            `json:"totalVisits"`
+	TotalQuickTracks *int                           `json:"totalQuickTracks,omitempty"`
+	TotalVisits      *int                           `json:"totalVisits,omitempty"`
 }
 
 type visitsPageResponse struct {
@@ -229,6 +271,28 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			log.Printf("Failed to load notes overview for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to load notes overview", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.GET("/api/notes/{noteId}", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		noteID := strings.TrimSpace(e.Request.PathValue("noteId"))
+		if noteID == "" {
+			return apis.NewBadRequestError("noteId is required", nil)
+		}
+
+		response, err := getNoteDetailResponse(app, e.Auth.Id, noteID)
+		if err != nil {
+			log.Printf("Failed to load note detail for user %s and note %s: %v", e.Auth.Id, noteID, err)
+			return apis.NewApiError(500, "failed to load note detail", err)
+		}
+		if response == nil || response.Note == nil {
+			return apis.NewNotFoundError("note not found", nil)
 		}
 
 		return e.JSON(200, response)
@@ -398,6 +462,35 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 
 		return e.JSON(200, restaurants)
 	})
+
+	se.Router.GET("/api/restaurants/search", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		page, pageSize, err := parseRestaurantSearchPagination(
+			e.Request.URL.Query().Get("page"),
+			e.Request.URL.Query().Get("pageSize"),
+		)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		response, err := searchRestaurantsSummaryPage(
+			app,
+			e.Auth.Id,
+			e.Auth.GetBool("isAdmin"),
+			page,
+			pageSize,
+			e.Request.URL.Query().Get("search"),
+		)
+		if err != nil {
+			log.Printf("Failed to search restaurants for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to search restaurants", err)
+		}
+
+		return e.JSON(200, response)
+	}).Bind(apis.RequireAuth())
 
 	se.Router.POST("/api/restaurants/visit-stats", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
@@ -711,6 +804,33 @@ func parseVisitsPagination(pageRaw string, pageSizeRaw string) (int, int, error)
 	return page, pageSize, nil
 }
 
+func parseRestaurantSearchPagination(pageRaw string, pageSizeRaw string) (int, int, error) {
+	page := 1
+	if strings.TrimSpace(pageRaw) != "" {
+		parsedPage, err := strconv.Atoi(pageRaw)
+		if err != nil || parsedPage < 1 {
+			return 0, 0, fmt.Errorf("invalid page")
+		}
+		page = parsedPage
+	}
+
+	pageSize := defaultRestaurantSearchPageSize
+	if strings.TrimSpace(pageSizeRaw) != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeRaw)
+		if err != nil || parsedPageSize < 1 {
+			return 0, 0, fmt.Errorf("invalid pageSize")
+		}
+
+		if parsedPageSize > maxRestaurantSearchPageSize {
+			pageSize = maxRestaurantSearchPageSize
+		} else {
+			pageSize = parsedPageSize
+		}
+	}
+
+	return page, pageSize, nil
+}
+
 func normalizeHomeFeedScope(raw string) (string, error) {
 	switch strings.TrimSpace(raw) {
 	case "", "all":
@@ -879,32 +999,41 @@ func getNotesOverviewResponse(
 ) (notesOverviewResponse, error) {
 	response := notesOverviewResponse{
 		Items:    []notesOverviewItemResponse{},
-		Summary:  noteSummaryResponse{},
 		Page:     page,
 		PageSize: pageSize,
 	}
 
-	summary, err := getNoteSummary(app, userID)
-	if err != nil {
-		return response, err
-	}
-	response.Summary = summary
+	if page == 1 {
+		summary, err := getNoteSummary(app, userID)
+		if err != nil {
+			return response, err
+		}
 
-	switch status {
-	case "draft":
-		response.TotalItems = summary.DraftCount
-	case "used":
-		response.TotalItems = summary.UsedCount
-	default:
-		response.TotalItems = summary.AllCount
-	}
+		response.Summary = &summary
 
-	if response.TotalItems == 0 {
-		return response, nil
-	}
+		totalItems := 0
+		switch status {
+		case "draft":
+			totalItems = summary.DraftCount
+		case "used":
+			totalItems = summary.UsedCount
+		default:
+			totalItems = summary.AllCount
+		}
 
-	response.TotalPages = (response.TotalItems + pageSize - 1) / pageSize
-	response.HasNextPage = page < response.TotalPages
+		totalPages := 0
+		if totalItems > 0 {
+			totalPages = (totalItems + pageSize - 1) / pageSize
+		}
+
+		response.TotalItems = &totalItems
+		response.TotalPages = &totalPages
+		response.HasNextPage = totalPages > 0 && page < totalPages
+
+		if totalItems == 0 {
+			return response, nil
+		}
+	}
 
 	filter := "user = {:userId}"
 	params := dbx.Params{
@@ -919,7 +1048,7 @@ func getNotesOverviewResponse(
 		"notes",
 		filter,
 		"-updated,-created",
-		pageSize,
+		pageSize+1,
 		(page-1)*pageSize,
 		params,
 	)
@@ -928,6 +1057,11 @@ func getNotesOverviewResponse(
 	}
 	if len(noteRecords) == 0 {
 		return response, nil
+	}
+
+	if len(noteRecords) > pageSize {
+		response.HasNextPage = true
+		noteRecords = noteRecords[:pageSize]
 	}
 
 	noteIDs := make([]string, 0, len(noteRecords))
@@ -952,19 +1086,7 @@ func getNotesOverviewResponse(
 
 	response.Items = make([]notesOverviewItemResponse, 0, len(noteRecords))
 	for _, note := range noteRecords {
-		restaurantID := strings.TrimSpace(note.GetString("restaurant"))
-		item := notesOverviewItemResponse{
-			ID:               note.Id,
-			Content:          strings.TrimSpace(note.GetString("content")),
-			LocationText:     strings.TrimSpace(note.GetString("location_text")),
-			Status:           normalizeNoteStatusValue(note.GetString("status")),
-			RestaurantID:     restaurantID,
-			RestaurantName:   resolveRestaurantName(restaurantsByID[restaurantID]),
-			UsedInVisitID:    strings.TrimSpace(note.GetString("usedInVisit")),
-			UsedInFoodItemID: strings.TrimSpace(note.GetString("usedInFoodItem")),
-			CreatedAt:        strings.TrimSpace(note.GetString("created")),
-			UpdatedAt:        strings.TrimSpace(note.GetString("updated")),
-		}
+		item := buildNoteOverviewItemResponse(note, restaurantsByID)
 
 		if notePhotos := photosByNoteID[note.Id]; len(notePhotos) > 0 {
 			item.PhotoPreview = &notesOverviewPhotoPreviewResponse{
@@ -978,6 +1100,73 @@ func getNotesOverviewResponse(
 	}
 
 	return response, nil
+}
+
+func getNoteDetailResponse(app core.App, userID string, noteID string) (*noteDetailResponse, error) {
+	noteRecord, err := app.FindFirstRecordByFilter(
+		"notes",
+		"id = {:noteId} && user = {:userId}",
+		dbx.Params{
+			"noteId": strings.TrimSpace(noteID),
+			"userId": userID,
+		},
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	restaurantID := strings.TrimSpace(noteRecord.GetString("restaurant"))
+	restaurantRecords, err := findRecordsByIDs(app, "restaurants", []string{restaurantID})
+	if err != nil {
+		return nil, err
+	}
+
+	photoRecords, err := findRecordsByRelationValues(app, "note_photos", "note", []string{noteRecord.Id}, "created")
+	if err != nil {
+		return nil, err
+	}
+
+	response := &noteDetailResponse{
+		Note:   nil,
+		Photos: make([]noteDetailPhotoResponse, 0, len(photoRecords)),
+	}
+	noteItem := buildNoteOverviewItemResponse(noteRecord, mapRecordsByID(restaurantRecords))
+	response.Note = &noteItem
+
+	for _, photoRecord := range photoRecords {
+		response.Photos = append(response.Photos, noteDetailPhotoResponse{
+			ID:      photoRecord.Id,
+			Note:    strings.TrimSpace(photoRecord.GetString("note")),
+			Photo:   strings.TrimSpace(photoRecord.GetString("photo")),
+			Created: strings.TrimSpace(photoRecord.GetString("created")),
+		})
+	}
+
+	return response, nil
+}
+
+func buildNoteOverviewItemResponse(
+	note *core.Record,
+	restaurantsByID map[string]*core.Record,
+) notesOverviewItemResponse {
+	restaurantID := strings.TrimSpace(note.GetString("restaurant"))
+
+	return notesOverviewItemResponse{
+		ID:               note.Id,
+		Content:          strings.TrimSpace(note.GetString("content")),
+		LocationText:     strings.TrimSpace(note.GetString("location_text")),
+		Status:           normalizeNoteStatusValue(note.GetString("status")),
+		RestaurantID:     restaurantID,
+		RestaurantName:   resolveRestaurantName(restaurantsByID[restaurantID]),
+		UsedInVisitID:    strings.TrimSpace(note.GetString("usedInVisit")),
+		UsedInFoodItemID: strings.TrimSpace(note.GetString("usedInFoodItem")),
+		CreatedAt:        strings.TrimSpace(note.GetString("created")),
+		UpdatedAt:        strings.TrimSpace(note.GetString("updated")),
+	}
 }
 
 func normalizeNoteStatusValue(status string) string {
@@ -1030,21 +1219,24 @@ func getHomeFeedResponse(
 		PhotoPreviews: []homeFeedPhotoPreviewResponse{},
 	}
 
-	counts, err := countHomeFeedEntries(app, userID, isAdmin, scope, search, typeFilter)
-	if err != nil {
-		return response, err
-	}
+	if page == 1 {
+		counts, err := countHomeFeedEntries(app, userID, isAdmin, scope, search, typeFilter)
+		if err != nil {
+			return response, err
+		}
 
-	response.TotalVisits = counts.TotalVisits
-	response.TotalQuickTracks = counts.TotalQuickTracks
+		response.TotalVisits = &counts.TotalVisits
+		response.TotalQuickTracks = &counts.TotalQuickTracks
+	}
 
 	rows, err := listHomeFeedEntryRows(app, userID, isAdmin, page, pageSize, scope, search, typeFilter)
 	if err != nil {
 		return response, err
 	}
 
-	response.HasNextPage = len(rows) == pageSize && page*pageSize < (counts.TotalVisits+counts.TotalQuickTracks)
+	response.HasNextPage = len(rows) > pageSize
 	if response.HasNextPage {
+		rows = rows[:pageSize]
 		response.Cursor = &homeFeedCursorResponse{Page: page + 1}
 	}
 
@@ -1369,7 +1561,7 @@ func listHomeFeedEntryRows(
 	params := dbx.Params{
 		"userId":     userID,
 		"searchLike": buildHomeFeedSearchLike(search),
-		"limit":      pageSize,
+		"limit":      pageSize + 1,
 		"offset":     (page - 1) * pageSize,
 	}
 
@@ -1730,20 +1922,276 @@ func listRecentRestaurantsSummary(
 		restaurantIDs = append(restaurantIDs, row.RestaurantID)
 	}
 
-	records, err := findRecordsByIDs(app, "restaurants", restaurantIDs)
+	return buildRestaurantSelectionSummaries(app, userID, isAdmin, restaurantIDs)
+}
+
+func searchRestaurantsSummaryPage(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	page int,
+	pageSize int,
+	search string,
+) (restaurantSearchPageResponse, error) {
+	response := restaurantSearchPageResponse{
+		Items:    []restaurantSearchResult{},
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	normalizedSearch := strings.ToLower(strings.TrimSpace(search))
+	if normalizedSearch == "" {
+		return response, nil
+	}
+
+	params := dbx.Params{
+		"normalizedSearch": normalizedSearch,
+		"searchLike":       "%" + normalizedSearch + "%",
+		"userId":           userID,
+	}
+
+	countRow := struct {
+		TotalItems int `db:"totalItems"`
+	}{}
+
+	countQuery := buildRestaurantSearchBaseQuery(isAdmin) + `
+		SELECT COUNT(*) AS [[totalItems]]
+		FROM restaurants
+		WHERE ` + restaurantSearchFilterClause()
+	if !isAdmin {
+		countQuery += `
+			AND (` + restaurantAccessCondition() + `)
+		`
+	}
+
+	if err := app.DB().NewQuery(countQuery).
+		Bind(params).
+		One(&countRow); err != nil {
+		return response, err
+	}
+
+	response.TotalItems = countRow.TotalItems
+	if countRow.TotalItems == 0 {
+		return response, nil
+	}
+
+	response.TotalPages = (countRow.TotalItems + pageSize - 1) / pageSize
+	response.HasNextPage = page < response.TotalPages
+
+	idRows := []restaurantSearchIDRow{}
+	pageQuery := buildRestaurantSearchBaseQuery(isAdmin) + `
+		SELECT restaurants.id AS [[restaurantId]]
+		FROM restaurants
+		WHERE ` + restaurantSearchFilterClause()
+	if !isAdmin {
+		pageQuery += `
+			AND (` + restaurantAccessCondition() + `)
+		`
+	}
+	pageQuery += `
+		ORDER BY LOWER(TRIM(COALESCE(restaurants.name, ''))) ASC, LOWER(TRIM(COALESCE(restaurants.location, ''))) ASC, restaurants.id ASC
+		LIMIT {:limit}
+		OFFSET {:offset}
+	`
+
+	if err := app.DB().NewQuery(pageQuery).
+		Bind(dbx.Params{
+			"limit":            pageSize,
+			"normalizedSearch": normalizedSearch,
+			"offset":           (page - 1) * pageSize,
+			"searchLike":       "%" + normalizedSearch + "%",
+			"userId":           userID,
+		}).
+		All(&idRows); err != nil {
+		return response, err
+	}
+
+	restaurantIDs := make([]string, 0, len(idRows))
+	for _, row := range idRows {
+		restaurantIDs = append(restaurantIDs, row.RestaurantID)
+	}
+
+	items, err := buildRestaurantSelectionSummaries(app, userID, isAdmin, restaurantIDs)
+	if err != nil {
+		return response, err
+	}
+	response.Items = items
+
+	return response, nil
+}
+
+func buildRestaurantSearchBaseQuery(isAdmin bool) string {
+	if isAdmin {
+		return ""
+	}
+
+	return `
+		WITH accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		)
+	`
+}
+
+func restaurantSearchFilterClause() string {
+	return `
+		(
+			INSTR(LOWER(TRIM(COALESCE(restaurants.name, ''))), {:normalizedSearch}) > 0
+			OR INSTR(LOWER(TRIM(COALESCE(restaurants.location, ''))), {:normalizedSearch}) > 0
+			OR INSTR(LOWER(TRIM(COALESCE(restaurants.cuisineType, ''))), {:normalizedSearch}) > 0
+		)
+	`
+}
+
+func restaurantAccessCondition() string {
+	return `
+		restaurants.visibility = 'public'
+		OR restaurants.createdBy = {:userId}
+		OR (
+			restaurants.visibility = 'friends'
+			AND restaurants.createdBy IN (SELECT friendId FROM accepted_friends)
+		)
+	`
+}
+
+func buildRestaurantSelectionSummaries(
+	app core.App,
+	userID string,
+	isAdmin bool,
+	restaurantIDs []string,
+) ([]restaurantSearchResult, error) {
+	normalizedRestaurantIDs := normalizeRestaurantIDs(restaurantIDs)
+	if len(normalizedRestaurantIDs) == 0 {
+		return []restaurantSearchResult{}, nil
+	}
+
+	encodedRestaurantIDs, err := json.Marshal(normalizedRestaurantIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	recordsByID := mapRecordsByID(records)
-	result := make([]restaurantSearchResult, 0, len(restaurantIDs))
-	for _, restaurantID := range restaurantIDs {
-		record := recordsByID[restaurantID]
-		if record == nil {
+	ownerCondition := "visits.user = {:userId}"
+	friendCondition := "visits.user != {:userId} AND visits.user IN (SELECT friendId FROM accepted_friends)"
+	if !isAdmin {
+		ownerCondition += " AND " + ownerAccessibleVisitModerationCondition
+		friendCondition += " AND " + visibleVisitModerationCondition + " AND (visits.visibility = 'public' OR visits.visibility = 'friends')"
+	}
+
+	query := fmt.Sprintf(`
+		WITH requested_restaurants AS (
+			SELECT TRIM(value) AS restaurantId, CAST(key AS INTEGER) AS sortOrder
+			FROM json_each({:restaurantIdsJson})
+			WHERE TRIM(value) != ''
+		),
+		accepted_friends AS (
+			SELECT friend AS friendId
+			FROM friendships
+			WHERE user = {:userId} AND status = 'accepted'
+			UNION
+			SELECT user AS friendId
+			FROM friendships
+			WHERE friend = {:userId} AND status = 'accepted'
+		),
+		visit_stats AS (
+			SELECT
+				requested_restaurants.restaurantId AS restaurantId,
+				COALESCE(
+					SUM(
+						CASE
+							WHEN %s THEN 1
+							ELSE 0
+						END
+					),
+					0
+				) AS userVisitCount,
+				COALESCE(
+					COUNT(
+						DISTINCT CASE
+							WHEN %s THEN visits.user
+							ELSE NULL
+						END
+					),
+					0
+				) AS friendCount
+			FROM requested_restaurants
+			LEFT JOIN visits ON visits.restaurant = requested_restaurants.restaurantId
+			GROUP BY requested_restaurants.restaurantId
+		),
+		review_stats AS (
+			SELECT
+				requested_restaurants.restaurantId AS restaurantId,
+				CASE
+					WHEN COUNT(menu_review_requests.id) > 0 THEN 1
+					ELSE 0
+				END AS hasPendingMenuReview
+			FROM requested_restaurants
+			LEFT JOIN menu_review_requests
+				ON menu_review_requests.restaurant = requested_restaurants.restaurantId
+				AND menu_review_requests.status = 'pending'
+			GROUP BY requested_restaurants.restaurantId
+		)
+		SELECT
+			requested_restaurants.restaurantId AS [[restaurantId]],
+			COALESCE(restaurants.name, '') AS [[name]],
+			COALESCE(restaurants.location, '') AS [[location]],
+			COALESCE(restaurants.cuisineType, '') AS [[cuisineType]],
+			COALESCE(restaurants.visibility, '') AS [[visibility]],
+			restaurants.latitude AS [[latitude]],
+			restaurants.longitude AS [[longitude]],
+			COALESCE(restaurants.placeId, '') AS [[placeId]],
+			COALESCE(restaurants.isGooglePlace, 0) AS [[isGooglePlace]],
+			COALESCE(visit_stats.userVisitCount, 0) AS [[userVisitCount]],
+			COALESCE(visit_stats.friendCount, 0) AS [[friendCount]],
+			COALESCE(review_stats.hasPendingMenuReview, 0) AS [[hasPendingMenuReview]]
+		FROM requested_restaurants
+		LEFT JOIN restaurants ON restaurants.id = requested_restaurants.restaurantId
+		LEFT JOIN visit_stats ON visit_stats.restaurantId = requested_restaurants.restaurantId
+		LEFT JOIN review_stats ON review_stats.restaurantId = requested_restaurants.restaurantId
+		ORDER BY requested_restaurants.sortOrder ASC
+	`, ownerCondition, friendCondition)
+
+	rows := []restaurantSelectionSummaryRow{}
+	if err := app.DB().NewQuery(query).
+		Bind(dbx.Params{
+			"restaurantIdsJson": string(encodedRestaurantIDs),
+			"userId":            userID,
+		}).
+		All(&rows); err != nil {
+		return nil, err
+	}
+
+	result := make([]restaurantSearchResult, 0, len(rows))
+	for _, row := range rows {
+		if strings.TrimSpace(row.Name) == "" {
 			continue
 		}
 
-		result = append(result, mapRestaurantSearchResult(record))
+		entry := restaurantSearchResult{
+			ID:                   row.RestaurantID,
+			Name:                 strings.TrimSpace(row.Name),
+			City:                 strings.TrimSpace(row.Location),
+			Location:             strings.TrimSpace(row.Location),
+			CuisineType:          strings.TrimSpace(row.CuisineType),
+			Visibility:           strings.TrimSpace(row.Visibility),
+			PlaceID:              strings.TrimSpace(row.PlaceID),
+			IsGooglePlace:        row.IsGooglePlace,
+			UserVisitCount:       row.UserVisitCount,
+			FriendCount:          row.FriendCount,
+			HasPendingMenuReview: row.HasPendingMenuReview > 0,
+		}
+		if row.Latitude.Valid {
+			entry.Latitude = &row.Latitude.Float64
+		}
+		if row.Longitude.Valid {
+			entry.Longitude = &row.Longitude.Float64
+		}
+
+		result = append(result, entry)
 	}
 
 	return result, nil

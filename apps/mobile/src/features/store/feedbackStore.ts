@@ -12,7 +12,6 @@ import {
   createEmptyPaginatedResult,
   escapeFilterValue,
   getAuthenticatedUserId,
-  isCurrentUserAdmin,
   mapPaginatedResult,
   nowIso,
   resolvePaginationInput,
@@ -31,9 +30,15 @@ export type {
   SendFeedbackMessageInput,
 } from './featureStore';
 
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
+
 interface FeedbackCollectionRecord {
   id: string;
   user: string;
+  user_name?: string;
+  user_email?: string;
   assigned_admin?: string;
   admin_reply_deadline_at?: string;
   title: string;
@@ -53,12 +58,28 @@ interface FeedbackMessageCollectionRecord {
   id: string;
   feedback: string;
   user: string;
+  user_name?: string;
+  user_email?: string;
   message: string;
   is_admin_message?: boolean;
   created: string;
   expand?: {
     user?: CollectionUserExpand;
   };
+}
+
+interface FeedbackMessagesPageResponse {
+  items: FeedbackMessageCollectionRecord[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+}
+
+interface FeedbackDetailResponse {
+  feedback: FeedbackCollectionRecord;
+  messages: FeedbackMessagesPageResponse;
 }
 
 interface FeedbackReplyResponse {
@@ -83,6 +104,11 @@ interface FeedbackReplyResult {
   message: FeedbackMessageRecord;
 }
 
+export interface FeedbackThreadDetailResult {
+  feedback: FeedbackRecord;
+  messages: PaginatedResult<FeedbackMessageRecord>;
+}
+
 function normalizeFeedbackStatus(status: unknown): FeedbackRecord['status'] {
   if (status === 'open' || status === 'in_progress' || status === 'resolved' || status === 'closed') {
     return status;
@@ -103,8 +129,8 @@ function mapFeedbackRecord(record: FeedbackCollectionRecord): FeedbackRecord {
   return {
     id: record.id,
     userId: record.user,
-    userName: resolveExpandedUserName(record.expand?.user),
-    userEmail: record.expand?.user?.email,
+    userName: record.user_name ?? resolveExpandedUserName(record.expand?.user),
+    userEmail: record.user_email ?? record.expand?.user?.email,
     assignedAdminId: record.assigned_admin,
     adminReplyDeadlineAt: record.admin_reply_deadline_at,
     title: record.title,
@@ -123,11 +149,24 @@ function mapFeedbackMessageRecord(record: FeedbackMessageCollectionRecord): Feed
     id: record.id,
     feedbackId: record.feedback,
     userId: record.user,
-    userName: resolveExpandedUserName(record.expand?.user),
-    userEmail: record.expand?.user?.email,
+    userName: record.user_name ?? resolveExpandedUserName(record.expand?.user),
+    userEmail: record.user_email ?? record.expand?.user?.email,
     message: record.message,
     isAdminMessage: record.is_admin_message === true,
     createdAt: record.created,
+  };
+}
+
+function mapFeedbackMessagesPageResponse(
+  pageResult: FeedbackMessagesPageResponse,
+): PaginatedResult<FeedbackMessageRecord> {
+  return {
+    items: pageResult.items.map(mapFeedbackMessageRecord),
+    page: pageResult.page,
+    pageSize: pageResult.pageSize,
+    totalItems: pageResult.totalItems,
+    totalPages: pageResult.totalPages,
+    hasNextPage: pageResult.hasNextPage,
   };
 }
 
@@ -156,12 +195,13 @@ export async function listFeedbackPage(input?: ListFeedbackPageInput): Promise<P
     filter,
     sort: '-last_message_at,-created',
     expand: 'user',
+    signal: input?.signal,
   });
 
   return mapPaginatedResult(pageResult, pageResult.items.map(mapFeedbackRecord));
 }
 
-export async function getFeedbackCountSummary(): Promise<FeedbackCountSummary> {
+export async function getFeedbackCountSummary(options?: ReadRequestOptions): Promise<FeedbackCountSummary> {
   if (!pb.authStore.record?.id) {
     return {
       allCount: 0,
@@ -171,22 +211,37 @@ export async function getFeedbackCountSummary(): Promise<FeedbackCountSummary> {
 
   return sendApiRequest<FeedbackCountSummary>('/api/feedback/summary', {
     method: 'GET',
+    signal: options?.signal,
   });
 }
 
-export async function getFeedbackById(feedbackId: string): Promise<FeedbackRecord> {
-  const currentUserId = getAuthenticatedUserId();
-
-  const record = await pb.collection('feedback').getOne<FeedbackCollectionRecord>(feedbackId, {
-    expand: 'user',
+export async function getFeedbackById(
+  feedbackId: string,
+  options?: ReadRequestOptions,
+): Promise<FeedbackRecord> {
+  const detail = await getFeedbackThreadDetail(feedbackId, {
+    signal: options?.signal,
   });
 
-  const feedback = mapFeedbackRecord(record);
-  if (feedback.userId !== currentUserId) {
-    throw new Error('This feedback thread could not be found.');
-  }
+  return detail.feedback;
+}
 
-  return feedback;
+export async function getFeedbackThreadDetail(
+  feedbackId: string,
+  options?: ReadRequestOptions,
+): Promise<FeedbackThreadDetailResult> {
+  const response = await sendApiRequest<FeedbackDetailResponse>(
+    `/api/feedback/${encodeURIComponent(feedbackId)}`,
+    {
+      method: 'GET',
+      signal: options?.signal,
+    },
+  );
+
+  return {
+    feedback: mapFeedbackRecord(response.feedback),
+    messages: mapFeedbackMessagesPageResponse(response.messages),
+  };
 }
 
 export async function createFeedback(input: CreateFeedbackInput): Promise<FeedbackRecord> {
@@ -219,50 +274,22 @@ export async function createFeedback(input: CreateFeedbackInput): Promise<Feedba
   );
 }
 
-export async function updateFeedbackStatus(
-  feedbackId: string,
-  status: FeedbackRecord['status'],
-): Promise<FeedbackRecord> {
-  return trackFeatureMutation(
-    'feedback.status.update',
-    async () => {
-      if (!isCurrentUserAdmin()) {
-        throw new Error('Only admins can update feedback status.');
-      }
-
-      const updated = await pb.collection('feedback').update<FeedbackCollectionRecord>(
-        feedbackId,
-        {
-          status,
-        },
-        {
-          expand: 'user',
-        },
-      );
-
-      return mapFeedbackRecord(updated);
-    },
-    {
-      status,
-    },
-  );
-}
-
 export async function listFeedbackMessagesPage(
   feedbackId: string,
   input?: ListFeedbackMessagesPageInput,
 ): Promise<PaginatedResult<FeedbackMessageRecord>> {
   const { page, pageSize } = resolvePaginationInput(input);
   const order = input?.order === 'asc' ? 'asc' : 'desc';
-  const pageResult = await listCollectionPage<FeedbackMessageCollectionRecord>('feedback_messages', {
-    page,
-    pageSize,
-    filter: `feedback = "${escapeFilterValue(feedbackId)}"`,
-    sort: order === 'asc' ? 'created' : '-created',
-    expand: 'user',
-  });
 
-  return mapPaginatedResult(pageResult, pageResult.items.map(mapFeedbackMessageRecord));
+  const pageResult = await sendApiRequest<FeedbackMessagesPageResponse>(
+    `/api/feedback/${encodeURIComponent(feedbackId)}/messages?page=${page}&pageSize=${pageSize}&order=${order}`,
+    {
+      method: 'GET',
+      signal: input?.signal,
+    },
+  );
+
+  return mapFeedbackMessagesPageResponse(pageResult);
 }
 
 export async function markFeedbackAsRead(feedbackId: string): Promise<FeedbackMarkReadResult> {

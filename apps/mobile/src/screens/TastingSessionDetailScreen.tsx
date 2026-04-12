@@ -105,7 +105,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
   const sessionQuery = useQuery({
     queryKey: ['feature', 'tastingSession', sessionId],
-    queryFn: () => getTastingSessionById(sessionId),
+    queryFn: ({ signal }) => getTastingSessionById(sessionId, { signal }),
   });
 
   const [newItemName, setNewItemName] = useState('');

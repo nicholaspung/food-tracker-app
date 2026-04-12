@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { StyleSheet } from 'react-native';
 
-import { useTheme } from '../../theme';
+import { createThemedStyles, useTheme } from '../../theme';
 import { IconActionCard } from '../shared';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -17,6 +16,12 @@ interface AddOptionCardProps {
   testID?: string;
 }
 
+const useStyles = createThemedStyles(() => ({
+  chevron: {
+    marginTop: 0,
+  },
+}));
+
 export function AddOptionCard({
   title,
   description,
@@ -27,12 +32,7 @@ export function AddOptionCard({
   testID,
 }: AddOptionCardProps) {
   const theme = useTheme();
-
-  const styles = StyleSheet.create({
-    chevron: {
-      marginTop: 0,
-    },
-  });
+  const styles = useStyles();
 
   return (
     <IconActionCard

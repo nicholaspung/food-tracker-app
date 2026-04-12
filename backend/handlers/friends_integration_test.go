@@ -213,6 +213,89 @@ func TestFriendsListEndpointSupportsSearchAndUserIDFilters(t *testing.T) {
 	}
 }
 
+func TestFriendsListEndpointIncludesSummaryOnFirstUnfilteredPageOnly(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFriendHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+
+	owner, ownerToken := createAuthUser(t, server.app, false, false)
+	acceptedFriend, _ := createAuthUser(t, server.app, false, false)
+	incomingRequester, _ := createAuthUser(t, server.app, false, false)
+	outgoingRecipient, _ := createAuthUser(t, server.app, false, false)
+
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   owner.Id,
+		"friend": acceptedFriend.Id,
+		"status": "accepted",
+	})
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   incomingRequester.Id,
+		"friend": owner.Id,
+		"status": "pending",
+	})
+	createCollectionRecord(t, server.app, "friendships", map[string]any{
+		"user":   owner.Id,
+		"friend": outgoingRecipient.Id,
+		"status": "pending",
+	})
+
+	firstPageResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/friends?section=friends&page=1&pageSize=20",
+		ownerToken,
+		"",
+	)
+	if firstPageResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 for first page, got %d: %s", firstPageResponse.Code, firstPageResponse.Body.String())
+	}
+
+	firstPagePayload := parseJSONMap(t, firstPageResponse.Body.Bytes())
+	summaryPayload, ok := firstPagePayload["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object on first unfiltered page, got %#v", firstPagePayload["summary"])
+	}
+	assertFloatEquals(t, summaryPayload["friendsCount"], 1)
+	assertFloatEquals(t, summaryPayload["requestsCount"], 1)
+	assertFloatEquals(t, summaryPayload["sentCount"], 1)
+
+	searchResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/friends?section=friends&search=accepted&page=1&pageSize=20",
+		ownerToken,
+		"",
+	)
+	if searchResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 for filtered page, got %d: %s", searchResponse.Code, searchResponse.Body.String())
+	}
+
+	searchPayload := parseJSONMap(t, searchResponse.Body.Bytes())
+	if _, exists := searchPayload["summary"]; exists {
+		t.Fatalf("expected filtered page to omit summary, got %#v", searchPayload["summary"])
+	}
+
+	secondPageResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/friends?section=friends&page=2&pageSize=1",
+		ownerToken,
+		"",
+	)
+	if secondPageResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 for later page, got %d: %s", secondPageResponse.Code, secondPageResponse.Body.String())
+	}
+
+	secondPagePayload := parseJSONMap(t, secondPageResponse.Body.Bytes())
+	if _, exists := secondPagePayload["summary"]; exists {
+		t.Fatalf("expected later page to omit summary, got %#v", secondPagePayload["summary"])
+	}
+}
+
 func TestInviteFriendEndpointCreatesPendingRequestFromFriendCode(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFriendHandlers(se, app)

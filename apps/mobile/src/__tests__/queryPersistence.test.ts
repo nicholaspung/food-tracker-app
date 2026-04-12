@@ -3,6 +3,10 @@ import { persistQueryClientRestore, persistQueryClientSave } from '@tanstack/que
 import { QueryClient } from '@tanstack/react-query';
 
 import { feedbackQueryKeys } from '../features/store/feedbackQuery';
+import { friendsQueryKeys } from '../features/store/friendsQuery';
+import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
+import { notesQueryKeys } from '../features/store/notesQuery';
+import { profileQueryKeys } from '../features/store/profileQuery';
 import { WHATS_NEW_SEEN_QUERY_KEY } from '../lib/whatsNewState';
 import { queryPersister, sanitizePersistedClient, shouldPersistQuery } from '../providers/queryPersistence';
 
@@ -13,7 +17,7 @@ describe('React Query persistence', () => {
 
   it('restores only allowlisted browse-surface queries after a cold restart', async () => {
     const sourceClient = new QueryClient();
-    sourceClient.setQueryData(['feature', 'homeFeed', 'paginated', 'mine', 'all', ''], {
+    sourceClient.setQueryData(homeFeedQueryKeys.paginated('mine', 'all', ''), {
       pages: [
         {
           items: [
@@ -44,7 +48,7 @@ describe('React Query persistence', () => {
         },
       ],
     });
-    sourceClient.setQueryData(['feature', 'notes', 'paginated', 'draft'], {
+    sourceClient.setQueryData(notesQueryKeys.paginated('draft'), {
       pages: [
         {
           items: [
@@ -66,7 +70,7 @@ describe('React Query persistence', () => {
       ],
       pageParams: [1],
     });
-    sourceClient.setQueryData(['feature', 'notes', 'summary'], {
+    sourceClient.setQueryData(notesQueryKeys.summary, {
       allCount: 1,
       draftCount: 1,
       usedCount: 0,
@@ -82,12 +86,12 @@ describe('React Query persistence', () => {
         },
       ],
     });
-    sourceClient.setQueryData(['feature', 'friends', 'summary'], {
+    sourceClient.setQueryData(friendsQueryKeys.summary, {
       friendsCount: 1,
       requestsCount: 0,
       sentCount: 0,
     });
-    sourceClient.setQueryData(['feature', 'friends', 'paginated', 'friends'], {
+    sourceClient.setQueryData(friendsQueryKeys.paginated('friends'), {
       pages: [
         {
           items: [
@@ -102,6 +106,11 @@ describe('React Query persistence', () => {
           ],
           page: 1,
           pageSize: 20,
+          summary: {
+            friendsCount: 1,
+            requestsCount: 0,
+            sentCount: 0,
+          },
           totalItems: 1,
           totalPages: 1,
           hasNextPage: false,
@@ -138,7 +147,7 @@ describe('React Query persistence', () => {
       allCount: 4,
       activeCount: 2,
     });
-    sourceClient.setQueryData(['feature', 'profile'], {
+    sourceClient.setQueryData(profileQueryKeys.profile, {
       displayName: 'Should persist',
       bio: 'Private bio',
       favoriteCuisine: 'Sushi',
@@ -150,7 +159,7 @@ describe('React Query persistence', () => {
       id: 'thread_1',
       description: 'Thread detail should not persist',
     });
-    sourceClient.setQueryData(['feature', 'friends', 'paginated', 'friends', 'bill-picker', 'tay'], {
+    sourceClient.setQueryData(friendsQueryKeys.paginated('friends', 'tay'), {
       pages: [
         {
           items: [
@@ -188,26 +197,26 @@ describe('React Query persistence', () => {
       maxAge: 1000 * 60 * 60 * 24,
     });
 
-    expect(restoredClient.getQueryData(['feature', 'homeFeed', 'paginated', 'mine', 'all', ''])).toEqual(
-      sourceClient.getQueryData(['feature', 'homeFeed', 'paginated', 'mine', 'all', '']),
+    expect(restoredClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', ''))).toEqual(
+      sourceClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', '')),
     );
     expect(restoredClient.getQueryData(['feature', 'visitPhotos', 'feedItems', 'mine'])).toEqual(
       sourceClient.getQueryData(['feature', 'visitPhotos', 'feedItems', 'mine']),
     );
-    expect(restoredClient.getQueryData(['feature', 'notes', 'paginated', 'draft'])).toEqual(
-      sourceClient.getQueryData(['feature', 'notes', 'paginated', 'draft']),
+    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft'))).toEqual(
+      sourceClient.getQueryData(notesQueryKeys.paginated('draft')),
     );
-    expect(restoredClient.getQueryData(['feature', 'notes', 'summary'])).toEqual(
-      sourceClient.getQueryData(['feature', 'notes', 'summary']),
+    expect(restoredClient.getQueryData(notesQueryKeys.summary)).toEqual(
+      sourceClient.getQueryData(notesQueryKeys.summary),
     );
     expect(restoredClient.getQueryData(['feature', 'notePhotos', 'notes'])).toEqual(
       sourceClient.getQueryData(['feature', 'notePhotos', 'notes']),
     );
-    expect(restoredClient.getQueryData(['feature', 'friends', 'summary'])).toEqual(
-      sourceClient.getQueryData(['feature', 'friends', 'summary']),
+    expect(restoredClient.getQueryData(friendsQueryKeys.summary)).toEqual(
+      sourceClient.getQueryData(friendsQueryKeys.summary),
     );
-    expect(restoredClient.getQueryData(['feature', 'friends', 'paginated', 'friends'])).toEqual(
-      sourceClient.getQueryData(['feature', 'friends', 'paginated', 'friends']),
+    expect(restoredClient.getQueryData(friendsQueryKeys.paginated('friends'))).toEqual(
+      sourceClient.getQueryData(friendsQueryKeys.paginated('friends')),
     );
     expect(restoredClient.getQueryData(feedbackQueryKeys.list)).toEqual(
       sourceClient.getQueryData(feedbackQueryKeys.list),
@@ -215,14 +224,14 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(feedbackQueryKeys.summary)).toEqual(
       sourceClient.getQueryData(feedbackQueryKeys.summary),
     );
-    expect(restoredClient.getQueryData(['feature', 'profile'])).toEqual(
-      sourceClient.getQueryData(['feature', 'profile']),
+    expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
+      sourceClient.getQueryData(profileQueryKeys.profile),
     );
     expect(restoredClient.getQueryData(WHATS_NEW_SEEN_QUERY_KEY)).toEqual(
       sourceClient.getQueryData(WHATS_NEW_SEEN_QUERY_KEY),
     );
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
-    expect(restoredClient.getQueryData(['feature', 'friends', 'paginated', 'friends', 'bill-picker', 'tay'])).toBeUndefined();
+    expect(restoredClient.getQueryData(friendsQueryKeys.paginated('friends', 'tay'))).toBeUndefined();
 
     sourceClient.clear();
     restoredClient.clear();

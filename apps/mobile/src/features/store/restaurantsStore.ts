@@ -4,22 +4,17 @@ import type {
   ListRecentRestaurantsInput,
   MenuItemRecord,
   PaginatedResult,
-  RestaurantVisitStatsSummary,
   SearchRestaurantsPageInput,
 } from './featureStore';
 import {
-  buildSearchFilter,
   createEmptyPaginatedResult,
   escapeFilterValue,
   getAuthenticatedUserId,
-  mapPaginatedResult,
   nowIso,
   resolvePaginationInput,
 } from './featureStoreShared';
 import type { RestaurantCollectionRecord } from './pocketbaseRecordTypes';
 import {
-  getCollectionCount,
-  listCollectionPage,
   listCollectionRecords,
   sendApiRequest,
 } from './pocketbaseGateway';
@@ -30,7 +25,7 @@ export type {
   SearchRestaurantsPageInput,
 } from './featureStore';
 
-interface RecentRestaurantApiRecord {
+interface RestaurantSelectionApiRecord {
   id: string;
   name: string;
   city?: string;
@@ -41,6 +36,9 @@ interface RecentRestaurantApiRecord {
   longitude?: number;
   placeId?: string;
   isGooglePlace?: boolean;
+  userVisitCount?: number;
+  friendCount?: number;
+  hasPendingMenuReview?: boolean;
 }
 
 interface RestaurantUpsertApiRecord {
@@ -61,6 +59,15 @@ interface SearchRestaurantsPageOptions {
   signal?: AbortSignal;
 }
 
+interface SearchRestaurantsPageApiResponse {
+  items?: RestaurantSelectionApiRecord[];
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+}
+
 export interface UpsertRestaurantInput {
   restaurantName: string;
   location?: string;
@@ -72,8 +79,6 @@ export interface UpsertRestaurantInput {
   isGooglePlace?: boolean;
 }
 
-const RESTAURANT_LIST_FIELDS =
-  'id,name,location,cuisineType,visibility,latitude,longitude,placeId,isGooglePlace,created,updated';
 const DEFAULT_RECENT_RESTAURANT_LIMIT = 12;
 const MAX_RECENT_RESTAURANT_LIMIT = 24;
 
@@ -97,6 +102,30 @@ function mapRestaurantCollectionRecord(record: RestaurantCollectionRecord): Rest
     longitude: typeof record.longitude === 'number' ? record.longitude : undefined,
     placeId: record.placeId?.trim() || undefined,
     isGooglePlace: record.isGooglePlace === true,
+  };
+}
+
+function mapRestaurantSelectionApiRecord(record: RestaurantSelectionApiRecord): RestaurantRecord {
+  const location = record.location?.trim() || undefined;
+
+  return {
+    id: record.id,
+    name: record.name.trim(),
+    city: record.city?.trim() || location,
+    location,
+    cuisineType: record.cuisineType?.trim() || undefined,
+    visibility: record.visibility,
+    latitude: typeof record.latitude === 'number' ? record.latitude : undefined,
+    longitude: typeof record.longitude === 'number' ? record.longitude : undefined,
+    placeId: record.placeId?.trim() || undefined,
+    isGooglePlace: record.isGooglePlace === true,
+    userVisitCount:
+      typeof record.userVisitCount === 'number' ? record.userVisitCount : undefined,
+    friendCount: typeof record.friendCount === 'number' ? record.friendCount : undefined,
+    hasPendingMenuReview:
+      typeof record.hasPendingMenuReview === 'boolean'
+        ? record.hasPendingMenuReview
+        : undefined,
   };
 }
 
@@ -151,16 +180,22 @@ export async function searchRestaurantsPage(
   }
 
   const { page, pageSize } = resolvePaginationInput(input);
-  const pageResult = await listCollectionPage<RestaurantCollectionRecord>('restaurants', {
-    page,
-    pageSize,
-    filter: buildSearchFilter(['name', 'location', 'cuisineType'], trimmedSearch),
-    sort: 'name',
-    fields: RESTAURANT_LIST_FIELDS,
-    signal: options?.signal,
-  });
+  const response = await sendApiRequest<SearchRestaurantsPageApiResponse>(
+    `/api/restaurants/search?search=${encodeURIComponent(trimmedSearch)}&page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`,
+    {
+      method: 'GET',
+      signal: options?.signal,
+    },
+  );
 
-  return mapPaginatedResult(pageResult, pageResult.items.map(mapRestaurantCollectionRecord));
+  return {
+    items: (response.items ?? []).map(mapRestaurantSelectionApiRecord),
+    page: response.page ?? page,
+    pageSize: response.pageSize ?? pageSize,
+    totalItems: response.totalItems ?? 0,
+    totalPages: response.totalPages ?? 0,
+    hasNextPage: response.hasNextPage ?? false,
+  };
 }
 
 export async function listRecentRestaurants(
@@ -171,32 +206,21 @@ export async function listRecentRestaurants(
   }
 
   const limit = resolveRecentRestaurantLimit(input?.limit);
-  const response = await sendApiRequest<RecentRestaurantApiRecord[]>(
+  const response = await sendApiRequest<RestaurantSelectionApiRecord[]>(
     `/api/restaurants/recent?limit=${encodeURIComponent(String(limit))}`,
     {
       method: 'GET',
+      signal: input?.signal,
     },
   );
 
-  return response.map((restaurant) => {
-    const location = restaurant.location?.trim() || undefined;
-
-    return {
-      id: restaurant.id,
-      name: restaurant.name.trim(),
-      city: restaurant.city?.trim() || location,
-      location,
-      cuisineType: restaurant.cuisineType?.trim() || undefined,
-      visibility: restaurant.visibility,
-      latitude: typeof restaurant.latitude === 'number' ? restaurant.latitude : undefined,
-      longitude: typeof restaurant.longitude === 'number' ? restaurant.longitude : undefined,
-      placeId: restaurant.placeId?.trim() || undefined,
-      isGooglePlace: restaurant.isGooglePlace === true,
-    };
-  });
+  return response.map(mapRestaurantSelectionApiRecord);
 }
 
-export async function listMenuItemsForRestaurant(restaurantId: string): Promise<MenuItemRecord[]> {
+export async function listMenuItemsForRestaurant(
+  restaurantId: string,
+  options?: SearchRestaurantsPageOptions,
+): Promise<MenuItemRecord[]> {
   if (!pb.authStore.record?.id) {
     return [];
   }
@@ -208,55 +232,7 @@ export async function listMenuItemsForRestaurant(restaurantId: string): Promise<
 
   return listCollectionRecords<MenuItemRecord>('menu_items', {
     filter: `restaurant = "${escapeFilterValue(trimmedRestaurantId)}"`,
+    signal: options?.signal,
     sort: '-created',
   });
-}
-
-export async function hasPendingMenuReviewRequest(restaurantId: string): Promise<boolean> {
-  if (!pb.authStore.record?.id) {
-    return false;
-  }
-
-  const trimmedRestaurantId = restaurantId.trim();
-  if (!trimmedRestaurantId) {
-    return false;
-  }
-
-  return (
-    await getCollectionCount(
-      'menu_review_requests',
-      `restaurant = "${escapeFilterValue(trimmedRestaurantId)}" && status = "pending"`,
-    )
-  ) > 0;
-}
-
-export async function getRestaurantVisitStatsSummary(
-  restaurantIds: string[],
-): Promise<RestaurantVisitStatsSummary[]> {
-  if (!pb.authStore.record?.id) {
-    return [];
-  }
-
-  const normalizedRestaurantIds = Array.from(
-    new Set(
-      restaurantIds
-        .map((restaurantId) => restaurantId.trim())
-        .filter((restaurantId) => restaurantId.length > 0),
-    ),
-  ).sort();
-  if (normalizedRestaurantIds.length === 0) {
-    return [];
-  }
-
-  const response = await sendApiRequest<{ stats?: RestaurantVisitStatsSummary[] }>(
-    '/api/restaurants/visit-stats',
-    {
-      method: 'POST',
-      body: {
-        restaurantIds: normalizedRestaurantIds,
-      },
-    },
-  );
-
-  return response.stats ?? [];
 }

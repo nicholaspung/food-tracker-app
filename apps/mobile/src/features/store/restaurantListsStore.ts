@@ -14,34 +14,22 @@ import type {
   MoveRestaurantListRestaurantInput,
   PaginatedResult,
   RemoveRestaurantListSourceRatingInput,
-  RestaurantListItemLinkRecord,
   RestaurantListVisitedRestaurantCandidate,
-  RestaurantListRestaurantNoteRecord,
   SaveRestaurantFoodItemToListInput,
   UpdateRestaurantListInput,
 } from './featureStore';
 import {
-  buildAnyMatchFilter,
-  buildOrFilter,
-  combineFilterClauses,
-  combineOrFilterClauses,
   createEmptyPaginatedResult,
-  escapeFilterValue,
   getAuthenticatedUserId,
   isNotFoundError,
-  mapPaginatedResult,
   resolvePaginationInput,
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { listCollectionPage, listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
+import { sendApiRequest } from './pocketbaseGateway';
 import type {
-  CollectionUserExpand,
-  FoodItemCollectionRecord,
-  ListItemCollectionRecord,
   RestaurantListCollectionRecord,
 } from './pocketbaseRecordTypes';
-import { upsertRestaurantRecord } from './restaurantsStore';
 
 export type {
   RestaurantListCandidateRestaurantsResult,
@@ -54,16 +42,13 @@ export type {
   ListRestaurantListsPageInput,
   MoveRestaurantListRestaurantInput,
   RemoveRestaurantListSourceRatingInput,
-  RestaurantListItemLinkRecord,
   RestaurantListVisitedRestaurantCandidate,
-  RestaurantListRestaurantNoteRecord,
   SaveRestaurantFoodItemToListInput,
   UpdateRestaurantListInput,
 } from './featureStore';
 
-interface PageInputLike {
-  page?: number;
-  pageSize?: number;
+interface ReadRequestOptions {
+  signal?: AbortSignal;
 }
 
 interface RestaurantListDetailApiListRecord {
@@ -177,16 +162,6 @@ interface RestaurantListsPageApiResponse {
   hasNextPage: boolean;
 }
 
-const RESTAURANT_LIST_ITEM_LINK_FIELDS = 'id,list,restaurant,foodItem,userFoodItem,sourceUser,recommendedItems';
-
-function getDefaultRestaurantVisibility(): 'private' | 'friends' | 'public' {
-  const value = pb.authStore.record?.defaultRestaurantVisibility;
-  if (value === 'private' || value === 'public') {
-    return value;
-  }
-  return 'friends';
-}
-
 function normalizeListVisibility(value: unknown): 'private' | 'friends' {
   return value === 'friends' || value === 'public' ? 'friends' : 'private';
 }
@@ -233,31 +208,6 @@ function mapRestaurantListDetailApiListRecord(record: RestaurantListDetailApiLis
   };
 }
 
-function mapRestaurantListBookmarkedItemRecord(
-  listItemId: string,
-  sourceUser: CollectionUserExpand | undefined,
-  sourceUserId: string | undefined,
-  foodItem: FoodItemCollectionRecord,
-  userFoodItem?: FoodItemCollectionRecord,
-): RestaurantListBookmarkedItemRecord {
-  const normalizedSourceUserId = sourceUser?.id ?? sourceUserId?.trim() ?? undefined;
-
-  return {
-    id: foodItem.id,
-    listItemId,
-    name: foodItem.name?.trim() || 'Unknown item',
-    rating: foodItem.rating,
-    visitedAt: foodItem.expand?.visit?.visitDate || foodItem.itemDate || foodItem.created,
-    sourceUserId: normalizedSourceUserId,
-    sourceUserName: resolveExpandedUserName(sourceUser),
-    userFoodItemId: userFoodItem?.id,
-    userFoodItemName: userFoodItem?.name?.trim() || undefined,
-    userFoodItemRating: userFoodItem?.rating,
-    userFoodItemVisitedAt:
-      userFoodItem?.expand?.visit?.visitDate || userFoodItem?.itemDate || userFoodItem?.created,
-  };
-}
-
 function mapRestaurantListDetailBookmarkedItemRecord(
   record: RestaurantListDetailApiBookmarkedItemRecord,
 ): RestaurantListBookmarkedItemRecord {
@@ -276,45 +226,6 @@ function mapRestaurantListDetailBookmarkedItemRecord(
   };
 }
 
-function mapListItemCollectionRecord(record: ListItemCollectionRecord): RestaurantListItemRecord {
-  const expandedFoodItem = record.expand?.foodItem;
-  const expandedRecommendedItems = record.expand?.recommendedItems ?? [];
-  const bookmarkedItems = expandedFoodItem
-    ? [
-        mapRestaurantListBookmarkedItemRecord(
-          record.id,
-          record.expand?.sourceUser,
-          record.sourceUser,
-          expandedFoodItem,
-          record.expand?.userFoodItem,
-        ),
-      ]
-    : expandedRecommendedItems.map((foodItem) =>
-        mapRestaurantListBookmarkedItemRecord(
-          record.id,
-          record.expand?.sourceUser,
-          record.sourceUser,
-          foodItem,
-          record.expand?.userFoodItem,
-        ),
-      );
-
-  return {
-    id: record.id,
-    listId: record.list,
-    restaurantId: record.restaurant,
-    restaurantName: record.expand?.restaurant?.name?.trim() || 'Unknown restaurant',
-    restaurantCity: record.expand?.restaurant?.location?.trim() || undefined,
-    restaurantCuisineType: record.expand?.restaurant?.cuisineType?.trim() || undefined,
-    sourceUserId: record.expand?.sourceUser?.id ?? record.sourceUser?.trim() ?? undefined,
-    sourceUserName: resolveExpandedUserName(record.expand?.sourceUser),
-    position: record.position,
-    bookmarkedItems,
-    note: record.note?.trim() || undefined,
-    createdAt: record.created,
-  };
-}
-
 function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRecord): RestaurantListItemRecord {
   return {
     id: record.id,
@@ -330,42 +241,6 @@ function mapRestaurantListDetailItemRecord(record: RestaurantListDetailApiItemRe
     note: record.note?.trim() || undefined,
     createdAt: record.createdAt,
   };
-}
-
-function mapRestaurantListItemLinkRecord(record: ListItemCollectionRecord): RestaurantListItemLinkRecord {
-  return {
-    id: record.id,
-    listId: record.list,
-    restaurantId: record.restaurant,
-    foodItemId: record.foodItem?.trim() || undefined,
-    userFoodItemId: record.userFoodItem?.trim() || undefined,
-    sourceUserId: record.sourceUser?.trim() || undefined,
-    recommendedItemIds: (record.recommendedItems ?? [])
-      .map((itemId) => itemId?.trim())
-      .filter((itemId): itemId is string => Boolean(itemId)),
-  };
-}
-
-export function getRestaurantListItemLinkFoodItemIds(
-  record: Pick<RestaurantListItemLinkRecord, 'foodItemId' | 'userFoodItemId' | 'recommendedItemIds'>,
-): string[] {
-  const foodItemIds = new Set<string>();
-
-  if (record.foodItemId?.trim()) {
-    foodItemIds.add(record.foodItemId.trim());
-  }
-
-  if (record.userFoodItemId?.trim()) {
-    foodItemIds.add(record.userFoodItemId.trim());
-  }
-
-  for (const recommendedItemId of record.recommendedItemIds ?? []) {
-    if (recommendedItemId?.trim()) {
-      foodItemIds.add(recommendedItemId.trim());
-    }
-  }
-
-  return Array.from(foodItemIds);
 }
 
 function createEmptyRestaurantListDetail(): RestaurantListDetailRecord {
@@ -417,19 +292,6 @@ function mapRestaurantListVisitedRestaurantCandidateRecord(
       ),
     ),
   };
-}
-
-function buildRestaurantListItemLinkFoodItemLookupFilter(foodItemIds: string[]): string | undefined {
-  const normalizedFoodItemIds = Array.from(new Set(foodItemIds.map((id) => id.trim()).filter((id) => id.length > 0)));
-  if (normalizedFoodItemIds.length === 0) {
-    return undefined;
-  }
-
-  return combineOrFilterClauses(
-    buildOrFilter('foodItem', normalizedFoodItemIds),
-    buildOrFilter('userFoodItem', normalizedFoodItemIds),
-    buildAnyMatchFilter('recommendedItems', normalizedFoodItemIds),
-  );
 }
 
 function mapRestaurantListMutationGroupItems(
@@ -493,6 +355,7 @@ export async function listRestaurantListsPage(
 
   const response = await sendApiRequest<RestaurantListsPageApiResponse>(`/api/restaurant-lists?${query.toString()}`, {
     method: 'GET',
+    signal: input?.signal,
   });
 
   return {
@@ -505,7 +368,10 @@ export async function listRestaurantListsPage(
   };
 }
 
-export async function getRestaurantListById(listId: string): Promise<RestaurantListRecord | null> {
+export async function getRestaurantListById(
+  listId: string,
+  options?: ReadRequestOptions,
+): Promise<RestaurantListRecord | null> {
   if (!pb.authStore.record?.id) {
     return null;
   }
@@ -513,6 +379,7 @@ export async function getRestaurantListById(listId: string): Promise<RestaurantL
   try {
     const record = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
       expand: 'user',
+      signal: options?.signal,
     });
     return mapRestaurantListCollectionRecord(record);
   } catch (error) {
@@ -523,7 +390,10 @@ export async function getRestaurantListById(listId: string): Promise<RestaurantL
   }
 }
 
-export async function getRestaurantListDetail(listId: string): Promise<RestaurantListDetailRecord> {
+export async function getRestaurantListDetail(
+  listId: string,
+  options?: ReadRequestOptions,
+): Promise<RestaurantListDetailRecord> {
   if (!pb.authStore.record?.id) {
     return createEmptyRestaurantListDetail();
   }
@@ -538,6 +408,7 @@ export async function getRestaurantListDetail(listId: string): Promise<Restauran
       `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/detail`,
       {
         method: 'GET',
+        signal: options?.signal,
       },
     );
 
@@ -554,6 +425,7 @@ export async function getRestaurantListDetail(listId: string): Promise<Restauran
 export async function getRestaurantListCandidateRestaurants(
   listId: string,
   search?: string,
+  options?: ReadRequestOptions,
 ): Promise<RestaurantListCandidateRestaurantsResult> {
   if (!pb.authStore.record?.id) {
     return createEmptyRestaurantListCandidateRestaurants();
@@ -577,6 +449,7 @@ export async function getRestaurantListCandidateRestaurants(
       `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/candidate-restaurants${querySuffix}`,
       {
         method: 'GET',
+        signal: options?.signal,
       },
     );
 
@@ -595,34 +468,13 @@ export async function getRestaurantListCandidateRestaurants(
 
 export async function createDefaultRestaurantList(): Promise<RestaurantListRecord> {
   return trackFeatureMutation('restaurant_list.default.create', async () => {
-    const currentUserId = getAuthenticatedUserId();
-    const escapedCurrentUserId = escapeFilterValue(currentUserId);
+    getAuthenticatedUserId();
 
-    const existingDefault = await pb.collection('restaurant_lists').getList<RestaurantListCollectionRecord>(1, 1, {
-      filter: `user = "${escapedCurrentUserId}" && isDefault = true`,
-      sort: '-updated',
-      expand: 'user',
+    const response = await sendApiRequest<RestaurantListDetailApiListRecord>('/api/restaurant-lists/default', {
+      method: 'POST',
     });
 
-    const existingRecord = existingDefault.items[0];
-    if (existingRecord) {
-      return mapRestaurantListCollectionRecord(existingRecord);
-    }
-
-    const createdRecord = await pb.collection('restaurant_lists').create<RestaurantListCollectionRecord>(
-      {
-        name: 'Saved',
-        description: 'Items saved from other lists',
-        visibility: 'private',
-        user: currentUserId,
-        isDefault: true,
-      },
-      {
-        expand: 'user',
-      },
-    );
-
-    return mapRestaurantListCollectionRecord(createdRecord);
+    return mapRestaurantListDetailApiListRecord(response);
   });
 }
 
@@ -724,113 +576,6 @@ export async function deleteRestaurantList(listId: string): Promise<void> {
   });
 }
 
-export async function listRestaurantListItemsPage(
-  listId: string,
-  input?: PageInputLike,
-): Promise<PaginatedResult<RestaurantListItemRecord>> {
-  if (!pb.authStore.record?.id) {
-    return createEmptyPaginatedResult(input);
-  }
-
-  const { page, pageSize } = resolvePaginationInput(input);
-  const pageResult = await listCollectionPage<ListItemCollectionRecord>('list_items', {
-    page,
-    pageSize,
-    filter: `list = "${escapeFilterValue(listId)}"`,
-    expand:
-      'restaurant,sourceUser,foodItem.visit,foodItem.user,userFoodItem.visit,userFoodItem.user,recommendedItems.visit,recommendedItems.user',
-    sort: 'position,-created',
-  });
-
-  return mapPaginatedResult(pageResult, pageResult.items.map(mapListItemCollectionRecord));
-}
-
-export async function listRestaurantListItemLinksForRestaurantIds(
-  listId: string,
-  restaurantIds: string[],
-): Promise<RestaurantListItemLinkRecord[]> {
-  if (!pb.authStore.record?.id || restaurantIds.length === 0) {
-    return [];
-  }
-
-  const records = await listCollectionRecords<ListItemCollectionRecord>('list_items', {
-    filter: combineFilterClauses(`list = "${escapeFilterValue(listId)}"`, buildOrFilter('restaurant', restaurantIds)),
-    fields: RESTAURANT_LIST_ITEM_LINK_FIELDS,
-  });
-
-  return records.map(mapRestaurantListItemLinkRecord);
-}
-
-export async function listRestaurantListNotesForRestaurantIds(
-  listId: string,
-  restaurantIds: string[],
-): Promise<RestaurantListRestaurantNoteRecord[]> {
-  if (!pb.authStore.record?.id || restaurantIds.length === 0) {
-    return [];
-  }
-
-  const records = await listCollectionRecords<Pick<ListItemCollectionRecord, 'restaurant' | 'note' | 'position'>>(
-    'list_items',
-    {
-      filter: combineFilterClauses(`list = "${escapeFilterValue(listId)}"`, buildOrFilter('restaurant', restaurantIds)),
-      fields: 'restaurant,note,position',
-      sort: 'position',
-    },
-  );
-
-  const noteByRestaurantId = new Map<string, RestaurantListRestaurantNoteRecord>();
-  for (const record of records) {
-    const trimmedNote = record.note?.trim();
-    if (!trimmedNote || noteByRestaurantId.has(record.restaurant)) {
-      continue;
-    }
-
-    noteByRestaurantId.set(record.restaurant, {
-      restaurantId: record.restaurant,
-      note: trimmedNote,
-    });
-  }
-
-  return Array.from(noteByRestaurantId.values());
-}
-
-export async function listMyBookmarkedListItemLinksForFoodItemIds(
-  foodItemIds: string[],
-): Promise<RestaurantListItemLinkRecord[]> {
-  if (!pb.authStore.record?.id || foodItemIds.length === 0) {
-    return [];
-  }
-
-  const currentUserId = getAuthenticatedUserId();
-  const normalizedFoodItemIds = Array.from(new Set(foodItemIds.map((id) => id.trim()).filter((id) => id.length > 0)));
-  if (normalizedFoodItemIds.length === 0) {
-    return [];
-  }
-
-  const linksById = new Map<string, RestaurantListItemLinkRecord>();
-  const itemChunkSize = 20;
-  const escapedCurrentUserId = escapeFilterValue(currentUserId);
-  for (let itemIndex = 0; itemIndex < normalizedFoodItemIds.length; itemIndex += itemChunkSize) {
-    const itemChunk = normalizedFoodItemIds.slice(itemIndex, itemIndex + itemChunkSize);
-    const lookupFilter = buildRestaurantListItemLinkFoodItemLookupFilter(itemChunk);
-    if (!lookupFilter) {
-      continue;
-    }
-
-    const records = await listCollectionRecords<ListItemCollectionRecord>('list_items', {
-      filter: combineFilterClauses(`list.user = "${escapedCurrentUserId}"`, lookupFilter),
-      fields: RESTAURANT_LIST_ITEM_LINK_FIELDS,
-    });
-
-    for (const record of records) {
-      const link = mapRestaurantListItemLinkRecord(record);
-      linksById.set(link.id, link);
-    }
-  }
-
-  return Array.from(linksById.values());
-}
-
 export async function saveRestaurantFoodItemToList(
   input: SaveRestaurantFoodItemToListInput,
 ): Promise<RestaurantListItemRecord[]> {
@@ -906,49 +651,6 @@ export async function linkVisitToListBookmark(
 
     return mapRestaurantListMutationGroupItems(response);
   });
-}
-
-export async function addRestaurantToList(
-  listId: string,
-  restaurantName: string,
-  city?: string,
-): Promise<RestaurantListItemRecord> {
-  return trackFeatureMutation(
-    'restaurant_list.restaurant.add',
-    async () => {
-      getAuthenticatedUserId();
-      const trimmedName = restaurantName.trim();
-      if (!trimmedName) {
-        throw new Error('Restaurant name is required.');
-      }
-
-      const restaurant = await upsertRestaurantRecord({
-        restaurantName: trimmedName,
-        location: city,
-        visibility: getDefaultRestaurantVisibility(),
-      });
-      const response = await sendApiRequest<RestaurantListMutationGroupApiResponse>(
-        `/api/restaurant-lists/${encodeURIComponent(listId)}/restaurants`,
-        {
-          method: 'POST',
-          body: {
-            restaurantId: restaurant.id,
-          },
-        },
-      );
-
-      const items = mapRestaurantListMutationGroupItems(response);
-      const firstItem = items[0];
-      if (!firstItem) {
-        throw new Error('Could not add restaurant to the list.');
-      }
-
-      return firstItem;
-    },
-    {
-      hasCity: Boolean(city?.trim()),
-    },
-  );
 }
 
 export async function addRestaurantVisitRatingsToList(
@@ -1033,29 +735,6 @@ export async function moveRestaurantListRestaurant(
       direction: input.direction,
     },
   );
-}
-
-export async function removeRestaurantFromList(
-  listId: string,
-  listItemId: string,
-): Promise<void> {
-  return trackFeatureMutation('restaurant_list.restaurant.remove', async () => {
-    getAuthenticatedUserId();
-
-    try {
-      const listItem = await pb.collection('list_items').getOne<ListItemCollectionRecord>(listItemId);
-      if (listItem.list !== listId) {
-        throw new Error('List item not found.');
-      }
-
-      await pb.collection('list_items').delete(listItemId);
-    } catch (error) {
-      if (isNotFoundError(error)) {
-        return;
-      }
-      throw error;
-    }
-  });
 }
 
 export async function removeRestaurantListSourceRating(

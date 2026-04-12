@@ -30,13 +30,12 @@ import {
   createBillApiMutationInput,
   updateBillApiMutationInput,
 } from '../features/store/featureOutboxOperations';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { useSync } from '../providers/SyncProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 import { BillParticipantPickerSection } from './createBill/BillParticipantPickerSection';
@@ -359,8 +358,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
-  const queueWrite = useQueuedWrite();
-  const { enqueueMutation } = useSync();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const editBillId = route.params?.billId;
@@ -1810,18 +1808,32 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         extrasSplitMode,
       };
 
-      if (!isOnline) {
-        if (isEditMode && editBillId) {
-          await enqueueMutation(updateBillApiMutationInput(editBillId, billPayload));
-        } else {
-          await enqueueMutation(
-            createBillApiMutationInput({
-              ...billPayload,
-              createdByUserId: user?.id ?? 'unknown_user',
-            }),
-          );
-        }
+      const writeResult = isEditMode && editBillId
+        ? await writeFeature({
+            operationName: 'bill.update',
+            offline: {
+              strategy: 'api',
+              input: updateBillApiMutationInput(editBillId, billPayload),
+            },
+            execute: () => updateBill(editBillId, billPayload),
+          })
+        : await writeFeature({
+            operationName: 'bill.create',
+            offline: {
+              strategy: 'api',
+              input: createBillApiMutationInput({
+                ...billPayload,
+                createdByUserId: user?.id ?? 'unknown_user',
+              }),
+            },
+            execute: () =>
+              createBill({
+                ...billPayload,
+                createdByUserId: user?.id ?? 'unknown_user',
+              }),
+          });
 
+      if (writeResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
         trackObservabilityEvent('CREATE_BILL_SUBMIT_SUCCEEDED', {
           source: 'CreateBillScreen',
@@ -1834,14 +1846,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         return;
       }
 
-      await queueWrite(isEditMode ? 'bill.update' : 'bill.create');
-
-      const savedBill = isEditMode
-        ? await updateBill(editBillId as string, billPayload)
-        : await createBill({
-            ...billPayload,
-            createdByUserId: user?.id ?? 'unknown_user',
-          });
+      const savedBill = writeResult.result;
 
       await queryClient.invalidateQueries({ queryKey: ['feature', 'bills'] });
       await queryClient.invalidateQueries({ queryKey: ['feature', 'bill', savedBill.id] });

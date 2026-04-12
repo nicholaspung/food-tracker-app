@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -19,20 +19,19 @@ import {
   type SegmentedControlOption,
 } from '../components/shared';
 import {
-  getFriendsCountSummary,
+  friendsQueryKeys,
   listFriendsPage,
   markFriendInviteAccepted,
   removeFriend,
+  selectFriendsSummary,
   type FriendRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
-import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -201,9 +200,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
-  const { isOnline } = useConnectivity();
+  const writeFeature = useOfflineAwareFeatureWrite();
 
   const [mainTab, setMainTab] = useState<MainTab>('friends-list');
   const [friendsSubTab, setFriendsSubTab] = useState<FriendsSubTab>('friends');
@@ -211,18 +208,14 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const [isMutating, setIsMutating] = useState(false);
   const [pendingRemoveFriend, setPendingRemoveFriend] = useState<FriendRecord | null>(null);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
-  const friendsSummaryQuery = useQuery({
-    queryKey: ['feature', 'friends', 'summary'],
-    queryFn: getFriendsCountSummary,
-    refetchOnReconnect: 'always',
-  });
   const friendsQuery = useInfiniteQuery({
-    queryKey: ['feature', 'friends', 'paginated', friendsSubTab],
-    queryFn: ({ pageParam }) =>
+    queryKey: friendsQueryKeys.paginated(friendsSubTab),
+    queryFn: ({ pageParam, signal }) =>
       listFriendsPage({
         section: friendsSubTab,
         page: pageParam,
         pageSize: 20,
+        signal,
       }),
     enabled: mainTab === 'friends-list',
     initialPageParam: 1,
@@ -238,12 +231,13 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     isSuccess: friendsQuery.isSuccess,
   });
   const visibleFriends = friendsState.items;
+  const friendsSummary = selectFriendsSummary(friendsQuery.data);
   const acceptedFriendsCount =
-    friendsSummaryQuery.data?.friendsCount ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
+    friendsSummary?.friendsCount ?? (friendsSubTab === 'friends' ? visibleFriends.length : 0);
   const pendingReceivedCount =
-    friendsSummaryQuery.data?.requestsCount ?? (friendsSubTab === 'requests' ? visibleFriends.length : 0);
+    friendsSummary?.requestsCount ?? (friendsSubTab === 'requests' ? visibleFriends.length : 0);
   const pendingSentCount =
-    friendsSummaryQuery.data?.sentCount ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
+    friendsSummary?.sentCount ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
 
   const myFriendCode = useMemo(
     () => generateFriendCode(user?.id, user?.friendCode),
@@ -300,7 +294,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const styles = useStyles();
 
   const invalidateFriends = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['feature', 'friends'] });
+    await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
   };
 
   const handleAccept = async (friendId: string) => {
@@ -308,15 +302,21 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     setIsMutating(true);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('friend.accept', { friendId });
+      const acceptResult = await writeFeature({
+        operationName: 'friend.accept',
+        offline: {
+          strategy: 'outbox',
+          payload: { friendId },
+        },
+        execute: () => markFriendInviteAccepted(friendId),
+      });
+
+      if (acceptResult.status === 'queued') {
         await invalidateFriends();
         showQueuedOfflineAlert('Friend action');
         return;
       }
 
-      await queueWrite('friend.accept');
-      await markFriendInviteAccepted(friendId);
       await invalidateFriends();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not accept friend request.';
@@ -331,15 +331,21 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     setIsMutating(true);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox(operationName, { friendId });
+      const removeResult = await writeFeature({
+        operationName,
+        offline: {
+          strategy: 'outbox',
+          payload: { friendId },
+        },
+        execute: () => removeFriend(friendId),
+      });
+
+      if (removeResult.status === 'queued') {
         await invalidateFriends();
         showQueuedOfflineAlert('Friend action');
         return true;
       }
 
-      await queueWrite(operationName);
-      await removeFriend(friendId);
       await invalidateFriends();
       return true;
     } catch (error) {
@@ -362,12 +368,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     setIsPullRefreshing(true);
 
     try {
-      const refreshJobs: Promise<unknown>[] = [friendsSummaryQuery.refetch()];
       if (mainTab === 'friends-list') {
-        refreshJobs.push(friendsQuery.refetch());
+        await friendsQuery.refetch();
       }
-
-      await Promise.all(refreshJobs);
     } finally {
       setIsPullRefreshing(false);
     }
@@ -616,7 +619,6 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           title="Friends unavailable"
           actionLabel="Retry"
           onAction={() => {
-            void friendsSummaryQuery.refetch();
             void friendsQuery.refetch();
           }}
         />

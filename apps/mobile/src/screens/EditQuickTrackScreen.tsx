@@ -19,8 +19,7 @@ import {
   type VisibilityOptionValue,
 } from '../components/shared';
 import { getQuickTrackById, resolveDefaultVisitVisibilityFromAuth, updateQuickTrack } from '../features';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import {
   formatDateToLocalDateString,
   getTodayLocalDateString,
@@ -112,13 +111,12 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
   const theme = useTheme();
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const queueWrite = useQueuedWrite();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
 
   const quickTrackQuery = useQuery({
     queryKey: ['feature', 'quickTrack', quickTrackId],
-    queryFn: () => getQuickTrackById(quickTrackId),
+    queryFn: ({ signal }) => getQuickTrackById(quickTrackId, { signal }),
   });
 
   const [itemName, setItemName] = useState('');
@@ -204,12 +202,19 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
         itemDate: localDateStringToUTC(itemDate),
       };
 
-      if (!isOnline) {
-        await queueFeatureOutbox('quick-track.update', {
-          quickTrackId,
-          updates: quickTrackUpdateInput,
-        });
+      const updateResult = await writeFeature({
+        operationName: 'quick-track.update',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            quickTrackId,
+            updates: quickTrackUpdateInput,
+          },
+        },
+        execute: () => updateQuickTrack(quickTrackId, quickTrackUpdateInput),
+      });
 
+      if (updateResult.status === 'queued') {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'quickTrack', quickTrackId] }),
@@ -224,9 +229,6 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
         handleBackPress();
         return;
       }
-
-      await queueWrite('quick-track.update');
-      await updateQuickTrack(quickTrackId, quickTrackUpdateInput);
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),

@@ -16,18 +16,19 @@ import {
   type FeedbackMessageListQueryData,
   type FeedbackListQueryData,
   type FeedbackRecord,
+  type FeedbackThreadDetailResult,
   feedbackQueryKeys,
-  getFeedbackById,
+  getFeedbackThreadDetail,
   listFeedbackMessagesPage,
   markFeedbackAsRead,
   mergeFeedbackRecord,
   prependFeedbackMessageListItem,
+  replaceFeedbackMessageFirstPage,
   sendFeedbackMessage,
   upsertFeedbackListItem,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
-import { useQueuedWrite } from '../features/store/useQueuedWrite';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -241,8 +242,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const theme = useTheme();
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
-  const queueWrite = useQueuedWrite();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const isFocused = useIsFocused();
   const messagesScrollRef = useRef<ScrollView>(null);
@@ -254,30 +254,53 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [hasHydratedInitialMessages, setHasHydratedInitialMessages] = useState(false);
+  const threadQueryKey = useMemo(() => feedbackQueryKeys.thread(feedbackId), [feedbackId]);
+  const messagesQueryKey = useMemo(() => feedbackQueryKeys.messages(feedbackId), [feedbackId]);
 
-  const feedbackQuery = useQuery({
-    queryKey: feedbackQueryKeys.detail(feedbackId),
-    queryFn: () => getFeedbackById(feedbackId),
+  const threadQuery = useQuery({
+    queryKey: threadQueryKey,
+    queryFn: ({ signal }) => getFeedbackThreadDetail(feedbackId, { signal }),
   });
+  const feedback = threadQuery.data?.feedback;
+  const hasCachedMessages = queryClient.getQueryData<FeedbackMessageListQueryData>(messagesQueryKey) !== undefined;
+
+  useEffect(() => {
+    setHasHydratedInitialMessages(false);
+  }, [feedbackId]);
+
+  useEffect(() => {
+    if (!threadQuery.data?.messages) {
+      return;
+    }
+
+    queryClient.setQueryData<FeedbackMessageListQueryData | undefined>(messagesQueryKey, (currentMessages) =>
+      replaceFeedbackMessageFirstPage(currentMessages, threadQuery.data.messages),
+    );
+    setHasHydratedInitialMessages(true);
+  }, [messagesQueryKey, queryClient, threadQuery.data]);
 
   const messagesQuery = useInfiniteQuery({
-    queryKey: feedbackQueryKeys.messages(feedbackId),
-    queryFn: ({ pageParam }) =>
+    queryKey: messagesQueryKey,
+    queryFn: ({ pageParam, signal }) =>
       listFeedbackMessagesPage(feedbackId, {
         page: pageParam,
         pageSize: 20,
         order: 'desc',
+        signal,
       }),
     initialPageParam: 1,
+    enabled: hasCachedMessages || hasHydratedInitialMessages,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
+    staleTime: ACTIVE_MESSAGE_POLL_INTERVAL_MS,
     refetchInterval: (query) => {
-      const latestMessageAt = query.state.data?.pages[0]?.items[0]?.createdAt ?? feedbackQuery.data?.lastMessageAt;
+      const latestMessageAt = query.state.data?.pages[0]?.items[0]?.createdAt ?? feedback?.lastMessageAt;
 
       return resolveMessagesRefetchInterval({
         isFocused,
         isOnline,
         lastMessageAt: latestMessageAt,
-        userUnreadCount: feedbackQuery.data?.userUnreadCount ?? 0,
+        userUnreadCount: feedback?.userUnreadCount ?? 0,
       });
     },
   });
@@ -302,8 +325,14 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const applyFeedbackThreadUpdate = useCallback(
     (nextFeedback: FeedbackRecord, options?: { moveToFront?: boolean }) => {
       queryClient.setQueryData(
-        feedbackQueryKeys.detail(feedbackId),
-        (currentFeedback: FeedbackRecord | undefined) => mergeFeedbackRecord(currentFeedback, nextFeedback),
+        threadQueryKey,
+        (currentThread: FeedbackThreadDetailResult | undefined) =>
+          currentThread
+            ? {
+                ...currentThread,
+                feedback: mergeFeedbackRecord(currentThread.feedback, nextFeedback),
+              }
+            : currentThread,
       );
       queryClient.setQueryData<FeedbackListQueryData | undefined>(feedbackQueryKeys.list, (currentFeedback) =>
         upsertFeedbackListItem(currentFeedback, nextFeedback, {
@@ -311,7 +340,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
         }),
       );
     },
-    [feedbackId, queryClient],
+    [queryClient, threadQueryKey],
   );
 
   const scheduleScrollToLatestMessage = useCallback((animated = true, delay = 0) => {
@@ -326,7 +355,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   }, []);
 
   useEffect(() => {
-    if (!isFocused || !feedbackQuery.data || feedbackQuery.data.userUnreadCount <= 0) {
+    if (!isFocused || !feedback || feedback.userUnreadCount <= 0) {
       return;
     }
 
@@ -350,7 +379,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     return () => {
       isCancelled = true;
     };
-  }, [applyFeedbackThreadUpdate, feedbackId, feedbackQuery.data, isFocused]);
+  }, [applyFeedbackThreadUpdate, feedback, feedbackId, isFocused]);
 
   useEffect(() => {
     if (!latestMessageId) {
@@ -396,13 +425,25 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     setIsSending(true);
 
     try {
-      if (!isOnline) {
-        await queueFeatureOutbox('feedback.message.send', {
-          feedbackId,
-          message: draftMessage,
-        });
+      const sendResult = await writeFeature({
+        operationName: 'feedback.message.send',
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            feedbackId,
+            message: draftMessage,
+          },
+        },
+        execute: () =>
+          sendFeedbackMessage({
+            feedbackId,
+            message: draftMessage,
+          }),
+      });
+
+      if (sendResult.status === 'queued') {
         setDraftMessage('');
-        await queryClient.invalidateQueries({ queryKey: feedbackQueryKeys.messages(feedbackId) });
+        await queryClient.invalidateQueries({ queryKey: messagesQueryKey });
         trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
           source: 'FeedbackDetailScreen',
           feedbackId,
@@ -411,16 +452,12 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
         return;
       }
 
-      await queueWrite('feedback.message.send');
-      const result = await sendFeedbackMessage({
-        feedbackId,
-        message: draftMessage,
-      });
+      const result = sendResult.result;
 
       setDraftMessage('');
       applyFeedbackThreadUpdate(result.feedback, { moveToFront: true });
       queryClient.setQueryData<FeedbackMessageListQueryData | undefined>(
-        feedbackQueryKeys.messages(feedbackId),
+        messagesQueryKey,
         (currentMessages) => prependFeedbackMessageListItem(currentMessages, result.message),
       );
       trackObservabilityEvent('FEEDBACK_DETAIL_MESSAGE_SEND_SUCCEEDED', {
@@ -453,11 +490,11 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     setIsPullRefreshing(true);
 
     try {
-      await Promise.all([feedbackQuery.refetch(), messagesQuery.refetch()]);
+      await Promise.all([threadQuery.refetch(), messagesQuery.refetch()]);
     } finally {
       setIsPullRefreshing(false);
     }
-  }, [feedbackQuery, messagesQuery]);
+  }, [messagesQuery, threadQuery]);
 
   return (
     <FeatureDetailScreenScaffold
@@ -468,10 +505,10 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
       onBackPress={handleBackPress}
       scroll={false}
       testID="feedback-detail-screen"
-      title={feedbackQuery.data?.title?.trim() || 'Feedback'}
+      title={feedback?.title?.trim() || 'Feedback'}
     >
       <View style={styles.body}>
-        {feedbackQuery.isLoading ? (
+        {threadQuery.isLoading ? (
           <>
             <Skeleton height={22} />
             <Skeleton height={88} />
@@ -481,24 +518,24 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
 
         <PageErrorToast
           actionLabel="Retry"
-          errorMessage={feedbackQuery.isError ? 'Could not load this feedback thread.' : null}
+          errorMessage={threadQuery.isError ? 'Could not load this feedback thread.' : null}
           onAction={() => {
-            void feedbackQuery.refetch();
+            void threadQuery.refetch();
           }}
           title="Thread unavailable"
         />
 
-        {!feedbackQuery.isLoading && !feedbackQuery.isError && !feedbackQuery.data ? (
+        {!threadQuery.isLoading && !threadQuery.isError && !feedback ? (
           <EmptyState description="This feedback thread could not be found." title="Feedback missing" />
         ) : null}
 
-        {feedbackQuery.data ? (
+        {feedback ? (
           <>
             <FeedbackThreadCard
-              description={feedbackQuery.data.description}
-              status={feedbackQuery.data.status}
-              timestampLabel={`Opened ${formatTimestamp(feedbackQuery.data.createdAt)}`}
-              title={feedbackQuery.data.title}
+              description={feedback.description}
+              status={feedback.status}
+              timestampLabel={`Opened ${formatTimestamp(feedback.createdAt)}`}
+              title={feedback.title}
               tone="default"
             />
 
@@ -518,7 +555,7 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
               ref={messagesScrollRef}
               style={styles.messagesContainer}
             >
-              {messagesQuery.isLoading ? (
+              {threadQuery.isLoading || messagesQuery.isLoading ? (
                 <>
                   <Skeleton height={60} />
                   <Skeleton height={60} />

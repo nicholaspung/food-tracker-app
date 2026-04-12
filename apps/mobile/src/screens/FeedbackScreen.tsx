@@ -43,11 +43,12 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const feedbackQuery = useInfiniteQuery({
     queryKey: feedbackQueryKeys.list,
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       listFeedbackPage({
         status: 'all',
         page: pageParam,
         pageSize: 20,
+        signal,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),

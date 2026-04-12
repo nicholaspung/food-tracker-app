@@ -5,9 +5,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RecordModel } from 'pocketbase';
 
 import { BackHeaderScreenScaffold, EmptyState, SectionCard, Skeleton, VisibilityOptionSelector } from '../components/shared';
-import { getCollectionRecord, saveAuthRecord, updateCollectionRecord } from '../features';
+import {
+  getCollectionRecord,
+  invalidateSettingsQueries,
+  saveAuthRecord,
+  settingsQueryKeys,
+  updateCollectionRecord,
+} from '../features';
 import { getAuthRecord } from '../features/store/pocketbaseGateway';
-import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -73,7 +79,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const styles = useStyles();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
-  const queueFeatureOutbox = useFeatureOutboxQueue();
+  const writeFeature = useOfflineAwareFeatureWrite();
   const queryClient = useQueryClient();
   const [visitVisibility, setVisitVisibility] = useState<VisitVisibility>('friends');
   const [restaurantVisibility, setRestaurantVisibility] = useState<RestaurantVisibility>('private');
@@ -84,13 +90,13 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   const settingsQuery = useQuery({
     enabled: Boolean(user?.id),
-    queryKey: ['feature', 'settings', user?.id],
-    queryFn: async (): Promise<UserSettings> => {
+    queryKey: settingsQueryKeys.detail(user?.id),
+    queryFn: async ({ signal }): Promise<UserSettings> => {
       if (!user?.id) {
         throw new Error('Authentication required.');
       }
 
-      const record = await getCollectionRecord<UserSettingsRecord>('users', user.id);
+      const record = await getCollectionRecord<UserSettingsRecord>('users', user.id, { signal });
       return mapUserSettings(record);
     },
   });
@@ -147,12 +153,25 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         defaultVisitVisibility: visitVisibility,
       };
 
-      if (!isOnline) {
-        await queueFeatureOutbox('settings.visibility.save', {
-          userId: user.id,
-          ...settingsUpdate,
-        });
+      const saveResult = await writeFeature({
+        operationName: 'settings.visibility.save',
+        trackOnlineWrite: false,
+        offline: {
+          strategy: 'outbox',
+          payload: {
+            userId: user.id,
+            ...settingsUpdate,
+          },
+        },
+        execute: () =>
+          updateCollectionRecord<RecordModel & UserSettingsRecord>(
+            'users',
+            user.id,
+            settingsUpdate,
+          ),
+      });
 
+      if (saveResult.status === 'queued') {
         const currentAuthRecord = getAuthRecord();
         if (currentAuthRecord) {
           saveAuthRecord({
@@ -162,7 +181,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         }
 
         const nextSettings = mapUserSettings(settingsUpdate);
-        queryClient.setQueryData(['feature', 'settings', user.id], nextSettings);
+        queryClient.setQueryData(settingsQueryKeys.detail(user.id), nextSettings);
         trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
           source: 'SettingsScreen',
           userId: user.id,
@@ -175,16 +194,12 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         return;
       }
 
-      const updatedRecord = await updateCollectionRecord<RecordModel & UserSettingsRecord>(
-        'users',
-        user.id,
-        settingsUpdate,
-      );
+      const updatedRecord = saveResult.result;
 
       const nextSettings = mapUserSettings(updatedRecord);
       saveAuthRecord(updatedRecord);
-      queryClient.setQueryData(['feature', 'settings', user.id], nextSettings);
-      await queryClient.invalidateQueries({ queryKey: ['feature', 'settings', user.id] });
+      queryClient.setQueryData(settingsQueryKeys.detail(user.id), nextSettings);
+      await invalidateSettingsQueries(queryClient, user.id);
       trackObservabilityEvent('SETTINGS_SAVE_SUCCEEDED', {
         source: 'SettingsScreen',
         userId: user.id,
