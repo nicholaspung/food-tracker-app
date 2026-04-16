@@ -290,7 +290,8 @@ Today, the checked-in GitHub automation covers:
 
 - preview OTA update: `.github/workflows/mobile-preview.yml`
 - preview build fallback when native files change: `.github/workflows/mobile-preview.yml`
-- manual production-targeted internal OTA/build dispatch via `.github/workflows/mobile-preview.yml` with `deploy_target=production`
+- manual preview dispatch that defaults to OTA and only builds when `force_preview_build=true`: `.github/workflows/mobile-preview.yml`
+- manual production-targeted internal OTA/build dispatch via `.github/workflows/mobile-preview.yml` with `deploy_target=production`, which still maps to the `production-preview` OTA channel and build profile rather than the App Store `production` channel/profile
 
 There is still no checked-in production App Store/TestFlight mobile workflow. A future production workflow should mirror preview with:
 

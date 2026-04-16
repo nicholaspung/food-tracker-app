@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       force_preview_build:
-        description: "Trigger a preview build instead of an OTA update"
+        description: "Force a preview build instead of the default OTA update for manual runs"
         required: false
         type: boolean
         default: false
@@ -136,10 +136,22 @@ jobs:
         id: release_type
         shell: bash
         run: |
+          if [ "${{ github.event.inputs.force_preview_build }}" = "true" ]; then
+            echo "publish_mode=build" >> "$GITHUB_OUTPUT"
+            echo "publish_reason=manual_forced_build" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
+            echo "publish_reason=manual_default_ota" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           BEFORE_SHA="${{ github.event.before }}"
           EXTRA_PATHS=(package.json pnpm-lock.yaml pnpm-workspace.yaml)
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
             CHANGED_FILES="$(git ls-files apps/mobile "${EXTRA_PATHS[@]}")"
           else
             CHANGED_FILES="$(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" -- apps/mobile "${EXTRA_PATHS[@]}")"
@@ -147,17 +159,14 @@ jobs:
 
           printf '%s\n' "$CHANGED_FILES"
 
-          if [ "${{ github.event.inputs.force_preview_build }}" = "true" ]; then
-            echo "publish_mode=build" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           # apps/mobile/app.config.js only validates environment safety and passes through app.json.
           # Reserve native preview builds for actual native project/config changes.
           if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(apps/mobile/(android/|ios/|app\.json|eas\.json|package\.json)|pnpm-lock\.yaml|pnpm-workspace\.yaml)'; then
             echo "publish_mode=build" >> "$GITHUB_OUTPUT"
+            echo "publish_reason=push_native_changes" >> "$GITHUB_OUTPUT"
           else
             echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
+            echo "publish_reason=push_default_ota" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish mobile OTA update
@@ -184,9 +193,19 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [ "${{ steps.release_type.outputs.publish_mode }}" = "build" ]; then
-            echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
-            echo "Install the new build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Published an OTA update to the ${{ steps.release_target.outputs.ota_channel }} channel." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          case "${{ steps.release_type.outputs.publish_reason }}" in
+            manual_forced_build)
+              echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because the manual dispatch explicitly requested a preview build." >> "$GITHUB_STEP_SUMMARY"
+              echo "Install the new build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            push_native_changes)
+              echo "Triggered an EAS ${{ steps.release_target.outputs.target_label }} ${{ steps.build_platform.outputs.platform_label }} build because native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
+              echo "Install the new build before expecting OTA updates from this revision." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            manual_default_ota)
+              echo "Published a manual OTA update to the ${{ steps.release_target.outputs.ota_channel }} channel." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "Published an OTA update to the ${{ steps.release_target.outputs.ota_channel }} channel because no native-affecting mobile files changed." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
