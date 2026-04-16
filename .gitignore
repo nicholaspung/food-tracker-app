@@ -14,6 +14,8 @@ dist/
 !apps/marketing/dist/**
 build/
 apps/mobile/web-dist/
+apps/mobile/ios/
+apps/mobile/android/
 apps/mobile/e2e/artifacts/
 apps/mobile/e2e/baselines/
 apps/mobile/e2e/.env.local

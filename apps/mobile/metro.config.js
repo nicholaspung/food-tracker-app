@@ -36,7 +36,6 @@ const duplicateReactNativeDirs = [
 
 config.resolver = config.resolver ?? {};
 config.resolver.assetExt = config.resolver.assetExt ?? [];
-config.resolver.disableHierarchicalLookup = true;
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
   react: reactPackageDir,
