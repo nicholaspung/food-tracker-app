@@ -152,7 +152,9 @@ jobs:
             exit 0
           fi
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(apps/mobile/(android/|ios/|app\.json|app\.config\.(js|ts|mjs|cjs)|eas\.json|package\.json)|pnpm-lock\.yaml|pnpm-workspace\.yaml)'; then
+          # apps/mobile/app.config.js only validates environment safety and passes through app.json.
+          # Reserve native preview builds for actual native project/config changes.
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(apps/mobile/(android/|ios/|app\.json|eas\.json|package\.json)|pnpm-lock\.yaml|pnpm-workspace\.yaml)'; then
             echo "publish_mode=build" >> "$GITHUB_OUTPUT"
           else
             echo "publish_mode=ota" >> "$GITHUB_OUTPUT"
