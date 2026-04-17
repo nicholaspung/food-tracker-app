@@ -1,0 +1,58 @@
+name: Mobile Validate
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/mobile-validate.yml"
+      - ".github/workflows/mobile-preview.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Mobile SDK 55
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint mobile app
+        run: pnpm mobile:lint
+
+      - name: Typecheck mobile app
+        run: pnpm mobile:typecheck
+
+      - name: Test mobile app
+        run: pnpm mobile:test
+
+      - name: Check mobile unused exports
+        run: pnpm mobile:unused-exports
+
+      - name: Run Expo Doctor
+        run: pnpm mobile:doctor
+
+      - name: Audit dependencies
+        run: pnpm audit --json

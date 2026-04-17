@@ -15,6 +15,38 @@ This checklist is intended to help review the React Native app for screen regres
 - `P1`: Important secondary flows and edge cases that should be covered after the core path is stable.
 - `P2`: Admin-only or lower-frequency flows.
 
+## Expo SDK 55 Signoff
+
+This section is the required stabilization pass for the current Expo SDK 55 release. Keep this scoped to SDK 55 hardening and do not mix in SDK 56 canary work.
+
+### Intentional pins and upgrade shims
+
+- Keep the repo-pinned `eas-cli` as the source of truth for local runs and GitHub workflows.
+- Keep the root `pnpm.overrides` entries for `eas-cli>ajv` and `eas-cli>minimatch` until upstream dependency graphs no longer require them.
+- Keep `expo.install.exclude` for `react-native-reanimated` in `apps/mobile/package.json` until a dedicated cleanup pass proves it can be removed safely.
+
+### Required automated checks
+
+- [ ] `pnpm mobile:lint`
+- [ ] `pnpm mobile:typecheck`
+- [ ] `pnpm mobile:test`
+- [ ] `pnpm mobile:unused-exports`
+- [ ] `pnpm mobile:doctor`
+- [ ] `pnpm audit --json`
+
+### Required manual smoke subset
+
+- [ ] `P0` Cold launch succeeds and session restore behaves correctly.
+- [ ] `P0` Login succeeds and logout returns to the signed-out experience.
+- [ ] `P0` Navigation launches normally and at least one deep link lands on the correct screen.
+- [ ] `P0` Camera capture works end-to-end.
+- [ ] `P0` Gallery import works end-to-end.
+- [ ] `P0` Location permission request and usage flow behave correctly.
+- [ ] `P0` A core browse screen still renders cached data while offline.
+- [ ] `P0` One offline-capable write queues offline and replays successfully after reconnect.
+- [ ] `P0` One JS-only preview path publishes through OTA update.
+- [ ] `P0` One native-relevant preview path triggers a preview build.
+
 ## Auth
 
 - [ ] `P0` Onboarding opens and allows navigation to sign up or log in.

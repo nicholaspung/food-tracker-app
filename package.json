@@ -32,6 +32,7 @@
     "mobile:update:preview": "pnpm --filter @food-tracker/mobile update:preview",
     "mobile:update:production-preview": "pnpm --filter @food-tracker/mobile update:production-preview",
     "mobile:lint": "pnpm --filter @food-tracker/mobile lint",
+    "mobile:doctor": "cd apps/mobile && npx expo-doctor --verbose",
     "mobile:unused-exports": "node scripts/check-mobile-unused-exports.mjs",
     "mobile:screenshots": "bash scripts/mobile-screenshot-suite.sh",
     "mobile:screenshots:review": "node scripts/mobile-screenshot-review-server.mjs",
