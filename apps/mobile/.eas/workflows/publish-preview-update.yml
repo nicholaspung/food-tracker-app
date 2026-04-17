@@ -1,0 +1,10 @@
+name: Publish preview OTA update
+
+jobs:
+  publish_preview_update:
+    name: Publish preview OTA update
+    type: update
+    environment: preview
+    params:
+      channel: preview
+      platform: all

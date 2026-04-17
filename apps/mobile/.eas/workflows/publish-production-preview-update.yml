@@ -1,0 +1,10 @@
+name: Publish production-preview OTA update
+
+jobs:
+  publish_production_preview_update:
+    name: Publish production-preview OTA update
+    type: update
+    environment: production
+    params:
+      channel: production-preview
+      platform: all

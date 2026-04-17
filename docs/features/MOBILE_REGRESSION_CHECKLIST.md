@@ -19,6 +19,8 @@ This checklist is intended to help review the React Native app for screen regres
 
 This section is the required stabilization pass for the current Expo SDK 55 release. Keep this scoped to SDK 55 hardening and do not mix in SDK 56 canary work.
 
+Use [`docs/operations/MOBILE_SDK_55_SIGNOFF.md`](../operations/MOBILE_SDK_55_SIGNOFF.md) as the operational runbook for branch protection, workflow-dispatch drills, manual device signoff, and post-release monitoring.
+
 ### Intentional pins and upgrade shims
 
 - Keep the repo-pinned `eas-cli` as the source of truth for local runs and GitHub workflows.

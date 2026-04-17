@@ -179,6 +179,12 @@ Expo and EAS have two distinct concerns in this repo:
 - EAS build profiles in [apps/mobile/eas.json](/Users/developer/programming/food-tracker-app/apps/mobile/eas.json)
 - Expo environment variables used by OTA updates, especially `eas update --environment ...`
 
+Build profiles such as `preview` and `production-preview` are for binary builds. OTA updates should target channels plus EAS environments, not build profiles. In this repo that means:
+
+- beta OTA: `channel=preview` with `environment=preview`
+- production-internal OTA: `channel=production-preview` with `environment=production`
+- Expo-hosted OTA runs should use the explicit EAS Workflows update jobs in `apps/mobile/.eas/workflows/` rather than any build-oriented run path
+
 ### EAS Profile Mapping
 
 - `development` profile -> local resources
@@ -292,6 +298,13 @@ Today, the checked-in GitHub automation covers:
 - preview build fallback when native files change: `.github/workflows/mobile-preview.yml`
 - manual preview dispatch that defaults to OTA and only builds when `force_preview_build=true`: `.github/workflows/mobile-preview.yml`
 - manual production-targeted internal OTA/build dispatch via `.github/workflows/mobile-preview.yml` with `deploy_target=production`, which still maps to the `production-preview` OTA channel and build profile rather than the App Store `production` channel/profile
+
+For Expo-hosted OTA runs, use the checked-in EAS Workflows update jobs:
+
+- `apps/mobile/.eas/workflows/publish-preview-update.yml`
+- `apps/mobile/.eas/workflows/publish-production-preview-update.yml`
+
+These are explicit `type: update` workflows and are intended to avoid routing OTA publishes through any iOS build/prebuild path.
 
 There is still no checked-in production App Store/TestFlight mobile workflow. A future production workflow should mirror preview with:
 

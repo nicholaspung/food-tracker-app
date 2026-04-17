@@ -8,6 +8,9 @@
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
+      "ios": {
+        "image": "latest"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "local"
       },
@@ -16,6 +19,9 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "ios": {
+        "image": "latest"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "beta",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
@@ -27,6 +33,9 @@
     "production-preview": {
       "distribution": "internal",
       "environment": "production",
+      "ios": {
+        "image": "latest"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
@@ -38,6 +47,9 @@
     "production": {
       "autoIncrement": true,
       "environment": "production",
+      "ios": {
+        "image": "latest"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_WEB_DISABLE_VISIT_MUTATIONS": "true",
