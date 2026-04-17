@@ -6,9 +6,9 @@ import {
   Linking,
   Pressable,
   View,
-  type ScrollView,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import {
   EmptyState,
@@ -313,7 +313,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [isPreparingNotePhotos, setIsPreparingNotePhotos] = useState(false);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
-  const processStepScrollViewRef = useRef<ScrollView | null>(null);
+  const processStepScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
   const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
     cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
     cameraRequiredMessage: 'Camera permission is required to take a photo.',

@@ -42,14 +42,33 @@
     "ios": "pnpm mobile:ios"
   },
   "devDependencies": {
-    "browser-sync": "^3.0.3",
+    "browser-sync": "3.0.4",
     "chokidar": "^4.0.3",
     "concurrently": "^8.2.2",
-    "start-server-and-test": "^2.1.2"
+    "start-server-and-test": "3.0.2"
   },
   "dependencies": {
-    "expo": "~54.0.33",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
+    "expo": "~55.0.15",
+    "react": "19.2.0",
+    "react-native": "0.83.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "@expo/plist": "0.5.2",
+      "@tootallnate/once": "3.0.1",
+      "@xmldom/xmldom": "0.8.12",
+      "axios": "1.15.0",
+      "diff": "8.0.3",
+      "eas-cli>ajv": "8.18.0",
+      "eas-cli>minimatch": "5.1.8",
+      "flatted": "3.4.2",
+      "follow-redirects": "1.16.0",
+      "lodash": "4.18.0",
+      "node-forge": "1.4.0",
+      "picomatch": "4.0.4",
+      "socket.io-parser": "4.2.6",
+      "tar": "7.5.11",
+      "yaml": "2.8.3"
+    }
   }
 }

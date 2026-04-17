@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { Platform, View } from 'react-native';
-import type { ScrollView, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
+import type { ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Button, Screen } from '../../ui';
@@ -25,7 +26,7 @@ export interface FeatureFormScreenScaffoldProps {
   headerBottomCompact?: boolean;
   backAccessibilityLabel?: string;
   keyboardAware?: boolean;
-  scrollViewRef?: RefObject<ScrollView | null>;
+  scrollViewRef?: RefObject<KeyboardAwareScrollViewRef | null>;
   scrollViewProps?: Omit<ScrollViewProps, 'ref' | 'contentContainerStyle' | 'style'>;
   bodyStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
@@ -96,7 +97,7 @@ export function FeatureFormScreenScaffold({
   testID,
 }: FeatureFormScreenScaffoldProps) {
   const theme = useTheme();
-  const internalScrollViewRef = useRef<ScrollView | null>(null);
+  const internalScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
   const resolvedScrollViewRef = scrollViewRef ?? internalScrollViewRef;
   const [footerHeight, setFooterHeight] = useState(theme.sizes.buttonHeight + theme.spacing.xl);
   const styles = useStyles(headerBottomCompact);

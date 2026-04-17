@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Linking,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import {
   EmptyState,
@@ -521,7 +521,7 @@ export function CreateVisitScreen({
     }
     return metadata;
   }, [loadedRestaurantRecords]);
-  const scrollViewRef = useRef<ScrollView | null>(null);
+  const scrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
   const editVisitQuery = useQuery({
     queryKey: ["feature", "visit", editVisitId ?? ""],
     queryFn: async ({ signal }) => {

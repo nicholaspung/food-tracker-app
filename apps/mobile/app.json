@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "scheme": "yummyrecs",
     "userInterfaceStyle": "light",
-    "jsEngine": "hermes",
     "icon": "./assets/brand-logo.png",
     "web": {
       "favicon": "./assets/brand-logo.png",
@@ -66,6 +65,8 @@
       ],
       "expo-secure-store",
       "expo-localization",
+      "@react-native-community/datetimepicker",
+      "expo-sqlite",
       "posthog-react-native/expo",
       "expo-font"
     ],
