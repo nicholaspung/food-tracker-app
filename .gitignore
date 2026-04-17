@@ -13,6 +13,7 @@ dist/
 !apps/marketing/dist/
 !apps/marketing/dist/**
 build/
+.eas-artifacts/
 apps/mobile/web-dist/
 apps/mobile/android/
 apps/mobile/e2e/artifacts/

@@ -62,7 +62,7 @@
 - Step 5. Wire async UI states: loading (`Skeleton`/`LoadingOverlay`), empty (`EmptyState`), and error (`ErrorState`/`PageErrorToast`).
 - Step 6. Keep styles theme-token based with `useTheme()` and shared UI primitives/components.
 - Step 7. Apply domain-specific standards: rating UI uses `RatingPill` or `getRatingColor`/`getRatingLabel`, and status/visibility semantics use `StatusPill`, `VisibilityBadge`, and `VisibilityOptionSelector`.
-- Step 8. Finish with checks: `pnpm mobile:lint` and `pnpm mobile:typecheck`.
+- Step 8. Finish with checks: `pnpm mobile:lint`, `pnpm mobile:typecheck`, and `pnpm mobile:doctor`.
 
 ## Offline Write Pattern
 
@@ -122,4 +122,4 @@
 - Loading, empty, and error states are covered on async screens.
 - Delete/trash icon actions open `ConfirmDestructiveModal` before deleting, with clear confirm/cancel copy and in-flight disabled/loading handling.
 - Rating UI still uses `getRatingColor`, `getRatingLabel`, and `RatingPill` conventions.
-- Run relevant checks for touched mobile code: `pnpm mobile:lint` and `pnpm mobile:typecheck`.
+- Run relevant checks for touched mobile code: `pnpm mobile:lint`, `pnpm mobile:typecheck`, and `pnpm mobile:doctor`.
