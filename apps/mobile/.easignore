@@ -1,2 +1,3 @@
-/ios
+# Keep the checked-in iOS native project in EAS uploads.
+# Android remains uncommitted and is generated when needed.
 /android
