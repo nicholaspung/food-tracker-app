@@ -1,10 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useState } from 'react';
-import { View } from 'react-native';
 
 import {
-  PhotoAttachmentRow,
-  PhotoSourceActionCards,
+  PhotoInputField,
   PhotoViewerModal,
   RatingLegend,
   RatingSelector,
@@ -12,7 +9,7 @@ import {
   VisitMetadataCard,
   type VisibilityOptionValue,
 } from '../../components/shared';
-import { createThemedStyles, useTheme } from '../../theme';
+import { createThemedStyles } from '../../theme';
 import { Card, Input, Text } from '../../ui';
 import type { DraftVisitItem, DraftVisitItemPhoto } from './shared';
 
@@ -23,6 +20,7 @@ type DraftVisitItemUpdates = Partial<
 interface CreateVisitReviewStepProps {
   detectedVisitDateValue: string | null;
   draftItems: DraftVisitItem[];
+  displayMaxPhotosPerItem: number | null;
   estimatedFreeMonthlyPhotosRemaining: number;
   isEditMode: boolean;
   onAttachPhoto: (itemId: string, source: 'camera' | 'gallery') => void;
@@ -44,17 +42,6 @@ const useStyles = createThemedStyles((theme) => ({
   itemCard: {
     gap: theme.spacing.sm,
   },
-  itemPhotoLabelRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xxs,
-  },
-  itemPhotoList: {
-    gap: theme.spacing.xs,
-  },
-  itemPhotoSection: {
-    gap: theme.spacing.xs,
-  },
   statusCard: {
     gap: theme.spacing.xs,
   },
@@ -63,6 +50,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function CreateVisitReviewStep({
   detectedVisitDateValue,
   draftItems,
+  displayMaxPhotosPerItem,
   estimatedFreeMonthlyPhotosRemaining,
   isEditMode,
   onAttachPhoto,
@@ -76,7 +64,6 @@ export function CreateVisitReviewStep({
   visitDate,
   visitVisibility,
 }: CreateVisitReviewStepProps) {
-  const theme = useTheme();
   const styles = useStyles();
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
@@ -173,49 +160,38 @@ export function CreateVisitReviewStep({
             value={item.description}
           />
           {!isEditMode ? (
-            <>
-              <View style={styles.itemPhotoSection}>
-                <View style={styles.itemPhotoLabelRow}>
-                  <Ionicons
-                    color={theme.colors.text.secondary}
-                    name="images-outline"
-                    size={14}
-                  />
-                  <Text variant="label">Add photos</Text>
-                </View>
-                <PhotoSourceActionCards
-                  cameraSubtitle="Camera"
-                  cameraTitle="Capture"
-                  gallerySubtitle="Photo Library"
-                  galleryTitle="Upload"
-                  onCameraPress={() => {
-                    onAttachPhoto(item.id, 'camera');
-                  }}
-                  onGalleryPress={() => {
-                    onAttachPhoto(item.id, 'gallery');
-                  }}
-                />
-              </View>
-              {item.photos.length > 0 ? (
-                <View style={styles.itemPhotoList}>
-                  {item.photos.map((photo, photoIndex) => (
-                    <PhotoAttachmentRow
-                      accessibilityLabel={`View attached photo ${photoIndex + 1} full screen`}
-                      key={photo.uri}
-                      name={photo.name}
-                      onPress={() => {
-                        openPhotoViewer(item.photos, photoIndex);
-                      }}
-                      onRemove={() => {
-                        closePhotoViewer();
-                        onRemoveDraftItemPhoto(item.id, photo.uri);
-                      }}
-                      uri={photo.uri}
-                    />
-                  ))}
-                </View>
-              ) : null}
-            </>
+            <PhotoInputField
+              attachments={item.photos.map((photo, photoIndex) => ({
+                id: `${item.id}-${photo.uri}`,
+                name: photo.name,
+                uri: photo.uri,
+                accessibilityLabel: `View attached photo ${photoIndex + 1} full screen`,
+                onPress: () => {
+                  openPhotoViewer(item.photos, photoIndex);
+                },
+                onRemove: () => {
+                  closePhotoViewer();
+                  onRemoveDraftItemPhoto(item.id, photo.uri);
+                },
+              }))}
+              cameraSubtitle="Camera"
+              cameraTitle="Capture"
+              countLabel={
+                displayMaxPhotosPerItem === null
+                  ? null
+                  : `${item.photos.length}/${displayMaxPhotosPerItem}`
+              }
+              gallerySubtitle="Photo Library"
+              galleryTitle="Upload"
+              iconName="images-outline"
+              label="Add photos"
+              onCameraPress={() => {
+                onAttachPhoto(item.id, 'camera');
+              }}
+              onGalleryPress={() => {
+                onAttachPhoto(item.id, 'gallery');
+              }}
+            />
           ) : null}
           <Input
             label="Notes"

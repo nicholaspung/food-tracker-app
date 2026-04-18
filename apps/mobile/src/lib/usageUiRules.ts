@@ -27,6 +27,13 @@ export interface PhotoUploadQuotaUiState {
   hasQuota: boolean;
 }
 
+interface DisplayPhotoUploadsPerRecordLimitInput {
+  snapshotLimit: number | null | undefined;
+  isDisplayAdminUser: boolean;
+  isDisplaySubscriberUser: boolean;
+  isDisplayFreeUser: boolean;
+}
+
 export function resolveCreateVisitSearchUi(input: CreateVisitSearchUiInput): CreateVisitSearchUiState {
   const isQuotaReached =
     input.isFreeTier &&
@@ -75,6 +82,28 @@ export function resolvePhotoUploadQuotaUi(input: PhotoUploadQuotaUiInput): Photo
     maxSelectableNow,
     hasQuota: maxSelectableNow > 0,
   };
+}
+
+export function resolveDisplayPhotoUploadsPerRecordLimit(
+  input: DisplayPhotoUploadsPerRecordLimitInput,
+): number | null {
+  if (typeof input.snapshotLimit === 'number') {
+    return input.snapshotLimit;
+  }
+
+  if (input.isDisplayAdminUser) {
+    return null;
+  }
+
+  if (input.isDisplaySubscriberUser) {
+    return 20;
+  }
+
+  if (input.isDisplayFreeUser) {
+    return 1;
+  }
+
+  return 1;
 }
 
 export function shouldShowOfflineUsageWarning(isOnline: boolean, isFreeUser: boolean): boolean {

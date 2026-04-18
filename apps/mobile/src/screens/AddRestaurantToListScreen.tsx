@@ -1,23 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 import {
   EmptyState,
   FeatureFormScreenScaffold,
+  PhotoViewerModal,
   RatingPill,
   Skeleton,
   StatusPill,
 } from '../components/shared';
 import {
   addRestaurantVisitRatingsToList,
+  buildPocketBaseFileUrl,
   getRestaurantListCandidateRestaurants,
   invalidateRestaurantListContentQueries,
+  listRestaurantListCandidateFoodItemPhotos,
   restaurantListQueryKeys,
   type RestaurantListVisitedRestaurantCandidate,
   type RestaurantListVisitedRestaurantFoodItem,
+  type VisitPhotoRecord,
 } from '../features';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useQueryListState } from '../hooks/useListQueryState';
@@ -125,6 +130,43 @@ const useStyles = createThemedStyles((theme) => ({
   foodItemRowDisabled: {
     opacity: 0.6,
   },
+  foodItemBody: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  foodItemPhotoWrap: {
+    position: 'relative',
+  },
+  foodItemPhotoWrapLoading: {
+    opacity: 0.6,
+  },
+  foodItemPhotoThumb: {
+    backgroundColor: theme.colors.border.subtle,
+    borderRadius: 8,
+    height: 56,
+    width: 56,
+  },
+  foodItemPhotoCountBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.inverse,
+    borderRadius: theme.radii.pill,
+    justifyContent: 'center',
+    left: 2,
+    minWidth: 20,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    top: 2,
+  },
+  foodItemPhotoCountText: {
+    color: theme.colors.text.inverse,
+    ...theme.typography.captionStrong,
+  },
+  foodItemContent: {
+    flex: 1,
+    gap: theme.spacing.xs,
+    minHeight: 56,
+  },
   foodItemHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -187,6 +229,30 @@ function matchesCandidateRestaurantSearch(
   );
 }
 
+function buildFoodItemPhotoThumbnailUrl(
+  item: RestaurantListVisitedRestaurantFoodItem,
+): string | null {
+  return buildFoodItemPhotoUrl(item, '100x100');
+}
+
+function buildFoodItemPhotoUrl(
+  item: RestaurantListVisitedRestaurantFoodItem,
+  thumb?: string,
+): string | null {
+  const photoPreviewId = item.photoPreview?.id?.trim();
+  const photoFilename = item.photoPreview?.photo?.trim();
+  if (!photoPreviewId || !photoFilename) {
+    return null;
+  }
+
+  return buildPocketBaseFileUrl({
+    collectionName: 'visit_photos',
+    recordId: photoPreviewId,
+    filename: photoFilename,
+    thumb,
+  });
+}
+
 export function AddRestaurantToListScreen({
   navigation,
   route,
@@ -197,6 +263,7 @@ export function AddRestaurantToListScreen({
   const writeFeature = useOfflineAwareFeatureWrite();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
+  const scrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<
@@ -207,6 +274,10 @@ export function AddRestaurantToListScreen({
   const [noteDirty, setNoteDirty] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingPhotoFoodItemId, setLoadingPhotoFoodItemId] = useState<string | null>(null);
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const trimmedSearchQuery = searchQuery.trim();
   const debouncedTrimmedSearchQuery = useDebouncedValue(
     trimmedSearchQuery,
@@ -265,6 +336,20 @@ export function AddRestaurantToListScreen({
       ) ?? null,
     [selectedRestaurantId, visitedRestaurants],
   );
+
+  useEffect(() => {
+    if (!selectedRestaurantId) {
+      return;
+    }
+
+    const scrollResetTimeout = setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    }, 0);
+
+    return () => {
+      clearTimeout(scrollResetTimeout);
+    };
+  }, [selectedRestaurantId]);
 
   const selectedRestaurantExistingFoodItemIds = useMemo(
     () => new Set(selectedRestaurant?.linkedFoodItemIds ?? []),
@@ -376,6 +461,91 @@ export function AddRestaurantToListScreen({
     });
   };
 
+  const openPhotoViewer = (
+    photos: VisitPhotoRecord[],
+    item: RestaurantListVisitedRestaurantFoodItem,
+  ) => {
+    if (photos.length === 0) {
+      return;
+    }
+
+    const urls = photos.map((photo) =>
+      buildPocketBaseFileUrl({
+        collectionId: photo.collectionId,
+        collectionName: photo.collectionName ?? 'visit_photos',
+        recordId: photo.id,
+        filename: photo.photo,
+      }),
+    );
+    const previewPhotoId = item.photoPreview?.id?.trim();
+    const previewIndex = previewPhotoId
+      ? photos.findIndex((photo) => photo.id === previewPhotoId)
+      : 0;
+    const boundedIndex = Math.max(0, previewIndex);
+
+    trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_PHOTO_VIEWER_OPENED', {
+      source: 'AddRestaurantToListScreen',
+      listId,
+      restaurantId: selectedRestaurant?.id ?? null,
+      foodItemId: item.id,
+      initialIndex: boundedIndex,
+      photoCount: urls.length,
+    });
+
+    setPhotoViewerUrls(urls);
+    setPhotoViewerInitialIndex(Math.min(boundedIndex, urls.length - 1));
+    setPhotoViewerVisible(true);
+  };
+
+  const handleOpenFoodItemPhotos = async (
+    item: RestaurantListVisitedRestaurantFoodItem,
+  ) => {
+    const photoPreviewUrl = buildFoodItemPhotoUrl(item);
+    if (!photoPreviewUrl) {
+      return;
+    }
+
+    setLoadingPhotoFoodItemId(item.id);
+
+    try {
+      const photos = await queryClient.fetchQuery({
+        queryKey: restaurantListQueryKeys.candidateFoodItemPhotos(item.id),
+        queryFn: ({ signal }) =>
+          listRestaurantListCandidateFoodItemPhotos(item.id, { signal }),
+        staleTime: 60_000,
+      });
+
+      if (photos.length > 0) {
+        openPhotoViewer(photos, item);
+        return;
+      }
+
+      setPhotoViewerUrls([photoPreviewUrl]);
+      setPhotoViewerInitialIndex(0);
+      setPhotoViewerVisible(true);
+    } catch (error) {
+      trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_PHOTO_VIEWER_FAILED', {
+        source: 'AddRestaurantToListScreen',
+        listId,
+        restaurantId: selectedRestaurant?.id ?? null,
+        foodItemId: item.id,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+
+      setPhotoViewerUrls([photoPreviewUrl]);
+      setPhotoViewerInitialIndex(0);
+      setPhotoViewerVisible(true);
+    } finally {
+      setLoadingPhotoFoodItemId((current) =>
+        current === item.id ? null : current,
+      );
+    }
+  };
+
+  const closePhotoViewer = () => {
+    setPhotoViewerVisible(false);
+  };
+
   const handleSubmit = async () => {
     if (!selectedRestaurant) {
       trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_SUBMIT_VALIDATION_FAILED', {
@@ -482,320 +652,366 @@ export function AddRestaurantToListScreen({
       !note.trim());
 
   return (
-    <FeatureFormScreenScaffold
-      onBackPress={
-        selectedRestaurant
-          ? handleBackToRestaurantSearch
-          : handleBackToListDetail
-      }
-      primaryAction={
-        selectedRestaurant
-          ? {
-              disabled: selectedRestaurantAddDisabled,
-              label: isSubmitting
-                ? "Saving..."
-                : selectedRestaurantAlreadyInList
-                  ? "Add Items"
-                  : "Add to List",
-              onPress: () => {
-                void handleSubmit();
-              },
-            }
-          : {
-              disabled: false,
-              label: "Cancel",
-              onPress: handleBackToListDetail,
-              variant: "secondary",
-            }
-      }
-      secondaryAction={
-        selectedRestaurant
-          ? {
-              disabled: isSubmitting,
-              label: "Back",
-              onPress: handleBackToRestaurantSearch,
-              variant: "secondary",
-            }
-          : undefined
-      }
-      subtitle={
-        selectedRestaurant
-          ? "Select menu items you recommend and add an optional note."
-          : "Search for a restaurant you've visited."
-      }
-      testID={selectedRestaurant ? "add-restaurant-to-list-detail-screen" : "add-restaurant-to-list-screen"}
-      title={
-        selectedRestaurant
-          ? `Add ${selectedRestaurant.name}`
-          : "Add Restaurant to List"
-      }
-    >
-      <PageErrorToast
-        errorMessage={errorMessage}
-        title="Could not update list"
-      />
-
-      <PageErrorToast
-        actionLabel="Retry"
-        errorMessage={
-          hasBlockingVisitedRestaurantsError
-            ? "Could not load your visited restaurants."
-            : restaurantsState.hasRefreshError
-              ? "Could not refresh your visited restaurants. Showing saved data."
-              : null
+    <>
+      <FeatureFormScreenScaffold
+        onBackPress={
+          selectedRestaurant
+            ? handleBackToRestaurantSearch
+            : handleBackToListDetail
         }
-        onAction={() => {
-          void restaurantsQuery.refetch();
-        }}
-        title="Restaurants unavailable"
-      />
-
-      {!selectedRestaurant ? (
-        <>
-          <Input
-            autoCapitalize="none"
-            autoFocus
-            label="Search restaurants"
-            onChangeText={setSearchQuery}
-            placeholder="Search restaurants..."
-            value={searchQuery}
-          />
-
-          {restaurantsQuery.isLoading ? (
-            <View style={styles.cardList}>
-              <Skeleton height={90} />
-              <Skeleton height={90} />
-              <Skeleton height={90} />
-            </View>
-          ) : null}
-
-          {!restaurantsQuery.isLoading &&
-          !hasBlockingVisitedRestaurantsError &&
-          visitedRestaurants.length === 0 ? (
-            <EmptyState
-              description={
-                trimmedSearchQuery
-                  ? "No matching visited restaurants found."
-                  : "Visit a restaurant and rate items first."
+        primaryAction={
+          selectedRestaurant
+            ? {
+                disabled: selectedRestaurantAddDisabled,
+                label: isSubmitting
+                  ? "Saving..."
+                  : selectedRestaurantAlreadyInList
+                    ? "Add Items"
+                    : "Add to List",
+                onPress: () => {
+                  void handleSubmit();
+                },
               }
-              title={
-                trimmedSearchQuery
-                  ? "No matching restaurants"
-                  : "No visited restaurants yet"
+            : {
+                disabled: false,
+                label: "Cancel",
+                onPress: handleBackToListDetail,
+                variant: "secondary",
               }
+        }
+        secondaryAction={
+          selectedRestaurant
+            ? {
+                disabled: isSubmitting,
+                label: "Back",
+                onPress: handleBackToRestaurantSearch,
+                variant: "secondary",
+              }
+            : undefined
+        }
+        subtitle={
+          selectedRestaurant
+            ? "Select menu items you recommend and add an optional note."
+            : "Search for a restaurant you've visited."
+        }
+        testID={selectedRestaurant ? "add-restaurant-to-list-detail-screen" : "add-restaurant-to-list-screen"}
+        title={
+          selectedRestaurant
+            ? `Add ${selectedRestaurant.name}`
+            : "Add Restaurant to List"
+        }
+        scrollViewRef={scrollViewRef}
+      >
+        <PageErrorToast
+          errorMessage={errorMessage}
+          title="Could not update list"
+        />
+
+        <PageErrorToast
+          actionLabel="Retry"
+          errorMessage={
+            hasBlockingVisitedRestaurantsError
+              ? "Could not load your visited restaurants."
+              : restaurantsState.hasRefreshError
+                ? "Could not refresh your visited restaurants. Showing saved data."
+                : null
+          }
+          onAction={() => {
+            void restaurantsQuery.refetch();
+          }}
+          title="Restaurants unavailable"
+        />
+
+        {!selectedRestaurant ? (
+          <>
+            <Input
+              autoCapitalize="none"
+              autoFocus
+              label="Search restaurants"
+              onChangeText={setSearchQuery}
+              placeholder="Search restaurants..."
+              value={searchQuery}
             />
-          ) : null}
 
-          {!restaurantsQuery.isLoading &&
-          !hasBlockingVisitedRestaurantsError &&
-          visitedRestaurants.length > 0 ? (
-            <View style={styles.cardList}>
-              {visitedRestaurants.map((restaurant, restaurantIndex) => {
-                const existingFoodItemIds = new Set(restaurant.linkedFoodItemIds);
-                const availableItemCount = restaurant.foodItems.filter(
-                  (item) => !existingFoodItemIds.has(item.id),
-                ).length;
-                const allItemsAdded =
-                  restaurant.foodItems.length > 0 && availableItemCount === 0;
-                const alreadyAdded = restaurant.alreadyInList === true;
-
-                const metadataLabel = `${restaurant.itemCount} ${restaurant.itemCount === 1 ? "rated item" : "rated items"}`;
-
-                return (
-                  <Card
-                    key={restaurant.id}
-                    style={[
-                      styles.restaurantCard,
-                      allItemsAdded ? styles.disabledCard : null,
-                    ]}
-                    tone="default"
-                  >
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={allItemsAdded}
-                      onPress={() => {
-                        handleSelectRestaurant(restaurant);
-                      }}
-                      testID={`add-restaurant-option-${restaurantIndex}`}
-                    >
-                      <View style={styles.restaurantHeaderRow}>
-                        <View style={styles.restaurantTitleWrap}>
-                          <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
-                            {restaurant.name}
-                          </Text>
-                          <Text style={styles.restaurantSubtitle} variant="metaRegular">
-                            {[restaurant.location, restaurant.cuisineType]
-                              .filter(Boolean)
-                              .join(" • ") || metadataLabel}
-                          </Text>
-                        </View>
-                        {allItemsAdded ? (
-                          <StatusPill label="All items added" tone="success" />
-                        ) : alreadyAdded ? (
-                          <StatusPill
-                            label={`${availableItemCount} left`}
-                            tone="warning"
-                          />
-                        ) : (
-                          <StatusPill label={metadataLabel} tone="muted" />
-                        )}
-                      </View>
-                      {restaurant.visitDates[0] ? (
-                        <Text style={styles.restaurantMeta} variant="bodySmTight">
-                          Latest visit{" "}
-                          {formatDisplayDate(restaurant.visitDates[0])}
-                        </Text>
-                      ) : null}
-                    </Pressable>
-                  </Card>
-                );
-              })}
-            </View>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <Card style={styles.selectedCard} tone="default">
-            <View style={styles.selectedRestaurantMeta}>
-              <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
-                {selectedRestaurant.name}
-              </Text>
-              <Text style={styles.restaurantSubtitle} variant="metaRegular">
-                {[selectedRestaurant.location, selectedRestaurant.cuisineType]
-                  .filter(Boolean)
-                  .join(" • ") || `${selectedRestaurant.itemCount} rated items`}
-              </Text>
-              {selectedRestaurantAlreadyInList ? (
-                <View style={styles.alreadyInListBanner}>
-                  <Ionicons
-                    color={theme.colors.text.warning}
-                    name="checkmark-circle-outline"
-                    size={14}
-                  />
-                  <Text style={styles.alreadyInListText} variant="bodySmTight">
-                    Already in this list. Add more rated items below.
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </Card>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle} variant="titleXsTight">
-              Recommended Items (Optional)
-            </Text>
-            <Text style={styles.sectionDescription} variant="metaRegular">
-              Select items you have rated. Items already in this list are marked
-              as added.
-            </Text>
-
-            {groupedFoodItems.length === 0 ? (
-              <EmptyState
-                description="No rated items found for this restaurant."
-                title="No items available"
-              />
-            ) : (
+            {restaurantsQuery.isLoading ? (
               <View style={styles.cardList}>
-                {groupedFoodItems.map((group) => (
-                  <Card
-                    key={group.dayKey}
-                    style={styles.dateGroupCard}
-                    tone="default"
-                  >
-                    <View style={styles.dateGroupTitleRow}>
-                      <Ionicons
-                        color={theme.colors.text.muted}
-                        name="calendar-outline"
-                        size={15}
-                      />
-                      <Text variant="label">
-                        {formatDisplayDate(group.visitDate)}
-                      </Text>
-                      <Text tone="muted">{`(${group.items.length})`}</Text>
-                    </View>
-
-                    <View style={styles.cardList}>
-                      {group.items.map((item) => {
-                        const isAlreadyAdded = selectedRestaurantExistingFoodItemIds.has(item.id);
-                        const isSelected = selectedFoodItemIds.includes(
-                          item.id,
-                        );
-
-                        return (
-                          <Pressable
-                            accessibilityRole="button"
-                            disabled={isAlreadyAdded}
-                            key={item.id}
-                            onPress={() => {
-                              handleToggleFoodItem(item.id);
-                            }}
-                            style={[
-                              styles.foodItemRow,
-                              isSelected ? styles.foodItemRowSelected : null,
-                              isAlreadyAdded
-                                ? styles.foodItemRowDisabled
-                                : null,
-                            ]}
-                          >
-                            <View style={styles.foodItemHeader}>
-                              <View style={styles.foodItemTitleWrap}>
-                                <Text style={styles.foodItemTitle} variant="labelMdBold">
-                                  {item.name}
-                                </Text>
-                                {item.notes ? (
-                                  <Text style={styles.foodItemNote} variant="bodySmTight">
-                                    {item.notes}
-                                  </Text>
-                                ) : null}
-                              </View>
-                              {isAlreadyAdded ? (
-                                <StatusPill label="Added" tone="success" />
-                              ) : isSelected ? (
-                                <Ionicons
-                                  color={theme.colors.text.warning}
-                                  name="checkmark-circle"
-                                  size={18}
-                                />
-                              ) : (
-                                <Ionicons
-                                  color={theme.colors.text.muted}
-                                  name="ellipse-outline"
-                                  size={18}
-                                />
-                              )}
-                            </View>
-                            <View style={styles.foodItemMetaRow}>
-                              <RatingPill rating={item.rating} />
-                            </View>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </Card>
-                ))}
+                <Skeleton height={90} />
+                <Skeleton height={90} />
+                <Skeleton height={90} />
               </View>
-            )}
-          </View>
+            ) : null}
 
-          <View style={styles.section}>
-            <View>
-              <Input
-                label="General note (optional)"
-                maxLength={300}
-                multiline
-                onChangeText={(value) => {
-                  setNote(value);
-                  setNoteDirty(true);
-                }}
-                placeholder="Why do you recommend this restaurant?"
-                testID="add-restaurant-note-input"
-                value={note}
+            {!restaurantsQuery.isLoading &&
+            !hasBlockingVisitedRestaurantsError &&
+            visitedRestaurants.length === 0 ? (
+              <EmptyState
+                description={
+                  trimmedSearchQuery
+                    ? "No matching visited restaurants found."
+                    : "Visit a restaurant and rate items first."
+                }
+                title={
+                  trimmedSearchQuery
+                    ? "No matching restaurants"
+                    : "No visited restaurants yet"
+                }
               />
+            ) : null}
+
+            {!restaurantsQuery.isLoading &&
+            !hasBlockingVisitedRestaurantsError &&
+            visitedRestaurants.length > 0 ? (
+              <View style={styles.cardList}>
+                {visitedRestaurants.map((restaurant, restaurantIndex) => {
+                  const existingFoodItemIds = new Set(restaurant.linkedFoodItemIds);
+                  const availableItemCount = restaurant.foodItems.filter(
+                    (item) => !existingFoodItemIds.has(item.id),
+                  ).length;
+                  const allItemsAdded =
+                    restaurant.foodItems.length > 0 && availableItemCount === 0;
+                  const alreadyAdded = restaurant.alreadyInList === true;
+
+                  const metadataLabel = `${restaurant.itemCount} ${restaurant.itemCount === 1 ? "rated item" : "rated items"}`;
+
+                  return (
+                    <Card
+                      key={restaurant.id}
+                      style={[
+                        styles.restaurantCard,
+                        allItemsAdded ? styles.disabledCard : null,
+                      ]}
+                      tone="default"
+                    >
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={allItemsAdded}
+                        onPress={() => {
+                          handleSelectRestaurant(restaurant);
+                        }}
+                        testID={`add-restaurant-option-${restaurantIndex}`}
+                      >
+                        <View style={styles.restaurantHeaderRow}>
+                          <View style={styles.restaurantTitleWrap}>
+                            <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
+                              {restaurant.name}
+                            </Text>
+                            <Text style={styles.restaurantSubtitle} variant="metaRegular">
+                              {[restaurant.location, restaurant.cuisineType]
+                                .filter(Boolean)
+                                .join(" • ") || metadataLabel}
+                            </Text>
+                          </View>
+                          {allItemsAdded ? (
+                            <StatusPill label="All items added" tone="success" />
+                          ) : alreadyAdded ? (
+                            <StatusPill
+                              label={`${availableItemCount} left`}
+                              tone="warning"
+                            />
+                          ) : (
+                            <StatusPill label={metadataLabel} tone="muted" />
+                          )}
+                        </View>
+                        {restaurant.visitDates[0] ? (
+                          <Text style={styles.restaurantMeta} variant="bodySmTight">
+                            Latest visit{" "}
+                            {formatDisplayDate(restaurant.visitDates[0])}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    </Card>
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Card style={styles.selectedCard} tone="default">
+              <View style={styles.selectedRestaurantMeta}>
+                <Text style={styles.restaurantTitle} variant="bodyLgTightBold">
+                  {selectedRestaurant.name}
+                </Text>
+                <Text style={styles.restaurantSubtitle} variant="metaRegular">
+                  {[selectedRestaurant.location, selectedRestaurant.cuisineType]
+                    .filter(Boolean)
+                    .join(" • ") || `${selectedRestaurant.itemCount} rated items`}
+                </Text>
+                {selectedRestaurantAlreadyInList ? (
+                  <View style={styles.alreadyInListBanner}>
+                    <Ionicons
+                      color={theme.colors.text.warning}
+                      name="checkmark-circle-outline"
+                      size={14}
+                    />
+                    <Text style={styles.alreadyInListText} variant="bodySmTight">
+                      Already in this list. Add more rated items below.
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </Card>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle} variant="titleXsTight">
+                Recommended Items (Optional)
+              </Text>
+              <Text style={styles.sectionDescription} variant="metaRegular">
+                Select items you have rated. Items already in this list are marked
+                as added.
+              </Text>
+
+              {groupedFoodItems.length === 0 ? (
+                <EmptyState
+                  description="No rated items found for this restaurant."
+                  title="No items available"
+                />
+              ) : (
+                <View style={styles.cardList}>
+                  {groupedFoodItems.map((group) => (
+                    <Card
+                      key={group.dayKey}
+                      style={styles.dateGroupCard}
+                      tone="default"
+                    >
+                      <View style={styles.dateGroupTitleRow}>
+                        <Ionicons
+                          color={theme.colors.text.muted}
+                          name="calendar-outline"
+                          size={15}
+                        />
+                        <Text variant="label">
+                          {formatDisplayDate(group.visitDate)}
+                        </Text>
+                        <Text tone="muted">{`(${group.items.length})`}</Text>
+                      </View>
+
+                      <View style={styles.cardList}>
+                        {group.items.map((item) => {
+                          const isAlreadyAdded = selectedRestaurantExistingFoodItemIds.has(item.id);
+                          const isSelected = selectedFoodItemIds.includes(
+                            item.id,
+                          );
+                          const photoThumbnailUrl = buildFoodItemPhotoThumbnailUrl(item);
+                          const extraPhotoCount = Math.max((item.photoCount ?? 0) - 1, 0);
+
+                          return (
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={isAlreadyAdded}
+                              key={item.id}
+                              onPress={() => {
+                                handleToggleFoodItem(item.id);
+                              }}
+                              style={[
+                                styles.foodItemRow,
+                                isSelected ? styles.foodItemRowSelected : null,
+                                isAlreadyAdded
+                                  ? styles.foodItemRowDisabled
+                                  : null,
+                              ]}
+                            >
+                              <View style={styles.foodItemBody}>
+                                {photoThumbnailUrl ? (
+                                  <Pressable
+                                    accessibilityLabel={`View photos for ${item.name}`}
+                                    accessibilityRole="button"
+                                    disabled={loadingPhotoFoodItemId === item.id}
+                                    onPress={(event) => {
+                                      event.stopPropagation();
+                                      void handleOpenFoodItemPhotos(item);
+                                    }}
+                                    style={[
+                                      styles.foodItemPhotoWrap,
+                                      loadingPhotoFoodItemId === item.id
+                                        ? styles.foodItemPhotoWrapLoading
+                                        : null,
+                                    ]}
+                                  >
+                                    <Image
+                                      source={{ uri: photoThumbnailUrl }}
+                                      style={styles.foodItemPhotoThumb}
+                                    />
+                                    {extraPhotoCount > 0 ? (
+                                      <View style={styles.foodItemPhotoCountBadge}>
+                                        <Text style={styles.foodItemPhotoCountText}>
+                                          +{extraPhotoCount}
+                                        </Text>
+                                      </View>
+                                    ) : null}
+                                  </Pressable>
+                                ) : null}
+
+                                <View style={styles.foodItemContent}>
+                                  <View style={styles.foodItemHeader}>
+                                    <View style={styles.foodItemTitleWrap}>
+                                      <Text style={styles.foodItemTitle} variant="labelMdBold">
+                                        {item.name}
+                                      </Text>
+                                      {item.notes ? (
+                                        <Text style={styles.foodItemNote} variant="bodySmTight">
+                                          {item.notes}
+                                        </Text>
+                                      ) : null}
+                                    </View>
+                                    {isAlreadyAdded ? (
+                                      <StatusPill label="Added" tone="success" />
+                                    ) : isSelected ? (
+                                      <Ionicons
+                                        color={theme.colors.text.warning}
+                                        name="checkmark-circle"
+                                        size={18}
+                                      />
+                                    ) : (
+                                      <Ionicons
+                                        color={theme.colors.text.muted}
+                                        name="ellipse-outline"
+                                        size={18}
+                                      />
+                                    )}
+                                  </View>
+                                  <View style={styles.foodItemMetaRow}>
+                                    <RatingPill rating={item.rating} />
+                                  </View>
+                                </View>
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </Card>
+                  ))}
+                </View>
+              )}
             </View>
-            <Text tone="muted">{`${note.length}/300`}</Text>
-          </View>
-        </>
-      )}
-    </FeatureFormScreenScaffold>
+
+            <View style={styles.section}>
+              <View>
+                <Input
+                  label="General note (optional)"
+                  maxLength={300}
+                  multiline
+                  onChangeText={(value) => {
+                    setNote(value);
+                    setNoteDirty(true);
+                  }}
+                  placeholder="Why do you recommend this restaurant?"
+                  testID="add-restaurant-note-input"
+                  value={note}
+                />
+              </View>
+              <Text tone="muted">{`${note.length}/300`}</Text>
+            </View>
+          </>
+        )}
+      </FeatureFormScreenScaffold>
+
+      <PhotoViewerModal
+        initialIndex={photoViewerInitialIndex}
+        onRequestClose={closePhotoViewer}
+        urls={photoViewerUrls}
+        visible={photoViewerVisible}
+      />
+    </>
   );
 }

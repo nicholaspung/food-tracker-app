@@ -148,6 +148,7 @@ export interface NoteRecord {
   restaurantName?: string;
   usedInVisitId?: string;
   usedInFoodItemId?: string;
+  usedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

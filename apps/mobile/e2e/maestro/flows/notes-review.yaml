@@ -51,6 +51,8 @@ appId: com.yummyrecs.mobile
     text: "^Used$"
     retryTapIfNoChange: true
 - assertVisible:
+    id: notes-used-retention-banner
+- assertVisible:
     text: Edit note
     index: 0
 - takeScreenshot: 88-notes-used

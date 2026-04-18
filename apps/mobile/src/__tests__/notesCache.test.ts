@@ -1,0 +1,147 @@
+import { QueryClient } from '@tanstack/react-query';
+
+import type { NoteDetailRecord, NoteOverviewItemRecord, NoteOverviewPage } from '../features/store/featureStore';
+import { promoteCachedNoteToUsed } from '../features/store/notesCache';
+import { notesQueryKeys } from '../features/store/notesQuery';
+
+function buildNote(
+  id: string,
+  status: 'draft' | 'used',
+  createdAt: string,
+  updatedAt: string,
+): NoteOverviewItemRecord {
+  return {
+    id,
+    title: `Title ${id}`,
+    content: `Content ${id}`,
+    status,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function buildNotesPage(
+  items: NoteOverviewItemRecord[],
+  overrides: Partial<NoteOverviewPage> = {},
+): NoteOverviewPage {
+  return {
+    items,
+    summary: {
+      allCount: 3,
+      draftCount: 2,
+      usedCount: 1,
+    },
+    page: 1,
+    pageSize: 20,
+    totalItems: items.length,
+    totalPages: 1,
+    hasNextPage: false,
+    ...overrides,
+  };
+}
+
+describe('notesCache', () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    });
+  });
+
+  it('removes a note from the unused cache and updates cached summary counts', () => {
+    queryClient.setQueryData(notesQueryKeys.paginated('draft'), {
+      pages: [
+        buildNotesPage([
+          buildNote('note_1', 'draft', '2026-03-01T00:00:00.000Z', '2026-03-02T00:00:00.000Z'),
+          buildNote('note_2', 'draft', '2026-02-01T00:00:00.000Z', '2026-02-02T00:00:00.000Z'),
+        ]),
+      ],
+      pageParams: [1],
+    });
+
+    promoteCachedNoteToUsed(queryClient, {
+      noteId: 'note_1',
+      usedAt: '2026-04-01T12:00:00.000Z',
+    });
+
+    const draftData = queryClient.getQueryData<{
+      pages: NoteOverviewPage[];
+      pageParams: number[];
+    }>(notesQueryKeys.paginated('draft'));
+
+    expect(draftData?.pages[0]?.items.map((item) => item.id)).toEqual(['note_2']);
+    expect(draftData?.pages[0]?.summary).toEqual({
+      allCount: 3,
+      draftCount: 1,
+      usedCount: 2,
+    });
+  });
+
+  it('updates loaded detail and all caches to used and inserts the note into a cached used page', () => {
+    const draftNote = buildNote('note_1', 'draft', '2026-03-01T00:00:00.000Z', '2026-03-02T00:00:00.000Z');
+    const existingUsedNote = buildNote('note_3', 'used', '2026-02-01T00:00:00.000Z', '2026-02-02T00:00:00.000Z');
+
+    queryClient.setQueryData(['feature', 'note', 'note_1'], draftNote);
+    queryClient.setQueryData<NoteDetailRecord>(notesQueryKeys.detail('note_1'), {
+      note: draftNote,
+      photos: [],
+    });
+    queryClient.setQueryData(notesQueryKeys.paginated('all'), {
+      pages: [buildNotesPage([existingUsedNote, draftNote])],
+      pageParams: [1],
+    });
+    queryClient.setQueryData(notesQueryKeys.paginated('used'), {
+      pages: [
+        buildNotesPage([existingUsedNote], {
+          summary: {
+            allCount: 3,
+            draftCount: 2,
+            usedCount: 1,
+          },
+        }),
+      ],
+      pageParams: [1],
+    });
+
+    promoteCachedNoteToUsed(queryClient, {
+      noteId: 'note_1',
+      usedAt: '2026-04-01T12:00:00.000Z',
+    });
+
+    expect(queryClient.getQueryData<NoteOverviewItemRecord>(['feature', 'note', 'note_1'])).toMatchObject({
+      id: 'note_1',
+      status: 'used',
+      usedAt: '2026-04-01T12:00:00.000Z',
+    });
+    expect(queryClient.getQueryData<NoteDetailRecord>(notesQueryKeys.detail('note_1'))?.note).toMatchObject({
+      id: 'note_1',
+      status: 'used',
+      usedAt: '2026-04-01T12:00:00.000Z',
+    });
+
+    const allData = queryClient.getQueryData<{
+      pages: NoteOverviewPage[];
+      pageParams: number[];
+    }>(notesQueryKeys.paginated('all'));
+    expect(allData?.pages[0]?.items.find((item) => item.id === 'note_1')).toMatchObject({
+      status: 'used',
+      usedAt: '2026-04-01T12:00:00.000Z',
+    });
+
+    const usedData = queryClient.getQueryData<{
+      pages: NoteOverviewPage[];
+      pageParams: number[];
+    }>(notesQueryKeys.paginated('used'));
+    expect(usedData?.pages[0]?.items.map((item) => item.id)).toEqual(['note_1', 'note_3']);
+    expect(usedData?.pages[0]?.summary).toEqual({
+      allCount: 3,
+      draftCount: 1,
+      usedCount: 2,
+    });
+  });
+});

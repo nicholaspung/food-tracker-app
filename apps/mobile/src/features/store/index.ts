@@ -4,6 +4,7 @@ export * from './friendsQuery';
 export * from './homeFeedQuery';
 export * from './homeFeedPagination';
 export * from './menuParsingGateway';
+export * from './notesCache';
 export * from './notesQuery';
 export * from './pocketbaseGateway';
 export * from './profileQuery';

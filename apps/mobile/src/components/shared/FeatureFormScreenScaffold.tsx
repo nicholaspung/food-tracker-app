@@ -123,11 +123,11 @@ export function FeatureFormScreenScaffold({
       <View style={styles.bodyContainer}>
         <KeyboardAwareScrollView
           automaticallyAdjustKeyboardInsets={false}
-          bottomOffset={keyboardAware ? theme.spacing.sm : 0}
+          bottomOffset={keyboardAware ? footerHeight + theme.spacing.sm : 0}
           contentContainerStyle={[
             styles.bodyContent,
             {
-              paddingBottom: footerHeight,
+              paddingBottom: theme.spacing.sm,
             },
             bodyStyle,
           ]}

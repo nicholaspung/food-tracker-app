@@ -6,7 +6,9 @@ import {
   formatLimitExceededMessage,
   homeFeedQueryKeys,
   linkVisitToListBookmark,
+  markNoteUsed,
   parseLimitExceededError,
+  promoteCachedNoteToUsed,
   restaurantListQueryKeys,
   updateVisit,
   type MonthlyUsageSnapshot,
@@ -197,6 +199,7 @@ export function useCreateVisitSubmission({
     setIsSubmitting(true);
 
     try {
+      const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
       if (isEditMode && editVisitId) {
         const visitUpdateInput: UpdateVisitInput = {
           restaurantId: restaurantId?.trim() || undefined,
@@ -252,6 +255,29 @@ export function useCreateVisitSubmission({
           });
 
       if (createResult.status === 'queued') {
+        if (sourceNoteId && noteUsedAt) {
+          await writeFeature({
+            operationName: 'note.mark-used',
+            trackOnlineWrite: false,
+            offline: {
+              strategy: 'outbox',
+              payload: {
+                noteId: sourceNoteId,
+                usedAt: noteUsedAt,
+              },
+            },
+            execute: () =>
+              markNoteUsed({
+                noteId: sourceNoteId,
+                usedAt: noteUsedAt,
+              }),
+          });
+          promoteCachedNoteToUsed(queryClient, {
+            noteId: sourceNoteId,
+            usedAt: noteUsedAt,
+          });
+        }
+
         setSourceListItemId(null);
         await invalidateVisitQueries({ sourceNoteId });
         showQueuedOfflineAlert('Visit');
@@ -293,6 +319,13 @@ export function useCreateVisitSubmission({
         source: 'CreateVisitScreen',
         visitVisibility,
       });
+
+      if (sourceNoteId && noteUsedAt) {
+        promoteCachedNoteToUsed(queryClient, {
+          noteId: sourceNoteId,
+          usedAt: noteUsedAt,
+        });
+      }
 
       await invalidateVisitQueries({ includeUsage: true, sourceNoteId });
       navigation.navigate('Home');

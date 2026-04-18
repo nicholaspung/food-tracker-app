@@ -8,6 +8,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
@@ -29,6 +30,7 @@ const defaultNotesPageSize = 20
 const maxNotesPageSize = 50
 const defaultVisitsPageSize = 20
 const maxVisitsPageSize = 50
+const usedNotesRetentionDays = 30
 
 type noteSummaryResponse struct {
 	AllCount   int `db:"allCount" json:"allCount"`
@@ -240,6 +242,11 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewUnauthorizedError("authentication required", nil)
 		}
 
+		if err := cleanupExpiredUsedNotes(app, e.Auth.Id, time.Now().UTC()); err != nil {
+			log.Printf("Failed to clean up expired used notes for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to clean up expired used notes", err)
+		}
+
 		summary, err := getNoteSummary(app, e.Auth.Id)
 		if err != nil {
 			log.Printf("Failed to load notes summary for user %s: %v", e.Auth.Id, err)
@@ -267,6 +274,11 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
+		if err := cleanupExpiredUsedNotes(app, e.Auth.Id, time.Now().UTC()); err != nil {
+			log.Printf("Failed to clean up expired used notes for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to clean up expired used notes", err)
+		}
+
 		response, err := getNotesOverviewResponse(app, e.Auth.Id, page, pageSize, status)
 		if err != nil {
 			log.Printf("Failed to load notes overview for user %s: %v", e.Auth.Id, err)
@@ -284,6 +296,11 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		noteID := strings.TrimSpace(e.Request.PathValue("noteId"))
 		if noteID == "" {
 			return apis.NewBadRequestError("noteId is required", nil)
+		}
+
+		if err := cleanupExpiredUsedNotes(app, e.Auth.Id, time.Now().UTC()); err != nil {
+			log.Printf("Failed to clean up expired used notes for user %s: %v", e.Auth.Id, err)
+			return apis.NewApiError(500, "failed to clean up expired used notes", err)
 		}
 
 		response, err := getNoteDetailResponse(app, e.Auth.Id, noteID)
@@ -532,6 +549,31 @@ func getNoteSummary(app core.App, userID string) (noteSummaryResponse, error) {
 		One(&summary)
 
 	return summary, err
+}
+
+func cleanupExpiredUsedNotes(app core.App, userID string, now time.Time) error {
+	expiredNotes, err := app.FindRecordsByFilter(
+		"notes",
+		"user = {:userId} && status = 'used' && usedAt != '' && usedAt <= {:cutoff}",
+		"",
+		0,
+		0,
+		dbx.Params{
+			"userId": userID,
+			"cutoff": now.AddDate(0, 0, -usedNotesRetentionDays).Format(time.RFC3339Nano),
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	for _, note := range expiredNotes {
+		if err := app.Delete(note); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func getFriendsSummary(app core.App, userID string) (friendsSummaryResponse, error) {
@@ -1071,7 +1113,7 @@ func getNotesOverviewResponse(
 	noteRecords, err := app.FindRecordsByFilter(
 		"notes",
 		filter,
-		"-updated,-created",
+		"-created,-updated",
 		pageSize+1,
 		(page-1)*pageSize,
 		params,

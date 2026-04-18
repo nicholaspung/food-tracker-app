@@ -23,13 +23,55 @@ func setCollectionRecordCreatedAt(
 ) {
 	t.Helper()
 
-	query := fmt.Sprintf(`UPDATE %s SET created = {:createdAt} WHERE id = {:recordId}`, collectionName)
+	query := fmt.Sprintf(`UPDATE %s SET "created" = {:value} WHERE id = {:recordId}`, collectionName)
 	if _, err := app.DB().NewQuery(query).Bind(dbx.Params{
-		"createdAt": createdAt,
-		"recordId":  recordID,
+		"value":    createdAt,
+		"recordId": recordID,
 	}).Execute(); err != nil {
 		t.Fatalf("failed to update %s created time: %v", collectionName, err)
 	}
+}
+
+func setCollectionRecordFieldValue(
+	t *testing.T,
+	app core.App,
+	collectionName string,
+	recordID string,
+	fieldName string,
+	value string,
+) {
+	t.Helper()
+
+	query := fmt.Sprintf(`UPDATE %s SET "%s" = {:value} WHERE id = {:recordId}`, collectionName, fieldName)
+	if _, err := app.DB().NewQuery(query).Bind(dbx.Params{
+		"value":    value,
+		"recordId": recordID,
+	}).Execute(); err != nil {
+		t.Fatalf("failed to update %s.%s: %v", collectionName, fieldName, err)
+	}
+}
+
+func setCollectionRecordUpdatedAt(
+	t *testing.T,
+	app core.App,
+	collectionName string,
+	recordID string,
+	updatedAt string,
+) {
+	t.Helper()
+
+	setCollectionRecordFieldValue(t, app, collectionName, recordID, "updated", updatedAt)
+}
+
+func setNoteUsedAt(
+	t *testing.T,
+	app core.App,
+	noteID string,
+	usedAt string,
+) {
+	t.Helper()
+
+	setCollectionRecordFieldValue(t, app, "notes", noteID, "usedAt", usedAt)
 }
 
 func TestNotesSummaryEndpoint(t *testing.T) {
@@ -163,6 +205,133 @@ func TestNotesOverviewEndpointReturnsSummaryAndPhotoPreviewMetadata(t *testing.T
 	}
 	if item.PhotoPreview.ID != firstPreviewID || item.PhotoPreview.Photo != "draft-photo-a.jpg" || item.PhotoPreview.Count != 2 {
 		t.Fatalf("unexpected draft photo preview payload: %#v", item.PhotoPreview)
+	}
+}
+
+func TestNotesOverviewEndpointOrdersByCreatedAtDescending(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	olderNote := createNoteRecord(t, server.app, user.Id, "draft")
+	olderNote.Set("content", "Older note")
+	if err := server.app.Save(olderNote); err != nil {
+		t.Fatalf("failed to update older note: %v", err)
+	}
+	setCollectionRecordCreatedAt(t, server.app, "notes", olderNote.Id, "2026-01-01T09:00:00Z")
+	setCollectionRecordUpdatedAt(t, server.app, "notes", olderNote.Id, "2026-04-01T09:00:00Z")
+
+	newerNote := createNoteRecord(t, server.app, user.Id, "draft")
+	newerNote.Set("content", "Newer note")
+	if err := server.app.Save(newerNote); err != nil {
+		t.Fatalf("failed to update newer note: %v", err)
+	}
+	setCollectionRecordCreatedAt(t, server.app, "notes", newerNote.Id, "2026-03-01T09:00:00Z")
+	setCollectionRecordUpdatedAt(t, server.app, "notes", newerNote.Id, "2026-03-02T09:00:00Z")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=draft&page=1&pageSize=10",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode notes overview payload: %v", err)
+	}
+
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 notes, got %#v", payload.Items)
+	}
+	if payload.Items[0].ID != newerNote.Id || payload.Items[1].ID != olderNote.Id {
+		t.Fatalf("expected newest-created note first, got %#v", payload.Items)
+	}
+}
+
+func TestNotesReadsCleanupExpiredUsedNotes(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	expiredUsed := createNoteRecord(t, server.app, user.Id, "used")
+	expiredUsed.Set("content", "Expired used note")
+	if err := server.app.Save(expiredUsed); err != nil {
+		t.Fatalf("failed to update expired used note: %v", err)
+	}
+	setNoteUsedAt(t, server.app, expiredUsed.Id, "2025-01-01T00:00:00Z")
+
+	freshUsed := createNoteRecord(t, server.app, user.Id, "used")
+	freshUsed.Set("content", "Fresh used note")
+	if err := server.app.Save(freshUsed); err != nil {
+		t.Fatalf("failed to update fresh used note: %v", err)
+	}
+	setNoteUsedAt(t, server.app, freshUsed.Id, time.Now().UTC().AddDate(0, 0, -7).Format(time.RFC3339Nano))
+
+	draftNote := createNoteRecord(t, server.app, user.Id, "draft")
+	draftNote.Set("content", "Draft note")
+	if err := server.app.Save(draftNote); err != nil {
+		t.Fatalf("failed to update draft note: %v", err)
+	}
+
+	summaryResponse := performJSONRequest(t, server.mux, http.MethodGet, "/api/notes/summary", token, "")
+	if summaryResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", summaryResponse.Code, summaryResponse.Body.String())
+	}
+
+	summaryBody := parseJSONMap(t, summaryResponse.Body.Bytes())
+	assertFloatEquals(t, summaryBody["allCount"], 2)
+	assertFloatEquals(t, summaryBody["draftCount"], 1)
+	assertFloatEquals(t, summaryBody["usedCount"], 1)
+
+	overviewResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=all&page=1&pageSize=10",
+		token,
+		"",
+	)
+	if overviewResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", overviewResponse.Code, overviewResponse.Body.String())
+	}
+
+	var overviewPayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(overviewResponse.Body.Bytes(), &overviewPayload); err != nil {
+		t.Fatalf("failed to decode notes overview payload: %v", err)
+	}
+
+	if len(overviewPayload.Items) != 2 {
+		t.Fatalf("expected expired note to be removed from overview, got %#v", overviewPayload.Items)
+	}
+
+	remainingIDs := map[string]struct{}{}
+	for _, item := range overviewPayload.Items {
+		remainingIDs[item.ID] = struct{}{}
+	}
+	if _, exists := remainingIDs[expiredUsed.Id]; exists {
+		t.Fatalf("expected expired used note to be removed from overview, got %#v", overviewPayload.Items)
+	}
+	if _, exists := remainingIDs[freshUsed.Id]; !exists {
+		t.Fatalf("expected fresh used note to remain, got %#v", overviewPayload.Items)
+	}
+	if _, exists := remainingIDs[draftNote.Id]; !exists {
+		t.Fatalf("expected draft note to remain, got %#v", overviewPayload.Items)
+	}
+
+	if _, err := server.app.FindRecordById("notes", expiredUsed.Id); err == nil {
+		t.Fatalf("expected expired used note to be deleted")
 	}
 }
 
@@ -326,6 +495,27 @@ func TestNoteDetailEndpointHidesOtherUsersNotes(t *testing.T) {
 	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/notes/"+otherUserNote.Id, token, "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 Not Found, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestNoteDetailEndpointDeletesExpiredUsedNotesBeforeReturning(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+
+	expiredNote := createNoteRecord(t, server.app, user.Id, "used")
+	expiredNote.Set("content", "Expired detail note")
+	if err := server.app.Save(expiredNote); err != nil {
+		t.Fatalf("failed to update expired note: %v", err)
+	}
+	setNoteUsedAt(t, server.app, expiredNote.Id, "2025-01-01T00:00:00Z")
+
+	response := performJSONRequest(t, server.mux, http.MethodGet, "/api/notes/"+expiredNote.Id, token, "")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 Not Found, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if _, err := server.app.FindRecordById("notes", expiredNote.Id); err == nil {
+		t.Fatalf("expected expired note to be deleted before detail response")
 	}
 }
 

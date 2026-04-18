@@ -9,8 +9,7 @@ import {
   FeatureFormScreenScaffold,
   LinkedNoteCard,
   PageErrorToast,
-  PhotoAttachmentRow,
-  PhotoSourceActionCards,
+  PhotoInputField,
   PhotoViewerModal,
   QuickTrackFormFields,
   UpgradePromptCard,
@@ -19,7 +18,9 @@ import {
   createQuickTrack,
   formatLimitExceededMessage,
   getNoteById,
+  markNoteUsed,
   parseLimitExceededError,
+  promoteCachedNoteToUsed,
   useMonthlyUsage,
   type VisitPhotoUploadInput,
 } from '../features';
@@ -343,6 +344,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     setIsSubmitting(true);
 
     try {
+      const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
       const quickTrackInput = buildCreateQuickTrackInput(form, {
         photo: photo ?? undefined,
         sourceNoteId,
@@ -358,6 +360,29 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       });
 
       if (createResult.status === 'queued') {
+        if (sourceNoteId && noteUsedAt) {
+          await writeFeature({
+            operationName: 'note.mark-used',
+            trackOnlineWrite: false,
+            offline: {
+              strategy: 'outbox',
+              payload: {
+                noteId: sourceNoteId,
+                usedAt: noteUsedAt,
+              },
+            },
+            execute: () =>
+              markNoteUsed({
+                noteId: sourceNoteId,
+                usedAt: noteUsedAt,
+              }),
+          });
+          promoteCachedNoteToUsed(queryClient, {
+            noteId: sourceNoteId,
+            usedAt: noteUsedAt,
+          });
+        }
+
         await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
         showQueuedOfflineAlert('Quick track');
         navigation.navigate('Home');
@@ -371,6 +396,12 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       ];
 
       if (sourceNoteId) {
+        if (noteUsedAt) {
+          promoteCachedNoteToUsed(queryClient, {
+            noteId: sourceNoteId,
+            usedAt: noteUsedAt,
+          });
+        }
         invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }));
         invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'note', sourceNoteId] }));
         invalidations.push(queryClient.invalidateQueries({ queryKey: notesQueryKeys.detail(sourceNoteId) }));
@@ -417,6 +448,25 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
 
     navigation.navigate('AddVisit');
   };
+
+  const photoInputAttachments = photo
+    ? [
+        {
+          id: photo.uri,
+          name: photo.name,
+          uri: photo.uri,
+          accessibilityLabel: 'View attached photo full screen',
+          onPress: () => {
+            setIsPhotoViewerVisible(true);
+          },
+          onRemove: () => {
+            setIsPhotoViewerVisible(false);
+            setDetectedItemDateValue(null);
+            setPhoto(null);
+          },
+        },
+      ]
+    : [];
 
   return (
     <FeatureFormScreenScaffold
@@ -493,48 +543,33 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
             }));
           }}
           photoSection={
-            <>
-              <Text variant="label">Photo (Optional)</Text>
-              <PhotoSourceActionCards
-                cameraSubtitle="Camera"
-                cameraTitle="Take Photo"
-                disabled={isSubmitting}
-                gallerySubtitle="Photo Library"
-                galleryTitle="Upload Image"
-                onCameraPress={() => {
-                  void handlePhotoPick('camera');
-                }}
-                onGalleryPress={() => {
-                  void handlePhotoPick('gallery');
-                }}
-              />
-
-              {photo ? (
-                <PhotoAttachmentRow
-                  accessibilityLabel="View attached photo full screen"
-                  name={photo.name}
-                  onPress={() => {
-                    setIsPhotoViewerVisible(true);
-                  }}
-                  onRemove={() => {
-                    setIsPhotoViewerVisible(false);
-                    setDetectedItemDateValue(null);
-                    setPhoto(null);
-                  }}
-                  uri={photo.uri}
-                />
-              ) : null}
-
-              {photoPermissionNeedsSettings ? (
-                <Button
-                  label="Open Settings"
-                  onPress={() => {
-                    void Linking.openSettings();
-                  }}
-                  variant="secondary"
-                />
-              ) : null}
-            </>
+            <PhotoInputField
+              attachments={photoInputAttachments}
+              cameraSubtitle="Camera"
+              cameraTitle="Take Photo"
+              countLabel={photo ? '1/1' : '0/1'}
+              disabled={isSubmitting}
+              footerAction={
+                photoPermissionNeedsSettings ? (
+                  <Button
+                    label="Open Settings"
+                    onPress={() => {
+                      void Linking.openSettings();
+                    }}
+                    variant="secondary"
+                  />
+                ) : null
+              }
+              gallerySubtitle="Photo Library"
+              galleryTitle="Upload Image"
+              label="Photo (Optional)"
+              onCameraPress={() => {
+                void handlePhotoPick('camera');
+              }}
+              onGalleryPress={() => {
+                void handlePhotoPick('gallery');
+              }}
+            />
           }
           ratingLegendInitiallyExpanded={!hasRatedBefore}
           ratingTestIDPrefix="quick-track-rating"

@@ -110,11 +110,18 @@ type restaurantListDetailHydratedResponse struct {
 }
 
 type restaurantListVisitedRestaurantCandidateFoodItemResponse struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Rating    float64 `json:"rating"`
-	Notes     string  `json:"notes,omitempty"`
-	VisitedAt string  `json:"visitedAt"`
+	ID           string                                             `json:"id"`
+	Name         string                                             `json:"name"`
+	Rating       float64                                            `json:"rating"`
+	Notes        string                                             `json:"notes,omitempty"`
+	VisitedAt    string                                             `json:"visitedAt"`
+	PhotoPreview *restaurantListDetailPhotoPreviewReferenceResponse `json:"photoPreview,omitempty"`
+	PhotoCount   int                                                `json:"photoCount,omitempty"`
+}
+
+type restaurantListDetailPhotoPreviewReferenceResponse struct {
+	ID    string `json:"id"`
+	Photo string `json:"photo"`
 }
 
 type restaurantListVisitedRestaurantCandidateResponse struct {
@@ -153,12 +160,15 @@ type restaurantListVisitedRestaurantCandidateRow struct {
 }
 
 type restaurantListVisitedRestaurantCandidateFoodItemRow struct {
-	RestaurantID   string  `db:"restaurantId"`
-	VisitAt        string  `db:"visitAt"`
-	FoodItemID     string  `db:"foodItemId"`
-	FoodItemName   string  `db:"foodItemName"`
-	FoodItemRating float64 `db:"foodItemRating"`
-	FoodItemNotes  string  `db:"foodItemNotes"`
+	RestaurantID      string         `db:"restaurantId"`
+	VisitAt           string         `db:"visitAt"`
+	FoodItemID        string         `db:"foodItemId"`
+	FoodItemName      string         `db:"foodItemName"`
+	FoodItemRating    float64        `db:"foodItemRating"`
+	FoodItemNotes     string         `db:"foodItemNotes"`
+	PhotoPreviewID    sql.NullString `db:"photoPreviewId"`
+	PhotoPreviewPhoto sql.NullString `db:"photoPreviewPhoto"`
+	PhotoCount        int            `db:"photoCount"`
 }
 
 type restaurantListsPageRow struct {
@@ -900,13 +910,25 @@ func getRestaurantListVisitedRestaurantsPageResponse(
 			continue
 		}
 
+		var photoPreview *restaurantListDetailPhotoPreviewReferenceResponse
+		photoPreviewID := strings.TrimSpace(row.PhotoPreviewID.String)
+		photoPreviewPhoto := strings.TrimSpace(row.PhotoPreviewPhoto.String)
+		if photoPreviewID != "" && photoPreviewPhoto != "" {
+			photoPreview = &restaurantListDetailPhotoPreviewReferenceResponse{
+				ID:    photoPreviewID,
+				Photo: photoPreviewPhoto,
+			}
+		}
+
 		foodItemSets[row.RestaurantID][row.FoodItemID] = struct{}{}
 		item.FoodItems = append(item.FoodItems, restaurantListVisitedRestaurantCandidateFoodItemResponse{
-			ID:        row.FoodItemID,
-			Name:      defaultString(strings.TrimSpace(row.FoodItemName), "Unknown item"),
-			Rating:    row.FoodItemRating,
-			Notes:     strings.TrimSpace(row.FoodItemNotes),
-			VisitedAt: row.VisitAt,
+			ID:           row.FoodItemID,
+			Name:         defaultString(strings.TrimSpace(row.FoodItemName), "Unknown item"),
+			Rating:       row.FoodItemRating,
+			Notes:        strings.TrimSpace(row.FoodItemNotes),
+			VisitedAt:    row.VisitAt,
+			PhotoPreview: photoPreview,
+			PhotoCount:   row.PhotoCount,
 		})
 		item.ItemCount += 1
 	}
@@ -1088,7 +1110,36 @@ func listRestaurantListVisitedRestaurantFoodItemRows(
 			food_items.id AS [[foodItemId]],
 			food_items.name AS [[foodItemName]],
 			food_items.rating AS [[foodItemRating]],
-			food_items.notes AS [[foodItemNotes]]
+			food_items.notes AS [[foodItemNotes]],
+			(
+				SELECT visit_photos.id
+				FROM visit_photos
+				WHERE visit_photos.food_item = food_items.id
+					AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+					AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+				ORDER BY
+					COALESCE(NULLIF(TRIM(visit_photos.created), ''), visit_photos.updated) DESC,
+					visit_photos.id DESC
+				LIMIT 1
+			) AS [[photoPreviewId]],
+			(
+				SELECT visit_photos.photo
+				FROM visit_photos
+				WHERE visit_photos.food_item = food_items.id
+					AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+					AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+				ORDER BY
+					COALESCE(NULLIF(TRIM(visit_photos.created), ''), visit_photos.updated) DESC,
+					visit_photos.id DESC
+				LIMIT 1
+			) AS [[photoPreviewPhoto]],
+			(
+				SELECT COUNT(*)
+				FROM visit_photos
+				WHERE visit_photos.food_item = food_items.id
+					AND TRIM(COALESCE(visit_photos.user, '')) = {:userId}
+					AND COALESCE(visit_photos.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
+			) AS [[photoCount]]
 		FROM visits
 		LEFT JOIN food_items
 			ON food_items.visit = visits.id

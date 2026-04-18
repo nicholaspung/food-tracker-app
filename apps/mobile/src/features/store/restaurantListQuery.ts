@@ -24,6 +24,9 @@ export const restaurantListQueryKeys = {
     ['feature', 'restaurantListCandidateRestaurants', listId] as const,
   candidateRestaurants: (listId: string, searchQuery: string) =>
     ['feature', 'restaurantListCandidateRestaurants', listId, searchQuery] as const,
+  candidateFoodItemPhotosRoot: ['feature', 'restaurantListCandidateFoodItemPhotos'] as const,
+  candidateFoodItemPhotos: (foodItemId: string) =>
+    ['feature', 'restaurantListCandidateFoodItemPhotos', foodItemId] as const,
 };
 
 async function invalidateQueryKeys(queryClient: QueryClient, queryKeys: readonly QueryKey[]): Promise<void> {

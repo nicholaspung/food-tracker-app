@@ -90,12 +90,19 @@ export interface RestaurantListItemLinkRecord {
   recommendedItemIds?: string[];
 }
 
+export interface RestaurantListVisitedRestaurantFoodItemPhotoPreview {
+  id: string;
+  photo: string;
+}
+
 export interface RestaurantListVisitedRestaurantFoodItem {
   id: string;
   name: string;
   rating: number;
   notes?: string;
   visitedAt: string;
+  photoPreview?: RestaurantListVisitedRestaurantFoodItemPhotoPreview;
+  photoCount?: number;
 }
 
 export interface RestaurantListVisitedRestaurantCandidate {
@@ -370,6 +377,7 @@ export interface MarkNoteUsedInput {
   noteId: string;
   usedInVisitId?: string;
   usedInFoodItemId?: string;
+  usedAt?: string;
 }
 
 export interface InviteFriendInput {
@@ -489,6 +497,7 @@ export {
   createRestaurantList,
   deleteRestaurantList,
   getRestaurantListCandidateRestaurants,
+  listRestaurantListCandidateFoodItemPhotos,
   getRestaurantListDetail,
   getRestaurantListById,
   linkVisitToListBookmark,

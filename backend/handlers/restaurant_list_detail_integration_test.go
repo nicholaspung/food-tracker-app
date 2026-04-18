@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
 	"myapp/handlers"
@@ -317,6 +318,34 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		"name":   "Spicy Tuna Roll",
 		"rating": 5,
 	})
+	firstPhotoID := insertVisitPhotoRowRaw(t, server.app, user.Id, newerVisit.Id, sourceItem.Id)
+	secondPhotoID := insertVisitPhotoRowRaw(t, server.app, user.Id, newerVisit.Id, sourceItem.Id)
+	if _, err := server.app.DB().NewQuery(`
+		UPDATE visit_photos
+		SET created = {:created}, updated = {:updated}
+		WHERE id = {:id}
+	`).
+		Bind(dbx.Params{
+			"id":      firstPhotoID,
+			"created": "2026-04-05T18:30:00Z",
+			"updated": "2026-04-05T18:30:00Z",
+		}).
+		Execute(); err != nil {
+		t.Fatalf("failed to update older visit photo timestamp: %v", err)
+	}
+	if _, err := server.app.DB().NewQuery(`
+		UPDATE visit_photos
+		SET created = {:created}, updated = {:updated}
+		WHERE id = {:id}
+	`).
+		Bind(dbx.Params{
+			"id":      secondPhotoID,
+			"created": "2026-04-05T18:31:00Z",
+			"updated": "2026-04-05T18:31:00Z",
+		}).
+		Execute(); err != nil {
+		t.Fatalf("failed to update latest visit photo timestamp: %v", err)
+	}
 	userLinkedItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"visit":  newerVisit.Id,
 		"user":   user.Id,
@@ -353,23 +382,30 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
 	}
 
+	type candidateFoodItemPayload struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		VisitedAt    string `json:"visitedAt"`
+		PhotoCount   int    `json:"photoCount"`
+		PhotoPreview *struct {
+			ID    string `json:"id"`
+			Photo string `json:"photo"`
+		} `json:"photoPreview"`
+	}
+
 	var payload struct {
 		List struct {
 			ID string `json:"id"`
 		} `json:"list"`
 		Items []struct {
-			ID                string   `json:"id"`
-			Name              string   `json:"name"`
-			ItemCount         int      `json:"itemCount"`
-			VisitDates        []string `json:"visitDates"`
-			AlreadyInList     bool     `json:"alreadyInList"`
-			ExistingNote      string   `json:"existingNote"`
-			LinkedFoodItemIDs []string `json:"linkedFoodItemIds"`
-			FoodItems         []struct {
-				ID        string `json:"id"`
-				Name      string `json:"name"`
-				VisitedAt string `json:"visitedAt"`
-			} `json:"foodItems"`
+			ID                string                     `json:"id"`
+			Name              string                     `json:"name"`
+			ItemCount         int                        `json:"itemCount"`
+			VisitDates        []string                   `json:"visitDates"`
+			AlreadyInList     bool                       `json:"alreadyInList"`
+			ExistingNote      string                     `json:"existingNote"`
+			LinkedFoodItemIDs []string                   `json:"linkedFoodItemIds"`
+			FoodItems         []candidateFoodItemPayload `json:"foodItems"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -397,7 +433,10 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		t.Fatalf("expected visit dates ordered newest first, got %#v", item.VisitDates)
 	}
 
-	foodItemIDs := extractVisitedRestaurantCandidateFoodItemIDs(item.FoodItems)
+	foodItemIDs := make([]string, 0, len(item.FoodItems))
+	for _, foodItem := range item.FoodItems {
+		foodItemIDs = append(foodItemIDs, foodItem.ID)
+	}
 	if !containsVisitedRestaurantString(item.LinkedFoodItemIDs, recommendedItem.Id) ||
 		!containsVisitedRestaurantString(item.LinkedFoodItemIDs, sourceItem.Id) ||
 		!containsVisitedRestaurantString(item.LinkedFoodItemIDs, userLinkedItem.Id) {
@@ -407,6 +446,38 @@ func TestRestaurantListCandidateRestaurantsEndpointReturnsHydratedCandidates(t *
 		!containsVisitedRestaurantString(foodItemIDs, sourceItem.Id) ||
 		!containsVisitedRestaurantString(foodItemIDs, userLinkedItem.Id) {
 		t.Fatalf("expected restaurant food items in response, got %#v", item.FoodItems)
+	}
+
+	var sourceItemPayload *candidateFoodItemPayload
+	var recommendedItemPayload *candidateFoodItemPayload
+	for index := range item.FoodItems {
+		switch item.FoodItems[index].ID {
+		case sourceItem.Id:
+			sourceItemPayload = &item.FoodItems[index]
+		case recommendedItem.Id:
+			recommendedItemPayload = &item.FoodItems[index]
+		}
+	}
+	if sourceItemPayload == nil {
+		t.Fatalf("expected source item payload for %s, got %#v", sourceItem.Id, item.FoodItems)
+	}
+	if sourceItemPayload.PhotoPreview == nil {
+		t.Fatalf("expected source item photo preview, got %#v", sourceItemPayload)
+	}
+	if sourceItemPayload.PhotoPreview.ID != secondPhotoID || sourceItemPayload.PhotoPreview.Photo != "test-photo.jpg" {
+		t.Fatalf("expected latest photo preview metadata, got %#v", sourceItemPayload.PhotoPreview)
+	}
+	if sourceItemPayload.PhotoCount != 2 {
+		t.Fatalf("expected photoCount=2 for source item, got %#v", sourceItemPayload)
+	}
+	if recommendedItemPayload == nil {
+		t.Fatalf("expected recommended item payload for %s, got %#v", recommendedItem.Id, item.FoodItems)
+	}
+	if recommendedItemPayload.PhotoPreview != nil {
+		t.Fatalf("expected no photo preview for recommended item, got %#v", recommendedItemPayload.PhotoPreview)
+	}
+	if recommendedItemPayload.PhotoCount != 0 {
+		t.Fatalf("expected no photo count for recommended item, got %#v", recommendedItemPayload)
 	}
 }
 

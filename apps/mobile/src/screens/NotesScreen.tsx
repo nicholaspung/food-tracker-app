@@ -165,6 +165,20 @@ function formatTimeAgo(value: string): string {
   return `${elapsedYears}y ago`;
 }
 
+function compareNotesByCreatedAtDesc(left: Pick<NoteRecord, 'createdAt' | 'updatedAt'>, right: Pick<NoteRecord, 'createdAt' | 'updatedAt'>): number {
+  const createdDiff = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+  if (!Number.isNaN(createdDiff) && createdDiff !== 0) {
+    return createdDiff;
+  }
+
+  const updatedDiff = new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+  if (!Number.isNaN(updatedDiff)) {
+    return updatedDiff;
+  }
+
+  return 0;
+}
+
 export function NotesScreen({ navigation }: NotesScreenProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -199,7 +213,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     isLoading: notesQuery.isLoading,
     isSuccess: notesQuery.isSuccess,
   });
-  const notes = notesState.items;
+  const notes = useMemo(
+    () => [...notesState.items].sort(compareNotesByCreatedAtDesc),
+    [notesState.items],
+  );
   const noteSummary = notesQuery.data?.pages[0]?.summary;
   const unusedCount = noteSummary?.draftCount ?? notes.filter((note) => note.status === 'draft').length;
   const usedCount = noteSummary?.usedCount ?? notes.filter((note) => note.status === 'used').length;
@@ -370,6 +387,16 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           options={filterOptions}
           value={activeFilter}
         />
+
+        {activeFilter === 'used' ? (
+          <View testID="notes-used-retention-banner">
+            <Card tone="info">
+              <Text tone="secondary">
+                Used notes auto-delete 30 days after first use. Editing does not reset the timer.
+              </Text>
+            </Card>
+          </View>
+        ) : null}
 
         {actionErrorMessage ? <ErrorState description={actionErrorMessage} title="Notes action failed" /> : null}
 

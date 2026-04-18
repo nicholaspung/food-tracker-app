@@ -28,6 +28,7 @@ export * from './OtaUpdateCard';
 export * from './PhotoViewerModal';
 export * from './PageErrorToast';
 export * from './PhotoDetectedDateField';
+export * from './PhotoInputField';
 export * from './PhotoSourceActionCards';
 export * from './PhotoAttachmentRow';
 export * from './QuickTrackFormFields';

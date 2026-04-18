@@ -3,10 +3,18 @@ import { CameraView } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, View } from 'react-native';
+import { Linking, Modal, Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { EmptyState, ErrorState, FeatureFormScreenScaffold, Skeleton } from '../components/shared';
+import {
+  EmptyState,
+  ErrorState,
+  FeatureFormScreenScaffold,
+  PhotoInputField,
+  type PhotoInputFieldAttachment,
+  PhotoViewerModal,
+  Skeleton,
+} from '../components/shared';
 import {
   buildPocketBaseFileUrl,
   createNote,
@@ -39,6 +47,14 @@ interface DraftNotePhoto {
   mimeType: string;
 }
 
+interface NotePhotoAttachment {
+  id: string;
+  name: string;
+  thumbnailUri: string;
+  viewerUri: string;
+  kind: 'existing' | 'new';
+}
+
 const CONTENT_MAX_LENGTH = 2000;
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const LOCATION_MAX_LENGTH = 200;
@@ -62,72 +78,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
   charCount: {
     alignSelf: 'flex-end',
-  },
-  sectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    justifyContent: 'space-between',
-  },
-  sectionLabel: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  photoPreviewWrap: {
-    borderRadius: theme.radii.md,
-    height: 72,
-    overflow: 'hidden',
-    position: 'relative',
-    width: 72,
-  },
-  photoPreview: {
-    backgroundColor: theme.colors.background.muted,
-    height: '100%',
-    width: '100%',
-  },
-  removePhotoButton: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.background.overlay,
-    borderRadius: theme.radii.pill,
-    height: 20,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 4,
-    top: 4,
-    width: 20,
-  },
-  photoSourceBadge: {
-    backgroundColor: theme.colors.background.inverse,
-    borderRadius: theme.radii.sm,
-    bottom: 4,
-    left: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    position: 'absolute',
-  },
-  addPhotoButton: {
-    alignItems: 'center',
-    borderColor: theme.colors.border.default,
-    borderRadius: theme.radii.md,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    justifyContent: 'center',
-    minHeight: 46,
-    paddingHorizontal: theme.spacing.md,
-  },
-  addPhotoButtonDisabled: {
-    opacity: 0.6,
-  },
-  quotaCopy: {
-    gap: theme.spacing.xxs,
   },
   modalBackdrop: {
     alignItems: 'center',
@@ -174,9 +124,6 @@ const useStyles = createThemedStyles((theme) => ({
   modalAction: {
     flex: 1,
   },
-  modalActionStack: {
-    marginTop: theme.spacing.xs,
-  },
 }));
 
 export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
@@ -200,9 +147,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     viewAsTier: usagePreviewTier,
   });
   const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
-  const estimatedFreePhotoRemaining = isDisplayFreeUser
-    ? monthlyUsage.snapshot?.remaining.photoUploadsMonthly ?? null
-    : null;
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
     requestPermission: requestPhotoPickerPermission,
@@ -226,8 +170,9 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const [newPhotos, setNewPhotos] = useState<DraftNotePhoto[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPhotoSourcePickerOpen, setIsPhotoSourcePickerOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
+  const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
 
   const existingPhotos = useMemo(() => {
     const deletedIds = new Set(photosToDelete);
@@ -259,12 +204,38 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     [perNotePhotoLimit, remainingEstimatedMonthlySlots, totalPhotoCount],
   );
   const librarySelectionLimit = Math.max(photoQuotaUi.maxSelectableNow, 1);
-  const addPhotoButtonLabel =
-    !photoQuotaUi.hasQuota
-      ? 'Photo limit reached'
-      : photoQuotaUi.maxSelectableNow === 1
-        ? 'Add photo'
-        : 'Add photos';
+  const photoAttachments = useMemo<NotePhotoAttachment[]>(
+    () => [
+      ...existingPhotos.map((photo) => ({
+        id: photo.id,
+        kind: 'existing' as const,
+        name: photo.photo,
+        thumbnailUri: buildPocketBaseFileUrl({
+          collectionName: 'note_photos',
+          recordId: photo.id,
+          filename: photo.photo,
+          thumb: '100x100',
+        }),
+        viewerUri: buildPocketBaseFileUrl({
+          collectionName: 'note_photos',
+          recordId: photo.id,
+          filename: photo.photo,
+        }),
+      })),
+      ...newPhotos.map((photo) => ({
+        id: photo.id,
+        kind: 'new' as const,
+        name: photo.name,
+        thumbnailUri: photo.uri,
+        viewerUri: photo.uri,
+      })),
+    ],
+    [existingPhotos, newPhotos],
+  );
+  const photoViewerUrls = useMemo(
+    () => photoAttachments.map((photo) => photo.viewerUri),
+    [photoAttachments],
+  );
 
   useEffect(() => {
     if (!noteDetailQuery.data?.note) {
@@ -294,6 +265,43 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const handleRemoveNewPhoto = useCallback((photoId: string) => {
     setNewPhotos((current) => current.filter((photo) => photo.id !== photoId));
   }, []);
+
+  const openPhotoViewer = useCallback((initialIndex: number) => {
+    if (photoAttachments.length === 0) {
+      return;
+    }
+
+    const boundedIndex = Math.max(0, Math.min(initialIndex, photoAttachments.length - 1));
+    setPhotoViewerInitialIndex(boundedIndex);
+    setIsPhotoViewerVisible(true);
+  }, [photoAttachments]);
+
+  const closePhotoViewer = useCallback(() => {
+    setIsPhotoViewerVisible(false);
+  }, []);
+
+  const photoInputAttachments = useMemo<PhotoInputFieldAttachment[]>(
+    () =>
+      photoAttachments.map((photo, index) => ({
+        id: `${photo.kind}-${photo.id}`,
+        name: photo.name,
+        uri: photo.thumbnailUri,
+        accessibilityLabel: `View attached photo ${index + 1} full screen`,
+        onPress: () => {
+          openPhotoViewer(index);
+        },
+        onRemove: () => {
+          closePhotoViewer();
+          if (photo.kind === 'existing') {
+            handleRemoveExistingPhoto(photo.id);
+            return;
+          }
+
+          handleRemoveNewPhoto(photo.id);
+        },
+      })),
+    [closePhotoViewer, handleRemoveExistingPhoto, handleRemoveNewPhoto, openPhotoViewer, photoAttachments],
+  );
 
   const ensureCanAddPhoto = useCallback(() => {
     if (!photoQuotaUi.hasQuota && photoQuotaUi.remainingPerRecord <= 0) {
@@ -371,21 +379,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     resetPhotoPermissionNeedsSettings();
   }, [resetPhotoPermissionNeedsSettings]);
 
-  const handleOpenPhotoSourcePicker = useCallback(() => {
-    if (!ensureCanAddPhoto()) {
-      return;
-    }
-
-    resetPhotoPermissionNeedsSettings();
-    setErrorMessage(null);
-    setIsPhotoSourcePickerOpen(true);
-  }, [ensureCanAddPhoto, resetPhotoPermissionNeedsSettings]);
-
   const handleOpenCamera = useCallback(async () => {
     trackObservabilityEvent('NOTE_CAMERA_OPEN_STARTED', {
       source: 'NoteEditorScreen',
     });
-    setIsPhotoSourcePickerOpen(false);
 
     if (!ensureCanAddPhoto()) {
       return;
@@ -414,7 +411,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       selectionLimit: librarySelectionLimit,
       source: 'NoteEditorScreen',
     });
-    setIsPhotoSourcePickerOpen(false);
 
     if (!ensureCanAddPhoto()) {
       return;
@@ -760,15 +756,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           </Card>
         ) : null}
 
-        {isDisplayFreeUser ? (
-          <Card style={styles.sectionCard} tone="muted">
-            <Text tone="secondary">
-              Monthly photo estimate:{' '}
-              {estimatedFreePhotoRemaining === null ? 'unknown' : `${estimatedFreePhotoRemaining} left`}.
-            </Text>
-          </Card>
-        ) : null}
-
         {isEditing && noteDetailQuery.data?.note.status === 'used' ? (
           <Card tone="success">
             <Text tone="success">
@@ -806,168 +793,51 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         </Card>
 
         <Card style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionLabel}>
-              <Ionicons color={theme.colors.text.primary} name="camera-outline" size={16} />
-              <Text variant="label">Photos (Optional)</Text>
-            </View>
-            <Text tone="muted" variant="bodySm">
-              {totalPhotoCount}/{perNotePhotoLimit}
-            </Text>
-          </View>
-
-          {existingPhotos.length > 0 || newPhotos.length > 0 ? (
-            <View style={styles.photoGrid}>
-              {existingPhotos.map((photo) => (
-                <View key={photo.id} style={styles.photoPreviewWrap}>
-                  <Image
-                    source={{
-                      uri: buildPocketBaseFileUrl({
-                        collectionName: 'note_photos',
-                        recordId: photo.id,
-                        filename: photo.photo,
-                        thumb: '100x100',
-                      }),
-                    }}
-                    style={styles.photoPreview}
-                  />
-                  <Pressable
-                    accessibilityLabel="Remove photo"
-                    onPress={() => {
-                      handleRemoveExistingPhoto(photo.id);
-                    }}
-                    style={styles.removePhotoButton}
-                  >
-                    <Ionicons color={theme.colors.text.inverse} name="close" size={14} />
-                  </Pressable>
-                </View>
-              ))}
-
-              {newPhotos.map((photo) => (
-                <View key={photo.id} style={styles.photoPreviewWrap}>
-                  <Image source={{ uri: photo.uri }} style={styles.photoPreview} />
-                  <Pressable
-                    accessibilityLabel="Remove photo"
-                    onPress={() => {
-                      handleRemoveNewPhoto(photo.id);
-                    }}
-                    style={styles.removePhotoButton}
-                  >
-                    <Ionicons color={theme.colors.text.inverse} name="close" size={14} />
-                  </Pressable>
-                  <View style={styles.photoSourceBadge}>
-                    <Text tone="inverse" variant="bodySm">
-                      New
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          <Pressable
-            accessibilityLabel={addPhotoButtonLabel}
-            accessibilityState={{ disabled: !photoQuotaUi.hasQuota }}
-            onPress={() => {
-              handleOpenPhotoSourcePicker();
-            }}
-            style={[styles.addPhotoButton, !photoQuotaUi.hasQuota ? styles.addPhotoButtonDisabled : null]}
-          >
-            <Ionicons color={theme.colors.text.muted} name="add-outline" size={20} />
-            <Text tone="secondary">{addPhotoButtonLabel}</Text>
-          </Pressable>
-
-          <View style={styles.quotaCopy}>
-            <Text tone="muted" variant="bodySm">
-              Note photo slots left: {photoQuotaUi.remainingPerRecord}.
-            </Text>
-            {isDisplayFreeUser ? (
-              <Text tone="muted" variant="bodySm">
-                Monthly photo estimate:{' '}
-                {typeof photoQuotaUi.remainingMonthlyEstimate === 'number'
-                  ? `${photoQuotaUi.remainingMonthlyEstimate} left.`
-                  : 'unknown.'}
-              </Text>
-            ) : null}
-          </View>
-        </Card>
-
-        {errorMessage ? (
-          <ErrorState
-            description={errorMessage}
-            details={
+          <PhotoInputField
+            attachments={photoInputAttachments}
+            cameraSubtitle="Camera"
+            cameraTitle="Take Photo"
+            countLabel={`${totalPhotoCount}/${perNotePhotoLimit}`}
+            disabled={isSubmitting}
+            footerAction={
               photoPermissionNeedsSettings ? (
                 <Button
                   label="Open Settings"
                   onPress={() => {
                     void Linking.openSettings();
                   }}
-                  style={styles.modalActionStack}
                   variant="secondary"
                 />
               ) : null
             }
+            gallerySubtitle="Photo Library"
+            galleryTitle="Upload Image"
+            iconColor={theme.colors.text.primary}
+            iconName="camera-outline"
+            label="Photos (Optional)"
+            onCameraPress={() => {
+              void handleOpenCamera();
+            }}
+            onGalleryPress={() => {
+              void handlePickFromPhotoLibrary();
+            }}
+          />
+        </Card>
+
+        {errorMessage ? (
+          <ErrorState
+            description={errorMessage}
             title="Could not save note"
           />
         ) : null}
       </FeatureFormScreenScaffold>
 
-      <Modal
-        animationType="fade"
-        onRequestClose={() => {
-          setIsPhotoSourcePickerOpen(false);
-        }}
-        transparent
-        visible={isPhotoSourcePickerOpen}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text variant="titleMd">Add Photos</Text>
-              <Pressable
-                accessibilityLabel="Close photo source options"
-                onPress={() => {
-                  setIsPhotoSourcePickerOpen(false);
-                }}
-                style={styles.modalClose}
-              >
-                <Ionicons color={theme.colors.text.primary} name="close" size={20} />
-              </Pressable>
-            </View>
-
-            <Text tone="secondary" variant="bodyMd">
-              Choose where to add your photos from.
-            </Text>
-
-            <View style={styles.modalActions}>
-              <Button
-                label="Camera"
-                onPress={() => {
-                  void handleOpenCamera();
-                }}
-                style={styles.modalAction}
-                variant="secondary"
-              />
-              <Button
-                label="Photo Library"
-                onPress={() => {
-                  void handlePickFromPhotoLibrary();
-                }}
-                style={styles.modalAction}
-              />
-            </View>
-
-            <Button
-              label="Cancel"
-              onPress={() => {
-                setIsPhotoSourcePickerOpen(false);
-              }}
-              style={styles.modalActionStack}
-              variant="secondary"
-            />
-          </View>
-        </View>
-      </Modal>
+      <PhotoViewerModal
+        initialIndex={photoViewerInitialIndex}
+        onRequestClose={closePhotoViewer}
+        urls={photoViewerUrls}
+        visible={isPhotoViewerVisible}
+      />
 
       <Modal animationType="fade" onRequestClose={() => setIsCameraOpen(false)} transparent visible={isCameraOpen}>
         <View style={styles.modalBackdrop}>

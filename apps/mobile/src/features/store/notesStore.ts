@@ -53,6 +53,7 @@ interface NoteCollectionRecord {
   status?: 'draft' | 'used';
   usedInVisit?: string;
   usedInFoodItem?: string;
+  usedAt?: string;
   created: string;
   updated: string;
   expand?: {
@@ -144,6 +145,7 @@ function mapNoteCollectionRecord(record: NoteCollectionRecord): NoteRecord {
     restaurantName: record.expand?.restaurant?.name?.trim() || undefined,
     usedInVisitId: record.usedInVisit,
     usedInFoodItemId: record.usedInFoodItem,
+    usedAt: record.usedAt?.trim() || undefined,
     createdAt: record.created,
     updatedAt: record.updated,
   };
@@ -391,17 +393,28 @@ export async function markNoteUsed(input: MarkNoteUsedInput): Promise<void> {
     'note.mark_used',
     async () => {
       try {
-        const payload: Record<string, unknown> = {
-          status: 'used',
-        };
-
+        const currentNote = await pb.collection('notes').getOne<NoteCollectionRecord>(trimmedNoteId);
+        const payload: Record<string, unknown> = {};
         const trimmedVisitId = input.usedInVisitId?.trim();
         const trimmedFoodItemId = input.usedInFoodItemId?.trim();
-        if (trimmedVisitId) {
+        const trimmedUsedAt = input.usedAt?.trim();
+        const currentUsedAt = currentNote.usedAt?.trim();
+
+        if (currentNote.status !== 'used') {
+          payload.status = 'used';
+        }
+        if (!currentUsedAt) {
+          payload.usedAt = trimmedUsedAt || new Date().toISOString();
+        }
+        if (trimmedVisitId && trimmedVisitId !== currentNote.usedInVisit?.trim()) {
           payload.usedInVisit = trimmedVisitId;
         }
-        if (trimmedFoodItemId) {
+        if (trimmedFoodItemId && trimmedFoodItemId !== currentNote.usedInFoodItem?.trim()) {
           payload.usedInFoodItem = trimmedFoodItemId;
+        }
+
+        if (Object.keys(payload).length === 0) {
+          return;
         }
 
         await pb.collection('notes').update(trimmedNoteId, payload);
@@ -414,6 +427,7 @@ export async function markNoteUsed(input: MarkNoteUsedInput): Promise<void> {
     {
       hasFoodItemLink: Boolean(input.usedInFoodItemId?.trim()),
       hasVisitLink: Boolean(input.usedInVisitId?.trim()),
+      hasUsedAtOverride: Boolean(input.usedAt?.trim()),
     },
   );
 }

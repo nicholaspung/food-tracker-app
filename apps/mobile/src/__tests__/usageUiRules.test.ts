@@ -1,5 +1,6 @@
 import {
   resolveCreateVisitSearchUi,
+  resolveDisplayPhotoUploadsPerRecordLimit,
   resolvePhotoUploadQuotaUi,
   shouldShowOfflineUsageWarning,
 } from '../lib/usageUiRules';
@@ -106,6 +107,53 @@ describe('NoteEditorScreen photo upload quota UI rules', () => {
       maxSelectableNow: 0,
       hasQuota: false,
     });
+  });
+});
+
+describe('display photo uploads per record limit', () => {
+  it('returns snapshot limit when present for free preview', () => {
+    expect(resolveDisplayPhotoUploadsPerRecordLimit({
+      snapshotLimit: 1,
+      isDisplayAdminUser: false,
+      isDisplaySubscriberUser: false,
+      isDisplayFreeUser: true,
+    })).toBe(1);
+  });
+
+  it('returns snapshot limit when present for subscriber preview', () => {
+    expect(resolveDisplayPhotoUploadsPerRecordLimit({
+      snapshotLimit: 20,
+      isDisplayAdminUser: false,
+      isDisplaySubscriberUser: true,
+      isDisplayFreeUser: false,
+    })).toBe(20);
+  });
+
+  it('falls back to 1 for free display tier when snapshot is unavailable', () => {
+    expect(resolveDisplayPhotoUploadsPerRecordLimit({
+      snapshotLimit: null,
+      isDisplayAdminUser: false,
+      isDisplaySubscriberUser: false,
+      isDisplayFreeUser: true,
+    })).toBe(1);
+  });
+
+  it('falls back to 20 for subscriber display tier when snapshot is unavailable', () => {
+    expect(resolveDisplayPhotoUploadsPerRecordLimit({
+      snapshotLimit: undefined,
+      isDisplayAdminUser: false,
+      isDisplaySubscriberUser: true,
+      isDisplayFreeUser: false,
+    })).toBe(20);
+  });
+
+  it('returns null for admin display tier when snapshot is unavailable', () => {
+    expect(resolveDisplayPhotoUploadsPerRecordLimit({
+      snapshotLimit: null,
+      isDisplayAdminUser: true,
+      isDisplaySubscriberUser: false,
+      isDisplayFreeUser: false,
+    })).toBeNull();
   });
 });
 

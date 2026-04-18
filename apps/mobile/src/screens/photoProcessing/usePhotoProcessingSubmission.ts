@@ -8,6 +8,7 @@ import {
   homeFeedQueryKeys,
   markNoteUsed,
   parseLimitExceededError,
+  promoteCachedNoteToUsed,
   type MonthlyUsageSnapshot,
 } from '../../features';
 import { notesQueryKeys } from '../../features/store/notesQuery';
@@ -80,6 +81,42 @@ export function usePhotoProcessingSubmission({
 }: UsePhotoProcessingSubmissionParams) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const syncSourceNoteUsedState = useCallback((usedAt: string) => {
+    if (!sourceNoteId) {
+      return;
+    }
+
+    promoteCachedNoteToUsed(queryClient, {
+      noteId: sourceNoteId,
+      usedAt,
+    });
+  }, [queryClient, sourceNoteId]);
+
+  const persistSourceNoteUsed = useCallback(async (usedAt: string) => {
+    if (!sourceNoteId) {
+      return;
+    }
+
+    await writeFeature({
+      operationName: 'note.mark-used',
+      trackOnlineWrite: false,
+      offline: {
+        strategy: 'outbox',
+        payload: {
+          noteId: sourceNoteId,
+          usedAt,
+        },
+      },
+      execute: () =>
+        markNoteUsed({
+          noteId: sourceNoteId,
+          usedAt,
+        }),
+    });
+
+    syncSourceNoteUsedState(usedAt);
+  }, [sourceNoteId, syncSourceNoteUsedState, writeFeature]);
+
   const validateRestaurantForm = useCallback(
     (form: RestaurantPhotoForm): string | null => {
       if (!form.restaurantName.trim()) {
@@ -148,6 +185,7 @@ export function usePhotoProcessingSubmission({
   ]);
 
   const submitRestaurantVisits = useCallback(async () => {
+    const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
     const groupedVisits = new Map<
       string,
       {
@@ -203,7 +241,7 @@ export function usePhotoProcessingSubmission({
         })),
       };
 
-      await writeFeature({
+      const createResult = await writeFeature({
         operationName: 'visit.create',
         offline: {
           strategy: 'outbox',
@@ -211,23 +249,18 @@ export function usePhotoProcessingSubmission({
         },
         execute: () => createVisit(visitInput),
       });
+
+      if (sourceNoteId && groupedVisits.size === 1 && noteUsedAt) {
+        if (createResult.status === 'queued') {
+          await persistSourceNoteUsed(noteUsedAt);
+        } else {
+          syncSourceNoteUsedState(noteUsedAt);
+        }
+      }
     }
 
-    if (sourceNoteId && groupedVisits.size > 1) {
-      await writeFeature({
-        operationName: 'note.mark-used',
-        trackOnlineWrite: false,
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            noteId: sourceNoteId,
-          },
-        },
-        execute: () =>
-          markNoteUsed({
-            noteId: sourceNoteId,
-          }),
-      });
+    if (sourceNoteId && groupedVisits.size > 1 && noteUsedAt) {
+      await persistSourceNoteUsed(noteUsedAt);
     }
 
     trackObservabilityEvent('Photo Processing Completed', {
@@ -240,12 +273,15 @@ export function usePhotoProcessingSubmission({
     photos,
     restaurantForms,
     sourceNoteId,
+    persistSourceNoteUsed,
+    syncSourceNoteUsedState,
     validateRestaurantForm,
     visitVisibility,
     writeFeature,
   ]);
 
   const submitQuickTrackItems = useCallback(async () => {
+    const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
     for (const [index, photo] of photos.entries()) {
       const form = quickTrackForms[photo.id];
       if (!form) {
@@ -262,7 +298,7 @@ export function usePhotoProcessingSubmission({
         sourceNoteId: sourceNoteId && photos.length === 1 ? sourceNoteId : undefined,
       });
 
-      await writeFeature({
+      const createResult = await writeFeature({
         operationName: 'quick-track.create',
         offline: {
           strategy: 'outbox',
@@ -270,23 +306,18 @@ export function usePhotoProcessingSubmission({
         },
         execute: () => createQuickTrack(quickTrackInput),
       });
+
+      if (sourceNoteId && photos.length === 1 && noteUsedAt) {
+        if (createResult.status === 'queued') {
+          await persistSourceNoteUsed(noteUsedAt);
+        } else {
+          syncSourceNoteUsedState(noteUsedAt);
+        }
+      }
     }
 
-    if (sourceNoteId && photos.length > 1) {
-      await writeFeature({
-        operationName: 'note.mark-used',
-        trackOnlineWrite: false,
-        offline: {
-          strategy: 'outbox',
-          payload: {
-            noteId: sourceNoteId,
-          },
-        },
-        execute: () =>
-          markNoteUsed({
-            noteId: sourceNoteId,
-          }),
-      });
+    if (sourceNoteId && photos.length > 1 && noteUsedAt) {
+      await persistSourceNoteUsed(noteUsedAt);
     }
 
     trackObservabilityEvent('Photo Processing Completed', {
@@ -294,7 +325,7 @@ export function usePhotoProcessingSubmission({
       source: 'PhotoProcessingScreen',
       itemCount: photos.length,
     });
-  }, [photos, quickTrackForms, sourceNoteId, writeFeature]);
+  }, [photos, quickTrackForms, persistSourceNoteUsed, sourceNoteId, syncSourceNoteUsedState, writeFeature]);
 
   const handleSubmitAll = useCallback(async () => {
     if (!processType) {

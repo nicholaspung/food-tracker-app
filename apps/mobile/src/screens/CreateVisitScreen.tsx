@@ -47,7 +47,10 @@ import {
   buildVisitRestaurantDescription,
   type VisitRestaurantWithDistance,
 } from '../lib/visitRestaurantSearch';
-import { shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
+import {
+  resolveDisplayPhotoUploadsPerRecordLimit,
+  shouldShowOfflineUsageWarning,
+} from '../lib/usageUiRules';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
@@ -412,6 +415,12 @@ export function CreateVisitScreen({
 
   const shouldEnforceUsageLimitsClientSide = !isActualAdmin;
   const perRecordPhotoLimit = isActualAdmin ? null : isDisplaySubscriberUser ? 20 : 1;
+  const displayMaxPhotosPerItem = resolveDisplayPhotoUploadsPerRecordLimit({
+    snapshotLimit: monthlyUsage.snapshot?.limits.photoUploadsPerRecord,
+    isDisplayAdminUser,
+    isDisplaySubscriberUser,
+    isDisplayFreeUser,
+  });
   const placesQueriesRemaining = isDisplayFreeUser
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
@@ -1752,6 +1761,7 @@ export function CreateVisitScreen({
         <CreateVisitReviewStep
           detectedVisitDateValue={detectedVisitDateValue}
           draftItems={draftItems}
+          displayMaxPhotosPerItem={displayMaxPhotosPerItem}
           estimatedFreeMonthlyPhotosRemaining={
             estimatedFreeMonthlyPhotosRemaining
           }

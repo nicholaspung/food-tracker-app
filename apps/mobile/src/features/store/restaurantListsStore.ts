@@ -17,8 +17,10 @@ import type {
   RestaurantListVisitedRestaurantCandidate,
   SaveRestaurantFoodItemToListInput,
   UpdateRestaurantListInput,
+  VisitPhotoRecord,
 } from './featureStore';
 import {
+  buildOrFilter,
   createEmptyPaginatedResult,
   getAuthenticatedUserId,
   isNotFoundError,
@@ -26,7 +28,7 @@ import {
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
-import { sendApiRequest } from './pocketbaseGateway';
+import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 import type {
   RestaurantListCollectionRecord,
 } from './pocketbaseRecordTypes';
@@ -134,6 +136,11 @@ interface RestaurantListVisitedRestaurantCandidateApiRecord {
     rating: number;
     notes?: string;
     visitedAt: string;
+    photoPreview?: {
+      id: string;
+      photo: string;
+    };
+    photoCount?: number;
   }[];
   alreadyInList?: boolean;
   existingNote?: string;
@@ -151,6 +158,13 @@ interface RestaurantListMutationListApiResponse {
   list: RestaurantListDetailApiListRecord;
   listId: string;
   items?: RestaurantListDetailApiItemRecord[];
+}
+
+interface VisitPhotoCollectionRecord {
+  id: string;
+  food_item?: string;
+  photo: string;
+  created: string;
 }
 
 interface RestaurantListsPageApiResponse {
@@ -281,6 +295,17 @@ function mapRestaurantListVisitedRestaurantCandidateRecord(
       rating: item.rating,
       notes: item.notes?.trim() || undefined,
       visitedAt: item.visitedAt,
+      photoPreview:
+        typeof item.photoPreview?.id === 'string' &&
+        item.photoPreview.id.trim().length > 0 &&
+        typeof item.photoPreview.photo === 'string' &&
+        item.photoPreview.photo.trim().length > 0
+          ? {
+              id: item.photoPreview.id.trim(),
+              photo: item.photoPreview.photo.trim(),
+            }
+          : undefined,
+      photoCount: normalizeOptionalCount(item.photoCount),
     })),
     alreadyInList: record.alreadyInList === true,
     existingNote: record.existingNote?.trim() || undefined,
@@ -332,6 +357,105 @@ function mapRestaurantListMutationListItems(
   response: RestaurantListMutationListApiResponse,
 ): RestaurantListItemRecord[] {
   return (response.items ?? []).map(mapRestaurantListDetailItemRecord);
+}
+
+interface CandidateFoodItemPhotoFallback {
+  photoCount: number;
+  photoPreview?: {
+    id: string;
+    photo: string;
+  };
+}
+
+function buildCandidateFoodItemPhotoFallbacks(
+  records: VisitPhotoCollectionRecord[],
+): Map<string, CandidateFoodItemPhotoFallback> {
+  const map = new Map<string, CandidateFoodItemPhotoFallback>();
+
+  for (const record of records) {
+    const foodItemId = record.food_item?.trim();
+    if (!foodItemId) {
+      continue;
+    }
+
+    const existing = map.get(foodItemId);
+    if (existing) {
+      existing.photoCount += 1;
+      continue;
+    }
+
+    const photoId = record.id.trim();
+    const photoFilename = record.photo.trim();
+    map.set(foodItemId, {
+      photoCount: 1,
+      photoPreview:
+        photoId && photoFilename
+          ? {
+              id: photoId,
+              photo: photoFilename,
+            }
+          : undefined,
+    });
+  }
+
+  return map;
+}
+
+async function listCandidateFoodItemPhotoFallbacks(
+  foodItemIds: string[],
+  options?: ReadRequestOptions,
+): Promise<Map<string, CandidateFoodItemPhotoFallback>> {
+  const normalizedFoodItemIds = Array.from(
+    new Set(foodItemIds.map((foodItemId) => foodItemId.trim()).filter((foodItemId) => foodItemId.length > 0)),
+  );
+
+  if (normalizedFoodItemIds.length === 0) {
+    return new Map();
+  }
+
+  const records = await listCollectionRecords<VisitPhotoCollectionRecord>('visit_photos', {
+    fields: 'id,food_item,photo,created',
+    filter: buildOrFilter('food_item', normalizedFoodItemIds),
+    pageSize: 200,
+    signal: options?.signal,
+    sort: '-created',
+  });
+
+  return buildCandidateFoodItemPhotoFallbacks(records);
+}
+
+function mapVisitPhotoCollectionRecord(record: VisitPhotoCollectionRecord): VisitPhotoRecord {
+  return {
+    id: record.id,
+    food_item: record.food_item?.trim() || undefined,
+    photo: record.photo.trim(),
+    collectionName: 'visit_photos',
+    created: record.created,
+  };
+}
+
+export async function listRestaurantListCandidateFoodItemPhotos(
+  foodItemId: string,
+  options?: ReadRequestOptions,
+): Promise<VisitPhotoRecord[]> {
+  if (!pb.authStore.record?.id) {
+    return [];
+  }
+
+  const trimmedFoodItemId = foodItemId.trim();
+  if (!trimmedFoodItemId) {
+    return [];
+  }
+
+  const records = await listCollectionRecords<VisitPhotoCollectionRecord>('visit_photos', {
+    fields: 'id,food_item,photo,created',
+    filter: buildOrFilter('food_item', [trimmedFoodItemId]),
+    pageSize: 100,
+    signal: options?.signal,
+    sort: '-created',
+  });
+
+  return records.map(mapVisitPhotoCollectionRecord);
 }
 
 export async function listRestaurantListsPage(
@@ -453,9 +577,38 @@ export async function getRestaurantListCandidateRestaurants(
       },
     );
 
+    const items = (response.items ?? []).map(mapRestaurantListVisitedRestaurantCandidateRecord);
+    const missingPhotoFoodItemIds = Array.from(
+      new Set(
+        items.flatMap((restaurant) =>
+          restaurant.foodItems
+            .filter((item) => !item.photoPreview || item.photoCount === undefined)
+            .map((item) => item.id),
+        ),
+      ),
+    );
+    const photoFallbacks =
+      missingPhotoFoodItemIds.length > 0
+        ? await listCandidateFoodItemPhotoFallbacks(missingPhotoFoodItemIds, options)
+        : new Map<string, CandidateFoodItemPhotoFallback>();
+
     return {
       list: mapRestaurantListDetailApiListRecord(response.list),
-      items: (response.items ?? []).map(mapRestaurantListVisitedRestaurantCandidateRecord),
+      items: items.map((restaurant) => ({
+        ...restaurant,
+        foodItems: restaurant.foodItems.map((item) => {
+          const fallback = photoFallbacks.get(item.id);
+          if (!fallback) {
+            return item;
+          }
+
+          return {
+            ...item,
+            photoPreview: item.photoPreview ?? fallback.photoPreview,
+            photoCount: item.photoCount ?? fallback.photoCount,
+          };
+        }),
+      })),
     };
   } catch (error) {
     if (isNotFoundError(error)) {
