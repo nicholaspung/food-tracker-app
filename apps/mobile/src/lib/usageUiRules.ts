@@ -14,6 +14,19 @@ export interface CreateVisitSearchUiState {
   isSearchDisabled: boolean;
 }
 
+export interface PhotoUploadQuotaUiInput {
+  perRecordLimit: number;
+  usedInRecord: number;
+  remainingMonthlyEstimate: number | null;
+}
+
+export interface PhotoUploadQuotaUiState {
+  remainingPerRecord: number;
+  remainingMonthlyEstimate: number | null;
+  maxSelectableNow: number;
+  hasQuota: boolean;
+}
+
 export function resolveCreateVisitSearchUi(input: CreateVisitSearchUiInput): CreateVisitSearchUiState {
   const isQuotaReached =
     input.isFreeTier &&
@@ -40,6 +53,27 @@ export function resolveCreateVisitSearchUi(input: CreateVisitSearchUiInput): Cre
     hasQuota,
     isQuotaReached,
     isSearchDisabled: !input.isOnline || input.isSearching || (input.enforceQuota && isQuotaReached),
+  };
+}
+
+export function resolvePhotoUploadQuotaUi(input: PhotoUploadQuotaUiInput): PhotoUploadQuotaUiState {
+  const perRecordLimit = Math.max(input.perRecordLimit, 0);
+  const usedInRecord = Math.max(input.usedInRecord, 0);
+  const remainingPerRecord = Math.max(perRecordLimit - usedInRecord, 0);
+  const remainingMonthlyEstimate =
+    typeof input.remainingMonthlyEstimate === 'number'
+      ? Math.max(input.remainingMonthlyEstimate, 0)
+      : null;
+  const maxSelectableNow =
+    typeof remainingMonthlyEstimate === 'number'
+      ? Math.min(remainingPerRecord, remainingMonthlyEstimate)
+      : remainingPerRecord;
+
+  return {
+    remainingPerRecord,
+    remainingMonthlyEstimate,
+    maxSelectableNow,
+    hasQuota: maxSelectableNow > 0,
   };
 }
 

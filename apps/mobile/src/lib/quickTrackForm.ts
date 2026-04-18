@@ -32,6 +32,7 @@ export interface QuickTrackFormValues {
 
 interface BuildDefaultQuickTrackFormOptions {
   captureDate?: Date | null;
+  detectedDateValue?: string | null;
   previousForm?: QuickTrackFormValues;
 }
 
@@ -46,6 +47,7 @@ export function resolveDefaultQuickTrackVisibility(): QuickTrackVisibility {
 
 export function buildDefaultQuickTrackForm({
   captureDate,
+  detectedDateValue,
   previousForm,
 }: BuildDefaultQuickTrackFormOptions = {}): QuickTrackFormValues {
   return {
@@ -54,7 +56,10 @@ export function buildDefaultQuickTrackForm({
     rating: 3,
     notes: '',
     visibility: previousForm?.visibility ?? resolveDefaultQuickTrackVisibility(),
-    date: captureDate ? formatDateToLocalDateString(captureDate) : getTodayLocalDateString(),
+    date:
+      detectedDateValue ??
+      (captureDate ? formatDateToLocalDateString(captureDate) : null) ??
+      getTodayLocalDateString(),
   };
 }
 

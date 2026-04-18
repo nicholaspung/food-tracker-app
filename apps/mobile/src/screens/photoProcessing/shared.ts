@@ -13,6 +13,7 @@ import {
   formatDateToLocalDateString,
   formatLocalDateLabel,
   getTodayLocalDateString,
+  resolveDateValue,
 } from '../../lib/dateFormatting';
 import type { QuickTrackFormValues } from '../../lib/quickTrackForm';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -391,6 +392,15 @@ export function normalizeSelectionLabel(value: string): string {
   return value.trim().toLowerCase();
 }
 
+export function resolveDraftPhotoDetectedDateValue(
+  photo: DraftPhotoAsset,
+): string | null {
+  const resolvedDate =
+    resolveDateValue(photo.captureDate) ??
+    resolveDateValue(photo.metadataDate);
+  return resolvedDate ? formatDateToLocalDateString(resolvedDate) : null;
+}
+
 export function buildDefaultRestaurantForm(
   photo: DraftPhotoAsset,
   previousForm: RestaurantPhotoForm | undefined,
@@ -403,9 +413,7 @@ export function buildDefaultRestaurantForm(
     rating: 3,
     description: '',
     notes: '',
-    date: photo.captureDate
-      ? formatDateToLocalDateString(photo.captureDate)
-      : getTodayLocalDateString(),
+    date: resolveDraftPhotoDetectedDateValue(photo) ?? getTodayLocalDateString(),
   };
 }
 

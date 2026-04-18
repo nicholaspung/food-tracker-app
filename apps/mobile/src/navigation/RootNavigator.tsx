@@ -187,7 +187,6 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const TAB_BAR_BASE_HEIGHT = 56;
 const AUTH_LINKING: LinkingOptions<RootStackParamList> = {
   prefixes: [
     'yummyrecs://',
@@ -347,7 +346,6 @@ export function RootNavigator() {
     ROUTES_WITH_TABS.includes(currentRouteName);
 
   const bottomPadding = Math.max(6, Math.min(insets.bottom, 10));
-  const tabBarHeight = TAB_BAR_BASE_HEIGHT + bottomPadding;
 
   const styles = StyleSheet.create({
     container: {
@@ -379,7 +377,7 @@ export function RootNavigator() {
       theme={navigationTheme}
     >
       <View style={styles.container}>
-        <View style={[styles.navigatorBody, hasBottomTabsRoute ? { paddingBottom: tabBarHeight } : null]}>
+        <View style={styles.navigatorBody}>
           <Stack.Navigator
             screenOptions={{
               animation: 'none',

@@ -6,19 +6,24 @@ import { Text } from '../../ui';
 import { FilterChipGroup, type FilterChipOption } from './FilterChipGroup';
 import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl';
 
-export type FeedModeValue = 'mine' | 'friends' | 'beta';
+export type FeedModeValue = 'mine' | 'friends';
 export type FeedTypeFilterValue = 'all' | 'visits' | 'quick-track';
+export type HomeFeedSortValue = 'created' | 'tracked';
 
 const FEED_MODE_OPTIONS: readonly SegmentedControlOption<FeedModeValue>[] = [
   { label: 'Mine', value: 'mine' },
   { label: 'Friends', value: 'friends' },
-  { label: 'Beta', value: 'beta' },
 ];
 
 const TYPE_FILTER_OPTIONS: readonly FilterChipOption<FeedTypeFilterValue>[] = [
   { label: 'All', value: 'all' },
   { label: 'Visits', value: 'visits' },
   { label: 'Quick Track', value: 'quick-track' },
+];
+
+const SORT_FILTER_OPTIONS: readonly FilterChipOption<HomeFeedSortValue>[] = [
+  { label: 'Date Created', value: 'created' },
+  { label: 'Date Tracked', value: 'tracked' },
 ];
 
 const useStyles = createThemedStyles((theme) => ({
@@ -119,8 +124,18 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.inverse,
   },
   filtersRow: {
+    flexDirection: 'column',
+    gap: theme.spacing.xs,
+  },
+  filterSection: {
+    gap: theme.spacing.xxs,
+  },
+  filterGroup: {
     flexDirection: 'row',
     gap: theme.spacing.xs,
+  },
+  filterGroupLabel: {
+    color: theme.colors.text.muted,
   },
   filterChip: {
     alignItems: 'center',
@@ -149,7 +164,6 @@ const useStyles = createThemedStyles((theme) => ({
 interface FeedHeaderControlsProps {
   summaryText: string;
   feedMode: FeedModeValue;
-  showBetaTab?: boolean;
   onFeedModeChange: (value: FeedModeValue) => void;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
@@ -158,12 +172,13 @@ interface FeedHeaderControlsProps {
   onToggleFilters: () => void;
   typeFilter: FeedTypeFilterValue;
   onTypeFilterChange: (value: FeedTypeFilterValue) => void;
+  sortFilter: HomeFeedSortValue;
+  onSortFilterChange: (value: HomeFeedSortValue) => void;
 }
 
 export function FeedHeaderControls({
   summaryText,
   feedMode,
-  showBetaTab = false,
   onFeedModeChange,
   searchQuery,
   onSearchQueryChange,
@@ -172,13 +187,12 @@ export function FeedHeaderControls({
   onToggleFilters,
   typeFilter,
   onTypeFilterChange,
+  sortFilter,
+  onSortFilterChange,
 }: FeedHeaderControlsProps) {
   const theme = useTheme();
   const searchInputRef = useRef<TextInput>(null);
   const styles = useStyles();
-  const feedModeOptions = showBetaTab
-    ? FEED_MODE_OPTIONS
-    : FEED_MODE_OPTIONS.filter((option) => option.value !== 'beta');
 
   return (
     <View style={styles.container}>
@@ -192,7 +206,7 @@ export function FeedHeaderControls({
           getOptionTestID={(value) => `home-feed-mode-${value}`}
           labelStyle={styles.segmentLabel}
           onChange={onFeedModeChange}
-          options={feedModeOptions}
+          options={FEED_MODE_OPTIONS}
           segmentStyle={styles.segmentButton}
           value={feedMode}
         />
@@ -233,16 +247,35 @@ export function FeedHeaderControls({
       </View>
 
       {filtersExpanded ? (
-        <FilterChipGroup
-          activeChipStyle={styles.filterChipActive}
-          activeLabelStyle={styles.filterChipLabelActive}
-          chipStyle={styles.filterChip}
-          contentContainerStyle={styles.filtersRow}
-          labelStyle={styles.filterChipLabel}
-          onChange={onTypeFilterChange}
-          options={TYPE_FILTER_OPTIONS}
-          value={typeFilter}
-        />
+        <View style={styles.filtersRow}>
+          <View style={styles.filterSection}>
+            <Text style={styles.filterGroupLabel} variant="bodySmTightSemiBold">Type</Text>
+            <FilterChipGroup
+              activeChipStyle={styles.filterChipActive}
+              activeLabelStyle={styles.filterChipLabelActive}
+              chipStyle={styles.filterChip}
+              contentContainerStyle={styles.filterGroup}
+              labelStyle={styles.filterChipLabel}
+              onChange={onTypeFilterChange}
+              options={TYPE_FILTER_OPTIONS}
+              value={typeFilter}
+            />
+          </View>
+
+          <View style={styles.filterSection}>
+            <Text style={styles.filterGroupLabel} variant="bodySmTightSemiBold">Sort</Text>
+            <FilterChipGroup
+              activeChipStyle={styles.filterChipActive}
+              activeLabelStyle={styles.filterChipLabelActive}
+              chipStyle={styles.filterChip}
+              contentContainerStyle={styles.filterGroup}
+              labelStyle={styles.filterChipLabel}
+              onChange={onSortFilterChange}
+              options={SORT_FILTER_OPTIONS}
+              value={sortFilter}
+            />
+          </View>
+        </View>
       ) : null}
     </View>
   );

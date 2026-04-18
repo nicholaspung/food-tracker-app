@@ -22,6 +22,7 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
+import { resolvePhotoUploadQuotaUi } from '../lib/usageUiRules';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -124,6 +125,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   addPhotoButtonDisabled: {
     opacity: 0.6,
+  },
+  quotaCopy: {
+    gap: theme.spacing.xxs,
   },
   modalBackdrop: {
     alignItems: 'center',
@@ -237,6 +241,30 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         ? 1
         : MAX_NOTE_PHOTOS;
   const totalPhotoCount = existingPhotos.length + newPhotos.length;
+  const estimatedUsedWithDraftUploads =
+    shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot
+      ? monthlyUsage.snapshot.usage.photoUploads + newPhotos.length
+      : null;
+  const remainingEstimatedMonthlySlots =
+    typeof estimatedUsedWithDraftUploads === 'number'
+      ? Math.max(FREE_MONTHLY_PHOTO_LIMIT - estimatedUsedWithDraftUploads, 0)
+      : null;
+  const photoQuotaUi = useMemo(
+    () =>
+      resolvePhotoUploadQuotaUi({
+        perRecordLimit: perNotePhotoLimit,
+        usedInRecord: totalPhotoCount,
+        remainingMonthlyEstimate: remainingEstimatedMonthlySlots,
+      }),
+    [perNotePhotoLimit, remainingEstimatedMonthlySlots, totalPhotoCount],
+  );
+  const librarySelectionLimit = Math.max(photoQuotaUi.maxSelectableNow, 1);
+  const addPhotoButtonLabel =
+    !photoQuotaUi.hasQuota
+      ? 'Photo limit reached'
+      : photoQuotaUi.maxSelectableNow === 1
+        ? 'Add photo'
+        : 'Add photos';
 
   useEffect(() => {
     if (!noteDetailQuery.data?.note) {
@@ -268,12 +296,12 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   }, []);
 
   const ensureCanAddPhoto = useCallback(() => {
-    if (totalPhotoCount >= perNotePhotoLimit) {
+    if (!photoQuotaUi.hasQuota && photoQuotaUi.remainingPerRecord <= 0) {
       trackObservabilityEvent('USAGE_LIMIT_REACHED', {
         enforcement: 'client_estimate',
         limit: perNotePhotoLimit,
         metric: 'photo_uploads_per_record',
-        remaining: Math.max(perNotePhotoLimit - totalPhotoCount, 0),
+        remaining: photoQuotaUi.remainingPerRecord,
         source: 'NoteEditorScreen',
         used: totalPhotoCount,
       });
@@ -281,61 +309,67 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       return false;
     }
 
-    if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && monthlyUsage.snapshot) {
-      const estimatedUsedWithDraftUploads = monthlyUsage.snapshot.usage.photoUploads + newPhotos.length;
-      if (estimatedUsedWithDraftUploads + 1 > FREE_MONTHLY_PHOTO_LIMIT) {
-        const remaining = Math.max(FREE_MONTHLY_PHOTO_LIMIT - estimatedUsedWithDraftUploads, 0);
-        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-          enforcement: 'client_estimate',
-          limit: FREE_MONTHLY_PHOTO_LIMIT,
-          metric: 'photo_uploads',
-          remaining,
-          source: 'NoteEditorScreen',
-          used: estimatedUsedWithDraftUploads,
-        });
-        setErrorMessage(
-          `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remaining}.`,
-        );
-        return false;
-      }
+    if (
+      !photoQuotaUi.hasQuota &&
+      typeof remainingEstimatedMonthlySlots === 'number' &&
+      remainingEstimatedMonthlySlots <= 0 &&
+      typeof estimatedUsedWithDraftUploads === 'number'
+    ) {
+      trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+        enforcement: 'client_estimate',
+        limit: FREE_MONTHLY_PHOTO_LIMIT,
+        metric: 'photo_uploads',
+        remaining: remainingEstimatedMonthlySlots,
+        source: 'NoteEditorScreen',
+        used: estimatedUsedWithDraftUploads,
+      });
+      setErrorMessage(
+        `Free users can upload up to ${FREE_MONTHLY_PHOTO_LIMIT} photos per month. Remaining estimate: ${remainingEstimatedMonthlySlots}.`,
+      );
+      return false;
     }
 
     return true;
   }, [
-    isDisplayFreeUser,
-    monthlyUsage.snapshot,
-    newPhotos.length,
+    estimatedUsedWithDraftUploads,
     perNotePhotoLimit,
-    shouldEnforceUsageLimitsClientSide,
+    photoQuotaUi.hasQuota,
+    photoQuotaUi.remainingPerRecord,
+    remainingEstimatedMonthlySlots,
     totalPhotoCount,
   ]);
 
-  const addDraftPhoto = useCallback(
-    (asset: { uri: string; fileName?: string | null; mimeType?: string | null }) => {
-      if (!ensureCanAddPhoto()) {
-        return;
-      }
+  const addDraftPhotos = useCallback((assets: {
+    uri: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+  }[]) => {
+    const batchId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const nextPhotos: DraftNotePhoto[] = [];
 
+    for (const [index, asset] of assets.entries()) {
       const nextPhoto = buildLocalPhotoFile(asset, {
         fallbackPrefix: 'note-photo',
       });
       if (!nextPhoto) {
-        setErrorMessage('Could not read selected photo.');
-        return;
+        continue;
       }
 
-      setNewPhotos((current) => [
-        ...current,
-        {
-          id: `draft_photo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-          ...nextPhoto,
-        },
-      ]);
-      setErrorMessage(null);
-      resetPhotoPermissionNeedsSettings();
-    },
-    [ensureCanAddPhoto, resetPhotoPermissionNeedsSettings],
-  );
+      nextPhotos.push({
+        id: `draft_photo_${batchId}_${index}`,
+        ...nextPhoto,
+      });
+    }
+
+    if (nextPhotos.length === 0) {
+      setErrorMessage('Could not read selected photo.');
+      return;
+    }
+
+    setNewPhotos((current) => [...current, ...nextPhotos]);
+    setErrorMessage(nextPhotos.length === assets.length ? null : 'Some selected photos could not be read.');
+    resetPhotoPermissionNeedsSettings();
+  }, [resetPhotoPermissionNeedsSettings]);
 
   const handleOpenPhotoSourcePicker = useCallback(() => {
     if (!ensureCanAddPhoto()) {
@@ -376,6 +410,8 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
   const handlePickFromPhotoLibrary = useCallback(async () => {
     trackObservabilityEvent('NOTE_LIBRARY_PICK_STARTED', {
+      photoCount: 0,
+      selectionLimit: librarySelectionLimit,
       source: 'NoteEditorScreen',
     });
     setIsPhotoSourcePickerOpen(false);
@@ -399,8 +435,8 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       const pickerResult = await ImagePicker.launchImageLibraryAsync({
         allowsEditing: false,
         quality: 0.8,
-        allowsMultipleSelection: false,
-        selectionLimit: 1,
+        allowsMultipleSelection: librarySelectionLimit > 1,
+        selectionLimit: librarySelectionLimit,
         mediaTypes: ['images'],
       });
 
@@ -411,14 +447,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         return;
       }
 
-      const selectedAsset = pickerResult.assets?.[0];
-      if (!selectedAsset?.uri) {
+      const selectedAssets = pickerResult.assets ?? [];
+      if (selectedAssets.length === 0) {
         setErrorMessage('Could not read selected photo.');
         return;
       }
 
-      addDraftPhoto(selectedAsset);
+      addDraftPhotos(selectedAssets);
       trackObservabilityEvent('NOTE_LIBRARY_PICKED', {
+        photoCount: selectedAssets.length,
+        selectionLimit: librarySelectionLimit,
         source: 'NoteEditorScreen',
       });
     } catch (error) {
@@ -430,7 +468,13 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       });
       setErrorMessage(message);
     }
-  }, [addDraftPhoto, ensureCanAddPhoto, requestPhotoPickerPermission, resetPhotoPermissionNeedsSettings]);
+  }, [
+    addDraftPhotos,
+    ensureCanAddPhoto,
+    librarySelectionLimit,
+    requestPhotoPickerPermission,
+    resetPhotoPermissionNeedsSettings,
+  ]);
 
   const handleCapturePhoto = useCallback(async () => {
     if (!cameraRef.current) {
@@ -443,13 +487,13 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         throw new Error('Could not capture photo.');
       }
 
-      addDraftPhoto({ uri: captured.uri });
+      addDraftPhotos([{ uri: captured.uri }]);
       setIsCameraOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not capture photo.';
       setErrorMessage(message);
     }
-  }, [addDraftPhoto]);
+  }, [addDraftPhotos]);
 
   const handleSave = useCallback(async () => {
     if (!content.trim()) {
@@ -822,22 +866,30 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           ) : null}
 
           <Pressable
-            accessibilityLabel="Add photos"
+            accessibilityLabel={addPhotoButtonLabel}
+            accessibilityState={{ disabled: !photoQuotaUi.hasQuota }}
             onPress={() => {
               handleOpenPhotoSourcePicker();
             }}
-            style={[styles.addPhotoButton, totalPhotoCount >= perNotePhotoLimit ? styles.addPhotoButtonDisabled : null]}
+            style={[styles.addPhotoButton, !photoQuotaUi.hasQuota ? styles.addPhotoButtonDisabled : null]}
           >
             <Ionicons color={theme.colors.text.muted} name="add-outline" size={20} />
-            <Text tone="secondary">
-              {totalPhotoCount >= perNotePhotoLimit ? 'Photo limit reached' : 'Add photo'}
-            </Text>
+            <Text tone="secondary">{addPhotoButtonLabel}</Text>
           </Pressable>
 
-          <Text tone="muted" variant="bodySm">
-            Up to {perNotePhotoLimit} photo{perNotePhotoLimit === 1 ? '' : 's'} per note. Choose camera or photo
-            library.
-          </Text>
+          <View style={styles.quotaCopy}>
+            <Text tone="muted" variant="bodySm">
+              Note photo slots left: {photoQuotaUi.remainingPerRecord}.
+            </Text>
+            {isDisplayFreeUser ? (
+              <Text tone="muted" variant="bodySm">
+                Monthly photo estimate:{' '}
+                {typeof photoQuotaUi.remainingMonthlyEstimate === 'number'
+                  ? `${photoQuotaUi.remainingMonthlyEstimate} left.`
+                  : 'unknown.'}
+              </Text>
+            ) : null}
+          </View>
         </Card>
 
         {errorMessage ? (
@@ -871,7 +923,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text variant="titleMd">Add Photo</Text>
+              <Text variant="titleMd">Add Photos</Text>
               <Pressable
                 accessibilityLabel="Close photo source options"
                 onPress={() => {
@@ -884,7 +936,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
             </View>
 
             <Text tone="secondary" variant="bodyMd">
-              Choose where to add your photo from.
+              Choose where to add your photos from.
             </Text>
 
             <View style={styles.modalActions}>

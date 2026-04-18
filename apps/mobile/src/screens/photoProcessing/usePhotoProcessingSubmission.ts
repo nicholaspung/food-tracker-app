@@ -24,6 +24,7 @@ import { trackObservabilityEvent } from '../../observability';
 import {
   buildDefaultRestaurantForm,
   buildPhotoUploadInput,
+  resolveDraftPhotoDetectedDateValue,
   type DraftPhotoAsset,
   type GeneralPhotoStep,
   type PhotoProcessingScreenProps,
@@ -117,6 +118,7 @@ export function usePhotoProcessingSubmission({
             currentQuickTrackForm ??
               buildDefaultQuickTrackForm({
                 captureDate: currentPhoto.captureDate,
+                detectedDateValue: resolveDraftPhotoDetectedDateValue(currentPhoto),
               }),
           );
 

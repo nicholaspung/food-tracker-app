@@ -418,6 +418,11 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
 
+		sort, err := normalizeHomeFeedSort(scope, e.Request.URL.Query().Get("sort"))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
 		page, pageSize, err := parseHomeFeedPagination(
 			e.Request.URL.Query().Get("page"),
 			e.Request.URL.Query().Get("pageSize"),
@@ -434,6 +439,7 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			pageSize,
 			scope,
 			e.Request.URL.Query().Get("search"),
+			sort,
 			typeFilter,
 		)
 		if err != nil {
@@ -857,6 +863,24 @@ func normalizeHomeFeedTypeFilter(raw string) (string, error) {
 	}
 }
 
+func normalizeHomeFeedSort(scope string, raw string) (string, error) {
+	defaultSort := "tracked"
+	if scope == "mine" {
+		defaultSort = "created"
+	}
+
+	switch strings.TrimSpace(raw) {
+	case "":
+		return defaultSort, nil
+	case "created":
+		return "created", nil
+	case "tracked":
+		return "tracked", nil
+	default:
+		return "", fmt.Errorf("invalid home feed sort")
+	}
+}
+
 func getVisitsPageResponse(
 	app core.App,
 	userID string,
@@ -1212,6 +1236,7 @@ func getHomeFeedResponse(
 	pageSize int,
 	scope string,
 	search string,
+	sort string,
 	typeFilter string,
 ) (homeFeedResponse, error) {
 	response := homeFeedResponse{
@@ -1229,7 +1254,7 @@ func getHomeFeedResponse(
 		response.TotalQuickTracks = &counts.TotalQuickTracks
 	}
 
-	rows, err := listHomeFeedEntryRows(app, userID, isAdmin, page, pageSize, scope, search, typeFilter)
+	rows, err := listHomeFeedEntryRows(app, userID, isAdmin, page, pageSize, scope, search, sort, typeFilter)
 	if err != nil {
 		return response, err
 	}
@@ -1556,6 +1581,7 @@ func listHomeFeedEntryRows(
 	pageSize int,
 	scope string,
 	search string,
+	sort string,
 	typeFilter string,
 ) ([]homeFeedEntryRow, error) {
 	params := dbx.Params{
@@ -1595,7 +1621,7 @@ func listHomeFeedEntryRows(
 	}
 
 	orderByClause := "filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC"
-	if scope == "mine" {
+	if sort == "created" {
 		orderByClause = "filtered_entries.createdAt DESC, filtered_entries.recordId DESC"
 	}
 

@@ -47,7 +47,6 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
-  formatDateToLocalDateString,
   getTodayLocalDateString,
 } from '../lib/dateFormatting';
 import {
@@ -70,6 +69,7 @@ import {
   FREE_MONTHLY_PHOTO_LIMIT,
   FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
   normalizeSelectionLabel,
+  resolveDraftPhotoDetectedDateValue,
   resolveProgressSteps,
   resolveWizardStepIndex,
   formatDraftPhotoMetadataLabel,
@@ -440,6 +440,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         ...current,
         [currentPhoto.id]: buildDefaultQuickTrackForm({
           captureDate: currentPhoto.captureDate,
+          detectedDateValue: resolveDraftPhotoDetectedDateValue(currentPhoto),
           previousForm,
         }),
       };
@@ -1333,7 +1334,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
   if (step === 'process' && processType && currentPhoto) {
     const isLastPhoto = currentPhotoIndex === photos.length - 1;
-    const captureDateValue = currentPhoto.captureDate ? formatDateToLocalDateString(currentPhoto.captureDate) : null;
+    const detectedDateValue = resolveDraftPhotoDetectedDateValue(currentPhoto);
     const captureCoordinatesLabel = currentPhoto.captureCoordinates
       ? formatCoordinatesForDisplay(currentPhoto.captureCoordinates)
       : null;
@@ -1394,7 +1395,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         {processType === 'restaurant' ? (
           <>
             <VisitMetadataCard
-              detectedDateValue={captureDateValue}
+              detectedDateValue={detectedDateValue}
               dateLabel="Visit Date"
               dateModalTitle="Select visit date"
               dateValue={currentRestaurantForm?.date ?? getTodayLocalDateString()}
@@ -1692,7 +1693,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         ) : (
           <>
             <QuickTrackFormFields
-              detectedDateValue={captureDateValue}
+              detectedDateValue={detectedDateValue}
               isCategoryExpanded={isQuickTrackCategoryExpanded}
               onCategoryExpandedChange={setIsQuickTrackCategoryExpanded}
               onChange={updateCurrentQuickTrackForm}
@@ -1700,6 +1701,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                 currentQuickTrackForm ??
                 buildDefaultQuickTrackForm({
                   captureDate: currentPhoto.captureDate,
+                  detectedDateValue,
                 })
               }
             />

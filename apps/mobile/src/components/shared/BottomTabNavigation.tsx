@@ -12,7 +12,6 @@ export type BottomTabRoute = 'Home' | 'AddVisit' | 'Friends' | 'Misc' | 'Profile
 interface BottomTabNavigationProps {
   currentRouteName?: keyof RootStackParamList;
   bottomPadding: number;
-  hidden?: boolean;
   onNavigate: (route: BottomTabRoute) => void;
 }
 
@@ -60,11 +59,7 @@ const useStyles = createThemedStyles((theme, bottomPadding: number) => ({
     backgroundColor: theme.colors.background.surface,
     borderTopColor: theme.colors.border.subtle,
     borderTopWidth: 1,
-    bottom: 0,
     elevation: 10,
-    left: 0,
-    position: 'absolute',
-    right: 0,
     shadowColor: theme.colors.background.inverse,
     shadowOffset: {
       width: 0,
@@ -72,9 +67,6 @@ const useStyles = createThemedStyles((theme, bottomPadding: number) => ({
     },
     shadowOpacity: 0.08,
     shadowRadius: 4,
-  },
-  containerHidden: {
-    opacity: 0,
   },
   row: {
     alignItems: 'center',
@@ -158,7 +150,6 @@ const TABS: {
 export function BottomTabNavigation({
   currentRouteName,
   bottomPadding,
-  hidden = false,
   onNavigate,
 }: BottomTabNavigationProps) {
   const theme = useTheme();
@@ -171,13 +162,7 @@ export function BottomTabNavigation({
   const pendingInvitesCount = friendsSummary?.requestsCount ?? 0;
 
   return (
-    <View
-      pointerEvents={hidden ? 'none' : 'auto'}
-      style={[
-        styles.container,
-        hidden ? styles.containerHidden : null,
-      ]}
-    >
+    <View style={styles.container}>
       <View style={styles.row}>
         {TABS.map((tab) => {
           const isActive = !!currentRouteName && TAB_ACTIVE_ROUTES[tab.route].includes(currentRouteName);

@@ -3,6 +3,13 @@ import { getAuthenticatedUserIdOrNull, sendApiRequest } from './pocketbaseGatewa
 
 export type HomeFeedScope = 'all' | 'mine' | 'friends';
 export type HomeFeedTypeFilter = 'all' | 'visits' | 'quick-track';
+export type HomeFeedSort = 'created' | 'tracked';
+
+export const HOME_FEED_DEFAULT_SORTS: Record<HomeFeedScope, HomeFeedSort> = {
+  all: 'tracked',
+  mine: 'created',
+  friends: 'tracked',
+};
 
 interface SourcePageResult<T> {
   items: T[];
@@ -63,6 +70,7 @@ export interface ListHomeFeedPageInput {
   scope?: HomeFeedScope;
   search?: string;
   signal?: AbortSignal;
+  sort?: HomeFeedSort;
   typeFilter?: HomeFeedTypeFilter;
 }
 
@@ -227,6 +235,7 @@ export async function listHomeFeedPage(input?: ListHomeFeedPageInput): Promise<H
   const pageSize = normalizePageSize(input?.pageSize);
   const scope = input?.scope ?? 'all';
   const trimmedSearch = input?.search?.trim() || undefined;
+  const sort = input?.sort ?? HOME_FEED_DEFAULT_SORTS[scope];
   const typeFilter = input?.typeFilter ?? 'all';
   const page = input?.cursor?.page ?? 1;
   const query = new URLSearchParams({
@@ -234,6 +243,7 @@ export async function listHomeFeedPage(input?: ListHomeFeedPageInput): Promise<H
     pageSize: String(pageSize),
     scope,
     typeFilter,
+    sort,
   });
 
   if (trimmedSearch) {

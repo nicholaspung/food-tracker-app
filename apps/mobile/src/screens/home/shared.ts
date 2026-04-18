@@ -1,6 +1,6 @@
-import type { HomeBetaFeedPhotoRecord } from '../../components/shared';
+import type { HomeFeedPhotoRecord } from '../../components/shared';
 
-export type VisitPhotoRecord = HomeBetaFeedPhotoRecord;
+export type VisitPhotoRecord = HomeFeedPhotoRecord;
 
 export type PendingDeleteTarget =
   | {

@@ -143,7 +143,7 @@ function parsePocketBaseDateString(value: string): Date | null {
   return null;
 }
 
-function resolveDate(value: unknown): Date | null {
+export function resolveDateValue(value: unknown): Date | null {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value;
   }
@@ -175,7 +175,7 @@ export function formatDisplayDate(
   value: unknown,
   { locale, options, fallback = 'Unknown' }: FormatDisplayDateOptions = {},
 ): string {
-  const resolvedDate = resolveDate(value);
+  const resolvedDate = resolveDateValue(value);
   if (!resolvedDate) {
     return fallback;
   }

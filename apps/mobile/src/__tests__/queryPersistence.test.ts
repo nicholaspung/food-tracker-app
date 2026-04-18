@@ -17,7 +17,7 @@ describe('React Query persistence', () => {
 
   it('restores only allowlisted browse-surface queries after a cold restart', async () => {
     const sourceClient = new QueryClient();
-    sourceClient.setQueryData(homeFeedQueryKeys.paginated('mine', 'all', ''), {
+    sourceClient.setQueryData(homeFeedQueryKeys.paginated('mine', 'all', 'created', ''), {
       pages: [
         {
           items: [
@@ -197,8 +197,8 @@ describe('React Query persistence', () => {
       maxAge: 1000 * 60 * 60 * 24,
     });
 
-    expect(restoredClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', ''))).toEqual(
-      sourceClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', '')),
+    expect(restoredClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', 'created', ''))).toEqual(
+      sourceClient.getQueryData(homeFeedQueryKeys.paginated('mine', 'all', 'created', '')),
     );
     expect(restoredClient.getQueryData(['feature', 'visitPhotos', 'feedItems', 'mine'])).toEqual(
       sourceClient.getQueryData(['feature', 'visitPhotos', 'feedItems', 'mine']),

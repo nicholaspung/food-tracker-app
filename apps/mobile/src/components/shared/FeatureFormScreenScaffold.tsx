@@ -32,7 +32,6 @@ export interface FeatureFormScreenScaffoldProps {
   children: ReactNode;
   primaryAction: FeatureFormAction;
   secondaryAction?: FeatureFormAction;
-  hideFooterWhenKeyboardVisible?: boolean;
   testID?: string;
 }
 
@@ -128,7 +127,7 @@ export function FeatureFormScreenScaffold({
           contentContainerStyle={[
             styles.bodyContent,
             {
-              paddingBottom: footerHeight + theme.spacing.lg,
+              paddingBottom: footerHeight,
             },
             bodyStyle,
           ]}

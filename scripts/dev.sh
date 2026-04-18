@@ -125,13 +125,13 @@ start_service "MARKETING" pnpm dev:marketing
 
 echo ""
 echo "Development services are running:"
-echo "  - App (web):    ${FOOD_TRACKER_APP_URL}"
+echo "  - App URL:      ${FOOD_TRACKER_APP_URL} (press w in Expo to open web)"
 echo "  - Admin:        ${FOOD_TRACKER_ADMIN_URL}"
 echo "  - API:          ${FOOD_TRACKER_API_BASE_URL}"
 echo "  - Marketing:    ${FOOD_TRACKER_MARKETING_URL}"
 echo ""
 echo "Starting Expo dev server (interactive mode)..."
-echo "Use Expo terminal shortcuts: r (reload), d (dev menu), i (open iOS), j (debugger), ? (help)."
+echo "Use Expo terminal shortcuts: r (reload), d (dev menu), i (open iOS), w (open web), j (debugger), ? (help)."
 echo ""
 
 pnpm dev:app

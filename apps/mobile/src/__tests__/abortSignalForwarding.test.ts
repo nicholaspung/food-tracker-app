@@ -56,11 +56,12 @@ describe('abort signal forwarding', () => {
       scope: 'friends',
       search: 'pizza',
       signal: abortController.signal,
+      sort: 'tracked',
       typeFilter: 'all',
     });
 
     expect(mockedSendApiRequest).toHaveBeenCalledWith(
-      '/api/home-feed?page=1&pageSize=20&scope=friends&typeFilter=all&search=pizza',
+      '/api/home-feed?page=1&pageSize=20&scope=friends&typeFilter=all&sort=tracked&search=pizza',
       {
         method: 'GET',
         signal: abortController.signal,

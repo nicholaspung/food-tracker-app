@@ -1,4 +1,22 @@
-import { formatDisplayDate } from '../lib/dateFormatting';
+import { formatDisplayDate, resolveDateValue } from '../lib/dateFormatting';
+
+describe('resolveDateValue', () => {
+  it('parses PocketBase timestamps with a space separator and timezone', () => {
+    expect(resolveDateValue('2026-02-19 10:42:36.123Z')?.toISOString()).toBe(
+      '2026-02-19T10:42:36.123Z',
+    );
+  });
+
+  it('parses timestamps with microseconds and no timezone', () => {
+    expect(resolveDateValue('2026-02-19 10:42:36.123456')?.getTime()).toBe(
+      new Date(2026, 1, 19, 10, 42, 36, 123).getTime(),
+    );
+  });
+
+  it('returns null for invalid values', () => {
+    expect(resolveDateValue('invalid-date-value')).toBeNull();
+  });
+});
 
 describe('formatDisplayDate', () => {
   it('parses PocketBase timestamps with a space separator and timezone', () => {

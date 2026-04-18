@@ -1920,6 +1920,142 @@ func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testin
 	}
 }
 
+func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	friend, _ := createAuthUser(t, server.app, false, false)
+
+	createFriendshipRecord(t, server.app, user.Id, friend.Id, "accepted")
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Explicit Sort Cafe",
+		"location":   "Los Angeles, CA",
+		"visibility": "public",
+	})
+
+	ownerQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":         user.Id,
+		"name":         "Owner Quick Track",
+		"rating":       4,
+		"isQuickTrack": true,
+		"visibility":   "private",
+		"itemDate":     "2026-04-20 08:00:00.000Z",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerQuickTrack.Id, "2026-04-01 08:00:00.000Z")
+
+	ownerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       user.Id,
+		"visitDate":  "2026-04-01 09:00:00.000Z",
+		"visibility": "private",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", ownerVisit.Id, "2026-04-02 08:00:00.000Z")
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  ownerVisit.Id,
+		"user":   user.Id,
+		"name":   "Owner Visit Item",
+		"rating": 5,
+	})
+
+	friendQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":         friend.Id,
+		"name":         "Friend Quick Track",
+		"rating":       3,
+		"isQuickTrack": true,
+		"visibility":   "friends",
+		"itemDate":     "2026-04-20 10:00:00.000Z",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", friendQuickTrack.Id, "2026-04-03 08:00:00.000Z")
+
+	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
+		"restaurant": restaurantIDOrFail(restaurant),
+		"user":       friend.Id,
+		"visitDate":  "2026-04-05 09:00:00.000Z",
+		"visibility": "friends",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", friendVisit.Id, "2026-04-04 08:00:00.000Z")
+	createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"visit":  friendVisit.Id,
+		"user":   friend.Id,
+		"name":   "Friend Visit Item",
+		"rating": 4,
+	})
+
+	mineTrackedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=mine&sort=tracked",
+		token,
+		"",
+	)
+	if mineTrackedResponse.Code != http.StatusOK {
+		t.Fatalf("expected mine tracked response 200 OK, got %d: %s", mineTrackedResponse.Code, mineTrackedResponse.Body.String())
+	}
+
+	var mineTrackedPayload struct {
+		Items []struct {
+			Source string `json:"source"`
+			Visit  *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+			QuickTrack *struct {
+				ID string `json:"id"`
+			} `json:"quickTrack"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(mineTrackedResponse.Body.Bytes(), &mineTrackedPayload); err != nil {
+		t.Fatalf("failed to parse mine tracked response JSON: %v; body=%s", err, mineTrackedResponse.Body.String())
+	}
+
+	if len(mineTrackedPayload.Items) != 2 {
+		t.Fatalf("expected 2 mine tracked feed entries, got %d: %#v", len(mineTrackedPayload.Items), mineTrackedPayload.Items)
+	}
+	if mineTrackedPayload.Items[0].Source != "quick-track" || mineTrackedPayload.Items[0].QuickTrack == nil || mineTrackedPayload.Items[0].QuickTrack.ID != ownerQuickTrack.Id {
+		t.Fatalf("expected tracked sort to put owner quick track first, got %#v", mineTrackedPayload.Items[0])
+	}
+	if mineTrackedPayload.Items[1].Source != "visit" || mineTrackedPayload.Items[1].Visit == nil || mineTrackedPayload.Items[1].Visit.ID != ownerVisit.Id {
+		t.Fatalf("expected tracked sort to put owner visit second, got %#v", mineTrackedPayload.Items[1])
+	}
+
+	friendsCreatedResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=friends&sort=created",
+		token,
+		"",
+	)
+	if friendsCreatedResponse.Code != http.StatusOK {
+		t.Fatalf("expected friends created response 200 OK, got %d: %s", friendsCreatedResponse.Code, friendsCreatedResponse.Body.String())
+	}
+
+	var friendsCreatedPayload struct {
+		Items []struct {
+			Source string `json:"source"`
+			Visit  *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+			QuickTrack *struct {
+				ID string `json:"id"`
+			} `json:"quickTrack"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(friendsCreatedResponse.Body.Bytes(), &friendsCreatedPayload); err != nil {
+		t.Fatalf("failed to parse friends created response JSON: %v; body=%s", err, friendsCreatedResponse.Body.String())
+	}
+
+	if len(friendsCreatedPayload.Items) != 2 {
+		t.Fatalf("expected 2 friends created feed entries, got %d: %#v", len(friendsCreatedPayload.Items), friendsCreatedPayload.Items)
+	}
+	if friendsCreatedPayload.Items[0].Source != "visit" || friendsCreatedPayload.Items[0].Visit == nil || friendsCreatedPayload.Items[0].Visit.ID != friendVisit.Id {
+		t.Fatalf("expected created sort to put friend visit first, got %#v", friendsCreatedPayload.Items[0])
+	}
+	if friendsCreatedPayload.Items[1].Source != "quick-track" || friendsCreatedPayload.Items[1].QuickTrack == nil || friendsCreatedPayload.Items[1].QuickTrack.ID != friendQuickTrack.Id {
+		t.Fatalf("expected created sort to put friend quick track second, got %#v", friendsCreatedPayload.Items[1])
+	}
+}
+
 func createNoteRecord(t *testing.T, app core.App, userID string, status string) *core.Record {
 	t.Helper()
 

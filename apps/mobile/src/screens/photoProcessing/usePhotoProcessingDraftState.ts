@@ -10,6 +10,7 @@ import {
 import {
   buildDefaultRestaurantForm,
   extractCaptureCoordinates,
+  resolveDraftPhotoDetectedDateValue,
   type DraftPhotoAsset,
   type RestaurantPhotoForm,
 } from './shared';
@@ -67,6 +68,7 @@ export function usePhotoProcessingDraftState() {
           current[currentPhoto.id] ??
           buildDefaultQuickTrackForm({
             captureDate: currentPhoto.captureDate,
+            detectedDateValue: resolveDraftPhotoDetectedDateValue(currentPhoto),
           });
         return {
           ...current,

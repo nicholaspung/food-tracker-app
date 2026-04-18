@@ -1,4 +1,8 @@
-import { resolveCreateVisitSearchUi, shouldShowOfflineUsageWarning } from '../lib/usageUiRules';
+import {
+  resolveCreateVisitSearchUi,
+  resolvePhotoUploadQuotaUi,
+  shouldShowOfflineUsageWarning,
+} from '../lib/usageUiRules';
 
 describe('CreateVisitScreen usage UI rules', () => {
   it('shows remaining-label variants only when free user has <= 10 searches left', () => {
@@ -48,6 +52,60 @@ describe('CreateVisitScreen usage UI rules', () => {
 
     expect(exhaustedPreview.isQuotaReached).toBe(true);
     expect(exhaustedPreview.isSearchDisabled).toBe(false);
+  });
+});
+
+describe('NoteEditorScreen photo upload quota UI rules', () => {
+  it('returns per-record remaining when no monthly estimate is available', () => {
+    expect(resolvePhotoUploadQuotaUi({
+      perRecordLimit: 5,
+      usedInRecord: 2,
+      remainingMonthlyEstimate: null,
+    })).toEqual({
+      remainingPerRecord: 3,
+      remainingMonthlyEstimate: null,
+      maxSelectableNow: 3,
+      hasQuota: true,
+    });
+  });
+
+  it('caps selectable photos by the lower monthly estimate', () => {
+    expect(resolvePhotoUploadQuotaUi({
+      perRecordLimit: 10,
+      usedInRecord: 4,
+      remainingMonthlyEstimate: 2,
+    })).toEqual({
+      remainingPerRecord: 6,
+      remainingMonthlyEstimate: 2,
+      maxSelectableNow: 2,
+      hasQuota: true,
+    });
+  });
+
+  it('reports no quota when remaining capacity is zero', () => {
+    expect(resolvePhotoUploadQuotaUi({
+      perRecordLimit: 3,
+      usedInRecord: 3,
+      remainingMonthlyEstimate: 5,
+    })).toEqual({
+      remainingPerRecord: 0,
+      remainingMonthlyEstimate: 5,
+      maxSelectableNow: 0,
+      hasQuota: false,
+    });
+  });
+
+  it('clamps negative inputs to zero', () => {
+    expect(resolvePhotoUploadQuotaUi({
+      perRecordLimit: -1,
+      usedInRecord: -4,
+      remainingMonthlyEstimate: -2,
+    })).toEqual({
+      remainingPerRecord: 0,
+      remainingMonthlyEstimate: 0,
+      maxSelectableNow: 0,
+      hasQuota: false,
+    });
   });
 });
 
