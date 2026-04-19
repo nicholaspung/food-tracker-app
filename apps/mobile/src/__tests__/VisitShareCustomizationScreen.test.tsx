@@ -98,6 +98,12 @@ jest.mock('../theme', () => ({
       xs: 8,
       xxs: 4,
     },
+    typography: {
+      bodyBase: { lineHeight: 20 },
+      bodyMdTight: { lineHeight: 18 },
+      label: { lineHeight: 18 },
+      metaTight: { lineHeight: 17 },
+    },
   }),
 }));
 
@@ -108,13 +114,68 @@ jest.mock('../ui', () => ({
 }));
 
 const mockedCaptureRef = captureRef as jest.MockedFunction<typeof captureRef>;
+const expectedVisitDate = 'Apr 18, 2026';
+
+function buildRouteParams() {
+  return {
+    items: [
+      {
+        itemId: 'item-1',
+        itemName: 'Miso ramen',
+        photoCollectionId: 'collection-1',
+        photoCollectionName: 'visit_photos',
+        photoFilename: 'ramen.jpg',
+        photoId: 'photo-1',
+        rating: 5,
+      },
+      {
+        itemId: 'item-2',
+        itemName: 'Pork gyoza',
+        photoCollectionId: 'collection-1',
+        photoCollectionName: 'visit_photos',
+        photoFilename: 'gyoza.jpg',
+        photoId: 'photo-2',
+        rating: 4,
+      },
+    ],
+    restaurantName: 'Noodle House',
+    visitDate: '2026-04-18T12:00:00.000Z',
+  };
+}
+
+function flattenStyle(style: any): Record<string, unknown> {
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>((combined, entry) => ({
+      ...combined,
+      ...flattenStyle(entry),
+    }), {});
+  }
+
+  if (style && typeof style === 'object') {
+    return style;
+  }
+
+  return {};
+}
+
+function findTextMatches(root: any, text: string) {
+  return root.findAll((node: any) => node.type === 'Text' && node.children.includes(text));
+}
+
+function findPressableByLabel(root: any, label: string) {
+  return root.find(
+    (node: any) =>
+      typeof node.props.onPress === 'function'
+      && node.findAll((child: any) => child.type === 'Text' && child.children.includes(label)).length > 0,
+  );
+}
 
 describe('VisitShareCustomizationScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('renders a single Yummy Recs footer inside the captured share canvas', async () => {
+  it('renders restaurant and date once in the captured footer for multi-item shares', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -124,42 +185,101 @@ describe('VisitShareCustomizationScreen', () => {
             goBack: jest.fn(),
           } as never}
           route={{
-            params: {
-              items: [
-                {
-                  itemId: 'item-1',
-                  itemName: 'Miso ramen',
-                  photoCollectionId: 'collection-1',
-                  photoCollectionName: 'visit_photos',
-                  photoFilename: 'ramen.jpg',
-                  photoId: 'photo-1',
-                  rating: 5,
-                },
-              ],
-              restaurantName: 'Noodle House',
-              visitDate: '2026-04-18T12:00:00.000Z',
-            },
+            params: buildRouteParams(),
           } as never}
         />,
       );
     });
 
-    const brandLabels = renderer.root.findAll(
-      (node: any) => node.type === 'Text' && node.children.includes('Yummy Recs'),
-    );
+    const brandLabels = findTextMatches(renderer.root, 'Yummy Recs');
 
     expect(brandLabels).toHaveLength(1);
 
     const shareCanvas = renderer.root.findByProps({ testID: 'visit-share-canvas' });
-    const brandFootersInCanvas = shareCanvas.findAll(
-      (node: any) => node.props.testID === 'visit-share-brand-footer',
-    );
-    const brandLabelsInCanvas = shareCanvas.findAll(
-      (node: any) => node.type === 'Text' && node.children.includes('Yummy Recs'),
-    );
+    const brandFootersInCanvas = shareCanvas.findAll((node: any) => node.props.testID === 'visit-share-brand-footer');
+    const brandLabelsInCanvas = findTextMatches(shareCanvas, 'Yummy Recs');
+    const restaurantLabelsInCanvas = findTextMatches(shareCanvas, 'Noodle House');
+    const visitDateLabelsInCanvas = findTextMatches(shareCanvas, expectedVisitDate);
 
     expect(brandFootersInCanvas.length).toBeGreaterThanOrEqual(1);
     expect(brandLabelsInCanvas).toHaveLength(1);
+    expect(restaurantLabelsInCanvas).toHaveLength(1);
+    expect(visitDateLabelsInCanvas).toHaveLength(1);
+  });
+
+  it('keeps footer metadata toggles independent', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitShareCustomizationScreen
+          navigation={{
+            goBack: jest.fn(),
+          } as never}
+          route={{
+            params: buildRouteParams(),
+          } as never}
+        />,
+      );
+    });
+
+    const shareCanvas = () => renderer.root.findByProps({ testID: 'visit-share-canvas' });
+
+    expect(findTextMatches(shareCanvas(), 'Noodle House')).toHaveLength(1);
+    expect(findTextMatches(shareCanvas(), expectedVisitDate)).toHaveLength(1);
+
+    await act(async () => {
+      findPressableByLabel(renderer.root, 'Restaurant').props.onPress();
+    });
+
+    expect(findTextMatches(shareCanvas(), 'Noodle House')).toHaveLength(0);
+    expect(findTextMatches(shareCanvas(), expectedVisitDate)).toHaveLength(1);
+
+    await act(async () => {
+      findPressableByLabel(renderer.root, 'Date').props.onPress();
+    });
+
+    expect(findTextMatches(shareCanvas(), 'Noodle House')).toHaveLength(0);
+    expect(findTextMatches(shareCanvas(), expectedVisitDate)).toHaveLength(0);
+  });
+
+  it('shrinks the footer reservation when footer metadata rows are hidden', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitShareCustomizationScreen
+          navigation={{
+            goBack: jest.fn(),
+          } as never}
+          route={{
+            params: buildRouteParams(),
+          } as never}
+        />,
+      );
+    });
+
+    const getFooterHeight = () =>
+      flattenStyle(renderer.root.findByProps({ testID: 'visit-share-brand-footer' }).props.style).height;
+    const getCanvasPaddingBottom = () =>
+      flattenStyle(renderer.root.findByProps({ testID: 'visit-share-canvas-content' }).props.style).paddingBottom;
+
+    expect(getFooterHeight()).toBe(80);
+    expect(getCanvasPaddingBottom()).toBe(80);
+
+    await act(async () => {
+      findPressableByLabel(renderer.root, 'Restaurant').props.onPress();
+    });
+
+    expect(getFooterHeight()).toBe(58);
+    expect(getCanvasPaddingBottom()).toBe(58);
+
+    await act(async () => {
+      findPressableByLabel(renderer.root, 'Date').props.onPress();
+    });
+
+    expect(getFooterHeight()).toBe(34);
+    expect(getCanvasPaddingBottom()).toBe(34);
   });
 
   it('captures a fixed 1080x1920 story-sized export', async () => {
@@ -178,32 +298,20 @@ describe('VisitShareCustomizationScreen', () => {
             goBack: jest.fn(),
           } as never}
           route={{
-            params: {
-              items: [
-                {
-                  itemId: 'item-1',
-                  itemName: 'Miso ramen',
-                  photoCollectionId: 'collection-1',
-                  photoCollectionName: 'visit_photos',
-                  photoFilename: 'ramen.jpg',
-                  photoId: 'photo-1',
-                  rating: 5,
-                },
-              ],
-              restaurantName: 'Noodle House',
-              visitDate: '2026-04-18T12:00:00.000Z',
-            },
+            params: buildRouteParams(),
           } as never}
         />,
       );
     });
 
-    const sharePhotoNode = renderer.root.find(
+    const sharePhotoNodes = renderer.root.findAll(
       (node: any) => node.type === 'Image' && typeof node.props.onLoad === 'function',
     );
 
     await act(async () => {
-      sharePhotoNode.props.onLoad();
+      sharePhotoNodes.forEach((node: any) => {
+        node.props.onLoad();
+      });
     });
 
     await act(async () => {

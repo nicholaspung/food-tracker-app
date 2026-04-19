@@ -965,10 +965,7 @@ func normalizeHomeFeedTypeFilter(raw string) (string, error) {
 }
 
 func normalizeHomeFeedSort(scope string, raw string) (string, error) {
-	defaultSort := "tracked"
-	if scope == "mine" {
-		defaultSort = "created"
-	}
+	defaultSort := "created"
 
 	switch strings.TrimSpace(raw) {
 	case "":
@@ -1695,6 +1692,12 @@ func listHomeFeedEntryRows(
 		"limit":      pageSize + 1,
 		"offset":     (page - 1) * pageSize,
 	}
+	visitEventAtExpression := "COALESCE(NULLIF(visits.visitDate, ''), visits.created)"
+	quickTrackEventAtExpression := "COALESCE(NULLIF(food_items.itemDate, ''), food_items.created)"
+	if sort == "created" {
+		visitEventAtExpression = "visits.created"
+		quickTrackEventAtExpression = "food_items.created"
+	}
 
 	selects := make([]string, 0, 2)
 	if typeFilter != "quick-track" {
@@ -1702,7 +1705,7 @@ func listHomeFeedEntryRows(
 			SELECT
 				'visit' AS source,
 				visits.id AS recordId,
-				COALESCE(NULLIF(visits.visitDate, ''), visits.created) AS eventAt,
+				`+visitEventAtExpression+` AS eventAt,
 				visits.created AS createdAt
 			FROM visits
 			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
@@ -1713,7 +1716,7 @@ func listHomeFeedEntryRows(
 			SELECT
 				'quick-track' AS source,
 				food_items.id AS recordId,
-				COALESCE(NULLIF(food_items.itemDate, ''), food_items.created) AS eventAt,
+				`+quickTrackEventAtExpression+` AS eventAt,
 				food_items.created AS createdAt
 			FROM food_items
 			LEFT JOIN visits linked_visits ON linked_visits.id = food_items.visit
@@ -1723,11 +1726,6 @@ func listHomeFeedEntryRows(
 
 	if len(selects) == 0 {
 		return []homeFeedEntryRow{}, nil
-	}
-
-	orderByClause := "filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC"
-	if sort == "created" {
-		orderByClause = "filtered_entries.createdAt DESC, filtered_entries.recordId DESC"
 	}
 
 	query := `
@@ -1751,7 +1749,7 @@ func listHomeFeedEntryRows(
 			filtered_entries.eventAt AS [[eventAt]],
 			filtered_entries.createdAt AS [[createdAt]]
 		FROM filtered_entries
-		ORDER BY ` + orderByClause + `
+		ORDER BY filtered_entries.eventAt DESC, filtered_entries.createdAt DESC, filtered_entries.recordId DESC
 		LIMIT {:limit} OFFSET {:offset}
 	`
 

@@ -6,6 +6,7 @@ import {
   isPaginatedHomeFeedQueryKey,
   type HomeFeedInfiniteData,
 } from '../features/store/homeFeedQuery';
+import { HOME_FEED_DEFAULT_SORTS } from '../features/store/homeFeedPagination';
 
 function createVisitEntry(id: string, eventAt: string, visitItemId: string) {
   return {
@@ -45,6 +46,14 @@ function createQuickTrackEntry(id: string, eventAt: string) {
 }
 
 describe('home feed query helpers', () => {
+  it('defaults every home feed scope to created sorting', () => {
+    expect(HOME_FEED_DEFAULT_SORTS).toEqual({
+      all: 'created',
+      friends: 'created',
+      mine: 'created',
+    });
+  });
+
   it('recognizes both new and legacy paginated home feed query keys', () => {
     expect(isPaginatedHomeFeedQueryKey(homeFeedQueryKeys.paginated('mine', 'visits', 'created', 'ramen'))).toBe(true);
     expect(isPaginatedHomeFeedQueryKey(['feature', 'homeFeed', 'paginated', 'mine', 'visits', 'ramen'])).toBe(true);
@@ -127,7 +136,7 @@ describe('home feed query helpers', () => {
     });
   });
 
-  it('does not derive a visits-only placeholder when the requested sort differs from the old default', () => {
+  it('does not derive a visits-only placeholder when the requested sort differs from the legacy default', () => {
     const queryClient = new QueryClient();
 
     queryClient.setQueryData(['feature', 'homeFeed', 'paginated', 'friends', 'all', ''], {

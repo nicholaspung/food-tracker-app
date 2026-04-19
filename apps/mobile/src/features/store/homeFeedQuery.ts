@@ -5,7 +5,6 @@ import type {
 } from '@tanstack/react-query';
 
 import {
-  HOME_FEED_DEFAULT_SORTS,
   type HomeFeedCursor,
   type HomeFeedPageEntry,
   type HomeFeedPageResult,
@@ -17,6 +16,11 @@ import {
 const HOME_FEED_SCOPES = ['all', 'mine', 'friends'] as const;
 const HOME_FEED_SORTS = ['created', 'tracked'] as const;
 const HOME_FEED_TYPE_FILTERS = ['all', 'visits', 'quick-track'] as const;
+const HOME_FEED_LEGACY_DEFAULT_SORTS: Record<HomeFeedScope, HomeFeedSort> = {
+  all: 'tracked',
+  mine: 'created',
+  friends: 'tracked',
+};
 
 export type HomeFeedInfiniteData = InfiniteData<HomeFeedPageResult, HomeFeedCursor | undefined>;
 type HomeFeedVisitEntry = Extract<HomeFeedPageEntry, { source: 'visit' }>;
@@ -117,7 +121,7 @@ export function getLegacyHomeFeedPlaceholderData(
     return exactLegacyData;
   }
 
-  if (typeFilter !== 'visits' || sort !== HOME_FEED_DEFAULT_SORTS[scope]) {
+  if (typeFilter !== 'visits' || sort !== HOME_FEED_LEGACY_DEFAULT_SORTS[scope]) {
     return undefined;
   }
 

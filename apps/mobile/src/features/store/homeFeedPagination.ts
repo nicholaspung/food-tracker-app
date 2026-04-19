@@ -6,9 +6,9 @@ export type HomeFeedTypeFilter = 'all' | 'visits' | 'quick-track';
 export type HomeFeedSort = 'created' | 'tracked';
 
 export const HOME_FEED_DEFAULT_SORTS: Record<HomeFeedScope, HomeFeedSort> = {
-  all: 'tracked',
+  all: 'created',
   mine: 'created',
-  friends: 'tracked',
+  friends: 'created',
 };
 
 interface SourcePageResult<T> {

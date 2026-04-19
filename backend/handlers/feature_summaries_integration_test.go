@@ -1873,6 +1873,7 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 		"visitDate":  "2026-04-03 18:30:00.000Z",
 		"visibility": "friends",
 	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", friendVisit.Id, "2026-04-03 20:00:00.000Z")
 	friendVisitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"visit":  friendVisit.Id,
 		"user":   friend.Id,
@@ -1892,6 +1893,7 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 		"visibility":    "friends",
 		"itemDate":      "2026-04-02 19:15:00.000Z",
 	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", friendQuickTrack.Id, "2026-04-02 20:00:00.000Z")
 	insertVisitPhotoRowRaw(t, server.app, friend.Id, "", friendQuickTrack.Id)
 
 	ownerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
@@ -1901,6 +1903,7 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 		"visibility":       "private",
 		"moderationStatus": "under_review",
 	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", ownerVisit.Id, "2026-04-01 20:00:00.000Z")
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"visit":  ownerVisit.Id,
 		"user":   user.Id,
@@ -2070,6 +2073,7 @@ func TestHomeFeedEndpointOmitsTotalsBeyondFirstPage(t *testing.T) {
 		"visitDate":  "2026-04-03 10:00:00.000Z",
 		"visibility": "private",
 	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", firstVisit.Id, "2026-04-01 08:00:00.000Z")
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"visit":  firstVisit.Id,
 		"user":   user.Id,
@@ -2083,6 +2087,7 @@ func TestHomeFeedEndpointOmitsTotalsBeyondFirstPage(t *testing.T) {
 		"visitDate":  "2026-04-02 10:00:00.000Z",
 		"visibility": "private",
 	})
+	setCollectionRecordCreatedAt(t, server.app, "visits", secondVisit.Id, "2026-04-02 08:00:00.000Z")
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"visit":  secondVisit.Id,
 		"user":   user.Id,
@@ -2099,6 +2104,7 @@ func TestHomeFeedEndpointOmitsTotalsBeyondFirstPage(t *testing.T) {
 		"visibility":    "private",
 		"itemDate":      "2026-04-01 10:00:00.000Z",
 	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", quickTrack.Id, "2026-04-03 08:00:00.000Z")
 
 	secondPageResponse := performJSONRequest(
 		t,
@@ -2149,7 +2155,7 @@ func TestHomeFeedEndpointOmitsTotalsBeyondFirstPage(t *testing.T) {
 	}
 }
 
-func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testing.T) {
+func TestHomeFeedDefaultsToCreatedOrderingForMineAndFriends(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
 	friend, _ := createAuthUser(t, server.app, false, false)
@@ -2168,14 +2174,14 @@ func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testin
 		"rating":       4,
 		"isQuickTrack": true,
 		"visibility":   "private",
-		"itemDate":     "2026-04-20 08:00:00.000Z",
+		"itemDate":     "2026-05-20 08:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerQuickTrack.Id, "2026-04-01 08:00:00.000Z")
 
 	ownerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
 		"restaurant": restaurantIDOrFail(restaurant),
 		"user":       user.Id,
-		"visitDate":  "2026-04-01 09:00:00.000Z",
+		"visitDate":  "2026-03-01 09:00:00.000Z",
 		"visibility": "private",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "visits", ownerVisit.Id, "2026-04-02 08:00:00.000Z")
@@ -2192,14 +2198,14 @@ func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testin
 		"rating":       3,
 		"isQuickTrack": true,
 		"visibility":   "friends",
-		"itemDate":     "2026-04-20 10:00:00.000Z",
+		"itemDate":     "2026-05-20 10:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", friendQuickTrack.Id, "2026-04-03 08:00:00.000Z")
 
 	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
 		"restaurant": restaurantIDOrFail(restaurant),
 		"user":       friend.Id,
-		"visitDate":  "2026-04-05 09:00:00.000Z",
+		"visitDate":  "2026-03-05 09:00:00.000Z",
 		"visibility": "friends",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "visits", friendVisit.Id, "2026-04-04 08:00:00.000Z")
@@ -2228,10 +2234,12 @@ func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testin
 			EventAt string `json:"eventAt"`
 			Visit   *struct {
 				ID        string `json:"id"`
+				VisitedAt string `json:"visitedAt"`
 				CreatedAt string `json:"createdAt"`
 			} `json:"visit"`
 			QuickTrack *struct {
 				ID        string `json:"id"`
+				ItemDate  string `json:"itemDate"`
 				CreatedAt string `json:"createdAt"`
 			} `json:"quickTrack"`
 		} `json:"items"`
@@ -2246,14 +2254,23 @@ func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testin
 	if minePayload.Items[0].Source != "visit" || minePayload.Items[0].Visit == nil || minePayload.Items[0].Visit.ID != ownerVisit.Id {
 		t.Fatalf("expected newer-created owner visit first in mine feed, got %#v", minePayload.Items[0])
 	}
-	if minePayload.Items[0].EventAt != "2026-04-01 09:00:00.000Z" {
-		t.Fatalf("expected mine visit eventAt to remain unchanged, got %#v", minePayload.Items[0])
+	if minePayload.Items[0].EventAt != "2026-04-02 08:00:00.000Z" {
+		t.Fatalf("expected mine visit eventAt to match createdAt by default, got %#v", minePayload.Items[0])
+	}
+	if minePayload.Items[0].Visit.VisitedAt != "2026-03-01 09:00:00.000Z" {
+		t.Fatalf("expected mine visit tracked date to remain unchanged, got %#v", minePayload.Items[0].Visit)
 	}
 	if minePayload.Items[0].Visit.CreatedAt != "2026-04-02 08:00:00.000Z" {
 		t.Fatalf("expected mine visit createdAt in response, got %#v", minePayload.Items[0].Visit)
 	}
 	if minePayload.Items[1].Source != "quick-track" || minePayload.Items[1].QuickTrack == nil || minePayload.Items[1].QuickTrack.ID != ownerQuickTrack.Id {
 		t.Fatalf("expected older-created owner quick track second in mine feed, got %#v", minePayload.Items[1])
+	}
+	if minePayload.Items[1].EventAt != "2026-04-01 08:00:00.000Z" {
+		t.Fatalf("expected mine quick track eventAt to match createdAt by default, got %#v", minePayload.Items[1])
+	}
+	if minePayload.Items[1].QuickTrack.ItemDate != "2026-05-20 08:00:00.000Z" {
+		t.Fatalf("expected mine quick track tracked date to remain unchanged, got %#v", minePayload.Items[1].QuickTrack)
 	}
 	if minePayload.Items[1].QuickTrack.CreatedAt != "2026-04-01 08:00:00.000Z" {
 		t.Fatalf("expected mine quick track createdAt in response, got %#v", minePayload.Items[1].QuickTrack)
@@ -2294,26 +2311,29 @@ func TestHomeFeedMineOrdersByCreatedAtWhileFriendsKeepsEventAtOrdering(t *testin
 	if len(friendsPayload.Items) != 2 {
 		t.Fatalf("expected 2 friends feed entries, got %d: %#v", len(friendsPayload.Items), friendsPayload.Items)
 	}
-	if friendsPayload.Items[0].Source != "quick-track" || friendsPayload.Items[0].QuickTrack == nil || friendsPayload.Items[0].QuickTrack.ID != friendQuickTrack.Id {
-		t.Fatalf("expected higher-eventAt friend quick track first in friends feed, got %#v", friendsPayload.Items[0])
+	if friendsPayload.Items[0].Source != "visit" || friendsPayload.Items[0].Visit == nil || friendsPayload.Items[0].Visit.ID != friendVisit.Id {
+		t.Fatalf("expected newer-created friend visit first in friends feed, got %#v", friendsPayload.Items[0])
 	}
 	if friendsPayload.Items[0].EventAt != "2026-04" {
-		t.Fatalf("expected friends feed eventAt to be redacted to month precision, got %#v", friendsPayload.Items[0])
+		t.Fatalf("expected friends default eventAt to be the created month, got %#v", friendsPayload.Items[0])
 	}
-	if friendsPayload.Items[0].QuickTrack.ItemDate != "2026-04" {
-		t.Fatalf("expected friends quick track itemDate to be redacted to month precision, got %#v", friendsPayload.Items[0].QuickTrack)
+	if friendsPayload.Items[0].Visit.VisitedAt != "2026-03" {
+		t.Fatalf("expected friends visit tracked date to remain redacted separately, got %#v", friendsPayload.Items[0].Visit)
 	}
-	if friendsPayload.Items[0].QuickTrack.CreatedAt != "2026-04" {
-		t.Fatalf("expected friends quick track createdAt to be redacted to month precision, got %#v", friendsPayload.Items[0].QuickTrack)
+	if friendsPayload.Items[0].Visit.CreatedAt != "2026-04" {
+		t.Fatalf("expected friends visit createdAt to be redacted to month precision, got %#v", friendsPayload.Items[0].Visit)
 	}
-	if friendsPayload.Items[1].Source != "visit" || friendsPayload.Items[1].Visit == nil || friendsPayload.Items[1].Visit.ID != friendVisit.Id {
-		t.Fatalf("expected lower-eventAt friend visit second in friends feed, got %#v", friendsPayload.Items[1])
+	if friendsPayload.Items[1].Source != "quick-track" || friendsPayload.Items[1].QuickTrack == nil || friendsPayload.Items[1].QuickTrack.ID != friendQuickTrack.Id {
+		t.Fatalf("expected older-created friend quick track second in friends feed, got %#v", friendsPayload.Items[1])
 	}
-	if friendsPayload.Items[1].Visit.VisitedAt != "2026-04" {
-		t.Fatalf("expected friends visit visitedAt to be redacted to month precision, got %#v", friendsPayload.Items[1].Visit)
+	if friendsPayload.Items[1].EventAt != "2026-04" {
+		t.Fatalf("expected friends default quick track eventAt to be the created month, got %#v", friendsPayload.Items[1])
 	}
-	if friendsPayload.Items[1].Visit.CreatedAt != "2026-04" {
-		t.Fatalf("expected friends visit createdAt to be redacted to month precision, got %#v", friendsPayload.Items[1].Visit)
+	if friendsPayload.Items[1].QuickTrack.ItemDate != "2026-05" {
+		t.Fatalf("expected friends quick track tracked date to remain redacted separately, got %#v", friendsPayload.Items[1].QuickTrack)
+	}
+	if friendsPayload.Items[1].QuickTrack.CreatedAt != "2026-04" {
+		t.Fatalf("expected friends quick track createdAt to be redacted to month precision, got %#v", friendsPayload.Items[1].QuickTrack)
 	}
 }
 
@@ -2336,14 +2356,14 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 		"rating":       4,
 		"isQuickTrack": true,
 		"visibility":   "private",
-		"itemDate":     "2026-04-20 08:00:00.000Z",
+		"itemDate":     "2026-05-20 08:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerQuickTrack.Id, "2026-04-01 08:00:00.000Z")
 
 	ownerVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
 		"restaurant": restaurantIDOrFail(restaurant),
 		"user":       user.Id,
-		"visitDate":  "2026-04-01 09:00:00.000Z",
+		"visitDate":  "2026-03-01 09:00:00.000Z",
 		"visibility": "private",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "visits", ownerVisit.Id, "2026-04-02 08:00:00.000Z")
@@ -2353,6 +2373,14 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 		"name":   "Owner Visit Item",
 		"rating": 5,
 	})
+	ownerFallbackQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":         user.Id,
+		"name":         "Owner Fallback Quick Track",
+		"rating":       2,
+		"isQuickTrack": true,
+		"visibility":   "private",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerFallbackQuickTrack.Id, "2026-06-01 07:00:00.000Z")
 
 	friendQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"user":         friend.Id,
@@ -2360,14 +2388,14 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 		"rating":       3,
 		"isQuickTrack": true,
 		"visibility":   "friends",
-		"itemDate":     "2026-04-20 10:00:00.000Z",
+		"itemDate":     "2026-05-20 10:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", friendQuickTrack.Id, "2026-04-03 08:00:00.000Z")
 
 	friendVisit := createCollectionRecord(t, server.app, "visits", map[string]any{
 		"restaurant": restaurantIDOrFail(restaurant),
 		"user":       friend.Id,
-		"visitDate":  "2026-04-05 09:00:00.000Z",
+		"visitDate":  "2026-03-05 09:00:00.000Z",
 		"visibility": "friends",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "visits", friendVisit.Id, "2026-04-04 08:00:00.000Z")
@@ -2377,6 +2405,14 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 		"name":   "Friend Visit Item",
 		"rating": 4,
 	})
+	friendFallbackQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":         friend.Id,
+		"name":         "Friend Fallback Quick Track",
+		"rating":       2,
+		"isQuickTrack": true,
+		"visibility":   "friends",
+	})
+	setCollectionRecordCreatedAt(t, server.app, "food_items", friendFallbackQuickTrack.Id, "2026-06-02 09:00:00.000Z")
 
 	mineTrackedResponse := performJSONRequest(
 		t,
@@ -2392,12 +2428,16 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 
 	var mineTrackedPayload struct {
 		Items []struct {
-			Source string `json:"source"`
-			Visit  *struct {
-				ID string `json:"id"`
+			Source  string `json:"source"`
+			EventAt string `json:"eventAt"`
+			Visit   *struct {
+				ID        string `json:"id"`
+				VisitedAt string `json:"visitedAt"`
 			} `json:"visit"`
 			QuickTrack *struct {
-				ID string `json:"id"`
+				ID        string `json:"id"`
+				ItemDate  string `json:"itemDate"`
+				CreatedAt string `json:"createdAt"`
 			} `json:"quickTrack"`
 		} `json:"items"`
 	}
@@ -2405,51 +2445,79 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 		t.Fatalf("failed to parse mine tracked response JSON: %v; body=%s", err, mineTrackedResponse.Body.String())
 	}
 
-	if len(mineTrackedPayload.Items) != 2 {
-		t.Fatalf("expected 2 mine tracked feed entries, got %d: %#v", len(mineTrackedPayload.Items), mineTrackedPayload.Items)
+	if len(mineTrackedPayload.Items) != 3 {
+		t.Fatalf("expected 3 mine tracked feed entries, got %d: %#v", len(mineTrackedPayload.Items), mineTrackedPayload.Items)
 	}
-	if mineTrackedPayload.Items[0].Source != "quick-track" || mineTrackedPayload.Items[0].QuickTrack == nil || mineTrackedPayload.Items[0].QuickTrack.ID != ownerQuickTrack.Id {
-		t.Fatalf("expected tracked sort to put owner quick track first, got %#v", mineTrackedPayload.Items[0])
+	if mineTrackedPayload.Items[0].Source != "quick-track" || mineTrackedPayload.Items[0].QuickTrack == nil || mineTrackedPayload.Items[0].QuickTrack.ID != ownerFallbackQuickTrack.Id {
+		t.Fatalf("expected tracked sort to fall back to createdAt for owner fallback quick track, got %#v", mineTrackedPayload.Items[0])
 	}
-	if mineTrackedPayload.Items[1].Source != "visit" || mineTrackedPayload.Items[1].Visit == nil || mineTrackedPayload.Items[1].Visit.ID != ownerVisit.Id {
-		t.Fatalf("expected tracked sort to put owner visit second, got %#v", mineTrackedPayload.Items[1])
+	if mineTrackedPayload.Items[0].EventAt != "2026-06-01 07:00:00.000Z" || mineTrackedPayload.Items[0].QuickTrack.ItemDate != "" || mineTrackedPayload.Items[0].QuickTrack.CreatedAt != "2026-06-01 07:00:00.000Z" {
+		t.Fatalf("expected owner fallback quick track eventAt to use createdAt, got %#v", mineTrackedPayload.Items[0])
+	}
+	if mineTrackedPayload.Items[1].Source != "quick-track" || mineTrackedPayload.Items[1].QuickTrack == nil || mineTrackedPayload.Items[1].QuickTrack.ID != ownerQuickTrack.Id {
+		t.Fatalf("expected tracked sort to put owner quick track second, got %#v", mineTrackedPayload.Items[1])
+	}
+	if mineTrackedPayload.Items[1].EventAt != "2026-05-20 08:00:00.000Z" || mineTrackedPayload.Items[1].QuickTrack.ItemDate != "2026-05-20 08:00:00.000Z" {
+		t.Fatalf("expected owner quick track eventAt to use itemDate when tracked sorting, got %#v", mineTrackedPayload.Items[1])
+	}
+	if mineTrackedPayload.Items[2].Source != "visit" || mineTrackedPayload.Items[2].Visit == nil || mineTrackedPayload.Items[2].Visit.ID != ownerVisit.Id {
+		t.Fatalf("expected tracked sort to put owner visit third, got %#v", mineTrackedPayload.Items[2])
+	}
+	if mineTrackedPayload.Items[2].EventAt != "2026-03-01 09:00:00.000Z" || mineTrackedPayload.Items[2].Visit.VisitedAt != "2026-03-01 09:00:00.000Z" {
+		t.Fatalf("expected owner visit eventAt to use visitDate when tracked sorting, got %#v", mineTrackedPayload.Items[2])
 	}
 
 	friendsCreatedResponse := performJSONRequest(
 		t,
 		server.mux,
 		http.MethodGet,
-		"/api/home-feed?page=1&pageSize=10&scope=friends&sort=created",
+		"/api/home-feed?page=1&pageSize=10&scope=friends&sort=tracked",
 		token,
 		"",
 	)
 	if friendsCreatedResponse.Code != http.StatusOK {
-		t.Fatalf("expected friends created response 200 OK, got %d: %s", friendsCreatedResponse.Code, friendsCreatedResponse.Body.String())
+		t.Fatalf("expected friends tracked response 200 OK, got %d: %s", friendsCreatedResponse.Code, friendsCreatedResponse.Body.String())
 	}
 
 	var friendsCreatedPayload struct {
 		Items []struct {
-			Source string `json:"source"`
-			Visit  *struct {
-				ID string `json:"id"`
+			Source  string `json:"source"`
+			EventAt string `json:"eventAt"`
+			Visit   *struct {
+				ID        string `json:"id"`
+				VisitedAt string `json:"visitedAt"`
+				CreatedAt string `json:"createdAt"`
 			} `json:"visit"`
 			QuickTrack *struct {
-				ID string `json:"id"`
+				ID       string `json:"id"`
+				ItemDate string `json:"itemDate"`
 			} `json:"quickTrack"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(friendsCreatedResponse.Body.Bytes(), &friendsCreatedPayload); err != nil {
-		t.Fatalf("failed to parse friends created response JSON: %v; body=%s", err, friendsCreatedResponse.Body.String())
+		t.Fatalf("failed to parse friends tracked response JSON: %v; body=%s", err, friendsCreatedResponse.Body.String())
 	}
 
-	if len(friendsCreatedPayload.Items) != 2 {
-		t.Fatalf("expected 2 friends created feed entries, got %d: %#v", len(friendsCreatedPayload.Items), friendsCreatedPayload.Items)
+	if len(friendsCreatedPayload.Items) != 3 {
+		t.Fatalf("expected 3 friends tracked feed entries, got %d: %#v", len(friendsCreatedPayload.Items), friendsCreatedPayload.Items)
 	}
-	if friendsCreatedPayload.Items[0].Source != "visit" || friendsCreatedPayload.Items[0].Visit == nil || friendsCreatedPayload.Items[0].Visit.ID != friendVisit.Id {
-		t.Fatalf("expected created sort to put friend visit first, got %#v", friendsCreatedPayload.Items[0])
+	if friendsCreatedPayload.Items[0].Source != "quick-track" || friendsCreatedPayload.Items[0].QuickTrack == nil || friendsCreatedPayload.Items[0].QuickTrack.ID != friendFallbackQuickTrack.Id {
+		t.Fatalf("expected tracked sort to fall back to createdAt for friend fallback quick track, got %#v", friendsCreatedPayload.Items[0])
+	}
+	if friendsCreatedPayload.Items[0].EventAt != "2026-06" || friendsCreatedPayload.Items[0].QuickTrack.ItemDate != "" {
+		t.Fatalf("expected friend fallback quick track eventAt to use created month, got %#v", friendsCreatedPayload.Items[0])
 	}
 	if friendsCreatedPayload.Items[1].Source != "quick-track" || friendsCreatedPayload.Items[1].QuickTrack == nil || friendsCreatedPayload.Items[1].QuickTrack.ID != friendQuickTrack.Id {
-		t.Fatalf("expected created sort to put friend quick track second, got %#v", friendsCreatedPayload.Items[1])
+		t.Fatalf("expected tracked sort to put friend quick track second, got %#v", friendsCreatedPayload.Items[1])
+	}
+	if friendsCreatedPayload.Items[1].EventAt != "2026-05" || friendsCreatedPayload.Items[1].QuickTrack.ItemDate != "2026-05" {
+		t.Fatalf("expected friend quick track eventAt to use tracked month, got %#v", friendsCreatedPayload.Items[1])
+	}
+	if friendsCreatedPayload.Items[2].Source != "visit" || friendsCreatedPayload.Items[2].Visit == nil || friendsCreatedPayload.Items[2].Visit.ID != friendVisit.Id {
+		t.Fatalf("expected tracked sort to put friend visit third, got %#v", friendsCreatedPayload.Items[2])
+	}
+	if friendsCreatedPayload.Items[2].EventAt != "2026-03" || friendsCreatedPayload.Items[2].Visit.VisitedAt != "2026-03" || friendsCreatedPayload.Items[2].Visit.CreatedAt != "2026-04" {
+		t.Fatalf("expected friend visit eventAt to use tracked month while preserving created redaction, got %#v", friendsCreatedPayload.Items[2])
 	}
 }
 

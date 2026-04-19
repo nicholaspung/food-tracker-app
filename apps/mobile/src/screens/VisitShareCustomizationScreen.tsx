@@ -30,7 +30,8 @@ type ShareTheme = 'modern' | 'rustic' | 'minimal' | 'neon';
 const STORY_CANVAS_ASPECT_RATIO = 9 / 16;
 const STORY_EXPORT_WIDTH = 1080;
 const STORY_EXPORT_HEIGHT = 1920;
-const BRAND_FOOTER_HEIGHT = 40;
+const BRAND_LOGO_HEIGHT = 16;
+const FOOTER_META_GAP = 2;
 
 const visitDateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -62,6 +63,41 @@ function getStoryCaptureSize(pixelRatio: number) {
     height: STORY_EXPORT_HEIGHT / pixelRatio,
     width: STORY_EXPORT_WIDTH / pixelRatio,
   };
+}
+
+function getFooterMetaLineHeight(theme: ReturnType<typeof useTheme>, shareTheme: ShareTheme): number {
+  if (shareTheme === 'rustic' || shareTheme === 'minimal') {
+    return theme.typography.bodyMdTight.lineHeight;
+  }
+
+  if (shareTheme === 'neon') {
+    return theme.typography.metaTight.lineHeight;
+  }
+
+  return theme.typography.bodyBase.lineHeight;
+}
+
+function getShareFooterHeight({
+  shareTheme,
+  showDate,
+  showRestaurantName,
+  theme,
+}: {
+  shareTheme: ShareTheme;
+  showDate: boolean;
+  showRestaurantName: boolean;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  const visibleMetaLineCount = Number(showRestaurantName) + Number(showDate);
+  const metaLineHeight = getFooterMetaLineHeight(theme, shareTheme);
+  const brandRowHeight = Math.max(BRAND_LOGO_HEIGHT, theme.typography.label.lineHeight);
+  const footerOuterGap = visibleMetaLineCount > 0 ? theme.spacing.xxs : 0;
+  const footerMetaHeight =
+    visibleMetaLineCount > 0
+      ? visibleMetaLineCount * metaLineHeight + Math.max(visibleMetaLineCount - 1, 0) * FOOTER_META_GAP
+      : 0;
+
+  return theme.spacing.xs * 2 + brandRowHeight + footerOuterGap + footerMetaHeight;
 }
 
 const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof getVisitSharePalette>) => ({
@@ -118,7 +154,6 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     flex: 1,
     gap: 0,
     minHeight: 0,
-    paddingBottom: BRAND_FOOTER_HEIGHT,
   },
   shareItemCard: {
     borderRadius: 0,
@@ -132,12 +167,22 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     alignItems: 'center',
     bottom: 0,
     borderTopWidth: 1,
-    height: BRAND_FOOTER_HEIGHT,
+    gap: theme.spacing.xxs,
     justifyContent: 'center',
     paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
     position: 'absolute',
     right: 0,
     left: 0,
+    width: '100%',
+  },
+  shareFooterMeta: {
+    alignItems: 'center',
+    gap: 2,
+    width: '100%',
+  },
+  shareFooterMetaText: {
+    textAlign: 'center',
     width: '100%',
   },
   shareBrandRow: {
@@ -147,8 +192,8 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     justifyContent: 'center',
   },
   shareBrandLogo: {
-    height: 16,
-    width: 16,
+    height: BRAND_LOGO_HEIGHT,
+    width: BRAND_LOGO_HEIGHT,
   },
   shareBrandLabel: {
     textTransform: 'none',
@@ -213,28 +258,20 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     flexDirection: 'row',
     gap: 6,
   },
-  metaRow: {
+  ratingBadge: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 20,
-  },
-  metaLeftText: {
-    flexShrink: 1,
-    paddingRight: theme.spacing.xs,
-  },
-  metaRight: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexShrink: 0,
     gap: 6,
-    marginLeft: theme.spacing.xs,
   },
-  metaRightModern: {
+  ratingBadgeAlignedRight: {
+    alignSelf: 'flex-end',
+  },
+  ratingBadgeModern: {
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
-  metaRightRustic: {
+  ratingBadgeRustic: {
     backgroundColor: sharePalette.metaRightBackground,
     borderColor: sharePalette.metaRightBorderColor,
     borderRadius: 0,
@@ -242,7 +279,7 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  metaRightMinimal: {
+  ratingBadgeMinimal: {
     backgroundColor: sharePalette.metaRightBackground,
     borderColor: sharePalette.metaRightBorderColor,
     borderRadius: 0,
@@ -250,7 +287,7 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  metaRightNeon: {
+  ratingBadgeNeon: {
     backgroundColor: sharePalette.metaRightBackground,
     borderColor: sharePalette.metaRightBorderColor,
     borderRadius: 0,
@@ -375,7 +412,18 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
   const previewWidth = Math.min(viewportWidth - theme.spacing.lg * 2, 420);
   const storyCaptureSize = useMemo(() => getStoryCaptureSize(PixelRatio.get()), []);
   const areAllPhotosReady = readyPhotoIds.size >= previewItems.length;
-  const hasVisibleOverlay = showDishNames || showRestaurantName || showRating || showDate;
+  const hasVisibleItemOverlay = showDishNames || showRating;
+  const hasVisibleFooterMeta = showRestaurantName || showDate;
+  const shareFooterHeight = useMemo(
+    () =>
+      getShareFooterHeight({
+        shareTheme,
+        showDate,
+        showRestaurantName,
+        theme,
+      }),
+    [shareTheme, showDate, showRestaurantName, theme],
+  );
   const isRusticTheme = shareTheme === 'rustic';
   const isMinimalTheme = shareTheme === 'minimal';
   const isNeonTheme = shareTheme === 'neon';
@@ -535,7 +583,15 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
             },
           ]}
         >
-          <View style={styles.shareCanvasContent}>
+          <View
+            style={[
+              styles.shareCanvasContent,
+              {
+                paddingBottom: shareFooterHeight,
+              },
+            ]}
+            testID="visit-share-canvas-content"
+          >
             {previewItems.map((item) => (
               <View
                 key={item.itemId}
@@ -562,7 +618,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                   source={{ uri: item.photoUrl }}
                   style={styles.shareImage}
                 />
-                {hasVisibleOverlay ? (
+                {hasVisibleItemOverlay ? (
                   <View
                     style={[
                       styles.shareOverlay,
@@ -591,112 +647,42 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                         {item.itemName}
                       </Text>
                     ) : null}
-                    {showRestaurantName ? (
-                      <Text
+                    {showRating ? (
+                      <View
                         style={[
-                          overlaySecondaryDecorationStyle,
-                          { color: sharePalette.secondaryText },
+                          styles.ratingRow,
+                          styles.ratingBadge,
+                          isRusticTheme
+                            ? styles.ratingBadgeRustic
+                            : isMinimalTheme
+                              ? styles.ratingBadgeMinimal
+                              : isNeonTheme
+                                ? styles.ratingBadgeNeon
+                                : styles.ratingBadgeModern,
+                          !showDishNames ? styles.ratingBadgeAlignedRight : null,
                         ]}
-                        variant={overlaySecondaryVariant}
                       >
-                        {restaurantName}
-                      </Text>
-                    ) : null}
-                    {showRating || showDate ? (
-                      showDate && showRating ? (
-                        <View style={styles.metaRow}>
-                          <Text
-                            numberOfLines={1}
-                            style={[
-                              styles.metaLeftText,
-                              overlayDateDecorationStyle,
-                              { color: sharePalette.secondaryText },
-                            ]}
-                            variant={overlaySecondaryVariant}
-                          >
-                            {themedDateLabel}
-                          </Text>
-                          <View
-                            style={[
-                              styles.metaRight,
-                              isRusticTheme
-                                ? styles.metaRightRustic
-                                : isMinimalTheme
-                                  ? styles.metaRightMinimal
-                                  : isNeonTheme
-                                    ? styles.metaRightNeon
-                                  : styles.metaRightModern,
-                            ]}
-                          >
-                            <View
-                              style={[
-                                styles.ratingDot,
-                                isRusticTheme
-                                  ? styles.ratingDotRustic
-                                  : isMinimalTheme
-                                    ? styles.ratingDotMinimal
-                                    : null,
-                                { backgroundColor: getRatingColor(theme, item.rating) },
-                              ]}
-                            />
-                            <Text
-                              style={[
-                                overlayRatingDecorationStyle,
-                                { color: sharePalette.secondaryText },
-                              ]}
-                              variant={overlayRatingVariant}
-                            >
-                              {getRatingLabel(item.rating)}
-                            </Text>
-                          </View>
-                        </View>
-                      ) : showRating ? (
                         <View
                           style={[
-                            styles.ratingRow,
-                            styles.metaRight,
+                            styles.ratingDot,
                             isRusticTheme
-                              ? styles.metaRightRustic
+                              ? styles.ratingDotRustic
                               : isMinimalTheme
-                                ? styles.metaRightMinimal
-                                : isNeonTheme
-                                  ? styles.metaRightNeon
-                                : styles.metaRightModern,
-                            { alignSelf: 'flex-end' },
+                                ? styles.ratingDotMinimal
+                                : null,
+                            { backgroundColor: getRatingColor(theme, item.rating) },
                           ]}
-                        >
-                          <View
-                            style={[
-                              styles.ratingDot,
-                              isRusticTheme
-                                ? styles.ratingDotRustic
-                                : isMinimalTheme
-                                  ? styles.ratingDotMinimal
-                                  : null,
-                              { backgroundColor: getRatingColor(theme, item.rating) },
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              overlayRatingDecorationStyle,
-                              { color: sharePalette.secondaryText },
-                            ]}
-                            variant={overlayRatingVariant}
-                          >
-                            {getRatingLabel(item.rating)}
-                          </Text>
-                        </View>
-                      ) : (
+                        />
                         <Text
                           style={[
-                            overlayDateDecorationStyle,
+                            overlayRatingDecorationStyle,
                             { color: sharePalette.secondaryText },
                           ]}
-                          variant={overlaySecondaryVariant}
+                          variant={overlayRatingVariant}
                         >
-                          {themedDateLabel}
+                          {getRatingLabel(item.rating)}
                         </Text>
-                      )
+                      </View>
                     ) : null}
                   </View>
                 ) : null}
@@ -710,9 +696,42 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
               {
                 backgroundColor: sharePalette.brandFooterBackground,
                 borderTopColor: sharePalette.brandFooterBorder,
+                height: shareFooterHeight,
               },
             ]}
           >
+            {hasVisibleFooterMeta ? (
+              <View style={styles.shareFooterMeta} testID="visit-share-footer-meta">
+                {showRestaurantName ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.shareFooterMetaText,
+                      overlaySecondaryDecorationStyle,
+                      { color: sharePalette.brandFooterText },
+                    ]}
+                    testID="visit-share-footer-restaurant"
+                    variant={overlaySecondaryVariant}
+                  >
+                    {restaurantName}
+                  </Text>
+                ) : null}
+                {showDate ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.shareFooterMetaText,
+                      overlayDateDecorationStyle,
+                      { color: sharePalette.brandFooterText },
+                    ]}
+                    testID="visit-share-footer-date"
+                    variant={overlaySecondaryVariant}
+                  >
+                    {themedDateLabel}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             <View style={styles.shareBrandRow}>
               <Image resizeMode="contain" source={BRAND_LOGO} style={styles.shareBrandLogo} />
               <Text style={[styles.shareBrandLabel, { color: sharePalette.brandFooterText }]} variant="label">
@@ -755,7 +774,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
         <View>
           <SectionHeader
             style={styles.optionSectionHeader}
-            title="Show overlays"
+            title="Show on photos"
             titleStyle={styles.optionSectionTitle}
             titleTone="inverse"
             titleVariant="label"
@@ -763,7 +782,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
           <View style={styles.chipRow}>
             {[
               { key: 'dish' as const, label: 'Dish Name', active: showDishNames, setValue: setShowDishNames },
-              { key: 'restaurant' as const, label: 'Restaurant', active: showRestaurantName, setValue: setShowRestaurantName },
+              { key: 'rating' as const, label: 'Rating', active: showRating, setValue: setShowRating },
             ].map((option) => (
               <Pressable
                 key={option.key}
@@ -781,14 +800,14 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
         <View>
           <SectionHeader
             style={styles.optionSectionHeader}
-            title="Show on badge"
+            title="Show in footer"
             titleStyle={styles.optionSectionTitle}
             titleTone="inverse"
             titleVariant="label"
           />
           <View style={styles.chipRow}>
             {[
-              { key: 'rating' as const, label: 'Rating', active: showRating, setValue: setShowRating },
+              { key: 'restaurant' as const, label: 'Restaurant', active: showRestaurantName, setValue: setShowRestaurantName },
               { key: 'date' as const, label: 'Date', active: showDate, setValue: setShowDate },
             ].map((option) => (
               <Pressable
