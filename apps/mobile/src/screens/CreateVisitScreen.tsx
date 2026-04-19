@@ -873,6 +873,7 @@ export function CreateVisitScreen({
 
     return (
       <VisitMenuItemOptionRow
+        compactActions={isUserCreated}
         description={menuItem.description}
         editButtonTestID={isUserCreated ? `create-visit-menu-item-edit-button-${index}` : undefined}
         name={menuItem.name}

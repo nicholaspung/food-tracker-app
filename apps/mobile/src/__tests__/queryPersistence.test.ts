@@ -7,7 +7,6 @@ import { friendsQueryKeys } from '../features/store/friendsQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { profileQueryKeys } from '../features/store/profileQuery';
-import { WHATS_NEW_SEEN_QUERY_KEY } from '../lib/whatsNewState';
 import { queryPersister, sanitizePersistedClient, shouldPersistQuery } from '../providers/queryPersistence';
 
 describe('React Query persistence', () => {
@@ -59,6 +58,28 @@ describe('React Query persistence', () => {
               status: 'draft',
               createdAt: '2026-02-12T00:00:00.000Z',
               updatedAt: '2026-02-12T00:00:00.000Z',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    });
+    sourceClient.setQueryData(notesQueryKeys.paginated('draft', 'noodles'), {
+      pages: [
+        {
+          items: [
+            {
+              id: 'note_search_1',
+              title: 'Search match',
+              content: 'Try the noodles',
+              status: 'draft',
+              createdAt: '2026-02-13T00:00:00.000Z',
+              updatedAt: '2026-02-13T00:00:00.000Z',
             },
           ],
           page: 1,
@@ -154,7 +175,6 @@ describe('React Query persistence', () => {
       location: 'San Francisco',
       receiveMarketingEmails: true,
     });
-    sourceClient.setQueryData(WHATS_NEW_SEEN_QUERY_KEY, '2026.03');
     sourceClient.setQueryData(['feature', 'feedback', 'thread_1'], {
       id: 'thread_1',
       description: 'Thread detail should not persist',
@@ -206,6 +226,9 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft'))).toEqual(
       sourceClient.getQueryData(notesQueryKeys.paginated('draft')),
     );
+    expect(restoredClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles'))).toEqual(
+      sourceClient.getQueryData(notesQueryKeys.paginated('draft', 'noodles')),
+    );
     expect(restoredClient.getQueryData(notesQueryKeys.summary)).toEqual(
       sourceClient.getQueryData(notesQueryKeys.summary),
     );
@@ -226,9 +249,6 @@ describe('React Query persistence', () => {
     );
     expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
       sourceClient.getQueryData(profileQueryKeys.profile),
-    );
-    expect(restoredClient.getQueryData(WHATS_NEW_SEEN_QUERY_KEY)).toEqual(
-      sourceClient.getQueryData(WHATS_NEW_SEEN_QUERY_KEY),
     );
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
     expect(restoredClient.getQueryData(friendsQueryKeys.paginated('friends', 'tay'))).toBeUndefined();
@@ -263,6 +283,49 @@ describe('React Query persistence', () => {
                         longitude: -122.4194,
                         createdAt: '2026-01-01T00:00:00.000Z',
                         updatedAt: '2026-01-01T00:00:00.000Z',
+                      },
+                    ],
+                    page: 1,
+                    pageSize: 20,
+                    totalItems: 1,
+                    totalPages: 1,
+                    hasNextPage: false,
+                  },
+                ],
+                pageParams: [1],
+              },
+              dataUpdateCount: 1,
+              dataUpdatedAt: Date.now(),
+              error: null,
+              errorUpdateCount: 0,
+              errorUpdatedAt: 0,
+              fetchFailureCount: 0,
+              fetchFailureReason: null,
+              fetchMeta: null,
+              isInvalidated: false,
+              status: 'success',
+              fetchStatus: 'idle',
+            },
+          },
+          {
+            dehydratedAt: Date.now(),
+            queryHash: 'notes-paginated-draft-search',
+            queryKey: ['feature', 'notes', 'paginated', 'draft', 'noodles'],
+            state: {
+              data: {
+                pages: [
+                  {
+                    items: [
+                      {
+                        id: 'note_2',
+                        title: 'Saved place',
+                        content: 'Try the noodles',
+                        locationText: 'Mission District',
+                        status: 'draft',
+                        latitude: 40.7128,
+                        longitude: -74.006,
+                        createdAt: '2026-01-02T00:00:00.000Z',
+                        updatedAt: '2026-01-02T00:00:00.000Z',
                       },
                     ],
                     page: 1,
@@ -348,7 +411,7 @@ describe('React Query persistence', () => {
       })?.pages ?? [])[0]?.items ?? []
     )[0];
     const feedback = (
-      ((persistedClient.clientState.queries[1]?.state.data as {
+      ((persistedClient.clientState.queries[2]?.state.data as {
         pages?: {
           items?: {
             userEmail?: string;
@@ -363,6 +426,20 @@ describe('React Query persistence', () => {
     expect(note?.locationText).toBe('Mission District');
     expect(note?.latitude).toBeUndefined();
     expect(note?.longitude).toBeUndefined();
+    const searchedNote = (
+      ((persistedClient.clientState.queries[1]?.state.data as {
+        pages?: {
+          items?: {
+            latitude?: number;
+            locationText?: string;
+            longitude?: number;
+          }[];
+        }[];
+      })?.pages ?? [])[0]?.items ?? []
+    )[0];
+    expect(searchedNote?.locationText).toBe('Mission District');
+    expect(searchedNote?.latitude).toBeUndefined();
+    expect(searchedNote?.longitude).toBeUndefined();
     expect(feedback?.userEmail).toBeUndefined();
     expect(feedback?.assignedAdminId).toBeUndefined();
   });

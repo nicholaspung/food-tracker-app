@@ -236,6 +236,7 @@ export function HomeQuickTrackEntryCard({
   const primaryPhoto = photos[0] ?? null;
   const photoThumb = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
   const categoryLabel = quickTrack.itemCategory ? formatCategoryLabel(quickTrack.itemCategory) : null;
+  const locationText = quickTrack.locationText?.trim() || null;
   const showActions = Boolean(onEdit || onDelete || onMoreActions);
 
   return (
@@ -319,6 +320,19 @@ export function HomeQuickTrackEntryCard({
         ) : null}
 
         <View style={styles.foodItemContent}>
+          {locationText ? (
+            <View style={styles.quickTrackMetaRow}>
+              <Ionicons
+                color={theme.colors.text.secondary}
+                name="location-outline"
+                size={14}
+                style={styles.quickTrackLocationIcon}
+              />
+              <Text numberOfLines={1} style={[styles.quickTrackMeta, styles.quickTrackMetaInline]} variant="bodySmTight">
+                {locationText}
+              </Text>
+            </View>
+          ) : null}
           {quickTrack.notes ? (
             <Text numberOfLines={2} style={styles.foodItemNotes} variant="label">
               "{quickTrack.notes}"

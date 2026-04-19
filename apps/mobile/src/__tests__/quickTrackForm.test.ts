@@ -1,5 +1,7 @@
 import { localDateStringToUTC } from '../lib/dateFormatting';
 import {
+  buildCreateQuickTrackInput,
+  buildDefaultQuickTrackForm,
   buildQuickTrackFormFromRecord,
   buildUpdateQuickTrackInput,
 } from '../lib/quickTrackForm';
@@ -16,6 +18,7 @@ describe('quickTrackForm', () => {
         restaurantName: 'Quick Track',
         itemCategory: 'packaged_food',
         itemName: 'Iced Coffee',
+        locationText: 'Mission District',
         rating: 4,
         notes: 'Smooth and sweet',
         visibility: 'private',
@@ -25,6 +28,7 @@ describe('quickTrackForm', () => {
       }),
     ).toEqual({
       itemName: 'Iced Coffee',
+      locationText: 'Mission District',
       category: 'packaged_food',
       rating: 4,
       notes: 'Smooth and sweet',
@@ -40,6 +44,7 @@ describe('quickTrackForm', () => {
         restaurantName: 'Quick Track',
         itemCategory: 'restaurant',
         itemName: 'Soup',
+        locationText: undefined,
         rating: 3,
         notes: undefined,
         visibility: undefined,
@@ -49,6 +54,7 @@ describe('quickTrackForm', () => {
       }),
     ).toEqual({
       itemName: 'Soup',
+      locationText: '',
       category: '',
       rating: 3,
       notes: '',
@@ -57,9 +63,52 @@ describe('quickTrackForm', () => {
     });
 
     expect(
+      buildDefaultQuickTrackForm({
+        previousForm: {
+          itemName: 'Previous Snack',
+          locationText: 'Downtown',
+          category: 'other',
+          rating: 2,
+          notes: 'Previous notes',
+          visibility: 'private',
+          date: '2026-04-16',
+        },
+      }),
+    ).toEqual({
+      itemName: '',
+      locationText: 'Downtown',
+      category: 'other',
+      rating: 3,
+      notes: '',
+      visibility: 'private',
+      date: expect.any(String),
+    });
+
+    expect(
+      buildCreateQuickTrackInput({
+        itemName: '  Croissant  ',
+        locationText: '  Ferry Building  ',
+        category: 'packaged_food',
+        rating: 4,
+        notes: '  Buttery  ',
+        visibility: 'friends',
+        date: '2026-04-18',
+      }),
+    ).toEqual({
+      itemName: 'Croissant',
+      locationText: 'Ferry Building',
+      rating: 4,
+      itemCategory: 'packaged_food',
+      notes: 'Buttery',
+      visibility: 'friends',
+      itemDate: localDateStringToUTC('2026-04-18'),
+    });
+
+    expect(
       buildUpdateQuickTrackInput(
         {
           itemName: '  Updated Latte  ',
+          locationText: '',
           category: '',
           rating: 5,
           notes: 'Keep foam',
@@ -77,6 +126,7 @@ describe('quickTrackForm', () => {
       ),
     ).toEqual({
       itemName: 'Updated Latte',
+      locationText: '',
       rating: 5,
       itemCategory: null,
       notes: 'Keep foam',

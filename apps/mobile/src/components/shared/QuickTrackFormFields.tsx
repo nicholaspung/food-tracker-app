@@ -23,6 +23,8 @@ interface QuickTrackFormFieldsProps {
   ratingTestIDPrefix?: string;
 }
 
+const QUICK_TRACK_LOCATION_MAX_LENGTH = 200;
+
 const useStyles = createThemedStyles((theme) => ({
   sectionCard: {
     gap: theme.spacing.sm,
@@ -114,6 +116,17 @@ export function QuickTrackFormFields({
           }}
           placeholder="e.g., Chocolate Bar, Coffee, Homemade Pasta"
           value={value.itemName}
+        />
+
+        <Input
+          autoCapitalize="words"
+          label="Location (Optional)"
+          maxLength={QUICK_TRACK_LOCATION_MAX_LENGTH}
+          onChangeText={(nextValue) => {
+            onChange({ locationText: nextValue });
+          }}
+          placeholder="City, neighborhood, place name, or address"
+          value={value.locationText}
         />
 
         {photoSection ? <View style={styles.photoSection}>{photoSection}</View> : null}

@@ -756,6 +756,7 @@ export function EditQuickTrackScreen({ navigation, route }: EditQuickTrackScreen
         onRequestClose={() => {
           setIsPhotoViewerVisible(false);
         }}
+        previewUrls={displayedPhoto ? [displayedPhoto.thumbnailUri] : []}
         urls={displayedPhoto ? [displayedPhoto.viewerUri] : []}
         visible={Boolean(displayedPhoto) && isPhotoViewerVisible}
       />

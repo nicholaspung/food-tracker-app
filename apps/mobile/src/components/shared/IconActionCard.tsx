@@ -7,6 +7,7 @@ import { Card, Text } from '../../ui';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type IconActionCardLayout = 'horizontal' | 'vertical';
+type IconActionCardTone = 'default' | 'muted';
 
 export interface IconActionCardProps {
   title: string;
@@ -17,12 +18,15 @@ export interface IconActionCardProps {
   onPress: () => void;
   disabled?: boolean;
   layout?: IconActionCardLayout;
+  tone?: IconActionCardTone;
   testID?: string;
   trailing?: ReactNode;
 }
 
-const useStyles = createThemedStyles((theme, isVertical: boolean) => ({
+const useStyles = createThemedStyles((theme, isVertical: boolean, tone: IconActionCardTone) => ({
   card: {
+    backgroundColor:
+      tone === 'muted' ? theme.colors.background.muted : theme.colors.background.surface,
     borderColor: theme.colors.border.subtle,
     borderWidth: isVertical ? 1 : 2,
     gap: theme.spacing.sm,
@@ -30,8 +34,10 @@ const useStyles = createThemedStyles((theme, isVertical: boolean) => ({
     paddingVertical: isVertical ? theme.spacing.sm : undefined,
   },
   cardPressed: {
-    backgroundColor: theme.colors.background.surface,
-    borderColor: theme.colors.border.brand,
+    backgroundColor:
+      tone === 'muted' ? theme.colors.background.surface : theme.colors.background.surface,
+    borderColor:
+      tone === 'muted' ? theme.colors.border.default : theme.colors.border.brand,
   },
   cardDisabled: {
     opacity: 0.55,
@@ -81,11 +87,14 @@ export function IconActionCard({
   onPress,
   disabled = false,
   layout = 'horizontal',
+  tone = 'default',
   testID,
   trailing,
 }: IconActionCardProps) {
   const isVertical = layout === 'vertical';
-  const styles = useStyles(isVertical);
+  const styles = useStyles(isVertical, tone);
+  const titleTone = tone === 'muted' ? 'secondary' : 'primary';
+  const descriptionTone = tone === 'muted' ? 'muted' : 'secondary';
 
   return (
     <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} testID={testID}>
@@ -96,10 +105,14 @@ export function IconActionCard({
               <Ionicons color={iconColor} name={iconName} size={isVertical ? 18 : 22} />
             </View>
             <View style={styles.textWrap}>
-              <Text style={styles.title} variant="label">
+              <Text style={styles.title} tone={titleTone} variant="label">
                 {title}
               </Text>
-              <Text style={styles.description} tone="secondary" variant={isVertical ? 'bodySm' : 'bodyMd'}>
+              <Text
+                style={styles.description}
+                tone={descriptionTone}
+                variant={isVertical ? 'bodySm' : 'bodyMd'}
+              >
                 {description}
               </Text>
             </View>

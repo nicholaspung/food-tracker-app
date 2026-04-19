@@ -260,6 +260,7 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
   return (
     <FeatureDetailScreenScaffold
       bodyStyle={styles.body}
+      contentBackgroundTone="muted"
       keyboardAware
       onBackPress={handleBackPress}
       scroll={false}

@@ -3,13 +3,23 @@ import type { QueryKey } from '@tanstack/react-query';
 import type { ListNotesPageInput } from './featureStore';
 
 type NoteBrowseStatus = NonNullable<ListNotesPageInput['status']>;
+type NotesPaginatedQueryKey =
+  | readonly ['feature', 'notes', 'paginated', NoteBrowseStatus]
+  | readonly ['feature', 'notes', 'paginated', NoteBrowseStatus, string];
 
 const NOTE_BROWSE_STATUSES = ['all', 'draft', 'used'] as const;
 
 export const notesQueryKeys = {
   root: ['feature', 'notes'] as const,
   detail: (noteId: string) => ['feature', 'notes', 'detail', noteId] as const,
-  paginated: (status: NoteBrowseStatus) => ['feature', 'notes', 'paginated', status] as const,
+  paginated: (status: NoteBrowseStatus, searchQuery = ''): NotesPaginatedQueryKey => {
+    const trimmedSearchQuery = searchQuery.trim();
+    if (!trimmedSearchQuery) {
+      return ['feature', 'notes', 'paginated', status] as const;
+    }
+
+    return ['feature', 'notes', 'paginated', status, trimmedSearchQuery] as const;
+  },
   summary: ['feature', 'notes', 'summary'] as const,
 };
 
@@ -28,12 +38,13 @@ export function isNoteDetailQueryKey(queryKey: QueryKey): boolean {
 export function isPaginatedNotesQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
-    queryKey.length === 4 &&
+    (queryKey.length === 4 || queryKey.length === 5) &&
     queryKey[0] === notesQueryKeys.root[0] &&
     queryKey[1] === notesQueryKeys.root[1] &&
     queryKey[2] === 'paginated' &&
     typeof queryKey[3] === 'string' &&
-    NOTE_BROWSE_STATUSES.includes(queryKey[3] as NoteBrowseStatus)
+    NOTE_BROWSE_STATUSES.includes(queryKey[3] as NoteBrowseStatus) &&
+    (queryKey.length === 4 || typeof queryKey[4] === 'string')
   );
 }
 

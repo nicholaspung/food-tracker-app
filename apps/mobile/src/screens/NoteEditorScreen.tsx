@@ -236,6 +236,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     () => photoAttachments.map((photo) => photo.viewerUri),
     [photoAttachments],
   );
+  const photoViewerPreviewUrls = useMemo(
+    () => photoAttachments.map((photo) => photo.thumbnailUri),
+    [photoAttachments],
+  );
 
   useEffect(() => {
     if (!noteDetailQuery.data?.note) {
@@ -835,6 +839,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}
         onRequestClose={closePhotoViewer}
+        previewUrls={photoViewerPreviewUrls}
         urls={photoViewerUrls}
         visible={isPhotoViewerVisible}
       />

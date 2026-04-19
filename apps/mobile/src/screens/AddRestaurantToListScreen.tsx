@@ -302,6 +302,9 @@ export function AddRestaurantToListScreen({
   const [loadingPhotoFoodItemId, setLoadingPhotoFoodItemId] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>(
+    [],
+  );
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const trimmedSearchQuery = searchQuery.trim();
   const debouncedTrimmedSearchQuery = useDebouncedValue(
@@ -536,6 +539,15 @@ export function AddRestaurantToListScreen({
         filename: photo.photo,
       }),
     );
+    const previewUrls = photos.map((photo) =>
+      buildPocketBaseFileUrl({
+        collectionId: photo.collectionId,
+        collectionName: photo.collectionName ?? 'visit_photos',
+        recordId: photo.id,
+        filename: photo.photo,
+        thumb: '100x100',
+      }),
+    );
     const previewPhotoId = item.photoPreview?.id?.trim();
     const previewIndex = previewPhotoId
       ? photos.findIndex((photo) => photo.id === previewPhotoId)
@@ -551,6 +563,7 @@ export function AddRestaurantToListScreen({
       photoCount: urls.length,
     });
 
+    setPhotoViewerPreviewUrls(previewUrls);
     setPhotoViewerUrls(urls);
     setPhotoViewerInitialIndex(Math.min(boundedIndex, urls.length - 1));
     setPhotoViewerVisible(true);
@@ -559,10 +572,11 @@ export function AddRestaurantToListScreen({
   const handleOpenFoodItemPhotos = async (
     item: RestaurantListVisitedRestaurantFoodItem,
   ) => {
-    const photoPreviewUrl = buildFoodItemPhotoUrl(item);
-    if (!photoPreviewUrl) {
+    const photoViewerUrl = buildFoodItemPhotoUrl(item);
+    if (!photoViewerUrl) {
       return;
     }
+    const photoThumbnailUrl = buildFoodItemPhotoThumbnailUrl(item);
 
     setLoadingPhotoFoodItemId(item.id);
 
@@ -579,7 +593,8 @@ export function AddRestaurantToListScreen({
         return;
       }
 
-      setPhotoViewerUrls([photoPreviewUrl]);
+      setPhotoViewerPreviewUrls(photoThumbnailUrl ? [photoThumbnailUrl] : []);
+      setPhotoViewerUrls([photoViewerUrl]);
       setPhotoViewerInitialIndex(0);
       setPhotoViewerVisible(true);
     } catch (error) {
@@ -591,7 +606,8 @@ export function AddRestaurantToListScreen({
         error: error instanceof Error ? error.message : 'unknown_error',
       });
 
-      setPhotoViewerUrls([photoPreviewUrl]);
+      setPhotoViewerPreviewUrls(photoThumbnailUrl ? [photoThumbnailUrl] : []);
+      setPhotoViewerUrls([photoViewerUrl]);
       setPhotoViewerInitialIndex(0);
       setPhotoViewerVisible(true);
     } finally {
@@ -1092,6 +1108,7 @@ export function AddRestaurantToListScreen({
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}
         onRequestClose={closePhotoViewer}
+        previewUrls={photoViewerPreviewUrls}
         urls={photoViewerUrls}
         visible={photoViewerVisible}
       />

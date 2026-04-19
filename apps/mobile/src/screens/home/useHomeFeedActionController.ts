@@ -33,6 +33,7 @@ export interface HomeFeedActionController {
   pendingReportMenuTarget: PendingReportTarget | null;
   pendingReportTarget: PendingReportTarget | null;
   photoViewerInitialIndex: number;
+  photoViewerPreviewUrls: string[];
   photoViewerUrls: string[];
   reportErrorMessage: string | null;
   reportNotes: string;
@@ -59,6 +60,9 @@ export function useHomeFeedActionController({
   writeFeature,
 }: UseHomeFeedActionControllerParams): HomeFeedActionController {
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>(
+    [],
+  );
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [pendingDeleteTarget, setPendingDeleteTarget] =
@@ -299,12 +303,27 @@ export function useHomeFeedActionController({
           filename: photo.photo,
         }),
       );
+      const previewUrls = photos.map((photo) => {
+        const localUri = photo.uri?.trim();
+        if (localUri) {
+          return localUri;
+        }
+
+        return buildPocketBaseFileUrl({
+          collectionId: photo.collectionId,
+          collectionName: photo.collectionName ?? 'visit_photos',
+          recordId: photo.id,
+          filename: photo.photo,
+          thumb: '100x100',
+        });
+      });
       const boundedIndex = Math.max(
         0,
         Math.min(initialIndex, urls.length - 1),
       );
 
       setPhotoViewerUrls(urls);
+      setPhotoViewerPreviewUrls(previewUrls);
       setPhotoViewerInitialIndex(boundedIndex);
       setIsPhotoViewerVisible(true);
     },
@@ -324,6 +343,7 @@ export function useHomeFeedActionController({
     pendingReportMenuTarget,
     pendingReportTarget,
     photoViewerInitialIndex,
+    photoViewerPreviewUrls,
     photoViewerUrls,
     reportErrorMessage,
     reportNotes,

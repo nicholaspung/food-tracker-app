@@ -16,6 +16,17 @@ describe('notesQuery', () => {
     expect(isPaginatedNotesQueryKey(notesQueryKeys.paginated('draft'))).toBe(true);
   });
 
+  it('uses the canonical searched paginated notes browse key', () => {
+    expect(notesQueryKeys.paginated('draft', '  noodles  ')).toEqual([
+      'feature',
+      'notes',
+      'paginated',
+      'draft',
+      'noodles',
+    ]);
+    expect(isPaginatedNotesQueryKey(notesQueryKeys.paginated('draft', '  noodles  '))).toBe(true);
+  });
+
   it('does not treat the legacy overview alias as the persisted browse key', () => {
     expect(isPaginatedNotesQueryKey(['feature', 'notes', 'overview', 'draft'])).toBe(false);
   });

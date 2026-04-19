@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -25,6 +25,7 @@ import {
   type NotePhotoRecord,
   type NoteRecord,
 } from '../features';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
@@ -32,15 +33,41 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { createThemedStyles, useTheme } from '../theme';
-import { Button, Card, Text } from '../ui';
+import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type NotesScreenProps = NativeStackScreenProps<RootStackParamList, 'Notes'>;
 type NotesFilter = 'unused' | 'used' | 'all';
 
+const MIN_SERVER_NOTE_SEARCH_LENGTH = 2;
+const NOTE_SEARCH_DEBOUNCE_MS = 250;
+
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  searchField: {
+    flex: 1,
+  },
+  clearSearchButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.default,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: theme.sizes.secondaryButtonHeight,
+    paddingHorizontal: theme.spacing.md,
+  },
+  clearSearchButtonPressed: {
+    backgroundColor: theme.colors.background.muted,
+  },
+  clearSearchLabel: {
+    color: theme.colors.text.secondary,
   },
   noteTopRow: {
     alignItems: 'center',
@@ -107,6 +134,10 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     gap: theme.spacing.xxs,
   },
+  locationText: {
+    color: theme.colors.text.muted,
+    flex: 1,
+  },
 }));
 
 function resolveNoteStatusFilter(activeFilter: NotesFilter): 'all' | 'draft' | 'used' {
@@ -122,12 +153,46 @@ function resolveNoteStatusFilter(activeFilter: NotesFilter): 'all' | 'draft' | '
 }
 
 function buildNotePreview(content: string): string {
-  const normalized = content.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= 140) {
-    return normalized;
+  const trimmedContent = content.trim();
+  if (!trimmedContent) {
+    return '';
   }
 
-  return `${normalized.slice(0, 137).trimEnd()}...`;
+  return trimmedContent
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => {
+      if (!line.trim()) {
+        return '';
+      }
+
+      return line.replace(/[^\S\n]+/g, ' ').trim();
+    })
+    .join('\n');
+}
+
+function matchesNoteSearch(note: Pick<NoteRecord, 'content' | 'locationText'>, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    note.content.toLowerCase().includes(normalizedQuery) ||
+    note.locationText?.toLowerCase().includes(normalizedQuery) === true
+  );
+}
+
+function serverSearchResultsMatchQuery(
+  notes: readonly Pick<NoteRecord, 'content' | 'locationText'>[],
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return notes.every((note) => matchesNoteSearch(note, normalizedQuery));
 }
 
 function formatTimeAgo(value: string): string {
@@ -184,17 +249,32 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
+  const [searchQuery, setSearchQuery] = useState('');
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [pendingDeleteNote, setPendingDeleteNote] = useState<NoteRecord | null>(null);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
   const [loadingPhotoNoteId, setLoadingPhotoNoteId] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>(
+    [],
+  );
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const lastRejectedSearchResultsKeyRef = useRef<string | null>(null);
   const noteStatusFilter = resolveNoteStatusFilter(activeFilter);
+  const trimmedSearchQuery = searchQuery.trim();
+  const debouncedTrimmedSearchQuery = useDebouncedValue(
+    trimmedSearchQuery,
+    NOTE_SEARCH_DEBOUNCE_MS,
+  );
+  const shouldQueryNotesBySearch =
+    trimmedSearchQuery.length >= MIN_SERVER_NOTE_SEARCH_LENGTH &&
+    debouncedTrimmedSearchQuery.length >= MIN_SERVER_NOTE_SEARCH_LENGTH &&
+    trimmedSearchQuery === debouncedTrimmedSearchQuery;
+  const hasSearch = trimmedSearchQuery.length > 0;
 
-  const notesQuery = useInfiniteQuery({
+  const baseNotesQuery = useInfiniteQuery({
     queryKey: notesQueryKeys.paginated(noteStatusFilter),
     queryFn: ({ pageParam, signal }) =>
       listNotesOverviewPage({
@@ -206,21 +286,112 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const notesState = usePaginatedQueryState({
-    data: notesQuery.data,
-    isError: notesQuery.isError,
-    isFetching: notesQuery.isFetching,
-    isLoading: notesQuery.isLoading,
-    isSuccess: notesQuery.isSuccess,
+  const searchedNotesQuery = useInfiniteQuery({
+    queryKey: notesQueryKeys.paginated(noteStatusFilter, debouncedTrimmedSearchQuery),
+    queryFn: ({ pageParam, signal }) =>
+      listNotesOverviewPage({
+        page: pageParam,
+        pageSize: 20,
+        search: debouncedTrimmedSearchQuery || undefined,
+        signal,
+        status: noteStatusFilter,
+      }),
+    enabled: shouldQueryNotesBySearch,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   });
-  const notes = useMemo(
-    () => [...notesState.items].sort(compareNotesByCreatedAtDesc),
-    [notesState.items],
+  const baseNotesState = usePaginatedQueryState({
+    data: baseNotesQuery.data,
+    isError: baseNotesQuery.isError,
+    isFetching: baseNotesQuery.isFetching,
+    isLoading: baseNotesQuery.isLoading,
+    isSuccess: baseNotesQuery.isSuccess,
+  });
+  const searchedNotesState = usePaginatedQueryState({
+    data: searchedNotesQuery.data,
+    enabled: shouldQueryNotesBySearch,
+    isError: searchedNotesQuery.isError,
+    isFetching: searchedNotesQuery.isFetching,
+    isLoading: searchedNotesQuery.isLoading,
+    isSuccess: searchedNotesQuery.isSuccess,
+  });
+  const baseNotes = useMemo(
+    () => [...baseNotesState.items].sort(compareNotesByCreatedAtDesc),
+    [baseNotesState.items],
   );
-  const noteSummary = notesQuery.data?.pages[0]?.summary;
-  const unusedCount = noteSummary?.draftCount ?? notes.filter((note) => note.status === 'draft').length;
-  const usedCount = noteSummary?.usedCount ?? notes.filter((note) => note.status === 'used').length;
-  const allCount = noteSummary?.allCount ?? notes.length;
+  const searchedNotes = useMemo(
+    () => [...searchedNotesState.items].sort(compareNotesByCreatedAtDesc),
+    [searchedNotesState.items],
+  );
+  const locallyFilteredBaseNotes = useMemo(
+    () => (hasSearch ? baseNotes.filter((note) => matchesNoteSearch(note, trimmedSearchQuery)) : baseNotes),
+    [baseNotes, hasSearch, trimmedSearchQuery],
+  );
+  const searchedNotesMatchCurrentQuery = useMemo(
+    () => serverSearchResultsMatchQuery(searchedNotes, trimmedSearchQuery),
+    [searchedNotes, trimmedSearchQuery],
+  );
+  const shouldUseServerSearchResults =
+    shouldQueryNotesBySearch &&
+    searchedNotesQuery.isSuccess &&
+    searchedNotesMatchCurrentQuery;
+  const shouldRejectServerSearchResults =
+    shouldQueryNotesBySearch &&
+    searchedNotesQuery.isSuccess &&
+    !searchedNotesMatchCurrentQuery;
+
+  useEffect(() => {
+    if (!shouldRejectServerSearchResults) {
+      lastRejectedSearchResultsKeyRef.current = null;
+      return;
+    }
+
+    const rejectionKey = `${activeFilter}::${trimmedSearchQuery}::${searchedNotes.length}`;
+    if (lastRejectedSearchResultsKeyRef.current === rejectionKey) {
+      return;
+    }
+
+    lastRejectedSearchResultsKeyRef.current = rejectionKey;
+    trackObservabilityEvent('NOTES_SEARCH_RESULTS_REJECTED', {
+      source: 'NotesScreen',
+      activeFilter,
+      noteStatusFilter,
+      searchTermLength: trimmedSearchQuery.length,
+      returnedItemCount: searchedNotes.length,
+      hasNonMatchingItem: searchedNotes.some((note) => !matchesNoteSearch(note, trimmedSearchQuery)),
+    });
+  }, [
+    activeFilter,
+    noteStatusFilter,
+    searchedNotes,
+    shouldRejectServerSearchResults,
+    trimmedSearchQuery,
+  ]);
+
+  const notes = useMemo(() => {
+    if (!hasSearch) {
+      return baseNotes;
+    }
+
+    if (shouldUseServerSearchResults) {
+      return searchedNotes;
+    }
+
+    return locallyFilteredBaseNotes;
+  }, [
+    baseNotes,
+    hasSearch,
+    locallyFilteredBaseNotes,
+    searchedNotes,
+    shouldUseServerSearchResults,
+  ]);
+  const noteSummary =
+    shouldUseServerSearchResults
+      ? searchedNotesQuery.data?.pages[0]?.summary
+      : baseNotesQuery.data?.pages[0]?.summary;
+  const unusedCount = noteSummary?.draftCount ?? baseNotes.filter((note) => note.status === 'draft').length;
+  const usedCount = noteSummary?.usedCount ?? baseNotes.filter((note) => note.status === 'used').length;
+  const allCount = noteSummary?.allCount ?? baseNotes.length;
 
   const filterOptions = useMemo<readonly SegmentedControlOption<NotesFilter>[]>(
     () => [
@@ -251,9 +422,18 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         filename: photo.photo,
       }),
     );
+    const previewUrls = photos.map((photo) =>
+      buildPocketBaseFileUrl({
+        collectionName: 'note_photos',
+        recordId: photo.id,
+        filename: photo.photo,
+        thumb: '100x100',
+      }),
+    );
     const boundedIndex = Math.max(0, Math.min(initialIndex, urls.length - 1));
 
     setPhotoViewerUrls(urls);
+    setPhotoViewerPreviewUrls(previewUrls);
     setPhotoViewerInitialIndex(boundedIndex);
     setPhotoViewerVisible(true);
   }, []);
@@ -341,15 +521,38 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       setIsDeletingNote(false);
     }
   }, [pendingDeleteNote, queryClient, writeFeature]);
+
   const handleRefresh = useCallback(async () => {
     setIsPullRefreshing(true);
 
     try {
-      await notesQuery.refetch();
+      if (shouldQueryNotesBySearch) {
+        await Promise.all([baseNotesQuery.refetch(), searchedNotesQuery.refetch()]);
+        return;
+      }
+
+      await baseNotesQuery.refetch();
     } finally {
       setIsPullRefreshing(false);
     }
-  }, [notesQuery]);
+  }, [baseNotesQuery, searchedNotesQuery, shouldQueryNotesBySearch]);
+
+  const hasSearchFallbackError =
+    shouldQueryNotesBySearch &&
+    searchedNotesQuery.isError &&
+    baseNotes.length > 0;
+  const notesErrorMessage =
+    baseNotesState.hasBlockingError
+      ? 'Could not load notes.'
+      : baseNotesState.hasRefreshError
+        ? 'Could not refresh notes. Showing saved data.'
+        : hasSearchFallbackError
+          ? 'Could not refresh search results. Showing local matches.'
+          : null;
+  const activePaginationQuery =
+    shouldUseServerSearchResults
+      ? searchedNotesQuery
+      : baseNotesQuery;
 
   return (
     <FeatureDetailScreenScaffold
@@ -388,6 +591,28 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           value={activeFilter}
         />
 
+        <View style={styles.searchRow}>
+          <Input
+            containerStyle={styles.searchField}
+            onChangeText={setSearchQuery}
+            placeholder="Search notes..."
+            testID="notes-search-input"
+            value={searchQuery}
+          />
+          {hasSearch ? (
+            <Pressable
+              accessibilityLabel="Clear search"
+              accessibilityRole="button"
+              onPress={() => {
+                setSearchQuery('');
+              }}
+              style={({ pressed }) => [styles.clearSearchButton, pressed ? styles.clearSearchButtonPressed : null]}
+            >
+              <Text style={styles.clearSearchLabel} variant="labelMd">Clear</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
         {activeFilter === 'used' ? (
           <View testID="notes-used-retention-banner">
             <Card tone="info">
@@ -401,21 +626,20 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         {actionErrorMessage ? <ErrorState description={actionErrorMessage} title="Notes action failed" /> : null}
 
         <PageErrorToast
-          errorMessage={
-            notesState.hasBlockingError
-              ? 'Could not load notes.'
-              : notesState.hasRefreshError
-                ? 'Could not refresh notes. Showing saved data.'
-                : null
-          }
+          errorMessage={notesErrorMessage}
           title="Notes unavailable"
           actionLabel="Retry"
           onAction={() => {
-            void notesQuery.refetch();
+            if (hasSearchFallbackError) {
+              void searchedNotesQuery.refetch();
+              return;
+            }
+
+            void baseNotesQuery.refetch();
           }}
         />
 
-        {notesQuery.isLoading ? (
+        {baseNotesQuery.isLoading ? (
           <>
             <Skeleton height={20} />
             <Skeleton height={20} />
@@ -423,38 +647,51 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           </>
         ) : null}
 
-        {notesState.hasBlockingError ? (
+        {baseNotesState.hasBlockingError ? (
           <ErrorState
             description="Could not load notes."
             onRetry={() => {
-              void notesQuery.refetch();
+              void baseNotesQuery.refetch();
             }}
             title="Notes unavailable"
           />
         ) : null}
 
-        {!notesQuery.isLoading && !notesState.hasBlockingError && notes.length === 0 ? (
-          <EmptyState
-            actionLabel="Log a Note"
-            description={
-              activeFilter === 'unused'
-                ? 'No unused notes.'
-                : activeFilter === 'used'
-                  ? 'No used notes yet.'
-                  : 'No notes yet.'
-            }
-            onAction={() => {
-              trackObservabilityEvent('NOTES_CREATE_CTA_TAPPED', {
-                source: 'NotesScreen',
-                placement: 'empty_state',
-              });
-              navigation.navigate('NoteEditor');
-            }}
-            title="Nothing to show"
-          />
+        {!baseNotesQuery.isLoading && !baseNotesState.hasBlockingError && notes.length === 0 ? (
+          hasSearch ? (
+            <EmptyState
+              actionLabel="Clear Search"
+              description="Try a different search term."
+              onAction={() => {
+                setSearchQuery('');
+              }}
+              tone="muted"
+              title="No matching notes"
+            />
+          ) : (
+            <EmptyState
+              actionLabel="Log a Note"
+              description={
+                activeFilter === 'unused'
+                  ? 'No unused notes.'
+                  : activeFilter === 'used'
+                    ? 'No used notes yet.'
+                    : 'No notes yet.'
+              }
+              onAction={() => {
+                trackObservabilityEvent('NOTES_CREATE_CTA_TAPPED', {
+                  source: 'NotesScreen',
+                  placement: 'empty_state',
+                });
+                navigation.navigate('NoteEditor');
+              }}
+              tone="muted"
+              title="Nothing to show"
+            />
+          )
         ) : null}
 
-        {!notesQuery.isLoading && !notesState.hasBlockingError
+        {!baseNotesQuery.isLoading && !baseNotesState.hasBlockingError
           ? notes.map((note) => {
               const photoPreview = note.photoPreview;
               const extraPhotoCount = photoPreview ? Math.max(photoPreview.count - 1, 0) : 0;
@@ -556,7 +793,17 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                     ) : null}
 
                     <View style={styles.noteTextContent}>
-                      <Text variant="bodyMd">{buildNotePreview(note.content)}</Text>
+                      <Text numberOfLines={note.locationText ? 3 : 4} variant="bodyMd">
+                        {buildNotePreview(note.content)}
+                      </Text>
+                      {note.locationText ? (
+                        <View style={styles.locationRow}>
+                          <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />
+                          <Text numberOfLines={1} style={styles.locationText} variant="bodySm">
+                            {note.locationText}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 </Card>
@@ -564,12 +811,15 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
             })
           : null}
 
-        {!notesQuery.isLoading && !notesState.hasBlockingError && notes.length > 0 && notesQuery.hasNextPage ? (
+        {!baseNotesQuery.isLoading &&
+        !baseNotesState.hasBlockingError &&
+        notes.length > 0 &&
+        activePaginationQuery.hasNextPage ? (
           <Button
-            label={notesQuery.isFetchingNextPage ? 'Loading more...' : 'Load more notes'}
-            loading={notesQuery.isFetchingNextPage}
+            label={activePaginationQuery.isFetchingNextPage ? 'Loading more...' : 'Load more notes'}
+            loading={activePaginationQuery.isFetchingNextPage}
             onPress={() => {
-              void notesQuery.fetchNextPage();
+              void activePaginationQuery.fetchNextPage();
             }}
             variant="secondary"
           />
@@ -579,6 +829,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}
         onRequestClose={closePhotoViewer}
+        previewUrls={photoViewerPreviewUrls}
         urls={photoViewerUrls}
         visible={photoViewerVisible}
       />

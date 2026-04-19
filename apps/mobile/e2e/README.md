@@ -148,7 +148,6 @@ Flow aliases:
 - `08-profile-account-details-collapsed`
 - `09-profile-invite-codes`
 - `10-profile-delete-account`
-- `11-whats-new`
 - `12-about`
 - `13-terms-of-service`
 - `14-privacy-policy`

@@ -123,6 +123,7 @@ describe('abort signal forwarding', () => {
     await listNotesOverviewPage({
       page: 1,
       pageSize: 20,
+      search: 'spicy',
       signal: abortController.signal,
       status: 'draft',
     });
@@ -147,7 +148,7 @@ describe('abort signal forwarding', () => {
     );
     expect(mockedSendApiRequest).toHaveBeenNthCalledWith(
       2,
-      '/api/notes/overview?page=1&pageSize=20&status=draft',
+      '/api/notes/overview?page=1&pageSize=20&status=draft&search=spicy',
       {
         method: 'GET',
         signal: abortController.signal,

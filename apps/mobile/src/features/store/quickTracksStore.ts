@@ -46,6 +46,7 @@ function mapQuickTrackCollectionRecord(record: FoodItemCollectionRecord): QuickT
     restaurantName: record.expand?.visit?.expand?.restaurant?.name?.trim() || 'Quick Track',
     itemCategory: record.itemCategory,
     itemName: record.name,
+    locationText: record.location_text?.trim() || undefined,
     rating: record.rating,
     notes: record.notes,
     userId: record.user,
@@ -130,6 +131,9 @@ export async function createQuickTrack(input: CreateQuickTrackInput): Promise<Qu
         isQuickTrack: true,
         visibility: input.visibility ?? getDefaultVisitVisibility(),
         itemDate: input.itemDate ?? nowIso(),
+        location_text: input.locationText?.trim() || '',
+        latitude: null,
+        longitude: null,
       };
 
       if (input.notes !== undefined) {
@@ -173,6 +177,7 @@ export async function createQuickTrack(input: CreateQuickTrackInput): Promise<Qu
       hasPhoto: Boolean(input.photo),
       hasSourceNote: Boolean(input.sourceNoteId),
       hasItemCategory: Boolean(input.itemCategory),
+      hasLocationText: Boolean(input.locationText?.trim()),
     },
   );
 }
@@ -202,6 +207,10 @@ export async function updateQuickTrack(
         payload.rating = updates.rating;
       }
 
+      if (updates.locationText !== undefined) {
+        payload.location_text = updates.locationText.trim() || '';
+      }
+
       if (updates.notes !== undefined) {
         payload.notes = updates.notes.trim() || '';
       }
@@ -218,7 +227,6 @@ export async function updateQuickTrack(
         payload.itemDate = updates.itemDate;
       }
 
-      payload.location_text = '';
       payload.latitude = null;
       payload.longitude = null;
 
@@ -258,6 +266,7 @@ export async function updateQuickTrack(
     {
       hasItemNameUpdate: updates.itemName !== undefined,
       hasRatingUpdate: updates.rating !== undefined,
+      hasLocationUpdate: updates.locationText !== undefined,
       hasNotesUpdate: updates.notes !== undefined,
       hasVisibilityUpdate: updates.visibility !== undefined,
       hasItemDateUpdate: updates.itemDate !== undefined,

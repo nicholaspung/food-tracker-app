@@ -24,6 +24,9 @@ export interface VisitSharePalette {
   overlayBottomBorderColor: string;
   metaRightBackground: string;
   metaRightBorderColor: string;
+  brandFooterBackground: string;
+  brandFooterBorder: string;
+  brandFooterText: string;
 }
 
 export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeName): VisitSharePalette {
@@ -50,6 +53,9 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
       overlayBottomBorderColor: 'rgba(255, 238, 214, 0.28)',
       metaRightBackground: 'rgba(30, 16, 8, 0.45)',
       metaRightBorderColor: 'rgba(255, 235, 210, 0.35)',
+      brandFooterBackground: 'rgba(64, 43, 26, 0.74)',
+      brandFooterBorder: 'rgba(255, 238, 214, 0.5)',
+      brandFooterText: theme.colors.text.inverse,
     };
   }
 
@@ -76,6 +82,9 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
       overlayBottomBorderColor: 'rgba(17, 24, 39, 0.08)',
       metaRightBackground: 'rgba(17, 24, 39, 0.06)',
       metaRightBorderColor: 'rgba(17, 24, 39, 0.2)',
+      brandFooterBackground: 'rgba(255, 255, 255, 0.88)',
+      brandFooterBorder: 'rgba(17, 24, 39, 0.2)',
+      brandFooterText: theme.colors.text.secondary,
     };
   }
 
@@ -102,6 +111,9 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
       overlayBottomBorderColor: 'rgba(140, 55, 255, 1)',
       metaRightBackground: 'rgba(7, 16, 38, 0.72)',
       metaRightBorderColor: 'rgba(22, 217, 255, 1)',
+      brandFooterBackground: 'rgba(3, 9, 24, 0.88)',
+      brandFooterBorder: 'rgba(22, 217, 255, 1)',
+      brandFooterText: 'rgba(226, 246, 255, 1)',
     };
   }
 
@@ -127,6 +139,9 @@ export function getVisitSharePalette(theme: Theme, shareTheme: VisitShareThemeNa
     overlayBottomBorderColor: 'transparent',
     metaRightBackground: 'transparent',
     metaRightBorderColor: 'transparent',
+    brandFooterBackground: 'rgba(15, 23, 40, 0.72)',
+    brandFooterBorder: 'transparent',
+    brandFooterText: theme.colors.text.inverse,
   };
 }
 

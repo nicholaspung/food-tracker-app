@@ -55,7 +55,7 @@ const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.muted,
+    backgroundColor: theme.colors.background.app,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
@@ -588,7 +588,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       keyboardAware
       onRefresh={handleRefresh}
       refreshing={isPullRefreshing}
-      scrollUnderlayColor={theme.colors.background.muted}
+      scrollUnderlayColor={theme.colors.background.app}
       testID="friends-screen"
     >
       <TabBrandHeader

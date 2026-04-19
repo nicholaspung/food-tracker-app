@@ -55,6 +55,7 @@ export function usePhotoProcessingReviewData({
           restaurantName: 'Quick Track',
           itemCategory: entry.form.category || undefined,
           itemName: entry.form.itemName.trim(),
+          locationText: entry.form.locationText.trim() || undefined,
           rating: entry.form.rating,
           notes: entry.form.notes.trim() || undefined,
           userId: currentUserId ?? undefined,

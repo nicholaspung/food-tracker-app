@@ -37,6 +37,7 @@ export interface UpdateVisitInput {
 
 export interface CreateQuickTrackInput {
   itemName: string;
+  locationText?: string;
   rating: number;
   itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
   notes?: string;
@@ -48,6 +49,7 @@ export interface CreateQuickTrackInput {
 
 export interface UpdateQuickTrackInput {
   itemName?: string;
+  locationText?: string;
   rating?: number;
   itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | null;
   notes?: string;
@@ -256,6 +258,7 @@ interface PaginationInput {
 
 export interface ListNotesPageInput extends PaginationInput {
   status?: 'all' | NoteRecord['status'];
+  search?: string;
 }
 
 export interface ListVisitsPageInput extends PaginationInput {

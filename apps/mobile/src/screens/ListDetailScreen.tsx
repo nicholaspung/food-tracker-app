@@ -95,6 +95,7 @@ interface OwnerDisplayItem {
 
 interface OwnerItemPhotoEntry {
   id: string;
+  previewUrl: string;
   url: string;
   ownerLabel: string;
 }
@@ -574,6 +575,9 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const [movingRestaurantId, setMovingRestaurantId] = useState<string | null>(null);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
+  const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>(
+    [],
+  );
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
@@ -800,6 +804,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         const ownerLabel = photo.ownerName?.trim() || fallbackOwnerLabel;
         entriesById.set(photo.id, {
           id: photo.id,
+          previewUrl: buildPocketBaseFileUrl({
+            collectionId: photo.collectionId,
+            collectionName: photo.collectionName ?? 'visit_photos',
+            recordId: photo.id,
+            filename: photo.photo,
+            thumb: '100x100',
+          }),
           url: buildPocketBaseFileUrl({
             collectionId: photo.collectionId,
             collectionName: photo.collectionName ?? 'visit_photos',
@@ -834,6 +845,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     });
 
     const boundedIndex = Math.max(0, Math.min(initialIndex, entries.length - 1));
+    setPhotoViewerPreviewUrls(entries.map((entry) => entry.previewUrl));
     setPhotoViewerUrls(entries.map((entry) => entry.url));
     setPhotoViewerOwnerLabels(entries.map((entry) => entry.ownerLabel));
     setPhotoViewerInitialIndex(boundedIndex);
@@ -1680,6 +1692,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         initialIndex={photoViewerInitialIndex}
         onRequestClose={closePhotoViewer}
         ownerLabels={photoViewerOwnerLabels}
+        previewUrls={photoViewerPreviewUrls}
         urls={photoViewerUrls}
         visible={photoViewerVisible}
       />

@@ -118,7 +118,7 @@ export function MenuScanPhotoProcessingScreen({
       return;
     }
 
-    navigation.navigate('CreateVisit', {
+    navigation.popTo('CreateVisit', {
       preselectedRestaurantId: restaurantId,
       preselectedRestaurantName: restaurantName,
       returnToStep: 1,

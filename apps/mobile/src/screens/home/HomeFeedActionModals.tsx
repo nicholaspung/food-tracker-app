@@ -42,6 +42,7 @@ export function HomeFeedActionModals({
       <PhotoViewerModal
         initialIndex={controller.photoViewerInitialIndex}
         onRequestClose={controller.closePhotoViewer}
+        previewUrls={controller.photoViewerPreviewUrls}
         urls={controller.photoViewerUrls}
         visible={controller.isPhotoViewerVisible}
       />

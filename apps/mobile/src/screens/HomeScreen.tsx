@@ -87,7 +87,7 @@ interface GroupedMonth {
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.muted,
+    backgroundColor: theme.colors.background.app,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
@@ -901,7 +901,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     borderSubtle: theme.colors.border.subtle,
     dangerBorder: theme.colors.border.danger,
     dangerText: theme.colors.text.danger,
-    screenBackground: theme.colors.background.muted,
+    screenBackground: theme.colors.background.app,
     shadow: theme.colors.background.inverse,
     surface: theme.colors.background.surface,
     textMuted: theme.colors.text.muted,

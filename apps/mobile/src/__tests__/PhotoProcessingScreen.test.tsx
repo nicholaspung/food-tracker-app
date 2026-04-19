@@ -1,0 +1,434 @@
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { useMonthlyUsage } from '../features';
+import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { useImageSourcePicker } from '../hooks/useImageSourcePicker';
+import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
+import { PhotoProcessingScreen } from '../screens/PhotoProcessingScreen';
+import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
+import { usePhotoProcessingDraftState } from '../screens/photoProcessing/usePhotoProcessingDraftState';
+import { usePhotoProcessingReviewData } from '../screens/photoProcessing/usePhotoProcessingReviewData';
+import { usePhotoProcessingSubmission } from '../screens/photoProcessing/usePhotoProcessingSubmission';
+
+const mockReact = React;
+const theme = {
+  colors: {
+    background: {
+      app: 'app-background',
+      muted: 'muted-background',
+      surface: 'surface-background',
+    },
+    border: {
+      default: 'default-border',
+    },
+    fill: {
+      info: 'info-fill',
+      success: 'success-fill',
+    },
+    status: {
+      successBg: 'success-background',
+      successBorder: 'success-border',
+    },
+    text: {
+      inverse: 'inverse-text',
+      muted: 'muted-text',
+      secondary: 'secondary-text',
+    },
+  },
+  radii: {
+    md: 12,
+    pill: 999,
+  },
+  sizes: {
+    inputMinHeight: 50,
+  },
+  spacing: {
+    xxs: 4,
+    xs: 8,
+    sm: 12,
+    md: 16,
+    xl: 32,
+  },
+} as const;
+
+jest.mock('@tanstack/react-query', () => ({
+  useQuery: jest.fn(),
+  useQueryClient: jest.fn(),
+}));
+
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: (props: Record<string, unknown>) => mockReact.createElement('Ionicons', props),
+}));
+
+jest.mock('react-native', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+
+  return {
+    Image: (props: Record<string, unknown>) => React.createElement('Image', props),
+    Keyboard: {
+      dismiss: jest.fn(),
+    },
+    Linking: {
+      openSettings: jest.fn(),
+    },
+    Pressable: ({
+      children,
+      ...props
+    }: Record<string, unknown> & {
+      children?: React.ReactNode | ((state: { pressed: boolean }) => React.ReactNode);
+    }) =>
+      React.createElement(
+        'Pressable',
+        props,
+        typeof children === 'function' ? children({ pressed: false }) : children,
+      ),
+    View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      React.createElement('View', props, children),
+  };
+});
+
+jest.mock('../components/shared', () => ({
+  EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
+  ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
+  FeatureFormScreenScaffold: (
+    { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+  ) => mockReact.createElement('FeatureFormScreenScaffold', props, children),
+  IconActionCard: (props: Record<string, unknown>) => mockReact.createElement('IconActionCard', props),
+  LinkedNoteCard: (props: Record<string, unknown>) => mockReact.createElement('LinkedNoteCard', props),
+  LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
+  PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
+  PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
+  QuickTrackFormFields: (props: Record<string, unknown>) => mockReact.createElement('QuickTrackFormFields', props),
+  RatingLegend: (props: Record<string, unknown>) => mockReact.createElement('RatingLegend', props),
+  RatingSelector: (props: Record<string, unknown>) => mockReact.createElement('RatingSelector', props),
+  ScreenHeader: (props: Record<string, unknown>) => mockReact.createElement('ScreenHeader', props),
+  SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('SegmentedControl', props),
+  StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
+  StepProgressBar: (props: Record<string, unknown>) => mockReact.createElement('StepProgressBar', props),
+  UpgradePromptCard: (props: Record<string, unknown>) => mockReact.createElement('UpgradePromptCard', props),
+  VisitMenuItemOptionRow: (props: Record<string, unknown>) => mockReact.createElement('VisitMenuItemOptionRow', props),
+  VisitMetadataCard: (props: Record<string, unknown>) => mockReact.createElement('VisitMetadataCard', props),
+  VisitRestaurantOptionTrailing: (props: Record<string, unknown>) =>
+    mockReact.createElement('VisitRestaurantOptionTrailing', props),
+  VisitRestaurantSearchSection: (props: Record<string, unknown>) =>
+    mockReact.createElement('VisitRestaurantSearchSection', props),
+}));
+
+jest.mock('../features', () => ({
+  createCollectionRecord: jest.fn(),
+  getAuthenticatedUserIdOrNull: jest.fn(() => 'user-1'),
+  getNoteDetail: jest.fn(),
+  updateCollectionRecord: jest.fn(),
+  useMonthlyUsage: jest.fn(),
+}));
+
+jest.mock('../features/store/useOfflineAwareFeatureWrite', () => ({
+  useOfflineAwareFeatureWrite: jest.fn(),
+}));
+
+jest.mock('../features/store/notesQuery', () => ({
+  notesQueryKeys: {
+    detail: (noteId: string) => ['feature', 'notes', 'detail', noteId],
+  },
+}));
+
+jest.mock('../hooks/useImageSourcePicker', () => ({
+  useImageSourcePicker: jest.fn(),
+}));
+
+jest.mock('../hooks/useRestaurantSelectionFlow', () => ({
+  useRestaurantSelectionFlow: jest.fn(),
+}));
+
+jest.mock('../lib/dateFormatting', () => ({
+  getTodayLocalDateString: jest.fn(() => '2026-04-18'),
+}));
+
+jest.mock('../lib/quickTrackForm', () => ({
+  buildDefaultQuickTrackForm: jest.fn(() => ({
+    category: 'dish',
+    date: '2026-04-18',
+    itemName: '',
+    locationText: '',
+    notes: '',
+    rating: 3,
+    visibility: 'friends',
+  })),
+  resolveDefaultQuickTrackVisibility: jest.fn(() => 'friends'),
+}));
+
+jest.mock('../lib/usageUiRules', () => ({
+  shouldShowOfflineUsageWarning: jest.fn(() => false),
+}));
+
+jest.mock('../lib/visitRestaurantSearch', () => ({
+  buildVisitRestaurantDescription: jest.fn(() => 'Restaurant description'),
+}));
+
+jest.mock('../observability', () => ({
+  trackObservabilityEvent: jest.fn(),
+}));
+
+jest.mock('../providers/AuthProvider', () => ({
+  useAuth: jest.fn(),
+}));
+
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
+}));
+
+jest.mock('../screens/MenuScanPhotoProcessingScreen', () => ({
+  MenuScanPhotoProcessingScreen: (props: Record<string, unknown>) =>
+    mockReact.createElement('MenuScanPhotoProcessingScreen', props),
+}));
+
+jest.mock('../screens/photoProcessing/notePhotoHydration', () => ({
+  cleanupHydratedNotePhotos: jest.fn(),
+  hydrateDraftPhotosFromNote: jest.fn(),
+}));
+
+jest.mock('../screens/photoProcessing/usePhotoProcessingDraftState', () => ({
+  usePhotoProcessingDraftState: jest.fn(),
+}));
+
+jest.mock('../screens/photoProcessing/usePhotoProcessingReviewData', () => ({
+  usePhotoProcessingReviewData: jest.fn(),
+}));
+
+jest.mock('../screens/photoProcessing/usePhotoProcessingSubmission', () => ({
+  usePhotoProcessingSubmission: jest.fn(),
+}));
+
+jest.mock('../theme', () => ({
+  createThemedStyles:
+    (factory: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      factory(theme, ...args),
+  useTheme: () => theme,
+}));
+
+jest.mock('../ui', () => ({
+  Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
+  Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Card', props, children),
+  Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
+  Screen: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Screen', props, children),
+  Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Text', props, children),
+}));
+
+jest.mock('../screens/photoProcessing/shared', () => ({
+  buildDefaultRestaurantForm: jest.fn(() => ({
+    date: '2026-04-18',
+  })),
+  collapseRestaurantOptionsToSelection: jest.fn(() => ({
+    savedRestaurants: [],
+    searchRestaurants: [],
+  })),
+  formatCoordinatesForDisplay: jest.fn(() => '37.7749, -122.4194'),
+  formatDraftPhotoMetadataLabel: jest.fn((photo: { name: string }) => photo.name),
+  FREE_MONTHLY_PHOTO_LIMIT: 100,
+  FREE_MONTHLY_PHOTO_WARNING_THRESHOLD: 10,
+  normalizeSelectionLabel: jest.fn((value: string) => value.trim().toLowerCase()),
+  resolveDraftPhotoDetectedDateValue: jest.fn(() => null),
+  resolveProgressSteps: jest.fn(() => []),
+  resolveWizardStepIndex: jest.fn(() => 1),
+}));
+
+const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
+const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQueryClient>;
+const mockedUseMonthlyUsage = useMonthlyUsage as jest.MockedFunction<typeof useMonthlyUsage>;
+const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
+  typeof useOfflineAwareFeatureWrite
+>;
+const mockedUseImageSourcePicker = useImageSourcePicker as jest.MockedFunction<typeof useImageSourcePicker>;
+const mockedUseRestaurantSelectionFlow = useRestaurantSelectionFlow as jest.MockedFunction<
+  typeof useRestaurantSelectionFlow
+>;
+const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
+const mockedUsePhotoProcessingDraftState = usePhotoProcessingDraftState as jest.MockedFunction<
+  typeof usePhotoProcessingDraftState
+>;
+const mockedUsePhotoProcessingReviewData = usePhotoProcessingReviewData as jest.MockedFunction<
+  typeof usePhotoProcessingReviewData
+>;
+const mockedUsePhotoProcessingSubmission = usePhotoProcessingSubmission as jest.MockedFunction<
+  typeof usePhotoProcessingSubmission
+>;
+
+function collectText(node: { children?: unknown[] } | string): string {
+  if (typeof node === 'string') {
+    return node;
+  }
+
+  return (node.children ?? [])
+    .map((child) =>
+      typeof child === 'string' ? child : collectText(child as { children?: unknown[] }),
+    )
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+describe('PhotoProcessingScreen', () => {
+  beforeEach(() => {
+    mockedUseQuery.mockReturnValue({
+      data: null,
+      isError: false,
+      isLoading: false,
+      refetch: jest.fn(),
+    } as unknown as ReturnType<typeof useQuery>);
+    mockedUseQueryClient.mockReturnValue({
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    } as unknown as ReturnType<typeof useQueryClient>);
+    mockedUseMonthlyUsage.mockReturnValue({
+      snapshot: null,
+      cachedAt: null,
+      isUsingCachedSnapshot: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      refetch: jest.fn(),
+    });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as ReturnType<typeof useOfflineAwareFeatureWrite>);
+    mockedUseImageSourcePicker.mockReturnValue({
+      permissionNeedsSettings: false,
+      pickImageAssets: jest.fn().mockResolvedValue({
+        assets: [],
+        permissionDenied: false,
+      }),
+      resetPermissionNeedsSettings: jest.fn(),
+    } as ReturnType<typeof useImageSourcePicker>);
+    mockedUseRestaurantSelectionFlow.mockReturnValue({
+      clearPlacesSearchState: jest.fn(),
+      clearSearchErrorMessage: jest.fn(),
+      compactSearchLabel: 'Search',
+      displayedNearbyRestaurants: [],
+      displayedSavedRestaurants: [],
+      expandedSearchLabel: 'Search nearby',
+      isGettingLocation: false,
+      isPlacesQuotaReached: false,
+      isSearchExpanded: false,
+      isSearchingNearbyRestaurants: false,
+      isSearchingRestaurants: false,
+      loadedRestaurantRecords: [],
+      locationPermissionNeedsSettings: false,
+      manualLocation: '',
+      menuItemsQuery: {
+        data: [],
+        isError: false,
+        isLoading: false,
+      },
+      resetRestaurantSelectionFlow: jest.fn(),
+      savedEmptyDescription: 'No saved restaurants',
+      savedEmptyTitle: 'No saved restaurants',
+      savedRestaurantsErrorMessage: null,
+      savedRestaurantsLoading: false,
+      savedRestaurantsTitle: 'Saved restaurants',
+      searchButtonDisabled: false,
+      searchByText: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+      searchErrorMessage: null,
+      searchNearby: jest.fn().mockResolvedValue({ status: 'success', results: [] }),
+      searchQuery: '',
+      setIsSearchExpanded: jest.fn(),
+      setManualLocation: jest.fn(),
+      setSearchQuery: jest.fn(),
+      shouldShowPlacesUpgradePrompt: false,
+      showNearbyPlaces: false,
+      triggerSavedRestaurantsRefetch: jest.fn(),
+    } as unknown as ReturnType<typeof useRestaurantSelectionFlow>);
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        isAdmin: false,
+      },
+      user: {
+        isAdmin: false,
+        isSubscriber: true,
+        name: 'Test User',
+      },
+    } as ReturnType<typeof useAuth>);
+    mockedUseConnectivity.mockReturnValue({
+      isOnline: true,
+    } as ReturnType<typeof useConnectivity>);
+    mockedUsePhotoProcessingDraftState.mockReturnValue({
+      appendAssets: jest.fn(),
+      currentPhoto: null,
+      currentPhotoIndex: 0,
+      currentQuickTrackForm: null,
+      currentRestaurantForm: null,
+      dismissCurrentPhotoLocationHint: jest.fn(),
+      locationMetadataHintDismissedByPhotoId: {},
+      photos: [
+        {
+          id: 'photo-1',
+          name: 'first.jpg',
+          uri: 'file:///first.jpg',
+        },
+        {
+          id: 'photo-2',
+          name: 'second.jpg',
+          uri: 'file:///second.jpg',
+        },
+      ],
+      quickTrackForms: {},
+      removePhoto: jest.fn(),
+      replacePhotos: jest.fn(),
+      resetDraftState: jest.fn(),
+      resetProcessingForms: jest.fn(),
+      restaurantForms: {},
+      setCurrentPhotoIndex: jest.fn(),
+      setQuickTrackForms: jest.fn(),
+      setRestaurantForms: jest.fn(),
+      updateCurrentQuickTrackForm: jest.fn(),
+      updateCurrentRestaurantForm: jest.fn(),
+    } as unknown as ReturnType<typeof usePhotoProcessingDraftState>);
+    mockedUsePhotoProcessingReviewData.mockReturnValue({
+      quickTrackReviewEntries: [],
+      restaurantReviewGroups: [],
+      reviewQuickTrackCards: [],
+      reviewVisitCards: [],
+    } as ReturnType<typeof usePhotoProcessingReviewData>);
+    mockedUsePhotoProcessingSubmission.mockReturnValue({
+      handleProcessNext: jest.fn(),
+      handleSubmitAll: jest.fn(),
+      isSubmitting: false,
+    } as ReturnType<typeof usePhotoProcessingSubmission>);
+  });
+
+  it('shows selected photos before muted add-more controls once photos exist', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoProcessingScreen
+          navigation={{
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findAllByType('IconActionCard')[1].props.onPress();
+    });
+
+    const cards = renderer.root.findAllByType('Card');
+    const sourceActions = renderer.root.findByType('PhotoSourceActionCards');
+
+    expect(collectText(cards[0])).toContain('2 photos selected');
+    expect(collectText(cards[1])).toContain('Add more photos');
+    expect(collectText(cards[1])).toContain('Take another photo or upload more saved photos.');
+    expect(cards[1].props.tone).toBe('muted');
+    expect(sourceActions.props.tone).toBe('muted');
+  });
+});

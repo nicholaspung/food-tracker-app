@@ -41,4 +41,3 @@ export * from './TastingSessionDetailScreen';
 export * from './TastingSessionsScreen';
 export * from './VisitShareCustomizationScreen';
 export * from './VerifyEmailScreen';
-export * from './WhatsNewScreen';

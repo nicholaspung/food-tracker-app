@@ -1,6 +1,6 @@
 import { ClientResponseError } from 'pocketbase';
 
-import { listQuickTrackPhotos, updateQuickTrack } from '../features/store/quickTracksStore';
+import { createQuickTrack, listQuickTrackPhotos, updateQuickTrack } from '../features/store/quickTracksStore';
 import { listCollectionRecords } from '../features/store/pocketbaseGateway';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
@@ -109,6 +109,7 @@ describe('quickTracksStore', () => {
       update: jest.fn().mockResolvedValue({
         id: 'quick-track-1',
         name: 'Updated Latte',
+        location_text: 'Market Hall',
         rating: 5,
         notes: 'Keep foam',
         user: 'user-1',
@@ -153,6 +154,7 @@ describe('quickTracksStore', () => {
     await expect(
       updateQuickTrack('quick-track-1', {
         itemName: '  Updated Latte  ',
+        locationText: '  Market Hall  ',
         rating: 5,
         notes: ' Keep foam ',
         itemCategory: 'other',
@@ -168,6 +170,7 @@ describe('quickTracksStore', () => {
     ).resolves.toMatchObject({
       id: 'quick-track-1',
       itemName: 'Updated Latte',
+      locationText: 'Market Hall',
       rating: 5,
       notes: 'Keep foam',
       itemCategory: 'other',
@@ -180,11 +183,11 @@ describe('quickTracksStore', () => {
       {
         name: 'Updated Latte',
         rating: 5,
+        location_text: 'Market Hall',
         notes: 'Keep foam',
         itemCategory: 'other',
         visibility: 'private',
         itemDate: '2026-04-18T07:00:00.000Z',
-        location_text: '',
         latitude: null,
         longitude: null,
       },
@@ -201,5 +204,117 @@ describe('quickTracksStore', () => {
     ]);
     expect(visitPhotosCollection.delete).toHaveBeenCalledTimes(2);
     expect(operationOrder).toEqual(['upload', 'delete:photo-1', 'delete:photo-2']);
+  });
+
+  it('creates a quick track with freeform location text and clears legacy coordinates', async () => {
+    const foodItemsCollection = {
+      create: jest.fn().mockResolvedValue({
+        id: 'quick-track-2',
+        name: 'Matcha Latte',
+        location_text: 'Ferry Building',
+        rating: 4,
+        notes: 'Earthy',
+        user: 'user-1',
+        visibility: 'friends',
+        itemCategory: 'packaged_food',
+        itemDate: '2026-04-18T07:00:00.000Z',
+        created: '2026-04-18T07:00:00.000Z',
+        updated: '2026-04-18T07:00:00.000Z',
+        expand: {
+          user: {
+            id: 'user-1',
+            name: 'Taylor',
+          },
+        },
+      }),
+    };
+
+    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
+      if (collectionName === 'food_items') {
+        return foodItemsCollection;
+      }
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await expect(
+      createQuickTrack({
+        itemName: '  Matcha Latte  ',
+        locationText: '  Ferry Building  ',
+        rating: 4,
+        notes: '  Earthy  ',
+        visibility: 'friends',
+        itemCategory: 'packaged_food',
+        itemDate: '2026-04-18T07:00:00.000Z',
+      }),
+    ).resolves.toMatchObject({
+      id: 'quick-track-2',
+      itemName: 'Matcha Latte',
+      locationText: 'Ferry Building',
+      rating: 4,
+      notes: 'Earthy',
+      userName: 'Taylor',
+    });
+
+    expect(foodItemsCollection.create).toHaveBeenCalledWith(
+      {
+        name: 'Matcha Latte',
+        rating: 4,
+        user: 'user-1',
+        isQuickTrack: true,
+        visibility: 'friends',
+        itemDate: '2026-04-18T07:00:00.000Z',
+        location_text: 'Ferry Building',
+        latitude: null,
+        longitude: null,
+        notes: 'Earthy',
+        itemCategory: 'packaged_food',
+      },
+      {
+        expand: 'user,visit,visit.restaurant',
+      },
+    );
+  });
+
+  it('clears quick-track location text when the user removes it during edit', async () => {
+    const foodItemsCollection = {
+      getOne: jest.fn().mockResolvedValue({
+        id: 'quick-track-3',
+        isQuickTrack: true,
+      }),
+      update: jest.fn().mockResolvedValue({
+        id: 'quick-track-3',
+        name: 'Cold Brew',
+        location_text: '',
+        rating: 3,
+        user: 'user-1',
+        visibility: 'friends',
+        itemDate: '2026-04-18T07:00:00.000Z',
+        created: '2026-04-12T18:30:00.000Z',
+        updated: '2026-04-18T07:00:00.000Z',
+      }),
+    };
+
+    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
+      if (collectionName === 'food_items') {
+        return foodItemsCollection;
+      }
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await updateQuickTrack('quick-track-3', {
+      locationText: '   ',
+    });
+
+    expect(foodItemsCollection.update).toHaveBeenCalledWith(
+      'quick-track-3',
+      {
+        location_text: '',
+        latitude: null,
+        longitude: null,
+      },
+      {
+        expand: 'user,visit,visit.restaurant',
+      },
+    );
   });
 });

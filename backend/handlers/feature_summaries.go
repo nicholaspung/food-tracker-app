@@ -68,6 +68,10 @@ type notesOverviewResponse struct {
 	HasNextPage bool                        `json:"hasNextPage"`
 }
 
+type noteRecordIDRow struct {
+	NoteID string `db:"noteId"`
+}
+
 type noteDetailPhotoResponse struct {
 	ID      string `json:"id"`
 	Note    string `json:"note"`
@@ -247,7 +251,7 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 			return apis.NewApiError(500, "failed to clean up expired used notes", err)
 		}
 
-		summary, err := getNoteSummary(app, e.Auth.Id)
+		summary, err := getNoteSummary(app, e.Auth.Id, "")
 		if err != nil {
 			log.Printf("Failed to load notes summary for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to load notes summary", err)
@@ -273,13 +277,14 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			return apis.NewBadRequestError(err.Error(), nil)
 		}
+		search := e.Request.URL.Query().Get("search")
 
 		if err := cleanupExpiredUsedNotes(app, e.Auth.Id, time.Now().UTC()); err != nil {
 			log.Printf("Failed to clean up expired used notes for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to clean up expired used notes", err)
 		}
 
-		response, err := getNotesOverviewResponse(app, e.Auth.Id, page, pageSize, status)
+		response, err := getNotesOverviewResponse(app, e.Auth.Id, page, pageSize, status, search)
 		if err != nil {
 			log.Printf("Failed to load notes overview for user %s: %v", e.Auth.Id, err)
 			return apis.NewApiError(500, "failed to load notes overview", err)
@@ -535,20 +540,74 @@ func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 	})
 }
 
-func getNoteSummary(app core.App, userID string) (noteSummaryResponse, error) {
+func buildNotesFilter(userID string, status string, search string) (string, dbx.Params) {
+	params := dbx.Params{
+		"userId": userID,
+	}
+	conditions := []string{
+		"user = {:userId}",
+	}
+
+	if status == "draft" || status == "used" {
+		params["status"] = status
+		conditions = append(conditions, "status = {:status}")
+	}
+
+	normalizedSearch := strings.ToLower(strings.TrimSpace(search))
+	if normalizedSearch != "" {
+		params["search"] = "%" + escapeFriendsSearchValue(normalizedSearch) + "%"
+		conditions = append(
+			conditions,
+			`(
+				LOWER(COALESCE(content, '')) LIKE {:search} ESCAPE '\' OR
+				LOWER(COALESCE(location_text, '')) LIKE {:search} ESCAPE '\'
+			)`,
+		)
+	}
+
+	return strings.Join(conditions, " AND "), params
+}
+
+func getNoteSummary(app core.App, userID string, search string) (noteSummaryResponse, error) {
 	summary := noteSummaryResponse{}
+	filterSQL, params := buildNotesFilter(userID, "", search)
 	err := app.DB().NewQuery(`
 		SELECT
 			COUNT(*) AS [[allCount]],
 			COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS [[draftCount]],
 			COALESCE(SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END), 0) AS [[usedCount]]
 		FROM notes
-		WHERE user = {:userId}
-	`).
-		Bind(dbx.Params{"userId": userID}).
+		WHERE ` + filterSQL).
+		Bind(params).
 		One(&summary)
 
 	return summary, err
+}
+
+func listNotePageRows(
+	app core.App,
+	filterSQL string,
+	params dbx.Params,
+	page int,
+	pageSize int,
+) ([]noteRecordIDRow, error) {
+	rows := []noteRecordIDRow{}
+	err := app.DB().NewQuery(`
+		SELECT id AS [[noteId]]
+		FROM notes
+		WHERE ` + filterSQL + `
+		ORDER BY created DESC, updated DESC, id DESC
+		LIMIT {:limit}
+		OFFSET {:offset}
+	`).
+		Bind(dbx.Params{
+			"limit":  pageSize + 1,
+			"offset": (page - 1) * pageSize,
+		}).
+		Bind(params).
+		All(&rows)
+
+	return rows, err
 }
 
 func cleanupExpiredUsedNotes(app core.App, userID string, now time.Time) error {
@@ -1062,6 +1121,7 @@ func getNotesOverviewResponse(
 	page int,
 	pageSize int,
 	status string,
+	search string,
 ) (notesOverviewResponse, error) {
 	response := notesOverviewResponse{
 		Items:    []notesOverviewItemResponse{},
@@ -1070,7 +1130,7 @@ func getNotesOverviewResponse(
 	}
 
 	if page == 1 {
-		summary, err := getNoteSummary(app, userID)
+		summary, err := getNoteSummary(app, userID, search)
 		if err != nil {
 			return response, err
 		}
@@ -1101,40 +1161,38 @@ func getNotesOverviewResponse(
 		}
 	}
 
-	filter := "user = {:userId}"
-	params := dbx.Params{
-		"userId": userID,
-	}
-	if status == "draft" || status == "used" {
-		filter += " && status = {:status}"
-		params["status"] = status
-	}
-
-	noteRecords, err := app.FindRecordsByFilter(
-		"notes",
-		filter,
-		"-created,-updated",
-		pageSize+1,
-		(page-1)*pageSize,
-		params,
-	)
+	filterSQL, params := buildNotesFilter(userID, status, search)
+	rows, err := listNotePageRows(app, filterSQL, params, page, pageSize)
 	if err != nil {
 		return response, err
 	}
-	if len(noteRecords) == 0 {
+	if len(rows) == 0 {
 		return response, nil
 	}
 
-	if len(noteRecords) > pageSize {
+	if len(rows) > pageSize {
 		response.HasNextPage = true
-		noteRecords = noteRecords[:pageSize]
+		rows = rows[:pageSize]
 	}
 
-	noteIDs := make([]string, 0, len(noteRecords))
-	restaurantIDs := make([]string, 0, len(noteRecords))
+	noteIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		noteIDs = append(noteIDs, row.NoteID)
+	}
+
+	noteRecords, err := findRecordsByIDs(app, "notes", noteIDs)
+	if err != nil {
+		return response, err
+	}
+	noteRecordsByID := mapRecordsByID(noteRecords)
+
+	restaurantIDs := make([]string, 0, len(rows))
 	restaurantIDSet := map[string]struct{}{}
-	for _, note := range noteRecords {
-		noteIDs = append(noteIDs, note.Id)
+	for _, row := range rows {
+		note := noteRecordsByID[row.NoteID]
+		if note == nil {
+			continue
+		}
 		restaurantIDs = appendUniqueTrimmedID(restaurantIDs, restaurantIDSet, note.GetString("restaurant"))
 	}
 
@@ -1150,8 +1208,13 @@ func getNotesOverviewResponse(
 	}
 	photosByNoteID := groupRecordsByField(photoRecords, "note")
 
-	response.Items = make([]notesOverviewItemResponse, 0, len(noteRecords))
-	for _, note := range noteRecords {
+	response.Items = make([]notesOverviewItemResponse, 0, len(rows))
+	for _, row := range rows {
+		note := noteRecordsByID[row.NoteID]
+		if note == nil {
+			continue
+		}
+
 		item := buildNoteOverviewItemResponse(note, restaurantsByID)
 
 		if notePhotos := photosByNoteID[note.Id]; len(notePhotos) > 0 {

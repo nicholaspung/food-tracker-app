@@ -475,12 +475,16 @@ export async function listNotesOverviewPage(input?: ListNotesPageInput): Promise
 
   const { page, pageSize } = resolvePaginationInput(input);
   const status = input?.status === 'draft' || input?.status === 'used' ? input.status : 'all';
+  const trimmedSearch = input?.search?.trim();
 
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
     status,
   });
+  if (trimmedSearch) {
+    query.set('search', trimmedSearch);
+  }
 
   const response = await sendApiRequest<NoteOverviewApiResponse>(`/api/notes/overview?${query.toString()}`, {
     method: 'GET',

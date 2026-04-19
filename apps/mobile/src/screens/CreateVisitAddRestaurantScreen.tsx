@@ -111,7 +111,7 @@ export function CreateVisitAddRestaurantScreen({
         restaurantId: createdRestaurant.id,
         visibility,
       });
-      navigation.navigate('CreateVisit', {
+      navigation.popTo('CreateVisit', {
         editVisitId,
         preselectedRestaurantId: createdRestaurant.id,
         preselectedRestaurantName: createdRestaurant.name,

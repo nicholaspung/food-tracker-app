@@ -257,6 +257,213 @@ func TestNotesOverviewEndpointOrdersByCreatedAtDescending(t *testing.T) {
 	}
 }
 
+func TestNotesOverviewEndpointSearchFiltersByContentAndLocationAcrossStatuses(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
+	user, token := createAuthUser(t, server.app, false, false)
+	otherUser, _ := createAuthUser(t, server.app, false, false)
+
+	restaurant := createCollectionRecord(t, server.app, "restaurants", map[string]any{
+		"name":       "Noodle Palace",
+		"location":   "San Francisco, CA",
+		"visibility": "public",
+	})
+
+	matchingDraft := createNoteRecord(t, server.app, user.Id, "draft")
+	matchingDraft.Set("content", "Try the noodles with chili oil")
+	if err := server.app.Save(matchingDraft); err != nil {
+		t.Fatalf("failed to update matching draft note: %v", err)
+	}
+	setCollectionRecordCreatedAt(t, server.app, "notes", matchingDraft.Id, "2026-02-01T09:00:00Z")
+	setCollectionRecordUpdatedAt(t, server.app, "notes", matchingDraft.Id, "2026-02-01T09:00:00Z")
+
+	matchingUsed := createNoteRecord(t, server.app, user.Id, "used")
+	matchingUsed.Set("content", "NOODLES are best with extra broth")
+	if err := server.app.Save(matchingUsed); err != nil {
+		t.Fatalf("failed to update matching used note: %v", err)
+	}
+	setCollectionRecordCreatedAt(t, server.app, "notes", matchingUsed.Id, "2026-03-01T09:00:00Z")
+	setCollectionRecordUpdatedAt(t, server.app, "notes", matchingUsed.Id, "2026-03-01T09:00:00Z")
+
+	contentNonMatch := createNoteRecord(t, server.app, user.Id, "draft")
+	contentNonMatch.Set("content", "Burger only")
+	contentNonMatch.Set("restaurant", restaurant.Id)
+	contentNonMatch.Set("location_text", "Window booth")
+	if err := server.app.Save(contentNonMatch); err != nil {
+		t.Fatalf("failed to update non-matching note: %v", err)
+	}
+	setCollectionRecordCreatedAt(t, server.app, "notes", contentNonMatch.Id, "2026-04-01T09:00:00Z")
+	setCollectionRecordUpdatedAt(t, server.app, "notes", contentNonMatch.Id, "2026-04-01T09:00:00Z")
+
+	otherUserMatch := createNoteRecord(t, server.app, otherUser.Id, "draft")
+	otherUserMatch.Set("content", "noodles from another account")
+	if err := server.app.Save(otherUserMatch); err != nil {
+		t.Fatalf("failed to update other-user note: %v", err)
+	}
+
+	draftResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=draft&page=1&pageSize=10&search=NOODLES",
+		token,
+		"",
+	)
+	if draftResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", draftResponse.Code, draftResponse.Body.String())
+	}
+
+	var draftPayload struct {
+		Items []struct {
+			ID      string `json:"id"`
+			Content string `json:"content"`
+			Status  string `json:"status"`
+		} `json:"items"`
+		Summary struct {
+			AllCount   int `json:"allCount"`
+			DraftCount int `json:"draftCount"`
+			UsedCount  int `json:"usedCount"`
+		} `json:"summary"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(draftResponse.Body.Bytes(), &draftPayload); err != nil {
+		t.Fatalf("failed to decode searched draft notes payload: %v", err)
+	}
+
+	if draftPayload.Page != 1 || draftPayload.PageSize != 10 {
+		t.Fatalf("unexpected searched draft pagination payload: %#v", draftPayload)
+	}
+	if draftPayload.TotalItems != 1 || draftPayload.TotalPages != 1 || draftPayload.HasNextPage {
+		t.Fatalf("expected one matching draft note, got %#v", draftPayload)
+	}
+	if draftPayload.Summary.AllCount != 2 || draftPayload.Summary.DraftCount != 1 || draftPayload.Summary.UsedCount != 1 {
+		t.Fatalf("expected search-aware summary counts, got %#v", draftPayload.Summary)
+	}
+	if len(draftPayload.Items) != 1 {
+		t.Fatalf("expected 1 searched draft note, got %#v", draftPayload.Items)
+	}
+	if draftPayload.Items[0].ID != matchingDraft.Id || draftPayload.Items[0].Status != "draft" {
+		t.Fatalf("unexpected searched draft item payload: %#v", draftPayload.Items[0])
+	}
+
+	allResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=all&page=1&pageSize=1&search=noodles",
+		token,
+		"",
+	)
+	if allResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", allResponse.Code, allResponse.Body.String())
+	}
+
+	var allPayload struct {
+		Items []struct {
+			ID      string `json:"id"`
+			Content string `json:"content"`
+			Status  string `json:"status"`
+		} `json:"items"`
+		Summary struct {
+			AllCount   int `json:"allCount"`
+			DraftCount int `json:"draftCount"`
+			UsedCount  int `json:"usedCount"`
+		} `json:"summary"`
+		Page        int  `json:"page"`
+		PageSize    int  `json:"pageSize"`
+		TotalItems  int  `json:"totalItems"`
+		TotalPages  int  `json:"totalPages"`
+		HasNextPage bool `json:"hasNextPage"`
+	}
+	if err := json.Unmarshal(allResponse.Body.Bytes(), &allPayload); err != nil {
+		t.Fatalf("failed to decode searched all-notes payload: %v", err)
+	}
+
+	if allPayload.TotalItems != 2 || allPayload.TotalPages != 2 || !allPayload.HasNextPage {
+		t.Fatalf("expected searched all-notes pagination metadata, got %#v", allPayload)
+	}
+	if allPayload.Summary.AllCount != 2 || allPayload.Summary.DraftCount != 1 || allPayload.Summary.UsedCount != 1 {
+		t.Fatalf("expected searched all-notes summary counts, got %#v", allPayload.Summary)
+	}
+	if len(allPayload.Items) != 1 || allPayload.Items[0].ID != matchingUsed.Id || allPayload.Items[0].Status != "used" {
+		t.Fatalf("expected newest matching note on first page, got %#v", allPayload.Items)
+	}
+
+	locationResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=all&page=1&pageSize=10&search=window",
+		token,
+		"",
+	)
+	if locationResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", locationResponse.Code, locationResponse.Body.String())
+	}
+
+	var locationPayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Summary struct {
+			AllCount   int `json:"allCount"`
+			DraftCount int `json:"draftCount"`
+			UsedCount  int `json:"usedCount"`
+		} `json:"summary"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(locationResponse.Body.Bytes(), &locationPayload); err != nil {
+		t.Fatalf("failed to decode location-searched notes payload: %v", err)
+	}
+
+	if locationPayload.TotalItems != 1 {
+		t.Fatalf("expected 1 location-matching note, got %#v", locationPayload)
+	}
+	if locationPayload.Summary.AllCount != 1 || locationPayload.Summary.DraftCount != 1 || locationPayload.Summary.UsedCount != 0 {
+		t.Fatalf("expected location search-aware summary counts, got %#v", locationPayload.Summary)
+	}
+	if len(locationPayload.Items) != 1 || locationPayload.Items[0].ID != contentNonMatch.Id {
+		t.Fatalf("expected location search to return the location-matching note, got %#v", locationPayload.Items)
+	}
+
+	restaurantNameResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/notes/overview?status=all&page=1&pageSize=10&search=palace",
+		token,
+		"",
+	)
+	if restaurantNameResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", restaurantNameResponse.Code, restaurantNameResponse.Body.String())
+	}
+
+	var restaurantNamePayload struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		Summary struct {
+			AllCount   int `json:"allCount"`
+			DraftCount int `json:"draftCount"`
+			UsedCount  int `json:"usedCount"`
+		} `json:"summary"`
+		TotalItems int `json:"totalItems"`
+	}
+	if err := json.Unmarshal(restaurantNameResponse.Body.Bytes(), &restaurantNamePayload); err != nil {
+		t.Fatalf("failed to decode restaurant-name searched notes payload: %v", err)
+	}
+
+	if restaurantNamePayload.TotalItems != 0 {
+		t.Fatalf("expected restaurant name search to return no notes, got %#v", restaurantNamePayload)
+	}
+	if restaurantNamePayload.Summary.AllCount != 0 || restaurantNamePayload.Summary.DraftCount != 0 || restaurantNamePayload.Summary.UsedCount != 0 {
+		t.Fatalf("expected restaurant-name search summary to remain empty, got %#v", restaurantNamePayload.Summary)
+	}
+}
+
 func TestNotesReadsCleanupExpiredUsedNotes(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)

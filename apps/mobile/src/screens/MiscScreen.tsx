@@ -81,7 +81,7 @@ const TIPS: TipItem[] = [
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.muted,
+    backgroundColor: theme.colors.background.app,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,

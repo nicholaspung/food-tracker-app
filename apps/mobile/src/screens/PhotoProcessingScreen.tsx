@@ -1227,6 +1227,75 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   }
 
   if (step === 'upload' && processType) {
+    const hasSelectedPhotos = photos.length > 0;
+    const photoSourceCard = (
+      <Card style={styles.uploadCard} tone={hasSelectedPhotos ? 'muted' : 'default'}>
+        <Text variant="label">
+          {hasSelectedPhotos ? 'Add more photos' : 'Choose Photo Source'}
+        </Text>
+        <Text tone="secondary">
+          {hasSelectedPhotos
+            ? 'Take another photo or upload more saved photos.'
+            : 'Take a new photo or upload multiple saved photos.'}
+        </Text>
+        <PhotoSourceActionCards
+          cameraSubtitle="Camera"
+          cameraTitle="Take Photo"
+          disabled={isSelectingSource}
+          gallerySubtitle="Photo Library"
+          galleryTitle="Upload Images"
+          onCameraPress={() => {
+            void pickPhotos('camera');
+          }}
+          onGalleryPress={() => {
+            void pickPhotos('gallery');
+          }}
+          tone={hasSelectedPhotos ? 'muted' : 'default'}
+        />
+        {isSelectingSource ? <Text tone="secondary">Opening source picker...</Text> : null}
+      </Card>
+    );
+    const photoSelectionCard = !hasSelectedPhotos ? (
+      <Card>
+        <EmptyState description="Add photos to start processing." title="No photos selected" />
+      </Card>
+    ) : (
+      <Card style={styles.uploadCard}>
+        <Text variant="label">
+          {photos.length} photo{photos.length === 1 ? '' : 's'} selected
+        </Text>
+        <Text tone="secondary">Review your photos before continuing.</Text>
+        <View style={styles.photoGrid}>
+          {photos.map((photo) => (
+            <View key={photo.id} style={styles.photoTile}>
+              <Image source={{ uri: photo.uri }} style={styles.photoImage} />
+              <View style={styles.photoMetaRow}>
+                <Text
+                  ellipsizeMode="tail"
+                  numberOfLines={1}
+                  style={styles.photoName}
+                  tone="secondary"
+                  variant="bodySm"
+                >
+                  {formatDraftPhotoMetadataLabel(photo)}
+                </Text>
+                <Pressable
+                  accessibilityLabel="Remove photo"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    removePhoto(photo.id);
+                  }}
+                  style={styles.photoRemoveButton}
+                >
+                  <Ionicons color={theme.colors.text.secondary} name="close" size={12} />
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      </Card>
+    );
+
     return (
       <FeatureFormScreenScaffold
         headerBottomCompact
@@ -1304,65 +1373,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           />
         ) : null}
 
-        <Card style={styles.uploadCard}>
-          <Text variant="label">Choose Photo Source</Text>
-          <Text tone="secondary">Take a new photo or upload multiple saved photos.</Text>
-          <PhotoSourceActionCards
-            cameraSubtitle="Camera"
-            cameraTitle="Take Photo"
-            disabled={isSelectingSource}
-            gallerySubtitle="Photo Library"
-            galleryTitle="Upload Images"
-            onCameraPress={() => {
-              void pickPhotos('camera');
-            }}
-            onGalleryPress={() => {
-              void pickPhotos('gallery');
-            }}
-          />
-          {isSelectingSource ? <Text tone="secondary">Opening source picker...</Text> : null}
-        </Card>
-
-        {photos.length === 0 ? (
-          <Card>
-            <EmptyState description="Add photos to start processing." title="No photos selected" />
-          </Card>
-        ) : (
-          <Card style={styles.uploadCard}>
-            <Text variant="label">
-              {photos.length} photo{photos.length === 1 ? '' : 's'} selected
-            </Text>
-            <Text tone="secondary">Review your photos before continuing.</Text>
-            <View style={styles.photoGrid}>
-              {photos.map((photo) => (
-                <View key={photo.id} style={styles.photoTile}>
-                  <Image source={{ uri: photo.uri }} style={styles.photoImage} />
-                  <View style={styles.photoMetaRow}>
-                    <Text
-                      ellipsizeMode="tail"
-                      numberOfLines={1}
-                      style={styles.photoName}
-                      tone="secondary"
-                      variant="bodySm"
-                    >
-                      {formatDraftPhotoMetadataLabel(photo)}
-                    </Text>
-                    <Pressable
-                      accessibilityLabel="Remove photo"
-                      accessibilityRole="button"
-                      onPress={() => {
-                        removePhoto(photo.id);
-                      }}
-                      style={styles.photoRemoveButton}
-                    >
-                      <Ionicons color={theme.colors.text.secondary} name="close" size={12} />
-                    </Pressable>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </Card>
-        )}
+        {hasSelectedPhotos ? photoSelectionCard : photoSourceCard}
+        {hasSelectedPhotos ? photoSourceCard : photoSelectionCard}
       </FeatureFormScreenScaffold>
     );
   }

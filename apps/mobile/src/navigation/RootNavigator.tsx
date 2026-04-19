@@ -62,7 +62,6 @@ import {
   TastingSessionsScreen,
   VisitShareCustomizationScreen,
   VerifyEmailScreen,
-  WhatsNewScreen,
 } from '../screens';
 import { useTheme } from '../theme';
 import { Screen } from '../ui';
@@ -176,7 +175,6 @@ export type RootStackParamList = {
   Feedback: undefined;
   CreateFeedback: undefined;
   FeedbackDetail: { feedbackId: string };
-  WhatsNew: undefined;
   Misc: undefined;
   TastingSessions: undefined;
   TastingSessionDetail: { sessionId: string };
@@ -232,7 +230,6 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'Feedback',
   'CreateFeedback',
   'FeedbackDetail',
-  'WhatsNew',
   'Misc',
   'Lists',
   'CreateRestaurantList',
@@ -480,7 +477,6 @@ export function RootNavigator() {
                   name="FeedbackDetail"
                   options={{ headerShown: false }}
                 />
-                <Stack.Screen component={WhatsNewScreen} name="WhatsNew" options={{ headerShown: false }} />
                 <Stack.Screen component={MiscScreen} name="Misc" options={{ headerShown: false }} />
                 <Stack.Screen
                   component={user?.isAdmin ? TastingSessionsScreen : AdminOnlyRouteGuard}

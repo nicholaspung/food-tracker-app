@@ -69,6 +69,21 @@ export function PhotoInputField({
 }: PhotoInputFieldProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const hasAttachments = attachments.length > 0;
+  const attachmentList = hasAttachments ? (
+    <View style={styles.attachmentList}>
+      {attachments.map((attachment) => (
+        <PhotoAttachmentRow
+          accessibilityLabel={attachment.accessibilityLabel}
+          key={attachment.id}
+          name={attachment.name}
+          onPress={attachment.onPress}
+          onRemove={attachment.onRemove}
+          uri={attachment.uri}
+        />
+      ))}
+    </View>
+  ) : null;
 
   return (
     <View style={styles.container}>
@@ -91,6 +106,8 @@ export function PhotoInputField({
         ) : null}
       </View>
 
+      {hasAttachments ? attachmentList : null}
+
       <PhotoSourceActionCards
         cameraSubtitle={cameraSubtitle}
         cameraTitle={cameraTitle}
@@ -99,22 +116,10 @@ export function PhotoInputField({
         galleryTitle={galleryTitle}
         onCameraPress={onCameraPress}
         onGalleryPress={onGalleryPress}
+        tone={hasAttachments ? 'muted' : 'default'}
       />
 
-      {attachments.length > 0 ? (
-        <View style={styles.attachmentList}>
-          {attachments.map((attachment) => (
-            <PhotoAttachmentRow
-              accessibilityLabel={attachment.accessibilityLabel}
-              key={attachment.id}
-              name={attachment.name}
-              onPress={attachment.onPress}
-              onRemove={attachment.onRemove}
-              uri={attachment.uri}
-            />
-          ))}
-        </View>
-      ) : null}
+      {!hasAttachments ? attachmentList : null}
 
       {footerAction ?? null}
     </View>

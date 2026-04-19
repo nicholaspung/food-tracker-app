@@ -139,6 +139,7 @@ describe('EditQuickTrackScreen', () => {
             restaurantName: 'Quick Track',
             itemCategory: 'packaged_food',
             itemName: 'Iced Coffee',
+            locationText: 'Mission District',
             rating: 4,
             notes: 'Smooth and sweet',
             visibility: 'friends',
@@ -243,6 +244,7 @@ describe('EditQuickTrackScreen', () => {
 
     expect(renderer.root.findByType('QuickTrackFormFields').props.value).toEqual({
       itemName: 'Iced Coffee',
+      locationText: 'Mission District',
       category: 'packaged_food',
       rating: 4,
       notes: 'Smooth and sweet',
@@ -257,6 +259,10 @@ describe('EditQuickTrackScreen', () => {
         uri: 'pb://photo-1/iced-coffee.jpg?thumb=100x100',
       }),
     ]);
+    expect(renderer.root.findByType('PhotoViewerModal').props).toMatchObject({
+      previewUrls: ['pb://photo-1/iced-coffee.jpg?thumb=100x100'],
+      urls: ['pb://photo-1/iced-coffee.jpg'],
+    });
   });
 
   it('shows a replacement photo immediately and restores the original when the draft is removed', async () => {

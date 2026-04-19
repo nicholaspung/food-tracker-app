@@ -37,7 +37,7 @@ export interface FeatureFormScreenScaffoldProps {
 
 const useStyles = createThemedStyles((theme, headerBottomCompact: boolean) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.muted,
+    backgroundColor: theme.colors.background.app,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
@@ -46,7 +46,7 @@ const useStyles = createThemedStyles((theme, headerBottomCompact: boolean) => ({
     flex: 1,
   },
   headerBottom: {
-    backgroundColor: theme.colors.background.muted,
+    backgroundColor: theme.colors.background.app,
     borderBottomColor: theme.colors.border.subtle,
     borderBottomWidth: 1,
     paddingHorizontal: theme.spacing.md,
@@ -103,7 +103,7 @@ export function FeatureFormScreenScaffold({
 
   return (
     <Screen
-      background="surface"
+      background="app"
       contentStyle={styles.screenContent}
       edges={['top']}
       keyboardAware={false}

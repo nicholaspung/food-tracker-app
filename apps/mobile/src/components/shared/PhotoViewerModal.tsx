@@ -1,6 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Modal as RNModal, Pressable, View, useWindowDimensions } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  FlatList,
+  Image,
+  Modal as RNModal,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createThemedStyles, getPhotoViewerPalette, useTheme } from '../../theme';
@@ -9,6 +18,7 @@ import { Text } from '../../ui';
 export interface PhotoViewerModalProps {
   visible: boolean;
   urls: string[];
+  previewUrls?: string[];
   ownerLabels?: string[];
   initialIndex?: number;
   onRequestClose: () => void;
@@ -41,15 +51,6 @@ const useStyles = createThemedStyles((
   },
   list: {
     flex: 1,
-  },
-  slide: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  image: {
-    height: '100%',
-    resizeMode: 'contain',
-    width: '100%',
   },
   bottomBar: {
     alignItems: 'center',
@@ -84,9 +85,96 @@ const useStyles = createThemedStyles((
   },
 }));
 
+const slideStyles = StyleSheet.create({
+  image: {
+    resizeMode: 'contain',
+    ...StyleSheet.absoluteFillObject,
+  },
+  slide: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slideContent: {
+    flex: 1,
+    position: 'relative',
+    width: '100%',
+  },
+});
+
+interface PhotoViewerSlideProps {
+  previewUri?: string;
+  uri: string;
+  visible: boolean;
+  width: number;
+}
+
+function PhotoViewerSlide({
+  previewUri,
+  uri,
+  visible,
+  width,
+}: PhotoViewerSlideProps) {
+  const shouldShowPreview = Boolean(previewUri && previewUri !== uri);
+  const fullImageOpacity = useRef(
+    new Animated.Value(shouldShowPreview ? 0 : 1),
+  ).current;
+
+  useEffect(() => {
+    const initialOpacity = shouldShowPreview ? 0 : 1;
+    fullImageOpacity.stopAnimation();
+    fullImageOpacity.setValue(initialOpacity);
+  }, [fullImageOpacity, shouldShowPreview, uri, previewUri, visible]);
+
+  const handleFullImageLoad = useCallback(() => {
+    if (!shouldShowPreview) {
+      fullImageOpacity.stopAnimation();
+      fullImageOpacity.setValue(1);
+      return;
+    }
+
+    fullImageOpacity.stopAnimation();
+    Animated.timing(fullImageOpacity, {
+      duration: 180,
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [fullImageOpacity, shouldShowPreview]);
+
+  const handleFullImageError = useCallback(() => {
+    if (!shouldShowPreview) {
+      return;
+    }
+
+    fullImageOpacity.stopAnimation();
+    fullImageOpacity.setValue(0);
+  }, [fullImageOpacity, shouldShowPreview]);
+
+  return (
+    <View style={[slideStyles.slide, { width }]}>
+      <View style={slideStyles.slideContent}>
+        {shouldShowPreview ? (
+          <Image
+            source={{ uri: previewUri }}
+            style={slideStyles.image}
+            testID="photo-viewer-preview-image"
+          />
+        ) : null}
+        <Animated.Image
+          onError={handleFullImageError}
+          onLoad={handleFullImageLoad}
+          source={{ uri }}
+          style={[slideStyles.image, { opacity: fullImageOpacity }]}
+          testID="photo-viewer-full-image"
+        />
+      </View>
+    </View>
+  );
+}
+
 export function PhotoViewerModal({
   visible,
   urls,
+  previewUrls,
   ownerLabels,
   initialIndex = 0,
   onRequestClose,
@@ -126,7 +214,7 @@ export function PhotoViewerModal({
         index: boundedInitialIndex,
       });
     }, 0);
-  }, [boundedInitialIndex, urls.length, visible]);
+  }, [boundedInitialIndex, urls, visible]);
 
   const goToPhotoIndex = (targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= urls.length) {
@@ -187,10 +275,13 @@ export function PhotoViewerModal({
               }, 0);
             }}
             pagingEnabled
-            renderItem={({ item }) => (
-              <View style={[styles.slide, { width: viewportWidth }]}>
-                <Image source={{ uri: item }} style={styles.image} />
-              </View>
+            renderItem={({ item, index }) => (
+              <PhotoViewerSlide
+                previewUri={previewUrls?.[index]}
+                uri={item}
+                visible={visible}
+                width={viewportWidth}
+              />
             )}
             showsHorizontalScrollIndicator={false}
             style={styles.list}

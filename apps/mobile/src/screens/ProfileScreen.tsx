@@ -35,11 +35,6 @@ import {
 } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import { getErrorMessage } from '../lib/errorUtils';
-import {
-  getSeenWhatsNewVersion,
-  hasUnseenWhatsNew,
-  WHATS_NEW_SEEN_QUERY_KEY,
-} from '../lib/whatsNewState';
 import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -86,12 +81,6 @@ const useStyles = createThemedStyles((theme) => ({
   },
   optionBadgeText: {
     color: theme.colors.text.inverse,
-  },
-  optionDot: {
-    backgroundColor: theme.colors.fill.danger,
-    borderRadius: theme.radii.pill,
-    height: 8,
-    width: 8,
   },
   optionMetaText: {
     color: theme.colors.text.secondary,
@@ -232,16 +221,11 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     queryKey: feedbackQueryKeys.summary,
     queryFn: ({ signal }) => getFeedbackCountSummary({ signal }),
   });
-  const whatsNewSeenVersionQuery = useQuery({
-    queryKey: WHATS_NEW_SEEN_QUERY_KEY,
-    queryFn: getSeenWhatsNewVersion,
-    staleTime: Infinity,
-  });
 
   const [expandedPanels, setExpandedPanels] = useState<
     Record<ExpandablePanel, boolean>
   >({
-    account: true,
+    account: false,
     invite: false,
     danger: false,
   });
@@ -298,7 +282,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   }, [profileQuery.data?.displayName, user?.name]);
 
   const activeFeedbackCount = feedbackSummaryQuery.data?.activeCount ?? 0;
-  const showWhatsNewDot = hasUnseenWhatsNew(whatsNewSeenVersionQuery.data);
   const appVersionLabel = formatAppVersionLabel();
 
   const accountCreated = formatDisplayDate(authRecord?.created, {
@@ -546,55 +529,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         />
 
         <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle} variant="cardTitle">Quick Actions</Text>
-          <OptionList>
-            <OptionListRow
-              iconName="chatbox-ellipses-outline"
-              onPress={() => {
-                navigation.navigate("Feedback");
-              }}
-              rightAccessory={
-                activeFeedbackCount > 0 ? (
-                  <View style={styles.optionBadge}>
-                    <Text style={styles.optionBadgeText} variant="bodySmTightBold">
-                      {activeFeedbackCount}
-                    </Text>
-                  </View>
-                ) : null
-              }
-              subtitle="Report issues and contact support"
-              testID="profile-feedback-link"
-              title="Feedback & Support"
-            />
-            <OptionListRow
-              iconName="sparkles-outline"
-              onPress={() => {
-                navigation.navigate("WhatsNew");
-              }}
-              rightAccessory={
-                showWhatsNewDot ? <View style={styles.optionDot} /> : null
-              }
-              subtitle="Latest updates and product improvements"
-              testID="profile-whats-new-link"
-              title="What's New"
-            />
-            <OptionListRow
-              iconName="information-circle-outline"
-              isLast
-              onPress={() => {
-                navigation.navigate("About");
-              }}
-              rightAccessory={
-                <Text style={styles.optionMetaText} variant="bodySmTightSemiBold">{appVersionLabel}</Text>
-              }
-              subtitle="Current version, legal information, and app details"
-              testID="profile-about-link"
-              title="About"
-            />
-          </OptionList>
-        </Card>
-
-        <Card style={styles.sectionCard}>
           <Text style={styles.sectionTitle} variant="cardTitle">Account</Text>
           <OptionList>
             <OptionListRow
@@ -760,7 +694,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         </Card>
 
         <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle} variant="cardTitle">More Options</Text>
+          <Text style={styles.sectionTitle} variant="cardTitle">Invites & Settings</Text>
           <OptionList>
             <OptionListRow
               chevron={expandedPanels.invite ? "up" : "down"}
@@ -870,6 +804,43 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               subtitle="App-level settings and controls"
               testID="profile-settings-link"
               title="Settings"
+            />
+          </OptionList>
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <Text style={styles.sectionTitle} variant="cardTitle">Support & Info</Text>
+          <OptionList>
+            <OptionListRow
+              iconName="chatbox-ellipses-outline"
+              onPress={() => {
+                navigation.navigate("Feedback");
+              }}
+              rightAccessory={
+                activeFeedbackCount > 0 ? (
+                  <View style={styles.optionBadge}>
+                    <Text style={styles.optionBadgeText} variant="bodySmTightBold">
+                      {activeFeedbackCount}
+                    </Text>
+                  </View>
+                ) : null
+              }
+              subtitle="Report issues and contact support"
+              testID="profile-feedback-link"
+              title="Feedback & Support"
+            />
+            <OptionListRow
+              iconName="information-circle-outline"
+              isLast
+              onPress={() => {
+                navigation.navigate("About");
+              }}
+              rightAccessory={
+                <Text style={styles.optionMetaText} variant="bodySmTightSemiBold">{appVersionLabel}</Text>
+              }
+              subtitle="Current version, legal information, and app details"
+              testID="profile-about-link"
+              title="About"
             />
           </OptionList>
         </Card>

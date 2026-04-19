@@ -45,6 +45,7 @@ export interface QuickTrackRecord {
   restaurantName: string;
   itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | 'restaurant';
   itemName: string;
+  locationText?: string;
   rating: number;
   notes?: string;
   sourceNoteId?: string;

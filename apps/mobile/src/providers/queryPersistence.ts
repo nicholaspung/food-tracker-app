@@ -49,10 +49,6 @@ function isHomeFeedPhotosQuery(queryKey: QueryKey): boolean {
   return hasQueryKeyPrefix(queryKey, ['feature', 'visitPhotos', 'feedItems']) && queryKey.length === 4;
 }
 
-function isWhatsNewSeenVersionQuery(queryKey: QueryKey): boolean {
-  return hasQueryKeyPrefix(queryKey, ['feature', 'whats-new-seen-version']) && queryKey.length === 2;
-}
-
 function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
   if (!isFeatureQueryKey(queryKey) || typeof queryKey[1] !== 'string') {
     return false;
@@ -88,8 +84,6 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
         isPaginatedFeedbackListQuery(queryKey) ||
         isFeedbackSummaryQuery(queryKey)
       );
-    case 'whats-new-seen-version':
-      return isWhatsNewSeenVersionQuery(queryKey);
     default:
       return false;
   }

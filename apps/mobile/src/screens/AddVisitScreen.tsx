@@ -22,7 +22,7 @@ interface AddOptionConfig {
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.muted,
+    backgroundColor: theme.colors.background.app,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
@@ -124,7 +124,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
-      scrollUnderlayColor={theme.colors.background.muted}
+      scrollUnderlayColor={theme.colors.background.app}
       testID="add-visit-selector"
     >
       <TabBrandHeader

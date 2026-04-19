@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Image,
+  PixelRatio,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +16,7 @@ import { captureRef } from 'react-native-view-shot';
 
 import { buildPocketBaseFileUrl } from '../features';
 import { LoadingState, SectionHeader } from '../components/shared';
+import { APP_NAME, BRAND_LOGO } from '../lib/branding';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -24,6 +26,11 @@ import { Button, Text } from '../ui';
 type VisitShareCustomizationScreenProps = NativeStackScreenProps<RootStackParamList, 'VisitShareCustomization'>;
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
 type ShareTheme = 'modern' | 'rustic' | 'minimal' | 'neon';
+
+const STORY_CANVAS_ASPECT_RATIO = 9 / 16;
+const STORY_EXPORT_WIDTH = 1080;
+const STORY_EXPORT_HEIGHT = 1920;
+const BRAND_FOOTER_HEIGHT = 40;
 
 const visitDateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -48,6 +55,13 @@ function buildPhotoUrl(item: VisitShareItem, thumb?: string): string {
     filename: item.photoFilename,
     thumb,
   });
+}
+
+function getStoryCaptureSize(pixelRatio: number) {
+  return {
+    height: STORY_EXPORT_HEIGHT / pixelRatio,
+    width: STORY_EXPORT_WIDTH / pixelRatio,
+  };
 }
 
 const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof getVisitSharePalette>) => ({
@@ -91,20 +105,61 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
     paddingTop: theme.spacing.md,
   },
   shareCanvas: {
+    aspectRatio: STORY_CANVAS_ASPECT_RATIO,
     borderRadius: 0,
     borderWidth: 1,
     gap: 0,
+    overflow: 'hidden',
     padding: 0,
+    position: 'relative',
+  },
+  shareCanvasContent: {
+    backgroundColor: theme.colors.background.inverse,
+    flex: 1,
+    gap: 0,
+    minHeight: 0,
+    paddingBottom: BRAND_FOOTER_HEIGHT,
   },
   shareItemCard: {
     borderRadius: 0,
     borderWidth: 1,
+    flex: 1,
+    minHeight: 0,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  shareBrandFooter: {
+    alignItems: 'center',
+    bottom: 0,
+    borderTopWidth: 1,
+    height: BRAND_FOOTER_HEIGHT,
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.sm,
+    position: 'absolute',
+    right: 0,
+    left: 0,
+    width: '100%',
+  },
+  shareBrandRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    justifyContent: 'center',
+  },
+  shareBrandLogo: {
+    height: 16,
+    width: 16,
+  },
+  shareBrandLabel: {
+    textTransform: 'none',
   },
   shareImage: {
-    aspectRatio: 1,
     backgroundColor: theme.colors.background.muted,
-    width: '100%',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   shareOverlay: {
     bottom: 0,
@@ -318,6 +373,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
   );
 
   const previewWidth = Math.min(viewportWidth - theme.spacing.lg * 2, 420);
+  const storyCaptureSize = useMemo(() => getStoryCaptureSize(PixelRatio.get()), []);
   const areAllPhotosReady = readyPhotoIds.size >= previewItems.length;
   const hasVisibleOverlay = showDishNames || showRestaurantName || showRating || showDate;
   const isRusticTheme = shareTheme === 'rustic';
@@ -370,8 +426,10 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
     try {
       const capturedUri = await captureRef(shareCanvasRef, {
         format: 'jpg',
+        height: storyCaptureSize.height,
         quality: 0.95,
         result: 'tmpfile',
+        width: storyCaptureSize.width,
       });
 
       const shareResult = await Share.share({
@@ -398,7 +456,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
     } finally {
       setIsSharing(false);
     }
-  }, [items.length, navigation, restaurantName, shareTheme]);
+  }, [items.length, navigation, restaurantName, shareTheme, storyCaptureSize.height, storyCaptureSize.width]);
   const overlayPrimaryVariant = isRusticTheme
     ? 'titleXs'
     : isMinimalTheme
@@ -467,6 +525,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
         <View
           collapsable={false}
           ref={shareCanvasRef}
+          testID="visit-share-canvas"
           style={[
             styles.shareCanvas,
             {
@@ -476,87 +535,125 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
             },
           ]}
         >
-          {previewItems.map((item) => (
-            <View
-              key={item.itemId}
-              style={[
-                styles.shareItemCard,
-                {
-                  backgroundColor: sharePalette.itemBackground,
-                  borderColor: sharePalette.itemBorder,
-                },
-                isRusticTheme ? { borderWidth: 2, borderRadius: 0 } : null,
-                isMinimalTheme ? { borderWidth: 1, borderRadius: 0 } : null,
-                isNeonTheme ? { borderWidth: 2, borderRadius: 0 } : null,
-                shareTheme === 'modern' ? { borderWidth: 1, borderRadius: 0 } : null,
-              ]}
-            >
-              <Image
-                onError={() => {
-                  markPhotoReady(item.photoId);
-                }}
-                onLoad={() => {
-                  markPhotoReady(item.photoId);
-                }}
-                source={{ uri: item.photoUrl }}
-                style={styles.shareImage}
-              />
-              {hasVisibleOverlay ? (
-                <View
-                  style={[
-                    styles.shareOverlay,
-                    isRusticTheme
-                      ? styles.shareOverlayRustic
-                      : isMinimalTheme
-                        ? styles.shareOverlayMinimal
-                        : isNeonTheme
-                          ? styles.shareOverlayNeon
-                          : styles.shareOverlayModern,
-                    {
-                      backgroundColor: sharePalette.overlayBackground,
-                      borderTopColor: sharePalette.overlayTopBorderColor,
-                      borderBottomColor: sharePalette.overlayBottomBorderColor,
-                    },
-                  ]}
-                >
-                  {showDishNames ? (
-                    <Text
-                      style={[
-                        overlayPrimaryDecorationStyle,
-                        { color: sharePalette.primaryText },
-                      ]}
-                      variant={overlayPrimaryVariant}
-                    >
-                      {item.itemName}
-                    </Text>
-                  ) : null}
-                  {showRestaurantName ? (
-                    <Text
-                      style={[
-                        overlaySecondaryDecorationStyle,
-                        { color: sharePalette.secondaryText },
-                      ]}
-                      variant={overlaySecondaryVariant}
-                    >
-                      {restaurantName}
-                    </Text>
-                  ) : null}
-                  {showRating || showDate ? (
-                    showDate && showRating ? (
-                      <View style={styles.metaRow}>
-                        <Text
-                          numberOfLines={1}
-                          style={[
-                            styles.metaLeftText,
-                            overlayDateDecorationStyle,
-                            { color: sharePalette.secondaryText },
-                          ]}
-                          variant={overlaySecondaryVariant}
-                        >
-                          {themedDateLabel}
-                        </Text>
+          <View style={styles.shareCanvasContent}>
+            {previewItems.map((item) => (
+              <View
+                key={item.itemId}
+                style={[
+                  styles.shareItemCard,
+                  {
+                    backgroundColor: sharePalette.itemBackground,
+                    borderColor: sharePalette.itemBorder,
+                  },
+                  isRusticTheme ? { borderWidth: 2, borderRadius: 0 } : null,
+                  isMinimalTheme ? { borderWidth: 1, borderRadius: 0 } : null,
+                  isNeonTheme ? { borderWidth: 2, borderRadius: 0 } : null,
+                  shareTheme === 'modern' ? { borderWidth: 1, borderRadius: 0 } : null,
+                ]}
+              >
+                <Image
+                  onError={() => {
+                    markPhotoReady(item.photoId);
+                  }}
+                  onLoad={() => {
+                    markPhotoReady(item.photoId);
+                  }}
+                  resizeMode="cover"
+                  source={{ uri: item.photoUrl }}
+                  style={styles.shareImage}
+                />
+                {hasVisibleOverlay ? (
+                  <View
+                    style={[
+                      styles.shareOverlay,
+                      isRusticTheme
+                        ? styles.shareOverlayRustic
+                        : isMinimalTheme
+                          ? styles.shareOverlayMinimal
+                          : isNeonTheme
+                            ? styles.shareOverlayNeon
+                            : styles.shareOverlayModern,
+                      {
+                        backgroundColor: sharePalette.overlayBackground,
+                        borderTopColor: sharePalette.overlayTopBorderColor,
+                        borderBottomColor: sharePalette.overlayBottomBorderColor,
+                      },
+                    ]}
+                  >
+                    {showDishNames ? (
+                      <Text
+                        style={[
+                          overlayPrimaryDecorationStyle,
+                          { color: sharePalette.primaryText },
+                        ]}
+                        variant={overlayPrimaryVariant}
+                      >
+                        {item.itemName}
+                      </Text>
+                    ) : null}
+                    {showRestaurantName ? (
+                      <Text
+                        style={[
+                          overlaySecondaryDecorationStyle,
+                          { color: sharePalette.secondaryText },
+                        ]}
+                        variant={overlaySecondaryVariant}
+                      >
+                        {restaurantName}
+                      </Text>
+                    ) : null}
+                    {showRating || showDate ? (
+                      showDate && showRating ? (
+                        <View style={styles.metaRow}>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.metaLeftText,
+                              overlayDateDecorationStyle,
+                              { color: sharePalette.secondaryText },
+                            ]}
+                            variant={overlaySecondaryVariant}
+                          >
+                            {themedDateLabel}
+                          </Text>
+                          <View
+                            style={[
+                              styles.metaRight,
+                              isRusticTheme
+                                ? styles.metaRightRustic
+                                : isMinimalTheme
+                                  ? styles.metaRightMinimal
+                                  : isNeonTheme
+                                    ? styles.metaRightNeon
+                                  : styles.metaRightModern,
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.ratingDot,
+                                isRusticTheme
+                                  ? styles.ratingDotRustic
+                                  : isMinimalTheme
+                                    ? styles.ratingDotMinimal
+                                    : null,
+                                { backgroundColor: getRatingColor(theme, item.rating) },
+                              ]}
+                            />
+                            <Text
+                              style={[
+                                overlayRatingDecorationStyle,
+                                { color: sharePalette.secondaryText },
+                              ]}
+                              variant={overlayRatingVariant}
+                            >
+                              {getRatingLabel(item.rating)}
+                            </Text>
+                          </View>
+                        </View>
+                      ) : showRating ? (
                         <View
                           style={[
+                            styles.ratingRow,
                             styles.metaRight,
                             isRusticTheme
                               ? styles.metaRightRustic
@@ -565,6 +662,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                                 : isNeonTheme
                                   ? styles.metaRightNeon
                                 : styles.metaRightModern,
+                            { alignSelf: 'flex-end' },
                           ]}
                         >
                           <View
@@ -588,59 +686,40 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
                             {getRatingLabel(item.rating)}
                           </Text>
                         </View>
-                      </View>
-                    ) : showRating ? (
-                      <View
-                        style={[
-                          styles.ratingRow,
-                          styles.metaRight,
-                          isRusticTheme
-                            ? styles.metaRightRustic
-                            : isMinimalTheme
-                              ? styles.metaRightMinimal
-                              : isNeonTheme
-                                ? styles.metaRightNeon
-                              : styles.metaRightModern,
-                          { alignSelf: 'flex-end' },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.ratingDot,
-                            isRusticTheme
-                              ? styles.ratingDotRustic
-                              : isMinimalTheme
-                                ? styles.ratingDotMinimal
-                                : null,
-                            { backgroundColor: getRatingColor(theme, item.rating) },
-                          ]}
-                        />
+                      ) : (
                         <Text
                           style={[
-                            overlayRatingDecorationStyle,
+                            overlayDateDecorationStyle,
                             { color: sharePalette.secondaryText },
                           ]}
-                          variant={overlayRatingVariant}
+                          variant={overlaySecondaryVariant}
                         >
-                          {getRatingLabel(item.rating)}
+                          {themedDateLabel}
                         </Text>
-                      </View>
-                    ) : (
-                      <Text
-                        style={[
-                          overlayDateDecorationStyle,
-                          { color: sharePalette.secondaryText },
-                        ]}
-                        variant={overlaySecondaryVariant}
-                      >
-                        {themedDateLabel}
-                      </Text>
-                    )
-                  ) : null}
-                </View>
-              ) : null}
+                      )
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+            ))}
+          </View>
+          <View
+            testID="visit-share-brand-footer"
+            style={[
+              styles.shareBrandFooter,
+              {
+                backgroundColor: sharePalette.brandFooterBackground,
+                borderTopColor: sharePalette.brandFooterBorder,
+              },
+            ]}
+          >
+            <View style={styles.shareBrandRow}>
+              <Image resizeMode="contain" source={BRAND_LOGO} style={styles.shareBrandLogo} />
+              <Text style={[styles.shareBrandLabel, { color: sharePalette.brandFooterText }]} variant="label">
+                {APP_NAME}
+              </Text>
             </View>
-          ))}
+          </View>
         </View>
       </ScrollView>
 

@@ -58,7 +58,7 @@ export function BackHeaderScreenScaffold({
   keyboardAware = true,
   onRefresh,
   refreshing = false,
-  contentBackgroundTone = 'muted',
+  contentBackgroundTone = 'app',
   contentStyle,
   bodyStyle,
   children,
@@ -78,7 +78,7 @@ export function BackHeaderScreenScaffold({
 
   return (
     <Screen
-      background="surface"
+      background={scroll ? 'surface' : contentBackgroundTone === 'app' ? 'app' : 'surface'}
       contentStyle={[styles.screenContent, contentStyle]}
       edges={['top']}
       keyboardAware={keyboardAware}

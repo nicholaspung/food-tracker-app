@@ -25,6 +25,7 @@ export type QuickTrackVisibility = 'friends' | 'private';
 
 export interface QuickTrackFormValues {
   itemName: string;
+  locationText: string;
   category: QuickTrackCategory | '';
   rating: number;
   notes: string;
@@ -80,6 +81,7 @@ export function buildDefaultQuickTrackForm({
 }: BuildDefaultQuickTrackFormOptions = {}): QuickTrackFormValues {
   return {
     itemName: '',
+    locationText: previousForm?.locationText ?? '',
     category: previousForm?.category ?? '',
     rating: 3,
     notes: '',
@@ -94,6 +96,7 @@ export function buildDefaultQuickTrackForm({
 export function buildQuickTrackFormFromRecord(record: QuickTrackRecord): QuickTrackFormValues {
   return {
     itemName: record.itemName,
+    locationText: record.locationText ?? '',
     category: normalizeQuickTrackCategory(record.itemCategory),
     rating: record.rating,
     notes: record.notes ?? '',
@@ -124,6 +127,7 @@ export function buildCreateQuickTrackInput(
 ): CreateQuickTrackInput {
   return {
     itemName: form.itemName.trim(),
+    locationText: form.locationText.trim() || undefined,
     rating: form.rating,
     itemCategory: form.category || undefined,
     notes: form.notes.trim() || undefined,
@@ -142,6 +146,7 @@ export function buildUpdateQuickTrackInput(
 
   return {
     itemName: form.itemName.trim(),
+    locationText: form.locationText,
     rating: form.rating,
     itemCategory: form.category || null,
     notes: form.notes,

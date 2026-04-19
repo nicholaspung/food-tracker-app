@@ -225,7 +225,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
     return (
       <BackHeaderScreenScaffold
         bodyStyle={styles.body}
-        contentBackgroundTone="muted"
         onRefresh={handleRefresh}
         onBackPress={() => {
           if (navigation.canGoBack()) {
@@ -253,7 +252,6 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
-      contentBackgroundTone="muted"
       onRefresh={handleRefresh}
       onBackPress={() => {
         if (navigation.canGoBack()) {
