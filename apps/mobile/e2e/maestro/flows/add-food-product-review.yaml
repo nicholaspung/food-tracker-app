@@ -4,13 +4,13 @@ appId: com.yummyrecs.mobile
     id: tab-AddVisit
 - assertVisible:
     id: add-visit-selector
-- takeScreenshot: 77-add-tab-quick-track
+- takeScreenshot: 77-add-tab-food-product
 
 - tapOn:
-    id: add-option-quick-track
+    id: add-option-food-product
 - assertVisible:
-    id: quick-track-screen
-- takeScreenshot: 78-quick-track-item
+    id: food-product-screen
+- takeScreenshot: 78-food-product
 
 - scrollUntilVisible:
     element:
@@ -24,39 +24,39 @@ appId: com.yummyrecs.mobile
     commands:
       - tapOn:
           id: rating-legend-toggle
-- takeScreenshot: 79-quick-track-rating-guide
+- takeScreenshot: 79-food-product-rating-guide
 
 - tapOn:
     id: rating-legend-toggle
 - waitForAnimationToEnd:
     timeout: 1200
-- takeScreenshot: 80-quick-track-rating-guide-expanded
+- takeScreenshot: 80-food-product-rating-guide-expanded
 
 - tapOn:
     id: rating-legend-toggle
 - waitForAnimationToEnd:
     timeout: 1200
 - tapOn:
-    id: quick-track-rating-1
+    id: food-product-rating-1
 - assertVisible:
-    id: quick-track-rating-2
-- takeScreenshot: 81-quick-track-rating-1
+    id: food-product-rating-2
+- takeScreenshot: 81-food-product-rating-1
 
 - tapOn:
-    id: quick-track-rating-2
+    id: food-product-rating-2
 - assertVisible:
-    id: quick-track-rating-4
-- takeScreenshot: 82-quick-track-rating-2
+    id: food-product-rating-4
+- takeScreenshot: 82-food-product-rating-2
 
 - tapOn:
-    id: quick-track-rating-4
+    id: food-product-rating-4
 - assertVisible:
-    id: quick-track-rating-5
-- takeScreenshot: 83-quick-track-rating-4
+    id: food-product-rating-5
+- takeScreenshot: 83-food-product-rating-4
 
 - tapOn:
-    id: quick-track-rating-5
-- takeScreenshot: 84-quick-track-rating-5
+    id: food-product-rating-5
+- takeScreenshot: 84-food-product-rating-5
 
 - tapOn: Cancel
 - assertVisible:

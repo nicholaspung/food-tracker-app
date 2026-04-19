@@ -13,7 +13,7 @@ import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { EditQuickTrackScreen } from '../screens/EditQuickTrackScreen';
+import { EditFoodProductScreen } from '../screens/EditFoodProductScreen';
 
 const mockReact = React;
 
@@ -37,11 +37,11 @@ jest.mock('expo-image-picker', () => ({
 jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
-  getQuickTrackById: jest.fn(),
-  listQuickTrackPhotos: jest.fn(),
+  getFoodProductById: jest.fn(),
+  listFoodProductPhotos: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),
   resolveDefaultVisitVisibilityFromAuth: jest.fn(() => 'friends'),
-  updateQuickTrack: jest.fn(),
+  updateFoodProduct: jest.fn(),
   useMonthlyUsage: jest.fn(),
 }));
 
@@ -94,9 +94,9 @@ jest.mock('../components/shared', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoInputField: (props: Record<string, unknown>) => mockReact.createElement('PhotoInputField', props),
   PhotoViewerModal: (props: Record<string, unknown>) => mockReact.createElement('PhotoViewerModal', props),
-  QuickTrackFormFields: (
+  FoodProductFormFields: (
     { photoSection, ...props }: Record<string, unknown> & { photoSection?: React.ReactNode },
-  ) => mockReact.createElement('QuickTrackFormFields', props, photoSection),
+  ) => mockReact.createElement('FoodProductFormFields', props, photoSection),
   Skeleton: (props: Record<string, unknown>) => mockReact.createElement('Skeleton', props),
   UpgradePromptCard: (props: Record<string, unknown>) => mockReact.createElement('UpgradePromptCard', props),
 }));
@@ -129,15 +129,15 @@ function buildQueryResult<T>(input: {
   } as unknown as ReturnType<typeof useQuery>;
 }
 
-describe('EditQuickTrackScreen', () => {
+describe('EditFoodProductScreen', () => {
   beforeEach(() => {
     mockedUseQuery.mockImplementation(({ queryKey }) => {
-      if (Array.isArray(queryKey) && queryKey[1] === 'quickTrack') {
+      if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
         return buildQueryResult({
           data: {
             id: 'quick-track-1',
-            restaurantName: 'Quick Track',
-            itemCategory: 'packaged_food',
+            restaurantName: 'Food Product',
+            itemCategory: 'Packaged food',
             itemName: 'Iced Coffee',
             locationText: 'Mission District',
             rating: 4,
@@ -227,7 +227,7 @@ describe('EditQuickTrackScreen', () => {
 
     await act(async () => {
       renderer = create(
-        <EditQuickTrackScreen
+        <EditFoodProductScreen
           navigation={{
             canGoBack: () => true,
             goBack: jest.fn(),
@@ -235,17 +235,17 @@ describe('EditQuickTrackScreen', () => {
           } as never}
           route={{
             params: {
-              quickTrackId: 'quick-track-1',
+              foodProductId: 'quick-track-1',
             },
           } as never}
         />,
       );
     });
 
-    expect(renderer.root.findByType('QuickTrackFormFields').props.value).toEqual({
+    expect(renderer.root.findByType('FoodProductFormFields').props.value).toEqual({
       itemName: 'Iced Coffee',
       locationText: 'Mission District',
-      category: 'packaged_food',
+      category: 'Packaged food',
       rating: 4,
       notes: 'Smooth and sweet',
       visibility: 'friends',
@@ -270,7 +270,7 @@ describe('EditQuickTrackScreen', () => {
 
     await act(async () => {
       renderer = create(
-        <EditQuickTrackScreen
+        <EditFoodProductScreen
           navigation={{
             canGoBack: () => true,
             goBack: jest.fn(),
@@ -278,7 +278,7 @@ describe('EditQuickTrackScreen', () => {
           } as never}
           route={{
             params: {
-              quickTrackId: 'quick-track-1',
+              foodProductId: 'quick-track-1',
             },
           } as never}
         />,
@@ -296,8 +296,8 @@ describe('EditQuickTrackScreen', () => {
         uri: 'file:///replacement.jpg',
       }),
     ]);
-    expect(renderer.root.findByType('QuickTrackFormFields').props.detectedDateValue).toBe('2026-04-15');
-    expect(renderer.root.findByType('QuickTrackFormFields').props.value.date).toBe('2026-04-15');
+    expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBe('2026-04-15');
+    expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-15');
 
     await act(async () => {
       renderer.root.findByType('PhotoInputField').props.attachments[0].onRemove();
@@ -310,7 +310,7 @@ describe('EditQuickTrackScreen', () => {
         uri: 'pb://photo-1/iced-coffee.jpg?thumb=100x100',
       }),
     ]);
-    expect(renderer.root.findByType('QuickTrackFormFields').props.detectedDateValue).toBeNull();
-    expect(renderer.root.findByType('QuickTrackFormFields').props.value.date).toBe('2026-04-12');
+    expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBeNull();
+    expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-12');
   });
 });

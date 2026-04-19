@@ -480,7 +480,7 @@ export function resolveProgressSteps(
       ? 'Choose Method'
       : processType === 'restaurant'
         ? 'Restaurant Visit'
-        : 'Quick Track';
+        : 'Food Product';
 
   return [{ label: firstLabel }, ...PROGRESS_FLOW_TAIL];
 }

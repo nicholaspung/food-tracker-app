@@ -41,7 +41,7 @@ export interface FoodItemCollectionRecord {
   name: string;
   rating: number;
   description?: string;
-  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | 'restaurant';
+  itemCategory?: string;
   notes?: string;
   visit?: string;
   user: string;

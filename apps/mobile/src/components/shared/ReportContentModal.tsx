@@ -127,7 +127,7 @@ export function ReportContentModal({
     }
   }, [visible]);
 
-  const title = contentType === 'visit' ? 'Report Visit' : 'Report Quick Track';
+  const title = contentType === 'visit' ? 'Report Visit' : 'Report Food Product';
 
   return (
     <Modal

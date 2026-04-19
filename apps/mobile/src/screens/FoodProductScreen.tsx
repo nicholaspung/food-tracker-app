@@ -1,0 +1,1 @@
+export { FoodProductScreen } from './QuickTrackScreen';

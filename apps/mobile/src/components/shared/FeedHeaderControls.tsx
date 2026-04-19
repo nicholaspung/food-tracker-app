@@ -18,7 +18,7 @@ const FEED_MODE_OPTIONS: readonly SegmentedControlOption<FeedModeValue>[] = [
 const TYPE_FILTER_OPTIONS: readonly FilterChipOption<FeedTypeFilterValue>[] = [
   { label: 'All', value: 'all' },
   { label: 'Visits', value: 'visits' },
-  { label: 'Quick Track', value: 'quick-track' },
+  { label: 'Food Products', value: 'quick-track' },
 ];
 
 const SORT_FILTER_OPTIONS: readonly FilterChipOption<HomeFeedSortValue>[] = [

@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 
-import { HomeQuickTrackEntryCard } from '../components/shared/HomeQuickTrackEntryCard';
+import { HomeFoodProductEntryCard } from '../components/shared/HomeFoodProductEntryCard';
 
 const mockReact = React;
 
@@ -49,18 +49,17 @@ jest.mock('../components/shared/StatusPill', () => ({
   StatusPill: (props: Record<string, unknown>) => mockReact.createElement('StatusPill', props),
 }));
 
-describe('HomeQuickTrackEntryCard', () => {
+describe('HomeFoodProductEntryCard', () => {
   it('renders location, notes, and rating metadata when location text exists', async () => {
     let renderer: any = null;
 
     await act(async () => {
       renderer = create(
-        <HomeQuickTrackEntryCard
+        <HomeFoodProductEntryCard
           entryMeta="FRI APR 18"
-          photos={[]}
-          quickTrack={{
+          foodProduct={{
             id: 'quick-track-1',
-            restaurantName: 'Quick Track',
+            restaurantName: 'Food Product',
             itemName: 'Iced Coffee',
             locationText: 'Mission District',
             rating: 4,
@@ -68,6 +67,7 @@ describe('HomeQuickTrackEntryCard', () => {
             createdAt: '2026-04-18T07:00:00.000Z',
             updatedAt: '2026-04-18T07:00:00.000Z',
           }}
+          photos={[]}
         />,
       );
     });
@@ -94,17 +94,17 @@ describe('HomeQuickTrackEntryCard', () => {
 
     await act(async () => {
       renderer = create(
-        <HomeQuickTrackEntryCard
+        <HomeFoodProductEntryCard
           entryMeta="FRI APR 18"
-          photos={[]}
-          quickTrack={{
+          foodProduct={{
             id: 'quick-track-2',
-            restaurantName: 'Quick Track',
+            restaurantName: 'Food Product',
             itemName: 'Tea',
             rating: 3,
             createdAt: '2026-04-18T07:00:00.000Z',
             updatedAt: '2026-04-18T07:00:00.000Z',
           }}
+          photos={[]}
         />,
       );
     });

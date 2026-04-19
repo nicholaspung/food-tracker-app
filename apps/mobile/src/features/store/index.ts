@@ -1,5 +1,6 @@
 export * from './featureStore';
 export * from './feedbackQuery';
+export * from './foodProductsQuery';
 export * from './friendsQuery';
 export * from './homeFeedQuery';
 export * from './homeFeedPagination';

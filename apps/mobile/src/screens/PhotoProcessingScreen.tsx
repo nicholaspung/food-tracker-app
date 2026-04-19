@@ -19,7 +19,7 @@ import {
   LoadingState,
   PageErrorToast,
   PhotoSourceActionCards,
-  QuickTrackFormFields,
+  FoodProductFormFields,
   RatingLegend,
   RatingSelector,
   ScreenHeader,
@@ -302,7 +302,6 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(
     resolveDefaultQuickTrackVisibility(),
   );
-  const [isQuickTrackCategoryExpanded, setIsQuickTrackCategoryExpanded] = useState(false);
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [menuItemMode, setMenuItemMode] = useState<MenuItemMode>('existing');
   const [newMenuItemName, setNewMenuItemName] = useState('');
@@ -471,18 +470,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     }
   }, [currentPhoto?.id, processType, step]);
 
-  useEffect(() => {
-    if (step !== 'process' || processType !== 'quickTrack') {
-      setIsQuickTrackCategoryExpanded(false);
-      return;
-    }
-
-    setIsQuickTrackCategoryExpanded(false);
-  }, [currentPhoto?.id, processType, step]);
-
   const resetFlowSelectionState = useCallback(() => {
     resetRestaurantSelectionFlow();
-    setIsQuickTrackCategoryExpanded(false);
     setMenuItemSearchQuery('');
     setMenuItemMode('existing');
     setNewMenuItemName('');
@@ -1189,8 +1178,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
               <IconActionCard
                 description={
                   isNoteDrivenFlow
-                    ? 'Quickly rate any item without a restaurant'
-                    : 'Rate each photo as an individual item'
+                    ? 'Rate a grocery, convenience-store, or market item'
+                    : 'Rate each photo as a food product'
                 }
                 disabled={isPreparingNotePhotos}
                 iconBackground={theme.colors.fill.success}
@@ -1204,7 +1193,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     }
 
                     setErrorMessage(null);
-                    navigation.navigate('QuickTrack', {
+                    navigation.navigate('FoodProduct', {
                       returnToPrevious: true,
                       sourceNoteId,
                     });
@@ -1213,8 +1202,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
                   beginStandardProcessFlow('quickTrack');
                 }}
-                testID={isNoteDrivenFlow ? 'note-use-choice-quick-track' : undefined}
-                title={isNoteDrivenFlow ? 'Quick Track Item' : 'Quick Track Items'}
+                testID={isNoteDrivenFlow ? 'note-use-choice-food-product' : undefined}
+                title={isNoteDrivenFlow ? 'Food Product' : 'Food Products'}
                 trailing={<Ionicons color={theme.colors.text.muted} name="chevron-forward" size={20} />}
               />
 
@@ -1425,7 +1414,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           variant: 'secondary',
         }}
         subtitle={`Photo ${currentPhotoIndex + 1} of ${photos.length}`}
-        title={processType === 'restaurant' ? 'Process Saved Photos' : 'Quick Track Item'}
+        title={processType === 'restaurant' ? 'Process Saved Photos' : 'Food Product'}
       >
         <PageErrorToast
           actionLabel={errorActionLabel}
@@ -1742,10 +1731,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           </>
         ) : (
           <>
-            <QuickTrackFormFields
+            <FoodProductFormFields
               detectedDateValue={detectedDateValue}
-              isCategoryExpanded={isQuickTrackCategoryExpanded}
-              onCategoryExpandedChange={setIsQuickTrackCategoryExpanded}
               onChange={updateCurrentQuickTrackForm}
               value={
                 currentQuickTrackForm ??
@@ -1794,7 +1781,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
             ? `${restaurantReviewGroups.length} visit${restaurantReviewGroups.length === 1 ? '' : 's'} • ${photos.length} item${photos.length === 1 ? '' : 's'}`
             : `${quickTrackReviewEntries.length} item${quickTrackReviewEntries.length === 1 ? '' : 's'} ready to save`
         }
-        title={processType === 'restaurant' ? 'Review Your Visits' : 'Review Quick Track Items'}
+        title={processType === 'restaurant' ? 'Review Your Visits' : 'Review Food Products'}
       >
         {linkedNoteCard}
         <PhotoProcessingReviewStep

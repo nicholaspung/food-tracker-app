@@ -40,10 +40,10 @@ export interface VisitRecord {
   updatedAt: string;
 }
 
-export interface QuickTrackRecord {
+export interface FoodProductRecord {
   id: string;
   restaurantName: string;
-  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | 'restaurant';
+  itemCategory?: string;
   itemName: string;
   locationText?: string;
   rating: number;
@@ -57,6 +57,8 @@ export interface QuickTrackRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export type QuickTrackRecord = FoodProductRecord;
 
 export interface PhotoDraftAsset {
   id: string;

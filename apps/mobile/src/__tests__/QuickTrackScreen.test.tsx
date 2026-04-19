@@ -8,7 +8,7 @@ import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFe
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
-import { QuickTrackScreen } from '../screens/QuickTrackScreen';
+import { FoodProductScreen } from '../screens/FoodProductScreen';
 
 const mockReact = React;
 
@@ -38,7 +38,7 @@ jest.mock('expo-image-picker', () => ({
 }));
 
 jest.mock('../features', () => ({
-  createQuickTrack: jest.fn(),
+  createFoodProduct: jest.fn(),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
   getNoteById: jest.fn(),
   markNoteUsed: jest.fn(),
@@ -100,9 +100,9 @@ jest.mock('../components/shared', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoInputField: (props: Record<string, unknown>) => mockReact.createElement('PhotoInputField', props),
   PhotoViewerModal: (props: Record<string, unknown>) => mockReact.createElement('PhotoViewerModal', props),
-  QuickTrackFormFields: (
+  FoodProductFormFields: (
     { photoSection, ...props }: Record<string, unknown> & { photoSection?: React.ReactNode },
-  ) => mockReact.createElement('QuickTrackFormFields', props, photoSection),
+  ) => mockReact.createElement('FoodProductFormFields', props, photoSection),
   UpgradePromptCard: (props: Record<string, unknown>) => mockReact.createElement('UpgradePromptCard', props),
 }));
 
@@ -128,7 +128,7 @@ function buildQueryResult<T>(data: T) {
   } as unknown as ReturnType<typeof useQuery>;
 }
 
-describe('QuickTrackScreen', () => {
+describe('FoodProductScreen', () => {
   let invalidateQueries: jest.Mock;
   let writeFeature: jest.Mock;
 
@@ -183,7 +183,7 @@ describe('QuickTrackScreen', () => {
 
     await act(async () => {
       renderer = create(
-        <QuickTrackScreen
+        <FoodProductScreen
           navigation={{
             canGoBack: () => true,
             goBack: jest.fn(),
@@ -196,7 +196,7 @@ describe('QuickTrackScreen', () => {
       );
     });
 
-    expect(renderer.root.findByType('QuickTrackFormFields').props.value.locationText).toBe('');
+    expect(renderer.root.findByType('FoodProductFormFields').props.value.locationText).toBe('');
   });
 
   it('passes typed location text into the queued quick-track create payload', async () => {
@@ -205,7 +205,7 @@ describe('QuickTrackScreen', () => {
 
     await act(async () => {
       renderer = create(
-        <QuickTrackScreen
+        <FoodProductScreen
           navigation={{
             canGoBack: () => true,
             goBack: jest.fn(),
@@ -219,7 +219,7 @@ describe('QuickTrackScreen', () => {
     });
 
     await act(async () => {
-      renderer.root.findByType('QuickTrackFormFields').props.onChange({
+      renderer.root.findByType('FoodProductFormFields').props.onChange({
         itemName: 'Iced Coffee',
         locationText: 'Mission District',
       });
@@ -242,7 +242,7 @@ describe('QuickTrackScreen', () => {
         }),
       },
     });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'quickTracks'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'foodProducts'] });
     expect(navigate).toHaveBeenCalledWith('Home');
   });
 });

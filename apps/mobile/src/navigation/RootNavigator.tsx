@@ -30,8 +30,8 @@ import {
   CreateVisitAddMenuItemScreen,
   CreateVisitEditMenuItemScreen,
   CreateVisitScreen,
+  EditFoodProductScreen,
   EditRestaurantListScreen,
-  EditQuickTrackScreen,
   CreateFeedbackScreen,
   AddFriendScreen,
   EditVisitScreen,
@@ -51,7 +51,7 @@ import {
   PrivacyPolicyScreen,
   ProfileScreen,
   QRScannerScreen,
-  QuickTrackScreen,
+  FoodProductScreen,
   ResetPasswordScreen,
   SettingsScreen,
   SignUpScreen,
@@ -136,13 +136,13 @@ export type RootStackParamList = {
     initialVisibility?: 'private' | 'friends' | 'public';
   };
   EditVisit: { visitId: string };
-  QuickTrack:
+  FoodProduct:
     | {
         sourceNoteId?: string;
         returnToPrevious?: boolean;
       }
     | undefined;
-  EditQuickTrack: { quickTrackId: string };
+  EditFoodProduct: { foodProductId: string };
   ProcessPhotos:
     | {
         mode?: 'menu_scan' | 'general';
@@ -216,8 +216,8 @@ const ROUTES_WITH_TABS: (keyof RootStackParamList)[] = [
   'CreateVisitAddMenuItem',
   'CreateVisitEditMenuItem',
   'EditVisit',
-  'QuickTrack',
-  'EditQuickTrack',
+  'FoodProduct',
+  'EditFoodProduct',
   'ProcessPhotos',
   'Friends',
   'AddFriend',
@@ -420,10 +420,10 @@ export function RootNavigator() {
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen component={EditVisitScreen} name="EditVisit" options={{ headerShown: false }} />
-                <Stack.Screen component={QuickTrackScreen} name="QuickTrack" options={{ headerShown: false }} />
+                <Stack.Screen component={FoodProductScreen} name="FoodProduct" options={{ headerShown: false }} />
                 <Stack.Screen
-                  component={EditQuickTrackScreen}
-                  name="EditQuickTrack"
+                  component={EditFoodProductScreen}
+                  name="EditFoodProduct"
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen

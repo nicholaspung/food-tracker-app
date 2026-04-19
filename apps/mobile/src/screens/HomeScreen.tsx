@@ -10,7 +10,7 @@ import {
   EmptyState,
   FeedHeaderControls,
   HomeFeedVisitEntryCard,
-  HomeQuickTrackEntryCard,
+  HomeFoodProductEntryCard,
   Skeleton,
   TabRootScreenScaffold,
   type FeedModeValue,
@@ -541,8 +541,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     const visitLabel = feedMode === 'friends' ? ['friend visit', 'friend visits'] : ['visit', 'visits'];
     const quickTrackLabel =
       feedMode === 'friends'
-        ? ['friend quick item', 'friend quick items']
-        : ['quick item', 'quick items'];
+        ? ['friend food product', 'friend food products']
+        : ['food product', 'food products'];
 
     if (typeFilter === 'visits') {
       return totalVisitCount === 0
@@ -555,8 +555,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     if (typeFilter === 'quick-track') {
       return totalQuickTrackCount === 0
         ? feedMode === 'friends'
-          ? 'No friend quick items yet'
-          : 'No quick items yet'
+          ? 'No friend food products yet'
+          : 'No food products yet'
         : formatCount(totalQuickTrackCount, quickTrackLabel[0], quickTrackLabel[1]);
     }
 
@@ -838,11 +838,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
 
       return (
-        <HomeQuickTrackEntryCard
+        <HomeFoodProductEntryCard
           entryMeta={footerLabel}
           friendName={feedItem.isFriend ? feedItem.friendName : undefined}
           key={feedItem.id}
-          moreActionsAccessibilityLabel="Quick track actions"
+          moreActionsAccessibilityLabel="Food product actions"
           onDelete={
             !feedItem.isFriend
               ? () => {
@@ -856,8 +856,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           onEdit={
             !feedItem.isFriend
               ? () => {
-                  navigation.navigate('EditQuickTrack', {
-                    quickTrackId: quickTrack.id,
+                  navigation.navigate('EditFoodProduct', {
+                    foodProductId: quickTrack.id,
                   });
                 }
               : undefined
@@ -876,7 +876,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
           onSharePhoto={handleSharePhoto}
           photos={quickTrackPhotos}
-          quickTrack={quickTrack}
+          foodProduct={quickTrack}
           showUnderReviewBadge={
             !feedItem.isFriend && quickTrack.moderationStatus === 'under_review'
           }
@@ -1018,7 +1018,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle} variant="bodyLgBold">No friend activity yet</Text>
             <Text style={styles.infoDescription} variant="bodyLgCompact">
-              Add friends to see their ratings and quick track items here.
+              Add friends to see their ratings and food products here.
             </Text>
             <View style={styles.infoActionRow}>
               <Pressable
@@ -1038,7 +1038,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         {showMineEmptyState ? (
           <EmptyState
             actionLabel="Create your first entry"
-            description="Start with Add Visit or Quick Track."
+            description="Start with Add Visit or Food Product."
             fill
             onAction={() => {
               navigation.navigate('AddVisit');

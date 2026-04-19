@@ -747,7 +747,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       >
         <Card tone="info">
           <Text tone="secondary" variant="bodyMd">
-            <Text variant="label">Tip:</Text> Keep each note focused on one visit or quick-track item so it is easy to
+            <Text variant="label">Tip:</Text> Keep each note focused on one visit or food product so it is easy to
             reuse later.
           </Text>
         </Card>

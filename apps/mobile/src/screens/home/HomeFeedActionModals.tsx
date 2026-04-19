@@ -51,7 +51,7 @@ export function HomeFeedActionModals({
           controller.pendingReportMenuTarget?.itemName?.trim()
             ? `Choose an action for "${controller.pendingReportMenuTarget.itemName.trim()}".`
             : controller.pendingReportMenuTarget?.kind === 'quick-track'
-              ? 'Choose an action for this quick track.'
+              ? 'Choose an action for this food product.'
               : 'Choose an action for this visit.'
         }
         onRequestClose={controller.closeReportMenu}
@@ -64,7 +64,7 @@ export function HomeFeedActionModals({
         testID="home-feed-actions-modal"
         title={
           controller.pendingReportMenuTarget?.kind === 'quick-track'
-            ? 'Quick Track Actions'
+            ? 'Food Product Actions'
             : 'Visit Actions'
         }
         visible={controller.pendingReportMenuTarget !== null}
@@ -73,7 +73,7 @@ export function HomeFeedActionModals({
           <OptionListRow
             accessibilityLabel={
               controller.pendingReportMenuTarget?.kind === 'quick-track'
-                ? 'Report quick track'
+                ? 'Report food product'
                 : 'Report visit'
             }
             iconColor={theme.colors.text.danger}
@@ -83,7 +83,7 @@ export function HomeFeedActionModals({
             testID="home-feed-actions-modal-report-button"
             title={
               controller.pendingReportMenuTarget?.kind === 'quick-track'
-                ? 'Report Quick Track'
+                ? 'Report Food Product'
                 : 'Report Visit'
             }
             titleStyle={styles.reportActionTitle}
@@ -95,7 +95,7 @@ export function HomeFeedActionModals({
           controller.pendingReportTarget?.itemName?.trim() ||
           (controller.pendingReportTarget?.kind === 'visit'
             ? 'Visit'
-            : 'Quick Track')
+            : 'Food Product')
         }
         contentType={controller.pendingReportTarget?.kind ?? 'visit'}
         errorMessage={controller.reportErrorMessage}
@@ -116,12 +116,12 @@ export function HomeFeedActionModals({
         cancelLabel={
           controller.pendingDeleteTarget?.kind === 'visit'
             ? 'Keep Visit'
-            : 'Keep Quick Track'
+            : 'Keep Food Product'
         }
         confirmLabel={
           controller.pendingDeleteTarget?.kind === 'visit'
             ? 'Delete Visit'
-            : 'Delete Quick Track'
+            : 'Delete Food Product'
         }
         confirmLoadingLabel="Deleting..."
         description={
@@ -130,8 +130,8 @@ export function HomeFeedActionModals({
               ? `Delete your visit for "${controller.pendingDeleteTarget.itemName}"? This removes the visit and all associated items/photos.`
               : 'Delete this visit? This removes the visit and all associated items/photos.'
             : controller.pendingDeleteTarget?.itemName?.trim()
-              ? `Delete "${controller.pendingDeleteTarget.itemName}"? This will permanently remove the quick-track item.`
-              : 'Delete this quick track? This will permanently remove the quick-track item.'
+              ? `Delete "${controller.pendingDeleteTarget.itemName}"? This will permanently remove the food product.`
+              : 'Delete this food product? This will permanently remove the food product.'
         }
         disabled={!controller.pendingDeleteTarget}
         loading={controller.isDeletingTarget}
@@ -142,12 +142,12 @@ export function HomeFeedActionModals({
         testID={
           controller.pendingDeleteTarget?.kind === 'visit'
             ? 'home-delete-visit-confirmation-modal'
-            : 'home-delete-quick-track-confirmation-modal'
+            : 'home-delete-food-product-confirmation-modal'
         }
         title={
           controller.pendingDeleteTarget?.kind === 'visit'
             ? 'Delete Visit?'
-            : 'Delete Quick Track?'
+            : 'Delete Food Product?'
         }
         visible={controller.pendingDeleteTarget !== null}
       >

@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import {
   HomeFeedVisitEntryCard,
-  HomeQuickTrackEntryCard,
+  HomeFoodProductEntryCard,
   PageErrorToast,
   PhotoViewerModal,
   UpgradePromptCard,
@@ -147,12 +147,12 @@ export function PhotoProcessingReviewStep({
         </>
       ) : (
         reviewQuickTrackCards.map((entry) => (
-          <HomeQuickTrackEntryCard
+          <HomeFoodProductEntryCard
             entryMeta={entry.entryMeta}
             key={entry.id}
             onOpenPhotoViewer={openReviewPhotoViewer}
+            foodProduct={entry.quickTrack}
             photos={entry.photos}
-            quickTrack={entry.quickTrack}
           />
         ))
       )}

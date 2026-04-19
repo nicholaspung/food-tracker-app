@@ -100,7 +100,7 @@ export function useHomeFeedActionController({
 
       if (deleteResult.status === 'queued') {
         await invalidateHomeFeed();
-        showQueuedOfflineAlert('Quick track delete');
+        showQueuedOfflineAlert('Food product delete');
         return;
       }
 
@@ -182,7 +182,7 @@ export function useHomeFeedActionController({
           ? error.message
           : pendingDeleteTarget.kind === 'visit'
             ? 'Could not delete visit.'
-            : 'Could not delete quick track.';
+            : 'Could not delete food product.';
       setDeleteErrorMessage(message);
     } finally {
       setIsDeletingTarget(false);

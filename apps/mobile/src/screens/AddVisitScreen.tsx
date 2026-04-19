@@ -9,7 +9,7 @@ import { trackObservabilityEvent } from '../observability';
 import { createThemedStyles, useTheme } from '../theme';
 
 type AddVisitScreenProps = NativeStackScreenProps<RootStackParamList, 'AddVisit'>;
-type AddOptionId = 'restaurant-visit' | 'quick-track' | 'log-note' | 'process-photos' | 'manage-notes';
+type AddOptionId = 'restaurant-visit' | 'food-product' | 'log-note' | 'process-photos' | 'manage-notes';
 
 interface AddOptionConfig {
   id: AddOptionId;
@@ -59,9 +59,9 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       iconColor: optionColors.iconOnColor,
     },
     {
-      id: 'quick-track',
-      title: 'Quick Track Item',
-      description: 'Quickly rate any item without a restaurant',
+      id: 'food-product',
+      title: 'Track Food Product',
+      description: 'Rate a grocery, convenience-store, or market item',
       icon: 'flash-outline',
       iconBackground: optionColors.quickTrack,
       iconColor: optionColors.iconOnColor,
@@ -99,9 +99,9 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       return;
     }
 
-    if (optionId === 'quick-track') {
-      trackObservabilityEvent('Quick Track Started', { source: 'AddVisitScreen' });
-      navigation.navigate('QuickTrack');
+    if (optionId === 'food-product') {
+      trackObservabilityEvent('Food Product Started', { source: 'AddVisitScreen' });
+      navigation.navigate('FoodProduct');
       return;
     }
 

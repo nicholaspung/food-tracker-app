@@ -38,9 +38,9 @@ interface ActionItem {
 
 const TIPS: TipItem[] = [
   {
-    title: 'Quick Track for Fast Logging',
+    title: 'Food Products for Fast Logging',
     description:
-      'Use Quick Track when you just want to save a dish without creating a full visit entry. Add notes or a photo if you want extra context.',
+      'Use Food Product when you want to save a grocery, convenience-store, or market item without creating a full restaurant visit. Add notes or a photo if you want extra context.',
   },
   {
     title: 'Photo Processing Magic',
@@ -50,7 +50,7 @@ const TIPS: TipItem[] = [
   {
     title: 'Save Notes for Later',
     description:
-      'Use Notes to jot down food ideas, places, or recipes. When you are ready, tap "Use Note" to convert it into a visit or quick track entry.',
+      'Use Notes to jot down food ideas, places, or recipes. When you are ready, tap "Use Note" to convert it into a visit or food product entry.',
   },
   {
     title: 'Share with Friends',

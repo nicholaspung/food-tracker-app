@@ -16,7 +16,7 @@ Available named flows:
 - `bills-review`: More tab bills/tips screens, bill filters, create bill, bill detail, and edit bill
 - `friends-review`: More-to-Friends tab handoff, friend sub-tabs, my code, add friend, and QR scanner
 - `add-visit-review`: Add tab restaurant-visit flow, menu-scan/manual-item entry, ratings, save/edit/delete-confirm states, and home feed toggles
-- `add-quick-track-review`: Add tab quick-track flow, rating guide states, and quick rating selections
+- `add-food-product-review`: Add tab food-product flow, rating guide states, and quick rating selections
 - `notes-review`: Add tab notes entry, notes list filters, edit, and delete-confirm states
 - `sign-out-review`: profile logout handoff back to onboarding
 
@@ -74,7 +74,7 @@ If you run `pnpm mobile:screenshots` in an interactive terminal, it will prompt 
 - `bills-review`
 - `friends-review`
 - `add-visit-review`
-- `add-quick-track-review`
+- `add-food-product-review`
 - `notes-review`
 - `sign-out-review`
 
@@ -89,10 +89,10 @@ pnpm mobile:screenshots --env production -- lists-review
 pnpm mobile:screenshots --env production -- bills-review
 pnpm mobile:screenshots --env beta -- friends-review
 pnpm mobile:screenshots --env beta -- add-visit-review
-pnpm mobile:screenshots --env beta -- add-quick-track-review
+pnpm mobile:screenshots --env beta -- add-food-product-review
 pnpm mobile:screenshots --env beta -- notes-review
 pnpm mobile:screenshots --env local -- sign-out-review
-pnpm mobile:screenshots --env beta -- sign-in-review profile-review lists-review bills-review friends-review add-visit-review add-quick-track-review notes-review sign-out-review
+pnpm mobile:screenshots --env beta -- sign-in-review profile-review lists-review bills-review friends-review add-visit-review add-food-product-review notes-review sign-out-review
 pnpm mobile:screenshots --env local -- all
 ```
 
@@ -106,7 +106,7 @@ Flow aliases:
 - `bills-review` -> `apps/mobile/e2e/maestro/flows/bills-review.yaml`
 - `friends-review` -> `apps/mobile/e2e/maestro/flows/friends-review.yaml`
 - `add-visit-review` -> `apps/mobile/e2e/maestro/flows/add-visit-review.yaml`
-- `add-quick-track-review` -> `apps/mobile/e2e/maestro/flows/add-quick-track-review.yaml`
+- `add-food-product-review` -> `apps/mobile/e2e/maestro/flows/add-food-product-review.yaml`
 - `notes-review` -> `apps/mobile/e2e/maestro/flows/notes-review.yaml`
 - `sign-out-review` -> `apps/mobile/e2e/maestro/flows/sign-out-review.yaml`
 
@@ -118,11 +118,11 @@ Flow aliases:
 
 `friends-review` assumes the app is already back on the More tab after `bills-review`, and `pnpm mobile:screenshots -- all` runs it after the bills flow.
 
-`add-visit-review` assumes the app is already on Friends after `friends-review`. It is intended to run immediately after `friends-review`, and it ends on Home so `add-quick-track-review` can continue cleanly.
+`add-visit-review` assumes the app is already on Friends after `friends-review`. It is intended to run immediately after `friends-review`, and it ends on Home so `add-food-product-review` can continue cleanly.
 
-`add-quick-track-review` assumes the app is already on Home after `add-visit-review`. It is intended to run immediately after `add-visit-review`, and it returns to the Add tab so `notes-review` can continue cleanly.
+`add-food-product-review` assumes the app is already on Home after `add-visit-review`. It is intended to run immediately after `add-visit-review`, and it returns to the Add tab so `notes-review` can continue cleanly.
 
-`notes-review` assumes the app is already on the Add tab after `add-quick-track-review`. It is intended to run immediately after `add-quick-track-review`, and it returns to Friends so `sign-out-review` can continue cleanly.
+`notes-review` assumes the app is already on the Add tab after `add-food-product-review`. It is intended to run immediately after `add-food-product-review`, and it returns to Friends so `sign-out-review` can continue cleanly.
 
 `sign-out-review` assumes the app is already back on Friends. It is intended to run immediately after `notes-review`, and `pnpm mobile:screenshots -- all` runs it after the notes flow.
 
@@ -262,16 +262,16 @@ Flow aliases:
 - `75-home-friends`
 - `76-home-mine`
 
-`add-quick-track-review` captures:
+`add-food-product-review` captures:
 
-- `77-add-tab-quick-track`
-- `78-quick-track-item`
-- `79-quick-track-rating-guide`
-- `80-quick-track-rating-guide-expanded`
-- `81-quick-track-rating-1`
-- `82-quick-track-rating-2`
-- `83-quick-track-rating-4`
-- `84-quick-track-rating-5`
+- `77-add-tab-food-product`
+- `78-food-product`
+- `79-food-product-rating-guide`
+- `80-food-product-rating-guide-expanded`
+- `81-food-product-rating-1`
+- `82-food-product-rating-2`
+- `83-food-product-rating-4`
+- `84-food-product-rating-5`
 
 `notes-review` captures:
 

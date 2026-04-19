@@ -52,7 +52,7 @@ export function usePhotoProcessingReviewData({
         id: `review-quick-track-${entry.photo.id}-${index}`,
         quickTrack: {
           id: entry.photo.id,
-          restaurantName: 'Quick Track',
+          restaurantName: 'Food Product',
           itemCategory: entry.form.category || undefined,
           itemName: entry.form.itemName.trim(),
           locationText: entry.form.locationText.trim() || undefined,

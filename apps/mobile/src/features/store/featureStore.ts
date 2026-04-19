@@ -35,11 +35,11 @@ export interface UpdateVisitInput {
   visibility?: 'friends' | 'private';
 }
 
-export interface CreateQuickTrackInput {
+export interface CreateFoodProductInput {
   itemName: string;
   locationText?: string;
   rating: number;
-  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other';
+  itemCategory?: string;
   notes?: string;
   visibility?: 'friends' | 'private';
   itemDate?: string;
@@ -47,17 +47,20 @@ export interface CreateQuickTrackInput {
   sourceNoteId?: string;
 }
 
-export interface UpdateQuickTrackInput {
+export interface UpdateFoodProductInput {
   itemName?: string;
   locationText?: string;
   rating?: number;
-  itemCategory?: 'convenience_store' | 'packaged_food' | 'homemade' | 'recipe' | 'other' | null;
+  itemCategory?: string | null;
   notes?: string;
   visibility?: 'friends' | 'private';
   itemDate?: string;
   newPhoto?: VisitPhotoUploadInput;
   deletePhotoIds?: string[];
 }
+
+export type CreateQuickTrackInput = CreateFoodProductInput;
+export type UpdateQuickTrackInput = UpdateFoodProductInput;
 
 export interface CreateRestaurantListInput {
   name: string;
@@ -477,12 +480,18 @@ export {
   reportContent,
 } from './accountStore';
 export {
+  createFoodProduct,
   createQuickTrack,
+  deleteFoodProduct,
   deleteQuickTrack,
+  getFoodProductById,
   getQuickTrackById,
+  listFoodProductCategorySuggestions,
+  listFoodProductPhotos,
   listQuickTrackPhotos,
+  updateFoodProduct,
   updateQuickTrack,
-} from './quickTracksStore';
+} from './foodProductsStore';
 export {
   listMenuItemsForRestaurant,
   listRecentRestaurants,

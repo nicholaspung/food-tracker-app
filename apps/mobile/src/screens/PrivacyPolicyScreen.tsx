@@ -9,7 +9,7 @@ const PRIVACY_SECTIONS = [
   {
     title: 'Information We Collect',
     body:
-      'We collect information you provide directly, including account details like your email address, display name, login credentials, and profile preferences, plus the content you create in the service such as ratings, notes, visit history, quick tracks, restaurant lists, feedback messages, friend connections, invitations, photos you choose to upload, manual location text you add to supported content such as notes and quick tracks, and restaurant search text or typed search locations you submit while using restaurant search features.',
+      'We collect information you provide directly, including account details like your email address, display name, login credentials, and profile preferences, plus the content you create in the service such as ratings, notes, visit history, food products, restaurant lists, feedback messages, friend connections, invitations, photos you choose to upload, manual location text you add to supported content such as notes and food products, and restaurant search text or typed search locations you submit while using restaurant search features.',
   },
   {
     title: 'Device Data and Permissions',

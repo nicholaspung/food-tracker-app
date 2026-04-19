@@ -11,11 +11,11 @@ import {
   PageErrorToast,
   PhotoInputField,
   PhotoViewerModal,
-  QuickTrackFormFields,
+  FoodProductFormFields,
   UpgradePromptCard,
 } from '../components/shared';
 import {
-  createQuickTrack,
+  createFoodProduct,
   formatLimitExceededMessage,
   getNoteById,
   markNoteUsed,
@@ -24,6 +24,7 @@ import {
   useMonthlyUsage,
   type VisitPhotoUploadInput,
 } from '../features';
+import { foodProductsQueryKeys } from '../features/store/foodProductsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
@@ -34,11 +35,11 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import {
-  buildCreateQuickTrackInput,
-  buildDefaultQuickTrackForm,
-  validateQuickTrackForm,
-  type QuickTrackFormValues,
-} from '../lib/quickTrackForm';
+  buildCreateFoodProductInput,
+  buildDefaultFoodProductForm,
+  validateFoodProductForm,
+  type FoodProductFormValues,
+} from '../lib/foodProductForm';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -46,9 +47,10 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
 
-type QuickTrackScreenProps = NativeStackScreenProps<RootStackParamList, 'QuickTrack'>;
+type FoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'FoodProduct'>;
 
-const QUICK_TRACK_RATED_BEFORE_KEY = 'ui.quickTrack.hasRatedBefore';
+const FOOD_PRODUCT_RATED_BEFORE_KEY = 'ui.foodProduct.hasRatedBefore';
+const LEGACY_QUICK_TRACK_RATED_BEFORE_KEY = 'ui.quickTrack.hasRatedBefore';
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 type PhotoSource = 'camera' | 'gallery';
@@ -65,11 +67,11 @@ const useStyles = createThemedStyles((theme) => ({
 
 function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUploadInput | null {
   return buildLocalPhotoFile(asset, {
-    fallbackPrefix: 'quick-track',
+    fallbackPrefix: 'food-product',
   });
 }
 
-export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
+export function FoodProductScreen({ navigation, route }: FoodProductScreenProps) {
   const styles = useStyles();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
@@ -103,12 +105,11 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   });
   const returnToPrevious = route.params?.returnToPrevious === true;
 
-  const [form, setForm] = useState<QuickTrackFormValues>(() => buildDefaultQuickTrackForm());
+  const [form, setForm] = useState<FoodProductFormValues>(() => buildDefaultFoodProductForm());
   const [detectedItemDateValue, setDetectedItemDateValue] = useState<string | null>(null);
   const [photo, setPhoto] = useState<VisitPhotoUploadInput | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
-  const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [didApplyNotePrefill, setDidApplyNotePrefill] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -128,9 +129,12 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
 
     const loadRatedBefore = async () => {
       try {
-        const storedValue = await AsyncStorage.getItem(QUICK_TRACK_RATED_BEFORE_KEY);
+        const [foodProductValue, quickTrackValue] = await Promise.all([
+          AsyncStorage.getItem(FOOD_PRODUCT_RATED_BEFORE_KEY),
+          AsyncStorage.getItem(LEGACY_QUICK_TRACK_RATED_BEFORE_KEY),
+        ]);
         if (isMounted) {
-          setHasRatedBefore(storedValue === '1');
+          setHasRatedBefore(foodProductValue === '1' || quickTrackValue === '1');
         }
       } catch {
         // Ignore storage read errors and keep the default collapsed state.
@@ -197,7 +201,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
           photoSource: 'gallery',
           restoredPendingResult: true,
-          source: 'QuickTrackScreen',
+          source: 'FoodProductScreen',
         });
       } catch (error) {
         trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
@@ -205,7 +209,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           errorType: error instanceof Error ? error.name : 'unknown_error',
           photoSource: 'gallery',
           restoredPendingResult: true,
-          source: 'QuickTrackScreen',
+          source: 'FoodProductScreen',
         });
       }
     };
@@ -219,20 +223,20 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
   const handlePhotoPick = async (source: PhotoSource) => {
     trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_STARTED', {
       photoSource: source,
-      source: 'QuickTrackScreen',
+      source: 'FoodProductScreen',
     });
     setErrorMessage(null);
     resetPhotoPermissionNeedsSettings();
 
     if (shouldEnforceUsageLimitsClientSide && isDisplayFreeUser && estimatedFreePhotoRemaining === 0) {
-      trackObservabilityEvent('USAGE_LIMIT_REACHED', {
-        enforcement: 'client_estimate',
-        limit: FREE_MONTHLY_PHOTO_LIMIT,
-        metric: 'photo_uploads',
-        remaining: estimatedFreePhotoRemaining,
-        source: 'QuickTrackScreen',
-        used: monthlyUsage.snapshot?.usage.photoUploads ?? null,
-      });
+        trackObservabilityEvent('USAGE_LIMIT_REACHED', {
+          enforcement: 'client_estimate',
+          limit: FREE_MONTHLY_PHOTO_LIMIT,
+          metric: 'photo_uploads',
+          remaining: estimatedFreePhotoRemaining,
+          source: 'FoodProductScreen',
+          used: monthlyUsage.snapshot?.usage.photoUploads ?? null,
+        });
       setErrorMessage('Free users can upload up to 5 photos per month.');
       return;
     }
@@ -243,7 +247,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
           canAskAgain: permission.canAskAgain,
           photoSource: source,
-          source: 'QuickTrackScreen',
+          source: 'FoodProductScreen',
         });
         setErrorMessage(permission.message);
         return;
@@ -280,7 +284,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       if (pickerResult.canceled) {
         trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_CANCELED', {
           photoSource: source,
-          source: 'QuickTrackScreen',
+          source: 'FoodProductScreen',
         });
         return;
       }
@@ -297,7 +301,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       setPhoto(nextPhoto);
       trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
         photoSource: source,
-        source: 'QuickTrackScreen',
+        source: 'FoodProductScreen',
       });
       resetPhotoPermissionNeedsSettings();
     } catch (error) {
@@ -305,14 +309,14 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         errorMessage: error instanceof Error ? error.message : String(error),
         errorType: error instanceof Error ? error.name : 'unknown_error',
         photoSource: source,
-        source: 'QuickTrackScreen',
+        source: 'FoodProductScreen',
       });
       setErrorMessage(error instanceof Error ? error.message : 'Could not select a photo.');
     }
   };
 
   const handleCreate = async () => {
-    const validationMessage = validateQuickTrackForm(form);
+    const validationMessage = validateFoodProductForm(form);
     if (validationMessage) {
       setErrorMessage(validationMessage);
       return;
@@ -330,7 +334,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           limit: FREE_MONTHLY_PHOTO_LIMIT,
           metric: 'photo_uploads',
           remaining,
-          source: 'QuickTrackScreen',
+          source: 'FoodProductScreen',
           used: monthlyUsage.snapshot.usage.photoUploads,
         });
         setErrorMessage(
@@ -345,7 +349,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
 
     try {
       const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
-      const quickTrackInput = buildCreateQuickTrackInput(form, {
+      const foodProductInput = buildCreateFoodProductInput(form, {
         photo: photo ?? undefined,
         sourceNoteId,
       });
@@ -354,9 +358,9 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         operationName: 'quick-track.create',
         offline: {
           strategy: 'outbox',
-          payload: quickTrackInput,
+          payload: foodProductInput,
         },
-        execute: () => createQuickTrack(quickTrackInput),
+        execute: () => createFoodProduct(foodProductInput),
       });
 
       if (createResult.status === 'queued') {
@@ -383,14 +387,22 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           });
         }
 
-        await queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] });
-        showQueuedOfflineAlert('Quick track');
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
+          queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
+        ]);
+        showQueuedOfflineAlert('Food product');
         navigation.navigate('Home');
         return;
       }
 
       const invalidations: Promise<unknown>[] = [
+        queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
       ];
@@ -408,7 +420,10 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       }
 
       await Promise.all(invalidations);
-      await AsyncStorage.setItem(QUICK_TRACK_RATED_BEFORE_KEY, '1');
+      await Promise.all([
+        AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1'),
+        AsyncStorage.setItem(LEGACY_QUICK_TRACK_RATED_BEFORE_KEY, '1'),
+      ]);
       navigation.navigate('Home');
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -419,7 +434,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           metric: limitPayload.metric,
           monthKey: limitPayload.monthKey,
           remaining: limitPayload.remaining,
-          source: 'QuickTrackScreen',
+          source: 'FoodProductScreen',
           used: limitPayload.used,
           userTier: limitPayload.userTier ?? null,
         });
@@ -428,7 +443,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         ? formatLimitExceededMessage(limitPayload)
         : error instanceof Error
           ? error.message
-          : 'Could not save quick track.';
+          : 'Could not save food product.';
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
@@ -473,7 +488,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
       keyboardAware
       onBackPress={handleCancel}
       primaryAction={{
-        label: 'Save Item',
+        label: 'Save Product',
         disabled: isSubmitting || !form.itemName.trim(),
         loading: isSubmitting,
         onPress: () => {
@@ -485,12 +500,12 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
         disabled: isSubmitting,
         onPress: handleCancel,
       }}
-      subtitle="Quickly rate any item without a restaurant."
-      testID="quick-track-screen"
-      title="Quick Track Item"
+      subtitle="Rate a grocery, convenience-store, or market item."
+      testID="food-product-screen"
+      title="Food Product"
     >
       <View style={styles.body}>
-        <PageErrorToast errorMessage={errorMessage} title="Quick track failed" />
+        <PageErrorToast errorMessage={errorMessage} title="Food product failed" />
 
         {!isOnline && isDisplayFreeUser ? (
           <Card style={styles.sectionCard} tone="muted">
@@ -532,10 +547,8 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
           />
         ) : null}
 
-        <QuickTrackFormFields
+        <FoodProductFormFields
           detectedDateValue={detectedItemDateValue}
-          isCategoryExpanded={isCategoryExpanded}
-          onCategoryExpandedChange={setIsCategoryExpanded}
           onChange={(updates) => {
             setForm((currentForm) => ({
               ...currentForm,
@@ -572,7 +585,7 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
             />
           }
           ratingLegendInitiallyExpanded={!hasRatedBefore}
-          ratingTestIDPrefix="quick-track-rating"
+          ratingTestIDPrefix="food-product-rating"
           value={form}
         />
       </View>
@@ -586,3 +599,5 @@ export function QuickTrackScreen({ navigation, route }: QuickTrackScreenProps) {
     </FeatureFormScreenScaffold>
   );
 }
+
+export const QuickTrackScreen = FoodProductScreen;

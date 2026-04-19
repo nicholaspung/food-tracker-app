@@ -285,7 +285,7 @@ export function usePhotoProcessingSubmission({
     for (const [index, photo] of photos.entries()) {
       const form = quickTrackForms[photo.id];
       if (!form) {
-        throw new Error(`Photo ${index + 1} is missing quick track details.`);
+        throw new Error(`Photo ${index + 1} is missing food product details.`);
       }
 
       const validationMessage = validateQuickTrackForm(form);
@@ -372,6 +372,7 @@ export function usePhotoProcessingSubmission({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'foodProducts'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({

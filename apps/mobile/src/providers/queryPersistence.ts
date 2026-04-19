@@ -58,6 +58,7 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
     case 'homeFeed':
       return isPaginatedHomeFeedQueryKey(queryKey);
     case 'visits':
+    case 'foodProducts':
     case 'quickTracks':
     case 'bills':
       return queryKey.length === 2;
