@@ -89,45 +89,56 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
   typeof useOfflineAwareFeatureWrite
 >;
 
+function buildNotesQueryResult(
+  items: Record<string, unknown>[],
+) {
+  const draftCount = items.filter((item) => item.status === 'draft').length;
+  const usedCount = items.filter((item) => item.status === 'used').length;
+
+  return {
+    data: {
+      pages: [
+        {
+          items,
+          summary: {
+            allCount: items.length,
+            draftCount,
+            usedCount,
+          },
+          page: 1,
+          pageSize: 20,
+          totalItems: items.length,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+      pageParams: [1],
+    },
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    isSuccess: true,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: jest.fn(),
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useInfiniteQuery>;
+}
+
 describe('NotesScreen', () => {
   beforeEach(() => {
-    mockedUseInfiniteQuery.mockReturnValue({
-      data: {
-        pages: [
-          {
-            items: [
-              {
-                id: 'note_1',
-                title: 'Note 1',
-                content: 'Test note',
-                status: 'draft',
-                createdAt: '2026-03-01T00:00:00.000Z',
-                updatedAt: '2026-03-02T00:00:00.000Z',
-              },
-            ],
-            summary: {
-              allCount: 1,
-              draftCount: 1,
-              usedCount: 0,
-            },
-            page: 1,
-            pageSize: 20,
-            totalItems: 1,
-            totalPages: 1,
-            hasNextPage: false,
-          },
-        ],
-        pageParams: [1],
-      },
-      isError: false,
-      isFetching: false,
-      isLoading: false,
-      isSuccess: true,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: jest.fn(),
-      refetch: jest.fn(),
-    } as unknown as ReturnType<typeof useInfiniteQuery>);
+    mockedUseInfiniteQuery.mockReturnValue(
+      buildNotesQueryResult([
+        {
+          id: 'note_1',
+          title: 'Note 1',
+          content: 'Test note',
+          status: 'draft',
+          createdAt: '2026-03-01T00:00:00.000Z',
+          updatedAt: '2026-03-02T00:00:00.000Z',
+        },
+      ]),
+    );
     mockedUseQueryClient.mockReturnValue({
       fetchQuery: jest.fn(),
       invalidateQueries: jest.fn(),
@@ -165,5 +176,44 @@ describe('NotesScreen', () => {
     });
 
     expect(findBannerNodes()).toHaveLength(0);
+  });
+
+  it('renders used note cards with the default white card tone', async () => {
+    let renderer: any = null;
+
+    mockedUseInfiniteQuery.mockReturnValue(
+      buildNotesQueryResult([
+        {
+          id: 'used_note_1',
+          title: 'Used Note 1',
+          content: 'Previously used note',
+          status: 'used',
+          createdAt: '2026-03-01T00:00:00.000Z',
+          updatedAt: '2026-03-02T00:00:00.000Z',
+        },
+      ]),
+    );
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer?.root.findByType('MockSegmentedControl').props.onChange('used');
+    });
+
+    const cardTones = renderer?.root
+      .findAll((node: any) => node.type === 'Card')
+      .map((node: any) => node.props.tone);
+
+    expect(cardTones).toContain('default');
+    expect(cardTones).not.toContain('muted');
   });
 });

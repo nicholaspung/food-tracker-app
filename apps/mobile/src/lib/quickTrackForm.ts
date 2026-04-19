@@ -1,6 +1,8 @@
 import {
+  type QuickTrackRecord,
   resolveDefaultVisitVisibilityFromAuth,
   type CreateQuickTrackInput,
+  type UpdateQuickTrackInput,
   type VisitPhotoUploadInput,
 } from '../features';
 import {
@@ -41,8 +43,34 @@ interface BuildCreateQuickTrackInputOptions {
   sourceNoteId?: string;
 }
 
+interface BuildUpdateQuickTrackInputOptions {
+  newPhoto?: VisitPhotoUploadInput;
+  deletePhotoIds?: string[];
+}
+
 export function resolveDefaultQuickTrackVisibility(): QuickTrackVisibility {
   return resolveDefaultVisitVisibilityFromAuth();
+}
+
+function normalizeQuickTrackDate(value: string | undefined): string {
+  if (!value) {
+    return getTodayLocalDateString();
+  }
+
+  const normalizedValue = value.includes(' ') ? value.replace(' ', 'T') : value;
+  const parsedDate = new Date(normalizedValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return getTodayLocalDateString();
+  }
+
+  return formatDateToLocalDateString(parsedDate);
+}
+
+function normalizeQuickTrackCategory(
+  value: QuickTrackRecord['itemCategory'] | '' | null | undefined,
+): QuickTrackCategory | '' {
+  return QUICK_TRACK_CATEGORIES.some((category) => category.value === value) ? (value as QuickTrackCategory) : '';
 }
 
 export function buildDefaultQuickTrackForm({
@@ -60,6 +88,17 @@ export function buildDefaultQuickTrackForm({
       detectedDateValue ??
       (captureDate ? formatDateToLocalDateString(captureDate) : null) ??
       getTodayLocalDateString(),
+  };
+}
+
+export function buildQuickTrackFormFromRecord(record: QuickTrackRecord): QuickTrackFormValues {
+  return {
+    itemName: record.itemName,
+    category: normalizeQuickTrackCategory(record.itemCategory),
+    rating: record.rating,
+    notes: record.notes ?? '',
+    visibility: record.visibility ?? resolveDefaultQuickTrackVisibility(),
+    date: normalizeQuickTrackDate(record.itemDate),
   };
 }
 
@@ -92,5 +131,23 @@ export function buildCreateQuickTrackInput(
     itemDate: localDateStringToUTC(form.date),
     photo,
     sourceNoteId,
+  };
+}
+
+export function buildUpdateQuickTrackInput(
+  form: QuickTrackFormValues,
+  { newPhoto, deletePhotoIds }: BuildUpdateQuickTrackInputOptions = {},
+): UpdateQuickTrackInput {
+  const normalizedDeletePhotoIds = deletePhotoIds?.filter((photoId) => photoId.trim().length > 0) ?? [];
+
+  return {
+    itemName: form.itemName.trim(),
+    rating: form.rating,
+    itemCategory: form.category || null,
+    notes: form.notes,
+    visibility: form.visibility,
+    itemDate: localDateStringToUTC(form.date),
+    newPhoto,
+    deletePhotoIds: normalizedDeletePhotoIds.length > 0 ? normalizedDeletePhotoIds : undefined,
   };
 }

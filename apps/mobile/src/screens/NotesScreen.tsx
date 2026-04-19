@@ -468,7 +468,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                 : null;
 
               return (
-                <Card key={note.id} tone={note.status === 'used' ? 'muted' : 'info'}>
+                <Card key={note.id} tone={note.status === 'used' ? 'default' : 'info'}>
                   <View style={styles.noteTopRow}>
                     <View style={styles.noteMeta}>
                       <Ionicons color={theme.colors.text.muted} name="document-text-outline" size={14} />

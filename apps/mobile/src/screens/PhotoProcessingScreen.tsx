@@ -65,6 +65,7 @@ import { MenuScanPhotoProcessingScreen } from './MenuScanPhotoProcessingScreen';
 import { PhotoProcessingReviewStep } from './photoProcessing/PhotoProcessingReviewStep';
 import {
   buildDefaultRestaurantForm,
+  collapseRestaurantOptionsToSelection,
   formatCoordinatesForDisplay,
   FREE_MONTHLY_PHOTO_LIMIT,
   FREE_MONTHLY_PHOTO_WARNING_THRESHOLD,
@@ -619,6 +620,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     menuItemSearchQuery,
     selectedMenuItem,
   ]);
+  const shouldShowMenuItemSearch = menuItemMode === 'existing' && !selectedMenuItem;
 
   const selectedRestaurant = useMemo(() => {
     const selectedRestaurantId = currentRestaurantForm?.restaurantId;
@@ -640,6 +642,15 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     currentRestaurantForm?.restaurantName,
     loadedRestaurantRecords,
   ]);
+  const collapsedRestaurantOptions = useMemo(
+    () =>
+      collapseRestaurantOptionsToSelection({
+        savedRestaurants: displayedSavedRestaurants,
+        searchRestaurants: displayedNearbyRestaurants,
+        selectedRestaurant,
+      }),
+    [displayedNearbyRestaurants, displayedSavedRestaurants, selectedRestaurant],
+  );
 
   const matchingMenuItemByName = useMemo(() => {
     const normalizedName = normalizeSelectionLabel(newMenuItemName);
@@ -759,7 +770,31 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     }
   };
 
+  const clearSelectedRestaurant = () => {
+    updateCurrentRestaurantForm({
+      restaurantId: '',
+      restaurantName: '',
+      menuItemId: '',
+      menuItemName: '',
+      rating: 3,
+      description: '',
+      notes: '',
+    });
+    setMenuItemSearchQuery('');
+    setNewMenuItemName('');
+    setMenuItemMode('existing');
+    setIsEditingMenuItemInline(false);
+    setEditingMenuItemName('');
+    setErrorMessage(null);
+    clearSearchErrorMessage();
+  };
+
   const handleSelectRestaurant = (restaurant: RestaurantRecord) => {
+    if (currentRestaurantForm?.restaurantId === restaurant.id) {
+      clearSelectedRestaurant();
+      return;
+    }
+
     const isChangingRestaurant =
       Boolean(currentRestaurantForm?.restaurantId) && currentRestaurantForm?.restaurantId !== restaurant.id;
 
@@ -1475,24 +1510,24 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     : 'Monthly food place search limit reached in preview mode. Admin access is still allowed.'
                   : null
               }
-              savedOptions={displayedSavedRestaurants.map((restaurant) =>
+              savedOptions={collapsedRestaurantOptions.savedRestaurants.map((restaurant) =>
                 buildRestaurantSearchOption(restaurant, 'saved'),
               )}
               savedEmptyDescription={savedEmptyDescription}
               savedEmptyTitle={savedEmptyTitle}
               savedResultsErrorMessage={savedRestaurantsErrorMessage}
               savedResultsLoading={savedRestaurantsLoading}
-              savedResultsTitle={savedRestaurantsTitle}
+              savedResultsTitle={selectedRestaurant ? 'Selected restaurant' : savedRestaurantsTitle}
               searchButtonDisabled={searchButtonDisabled}
               searchButtonLabel={isSearchExpanded ? expandedSearchLabel : compactSearchLabel}
               searchButtonLoading={isSearchingRestaurants}
               searchErrorMessage={searchErrorMessage}
               searchInputsMode={isSearchExpanded ? 'full' : 'compact'}
               searchQuery={restaurantSearchQuery}
-              searchResultsOptions={displayedNearbyRestaurants.map((restaurant) =>
+              searchResultsOptions={collapsedRestaurantOptions.searchRestaurants.map((restaurant) =>
                 buildRestaurantSearchOption(restaurant, 'search'),
               )}
-              selectedRestaurantName={selectedRestaurant?.name ?? null}
+              searchResultsTitle={selectedRestaurant ? 'Selected restaurant' : undefined}
               showSearchResults={showNearbyPlaces}
               upgradePromptDescription={
                 shouldShowPlacesUpgradePrompt
@@ -1529,13 +1564,15 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
                 {menuItemMode === 'existing' ? (
                   <>
-                    <Input
-                      autoCapitalize="words"
-                      containerStyle={styles.menuSearchInput}
-                      onChangeText={setMenuItemSearchQuery}
-                      placeholder="Search menu items..."
-                      value={menuItemSearchQuery}
-                    />
+                    {shouldShowMenuItemSearch ? (
+                      <Input
+                        autoCapitalize="words"
+                        containerStyle={styles.menuSearchInput}
+                        onChangeText={setMenuItemSearchQuery}
+                        placeholder="Search menu items..."
+                        value={menuItemSearchQuery}
+                      />
+                    ) : null}
                     {menuItemsQuery.isLoading ? <LoadingState label="Loading menu items..." /> : null}
                     {menuItemsQuery.isError ? <Text tone="danger">Could not load menu items.</Text> : null}
                     {!menuItemsQuery.isLoading && !menuItemsQuery.isError ? (
@@ -1561,6 +1598,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                             return (
                               <View key={menuItem.id} style={styles.listSection}>
                                 <VisitMenuItemOptionRow
+                                  compactActions={isSelectedUserCreated}
                                   description={menuItem.description}
                                   name={menuItem.name}
                                   onEditPress={

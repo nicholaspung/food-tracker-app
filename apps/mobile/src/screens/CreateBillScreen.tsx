@@ -404,7 +404,6 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     selectedFriendIds,
     shouldShowFriendSearch,
     totalAcceptedFriends,
-    toggleFriend,
     visibleFriends,
     setFriendSearchQuery,
     setIsPayerDropdownOpen,
@@ -416,15 +415,18 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     currentUserName,
     editBillId,
     isEditMode,
-    onToggleFriend: ({ friend, nextSelectedFriendIds, wasSelected }) => {
-      trackObservabilityEvent('CREATE_BILL_FRIEND_TOGGLED', {
-        source: 'CreateBillScreen',
-        friendId: friend.id,
-        selected: !wasSelected,
-        selectedFriendCount: nextSelectedFriendIds.length,
-      });
-    },
   });
+  const acceptedFriendById = useMemo(
+    () => new Map(acceptedFriends.map((friend) => [friend.id, friend])),
+    [acceptedFriends],
+  );
+  const selectedFriends = useMemo(
+    () =>
+      selectedFriendIds
+        .map((friendId) => acceptedFriendById.get(friendId))
+        .filter((friend): friend is FriendRecord => Boolean(friend)),
+    [acceptedFriendById, selectedFriendIds],
+  );
 
   const billNumericInputProps = {
     showInlineKeyboardDismissButton: false,
@@ -1965,17 +1967,47 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         isLoading={friendsQuery.isLoading}
         normalizedFriendSearchQuery={normalizedFriendSearchQuery}
         selectedFriendIds={selectedFriendIds}
+        selectedFriends={selectedFriends}
         shouldShowFriendSearch={shouldShowFriendSearch}
         totalAcceptedFriends={totalAcceptedFriends}
         visibleFriends={visibleFriends}
         onChangeFriendSearchQuery={setFriendSearchQuery}
+        onConfirmSelection={(nextSelectedFriendIds) => {
+          if (areStringArraysEqual(selectedFriendIds, nextSelectedFriendIds)) {
+            return;
+          }
+
+          const previousSelectedFriendIds = new Set(selectedFriendIds);
+          const nextSelectedFriendIdSet = new Set(nextSelectedFriendIds);
+          const changedFriendIds = Array.from(
+            new Set([
+              ...selectedFriendIds.filter((friendId) => !nextSelectedFriendIdSet.has(friendId)),
+              ...nextSelectedFriendIds.filter((friendId) => !previousSelectedFriendIds.has(friendId)),
+            ]),
+          );
+
+          changedFriendIds.forEach((friendId) => {
+            const friend = acceptedFriendById.get(friendId);
+            if (!friend) {
+              return;
+            }
+
+            trackObservabilityEvent('CREATE_BILL_FRIEND_TOGGLED', {
+              source: 'CreateBillScreen',
+              friendId: friend.id,
+              selected: nextSelectedFriendIdSet.has(friendId),
+              selectedFriendCount: nextSelectedFriendIds.length,
+            });
+          });
+
+          setSelectedFriendIds(nextSelectedFriendIds);
+        }}
         onLoadMore={() => {
           void friendsQuery.fetchNextPage();
         }}
         onRetry={() => {
           void friendsQuery.refetch();
         }}
-        onToggleFriend={toggleFriend}
         showLoadMore={visibleFriends.length > 0 && Boolean(friendsQuery.hasNextPage)}
       />
 

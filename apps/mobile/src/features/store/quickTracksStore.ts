@@ -3,9 +3,11 @@ import type { QuickTrackRecord } from '../models';
 import type {
   CreateQuickTrackInput,
   UpdateQuickTrackInput,
+  VisitPhotoRecord,
 } from './featureStore';
 import { markNoteUsed } from './notesStore';
 import {
+  buildOrFilter,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
@@ -15,6 +17,7 @@ import {
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
+import { listCollectionRecords } from './pocketbaseGateway';
 import type {
   FoodItemCollectionRecord,
 } from './pocketbaseRecordTypes';
@@ -24,6 +27,18 @@ export type {
   CreateQuickTrackInput,
   UpdateQuickTrackInput,
 } from './featureStore';
+
+interface ReadRequestOptions {
+  signal?: AbortSignal;
+}
+
+interface VisitPhotoCollectionRecord {
+  id: string;
+  food_item?: string;
+  user?: string;
+  photo: string;
+  created: string;
+}
 
 function mapQuickTrackCollectionRecord(record: FoodItemCollectionRecord): QuickTrackRecord {
   return {
@@ -40,6 +55,17 @@ function mapQuickTrackCollectionRecord(record: FoodItemCollectionRecord): QuickT
     itemDate: record.itemDate,
     createdAt: record.created,
     updatedAt: record.updated,
+  };
+}
+
+function mapVisitPhotoCollectionRecord(record: VisitPhotoCollectionRecord): VisitPhotoRecord {
+  return {
+    id: record.id,
+    food_item: record.food_item?.trim() || undefined,
+    user: record.user?.trim() || undefined,
+    photo: record.photo.trim(),
+    collectionName: 'visit_photos',
+    created: record.created,
   };
 }
 
@@ -66,6 +92,26 @@ export async function getQuickTrackById(
     }
     throw error;
   }
+}
+
+export async function listQuickTrackPhotos(
+  quickTrackId: string,
+  options?: ReadRequestOptions,
+): Promise<VisitPhotoRecord[]> {
+  const trimmedQuickTrackId = quickTrackId.trim();
+  if (!pb.authStore.record?.id || !trimmedQuickTrackId) {
+    return [];
+  }
+
+  const records = await listCollectionRecords<VisitPhotoCollectionRecord>('visit_photos', {
+    fields: 'id,food_item,user,photo,created',
+    filter: buildOrFilter('food_item', [trimmedQuickTrackId]),
+    pageSize: 100,
+    signal: options?.signal,
+    sort: '-created',
+  });
+
+  return records.map(mapVisitPhotoCollectionRecord);
 }
 
 export async function createQuickTrack(input: CreateQuickTrackInput): Promise<QuickTrackRecord> {
@@ -185,6 +231,28 @@ export async function updateQuickTrack(
               expand: 'user,visit,visit.restaurant',
             });
 
+      if (updates.newPhoto) {
+        const currentUserId = getAuthenticatedUserId();
+        await uploadVisitPhotos(undefined, quickTrackId, currentUserId, [updates.newPhoto]);
+      }
+
+      const deletePhotoIds = Array.from(
+        new Set(
+          (updates.deletePhotoIds ?? [])
+            .map((photoId) => photoId.trim())
+            .filter((photoId) => photoId.length > 0),
+        ),
+      );
+      for (const photoId of deletePhotoIds) {
+        try {
+          await pb.collection('visit_photos').delete(photoId);
+        } catch (error) {
+          if (!isNotFoundError(error)) {
+            throw error;
+          }
+        }
+      }
+
       return mapQuickTrackCollectionRecord(updatedRecord);
     },
     {
@@ -193,6 +261,8 @@ export async function updateQuickTrack(
       hasNotesUpdate: updates.notes !== undefined,
       hasVisibilityUpdate: updates.visibility !== undefined,
       hasItemDateUpdate: updates.itemDate !== undefined,
+      hasNewPhoto: Boolean(updates.newPhoto),
+      deletePhotoCount: updates.deletePhotoIds?.length ?? 0,
       clearsLegacyLocationData: true,
     },
   );

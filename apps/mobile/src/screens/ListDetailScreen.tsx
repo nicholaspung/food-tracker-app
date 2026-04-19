@@ -252,8 +252,20 @@ const useStyles = createThemedStyles((theme) => ({
     flexWrap: 'wrap',
     gap: theme.spacing.xxs,
   },
+  locationPrimaryMeta: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: theme.spacing.xxs,
+    minWidth: 0,
+  },
   locationText: {
     color: theme.colors.text.secondary,
+    ...theme.typography.bodyMd,
+  },
+  locationPrimaryText: {
+    color: theme.colors.text.secondary,
+    flexShrink: 1,
     ...theme.typography.bodyMd,
   },
   section: {
@@ -1390,8 +1402,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           />
         ) : (
           groupedRestaurants.map((group, groupIndex) => {
-            const locationLabel =
-              [group.restaurantCity, group.restaurantCuisineType].filter(Boolean).join(' • ') || 'Location not set';
+            const primaryMetaLabel =
+              group.restaurantCity || group.restaurantCuisineType || 'Location not set';
+            const secondaryMetaLabel =
+              group.restaurantCity && group.restaurantCuisineType
+                ? group.restaurantCuisineType
+                : null;
             const ownerDisplayItems = isOwner ? buildOwnerDisplayItems(group.items) : [];
 
             return (
@@ -1436,8 +1452,17 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                 </View>
 
                 <View style={styles.locationRow}>
-                  <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />
-                  <Text style={styles.locationText}>{locationLabel}</Text>
+                  <View style={styles.locationPrimaryMeta}>
+                    <Ionicons
+                      color={theme.colors.text.muted}
+                      name="location-outline"
+                      size={14}
+                    />
+                    <Text style={styles.locationPrimaryText}>{primaryMetaLabel}</Text>
+                  </View>
+                  {secondaryMetaLabel ? (
+                    <Text style={styles.locationText}>{`• ${secondaryMetaLabel}`}</Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.section}>

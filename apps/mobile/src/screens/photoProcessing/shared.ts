@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeFeedPhotoRecord } from '../../components/shared';
 import type {
   QuickTrackRecord,
+  RestaurantRecord,
   VisitRecord,
   VisitPhotoUploadInput,
 } from '../../features';
@@ -15,6 +16,7 @@ import {
   getTodayLocalDateString,
   resolveDateValue,
 } from '../../lib/dateFormatting';
+import type { VisitRestaurantWithDistance } from '../../lib/visitRestaurantSearch';
 import type { QuickTrackFormValues } from '../../lib/quickTrackForm';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -74,11 +76,6 @@ const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
-const reviewEntryTimeFormatter = new Intl.DateTimeFormat('en-US', {
-  hour: 'numeric',
-  minute: '2-digit',
-});
-
 export interface ReviewVisitCardData {
   id: string;
   visit: VisitRecord;
@@ -114,23 +111,11 @@ function formatReviewEntryDateLabel(value: string, fallbackDate: string): string
   return reviewEntryDateFormatter.format(date);
 }
 
-function formatReviewEntryTimeLabel(value: string): string | undefined {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return undefined;
-  }
-
-  return reviewEntryTimeFormatter.format(date);
-}
-
 export function formatReviewEntryFooterLabel(
   value: string,
   fallbackDate: string,
 ): string {
-  const dateLabel = formatReviewEntryDateLabel(value, fallbackDate);
-  const timeLabel = formatReviewEntryTimeLabel(value);
-
-  return timeLabel ? `${dateLabel} • ${timeLabel}` : dateLabel;
+  return formatReviewEntryDateLabel(value, fallbackDate);
 }
 
 export function buildRestaurantReviewGroups(
@@ -177,6 +162,39 @@ export function buildQuickTrackReviewEntries(
       return { photo, form };
     })
     .filter((entry): entry is QuickTrackReviewEntry => Boolean(entry));
+}
+
+export function collapseRestaurantOptionsToSelection({
+  savedRestaurants,
+  searchRestaurants,
+  selectedRestaurant,
+}: {
+  savedRestaurants: VisitRestaurantWithDistance[];
+  searchRestaurants: VisitRestaurantWithDistance[];
+  selectedRestaurant: RestaurantRecord | null;
+}): {
+  savedRestaurants: VisitRestaurantWithDistance[];
+  searchRestaurants: VisitRestaurantWithDistance[];
+} {
+  if (!selectedRestaurant) {
+    return {
+      savedRestaurants,
+      searchRestaurants,
+    };
+  }
+
+  const selectedEntry =
+    savedRestaurants.find(({ restaurant }) => restaurant.id === selectedRestaurant.id) ??
+    searchRestaurants.find(({ restaurant }) => restaurant.id === selectedRestaurant.id) ??
+    {
+      restaurant: selectedRestaurant,
+      distance: null,
+    };
+
+  return {
+    savedRestaurants: [selectedEntry],
+    searchRestaurants: [selectedEntry],
+  };
 }
 
 function parseCsvFirstColumn(line: string): string {

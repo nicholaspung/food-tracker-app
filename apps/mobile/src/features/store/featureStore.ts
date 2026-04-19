@@ -53,6 +53,8 @@ export interface UpdateQuickTrackInput {
   notes?: string;
   visibility?: 'friends' | 'private';
   itemDate?: string;
+  newPhoto?: VisitPhotoUploadInput;
+  deletePhotoIds?: string[];
 }
 
 export interface CreateRestaurantListInput {
@@ -475,6 +477,7 @@ export {
   createQuickTrack,
   deleteQuickTrack,
   getQuickTrackById,
+  listQuickTrackPhotos,
   updateQuickTrack,
 } from './quickTracksStore';
 export {

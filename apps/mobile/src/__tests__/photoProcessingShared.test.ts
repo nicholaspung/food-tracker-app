@@ -1,66 +1,147 @@
-import { buildDefaultQuickTrackForm } from '../lib/quickTrackForm';
+import { formatLocalDateLabel } from '../lib/dateFormatting';
 import {
-  buildDefaultRestaurantForm,
-  resolveDraftPhotoDetectedDateValue,
-  type DraftPhotoAsset,
+  collapseRestaurantOptionsToSelection,
+  formatReviewEntryFooterLabel,
 } from '../screens/photoProcessing/shared';
 
-function buildDraftPhotoAsset(
-  overrides: Partial<DraftPhotoAsset> = {},
-): DraftPhotoAsset {
-  return {
-    id: 'photo-1',
-    uri: 'file:///tmp/photo-1.jpg',
-    name: 'photo-1.jpg',
-    mimeType: 'image/jpeg',
-    captureDate: null,
-    captureCoordinates: null,
-    metadataDate: null,
-    ...overrides,
-  };
-}
+const reviewEntryDateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
 
-describe('resolveDraftPhotoDetectedDateValue', () => {
-  it('prefers captureDate over metadataDate', () => {
-    const photo = buildDraftPhotoAsset({
-      captureDate: new Date('2026-04-10T12:00:00.000Z'),
-      metadataDate: '2026-04-08 15:00:00.000Z',
-    });
+describe('formatReviewEntryFooterLabel', () => {
+  it('returns a date-only label for valid timestamps', () => {
+    const value = '2026-02-19T10:42:36.123Z';
+    const expected = reviewEntryDateFormatter.format(new Date(value));
 
-    expect(resolveDraftPhotoDetectedDateValue(photo)).toBe('2026-04-10');
+    const result = formatReviewEntryFooterLabel(value, '2026-02-19');
+
+    expect(result).toBe(expected);
+    expect(result).not.toContain('•');
   });
 
-  it('falls back to metadataDate when captureDate is null', () => {
-    const photo = buildDraftPhotoAsset({
-      metadataDate: '2026-04-08 15:00:00.000Z',
-    });
+  it('falls back to the provided local date label when the timestamp is invalid', () => {
+    const fallbackDate = '2026-02-19';
 
-    expect(resolveDraftPhotoDetectedDateValue(photo)).toBe('2026-04-08');
-  });
-
-  it('returns null when captureDate and metadataDate are unusable', () => {
-    const photo = buildDraftPhotoAsset({
-      metadataDate: 'invalid-date-value',
-    });
-
-    expect(resolveDraftPhotoDetectedDateValue(photo)).toBeNull();
+    expect(formatReviewEntryFooterLabel('invalid-date-value', fallbackDate)).toBe(
+      formatLocalDateLabel(fallbackDate),
+    );
   });
 });
 
-describe('photo-processing default forms', () => {
-  it('uses the detected metadata fallback date for restaurant forms', () => {
-    const photo = buildDraftPhotoAsset({
-      metadataDate: '2026-04-08 15:00:00.000Z',
+describe('collapseRestaurantOptionsToSelection', () => {
+  it('returns the original arrays when no restaurant is selected', () => {
+    const savedRestaurants = [
+      {
+        restaurant: {
+          id: 'restaurant_1',
+          name: 'Pasta Place',
+        },
+        distance: null,
+      },
+    ];
+    const searchRestaurants = [
+      {
+        restaurant: {
+          id: 'restaurant_2',
+          name: 'Sushi Spot',
+        },
+        distance: 0.8,
+      },
+    ];
+
+    const result = collapseRestaurantOptionsToSelection({
+      savedRestaurants,
+      searchRestaurants,
+      selectedRestaurant: null,
     });
 
-    expect(buildDefaultRestaurantForm(photo, undefined).date).toBe('2026-04-08');
+    expect(result.savedRestaurants).toBe(savedRestaurants);
+    expect(result.searchRestaurants).toBe(searchRestaurants);
   });
 
-  it('honors detectedDateValue for quick-track forms', () => {
-    expect(
-      buildDefaultQuickTrackForm({
-        detectedDateValue: '2026-04-08',
-      }).date,
-    ).toBe('2026-04-08');
+  it('collapses both arrays to the selected restaurant entry', () => {
+    const savedRestaurants = [
+      {
+        restaurant: {
+          id: 'restaurant_1',
+          name: 'Pasta Place',
+        },
+        distance: null,
+      },
+    ];
+    const selectedSearchEntry = {
+      restaurant: {
+        id: 'restaurant_2',
+        name: 'Sushi Spot',
+      },
+      distance: 0.8,
+    };
+    const searchRestaurants = [
+      selectedSearchEntry,
+      {
+        restaurant: {
+          id: 'restaurant_3',
+          name: 'Burger Barn',
+        },
+        distance: 1.2,
+      },
+    ];
+
+    const result = collapseRestaurantOptionsToSelection({
+      savedRestaurants,
+      searchRestaurants,
+      selectedRestaurant: selectedSearchEntry.restaurant,
+    });
+
+    expect(result.savedRestaurants).toEqual([selectedSearchEntry]);
+    expect(result.searchRestaurants).toEqual([selectedSearchEntry]);
+    expect(result.savedRestaurants).toHaveLength(1);
+    expect(result.searchRestaurants).toHaveLength(1);
+  });
+
+  it('renders a fallback selected restaurant when it is missing from current arrays', () => {
+    const savedRestaurants = [
+      {
+        restaurant: {
+          id: 'restaurant_1',
+          name: 'Pasta Place',
+        },
+        distance: null,
+      },
+    ];
+    const searchRestaurants = [
+      {
+        restaurant: {
+          id: 'restaurant_2',
+          name: 'Sushi Spot',
+        },
+        distance: 0.8,
+      },
+    ];
+    const selectedRestaurant = {
+      id: 'restaurant_missing',
+      name: 'Hidden Cafe',
+    };
+
+    const result = collapseRestaurantOptionsToSelection({
+      savedRestaurants,
+      searchRestaurants,
+      selectedRestaurant,
+    });
+
+    expect(result.savedRestaurants).toEqual([
+      {
+        restaurant: selectedRestaurant,
+        distance: null,
+      },
+    ]);
+    expect(result.searchRestaurants).toEqual([
+      {
+        restaurant: selectedRestaurant,
+        distance: null,
+      },
+    ]);
   });
 });

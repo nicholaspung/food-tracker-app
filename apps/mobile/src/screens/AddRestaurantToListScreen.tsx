@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Image, Pressable, Switch, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
@@ -35,6 +35,7 @@ import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
+import { filterVisibleRestaurantFoodItems } from './addRestaurantToList/shared';
 
 type AddRestaurantToListScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -113,6 +114,29 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.spacing.xs,
+  },
+  duplicateToggleRow: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.background.surface,
+    borderColor: theme.colors.border.subtle,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  duplicateToggleTextWrap: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+    paddingRight: theme.spacing.sm,
+  },
+  duplicateToggleTitle: {
+    color: theme.colors.text.primary,
+  },
+  duplicateToggleSubtitle: {
+    color: theme.colors.text.secondary,
   },
   foodItemRow: {
     backgroundColor: theme.colors.background.surface,
@@ -270,6 +294,7 @@ export function AddRestaurantToListScreen({
     string | null
   >(null);
   const [selectedFoodItemIds, setSelectedFoodItemIds] = useState<string[]>([]);
+  const [hideDuplicateRatings, setHideDuplicateRatings] = useState(false);
   const [note, setNote] = useState("");
   const [noteDirty, setNoteDirty] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -366,6 +391,16 @@ export function AddRestaurantToListScreen({
     [selectedFoodItemIds, selectedRestaurantExistingFoodItemIds],
   );
 
+  const visibleSelectedRestaurantFoodItems = useMemo(
+    () =>
+      filterVisibleRestaurantFoodItems({
+        foodItems: selectedRestaurant?.foodItems ?? [],
+        selectedFoodItemIds,
+        hideDuplicateRatings,
+      }),
+    [hideDuplicateRatings, selectedFoodItemIds, selectedRestaurant?.foodItems],
+  );
+
   const groupedFoodItems = useMemo<GroupedFoodItemsByDate[]>(() => {
     if (!selectedRestaurant) {
       return [];
@@ -373,7 +408,7 @@ export function AddRestaurantToListScreen({
 
     const groups = new Map<string, GroupedFoodItemsByDate>();
 
-    for (const item of selectedRestaurant.foodItems) {
+    for (const item of visibleSelectedRestaurantFoodItems) {
       const dayKey = toDayKey(item.visitedAt);
       const existingGroup = groups.get(dayKey);
       if (existingGroup) {
@@ -402,7 +437,7 @@ export function AddRestaurantToListScreen({
           return left.name.localeCompare(right.name);
         }),
       }));
-  }, [selectedRestaurant]);
+  }, [selectedRestaurant, visibleSelectedRestaurantFoodItems]);
 
   const handleBackToListDetail = () => {
     if (navigation.canGoBack()) {
@@ -428,6 +463,7 @@ export function AddRestaurantToListScreen({
     setErrorMessage(null);
     setSelectedRestaurantId(restaurant.id);
     setSelectedFoodItemIds([]);
+    setHideDuplicateRatings(false);
     setNote(restaurant.existingNote ?? "");
     setNoteDirty(false);
   };
@@ -436,6 +472,7 @@ export function AddRestaurantToListScreen({
     setErrorMessage(null);
     setSelectedRestaurantId(null);
     setSelectedFoodItemIds([]);
+    setHideDuplicateRatings(false);
     setNote("");
     setNoteDirty(false);
   };
@@ -459,6 +496,28 @@ export function AddRestaurantToListScreen({
       });
       return nextIds;
     });
+  };
+
+  const handleToggleHideDuplicateRatings = (enabled: boolean) => {
+    if (!selectedRestaurant) {
+      return;
+    }
+
+    const visibleFoodItemCount = filterVisibleRestaurantFoodItems({
+      foodItems: selectedRestaurant.foodItems,
+      selectedFoodItemIds,
+      hideDuplicateRatings: enabled,
+    }).length;
+
+    trackObservabilityEvent('ADD_RESTAURANT_TO_LIST_HIDE_DUPLICATE_RATINGS_TOGGLED', {
+      source: 'AddRestaurantToListScreen',
+      listId,
+      restaurantId: selectedRestaurant.id,
+      enabled,
+      selectedFoodItemCount: selectedFoodItemIds.length,
+      visibleFoodItemCount,
+    });
+    setHideDuplicateRatings(enabled);
   };
 
   const openPhotoViewer = (
@@ -860,6 +919,30 @@ export function AddRestaurantToListScreen({
                 Select items you have rated. Items already in this list are marked
                 as added.
               </Text>
+
+              <View style={styles.duplicateToggleRow}>
+                <View style={styles.duplicateToggleTextWrap}>
+                  <Text style={styles.duplicateToggleTitle} variant="label">
+                    Hide duplicate ratings
+                  </Text>
+                  <Text style={styles.duplicateToggleSubtitle} variant="bodySmTight">
+                    Show only the latest rating for each item unless you already
+                    selected an older rating.
+                  </Text>
+                </View>
+                <Switch
+                  accessibilityLabel="Hide duplicate ratings"
+                  ios_backgroundColor={theme.colors.border.strong}
+                  onValueChange={handleToggleHideDuplicateRatings}
+                  testID="add-restaurant-hide-duplicate-ratings-toggle"
+                  thumbColor={theme.colors.background.surface}
+                  trackColor={{
+                    false: theme.colors.border.strong,
+                    true: theme.colors.fill.brand,
+                  }}
+                  value={hideDuplicateRatings}
+                />
+              </View>
 
               {groupedFoodItems.length === 0 ? (
                 <EmptyState

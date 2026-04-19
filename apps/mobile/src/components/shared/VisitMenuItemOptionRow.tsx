@@ -12,6 +12,7 @@ interface VisitMenuItemOptionRowProps {
   description?: string;
   visibility?: MenuItemVisibility;
   selected: boolean;
+  compactActions?: boolean;
   onPress: () => void;
   onEditPress?: () => void;
   optionTestID?: string;
@@ -42,6 +43,9 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.colors.status.successBg,
     borderColor: theme.colors.status.successBorder,
   },
+  containerCompact: {
+    paddingVertical: theme.spacing.xs,
+  },
   mainButton: {
     flex: 1,
     gap: theme.spacing.xs,
@@ -69,6 +73,10 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xs,
     justifyContent: 'space-between',
   },
+  actionsColumnCompact: {
+    gap: theme.spacing.xxs,
+    justifyContent: 'flex-start',
+  },
   selectButton: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -86,6 +94,12 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: theme.spacing.xxs,
   },
+  editButtonCompact: {
+    minHeight: 24,
+    minWidth: 24,
+    paddingHorizontal: theme.spacing.xxs,
+    paddingVertical: 0,
+  },
 }));
 
 export function VisitMenuItemOptionRow({
@@ -93,6 +107,7 @@ export function VisitMenuItemOptionRow({
   description,
   visibility,
   selected,
+  compactActions = false,
   onPress,
   onEditPress,
   optionTestID,
@@ -105,7 +120,13 @@ export function VisitMenuItemOptionRow({
   const styles = useStyles();
 
   return (
-    <View style={[styles.container, selected ? styles.containerSelected : null]}>
+    <View
+      style={[
+        styles.container,
+        selected ? styles.containerSelected : null,
+        compactActions ? styles.containerCompact : null,
+      ]}
+    >
       <Pressable onPress={onPress} style={styles.mainButton} testID={optionTestID}>
         <View style={styles.headerRow}>
           <View style={styles.nameWrap}>
@@ -126,7 +147,13 @@ export function VisitMenuItemOptionRow({
         </View>
       </Pressable>
 
-      <View collapsable={false} style={styles.actionsColumn}>
+      <View
+        collapsable={false}
+        style={[
+          styles.actionsColumn,
+          compactActions ? styles.actionsColumnCompact : null,
+        ]}
+      >
         <Pressable
           accessibilityRole="button"
           hitSlop={12}
@@ -153,7 +180,10 @@ export function VisitMenuItemOptionRow({
               event.stopPropagation();
               onEditPress();
             }}
-            style={styles.editButton}
+            style={[
+              styles.editButton,
+              compactActions ? styles.editButtonCompact : null,
+            ]}
             testID={editButtonTestID}
           >
             <Ionicons color={theme.colors.text.secondary} name="pencil-outline" size={14} />
