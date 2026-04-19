@@ -599,5 +599,3 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     </FeatureFormScreenScaffold>
   );
 }
-
-export const QuickTrackScreen = FoodProductScreen;

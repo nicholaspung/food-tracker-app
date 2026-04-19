@@ -482,13 +482,10 @@ export {
 export {
   createFoodProduct,
   createQuickTrack,
-  deleteFoodProduct,
   deleteQuickTrack,
   getFoodProductById,
-  getQuickTrackById,
   listFoodProductCategorySuggestions,
   listFoodProductPhotos,
-  listQuickTrackPhotos,
   updateFoodProduct,
   updateQuickTrack,
 } from './foodProductsStore';

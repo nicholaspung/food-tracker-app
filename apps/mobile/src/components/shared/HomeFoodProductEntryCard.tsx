@@ -385,5 +385,3 @@ export function HomeFoodProductEntryCard({
     </View>
   );
 }
-
-export const HomeQuickTrackEntryCard = HomeFoodProductEntryCard;

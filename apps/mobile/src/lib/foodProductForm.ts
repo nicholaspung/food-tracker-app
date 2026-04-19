@@ -44,7 +44,7 @@ function normalizeFoodProductCategory(value: string | undefined | null): string 
   return value?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
-export function resolveDefaultFoodProductVisibility(): FoodProductVisibility {
+function resolveDefaultFoodProductVisibility(): FoodProductVisibility {
   return resolveDefaultVisitVisibilityFromAuth();
 }
 

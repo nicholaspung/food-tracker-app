@@ -8,9 +8,3 @@ export const foodProductsQueryKeys = {
   categorySuggestions: (query: string) =>
     ['feature', 'foodProductCategorySuggestions', normalizeFoodProductCategoryQuery(query)] as const,
 };
-
-export function isFoodProductCategorySuggestionsQueryKey(
-  queryKey: readonly unknown[],
-): queryKey is ReturnType<typeof foodProductsQueryKeys.categorySuggestions> {
-  return queryKey[0] === 'feature' && queryKey[1] === 'foodProductCategorySuggestions';
-}

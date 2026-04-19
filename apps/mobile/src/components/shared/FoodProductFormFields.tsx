@@ -193,5 +193,3 @@ export function FoodProductFormFields({
     </>
   );
 }
-
-export const QuickTrackFormFields = FoodProductFormFields;

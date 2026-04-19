@@ -763,5 +763,3 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     </FeatureFormScreenScaffold>
   );
 }
-
-export const EditQuickTrackScreen = EditFoodProductScreen;

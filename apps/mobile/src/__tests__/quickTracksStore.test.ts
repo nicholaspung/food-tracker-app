@@ -1,6 +1,6 @@
 import { ClientResponseError } from 'pocketbase';
 
-import { createQuickTrack, listQuickTrackPhotos, updateQuickTrack } from '../features/store/quickTracksStore';
+import { createQuickTrack, listFoodProductPhotos, updateQuickTrack } from '../features/store/foodProductsStore';
 import { listCollectionRecords } from '../features/store/pocketbaseGateway';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
@@ -65,7 +65,7 @@ describe('quickTracksStore', () => {
     };
   });
 
-  it('lists quick-track photos from visit_photos using the quick-track id', async () => {
+  it('lists food-product photos from visit_photos using the food item id', async () => {
     const abortController = new AbortController();
     mockedListCollectionRecords.mockResolvedValue([
       {
@@ -78,7 +78,7 @@ describe('quickTracksStore', () => {
     ]);
 
     await expect(
-      listQuickTrackPhotos('quick-track-1', { signal: abortController.signal }),
+      listFoodProductPhotos('quick-track-1', { signal: abortController.signal }),
     ).resolves.toEqual([
       {
         id: 'photo-1',
