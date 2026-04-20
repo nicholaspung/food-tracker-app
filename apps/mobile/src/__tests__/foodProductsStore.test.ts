@@ -70,7 +70,7 @@ describe('foodProductsStore', () => {
     mockedListCollectionRecords.mockResolvedValue([
       {
         id: 'photo-1',
-        food_item: 'quick-track-1',
+        food_item: 'food-product-1',
         user: 'user-1',
         photo: 'iced-coffee.jpg',
         created: '2026-04-12T18:30:00.000Z',
@@ -78,11 +78,11 @@ describe('foodProductsStore', () => {
     ]);
 
     await expect(
-      listFoodProductPhotos('quick-track-1', { signal: abortController.signal }),
+      listFoodProductPhotos('food-product-1', { signal: abortController.signal }),
     ).resolves.toEqual([
       {
         id: 'photo-1',
-        food_item: 'quick-track-1',
+        food_item: 'food-product-1',
         user: 'user-1',
         photo: 'iced-coffee.jpg',
         collectionName: 'visit_photos',
@@ -92,7 +92,7 @@ describe('foodProductsStore', () => {
 
     expect(mockedListCollectionRecords).toHaveBeenCalledWith('visit_photos', {
       fields: 'id,food_item,user,photo,created',
-      filter: 'food_item = "quick-track-1"',
+      filter: 'food_item = "food-product-1"',
       pageSize: 100,
       signal: abortController.signal,
       sort: '-created',
@@ -103,11 +103,11 @@ describe('foodProductsStore', () => {
     const operationOrder: string[] = [];
     const foodItemsCollection = {
       getOne: jest.fn().mockResolvedValue({
-        id: 'quick-track-1',
+        id: 'food-product-1',
         isQuickTrack: true,
       }),
       update: jest.fn().mockResolvedValue({
-        id: 'quick-track-1',
+        id: 'food-product-1',
         name: 'Updated Latte',
         location_text: 'Market Hall',
         rating: 5,
@@ -152,7 +152,7 @@ describe('foodProductsStore', () => {
     });
 
     await expect(
-      updateFoodProduct('quick-track-1', {
+      updateFoodProduct('food-product-1', {
         itemName: '  Updated Latte  ',
         locationText: '  Market Hall  ',
         rating: 5,
@@ -168,7 +168,7 @@ describe('foodProductsStore', () => {
         deletePhotoIds: ['photo-1', 'photo-2'],
       }),
     ).resolves.toMatchObject({
-      id: 'quick-track-1',
+      id: 'food-product-1',
       itemName: 'Updated Latte',
       locationText: 'Market Hall',
       rating: 5,
@@ -179,7 +179,7 @@ describe('foodProductsStore', () => {
     });
 
     expect(foodItemsCollection.update).toHaveBeenCalledWith(
-      'quick-track-1',
+      'food-product-1',
       {
         name: 'Updated Latte',
         rating: 5,
@@ -195,7 +195,7 @@ describe('foodProductsStore', () => {
         expand: 'user,visit,visit.restaurant',
       },
     );
-    expect(mockedUploadVisitPhotos).toHaveBeenCalledWith(undefined, 'quick-track-1', 'user-1', [
+    expect(mockedUploadVisitPhotos).toHaveBeenCalledWith(undefined, 'food-product-1', 'user-1', [
       {
         uri: 'file:///latte.jpg',
         name: 'latte.jpg',
@@ -209,7 +209,7 @@ describe('foodProductsStore', () => {
   it('creates a food product with freeform location text and clears legacy coordinates', async () => {
     const foodItemsCollection = {
       create: jest.fn().mockResolvedValue({
-        id: 'quick-track-2',
+        id: 'food-product-2',
         name: 'Matcha Latte',
         location_text: 'Ferry Building',
         rating: 4,
@@ -247,7 +247,7 @@ describe('foodProductsStore', () => {
         itemDate: '2026-04-18T07:00:00.000Z',
       }),
     ).resolves.toMatchObject({
-      id: 'quick-track-2',
+      id: 'food-product-2',
       itemName: 'Matcha Latte',
       locationText: 'Ferry Building',
       rating: 4,
@@ -278,11 +278,11 @@ describe('foodProductsStore', () => {
   it('clears food product location text when the user removes it during edit', async () => {
     const foodItemsCollection = {
       getOne: jest.fn().mockResolvedValue({
-        id: 'quick-track-3',
+        id: 'food-product-3',
         isQuickTrack: true,
       }),
       update: jest.fn().mockResolvedValue({
-        id: 'quick-track-3',
+        id: 'food-product-3',
         name: 'Cold Brew',
         location_text: '',
         rating: 3,
@@ -301,12 +301,12 @@ describe('foodProductsStore', () => {
       throw new Error(`Unexpected collection: ${collectionName}`);
     });
 
-    await updateFoodProduct('quick-track-3', {
+    await updateFoodProduct('food-product-3', {
       locationText: '   ',
     });
 
     expect(foodItemsCollection.update).toHaveBeenCalledWith(
-      'quick-track-3',
+      'food-product-3',
       {
         location_text: '',
         latitude: null,

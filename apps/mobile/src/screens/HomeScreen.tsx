@@ -60,7 +60,7 @@ interface BaseFeedItem {
   eventAt: string;
   isFriend: boolean;
   friendName?: string;
-  source: 'visit' | 'quick-track';
+  source: 'visit' | 'food-product';
 }
 
 interface VisitFeedItem extends BaseFeedItem {
@@ -69,7 +69,7 @@ interface VisitFeedItem extends BaseFeedItem {
 }
 
 interface FoodProductFeedItem extends BaseFeedItem {
-  source: 'quick-track';
+  source: 'food-product';
   foodProduct: FoodProductRecord;
 }
 
@@ -290,9 +290,9 @@ function buildFoodProductFeedItem(
   return {
     isFriend: !!foodProduct.userId && !!currentUserId && foodProduct.userId !== currentUserId,
     friendName: foodProduct.userName,
-    id: `quick_track_${foodProduct.id}`,
+    id: `food_product_${foodProduct.id}`,
     eventAt: eventAt?.trim() || foodProduct.itemDate || foodProduct.createdAt,
-    source: 'quick-track',
+    source: 'food-product',
     foodProduct,
   };
 }
@@ -534,7 +534,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     loadedFeed.filter((entry) => entry.source === 'visit').length;
   const totalFoodProductCount =
     homeFeedQuery.data?.pages[0]?.totalQuickTracks ??
-    loadedFeed.filter((entry) => entry.source === 'quick-track').length;
+    loadedFeed.filter((entry) => entry.source === 'food-product').length;
   const totalFeedCount = totalVisitCount + totalFoodProductCount;
 
   const summaryText = useMemo(() => {
@@ -865,13 +865,13 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           onMoreActions={
             feedItem.isFriend
               ? () => {
-                  homeFeedActions.promptReportMenuTarget({
-                    id: foodProduct.id,
-                    itemName: foodProduct.itemName,
-                    kind: 'quick-track',
-                  });
-                }
-              : undefined
+                    homeFeedActions.promptReportMenuTarget({
+                      id: foodProduct.id,
+                      itemName: foodProduct.itemName,
+                      kind: 'food-product',
+                    });
+                  }
+                : undefined
           }
           onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
           onSharePhoto={handleSharePhoto}

@@ -129,12 +129,12 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
     const loadRatedBefore = async () => {
       try {
-        const [foodProductValue, legacyQuickTrackValue] = await Promise.all([
+        const [foodProductValue, legacyFoodProductRatedValue] = await Promise.all([
           AsyncStorage.getItem(FOOD_PRODUCT_RATED_BEFORE_KEY),
           AsyncStorage.getItem(LEGACY_QUICK_TRACK_RATED_BEFORE_KEY),
         ]);
         if (isMounted) {
-          setHasRatedBefore(foodProductValue === '1' || legacyQuickTrackValue === '1');
+          setHasRatedBefore(foodProductValue === '1' || legacyFoodProductRatedValue === '1');
         }
       } catch {
         // Ignore storage read errors and keep the default collapsed state.

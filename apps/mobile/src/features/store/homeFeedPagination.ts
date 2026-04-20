@@ -24,12 +24,12 @@ export interface HomeFeedSourceCursorState<T> {
   totalItems: number | null;
 }
 
-export interface BufferedHomeFeedCursor<TVisit, TQuickTrack> {
+export interface BufferedHomeFeedCursor<TVisit, TFoodProduct> {
   visits: HomeFeedSourceCursorState<TVisit>;
-  quickTracks: HomeFeedSourceCursorState<TQuickTrack>;
+  quickTracks: HomeFeedSourceCursorState<TFoodProduct>;
 }
 
-export type BufferedHomeFeedEntry<TVisit, TQuickTrack> =
+export type BufferedHomeFeedEntry<TVisit, TFoodProduct> =
   | {
       source: 'visit';
       eventAt: string;
@@ -38,7 +38,7 @@ export type BufferedHomeFeedEntry<TVisit, TQuickTrack> =
   | {
       source: 'quick-track';
       eventAt: string;
-      quickTrack: TQuickTrack;
+      quickTrack: TFoodProduct;
     };
 
 export interface HomeFeedCursor {
@@ -74,16 +74,16 @@ export interface ListHomeFeedPageInput {
   typeFilter?: HomeFeedTypeFilter;
 }
 
-export interface LoadHomeFeedPageWithSourcesInput<TVisit, TQuickTrack> {
-  cursor?: BufferedHomeFeedCursor<TVisit, TQuickTrack>;
-  fetchQuickTracksPage?: (page: number, pageSize: number) => Promise<SourcePageResult<TQuickTrack>>;
+export interface LoadHomeFeedPageWithSourcesInput<TVisit, TFoodProduct> {
+  cursor?: BufferedHomeFeedCursor<TVisit, TFoodProduct>;
+  fetchFoodProductsPage?: (page: number, pageSize: number) => Promise<SourcePageResult<TFoodProduct>>;
   fetchVisitsPage?: (page: number, pageSize: number) => Promise<SourcePageResult<TVisit>>;
-  getQuickTrackEventAt: (item: TQuickTrack) => string;
+  getFoodProductEventAt: (item: TFoodProduct) => string;
   getVisitEventAt: (item: TVisit) => string;
-  loadQuickTracks: boolean;
+  loadFoodProducts: boolean;
   loadVisits: boolean;
   pageSize: number;
-  quickTrackBatchSize: number;
+  foodProductBatchSize: number;
   visitBatchSize: number;
 }
 
@@ -132,11 +132,11 @@ function normalizePageSize(pageSize: number | undefined): number {
   return Math.max(1, Math.floor(pageSize));
 }
 
-export async function loadHomeFeedPageWithSources<TVisit, TQuickTrack>(
-  input: LoadHomeFeedPageWithSourcesInput<TVisit, TQuickTrack>,
+export async function loadHomeFeedPageWithSources<TVisit, TFoodProduct>(
+  input: LoadHomeFeedPageWithSourcesInput<TVisit, TFoodProduct>,
 ): Promise<{
-  items: BufferedHomeFeedEntry<TVisit, TQuickTrack>[];
-  cursor?: BufferedHomeFeedCursor<TVisit, TQuickTrack>;
+  items: BufferedHomeFeedEntry<TVisit, TFoodProduct>[];
+  cursor?: BufferedHomeFeedCursor<TVisit, TFoodProduct>;
   hasNextPage: boolean;
   totalQuickTracks: number;
   totalVisits: number;
@@ -145,25 +145,25 @@ export async function loadHomeFeedPageWithSources<TVisit, TQuickTrack>(
   let visitState = input.loadVisits
     ? createSourceState(input.cursor?.visits)
     : createSourceState<TVisit>({ exhausted: true, totalItems: 0 });
-  let quickTrackState = input.loadQuickTracks
+  let foodProductState = input.loadFoodProducts
     ? createSourceState(input.cursor?.quickTracks)
-    : createSourceState<TQuickTrack>({ exhausted: true, totalItems: 0 });
-  const items: BufferedHomeFeedEntry<TVisit, TQuickTrack>[] = [];
+    : createSourceState<TFoodProduct>({ exhausted: true, totalItems: 0 });
+  const items: BufferedHomeFeedEntry<TVisit, TFoodProduct>[] = [];
 
   while (items.length < pageSize) {
-    [visitState, quickTrackState] = await Promise.all([
+    [visitState, foodProductState] = await Promise.all([
       ensureBufferedItems(visitState, input.visitBatchSize, input.fetchVisitsPage),
-      ensureBufferedItems(quickTrackState, input.quickTrackBatchSize, input.fetchQuickTracksPage),
+      ensureBufferedItems(foodProductState, input.foodProductBatchSize, input.fetchFoodProductsPage),
     ]);
 
     const nextVisit = visitState.buffer[0];
-    const nextQuickTrack = quickTrackState.buffer[0];
+    const nextFoodProduct = foodProductState.buffer[0];
 
-    if (!nextVisit && !nextQuickTrack) {
+    if (!nextVisit && !nextFoodProduct) {
       break;
     }
 
-    if (!nextQuickTrack) {
+    if (!nextFoodProduct) {
       visitState.buffer.shift();
       items.push({
         eventAt: input.getVisitEventAt(nextVisit as TVisit),
@@ -174,19 +174,19 @@ export async function loadHomeFeedPageWithSources<TVisit, TQuickTrack>(
     }
 
     if (!nextVisit) {
-      quickTrackState.buffer.shift();
+      foodProductState.buffer.shift();
       items.push({
-        eventAt: input.getQuickTrackEventAt(nextQuickTrack as TQuickTrack),
-        quickTrack: nextQuickTrack as TQuickTrack,
+        eventAt: input.getFoodProductEventAt(nextFoodProduct as TFoodProduct),
+        quickTrack: nextFoodProduct as TFoodProduct,
         source: 'quick-track',
       });
       continue;
     }
 
     const visitEventAt = input.getVisitEventAt(nextVisit);
-    const quickTrackEventAt = input.getQuickTrackEventAt(nextQuickTrack);
+    const foodProductEventAt = input.getFoodProductEventAt(nextFoodProduct);
 
-    if (visitEventAt.localeCompare(quickTrackEventAt) >= 0) {
+    if (visitEventAt.localeCompare(foodProductEventAt) >= 0) {
       visitState.buffer.shift();
       items.push({
         eventAt: visitEventAt,
@@ -196,26 +196,26 @@ export async function loadHomeFeedPageWithSources<TVisit, TQuickTrack>(
       continue;
     }
 
-    quickTrackState.buffer.shift();
+    foodProductState.buffer.shift();
     items.push({
-      eventAt: quickTrackEventAt,
-      quickTrack: nextQuickTrack,
+      eventAt: foodProductEventAt,
+      quickTrack: nextFoodProduct,
       source: 'quick-track',
     });
   }
 
-  const hasNextPage = hasRemainingItems(visitState) || hasRemainingItems(quickTrackState);
+  const hasNextPage = hasRemainingItems(visitState) || hasRemainingItems(foodProductState);
 
   return {
     items,
     cursor: hasNextPage
       ? {
-          quickTracks: createSourceState(quickTrackState),
+          quickTracks: createSourceState(foodProductState),
           visits: createSourceState(visitState),
         }
       : undefined,
     hasNextPage,
-    totalQuickTracks: quickTrackState.totalItems ?? 0,
+    totalQuickTracks: foodProductState.totalItems ?? 0,
     totalVisits: visitState.totalItems ?? 0,
   };
 }

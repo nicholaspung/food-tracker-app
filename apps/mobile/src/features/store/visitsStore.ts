@@ -5,7 +5,7 @@ import {
   getDefaultVisitVisibility,
   isNotFoundError,
   normalizeModerationContentStatus,
-  normalizeQuickTrackVisibility,
+  normalizeStoredVisibility,
   nowIso,
   trackFeatureMutation,
 } from './featureStoreShared';
@@ -64,7 +64,7 @@ function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
     source: 'visit',
     userId: record.userId?.trim() || undefined,
     userName: record.userName?.trim() || undefined,
-    visibility: normalizeQuickTrackVisibility(record.visibility),
+    visibility: normalizeStoredVisibility(record.visibility),
     moderationStatus: normalizeModerationContentStatus(record.moderationStatus),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

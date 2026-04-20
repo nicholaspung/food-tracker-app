@@ -92,7 +92,7 @@ function buildExistingPhotoAttachment(photo: VisitPhotoRecord) {
 
 export function EditFoodProductScreen({ navigation, route }: EditFoodProductScreenProps) {
   const { foodProductId } = route.params;
-  const legacyQuickTrackId = foodProductId;
+  const legacyFoodProductId = foodProductId;
   const styles = useStyles();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
@@ -159,7 +159,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     setIsPhotoViewerVisible(false);
     setErrorMessage(null);
     restoredPendingPickerForFoodProductRef.current = null;
-  }, [legacyQuickTrackId]);
+  }, [legacyFoodProductId]);
 
   useEffect(() => {
     if (!foodProductQuery.data || hydratedFoodProductId === foodProductQuery.data.id) {
@@ -211,14 +211,14 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   useEffect(() => {
     if (
       Platform.OS !== 'android' ||
-      hydratedFoodProductId !== legacyQuickTrackId ||
-      restoredPendingPickerForFoodProductRef.current === legacyQuickTrackId
+      hydratedFoodProductId !== legacyFoodProductId ||
+      restoredPendingPickerForFoodProductRef.current === legacyFoodProductId
     ) {
       return;
     }
 
     let isMounted = true;
-    restoredPendingPickerForFoodProductRef.current = legacyQuickTrackId;
+    restoredPendingPickerForFoodProductRef.current = legacyFoodProductId;
 
     const restorePendingPickerResult = async () => {
       try {
@@ -253,7 +253,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     return () => {
       isMounted = false;
     };
-  }, [applyReplacementPhoto, hydratedFoodProductId, legacyQuickTrackId]);
+  }, [applyReplacementPhoto, hydratedFoodProductId, legacyFoodProductId]);
 
   const displayedPhoto = useMemo(() => {
     if (photoDraftMode === 'replace' && replacementPhoto) {
@@ -409,7 +409,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     if (validationMessage) {
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_VALIDATION_FAILED', {
         source: 'EditFoodProductScreen',
-        quickTrackId: legacyQuickTrackId,
+        quickTrackId: legacyFoodProductId,
         reason:
           validationMessage === 'Food product name is required.'
             ? 'missing_item'
@@ -455,7 +455,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     setErrorMessage(null);
     trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_STARTED', {
       source: 'EditFoodProductScreen',
-      quickTrackId: legacyQuickTrackId,
+      quickTrackId: legacyFoodProductId,
       isOnline,
       hasNotes: form.notes.trim().length > 0,
       visibility: form.visibility,
@@ -471,11 +471,11 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         offline: {
           strategy: 'outbox',
           payload: {
-            quickTrackId: legacyQuickTrackId,
+            quickTrackId: legacyFoodProductId,
             updates: foodProductUpdateInput,
           },
         },
-        execute: () => updateFoodProduct(legacyQuickTrackId, foodProductUpdateInput),
+        execute: () => updateFoodProduct(legacyFoodProductId, foodProductUpdateInput),
       });
 
       const invalidations: Promise<unknown>[] = [
@@ -484,7 +484,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'foodProduct', foodProductId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'quickTrack', legacyQuickTrackId] }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'quickTrack', legacyFoodProductId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
       ];
 
@@ -492,7 +492,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         await Promise.all(invalidations);
         trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
           source: 'EditFoodProductScreen',
-          quickTrackId: legacyQuickTrackId,
+          quickTrackId: legacyFoodProductId,
           queued: true,
           visibility: form.visibility,
           photoMode: photoDraftMode,
@@ -509,7 +509,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       await Promise.all(invalidations);
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
         source: 'EditFoodProductScreen',
-        quickTrackId: legacyQuickTrackId,
+        quickTrackId: legacyFoodProductId,
         queued: false,
         visibility: form.visibility,
         photoMode: photoDraftMode,
@@ -537,7 +537,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       setErrorMessage(message);
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_FAILED', {
         source: 'EditFoodProductScreen',
-        quickTrackId: legacyQuickTrackId,
+        quickTrackId: legacyFoodProductId,
         error: message,
       });
     } finally {

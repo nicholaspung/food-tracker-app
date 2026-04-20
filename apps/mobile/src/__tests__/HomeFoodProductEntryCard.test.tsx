@@ -58,7 +58,7 @@ describe('HomeFoodProductEntryCard', () => {
         <HomeFoodProductEntryCard
           entryMeta="FRI APR 18"
           foodProduct={{
-            id: 'quick-track-1',
+            id: 'food-product-1',
             restaurantName: 'Food Product',
             itemName: 'Iced Coffee',
             locationText: 'Mission District',
@@ -97,7 +97,7 @@ describe('HomeFoodProductEntryCard', () => {
         <HomeFoodProductEntryCard
           entryMeta="FRI APR 18"
           foodProduct={{
-            id: 'quick-track-2',
+            id: 'food-product-2',
             restaurantName: 'Food Product',
             itemName: 'Tea',
             rating: 3,

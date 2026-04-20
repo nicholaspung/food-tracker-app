@@ -135,7 +135,7 @@ describe('EditFoodProductScreen', () => {
       if (Array.isArray(queryKey) && queryKey[1] === 'foodProduct') {
         return buildQueryResult({
           data: {
-            id: 'quick-track-1',
+            id: 'food-product-1',
             restaurantName: 'Food Product',
             itemCategory: 'Packaged food',
             itemName: 'Iced Coffee',
@@ -155,7 +155,7 @@ describe('EditFoodProductScreen', () => {
           data: [
             {
               id: 'photo-1',
-              food_item: 'quick-track-1',
+              food_item: 'food-product-1',
               photo: 'iced-coffee.jpg',
               collectionName: 'visit_photos',
               created: '2026-04-12T18:31:00.000Z',
@@ -235,7 +235,7 @@ describe('EditFoodProductScreen', () => {
           } as never}
           route={{
             params: {
-              foodProductId: 'quick-track-1',
+              foodProductId: 'food-product-1',
             },
           } as never}
         />,
@@ -278,7 +278,7 @@ describe('EditFoodProductScreen', () => {
           } as never}
           route={{
             params: {
-              foodProductId: 'quick-track-1',
+              foodProductId: 'food-product-1',
             },
           } as never}
         />,

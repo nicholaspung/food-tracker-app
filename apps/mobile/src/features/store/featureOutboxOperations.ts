@@ -66,12 +66,12 @@ interface VisitDeleteOperationPayload {
   visitId: string;
 }
 
-interface QuickTrackUpdateOperationPayload {
+interface FoodProductUpdateOperationPayload {
   quickTrackId: string;
   updates: UpdateFoodProductInput;
 }
 
-interface QuickTrackDeleteOperationPayload {
+interface FoodProductDeleteOperationPayload {
   quickTrackId: string;
 }
 
@@ -148,8 +148,8 @@ export interface FeatureOutboxOperationPayloadMap {
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
   'quick-track.create': CreateFoodProductInput;
-  'quick-track.update': QuickTrackUpdateOperationPayload;
-  'quick-track.delete': QuickTrackDeleteOperationPayload;
+  'quick-track.update': FoodProductUpdateOperationPayload;
+  'quick-track.delete': FoodProductDeleteOperationPayload;
   'note.create': CreateNoteInput;
   'note.update': NoteUpdateOperationPayload;
   'note.delete': NoteDeleteOperationPayload;
@@ -373,13 +373,13 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
       await createFoodProduct(payload as CreateFoodProductInput);
       return true;
     case 'quick-track.update': {
-      const quickTrackUpdatePayload = payload as QuickTrackUpdateOperationPayload;
-      await updateFoodProduct(quickTrackUpdatePayload.quickTrackId, quickTrackUpdatePayload.updates);
+      const foodProductUpdatePayload = payload as FoodProductUpdateOperationPayload;
+      await updateFoodProduct(foodProductUpdatePayload.quickTrackId, foodProductUpdatePayload.updates);
       return true;
     }
     case 'quick-track.delete': {
-      const quickTrackDeletePayload = payload as QuickTrackDeleteOperationPayload;
-      await deleteFoodProduct(quickTrackDeletePayload.quickTrackId);
+      const foodProductDeletePayload = payload as FoodProductDeleteOperationPayload;
+      await deleteFoodProduct(foodProductDeletePayload.quickTrackId);
       return true;
     }
     case 'note.create':

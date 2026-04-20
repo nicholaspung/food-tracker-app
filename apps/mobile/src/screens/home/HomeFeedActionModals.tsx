@@ -50,7 +50,7 @@ export function HomeFeedActionModals({
         description={
           controller.pendingReportMenuTarget?.itemName?.trim()
             ? `Choose an action for "${controller.pendingReportMenuTarget.itemName.trim()}".`
-            : controller.pendingReportMenuTarget?.kind === 'quick-track'
+            : controller.pendingReportMenuTarget?.kind === 'food-product'
               ? 'Choose an action for this food product.'
               : 'Choose an action for this visit.'
         }
@@ -63,7 +63,7 @@ export function HomeFeedActionModals({
         }}
         testID="home-feed-actions-modal"
         title={
-          controller.pendingReportMenuTarget?.kind === 'quick-track'
+          controller.pendingReportMenuTarget?.kind === 'food-product'
             ? 'Food Product Actions'
             : 'Visit Actions'
         }
@@ -72,7 +72,7 @@ export function HomeFeedActionModals({
         <OptionList>
           <OptionListRow
             accessibilityLabel={
-              controller.pendingReportMenuTarget?.kind === 'quick-track'
+              controller.pendingReportMenuTarget?.kind === 'food-product'
                 ? 'Report food product'
                 : 'Report visit'
             }
@@ -82,7 +82,7 @@ export function HomeFeedActionModals({
             onPress={controller.openReportModalFromMenu}
             testID="home-feed-actions-modal-report-button"
             title={
-              controller.pendingReportMenuTarget?.kind === 'quick-track'
+              controller.pendingReportMenuTarget?.kind === 'food-product'
                 ? 'Report Food Product'
                 : 'Report Visit'
             }
@@ -97,7 +97,9 @@ export function HomeFeedActionModals({
             ? 'Visit'
             : 'Food Product')
         }
-        contentType={controller.pendingReportTarget?.kind ?? 'visit'}
+        contentType={
+          controller.pendingReportTarget?.kind === 'food-product' ? 'quick-track' : 'visit'
+        }
         errorMessage={controller.reportErrorMessage}
         isOnline={isOnline}
         isSubmitting={controller.isSubmittingReport}

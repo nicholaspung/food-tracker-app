@@ -159,12 +159,12 @@ export function resolveExpandedUserName(
   return undefined;
 }
 
-export function normalizeQuickTrackVisibility(value: unknown): 'friends' | 'private' {
+export function normalizeStoredVisibility(value: unknown): 'friends' | 'private' {
   return value === 'private' ? 'private' : 'friends';
 }
 
 export function getDefaultVisitVisibility(): 'friends' | 'private' {
-  return normalizeQuickTrackVisibility(pb.authStore.record?.defaultVisitVisibility);
+  return normalizeStoredVisibility(pb.authStore.record?.defaultVisitVisibility);
 }
 
 export function normalizeModerationContentStatus(value: unknown): ModerationContentStatus | undefined {

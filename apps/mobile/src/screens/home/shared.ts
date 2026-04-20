@@ -10,7 +10,7 @@ export type PendingDeleteTarget =
     }
   | {
       id: string;
-      kind: 'quick-track';
+      kind: 'food-product';
       itemName: string;
     };
 
@@ -22,6 +22,6 @@ export type PendingReportTarget =
     }
   | {
       id: string;
-      kind: 'quick-track';
+      kind: 'food-product';
       itemName: string;
     };

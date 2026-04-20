@@ -33,28 +33,28 @@ describe('loadHomeFeedPageWithSources', () => {
       { eventAt: '2026-04-07T12:00:00Z', id: 'visit-4' },
     ]);
     const foodProductFetcher = createMockFeedFetcher([
-      { eventAt: '2026-04-08T18:00:00Z', id: 'quick-track-1' },
-      { eventAt: '2026-04-06T12:00:00Z', id: 'quick-track-2' },
-      { eventAt: '2026-04-05T12:00:00Z', id: 'quick-track-3' },
-      { eventAt: '2026-04-04T12:00:00Z', id: 'quick-track-4' },
+      { eventAt: '2026-04-08T18:00:00Z', id: 'food-product-1' },
+      { eventAt: '2026-04-06T12:00:00Z', id: 'food-product-2' },
+      { eventAt: '2026-04-05T12:00:00Z', id: 'food-product-3' },
+      { eventAt: '2026-04-04T12:00:00Z', id: 'food-product-4' },
     ]);
 
     const firstPage = await loadHomeFeedPageWithSources({
-      fetchQuickTracksPage: foodProductFetcher.fetchPage,
+      fetchFoodProductsPage: foodProductFetcher.fetchPage,
       fetchVisitsPage: visitFetcher.fetchPage,
-      getQuickTrackEventAt: (item) => item.eventAt,
+      getFoodProductEventAt: (item) => item.eventAt,
       getVisitEventAt: (item) => item.eventAt,
-      loadQuickTracks: true,
+      loadFoodProducts: true,
       loadVisits: true,
       pageSize: 3,
-      quickTrackBatchSize: 2,
+      foodProductBatchSize: 2,
       visitBatchSize: 2,
     });
 
     expect(firstPage.items.map((item) => ('visit' in item ? item.visit.id : item.quickTrack.id))).toEqual([
       'visit-1',
       'visit-2',
-      'quick-track-1',
+      'food-product-1',
     ]);
     expect(visitFetcher.calls).toEqual([
       { page: 1, pageSize: 2 },
@@ -64,21 +64,21 @@ describe('loadHomeFeedPageWithSources', () => {
 
     const secondPage = await loadHomeFeedPageWithSources({
       cursor: firstPage.cursor,
-      fetchQuickTracksPage: foodProductFetcher.fetchPage,
+      fetchFoodProductsPage: foodProductFetcher.fetchPage,
       fetchVisitsPage: visitFetcher.fetchPage,
-      getQuickTrackEventAt: (item) => item.eventAt,
+      getFoodProductEventAt: (item) => item.eventAt,
       getVisitEventAt: (item) => item.eventAt,
-      loadQuickTracks: true,
+      loadFoodProducts: true,
       loadVisits: true,
       pageSize: 3,
-      quickTrackBatchSize: 2,
+      foodProductBatchSize: 2,
       visitBatchSize: 2,
     });
 
     expect(secondPage.items.map((item) => ('visit' in item ? item.visit.id : item.quickTrack.id))).toEqual([
       'visit-3',
       'visit-4',
-      'quick-track-2',
+      'food-product-2',
     ]);
     expect(visitFetcher.calls).toEqual([
       { page: 1, pageSize: 2 },
@@ -97,19 +97,19 @@ describe('loadHomeFeedPageWithSources', () => {
     const foodProductFetcher = createMockFeedFetcher(
       Array.from({ length: 24 }, (_, index) => ({
         eventAt: `2026-03-${String(30 - index).padStart(2, '0')}T12:00:00Z`,
-        id: `quick-track-${index + 1}`,
+        id: `food-product-${index + 1}`,
       })),
     );
 
     const page = await loadHomeFeedPageWithSources({
-      fetchQuickTracksPage: foodProductFetcher.fetchPage,
+      fetchFoodProductsPage: foodProductFetcher.fetchPage,
       fetchVisitsPage: visitFetcher.fetchPage,
-      getQuickTrackEventAt: (item) => item.eventAt,
+      getFoodProductEventAt: (item) => item.eventAt,
       getVisitEventAt: (item) => item.eventAt,
-      loadQuickTracks: true,
+      loadFoodProducts: true,
       loadVisits: true,
       pageSize: 20,
-      quickTrackBatchSize: 10,
+      foodProductBatchSize: 10,
       visitBatchSize: 10,
     });
 

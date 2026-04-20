@@ -13,7 +13,7 @@ import {
   isNotFoundError,
   nowIso,
   normalizeModerationContentStatus,
-  normalizeQuickTrackVisibility,
+  normalizeStoredVisibility,
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
@@ -65,7 +65,7 @@ function mapFoodProductCollectionRecord(record: FoodItemCollectionRecord): FoodP
     notes: record.notes,
     userId: record.user,
     userName: resolveExpandedUserName(record.expand?.user),
-    visibility: normalizeQuickTrackVisibility(record.visibility),
+    visibility: normalizeStoredVisibility(record.visibility),
     moderationStatus: normalizeModerationContentStatus(record.moderationStatus),
     itemDate: record.itemDate,
     createdAt: record.created,

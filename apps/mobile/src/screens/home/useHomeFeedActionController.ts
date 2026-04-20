@@ -137,7 +137,7 @@ export function useHomeFeedActionController({
       setPendingDeleteTarget({
         id: foodProductId,
         itemName,
-        kind: 'quick-track',
+        kind: 'food-product',
       });
     },
     [],
@@ -246,7 +246,7 @@ export function useHomeFeedActionController({
     try {
       await trackWriteTelemetry('content.report');
       await reportContent({
-        contentType: pendingReportTarget.kind,
+        contentType: pendingReportTarget.kind === 'food-product' ? 'quick-track' : 'visit',
         recordId: pendingReportTarget.id,
         reasonCode: reportReasonCode,
         notes: reportNotes.trim() || undefined,
