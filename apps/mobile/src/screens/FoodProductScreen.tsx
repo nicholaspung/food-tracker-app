@@ -195,13 +195,13 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         }
         setIsPhotoViewerVisible(false);
         setPhoto(nextPhoto);
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
           photoSource: 'gallery',
           restoredPendingResult: true,
           source: 'FoodProductScreen',
         });
       } catch (error) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
           errorMessage: error instanceof Error ? error.message : String(error),
           errorType: error instanceof Error ? error.name : 'unknown_error',
           photoSource: 'gallery',
@@ -218,7 +218,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   }, [applyPhotoCaptureDate]);
 
   const handlePhotoPick = async (source: PhotoSource) => {
-    trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_STARTED', {
+    trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_STARTED', {
       photoSource: source,
       source: 'FoodProductScreen',
     });
@@ -241,7 +241,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     try {
       const permission = await requestPhotoPickerPermission(source);
       if (!permission.granted) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PERMISSION_DENIED', {
           canAskAgain: permission.canAskAgain,
           photoSource: source,
           source: 'FoodProductScreen',
@@ -279,7 +279,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
             });
 
       if (pickerResult.canceled) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_CANCELED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_CANCELED', {
           photoSource: source,
           source: 'FoodProductScreen',
         });
@@ -296,13 +296,13 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       await applyPhotoCaptureDate(selectedAsset);
       setIsPhotoViewerVisible(false);
       setPhoto(nextPhoto);
-      trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
+      trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
         photoSource: source,
         source: 'FoodProductScreen',
       });
       resetPhotoPermissionNeedsSettings();
     } catch (error) {
-      trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
+      trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
         errorMessage: error instanceof Error ? error.message : String(error),
         errorType: error instanceof Error ? error.name : 'unknown_error',
         photoSource: source,

@@ -11,6 +11,7 @@ import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFe
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { EditFoodProductScreen } from '../screens/EditFoodProductScreen';
@@ -38,6 +39,9 @@ jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
   getFoodProductById: jest.fn(),
+  homeFeedQueryKeys: {
+    root: ['feature', 'homeFeed'],
+  },
   listFoodProductPhotos: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),
   resolveDefaultVisitVisibilityFromAuth: jest.fn(() => 'friends'),
@@ -113,6 +117,9 @@ const mockedUsePhotoPickerPermissions = usePhotoPickerPermissions as jest.Mocked
 >;
 const mockedBuildLocalPhotoFile = buildLocalPhotoFile as jest.MockedFunction<typeof buildLocalPhotoFile>;
 const mockedResolvePhotoCaptureDate = resolvePhotoCaptureDate as jest.MockedFunction<typeof resolvePhotoCaptureDate>;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+  typeof trackObservabilityEvent
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
@@ -197,6 +204,7 @@ describe('EditFoodProductScreen', () => {
       mimeType: 'image/jpeg',
     });
     mockedResolvePhotoCaptureDate.mockResolvedValue(new Date('2026-04-15T12:00:00.000Z'));
+    mockedTrackObservabilityEvent.mockReset();
     mockedUseAuth.mockReturnValue({
       actualUser: {
         isAdmin: false,
@@ -298,6 +306,10 @@ describe('EditFoodProductScreen', () => {
     ]);
     expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBe('2026-04-15');
     expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-15');
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('FOOD_PRODUCT_PHOTO_PICKED', {
+      photoSource: 'gallery',
+      source: 'EditFoodProductScreen',
+    });
 
     await act(async () => {
       renderer.root.findByType('PhotoInputField').props.attachments[0].onRemove();
@@ -312,5 +324,101 @@ describe('EditFoodProductScreen', () => {
     ]);
     expect(renderer.root.findByType('FoodProductFormFields').props.detectedDateValue).toBeNull();
     expect(renderer.root.findByType('FoodProductFormFields').props.value.date).toBe('2026-04-12');
+  });
+
+  it('tracks the renamed edit food product validation failure event', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FoodProductFormFields').props.onChange({
+        itemName: '   ',
+      });
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+      await Promise.resolve();
+    });
+
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'EDIT_FOOD_PRODUCT_SUBMIT_VALIDATION_FAILED',
+      expect.objectContaining({
+        source: 'EditFoodProductScreen',
+        foodProductId: 'food-product-1',
+        reason: 'missing_item',
+      }),
+    );
+  });
+
+  it('tracks the renamed edit food product submit lifecycle events', async () => {
+    const invalidateQueries = jest.fn().mockResolvedValue(undefined);
+    const writeFeature = jest.fn().mockResolvedValue({
+      status: 'completed',
+      result: {
+        id: 'food-product-1',
+      },
+    });
+    mockedUseQueryClient.mockReturnValue({
+      invalidateQueries,
+    } as unknown as ReturnType<typeof useQueryClient>);
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <EditFoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {
+              foodProductId: 'food-product-1',
+            },
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'EDIT_FOOD_PRODUCT_SUBMIT_STARTED',
+      expect.objectContaining({
+        source: 'EditFoodProductScreen',
+        foodProductId: 'food-product-1',
+      }),
+    );
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(
+      'EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED',
+      expect.objectContaining({
+        source: 'EditFoodProductScreen',
+        foodProductId: 'food-product-1',
+        queued: false,
+      }),
+    );
   });
 });

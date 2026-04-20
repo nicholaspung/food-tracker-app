@@ -234,13 +234,13 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         }
 
         await applyReplacementPhoto(pendingAsset);
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
           photoSource: 'gallery',
           restoredPendingResult: true,
           source: 'EditFoodProductScreen',
         });
       } catch (error) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
           errorMessage: error instanceof Error ? error.message : String(error),
           errorType: error instanceof Error ? error.name : 'unknown_error',
           photoSource: 'gallery',
@@ -307,7 +307,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   ]);
 
   const handlePhotoPick = async (source: PhotoSource) => {
-    trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_STARTED', {
+    trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_STARTED', {
       photoSource: source,
       source: 'EditFoodProductScreen',
     });
@@ -330,7 +330,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     try {
       const permission = await requestPhotoPickerPermission(source);
       if (!permission.granted) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PERMISSION_DENIED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PERMISSION_DENIED', {
           canAskAgain: permission.canAskAgain,
           photoSource: source,
           source: 'EditFoodProductScreen',
@@ -368,7 +368,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
             });
 
       if (pickerResult.canceled) {
-        trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_CANCELED', {
+        trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_CANCELED', {
           photoSource: source,
           source: 'EditFoodProductScreen',
         });
@@ -381,12 +381,12 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       }
 
       await applyReplacementPhoto(selectedAsset);
-      trackObservabilityEvent('QUICK_TRACK_PHOTO_PICKED', {
+      trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
         photoSource: source,
         source: 'EditFoodProductScreen',
       });
     } catch (error) {
-      trackObservabilityEvent('QUICK_TRACK_PHOTO_PICK_FAILED', {
+      trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICK_FAILED', {
         errorMessage: error instanceof Error ? error.message : String(error),
         errorType: error instanceof Error ? error.name : 'unknown_error',
         photoSource: source,
@@ -408,7 +408,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const handleSave = async () => {
     const validationMessage = validateFoodProductForm(form);
     if (validationMessage) {
-      trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_VALIDATION_FAILED', {
+      trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_VALIDATION_FAILED', {
         source: 'EditFoodProductScreen',
         foodProductId: legacyFoodProductId,
         reason:
@@ -454,7 +454,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     });
 
     setErrorMessage(null);
-    trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_STARTED', {
+    trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_STARTED', {
       source: 'EditFoodProductScreen',
       foodProductId: legacyFoodProductId,
       isOnline,
@@ -490,7 +490,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
 
       if (updateResult.status === 'queued') {
         await Promise.all(invalidations);
-        trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
+        trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
           source: 'EditFoodProductScreen',
           foodProductId: legacyFoodProductId,
           queued: true,
@@ -507,7 +507,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       }
 
       await Promise.all(invalidations);
-      trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
+      trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
         source: 'EditFoodProductScreen',
         foodProductId: legacyFoodProductId,
         queued: false,
@@ -535,7 +535,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
           ? error.message
           : 'Could not update food product.';
       setErrorMessage(message);
-      trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_FAILED', {
+      trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_FAILED', {
         source: 'EditFoodProductScreen',
         foodProductId: legacyFoodProductId,
         error: message,

@@ -1,5 +1,4 @@
 import { MutationReplayService } from '../offline/MutationReplayService';
-import { migrateQueuedFoodProductMutations } from '../offline/foodProductOutboxMigration';
 import type {
   EnqueueMutationInput,
   MutationQueueStats,
@@ -174,12 +173,12 @@ function buildQueuedMutation(overrides?: Partial<QueuedMutation>): QueuedMutatio
   return {
     id: 'mut_seeded_1',
     method: 'POST',
-    url: 'local://feature/quick-track.create',
+    url: 'local://feature/food-product.create',
     body: JSON.stringify({
       itemName: 'Sparkling Water',
     }),
     headers: {
-      'X-Mobile-Write-Operation': 'quick-track.create',
+      'X-Mobile-Write-Operation': 'food-product.create',
     },
     status: 'pending',
     idempotencyKey: 'idem_seeded_1',
@@ -293,31 +292,28 @@ describe('MutationReplayService', () => {
     expect(restartedService.getSnapshot().queueDepth).toBe(1);
   });
 
-  it('replays food product mutations after queue initialization migrates legacy local operations', async () => {
+  it('replays already-normalized food product local operations', async () => {
     const sharedState: SharedQueueState = {
       rows: new Map([
         [
           'mut_seeded_1',
           buildQueuedMutation({
             body: JSON.stringify({
-              quickTrackId: 'food-product-1',
+              foodProductId: 'food-product-1',
               updates: {
                 itemName: 'Sparkling Water',
               },
             }),
             headers: {
-              'X-Mobile-Write-Operation': 'quick-track.update',
+              'X-Mobile-Write-Operation': 'food-product.update',
             },
             method: 'POST',
-            url: 'local://feature/quick-track.update',
+            url: 'local://feature/food-product.update',
           }),
         ],
       ]),
     };
-    const store = new InMemoryQueueStore(sharedState, (state) => {
-      const summary = migrateQueuedFoodProductMutations([...state.rows.values()]);
-      state.rows = new Map(summary.mutations.map((mutation) => [mutation.id, mutation]));
-    });
+    const store = new InMemoryQueueStore(sharedState);
     const transport: MutationTransport = {
       send: jest.fn(async (mutation) => {
         expect(mutation.url).toBe('local://feature/food-product.update');

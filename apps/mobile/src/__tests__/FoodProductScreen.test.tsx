@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -6,6 +7,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMonthlyUsage } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
+import { buildLocalPhotoFile } from '../lib/photoFiles';
+import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { FoodProductScreen } from '../screens/FoodProductScreen';
@@ -119,6 +123,11 @@ const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.Mo
 const mockedUsePhotoPickerPermissions = usePhotoPickerPermissions as jest.MockedFunction<
   typeof usePhotoPickerPermissions
 >;
+const mockedBuildLocalPhotoFile = buildLocalPhotoFile as jest.MockedFunction<typeof buildLocalPhotoFile>;
+const mockedResolvePhotoCaptureDate = resolvePhotoCaptureDate as jest.MockedFunction<typeof resolvePhotoCaptureDate>;
+const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
+  typeof trackObservabilityEvent
+>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 
@@ -167,6 +176,15 @@ describe('FoodProductScreen', () => {
       }),
       resetPermissionNeedsSettings: jest.fn(),
     });
+    mockedBuildLocalPhotoFile.mockReset();
+    mockedBuildLocalPhotoFile.mockReturnValue({
+      uri: 'file:///food-product.jpg',
+      name: 'food-product.jpg',
+      mimeType: 'image/jpeg',
+    });
+    mockedResolvePhotoCaptureDate.mockReset();
+    mockedResolvePhotoCaptureDate.mockResolvedValue(new Date('2026-04-15T12:00:00.000Z'));
+    mockedTrackObservabilityEvent.mockReset();
     mockedUseAuth.mockReturnValue({
       actualUser: {
         isAdmin: false,
@@ -247,6 +265,45 @@ describe('FoodProductScreen', () => {
     });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'foodProducts'] });
     expect(navigate).toHaveBeenCalledWith('Home');
+  });
+
+  it('tracks the renamed food product photo-pick start event', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          uri: 'file:///food-product.jpg',
+          fileName: 'food-product.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    });
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByType('PhotoInputField').props.onGalleryPress();
+    });
+
+    expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith('FOOD_PRODUCT_PHOTO_PICK_STARTED', {
+      photoSource: 'gallery',
+      source: 'FoodProductScreen',
+    });
   });
 
   it('reads and writes only the current food product rated-before key', async () => {
