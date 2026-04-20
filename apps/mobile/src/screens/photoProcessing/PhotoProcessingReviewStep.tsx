@@ -13,7 +13,7 @@ import { createThemedStyles } from '../../theme';
 import { Card, Text } from '../../ui';
 import type {
   ProcessType,
-  ReviewQuickTrackCardData,
+  ReviewFoodProductCardData,
   ReviewVisitCardData,
 } from './shared';
 
@@ -21,7 +21,7 @@ interface PhotoProcessingReviewStepProps {
   errorMessage: string | null;
   estimatedFreeMonthlyPhotoRemaining: number;
   processType: ProcessType;
-  reviewQuickTrackCards: ReviewQuickTrackCardData[];
+  reviewFoodProductCards: ReviewFoodProductCardData[];
   reviewVisitCards: ReviewVisitCardData[];
   shouldShowPhotoUpgradePrompt: boolean;
   showOfflineUsageWarning: boolean;
@@ -46,7 +46,7 @@ export function PhotoProcessingReviewStep({
   errorMessage,
   estimatedFreeMonthlyPhotoRemaining,
   processType,
-  reviewQuickTrackCards,
+  reviewFoodProductCards,
   reviewVisitCards,
   shouldShowPhotoUpgradePrompt,
   showOfflineUsageWarning,
@@ -146,12 +146,12 @@ export function PhotoProcessingReviewStep({
           </View>
         </>
       ) : (
-        reviewQuickTrackCards.map((entry) => (
+        reviewFoodProductCards.map((entry) => (
           <HomeFoodProductEntryCard
             entryMeta={entry.entryMeta}
             key={entry.id}
             onOpenPhotoViewer={openReviewPhotoViewer}
-            foodProduct={entry.quickTrack}
+            foodProduct={entry.foodProduct}
             photos={entry.photos}
           />
         ))

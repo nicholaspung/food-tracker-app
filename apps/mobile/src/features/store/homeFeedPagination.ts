@@ -1,4 +1,4 @@
-import type { QuickTrackRecord, VisitRecord } from '../models';
+import type { FoodProductRecord, VisitRecord } from '../models';
 import { getAuthenticatedUserIdOrNull, sendApiRequest } from './pocketbaseGateway';
 
 export type HomeFeedScope = 'all' | 'mine' | 'friends';
@@ -44,7 +44,7 @@ export type BufferedHomeFeedEntry<TVisit, TQuickTrack> =
 export interface HomeFeedCursor {
   page: number;
 }
-export type HomeFeedPageEntry = BufferedHomeFeedEntry<VisitRecord, QuickTrackRecord>;
+export type HomeFeedPageEntry = BufferedHomeFeedEntry<VisitRecord, FoodProductRecord>;
 
 export interface HomeFeedPhotoPreviewRecord {
   id: string;

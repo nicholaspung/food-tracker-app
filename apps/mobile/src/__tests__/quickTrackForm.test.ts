@@ -1,19 +1,19 @@
 import { localDateStringToUTC } from '../lib/dateFormatting';
 import {
-  buildCreateQuickTrackInput,
-  buildDefaultQuickTrackForm,
-  buildQuickTrackFormFromRecord,
-  buildUpdateQuickTrackInput,
-} from '../lib/quickTrackForm';
+  buildCreateFoodProductInput,
+  buildDefaultFoodProductForm,
+  buildFoodProductFormFromRecord,
+  buildUpdateFoodProductInput,
+} from '../lib/foodProductForm';
 
 jest.mock('../features', () => ({
   resolveDefaultVisitVisibilityFromAuth: jest.fn(() => 'friends'),
 }));
 
-describe('quickTrackForm', () => {
+describe('foodProductForm', () => {
   it('builds form values from a quick-track record', () => {
     expect(
-      buildQuickTrackFormFromRecord({
+      buildFoodProductFormFromRecord({
         id: 'quick-track-1',
         restaurantName: 'Quick Track',
         itemCategory: 'packaged_food',
@@ -37,9 +37,9 @@ describe('quickTrackForm', () => {
     });
   });
 
-  it('normalizes unsupported edit categories and builds a photo-aware update payload', () => {
+  it('preserves freeform categories and builds a photo-aware update payload', () => {
     expect(
-      buildQuickTrackFormFromRecord({
+      buildFoodProductFormFromRecord({
         id: 'quick-track-2',
         restaurantName: 'Quick Track',
         itemCategory: 'restaurant',
@@ -55,7 +55,7 @@ describe('quickTrackForm', () => {
     ).toEqual({
       itemName: 'Soup',
       locationText: '',
-      category: '',
+      category: 'restaurant',
       rating: 3,
       notes: '',
       visibility: 'friends',
@@ -63,7 +63,7 @@ describe('quickTrackForm', () => {
     });
 
     expect(
-      buildDefaultQuickTrackForm({
+      buildDefaultFoodProductForm({
         previousForm: {
           itemName: 'Previous Snack',
           locationText: 'Downtown',
@@ -85,7 +85,7 @@ describe('quickTrackForm', () => {
     });
 
     expect(
-      buildCreateQuickTrackInput({
+      buildCreateFoodProductInput({
         itemName: '  Croissant  ',
         locationText: '  Ferry Building  ',
         category: 'packaged_food',
@@ -105,7 +105,7 @@ describe('quickTrackForm', () => {
     });
 
     expect(
-      buildUpdateQuickTrackInput(
+      buildUpdateFoodProductInput(
         {
           itemName: '  Updated Latte  ',
           locationText: '',

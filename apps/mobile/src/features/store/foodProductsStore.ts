@@ -313,7 +313,7 @@ export async function updateFoodProduct(
   );
 }
 
-async function deleteFoodProduct(foodProductId: string): Promise<void> {
+export async function deleteFoodProduct(foodProductId: string): Promise<void> {
   return trackFeatureMutation('quick_track.delete', async () => {
     try {
       await pb.collection('food_items').delete(foodProductId);
@@ -325,7 +325,3 @@ async function deleteFoodProduct(foodProductId: string): Promise<void> {
     }
   });
 }
-
-export const createQuickTrack = createFoodProduct;
-export const updateQuickTrack = updateFoodProduct;
-export const deleteQuickTrack = deleteFoodProduct;

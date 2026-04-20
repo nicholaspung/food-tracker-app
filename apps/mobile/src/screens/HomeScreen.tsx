@@ -28,7 +28,7 @@ import {
   type HomeFeedCursor,
   type HomeFeedPageResult,
   listHomeFeedPage,
-  type QuickTrackRecord,
+  type FoodProductRecord,
   type VisitRecord,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
@@ -68,12 +68,12 @@ interface VisitFeedItem extends BaseFeedItem {
   visit: VisitRecord;
 }
 
-interface QuickTrackFeedItem extends BaseFeedItem {
+interface FoodProductFeedItem extends BaseFeedItem {
   source: 'quick-track';
-  quickTrack: QuickTrackRecord;
+  foodProduct: FoodProductRecord;
 }
 
-type FeedItem = VisitFeedItem | QuickTrackFeedItem;
+type FeedItem = VisitFeedItem | FoodProductFeedItem;
 type VisitShareItem = RootStackParamList['VisitShareCustomization']['items'][number];
 
 interface GroupedMonth {
@@ -81,7 +81,7 @@ interface GroupedMonth {
   monthLabel: string;
   totalCount: number;
   visitsCount: number;
-  quickTrackCount: number;
+  foodProductCount: number;
   entries: FeedItem[];
 }
 
@@ -282,18 +282,18 @@ function buildVisitFeedItem(
   };
 }
 
-function buildQuickTrackFeedItem(
-  quickTrack: QuickTrackRecord,
+function buildFoodProductFeedItem(
+  foodProduct: FoodProductRecord,
   currentUserId: string | null,
   eventAt?: string,
-): QuickTrackFeedItem {
+): FoodProductFeedItem {
   return {
-    isFriend: !!quickTrack.userId && !!currentUserId && quickTrack.userId !== currentUserId,
-    friendName: quickTrack.userName,
-    id: `quick_track_${quickTrack.id}`,
-    eventAt: eventAt?.trim() || quickTrack.itemDate || quickTrack.createdAt,
+    isFriend: !!foodProduct.userId && !!currentUserId && foodProduct.userId !== currentUserId,
+    friendName: foodProduct.userName,
+    id: `quick_track_${foodProduct.id}`,
+    eventAt: eventAt?.trim() || foodProduct.itemDate || foodProduct.createdAt,
     source: 'quick-track',
-    quickTrack,
+    foodProduct,
   };
 }
 
@@ -379,7 +379,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       homeFeedState.items.map((item) =>
         item.source === 'visit'
           ? buildVisitFeedItem(item.visit, currentUserId, item.eventAt)
-          : buildQuickTrackFeedItem(item.quickTrack, currentUserId, item.eventAt),
+          : buildFoodProductFeedItem(item.quickTrack, currentUserId, item.eventAt),
       ),
     [currentUserId, homeFeedState.items],
   );
@@ -456,7 +456,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         monthLabel: string;
         totalCount: number;
         visitsCount: number;
-        quickTrackCount: number;
+        foodProductCount: number;
         entries: FeedItem[];
       }
     >();
@@ -475,7 +475,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           monthLabel,
           totalCount: 0,
           visitsCount: 0,
-          quickTrackCount: 0,
+          foodProductCount: 0,
           entries: [],
         });
       }
@@ -489,7 +489,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       if (entry.source === 'visit') {
         monthGroup.visitsCount += 1;
       } else {
-        monthGroup.quickTrackCount += 1;
+        monthGroup.foodProductCount += 1;
       }
       monthGroup.entries.push(entry);
     });
@@ -501,7 +501,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         monthLabel: month.monthLabel,
         totalCount: month.totalCount,
         visitsCount: month.visitsCount,
-        quickTrackCount: month.quickTrackCount,
+        foodProductCount: month.foodProductCount,
         entries: month.entries,
       }));
   }, [feedMode, loadedFeed]);
@@ -532,14 +532,14 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const totalVisitCount =
     homeFeedQuery.data?.pages[0]?.totalVisits ??
     loadedFeed.filter((entry) => entry.source === 'visit').length;
-  const totalQuickTrackCount =
+  const totalFoodProductCount =
     homeFeedQuery.data?.pages[0]?.totalQuickTracks ??
     loadedFeed.filter((entry) => entry.source === 'quick-track').length;
-  const totalFeedCount = totalVisitCount + totalQuickTrackCount;
+  const totalFeedCount = totalVisitCount + totalFoodProductCount;
 
   const summaryText = useMemo(() => {
     const visitLabel = feedMode === 'friends' ? ['friend visit', 'friend visits'] : ['visit', 'visits'];
-    const quickTrackLabel =
+    const foodProductLabel =
       feedMode === 'friends'
         ? ['friend food product', 'friend food products']
         : ['food product', 'food products'];
@@ -553,11 +553,11 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     }
 
     if (typeFilter === 'quick-track') {
-      return totalQuickTrackCount === 0
+      return totalFoodProductCount === 0
         ? feedMode === 'friends'
           ? 'No friend food products yet'
           : 'No food products yet'
-        : formatCount(totalQuickTrackCount, quickTrackLabel[0], quickTrackLabel[1]);
+        : formatCount(totalFoodProductCount, foodProductLabel[0], foodProductLabel[1]);
     }
 
     if (totalFeedCount === 0) {
@@ -566,12 +566,12 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
 
     return [
       formatCount(totalVisitCount, visitLabel[0], visitLabel[1]),
-      formatCount(totalQuickTrackCount, quickTrackLabel[0], quickTrackLabel[1]),
+      formatCount(totalFoodProductCount, foodProductLabel[0], foodProductLabel[1]),
     ].join(' • ');
   }, [
     feedMode,
     totalFeedCount,
-    totalQuickTrackCount,
+    totalFoodProductCount,
     totalVisitCount,
     typeFilter,
   ]);
@@ -834,8 +834,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         );
       }
 
-      const quickTrack = feedItem.quickTrack;
-      const quickTrackPhotos = photosByFoodItem.get(quickTrack.id) ?? [];
+      const { foodProduct } = feedItem;
+      const foodProductPhotos = photosByFoodItem.get(foodProduct.id) ?? [];
 
       return (
         <HomeFoodProductEntryCard
@@ -846,9 +846,9 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           onDelete={
             !feedItem.isFriend
               ? () => {
-                  homeFeedActions.promptDeleteQuickTrack(
-                    quickTrack.id,
-                    quickTrack.itemName,
+                  homeFeedActions.promptDeleteFoodProduct(
+                    foodProduct.id,
+                    foodProduct.itemName,
                   );
                 }
               : undefined
@@ -857,7 +857,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             !feedItem.isFriend
               ? () => {
                   navigation.navigate('EditFoodProduct', {
-                    foodProductId: quickTrack.id,
+                    foodProductId: foodProduct.id,
                   });
                 }
               : undefined
@@ -866,8 +866,8 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
             feedItem.isFriend
               ? () => {
                   homeFeedActions.promptReportMenuTarget({
-                    id: quickTrack.id,
-                    itemName: quickTrack.itemName,
+                    id: foodProduct.id,
+                    itemName: foodProduct.itemName,
                     kind: 'quick-track',
                   });
                 }
@@ -875,10 +875,10 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
           }
           onOpenPhotoViewer={homeFeedActions.openPhotoViewer}
           onSharePhoto={handleSharePhoto}
-          photos={quickTrackPhotos}
-          foodProduct={quickTrack}
+          photos={foodProductPhotos}
+          foodProduct={foodProduct}
           showUnderReviewBadge={
-            !feedItem.isFriend && quickTrack.moderationStatus === 'under_review'
+            !feedItem.isFriend && foodProduct.moderationStatus === 'under_review'
           }
         />
       );
@@ -1106,7 +1106,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
                     <View style={styles.monthCountWrap}>
                       <Text style={styles.monthCount} variant="metric">{month.totalCount}</Text>
                       <Text style={styles.monthCountMeta} variant="bodySmTightMedium">
-                        ({month.visitsCount}v • {month.quickTrackCount}q)
+                        ({month.visitsCount}v • {month.foodProductCount}p)
                       </Text>
                     </View>
                   </Pressable>

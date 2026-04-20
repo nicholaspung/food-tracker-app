@@ -58,8 +58,6 @@ export interface FoodProductRecord {
   updatedAt: string;
 }
 
-export type QuickTrackRecord = FoodProductRecord;
-
 export interface PhotoDraftAsset {
   id: string;
   source: 'camera' | 'gallery';
@@ -289,7 +287,7 @@ export interface BillRecord {
 export interface FeatureStore {
   restaurants: RestaurantRecord[];
   visits: VisitRecord[];
-  quickTracks: QuickTrackRecord[];
+  foodProducts: FoodProductRecord[];
   photoDraft: PhotoProcessingDraft;
   restaurantLists: RestaurantListRecord[];
   notes: NoteRecord[];

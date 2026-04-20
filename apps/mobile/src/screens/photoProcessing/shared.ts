@@ -3,7 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { HomeFeedPhotoRecord } from '../../components/shared';
 import type {
-  QuickTrackRecord,
+  FoodProductRecord,
   RestaurantRecord,
   VisitRecord,
   VisitPhotoUploadInput,
@@ -17,7 +17,7 @@ import {
   resolveDateValue,
 } from '../../lib/dateFormatting';
 import type { VisitRestaurantWithDistance } from '../../lib/visitRestaurantSearch';
-import type { QuickTrackFormValues } from '../../lib/quickTrackForm';
+import type { FoodProductFormValues } from '../../lib/foodProductForm';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
 export type PhotoProcessingScreenProps = NativeStackScreenProps<
@@ -26,7 +26,7 @@ export type PhotoProcessingScreenProps = NativeStackScreenProps<
 >;
 export type ScanSource = PhotoPickerPermissionSource;
 export type MenuScanPhase = 'choose' | 'processing' | 'success' | 'error';
-export type ProcessType = 'restaurant' | 'quickTrack';
+export type ProcessType = 'restaurant' | 'foodProduct';
 export type GeneralPhotoStep = 'choice' | 'upload' | 'process' | 'review';
 
 export interface PhotoCoordinates {
@@ -83,9 +83,9 @@ export interface ReviewVisitCardData {
   footerLabel: string;
 }
 
-export interface ReviewQuickTrackCardData {
+export interface ReviewFoodProductCardData {
   id: string;
-  quickTrack: QuickTrackRecord;
+  foodProduct: FoodProductRecord;
   photos: HomeFeedPhotoRecord[];
   entryMeta: string;
 }
@@ -97,9 +97,9 @@ export interface RestaurantReviewGroup {
   items: { photo: DraftPhotoAsset; form: RestaurantPhotoForm }[];
 }
 
-export interface QuickTrackReviewEntry {
+export interface FoodProductReviewEntry {
   photo: DraftPhotoAsset;
-  form: QuickTrackFormValues;
+  form: FoodProductFormValues;
 }
 
 function formatReviewEntryDateLabel(value: string, fallbackDate: string): string {
@@ -148,20 +148,20 @@ export function buildRestaurantReviewGroups(
   return Array.from(groups.values());
 }
 
-export function buildQuickTrackReviewEntries(
+export function buildFoodProductReviewEntries(
   photos: DraftPhotoAsset[],
-  quickTrackForms: Record<string, QuickTrackFormValues>,
-): QuickTrackReviewEntry[] {
+  foodProductForms: Record<string, FoodProductFormValues>,
+): FoodProductReviewEntry[] {
   return photos
     .map((photo) => {
-      const form = quickTrackForms[photo.id];
+      const form = foodProductForms[photo.id];
       if (!form) {
         return null;
       }
 
       return { photo, form };
     })
-    .filter((entry): entry is QuickTrackReviewEntry => Boolean(entry));
+    .filter((entry): entry is FoodProductReviewEntry => Boolean(entry));
 }
 
 export function collapseRestaurantOptionsToSelection({

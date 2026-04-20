@@ -4,9 +4,9 @@ import { useCallback, useState } from 'react';
 import { buildLocalPhotoFile } from '../../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../../lib/photoMetadata';
 import {
-  buildDefaultQuickTrackForm,
-  type QuickTrackFormValues,
-} from '../../lib/quickTrackForm';
+  buildDefaultFoodProductForm,
+  type FoodProductFormValues,
+} from '../../lib/foodProductForm';
 import {
   buildDefaultRestaurantForm,
   extractCaptureCoordinates,
@@ -21,8 +21,8 @@ export function usePhotoProcessingDraftState() {
   const [restaurantForms, setRestaurantForms] = useState<
     Record<string, RestaurantPhotoForm>
   >({});
-  const [quickTrackForms, setQuickTrackForms] = useState<
-    Record<string, QuickTrackFormValues>
+  const [foodProductForms, setFoodProductForms] = useState<
+    Record<string, FoodProductFormValues>
   >({});
   const [locationMetadataHintDismissedByPhotoId, setLocationMetadataHintDismissedByPhotoId] =
     useState<Record<string, boolean>>({});
@@ -31,8 +31,8 @@ export function usePhotoProcessingDraftState() {
   const currentRestaurantForm = currentPhoto
     ? restaurantForms[currentPhoto.id]
     : undefined;
-  const currentQuickTrackForm = currentPhoto
-    ? quickTrackForms[currentPhoto.id]
+  const currentFoodProductForm = currentPhoto
+    ? foodProductForms[currentPhoto.id]
     : undefined;
 
   const updateCurrentRestaurantForm = useCallback(
@@ -57,16 +57,16 @@ export function usePhotoProcessingDraftState() {
     [currentPhoto],
   );
 
-  const updateCurrentQuickTrackForm = useCallback(
-    (updates: Partial<QuickTrackFormValues>) => {
+  const updateCurrentFoodProductForm = useCallback(
+    (updates: Partial<FoodProductFormValues>) => {
       if (!currentPhoto) {
         return;
       }
 
-      setQuickTrackForms((current) => {
+      setFoodProductForms((current) => {
         const currentForm =
           current[currentPhoto.id] ??
-          buildDefaultQuickTrackForm({
+          buildDefaultFoodProductForm({
             captureDate: currentPhoto.captureDate,
             detectedDateValue: resolveDraftPhotoDetectedDateValue(currentPhoto),
           });
@@ -152,7 +152,7 @@ export function usePhotoProcessingDraftState() {
       delete next[photoId];
       return next;
     });
-    setQuickTrackForms((current) => {
+    setFoodProductForms((current) => {
       if (!current[photoId]) {
         return current;
       }
@@ -176,14 +176,14 @@ export function usePhotoProcessingDraftState() {
     setPhotos(nextPhotos);
     setCurrentPhotoIndex(0);
     setRestaurantForms({});
-    setQuickTrackForms({});
+    setFoodProductForms({});
     setLocationMetadataHintDismissedByPhotoId({});
   }, []);
 
   const resetProcessingForms = useCallback(() => {
     setCurrentPhotoIndex(0);
     setRestaurantForms({});
-    setQuickTrackForms({});
+    setFoodProductForms({});
     setLocationMetadataHintDismissedByPhotoId({});
   }, []);
 
@@ -191,7 +191,7 @@ export function usePhotoProcessingDraftState() {
     setPhotos([]);
     setCurrentPhotoIndex(0);
     setRestaurantForms({});
-    setQuickTrackForms({});
+    setFoodProductForms({});
     setLocationMetadataHintDismissedByPhotoId({});
   }, []);
 
@@ -199,21 +199,21 @@ export function usePhotoProcessingDraftState() {
     appendAssets,
     currentPhoto,
     currentPhotoIndex,
-    currentQuickTrackForm,
+    currentFoodProductForm,
     currentRestaurantForm,
     dismissCurrentPhotoLocationHint,
     locationMetadataHintDismissedByPhotoId,
     photos,
-    quickTrackForms,
+    foodProductForms,
     removePhoto,
     replacePhotos,
     resetDraftState,
     resetProcessingForms,
     restaurantForms,
     setCurrentPhotoIndex,
-    setQuickTrackForms,
+    setFoodProductForms,
     setRestaurantForms,
-    updateCurrentQuickTrackForm,
+    updateCurrentFoodProductForm,
     updateCurrentRestaurantForm,
   };
 }

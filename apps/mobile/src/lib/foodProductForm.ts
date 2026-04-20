@@ -44,7 +44,7 @@ function normalizeFoodProductCategory(value: string | undefined | null): string 
   return value?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
-function resolveDefaultFoodProductVisibility(): FoodProductVisibility {
+export function resolveDefaultFoodProductVisibility(): FoodProductVisibility {
   return resolveDefaultVisitVisibilityFromAuth();
 }
 
@@ -145,13 +145,3 @@ export function buildUpdateFoodProductInput(
     deletePhotoIds: normalizedDeletePhotoIds.length > 0 ? normalizedDeletePhotoIds : undefined,
   };
 }
-
-export const buildDefaultQuickTrackForm = buildDefaultFoodProductForm;
-export const buildQuickTrackFormFromRecord = buildFoodProductFormFromRecord;
-export const validateQuickTrackForm = validateFoodProductForm;
-export const buildCreateQuickTrackInput = buildCreateFoodProductInput;
-export const buildUpdateQuickTrackInput = buildUpdateFoodProductInput;
-export const resolveDefaultQuickTrackVisibility = resolveDefaultFoodProductVisibility;
-
-export type QuickTrackFormValues = FoodProductFormValues;
-export type QuickTrackVisibility = FoodProductVisibility;

@@ -10,12 +10,12 @@ import {
   createDefaultRestaurantList,
   createFeedback,
   createNote,
-  createQuickTrack,
+  createFoodProduct,
   createRestaurantList,
   createVisit,
   deleteBill,
   deleteNote,
-  deleteQuickTrack,
+  deleteFoodProduct,
   deleteRestaurantList,
   deleteVisit,
   inviteFriend,
@@ -28,7 +28,7 @@ import {
   removeRestaurantListUserRating,
   saveRestaurantFoodItemToList,
   sendFeedbackMessage,
-  updateQuickTrack,
+  updateFoodProduct,
   updateRestaurantList,
   updateVisit,
   updateBill,
@@ -37,7 +37,7 @@ import {
   type CreateBillInput,
   type CreateFeedbackInput,
   type CreateNoteInput,
-  type CreateQuickTrackInput,
+  type CreateFoodProductInput,
   type CreateRestaurantListInput,
   type CreateVisitInput,
   type InviteFriendInput,
@@ -46,7 +46,7 @@ import {
   type RemoveRestaurantListSourceRatingInput,
   type SaveRestaurantFoodItemToListInput,
   type SendFeedbackMessageInput,
-  type UpdateQuickTrackInput,
+  type UpdateFoodProductInput,
   type UpdateRestaurantListInput,
   type UpdateVisitInput,
   type UpdateBillInput,
@@ -68,7 +68,7 @@ interface VisitDeleteOperationPayload {
 
 interface QuickTrackUpdateOperationPayload {
   quickTrackId: string;
-  updates: UpdateQuickTrackInput;
+  updates: UpdateFoodProductInput;
 }
 
 interface QuickTrackDeleteOperationPayload {
@@ -147,7 +147,7 @@ export interface FeatureOutboxOperationPayloadMap {
   'visit.create': CreateVisitInput;
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
-  'quick-track.create': CreateQuickTrackInput;
+  'quick-track.create': CreateFoodProductInput;
   'quick-track.update': QuickTrackUpdateOperationPayload;
   'quick-track.delete': QuickTrackDeleteOperationPayload;
   'note.create': CreateNoteInput;
@@ -370,16 +370,16 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
       return true;
     }
     case 'quick-track.create':
-      await createQuickTrack(payload as CreateQuickTrackInput);
+      await createFoodProduct(payload as CreateFoodProductInput);
       return true;
     case 'quick-track.update': {
       const quickTrackUpdatePayload = payload as QuickTrackUpdateOperationPayload;
-      await updateQuickTrack(quickTrackUpdatePayload.quickTrackId, quickTrackUpdatePayload.updates);
+      await updateFoodProduct(quickTrackUpdatePayload.quickTrackId, quickTrackUpdatePayload.updates);
       return true;
     }
     case 'quick-track.delete': {
       const quickTrackDeletePayload = payload as QuickTrackDeleteOperationPayload;
-      await deleteQuickTrack(quickTrackDeletePayload.quickTrackId);
+      await deleteFoodProduct(quickTrackDeletePayload.quickTrackId);
       return true;
     }
     case 'note.create':

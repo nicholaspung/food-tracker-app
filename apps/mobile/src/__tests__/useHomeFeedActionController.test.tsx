@@ -9,7 +9,7 @@ import {
 
 jest.mock('../features', () => ({
   buildPocketBaseFileUrl: jest.fn(),
-  deleteQuickTrack: jest.fn(),
+  deleteFoodProduct: jest.fn(),
   deleteVisit: jest.fn(),
   invalidateHomeFeedQueries: jest.fn(),
   reportContent: jest.fn(),

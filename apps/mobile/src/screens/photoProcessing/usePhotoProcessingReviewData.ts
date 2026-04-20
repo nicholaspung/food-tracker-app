@@ -4,21 +4,21 @@ import type { HomeFeedPhotoRecord } from '../../components/shared';
 import type { VisitRecord } from '../../features';
 import { localDateStringToUTC } from '../../lib/dateFormatting';
 import {
-  buildQuickTrackReviewEntries,
+  buildFoodProductReviewEntries,
   buildRestaurantReviewGroups,
   formatReviewEntryFooterLabel,
   type DraftPhotoAsset,
-  type QuickTrackReviewEntry,
+  type FoodProductReviewEntry,
   type RestaurantPhotoForm,
-  type ReviewQuickTrackCardData,
+  type ReviewFoodProductCardData,
   type ReviewVisitCardData,
 } from './shared';
-import type { QuickTrackFormValues } from '../../lib/quickTrackForm';
+import type { FoodProductFormValues } from '../../lib/foodProductForm';
 
 interface UsePhotoProcessingReviewDataParams {
   currentUserId: string | null;
   photos: DraftPhotoAsset[];
-  quickTrackForms: Record<string, QuickTrackFormValues>;
+  foodProductForms: Record<string, FoodProductFormValues>;
   restaurantForms: Record<string, RestaurantPhotoForm>;
   userName?: string;
   visitVisibility: 'friends' | 'private';
@@ -27,7 +27,7 @@ interface UsePhotoProcessingReviewDataParams {
 export function usePhotoProcessingReviewData({
   currentUserId,
   photos,
-  quickTrackForms,
+  foodProductForms,
   restaurantForms,
   userName,
   visitVisibility,
@@ -37,20 +37,20 @@ export function usePhotoProcessingReviewData({
     [photos, restaurantForms],
   );
 
-  const quickTrackReviewEntries = useMemo<QuickTrackReviewEntry[]>(
-    () => buildQuickTrackReviewEntries(photos, quickTrackForms),
-    [photos, quickTrackForms],
+  const foodProductReviewEntries = useMemo<FoodProductReviewEntry[]>(
+    () => buildFoodProductReviewEntries(photos, foodProductForms),
+    [photos, foodProductForms],
   );
 
-  const reviewQuickTrackCards = useMemo<ReviewQuickTrackCardData[]>(() => {
-    return quickTrackReviewEntries.map((entry, index) => {
+  const reviewFoodProductCards = useMemo<ReviewFoodProductCardData[]>(() => {
+    return foodProductReviewEntries.map((entry, index) => {
       const eventAt =
         entry.photo.captureDate?.toISOString() ??
         localDateStringToUTC(entry.form.date);
 
       return {
-        id: `review-quick-track-${entry.photo.id}-${index}`,
-        quickTrack: {
+        id: `review-food-product-${entry.photo.id}-${index}`,
+        foodProduct: {
           id: entry.photo.id,
           restaurantName: 'Food Product',
           itemCategory: entry.form.category || undefined,
@@ -77,7 +77,7 @@ export function usePhotoProcessingReviewData({
         entryMeta: formatReviewEntryFooterLabel(eventAt, entry.form.date),
       };
     });
-  }, [currentUserId, quickTrackReviewEntries, userName]);
+  }, [currentUserId, foodProductReviewEntries, userName]);
 
   const reviewVisitCards = useMemo<ReviewVisitCardData[]>(() => {
     return restaurantReviewGroups.map((group, groupIndex) => {
@@ -135,9 +135,9 @@ export function usePhotoProcessingReviewData({
   }, [currentUserId, restaurantReviewGroups, userName, visitVisibility]);
 
   return {
-    quickTrackReviewEntries,
+    foodProductReviewEntries,
     restaurantReviewGroups,
-    reviewQuickTrackCards,
+    reviewFoodProductCards,
     reviewVisitCards,
   };
 }

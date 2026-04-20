@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import {
   buildPocketBaseFileUrl,
-  deleteQuickTrack,
+  deleteFoodProduct,
   deleteVisit,
   invalidateHomeFeedQueries,
   reportContent,
@@ -47,7 +47,7 @@ export interface HomeFeedActionController {
   confirmDeleteTarget: () => Promise<void>;
   openPhotoViewer: (photos: VisitPhotoRecord[], initialIndex?: number) => void;
   openReportModalFromMenu: () => void;
-  promptDeleteQuickTrack: (quickTrackId: string, itemName: string) => void;
+  promptDeleteFoodProduct: (foodProductId: string, itemName: string) => void;
   promptDeleteVisit: (visitId: string, itemName: string) => void;
   promptReportMenuTarget: (target: PendingReportTarget) => void;
   submitReport: () => Promise<void>;
@@ -87,15 +87,15 @@ export function useHomeFeedActionController({
     await invalidateHomeFeedQueries(queryClient);
   }, [queryClient]);
 
-  const handleDeleteQuickTrack = useCallback(
-    async (quickTrackId: string) => {
+  const handleDeleteFoodProduct = useCallback(
+    async (foodProductId: string) => {
       const deleteResult = await writeFeature({
         operationName: 'quick-track.delete',
         offline: {
           strategy: 'outbox',
-          payload: { quickTrackId },
+          payload: { quickTrackId: foodProductId },
         },
-        execute: () => deleteQuickTrack(quickTrackId),
+        execute: () => deleteFoodProduct(foodProductId),
       });
 
       if (deleteResult.status === 'queued') {
@@ -131,11 +131,11 @@ export function useHomeFeedActionController({
     [invalidateHomeFeed, writeFeature],
   );
 
-  const promptDeleteQuickTrack = useCallback(
-    (quickTrackId: string, itemName: string) => {
+  const promptDeleteFoodProduct = useCallback(
+    (foodProductId: string, itemName: string) => {
       setDeleteErrorMessage(null);
       setPendingDeleteTarget({
-        id: quickTrackId,
+        id: foodProductId,
         itemName,
         kind: 'quick-track',
       });
@@ -171,7 +171,7 @@ export function useHomeFeedActionController({
       if (pendingDeleteTarget.kind === 'visit') {
         await handleDeleteVisit(pendingDeleteTarget.id);
       } else {
-        await handleDeleteQuickTrack(pendingDeleteTarget.id);
+        await handleDeleteFoodProduct(pendingDeleteTarget.id);
       }
 
       setPendingDeleteTarget(null);
@@ -188,7 +188,7 @@ export function useHomeFeedActionController({
       setIsDeletingTarget(false);
     }
   }, [
-    handleDeleteQuickTrack,
+    handleDeleteFoodProduct,
     handleDeleteVisit,
     isDeletingTarget,
     pendingDeleteTarget,
@@ -357,7 +357,7 @@ export function useHomeFeedActionController({
     confirmDeleteTarget,
     openPhotoViewer,
     openReportModalFromMenu,
-    promptDeleteQuickTrack,
+    promptDeleteFoodProduct,
     promptDeleteVisit,
     promptReportMenuTarget,
     submitReport,

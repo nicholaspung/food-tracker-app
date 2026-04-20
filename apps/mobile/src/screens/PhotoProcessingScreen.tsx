@@ -50,9 +50,9 @@ import {
   getTodayLocalDateString,
 } from '../lib/dateFormatting';
 import {
-  buildDefaultQuickTrackForm,
-  resolveDefaultQuickTrackVisibility,
-} from '../lib/quickTrackForm';
+  buildDefaultFoodProductForm,
+  resolveDefaultFoodProductVisibility,
+} from '../lib/foodProductForm';
 import {
   buildVisitRestaurantDescription,
   type VisitRestaurantWithDistance,
@@ -282,25 +282,25 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     appendAssets,
     currentPhoto,
     currentPhotoIndex,
-    currentQuickTrackForm,
+    currentFoodProductForm,
     currentRestaurantForm,
     dismissCurrentPhotoLocationHint,
     locationMetadataHintDismissedByPhotoId,
     photos,
-    quickTrackForms,
+    foodProductForms,
     removePhoto,
     replacePhotos,
     resetDraftState,
     resetProcessingForms,
     restaurantForms,
     setCurrentPhotoIndex,
-    setQuickTrackForms,
+    setFoodProductForms,
     setRestaurantForms,
-    updateCurrentQuickTrackForm,
+    updateCurrentFoodProductForm,
     updateCurrentRestaurantForm,
   } = usePhotoProcessingDraftState();
   const [visitVisibility, setVisitVisibility] = useState<'friends' | 'private'>(
-    resolveDefaultQuickTrackVisibility(),
+    resolveDefaultFoodProductVisibility(),
   );
   const [menuItemSearchQuery, setMenuItemSearchQuery] = useState('');
   const [menuItemMode, setMenuItemMode] = useState<MenuItemMode>('existing');
@@ -428,7 +428,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       return;
     }
 
-    setQuickTrackForms((current) => {
+    setFoodProductForms((current) => {
       if (current[currentPhoto.id]) {
         return current;
       }
@@ -438,7 +438,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
 
       return {
         ...current,
-        [currentPhoto.id]: buildDefaultQuickTrackForm({
+        [currentPhoto.id]: buildDefaultFoodProductForm({
           captureDate: currentPhoto.captureDate,
           detectedDateValue: resolveDraftPhotoDetectedDateValue(currentPhoto),
           previousForm,
@@ -450,7 +450,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     currentPhotoIndex,
     photos,
     processType,
-    setQuickTrackForms,
+    setFoodProductForms,
     setRestaurantForms,
     step,
   ]);
@@ -652,14 +652,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     );
   }, [menuItemsQuery.data, newMenuItemName]);
   const {
-    quickTrackReviewEntries,
+    foodProductReviewEntries,
     restaurantReviewGroups,
-    reviewQuickTrackCards,
+    reviewFoodProductCards,
     reviewVisitCards,
   } = usePhotoProcessingReviewData({
     currentUserId,
     photos,
-    quickTrackForms,
+    foodProductForms,
     restaurantForms,
     userName: user?.name?.trim() || undefined,
     visitVisibility,
@@ -677,7 +677,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     usePhotoProcessingSubmission({
       currentPhoto,
       currentPhotoIndex,
-      currentQuickTrackForm,
+      currentFoodProductForm,
       currentRestaurantForm,
       goToProcessPhoto,
       isDisplayFreeUser,
@@ -687,7 +687,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       photos,
       processType,
       queryClient,
-      quickTrackForms,
+      foodProductForms,
       restaurantForms,
       setErrorMessage,
       setStep,
@@ -1188,7 +1188,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                 onPress={() => {
                   if (isNoteDrivenFlow) {
                     if (hasNotePhotos) {
-                      void beginNotePhotoProcessFlow('quickTrack');
+                      void beginNotePhotoProcessFlow('foodProduct');
                       return;
                     }
 
@@ -1200,7 +1200,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     return;
                   }
 
-                  beginStandardProcessFlow('quickTrack');
+                  beginStandardProcessFlow('foodProduct');
                 }}
                 testID={isNoteDrivenFlow ? 'note-use-choice-food-product' : undefined}
                 title={isNoteDrivenFlow ? 'Food Product' : 'Food Products'}
@@ -1733,10 +1733,10 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           <>
             <FoodProductFormFields
               detectedDateValue={detectedDateValue}
-              onChange={updateCurrentQuickTrackForm}
+              onChange={updateCurrentFoodProductForm}
               value={
-                currentQuickTrackForm ??
-                buildDefaultQuickTrackForm({
+                currentFoodProductForm ??
+                buildDefaultFoodProductForm({
                   captureDate: currentPhoto.captureDate,
                   detectedDateValue,
                 })
@@ -1779,7 +1779,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         subtitle={
           processType === 'restaurant'
             ? `${restaurantReviewGroups.length} visit${restaurantReviewGroups.length === 1 ? '' : 's'} • ${photos.length} item${photos.length === 1 ? '' : 's'}`
-            : `${quickTrackReviewEntries.length} item${quickTrackReviewEntries.length === 1 ? '' : 's'} ready to save`
+            : `${foodProductReviewEntries.length} item${foodProductReviewEntries.length === 1 ? '' : 's'} ready to save`
         }
         title={processType === 'restaurant' ? 'Review Your Visits' : 'Review Food Products'}
       >
@@ -1788,7 +1788,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           errorMessage={errorMessage}
           estimatedFreeMonthlyPhotoRemaining={estimatedFreeMonthlyPhotoRemaining}
           processType={processType}
-          reviewQuickTrackCards={reviewQuickTrackCards}
+          reviewFoodProductCards={reviewFoodProductCards}
           reviewVisitCards={reviewVisitCards}
           shouldShowPhotoUpgradePrompt={shouldShowPhotoUpgradePrompt}
           showOfflineUsageWarning={shouldShowOfflineUsageWarning(

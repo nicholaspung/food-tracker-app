@@ -18,7 +18,6 @@ interface SharePhotoInput {
 
 interface HomeFoodProductEntryCardProps {
   foodProduct?: FoodProductRecord;
-  quickTrack?: FoodProductRecord;
   photos: HomeFeedPhotoRecord[];
   entryMeta: string;
   friendName?: string;
@@ -220,7 +219,6 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function HomeFoodProductEntryCard({
   foodProduct,
-  quickTrack,
   photos,
   entryMeta,
   friendName,
@@ -234,7 +232,7 @@ export function HomeFoodProductEntryCard({
 }: HomeFoodProductEntryCardProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const resolvedFoodProduct = foodProduct ?? quickTrack;
+  const resolvedFoodProduct = foodProduct;
 
   if (!resolvedFoodProduct) {
     return null;

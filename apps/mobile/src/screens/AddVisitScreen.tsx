@@ -42,7 +42,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
 
   const optionColors = {
     restaurant: theme.colors.text.info,
-    quickTrack: theme.colors.text.success,
+    foodProduct: theme.colors.text.success,
     logNote: theme.colors.text.warning,
     processPhotos: theme.colors.text.brand,
     manageNotes: theme.colors.text.secondary,
@@ -63,7 +63,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
       title: 'Track Food Product',
       description: 'Rate a grocery, convenience-store, or market item',
       icon: 'flash-outline',
-      iconBackground: optionColors.quickTrack,
+      iconBackground: optionColors.foodProduct,
       iconColor: optionColors.iconOnColor,
     },
     {

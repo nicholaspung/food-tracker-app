@@ -147,8 +147,8 @@ jest.mock('../lib/dateFormatting', () => ({
   getTodayLocalDateString: jest.fn(() => '2026-04-18'),
 }));
 
-jest.mock('../lib/quickTrackForm', () => ({
-  buildDefaultQuickTrackForm: jest.fn(() => ({
+jest.mock('../lib/foodProductForm', () => ({
+  buildDefaultFoodProductForm: jest.fn(() => ({
     category: 'dish',
     date: '2026-04-18',
     itemName: '',
@@ -157,7 +157,7 @@ jest.mock('../lib/quickTrackForm', () => ({
     rating: 3,
     visibility: 'friends',
   })),
-  resolveDefaultQuickTrackVisibility: jest.fn(() => 'friends'),
+  resolveDefaultFoodProductVisibility: jest.fn(() => 'friends'),
 }));
 
 jest.mock('../lib/usageUiRules', () => ({
@@ -360,7 +360,7 @@ describe('PhotoProcessingScreen', () => {
       appendAssets: jest.fn(),
       currentPhoto: null,
       currentPhotoIndex: 0,
-      currentQuickTrackForm: null,
+      currentFoodProductForm: null,
       currentRestaurantForm: null,
       dismissCurrentPhotoLocationHint: jest.fn(),
       locationMetadataHintDismissedByPhotoId: {},
@@ -376,22 +376,22 @@ describe('PhotoProcessingScreen', () => {
           uri: 'file:///second.jpg',
         },
       ],
-      quickTrackForms: {},
+      foodProductForms: {},
       removePhoto: jest.fn(),
       replacePhotos: jest.fn(),
       resetDraftState: jest.fn(),
       resetProcessingForms: jest.fn(),
       restaurantForms: {},
       setCurrentPhotoIndex: jest.fn(),
-      setQuickTrackForms: jest.fn(),
+      setFoodProductForms: jest.fn(),
       setRestaurantForms: jest.fn(),
-      updateCurrentQuickTrackForm: jest.fn(),
+      updateCurrentFoodProductForm: jest.fn(),
       updateCurrentRestaurantForm: jest.fn(),
     } as unknown as ReturnType<typeof usePhotoProcessingDraftState>);
     mockedUsePhotoProcessingReviewData.mockReturnValue({
-      quickTrackReviewEntries: [],
+      foodProductReviewEntries: [],
       restaurantReviewGroups: [],
-      reviewQuickTrackCards: [],
+      reviewFoodProductCards: [],
       reviewVisitCards: [],
     } as ReturnType<typeof usePhotoProcessingReviewData>);
     mockedUsePhotoProcessingSubmission.mockReturnValue({

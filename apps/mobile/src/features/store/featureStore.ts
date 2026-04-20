@@ -59,9 +59,6 @@ export interface UpdateFoodProductInput {
   deletePhotoIds?: string[];
 }
 
-export type CreateQuickTrackInput = CreateFoodProductInput;
-export type UpdateQuickTrackInput = UpdateFoodProductInput;
-
 export interface CreateRestaurantListInput {
   name: string;
   description?: string;
@@ -269,7 +266,7 @@ export interface ListVisitsPageInput extends PaginationInput {
   search?: string;
 }
 
-export interface ListQuickTracksPageInput extends PaginationInput {
+export interface ListFoodProductsPageInput extends PaginationInput {
   scope?: 'all' | 'mine' | 'friends';
   search?: string;
 }
@@ -481,13 +478,11 @@ export {
 } from './accountStore';
 export {
   createFoodProduct,
-  createQuickTrack,
-  deleteQuickTrack,
+  deleteFoodProduct,
   getFoodProductById,
   listFoodProductCategorySuggestions,
   listFoodProductPhotos,
   updateFoodProduct,
-  updateQuickTrack,
 } from './foodProductsStore';
 export {
   listMenuItemsForRestaurant,

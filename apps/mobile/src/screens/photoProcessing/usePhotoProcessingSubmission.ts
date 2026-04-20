@@ -2,7 +2,7 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
 import type { QueryClient } from '@tanstack/react-query';
 
 import {
-  createQuickTrack,
+  createFoodProduct,
   createVisit,
   formatLimitExceededMessage,
   homeFeedQueryKeys,
@@ -16,11 +16,11 @@ import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAw
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import {
-  buildCreateQuickTrackInput,
-  buildDefaultQuickTrackForm,
-  validateQuickTrackForm,
-  type QuickTrackFormValues,
-} from '../../lib/quickTrackForm';
+  buildCreateFoodProductInput,
+  buildDefaultFoodProductForm,
+  validateFoodProductForm,
+  type FoodProductFormValues,
+} from '../../lib/foodProductForm';
 import { trackObservabilityEvent } from '../../observability';
 import {
   buildDefaultRestaurantForm,
@@ -37,7 +37,7 @@ import { FREE_MONTHLY_PHOTO_LIMIT } from './shared';
 interface UsePhotoProcessingSubmissionParams {
   currentPhoto: DraftPhotoAsset | null;
   currentPhotoIndex: number;
-  currentQuickTrackForm: QuickTrackFormValues | undefined;
+  currentFoodProductForm: FoodProductFormValues | undefined;
   currentRestaurantForm: RestaurantPhotoForm | undefined;
   goToProcessPhoto: (nextIndex: number) => void;
   isDisplayFreeUser: boolean;
@@ -47,7 +47,7 @@ interface UsePhotoProcessingSubmissionParams {
   photos: DraftPhotoAsset[];
   processType: ProcessType | null;
   queryClient: QueryClient;
-  quickTrackForms: Record<string, QuickTrackFormValues>;
+  foodProductForms: Record<string, FoodProductFormValues>;
   restaurantForms: Record<string, RestaurantPhotoForm>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<GeneralPhotoStep>>;
@@ -60,7 +60,7 @@ interface UsePhotoProcessingSubmissionParams {
 export function usePhotoProcessingSubmission({
   currentPhoto,
   currentPhotoIndex,
-  currentQuickTrackForm,
+  currentFoodProductForm,
   currentRestaurantForm,
   goToProcessPhoto,
   isDisplayFreeUser,
@@ -70,7 +70,7 @@ export function usePhotoProcessingSubmission({
   photos,
   processType,
   queryClient,
-  quickTrackForms,
+  foodProductForms,
   restaurantForms,
   setErrorMessage,
   setStep,
@@ -151,9 +151,9 @@ export function usePhotoProcessingSubmission({
             currentRestaurantForm ??
               buildDefaultRestaurantForm(currentPhoto, undefined),
           )
-        : validateQuickTrackForm(
-            currentQuickTrackForm ??
-              buildDefaultQuickTrackForm({
+        : validateFoodProductForm(
+            currentFoodProductForm ??
+              buildDefaultFoodProductForm({
                 captureDate: currentPhoto.captureDate,
                 detectedDateValue: resolveDraftPhotoDetectedDateValue(currentPhoto),
               }),
@@ -174,7 +174,7 @@ export function usePhotoProcessingSubmission({
   }, [
     currentPhoto,
     currentPhotoIndex,
-    currentQuickTrackForm,
+    currentFoodProductForm,
     currentRestaurantForm,
     goToProcessPhoto,
     photos.length,
@@ -280,20 +280,20 @@ export function usePhotoProcessingSubmission({
     writeFeature,
   ]);
 
-  const submitQuickTrackItems = useCallback(async () => {
+  const submitFoodProductItems = useCallback(async () => {
     const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
     for (const [index, photo] of photos.entries()) {
-      const form = quickTrackForms[photo.id];
+      const form = foodProductForms[photo.id];
       if (!form) {
         throw new Error(`Photo ${index + 1} is missing food product details.`);
       }
 
-      const validationMessage = validateQuickTrackForm(form);
+      const validationMessage = validateFoodProductForm(form);
       if (validationMessage) {
         throw new Error(`Photo ${index + 1}: ${validationMessage}`);
       }
 
-      const quickTrackInput = buildCreateQuickTrackInput(form, {
+      const foodProductInput = buildCreateFoodProductInput(form, {
         photo: buildPhotoUploadInput(photo),
         sourceNoteId: sourceNoteId && photos.length === 1 ? sourceNoteId : undefined,
       });
@@ -302,9 +302,9 @@ export function usePhotoProcessingSubmission({
         operationName: 'quick-track.create',
         offline: {
           strategy: 'outbox',
-          payload: quickTrackInput,
+          payload: foodProductInput,
         },
-        execute: () => createQuickTrack(quickTrackInput),
+        execute: () => createFoodProduct(foodProductInput),
       });
 
       if (sourceNoteId && photos.length === 1 && noteUsedAt) {
@@ -321,11 +321,11 @@ export function usePhotoProcessingSubmission({
     }
 
     trackObservabilityEvent('Photo Processing Completed', {
-      processType: 'quickTrack',
+      processType: 'foodProduct',
       source: 'PhotoProcessingScreen',
       itemCount: photos.length,
     });
-  }, [photos, quickTrackForms, persistSourceNoteUsed, sourceNoteId, syncSourceNoteUsedState, writeFeature]);
+  }, [photos, foodProductForms, persistSourceNoteUsed, sourceNoteId, syncSourceNoteUsedState, writeFeature]);
 
   const handleSubmitAll = useCallback(async () => {
     if (!processType) {
@@ -366,7 +366,7 @@ export function usePhotoProcessingSubmission({
       if (processType === 'restaurant') {
         await submitRestaurantVisits();
       } else {
-        await submitQuickTrackItems();
+        await submitFoodProductItems();
       }
 
       await Promise.all([
@@ -435,7 +435,7 @@ export function usePhotoProcessingSubmission({
     setErrorMessage,
     shouldEnforceUsageLimitsClientSide,
     sourceNoteId,
-    submitQuickTrackItems,
+    submitFoodProductItems,
     submitRestaurantVisits,
   ]);
 

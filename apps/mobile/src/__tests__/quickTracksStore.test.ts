@@ -1,6 +1,6 @@
 import { ClientResponseError } from 'pocketbase';
 
-import { createQuickTrack, listFoodProductPhotos, updateQuickTrack } from '../features/store/foodProductsStore';
+import { createFoodProduct, listFoodProductPhotos, updateFoodProduct } from '../features/store/foodProductsStore';
 import { listCollectionRecords } from '../features/store/pocketbaseGateway';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
@@ -53,7 +53,7 @@ function buildClientResponseError(status: number): ClientResponseError {
   });
 }
 
-describe('quickTracksStore', () => {
+describe('foodProductsStore', () => {
   beforeEach(() => {
     mockedListCollectionRecords.mockReset();
     mockedUploadVisitPhotos.mockReset();
@@ -152,7 +152,7 @@ describe('quickTracksStore', () => {
     });
 
     await expect(
-      updateQuickTrack('quick-track-1', {
+      updateFoodProduct('quick-track-1', {
         itemName: '  Updated Latte  ',
         locationText: '  Market Hall  ',
         rating: 5,
@@ -237,7 +237,7 @@ describe('quickTracksStore', () => {
     });
 
     await expect(
-      createQuickTrack({
+      createFoodProduct({
         itemName: '  Matcha Latte  ',
         locationText: '  Ferry Building  ',
         rating: 4,
@@ -301,7 +301,7 @@ describe('quickTracksStore', () => {
       throw new Error(`Unexpected collection: ${collectionName}`);
     });
 
-    await updateQuickTrack('quick-track-3', {
+    await updateFoodProduct('quick-track-3', {
       locationText: '   ',
     });
 
