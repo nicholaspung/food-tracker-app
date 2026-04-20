@@ -98,34 +98,35 @@ func TestAdminRecordCountsSummarizesFoodProductsByUser(t *testing.T) {
 	}
 
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Spicy Tuna Roll",
-		"rating":       4,
-		"user":         firstUser.Id,
-		"isQuickTrack": true,
-		"visibility":   "private",
-		"itemDate":     "2026-03-01 10:00:00.000Z",
+		"name":       "Spicy Tuna Roll",
+		"rating":     4,
+		"user":       firstUser.Id,
+		"itemType":   "food-product",
+		"visibility": "private",
+		"itemDate":   "2026-03-01 10:00:00.000Z",
 	})
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"name":         "Matcha Latte",
 		"rating":       5,
 		"user":         firstUser.Id,
 		"isQuickTrack": true,
+		"itemType":     "food-product",
 		"visibility":   "private",
 		"itemDate":     "2026-03-03 12:30:00.000Z",
 	})
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Burger",
-		"rating":       3,
-		"user":         secondUser.Id,
-		"isQuickTrack": true,
-		"visibility":   "private",
-		"itemDate":     "2026-03-02 08:15:00.000Z",
+		"name":       "Burger",
+		"rating":     3,
+		"user":       secondUser.Id,
+		"itemType":   "food-product",
+		"visibility": "private",
+		"itemDate":   "2026-03-02 08:15:00.000Z",
 	})
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Non food-product item",
-		"rating":       2,
-		"user":         secondUser.Id,
-		"isQuickTrack": false,
+		"name":     "Non food-product item",
+		"rating":   2,
+		"user":     secondUser.Id,
+		"itemType": "visit-item",
 	})
 
 	payload := loadAdminRecordCountsResponse(t, server, adminToken, "food-product")

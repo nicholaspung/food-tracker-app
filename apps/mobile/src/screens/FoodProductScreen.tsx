@@ -421,10 +421,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       }
 
       await Promise.all(invalidations);
-      await Promise.all([
-        AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1'),
-        AsyncStorage.setItem(LEGACY_QUICK_TRACK_RATED_BEFORE_KEY, '1'),
-      ]);
+      await AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1');
       navigation.navigate('Home');
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);

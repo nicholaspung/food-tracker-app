@@ -1889,7 +1889,7 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 		"rating":        4,
 		"notes":         "Late snack",
 		"location_text": quickTrackRestaurant.GetString("name"),
-		"isQuickTrack":  true,
+		"itemType":      "food-product",
 		"visibility":    "friends",
 		"itemDate":      "2026-04-02 19:15:00.000Z",
 	})
@@ -2099,7 +2099,7 @@ func TestHomeFeedEndpointOmitsTotalsBeyondFirstPage(t *testing.T) {
 		"user":          user.Id,
 		"name":          "Late Snack",
 		"rating":        3,
-		"isQuickTrack":  true,
+		"itemType":      "food-product",
 		"location_text": "Paged Feed Cafe",
 		"visibility":    "private",
 		"itemDate":      "2026-04-01 10:00:00.000Z",

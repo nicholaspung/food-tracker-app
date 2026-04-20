@@ -1143,7 +1143,7 @@ func listRestaurantListVisitedRestaurantFoodItemRows(
 		FROM visits
 		LEFT JOIN food_items
 			ON food_items.visit = visits.id
-			AND COALESCE(food_items.isQuickTrack, 0) != 1
+			AND ` + visitItemSQL("food_items") + `
 			AND COALESCE(food_items.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
 		WHERE visits.user = {:userId}
 			AND ` + ownerAccessibleVisitModerationCondition + `
@@ -1235,7 +1235,7 @@ func buildRestaurantListVisitedRestaurantSearchClause(userID string, search stri
 					SELECT 1
 					FROM food_items search_food_items
 					WHERE search_food_items.visit = visits.id
-						AND COALESCE(search_food_items.isQuickTrack, 0) != 1
+						AND ` + visitItemSQL("search_food_items") + `
 						AND COALESCE(search_food_items.moderationStatus, '') IN ('', 'active', 'reviewed', 'under_review')
 						AND (
 							INSTR(LOWER(TRIM(COALESCE(search_food_items.name, ''))), {:normalizedSearch}) > 0
@@ -1380,7 +1380,7 @@ func canAccessFoodItemRecord(
 		}
 	}
 
-	if !record.GetBool("isQuickTrack") {
+	if !isFoodProductRecord(record) {
 		return false
 	}
 

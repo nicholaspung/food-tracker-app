@@ -248,4 +248,53 @@ describe('FoodProductScreen', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'foodProducts'] });
     expect(navigate).toHaveBeenCalledWith('Home');
   });
+
+  it('reads the legacy rated-before key as a fallback but only writes the new food product key', async () => {
+    mockedAsyncStorage.getItem
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('1');
+
+    writeFeature = jest.fn().mockResolvedValue({
+      status: 'completed',
+      result: {
+        id: 'food-product-1',
+      },
+    });
+    mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <FoodProductScreen
+          navigation={{
+            canGoBack: () => true,
+            goBack: jest.fn(),
+            navigate: jest.fn(),
+          } as never}
+          route={{
+            params: {},
+          } as never}
+        />,
+      );
+    });
+
+    expect(mockedAsyncStorage.getItem).toHaveBeenCalledWith('ui.foodProduct.hasRatedBefore');
+    expect(mockedAsyncStorage.getItem).toHaveBeenCalledWith('ui.quickTrack.hasRatedBefore');
+
+    await act(async () => {
+      renderer.root.findByType('FoodProductFormFields').props.onChange({
+        itemName: 'Iced Tea',
+      });
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockedAsyncStorage.setItem).toHaveBeenCalledWith('ui.foodProduct.hasRatedBefore', '1');
+    expect(mockedAsyncStorage.setItem).not.toHaveBeenCalledWith('ui.quickTrack.hasRatedBefore', '1');
+  });
 });

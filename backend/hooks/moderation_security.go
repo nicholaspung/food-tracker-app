@@ -138,7 +138,7 @@ func mapModerationTargetType(collectionName string, record *core.Record) string 
 	case "visits":
 		return "visit"
 	case "food_items":
-		if record != nil && record.GetBool("isQuickTrack") {
+		if isFoodProductRecord(record) {
 			return "food-product"
 		}
 		return "food-item"
@@ -154,5 +154,20 @@ func mapModerationTargetType(collectionName string, record *core.Record) string 
 		return "photo"
 	default:
 		return collectionName
+	}
+}
+
+func isFoodProductRecord(record *core.Record) bool {
+	if record == nil {
+		return false
+	}
+
+	switch strings.TrimSpace(record.GetString("itemType")) {
+	case "food-product":
+		return true
+	case "visit-item":
+		return false
+	default:
+		return record.GetBool("isQuickTrack")
 	}
 }

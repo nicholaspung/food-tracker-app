@@ -18,7 +18,9 @@ import {
   trackFeatureMutation,
 } from './featureStoreShared';
 import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
-import type { FoodItemCollectionRecord } from './pocketbaseRecordTypes';
+import type {
+  FoodItemCollectionRecord,
+} from './pocketbaseRecordTypes';
 import { uploadVisitPhotos } from './visitPhotoUploads';
 
 export type {
@@ -52,6 +54,17 @@ interface VisitPhotoCollectionRecord {
 function normalizeFoodProductCategory(value: string | null | undefined): string | undefined {
   const normalizedValue = value?.replace(/\s+/g, ' ').trim() ?? '';
   return normalizedValue.length > 0 ? normalizedValue : undefined;
+}
+
+function isFoodProductCollectionRecord(record: FoodItemCollectionRecord): boolean {
+  switch (record.itemType) {
+    case 'food-product':
+      return true;
+    case 'visit-item':
+      return false;
+    default:
+      return record.isQuickTrack === true;
+  }
 }
 
 function mapFoodProductCollectionRecord(record: FoodItemCollectionRecord): FoodProductRecord {
@@ -97,7 +110,7 @@ export async function getFoodProductById(
       expand: 'user,visit,visit.restaurant',
       signal: options?.signal,
     });
-    if (record.isQuickTrack !== true) {
+    if (!isFoodProductCollectionRecord(record)) {
       return null;
     }
     return mapFoodProductCollectionRecord(record);
@@ -155,7 +168,7 @@ export async function listFoodProductCategorySuggestions(
 
 export async function createFoodProduct(input: CreateFoodProductInput): Promise<FoodProductRecord> {
   return trackFeatureMutation(
-    'quick_track.create',
+    'food_product.create',
     async () => {
       const currentUserId = getAuthenticatedUserId();
       const itemName = input.itemName.trim();
@@ -167,6 +180,7 @@ export async function createFoodProduct(input: CreateFoodProductInput): Promise<
         name: itemName,
         rating: input.rating,
         user: currentUserId,
+        itemType: 'food-product',
         isQuickTrack: true,
         visibility: input.visibility ?? getDefaultVisitVisibility(),
         itemDate: input.itemDate ?? nowIso(),
@@ -223,10 +237,10 @@ export async function updateFoodProduct(
   updates: UpdateFoodProductInput,
 ): Promise<FoodProductRecord> {
   return trackFeatureMutation(
-    'quick_track.update',
+    'food_product.update',
     async () => {
       const currentRecord = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(foodProductId);
-      if (currentRecord.isQuickTrack !== true) {
+      if (!isFoodProductCollectionRecord(currentRecord)) {
         throw new Error('Food product record not found.');
       }
 
@@ -314,7 +328,7 @@ export async function updateFoodProduct(
 }
 
 export async function deleteFoodProduct(foodProductId: string): Promise<void> {
-  return trackFeatureMutation('quick_track.delete', async () => {
+  return trackFeatureMutation('food_product.delete', async () => {
     try {
       await pb.collection('food_items').delete(foodProductId);
     } catch (error) {

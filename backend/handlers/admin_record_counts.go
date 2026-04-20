@@ -84,7 +84,7 @@ var adminRecordTypeCountsDefinitions = map[string]adminRecordTypeCountsDefinitio
 		Label:       "Food products",
 		TableName:   "food_items",
 		UserColumn:  "user",
-		WhereClause: "COALESCE(r.isQuickTrack, 0) = 1",
+		WhereClause: foodProductSQL("r"),
 	},
 	"visit": {
 		Description: "Visit records logged by users.",

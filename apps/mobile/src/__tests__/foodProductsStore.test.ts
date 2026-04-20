@@ -1,6 +1,11 @@
 import { ClientResponseError } from 'pocketbase';
 
-import { createFoodProduct, listFoodProductPhotos, updateFoodProduct } from '../features/store/foodProductsStore';
+import {
+  createFoodProduct,
+  getFoodProductById,
+  listFoodProductPhotos,
+  updateFoodProduct,
+} from '../features/store/foodProductsStore';
 import { listCollectionRecords } from '../features/store/pocketbaseGateway';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
@@ -99,12 +104,52 @@ describe('foodProductsStore', () => {
     });
   });
 
+  it('loads a food product when the record uses itemType without the legacy flag', async () => {
+    const foodItemsCollection = {
+      getOne: jest.fn().mockResolvedValue({
+        id: 'food-product-lookup-1',
+        itemType: 'food-product',
+        name: 'Sparkling Water',
+        location_text: 'Corner Store',
+        rating: 4,
+        notes: 'Cold',
+        user: 'user-1',
+        visibility: 'friends',
+        itemCategory: 'Beverages',
+        itemDate: '2026-04-19T07:00:00.000Z',
+        created: '2026-04-19T07:00:00.000Z',
+        updated: '2026-04-19T07:00:00.000Z',
+        expand: {
+          user: {
+            id: 'user-1',
+            name: 'Taylor',
+          },
+        },
+      }),
+    };
+
+    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
+      if (collectionName === 'food_items') {
+        return foodItemsCollection;
+      }
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await expect(getFoodProductById('food-product-lookup-1')).resolves.toMatchObject({
+      id: 'food-product-lookup-1',
+      itemName: 'Sparkling Water',
+      locationText: 'Corner Store',
+      itemCategory: 'Beverages',
+      userName: 'Taylor',
+    });
+  });
+
   it('uploads a replacement photo before deleting old primary photo ids', async () => {
     const operationOrder: string[] = [];
     const foodItemsCollection = {
       getOne: jest.fn().mockResolvedValue({
         id: 'food-product-1',
-        isQuickTrack: true,
+        itemType: 'food-product',
       }),
       update: jest.fn().mockResolvedValue({
         id: 'food-product-1',
@@ -260,6 +305,7 @@ describe('foodProductsStore', () => {
         name: 'Matcha Latte',
         rating: 4,
         user: 'user-1',
+        itemType: 'food-product',
         isQuickTrack: true,
         visibility: 'friends',
         itemDate: '2026-04-18T07:00:00.000Z',
@@ -279,7 +325,7 @@ describe('foodProductsStore', () => {
     const foodItemsCollection = {
       getOne: jest.fn().mockResolvedValue({
         id: 'food-product-3',
-        isQuickTrack: true,
+        itemType: 'food-product',
       }),
       update: jest.fn().mockResolvedValue({
         id: 'food-product-3',

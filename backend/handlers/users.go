@@ -753,16 +753,23 @@ func loadModerationFeedEntries(app core.App, userID string) ([]map[string]any, e
 		return nil, err
 	}
 
-	quickTracks, err := app.FindRecordsByFilter(
+	userFoodItems, err := app.FindRecordsByFilter(
 		"food_items",
-		"user = {:userId} && isQuickTrack = true",
+		"user = {:userId}",
 		"-itemDate,-created",
-		100,
+		500,
 		0,
 		params,
 	)
 	if err != nil {
 		return nil, err
+	}
+	quickTracks := make([]*core.Record, 0, len(userFoodItems))
+	for _, record := range userFoodItems {
+		if !isFoodProductRecord(record) {
+			continue
+		}
+		quickTracks = append(quickTracks, record)
 	}
 
 	visitIDs := extractRecordIDs(visits)
@@ -770,10 +777,17 @@ func loadModerationFeedEntries(app core.App, userID string) ([]map[string]any, e
 	if err != nil {
 		return nil, err
 	}
-	itemsByVisitID := groupRecordsByField(visitItems, "visit")
+	filteredVisitItems := make([]*core.Record, 0, len(visitItems))
+	for _, record := range visitItems {
+		if !isVisitItemRecord(record) {
+			continue
+		}
+		filteredVisitItems = append(filteredVisitItems, record)
+	}
+	itemsByVisitID := groupRecordsByField(filteredVisitItems, "visit")
 
 	quickTrackVisitIDs := make([]string, 0, len(quickTracks))
-	photoFoodItemIDs := extractRecordIDs(visitItems)
+	photoFoodItemIDs := extractRecordIDs(filteredVisitItems)
 	for _, quickTrack := range quickTracks {
 		photoFoodItemIDs = append(photoFoodItemIDs, quickTrack.Id)
 		if visitID := strings.TrimSpace(quickTrack.GetString("visit")); visitID != "" {
@@ -1407,7 +1421,7 @@ func resolveModerationTargetRecord(
 		if err != nil {
 			return nil, apis.NewNotFoundError("food product not found", err)
 		}
-		if record.GetString("user") != userID || !record.GetBool("isQuickTrack") {
+		if record.GetString("user") != userID || !isFoodProductRecord(record) {
 			return nil, apis.NewNotFoundError("food product not found for that user", nil)
 		}
 		return record, nil
@@ -1416,7 +1430,7 @@ func resolveModerationTargetRecord(
 		if err != nil {
 			return nil, apis.NewNotFoundError("food item not found", err)
 		}
-		if record.GetString("user") != userID || record.GetBool("isQuickTrack") {
+		if record.GetString("user") != userID || !isVisitItemRecord(record) {
 			return nil, apis.NewNotFoundError("food item not found for that user", nil)
 		}
 		return record, nil

@@ -516,7 +516,7 @@ func TestAdminCanDeleteModeratedUserContent(t *testing.T) {
 		"name":          "Gas station coffee",
 		"rating":        2,
 		"user":          targetUser.Id,
-		"isQuickTrack":  true,
+		"itemType":      "food-product",
 		"visibility":    "private",
 		"location_text": "Highway stop",
 		"itemCategory":  "other",
@@ -642,11 +642,11 @@ func TestAdminCanHideModeratedContentWithoutDeleting(t *testing.T) {
 	adminUser, adminToken := createAuthUser(t, server.app, true, false)
 	targetUser, _ := createAuthUser(t, server.app, false, false)
 	quickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Bad food product",
-		"rating":       1,
-		"user":         targetUser.Id,
-		"isQuickTrack": true,
-		"visibility":   "private",
+		"name":       "Bad food product",
+		"rating":     1,
+		"user":       targetUser.Id,
+		"itemType":   "food-product",
+		"visibility": "private",
 	})
 
 	response := performJSONRequest(

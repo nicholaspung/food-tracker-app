@@ -250,7 +250,7 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		"name":          "Mystery Snack",
 		"rating":        1,
 		"user":          owner.Id,
-		"isQuickTrack":  true,
+		"itemType":      "food-product",
 		"visibility":    "friends",
 		"location_text": "Corner Store",
 	})
@@ -380,11 +380,11 @@ func TestAdminModerationCasesIncludeUserReportHistory(t *testing.T) {
 	})
 
 	quickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Flagged Noodles",
-		"rating":       1,
-		"user":         owner.Id,
-		"isQuickTrack": true,
-		"visibility":   "friends",
+		"name":       "Flagged Noodles",
+		"rating":     1,
+		"user":       owner.Id,
+		"itemType":   "food-product",
+		"visibility": "friends",
 	})
 
 	reportResponse := performJSONRequest(

@@ -1,5 +1,7 @@
 import type { ModerationContentStatus } from '../models';
 
+export type FoodItemType = 'visit-item' | 'food-product';
+
 export interface CollectionUserExpand {
   id: string;
   name?: string;
@@ -45,6 +47,7 @@ export interface FoodItemCollectionRecord {
   notes?: string;
   visit?: string;
   user: string;
+  itemType?: FoodItemType;
   isQuickTrack?: boolean;
   visibility?: 'friends' | 'private';
   moderationStatus?: ModerationContentStatus;

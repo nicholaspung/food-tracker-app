@@ -214,7 +214,7 @@ func resolveContentReportTarget(
 		if err != nil {
 			return nil, apis.NewNotFoundError("food product not found", err)
 		}
-		if !record.GetBool("isQuickTrack") {
+		if !isFoodProductRecord(record) {
 			return nil, apis.NewNotFoundError("food product not found", nil)
 		}
 

@@ -104,7 +104,7 @@ func listFoodProductCategorySuggestions(
 				created
 			FROM food_items
 			WHERE user = {:userId}
-				AND COALESCE(isQuickTrack, 0) = 1
+				AND ` + foodProductSQL("food_items") + `
 				AND TRIM(COALESCE(itemCategory, '')) != ''
 				AND LOWER(TRIM(COALESCE(itemCategory, ''))) != 'restaurant'
 				` + queryFilter + `

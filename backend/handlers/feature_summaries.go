@@ -1045,7 +1045,7 @@ func getVisitsPageResponse(
 
 	filteredVisitItems := make([]*core.Record, 0, len(visitItemRecords))
 	for _, record := range visitItemRecords {
-		if record.GetBool("isQuickTrack") {
+		if !isVisitItemRecord(record) {
 			continue
 		}
 		filteredVisitItems = append(filteredVisitItems, record)
@@ -1400,7 +1400,7 @@ func getHomeFeedResponse(
 	}
 	filteredVisitItems := make([]*core.Record, 0, len(visitItemRecords))
 	for _, record := range visitItemRecords {
-		if record.GetBool("isQuickTrack") {
+		if !isVisitItemRecord(record) {
 			continue
 		}
 		filteredVisitItems = append(filteredVisitItems, record)
@@ -1818,16 +1818,16 @@ func buildHomeFeedQuickTrackAccessCondition(scope string, isAdmin bool) string {
 	if isAdmin {
 		switch scope {
 		case "mine":
-			return `food_items.isQuickTrack = 1 AND food_items.user = {:userId}`
+			return foodProductSQL("food_items") + ` AND food_items.user = {:userId}`
 		case "friends":
-			return `food_items.isQuickTrack = 1 AND food_items.user != {:userId}`
+			return foodProductSQL("food_items") + ` AND food_items.user != {:userId}`
 		default:
-			return `food_items.isQuickTrack = 1`
+			return foodProductSQL("food_items")
 		}
 	}
 
-	ownerCondition := `food_items.isQuickTrack = 1 AND food_items.user = {:userId} AND ` + ownerAccessibleQuickTrackModerationCondition
-	friendCondition := `food_items.isQuickTrack = 1 AND food_items.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleQuickTrackModerationCondition + ` AND (food_items.visibility = 'public' OR food_items.visibility = 'friends')`
+	ownerCondition := foodProductSQL("food_items") + ` AND food_items.user = {:userId} AND ` + ownerAccessibleQuickTrackModerationCondition
+	friendCondition := foodProductSQL("food_items") + ` AND food_items.user IN (SELECT friendId FROM accepted_friends) AND ` + visibleQuickTrackModerationCondition + ` AND (food_items.visibility = 'public' OR food_items.visibility = 'friends')`
 
 	switch scope {
 	case "mine":
@@ -1852,7 +1852,7 @@ func buildHomeFeedVisitSearchCondition(search string) string {
 			SELECT 1
 			FROM food_items visit_items
 			WHERE visit_items.visit = visits.id
-				AND COALESCE(visit_items.isQuickTrack, 0) != 1
+				AND ` + visitItemSQL("visit_items") + `
 				AND (
 					LOWER(COALESCE(visit_items.name, '')) LIKE {:searchLike}
 					OR LOWER(COALESCE(visit_items.notes, '')) LIKE {:searchLike}
