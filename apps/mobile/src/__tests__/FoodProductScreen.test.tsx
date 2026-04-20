@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMonthlyUsage } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
+import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
 import { trackObservabilityEvent } from '../observability';
@@ -264,7 +265,7 @@ describe('FoodProductScreen', () => {
       },
     });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'foodProducts'] });
-    expect(navigate).toHaveBeenCalledWith('Home');
+    expect(navigate).toHaveBeenCalledWith('Home', buildFoodProductCreatedHomeParams());
   });
 
   it('tracks the renamed food product photo-pick start event', async () => {
@@ -308,6 +309,7 @@ describe('FoodProductScreen', () => {
 
   it('reads and writes only the current food product rated-before key', async () => {
     mockedAsyncStorage.getItem.mockResolvedValueOnce('1');
+    const navigate = jest.fn();
 
     writeFeature = jest.fn().mockResolvedValue({
       status: 'completed',
@@ -325,7 +327,7 @@ describe('FoodProductScreen', () => {
           navigation={{
             canGoBack: () => true,
             goBack: jest.fn(),
-            navigate: jest.fn(),
+            navigate,
           } as never}
           route={{
             params: {},
@@ -349,5 +351,6 @@ describe('FoodProductScreen', () => {
     });
 
     expect(mockedAsyncStorage.setItem).toHaveBeenCalledWith('ui.foodProduct.hasRatedBefore', '1');
+    expect(navigate).toHaveBeenCalledWith('Home', buildFoodProductCreatedHomeParams());
   });
 });

@@ -16,6 +16,7 @@ import {
 } from '../components/shared/BottomTabNavigation';
 import { EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
+import type { HomeInitialViewParams } from './homeRouteParams';
 import { useAuth } from '../providers/AuthProvider';
 import { trackObservabilityEvent } from '../observability';
 import {
@@ -92,7 +93,11 @@ export type RootStackParamList = {
         source?: 'sign_up' | 'login';
       }
     | undefined;
-  Home: undefined;
+  Home:
+    | {
+        initialView?: HomeInitialViewParams;
+      }
+    | undefined;
   VisitShareCustomization: {
     restaurantName: string;
     visitDate: string;

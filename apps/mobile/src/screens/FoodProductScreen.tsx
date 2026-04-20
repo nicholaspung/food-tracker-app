@@ -42,6 +42,7 @@ import {
   validateFoodProductForm,
   type FoodProductFormValues,
 } from '../lib/foodProductForm';
+import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -404,7 +405,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
         ]);
         showQueuedOfflineAlert('Food product');
-        navigation.navigate('Home');
+        navigation.navigate('Home', buildFoodProductCreatedHomeParams());
         return;
       }
 
@@ -430,7 +431,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
       await Promise.all(invalidations);
       await AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1');
-      navigation.navigate('Home');
+      navigation.navigate('Home', buildFoodProductCreatedHomeParams());
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {

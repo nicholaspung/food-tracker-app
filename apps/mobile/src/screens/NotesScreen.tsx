@@ -94,11 +94,12 @@ const useStyles = createThemedStyles((theme) => ({
     padding: 2,
   },
   noteContentRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: theme.spacing.sm,
   },
   photoWrap: {
+    alignSelf: 'flex-start',
     position: 'relative',
   },
   photoWrapLoading: {
@@ -127,8 +128,11 @@ const useStyles = createThemedStyles((theme) => ({
   noteTextContent: {
     flex: 1,
     gap: 4,
+    justifyContent: 'flex-start',
     minHeight: 64,
-    justifyContent: 'center',
+  },
+  notePreviewTapTarget: {
+    alignSelf: 'stretch',
   },
   locationRow: {
     alignItems: 'center',
@@ -796,6 +800,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                     <View style={styles.noteTextContent}>
                       <ExpandableText
                         collapsedNumberOfLines={note.locationText ? 3 : 4}
+                        containerStyle={styles.notePreviewTapTarget}
                         interactionMode="tap-text"
                         variant="bodyMd"
                       >

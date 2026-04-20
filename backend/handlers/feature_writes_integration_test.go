@@ -233,6 +233,159 @@ func TestVisitCreateEndpointUsesProvidedRestaurantID(t *testing.T) {
 	}
 }
 
+func TestVisitCreateEndpointMergesSameDayVisitsWhenRestaurantDateAndVisibilityMatch(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Known Bistro")
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Known Bistro",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visitedOn":"2026-04-05",
+			"visibility":"friends",
+			"items":[
+				{"name":"Crispy Tofu","rating":4}
+			]
+		}`,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first create to return 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	var firstPayload visitResponsePayload
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first visit payload: %v", err)
+	}
+
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Known Bistro",
+			"visitedAt":"2026-04-05T22:30:00Z",
+			"visitedOn":"2026-04-05",
+			"visibility":"friends",
+			"items":[
+				{"name":"Dan Dan Noodles","rating":5},
+				{"name":"Cucumber Salad","rating":4}
+			]
+		}`,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second create to return 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	var secondPayload visitResponsePayload
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse second visit payload: %v", err)
+	}
+
+	if secondPayload.ID != firstPayload.ID {
+		t.Fatalf("expected merge to reuse visit id %q, got %q", firstPayload.ID, secondPayload.ID)
+	}
+	if count := countRecordsByFilter(t, server.app, "visits", "user = {:userId}", map[string]any{"userId": user.Id}); count != 1 {
+		t.Fatalf("expected 1 visit after merge, got %d", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "food_items", "visit = {:visitId}", map[string]any{"visitId": firstPayload.ID}); count != 3 {
+		t.Fatalf("expected 3 food items after merge, got %d", count)
+	}
+	if len(secondPayload.Items) != 3 {
+		t.Fatalf("expected 3 response items after merge, got %d: %#v", len(secondPayload.Items), secondPayload.Items)
+	}
+	if secondPayload.Items[0].Name != "Dan Dan Noodles" || secondPayload.Items[1].Name != "Cucumber Salad" {
+		t.Fatalf("expected newly created items to be first in request order, got %#v", secondPayload.Items)
+	}
+	if secondPayload.Items[2].Name != "Crispy Tofu" {
+		t.Fatalf("expected original item to remain after new items, got %#v", secondPayload.Items)
+	}
+
+	reloadedVisit, err := server.app.FindRecordById("visits", firstPayload.ID)
+	if err != nil {
+		t.Fatalf("failed to reload merged visit: %v", err)
+	}
+	if reloadedVisit.GetString("visitLocalDate") != "2026-04-05" {
+		t.Fatalf("expected visitLocalDate=2026-04-05, got %q", reloadedVisit.GetString("visitLocalDate"))
+	}
+}
+
+func TestVisitCreateEndpointDoesNotMergeWhenVisibilityDiffers(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Known Bistro")
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Known Bistro",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visitedOn":"2026-04-05",
+			"visibility":"private",
+			"items":[
+				{"name":"Crispy Tofu","rating":4}
+			]
+		}`,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first create to return 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	var firstPayload visitResponsePayload
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &firstPayload); err != nil {
+		t.Fatalf("failed to parse first visit payload: %v", err)
+	}
+
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Known Bistro",
+			"visitedAt":"2026-04-05T22:30:00Z",
+			"visitedOn":"2026-04-05",
+			"visibility":"friends",
+			"items":[
+				{"name":"Dan Dan Noodles","rating":5}
+			]
+		}`,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second create to return 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	var secondPayload visitResponsePayload
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &secondPayload); err != nil {
+		t.Fatalf("failed to parse second visit payload: %v", err)
+	}
+
+	if secondPayload.ID == firstPayload.ID {
+		t.Fatalf("expected different visibility to prevent merge, but both responses used %q", secondPayload.ID)
+	}
+	if count := countRecordsByFilter(t, server.app, "visits", "user = {:userId}", map[string]any{"userId": user.Id}); count != 2 {
+		t.Fatalf("expected 2 visits when visibility differs, got %d", count)
+	}
+}
+
 func TestVisitGetEndpointReturnsHydratedVisitDetail(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)
@@ -413,6 +566,145 @@ func TestVisitUpdateEndpointRequiresOwner(t *testing.T) {
 	}
 	if reloadedVisit.GetString("visibility") != "friends" {
 		t.Fatalf("expected visit visibility to remain friends, got %q", reloadedVisit.GetString("visibility"))
+	}
+}
+
+func TestVisitUpdateEndpointSynchronizesVisitLocalDate(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Owner Bistro")
+	visit := seedVisitRecord(t, server.app, restaurant.Id, user.Id, "friends")
+	foodItem := seedFoodItemRecord(t, server.app, visit.Id, user.Id, "Soup", 4)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPut,
+		"/api/visits/"+visit.Id,
+		token,
+		`{
+			"visitedAt":"2026-04-06T18:00:00Z",
+			"visitedOn":"2026-04-06",
+			"items":[
+				{"id":"`+foodItem.Id+`","name":"Soup","rating":4}
+			]
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	reloadedVisit, err := server.app.FindRecordById("visits", visit.Id)
+	if err != nil {
+		t.Fatalf("failed to reload visit: %v", err)
+	}
+	if !strings.HasPrefix(reloadedVisit.GetString("visitDate"), "2026-04-06") {
+		t.Fatalf("expected visitDate to start with 2026-04-06, got %q", reloadedVisit.GetString("visitDate"))
+	}
+	if reloadedVisit.GetString("visitLocalDate") != "2026-04-06" {
+		t.Fatalf("expected visitLocalDate=2026-04-06, got %q", reloadedVisit.GetString("visitLocalDate"))
+	}
+}
+
+func TestHomeFeedEndpointShowsMergedVisitAsSingleEntry(t *testing.T) {
+	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
+		handlers.RegisterFeatureWriteHandlers(se, app)
+		handlers.RegisterFeatureSummaryHandlers(se, app)
+	})
+	user, token := createAuthUser(t, server.app, false, true)
+
+	restaurant := seedRestaurantRecord(t, server.app, user.Id, "Known Bistro")
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Known Bistro",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visitedOn":"2026-04-05",
+			"visibility":"friends",
+			"items":[
+				{"name":"Crispy Tofu","rating":4}
+			]
+		}`,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first create to return 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+restaurant.Id+`",
+			"restaurantName":"Known Bistro",
+			"visitedAt":"2026-04-05T22:30:00Z",
+			"visitedOn":"2026-04-05",
+			"visibility":"friends",
+			"items":[
+				{"name":"Dan Dan Noodles","rating":5}
+			]
+		}`,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second create to return 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=20&scope=mine&typeFilter=visits&sort=created",
+		token,
+		"",
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Source string `json:"source"`
+			Visit  *struct {
+				ID    string `json:"id"`
+				Items []struct {
+					Name string `json:"name"`
+				} `json:"items"`
+			} `json:"visit"`
+		} `json:"items"`
+		TotalVisits int `json:"totalVisits"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse home feed payload: %v", err)
+	}
+
+	if payload.TotalVisits != 1 {
+		t.Fatalf("expected totalVisits=1 after merge, got %d", payload.TotalVisits)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 home feed entry after merge, got %d: %#v", len(payload.Items), payload.Items)
+	}
+	if payload.Items[0].Source != "visit" || payload.Items[0].Visit == nil {
+		t.Fatalf("expected a merged visit entry, got %#v", payload.Items[0])
+	}
+	if len(payload.Items[0].Visit.Items) != 2 {
+		t.Fatalf("expected 2 items on merged visit entry, got %#v", payload.Items[0].Visit.Items)
+	}
+
+	itemNames := []string{
+		payload.Items[0].Visit.Items[0].Name,
+		payload.Items[0].Visit.Items[1].Name,
+	}
+	if !containsString(itemNames, "Crispy Tofu") || !containsString(itemNames, "Dan Dan Noodles") {
+		t.Fatalf("expected merged visit items in home feed, got %#v", payload.Items[0].Visit.Items)
 	}
 }
 
@@ -814,6 +1106,7 @@ func seedVisitRecord(t *testing.T, app core.App, restaurantID string, userID str
 	record.Set("restaurant", restaurantID)
 	record.Set("user", userID)
 	record.Set("visitDate", "2026-04-05T18:00:00Z")
+	record.Set("visitLocalDate", "2026-04-05")
 	record.Set("visibility", visibility)
 	if err := app.Save(record); err != nil {
 		t.Fatalf("failed to create visit: %v", err)

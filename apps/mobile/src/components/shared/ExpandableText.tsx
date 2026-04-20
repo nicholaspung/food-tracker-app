@@ -3,7 +3,9 @@ import { Pressable, View } from 'react-native';
 import type {
   GestureResponderEvent,
   NativeSyntheticEvent,
+  StyleProp,
   TextLayoutEventData,
+  ViewStyle,
 } from 'react-native';
 
 import { createThemedStyles } from '../../theme';
@@ -15,6 +17,7 @@ export interface ExpandableTextProps
   extends Pick<TextProps, 'style' | 'testID' | 'tone' | 'variant'> {
   children: string;
   collapsedNumberOfLines: number;
+  containerStyle?: StyleProp<ViewStyle>;
   interactionMode?: ExpandableTextInteractionMode;
   stopPropagationOnToggle?: boolean;
 }
@@ -31,6 +34,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function ExpandableText({
   children,
   collapsedNumberOfLines,
+  containerStyle,
   interactionMode = 'tap-text',
   stopPropagationOnToggle = false,
   style,
@@ -76,6 +80,7 @@ export function ExpandableText({
 
   const content = (
     <Text
+      ellipsizeMode={expanded ? undefined : 'tail'}
       numberOfLines={expanded ? undefined : collapsedNumberOfLines}
       onTextLayout={expanded ? undefined : handleTextLayout}
       style={style}
@@ -94,7 +99,7 @@ export function ExpandableText({
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         onPress={toggleExpanded}
-        style={styles.toggleButton}
+        style={[styles.toggleButton, containerStyle]}
         testID={testID}
       >
         {content}
@@ -103,7 +108,7 @@ export function ExpandableText({
   }
 
   return (
-    <View style={styles.container} testID={testID}>
+    <View style={[styles.container, containerStyle]} testID={testID}>
       {content}
       {canToggle ? (
         <Pressable

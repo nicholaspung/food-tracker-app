@@ -21,6 +21,7 @@ import {
   validateFoodProductForm,
   type FoodProductFormValues,
 } from '../../lib/foodProductForm';
+import { buildFoodProductCreatedHomeParams } from '../../navigation/homeRouteParams';
 import { trackObservabilityEvent } from '../../observability';
 import {
   buildDefaultRestaurantForm,
@@ -227,6 +228,7 @@ export function usePhotoProcessingSubmission({
         restaurantId: visitGroup.restaurantId,
         restaurantName: visitGroup.restaurantName,
         visitedAt: localDateStringToUTC(visitGroup.date),
+        visitedOn: visitGroup.date,
         visibility: visitVisibility,
         source: 'visit' as const,
         ...(sourceNoteId && groupedVisits.size === 1
@@ -394,7 +396,11 @@ export function usePhotoProcessingSubmission({
         showQueuedOfflineAlert('Photo entries');
       }
 
-      navigation.navigate('Home');
+      if (processType === 'foodProduct') {
+        navigation.navigate('Home', buildFoodProductCreatedHomeParams());
+      } else {
+        navigation.navigate('Home');
+      }
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
       if (limitPayload) {

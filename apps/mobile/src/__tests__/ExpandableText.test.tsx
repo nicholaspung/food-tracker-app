@@ -71,9 +71,39 @@ describe('ExpandableText', () => {
       );
     });
 
-    const contentText = findTextNode(renderer, 'Long tasting note');
+    const contentText = findTextNode(renderer, 'Long tasting note', 2);
 
+    expect(contentText.props.ellipsizeMode).toBe('tail');
     expect(contentText.props.numberOfLines).toBe(2);
+  });
+
+  it('applies the container style to the tap-text wrapper', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <ExpandableText
+          collapsedNumberOfLines={2}
+          containerStyle={{ alignSelf: 'stretch' }}
+          testID="expandable-text"
+        >
+          Long tasting note
+        </ExpandableText>,
+      );
+    });
+
+    const wrapper = renderer.root.findAll(
+      (node: { type: unknown; props: { testID?: string } }) =>
+        (node.type === 'Pressable' || node.type === 'View') &&
+        node.props.testID === 'expandable-text',
+    )[0];
+
+    expect(wrapper.props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ alignSelf: 'flex-start' }),
+        expect.objectContaining({ alignSelf: 'stretch' }),
+      ]),
+    );
   });
 
   it('toggles to expanded on tap in tap-text mode', async () => {

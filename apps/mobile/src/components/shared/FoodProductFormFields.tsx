@@ -53,11 +53,36 @@ export function FoodProductFormFields({
   photoSection,
   ratingLegendInitiallyExpanded = false,
   ratingTestIDPrefix,
+  isCategoryExpanded: controlledCategoryExpanded,
+  onCategoryExpandedChange,
 }: FoodProductFormFieldsProps) {
   const styles = useStyles();
   const [isCategoryFocused, setIsCategoryFocused] = useState(false);
+  const [uncontrolledCategoryExpanded, setUncontrolledCategoryExpanded] = useState(false);
   const deferredCategoryQuery = useDeferredValue(value.category.replace(/\s+/g, ' ').trim());
   const normalizedCategoryValue = value.category.replace(/\s+/g, ' ').trim().toLowerCase();
+  const isCategoryExpandedControlled = typeof controlledCategoryExpanded === 'boolean';
+  const isCategoryExpanded = controlledCategoryExpanded ?? uncontrolledCategoryExpanded;
+
+  const setCategoryExpanded = (expanded: boolean) => {
+    if (!isCategoryExpandedControlled) {
+      setUncontrolledCategoryExpanded((currentExpanded) =>
+        currentExpanded === expanded ? currentExpanded : expanded,
+      );
+    }
+
+    if (isCategoryExpanded !== expanded) {
+      onCategoryExpandedChange?.(expanded);
+    }
+  };
+
+  const openCategorySuggestions = () => {
+    setCategoryExpanded(true);
+  };
+
+  const closeCategorySuggestions = () => {
+    setCategoryExpanded(false);
+  };
 
   const categorySuggestionsQuery = useQuery({
     queryKey: foodProductsQueryKeys.categorySuggestions(deferredCategoryQuery),
@@ -66,7 +91,7 @@ export function FoodProductFormFields({
         limit: 8,
         signal,
       }),
-    enabled: isCategoryFocused,
+    enabled: isCategoryExpanded,
     staleTime: 30_000,
   });
 
@@ -86,6 +111,7 @@ export function FoodProductFormFields({
           label="Date"
           modalTitle="Select item date"
           onChange={(nextDate) => {
+            closeCategorySuggestions();
             onChange({ date: nextDate });
           }}
           value={value.date}
@@ -97,6 +123,7 @@ export function FoodProductFormFields({
         <VisibilityOptionSelector
           onChange={(nextVisibility) => {
             if (nextVisibility === 'friends' || nextVisibility === 'private') {
+              closeCategorySuggestions();
               onChange({ visibility: nextVisibility });
             }
           }}
@@ -112,6 +139,9 @@ export function FoodProductFormFields({
           onChangeText={(nextValue) => {
             onChange({ itemName: nextValue });
           }}
+          onFocus={() => {
+            closeCategorySuggestions();
+          }}
           placeholder="e.g., Chocolate Bar, Sparkling Water, Strawberries"
           value={value.itemName}
         />
@@ -122,6 +152,9 @@ export function FoodProductFormFields({
           maxLength={FOOD_PRODUCT_LOCATION_MAX_LENGTH}
           onChangeText={(nextValue) => {
             onChange({ locationText: nextValue });
+          }}
+          onFocus={() => {
+            closeCategorySuggestions();
           }}
           placeholder="Store, market, neighborhood, or address"
           value={value.locationText}
@@ -136,6 +169,7 @@ export function FoodProductFormFields({
         <Text variant="label">Rating *</Text>
         <RatingSelector
           onChange={(nextValue) => {
+            closeCategorySuggestions();
             onChange({ rating: nextValue });
           }}
           testIDPrefix={ratingTestIDPrefix}
@@ -149,24 +183,30 @@ export function FoodProductFormFields({
           label="Category (Optional)"
           maxLength={FOOD_PRODUCT_CATEGORY_MAX_LENGTH}
           onBlur={() => {
-            setIsCategoryFocused(false);
+            if (isCategoryFocused) {
+              setIsCategoryFocused(false);
+            }
           }}
           onChangeText={(nextValue) => {
             onChange({ category: nextValue });
           }}
           onFocus={() => {
-            setIsCategoryFocused(true);
+            if (!isCategoryFocused) {
+              setIsCategoryFocused(true);
+            }
+            openCategorySuggestions();
           }}
           placeholder="e.g., Chips, Beverage, Produce"
           value={value.category}
         />
-        {isCategoryFocused && visibleSuggestions.length > 0 ? (
+        {isCategoryExpanded && visibleSuggestions.length > 0 ? (
           <View style={styles.categorySuggestions}>
             <Text style={styles.categorySuggestionsLabel} variant="bodySm">
               Suggestions from your saved products
             </Text>
             <FilterChipGroup
               onChange={(nextValue) => {
+                closeCategorySuggestions();
                 onChange({ category: nextValue });
               }}
               options={visibleSuggestions.map((suggestion) => ({
@@ -185,6 +225,9 @@ export function FoodProductFormFields({
           multiline
           onChangeText={(nextValue) => {
             onChange({ notes: nextValue });
+          }}
+          onFocus={() => {
+            closeCategorySuggestions();
           }}
           placeholder="Any additional thoughts or details..."
           value={value.notes}

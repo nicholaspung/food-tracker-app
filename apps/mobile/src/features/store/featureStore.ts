@@ -21,6 +21,7 @@ export interface CreateVisitInput {
     photos?: VisitPhotoUploadInput[];
   }[];
   visitedAt?: string;
+  visitedOn?: string;
   visibility?: 'friends' | 'private';
   source?: VisitRecord['source'];
   sourceNoteId?: string;
@@ -39,6 +40,7 @@ export interface UpdateVisitInput {
     deletePhotoIds?: string[];
   }[];
   visitedAt?: string;
+  visitedOn?: string;
   visibility?: 'friends' | 'private';
 }
 

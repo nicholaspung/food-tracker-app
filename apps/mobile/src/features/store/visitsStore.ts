@@ -182,6 +182,7 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
             notes: item.notes?.trim() || undefined,
           })),
           visitedAt: input.visitedAt ?? nowIso(),
+          visitedOn: input.visitedOn?.trim() || undefined,
           visibility: input.visibility ?? getDefaultVisitVisibility(),
         },
       });
@@ -259,6 +260,7 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
               notes: item.notes,
             })),
             visitedAt: updates.visitedAt,
+            visitedOn: updates.visitedOn?.trim() || undefined,
             visibility: updates.visibility,
           },
         },

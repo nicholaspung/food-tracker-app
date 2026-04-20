@@ -261,6 +261,7 @@ export function createVisitApiMutationInput(payload: CreateVisitInput): EnqueueM
       restaurantName: payload.restaurantName,
       items: payload.items,
       visitedAt: payload.visitedAt,
+      visitedOn: payload.visitedOn,
       visibility: payload.visibility,
       source: payload.source,
     },

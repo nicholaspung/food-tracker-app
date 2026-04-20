@@ -7,6 +7,40 @@ import { trackObservabilityEvent } from '../observability';
 import { NotesScreen } from '../screens/NotesScreen';
 
 const mockReact = React;
+const theme = {
+  colors: {
+    text: {
+      brand: 'blue',
+      danger: 'red',
+      inverse: 'white',
+      muted: 'gray',
+      primary: 'black',
+      secondary: 'slategray',
+    },
+    background: {
+      inverse: 'black',
+      muted: 'whitesmoke',
+      surface: 'white',
+    },
+    border: {
+      default: 'lightgray',
+      subtle: 'silver',
+    },
+  },
+  spacing: {
+    md: 16,
+    sm: 12,
+    xs: 8,
+    xxs: 4,
+  },
+  radii: {
+    md: 12,
+    pill: 999,
+  },
+  sizes: {
+    secondaryButtonHeight: 44,
+  },
+} as const;
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
@@ -26,41 +60,11 @@ jest.mock('../observability', () => ({
 }));
 
 jest.mock('../theme', () => ({
-  createThemedStyles: () => () => ({}),
-  useTheme: () => ({
-    colors: {
-      text: {
-        brand: 'blue',
-        danger: 'red',
-        inverse: 'white',
-        muted: 'gray',
-        primary: 'black',
-        secondary: 'slategray',
-      },
-      background: {
-        inverse: 'black',
-        muted: 'whitesmoke',
-        surface: 'white',
-      },
-      border: {
-        default: 'lightgray',
-        subtle: 'silver',
-      },
-    },
-    spacing: {
-      md: 16,
-      sm: 12,
-      xs: 8,
-      xxs: 4,
-    },
-    radii: {
-      md: 12,
-      pill: 999,
-    },
-    sizes: {
-      secondaryButtonHeight: 44,
-    },
-  }),
+  createThemedStyles:
+    (factory: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      factory(theme, ...args),
+  useTheme: () => theme,
 }));
 
 jest.mock('../ui', () => {
@@ -113,6 +117,18 @@ function buildNote(overrides: Record<string, unknown> = {}) {
     updatedAt: '2026-03-02T00:00:00.000Z',
     ...overrides,
   };
+}
+
+function styleIncludes(style: unknown, expected: Record<string, unknown>): boolean {
+  const styles = Array.isArray(style) ? style.flat() : [style];
+
+  return styles.some((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return false;
+    }
+
+    return Object.entries(expected).every(([key, value]) => (entry as Record<string, unknown>)[key] === value);
+  });
 }
 
 function buildNotesQueryResult(
@@ -426,7 +442,7 @@ describe('NotesScreen', () => {
     mockNotesQueries({
       baseItems: [
         buildNote({
-          content: 'First line\n\nSecond line',
+          content: 'First line\nSecond line\nThird line\nFourth line',
           locationText: 'Window booth',
         }),
       ],
@@ -451,9 +467,71 @@ describe('NotesScreen', () => {
     )[0];
 
     expect(previewText.props.numberOfLines).toBe(3);
+    expect(previewText.props.ellipsizeMode).toBe('tail');
     expect(locationText).toBeDefined();
     expect(locationText.props.numberOfLines).toBe(1);
     expect(locationText.props.variant).toBe('bodySm');
+  });
+
+  it('keeps the photo and note content top-aligned when a note has photos', async () => {
+    let renderer: any = null;
+
+    mockNotesQueries({
+      baseItems: [
+        buildNote({
+          content: 'First line\nSecond line\nThird line\nFourth line',
+          locationText: 'Window booth',
+          photoPreview: {
+            count: 2,
+            id: 'photo_1',
+            photo: 'thumb.jpg',
+          },
+        }),
+      ],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    const noteContentRow = renderer?.root.findAll(
+      (node: any) =>
+        node.type === 'View' &&
+        styleIncludes(node.props.style, {
+          alignItems: 'flex-start',
+          flexDirection: 'row',
+          gap: theme.spacing.sm,
+        }),
+    )[0];
+    const noteTextContent = renderer?.root.findAll(
+      (node: any) =>
+        node.type === 'View' &&
+        styleIncludes(node.props.style, {
+          flex: 1,
+          justifyContent: 'flex-start',
+          minHeight: 64,
+        }),
+    )[0];
+    const photoWrap = renderer?.root.findByProps({
+      accessibilityLabel: 'View photos for note note_1',
+    });
+
+    expect(noteContentRow).toBeDefined();
+    expect(noteTextContent).toBeDefined();
+    expect(photoWrap).toBeDefined();
+    expect(
+      styleIncludes(photoWrap.props.style, {
+        alignSelf: 'flex-start',
+        position: 'relative',
+      }),
+    ).toBe(true);
   });
 
   it('expands note previews inline while keeping the location row and actions available', async () => {
@@ -521,7 +599,7 @@ describe('NotesScreen', () => {
     mockNotesQueries({
       baseItems: [
         buildNote({
-          content: 'First line\n\nSecond line',
+          content: 'First line\nSecond line\nThird line\nFourth line\nFifth line',
           locationText: '',
         }),
       ],
@@ -546,6 +624,7 @@ describe('NotesScreen', () => {
     );
 
     expect(previewText.props.numberOfLines).toBe(4);
+    expect(previewText.props.ellipsizeMode).toBe('tail');
     expect(locationText).toHaveLength(0);
   });
 

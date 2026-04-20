@@ -115,23 +115,27 @@ function PhotoViewerSlide({
   width,
 }: PhotoViewerSlideProps) {
   const shouldShowPreview = Boolean(previewUri && previewUri !== uri);
+  const [isFullImageLoaded, setIsFullImageLoaded] = useState(!shouldShowPreview);
   const fullImageOpacity = useRef(
     new Animated.Value(shouldShowPreview ? 0 : 1),
   ).current;
 
   useEffect(() => {
     const initialOpacity = shouldShowPreview ? 0 : 1;
+    setIsFullImageLoaded(!shouldShowPreview);
     fullImageOpacity.stopAnimation();
     fullImageOpacity.setValue(initialOpacity);
   }, [fullImageOpacity, shouldShowPreview, uri, previewUri, visible]);
 
   const handleFullImageLoad = useCallback(() => {
     if (!shouldShowPreview) {
+      setIsFullImageLoaded(true);
       fullImageOpacity.stopAnimation();
       fullImageOpacity.setValue(1);
       return;
     }
 
+    setIsFullImageLoaded(true);
     fullImageOpacity.stopAnimation();
     Animated.timing(fullImageOpacity, {
       duration: 180,
@@ -152,7 +156,7 @@ function PhotoViewerSlide({
   return (
     <View style={[slideStyles.slide, { width }]}>
       <View style={slideStyles.slideContent}>
-        {shouldShowPreview ? (
+        {shouldShowPreview && !isFullImageLoaded ? (
           <Image
             source={{ uri: previewUri }}
             style={slideStyles.image}

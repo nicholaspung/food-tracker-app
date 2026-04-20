@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dimensions, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { act, create } from 'react-test-renderer';
 
 import { FeatureFormScreenScaffold } from '../components/shared/FeatureFormScreenScaffold';
@@ -75,7 +75,7 @@ function renderScaffold(props: Partial<React.ComponentProps<typeof FeatureFormSc
 }
 
 describe('FeatureFormScreenScaffold', () => {
-  it('uses the split background treatment by default', async () => {
+  it('keeps a surface screen shell without rendering a midpoint underlay by default', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -85,17 +85,13 @@ describe('FeatureFormScreenScaffold', () => {
     const screen = renderer!.root.findByType('Screen');
     expect(screen.props.background).toBe('surface');
 
-    const backgroundUnderlay = renderer!.root.find(
+    const backgroundUnderlays = renderer!.root.findAll(
       (node: any) => node.type === 'View' && node.props.pointerEvents === 'none',
     );
-    const backgroundStyle = flattenStyle(backgroundUnderlay.props.style);
-    const expectedTopInset = Math.max(220, Math.round(Dimensions.get('window').height / 2));
-
-    expect(backgroundStyle.backgroundColor).toBe(TEST_THEME.colors.background.app);
-    expect(backgroundStyle.top).toBe(expectedTopInset);
+    expect(backgroundUnderlays).toHaveLength(0);
   });
 
-  it('keeps header bottom content on a surface background when split mode is enabled', async () => {
+  it('renders header bottom content and the body container on the app background by default', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -109,8 +105,17 @@ describe('FeatureFormScreenScaffold', () => {
     );
     const headerBottomStyle = flattenStyle(headerBottom.props.style);
 
-    expect(headerBottomStyle.backgroundColor).toBe(TEST_THEME.colors.background.surface);
+    expect(headerBottomStyle.backgroundColor).toBe(TEST_THEME.colors.background.app);
     expect(headerBottomStyle.borderBottomWidth).toBe(1);
+
+    const bodyContainer = renderer!.root.find(
+      (node: any) =>
+        node.type === 'View' &&
+        flattenStyle(node.props.style).backgroundColor === TEST_THEME.colors.background.app &&
+        node.findAllByType('KeyboardAwareScrollView').length > 0,
+    );
+
+    expect(flattenStyle(bodyContainer.props.style).flex).toBe(1);
   });
 
   it('supports opting out of the split background treatment', async () => {

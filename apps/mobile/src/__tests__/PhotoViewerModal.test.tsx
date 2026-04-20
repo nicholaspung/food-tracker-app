@@ -190,6 +190,7 @@ describe('PhotoViewerModal', () => {
     });
 
     expect(extractOpacity(fullImage)).toBe(1);
+    expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' })).toHaveLength(0);
   });
 
   it('shows the full image immediately when the preview uri matches the full uri', async () => {
@@ -231,6 +232,46 @@ describe('PhotoViewerModal', () => {
     });
 
     expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' }).length).toBeGreaterThan(0);
+    expect(extractOpacity(fullImage)).toBe(0);
+  });
+
+  it('shows the preview again when the slide input changes', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          previewUrls={['thumb://photo-1']}
+          urls={['full://photo']}
+          visible
+        />,
+      );
+    });
+
+    let fullImage = renderer.root.findByProps({ testID: 'photo-viewer-full-image' });
+
+    await act(async () => {
+      fullImage.props.onLoad();
+    });
+
+    expect(renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' })).toHaveLength(0);
+
+    await act(async () => {
+      renderer.update(
+        <PhotoViewerModal
+          onRequestClose={jest.fn()}
+          previewUrls={['thumb://photo-2']}
+          urls={['full://photo']}
+          visible
+        />,
+      );
+    });
+
+    fullImage = renderer.root.findByProps({ testID: 'photo-viewer-full-image' });
+    const previewImages = renderer.root.findAllByProps({ testID: 'photo-viewer-preview-image' });
+
+    expect(previewImages.map((node: any) => node.props.source)).toContainEqual({ uri: 'thumb://photo-2' });
     expect(extractOpacity(fullImage)).toBe(0);
   });
 });

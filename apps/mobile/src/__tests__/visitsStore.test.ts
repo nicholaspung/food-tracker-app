@@ -1,6 +1,7 @@
 import { ClientResponseError } from 'pocketbase';
 
 import {
+  createVisit,
   getVisitById,
   listVisitItemPhotos,
   updateVisit,
@@ -165,6 +166,100 @@ describe('visitsStore.getVisitById', () => {
     });
   });
 
+  it('sends visitedOn on create and uploads photos to the newly created item ids first', async () => {
+    mockedSendApiRequest.mockResolvedValue({
+      id: 'visit-123',
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Noodle House',
+      visitedAt: '2026-04-05T18:00:00.000Z',
+      visibility: 'friends',
+      items: [
+        {
+          id: 'visit-item-new-1',
+          name: 'Spicy Wontons',
+          rating: 4,
+          description: 'Crispy',
+          notes: 'Shareable',
+        },
+        {
+          id: 'visit-item-old-1',
+          name: 'Dan Dan Noodles',
+          rating: 5,
+        },
+      ],
+      source: 'visit',
+      createdAt: '2026-04-05T18:00:00.000Z',
+      updatedAt: '2026-04-05T18:10:00.000Z',
+    });
+
+    await expect(
+      createVisit({
+        restaurantId: 'restaurant-1',
+        restaurantName: 'Noodle House',
+        visitedAt: '2026-04-05T18:00:00.000Z',
+        visitedOn: '2026-04-05',
+        visibility: 'friends',
+        items: [
+          {
+            name: 'Spicy Wontons',
+            rating: 4,
+            description: 'Crispy',
+            notes: 'Shareable',
+            photos: [
+              {
+                uri: 'file:///wontons.jpg',
+                name: 'wontons.jpg',
+                mimeType: 'image/jpeg',
+              },
+            ],
+          },
+        ],
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+      id: 'visit-123',
+        items: expect.arrayContaining([
+          expect.objectContaining({
+          id: 'visit-item-new-1',
+          name: 'Spicy Wontons',
+          }),
+        ]),
+      }),
+    );
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/visits', {
+      method: 'POST',
+      body: {
+        restaurantId: 'restaurant-1',
+        restaurantName: 'Noodle House',
+        items: [
+          {
+            name: 'Spicy Wontons',
+            rating: 4,
+            description: 'Crispy',
+            notes: 'Shareable',
+          },
+        ],
+        visitedAt: '2026-04-05T18:00:00.000Z',
+        visitedOn: '2026-04-05',
+        visibility: 'friends',
+      },
+    });
+    expect(mockedUploadVisitPhotos).toHaveBeenCalledWith(
+      'visit-123',
+      'visit-item-new-1',
+      'user-1',
+      [
+        {
+          uri: 'file:///wontons.jpg',
+          name: 'wontons.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+      'Crispy',
+    );
+  });
+
   it('deletes removed photo ids before uploading new visit item photos during edit', async () => {
     const operationOrder: string[] = [];
     const visitPhotosCollection = {
@@ -213,6 +308,7 @@ describe('visitsStore.getVisitById', () => {
       updateVisit('visit-123', {
         restaurantName: 'Noodle House',
         visitedAt: '2026-04-05T18:00:00.000Z',
+        visitedOn: '2026-04-05',
         visibility: 'friends',
         items: [
           {
@@ -258,6 +354,7 @@ describe('visitsStore.getVisitById', () => {
           },
         ],
         visitedAt: '2026-04-05T18:00:00.000Z',
+        visitedOn: '2026-04-05',
         visibility: 'friends',
       },
     });

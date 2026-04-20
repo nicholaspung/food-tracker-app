@@ -101,6 +101,7 @@ jest.mock('../components/shared', () => ({
   LoadingState: (props: Record<string, unknown>) => mockReact.createElement('LoadingState', props),
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
   PhotoSourceActionCards: (props: Record<string, unknown>) => mockReact.createElement('PhotoSourceActionCards', props),
+  PhotoViewerModal: (props: Record<string, unknown>) => mockReact.createElement('PhotoViewerModal', props),
   FoodProductFormFields: (props: Record<string, unknown>) => mockReact.createElement('FoodProductFormFields', props),
   RatingLegend: (props: Record<string, unknown>) => mockReact.createElement('RatingLegend', props),
   RatingSelector: (props: Record<string, unknown>) => mockReact.createElement('RatingSelector', props),
@@ -275,6 +276,35 @@ function collectText(node: { children?: unknown[] } | string): string {
     .trim();
 }
 
+function buildQueryResult<T>(data: T) {
+  return {
+    data,
+    isError: false,
+    isLoading: false,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useQuery>;
+}
+
+async function renderPhotoProcessingScreen(routeParams: Record<string, unknown> = {}) {
+  let renderer: any = null;
+
+  await act(async () => {
+    renderer = create(
+      <PhotoProcessingScreen
+        navigation={{
+          goBack: jest.fn(),
+          navigate: jest.fn(),
+        } as never}
+        route={{
+          params: routeParams,
+        } as never}
+      />,
+    );
+  });
+
+  return renderer;
+}
+
 describe('PhotoProcessingScreen', () => {
   beforeEach(() => {
     mockedUseQuery.mockReturnValue({
@@ -402,21 +432,7 @@ describe('PhotoProcessingScreen', () => {
   });
 
   it('shows selected photos before muted add-more controls once photos exist', async () => {
-    let renderer: any = null;
-
-    await act(async () => {
-      renderer = create(
-        <PhotoProcessingScreen
-          navigation={{
-            goBack: jest.fn(),
-            navigate: jest.fn(),
-          } as never}
-          route={{
-            params: {},
-          } as never}
-        />,
-      );
-    });
+    const renderer = await renderPhotoProcessingScreen();
 
     await act(async () => {
       renderer.root.findAllByType('IconActionCard')[1].props.onPress();
@@ -430,5 +446,90 @@ describe('PhotoProcessingScreen', () => {
     expect(collectText(cards[1])).toContain('Take another photo or upload more saved photos.');
     expect(cards[1].props.tone).toBe('muted');
     expect(sourceActions.props.tone).toBe('muted');
+  });
+
+  it.each([
+    ['restaurant', 'note-use-choice-restaurant'],
+    ['food product', 'note-use-choice-food-product'],
+  ])('opens the photo viewer from the %s process step preview', async (_label, actionTestId) => {
+    mockedUseQuery.mockReturnValue(
+      buildQueryResult({
+        note: {
+          content: 'Use this note',
+          title: 'Linked note',
+        },
+        photos: [
+          {
+            created: '2026-04-18T12:00:00.000Z',
+            id: 'note-photo-1',
+            note: 'note-1',
+            photo: 'note-photo-1.jpg',
+          },
+        ],
+      }),
+    );
+    mockedUsePhotoProcessingDraftState.mockReturnValue({
+      appendAssets: jest.fn(),
+      currentPhoto: {
+        id: 'photo-1',
+        name: 'first.jpg',
+        uri: 'file:///first.jpg',
+      },
+      currentPhotoIndex: 0,
+      currentFoodProductForm: null,
+      currentRestaurantForm: null,
+      dismissCurrentPhotoLocationHint: jest.fn(),
+      locationMetadataHintDismissedByPhotoId: {},
+      photos: [
+        {
+          id: 'photo-1',
+          name: 'first.jpg',
+          uri: 'file:///first.jpg',
+        },
+        {
+          id: 'photo-2',
+          name: 'second.jpg',
+          uri: 'file:///second.jpg',
+        },
+      ],
+      foodProductForms: {},
+      removePhoto: jest.fn(),
+      replacePhotos: jest.fn(),
+      resetDraftState: jest.fn(),
+      resetProcessingForms: jest.fn(),
+      restaurantForms: {},
+      setCurrentPhotoIndex: jest.fn(),
+      setFoodProductForms: jest.fn(),
+      setRestaurantForms: jest.fn(),
+      updateCurrentFoodProductForm: jest.fn(),
+      updateCurrentRestaurantForm: jest.fn(),
+    } as unknown as ReturnType<typeof usePhotoProcessingDraftState>);
+
+    const renderer = await renderPhotoProcessingScreen({ sourceNoteId: 'note-1' });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: actionTestId }).props.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'process-photo-preview-button' }).props.onPress();
+    });
+
+    let photoViewerModal = renderer.root.findByType('PhotoViewerModal');
+
+    expect(photoViewerModal.props.visible).toBe(true);
+    expect(photoViewerModal.props.urls).toEqual(['file:///first.jpg']);
+    expect(photoViewerModal.props.initialIndex).toBe(0);
+
+    await act(async () => {
+      photoViewerModal.props.onRequestClose();
+    });
+
+    photoViewerModal = renderer.root.findByType('PhotoViewerModal');
+    expect(photoViewerModal.props.visible).toBe(false);
   });
 });

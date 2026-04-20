@@ -18,6 +18,7 @@ import {
   LinkedNoteCard,
   LoadingState,
   PageErrorToast,
+  PhotoViewerModal,
   PhotoSourceActionCards,
   FoodProductFormFields,
   RatingLegend,
@@ -311,6 +312,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSelectingSource, setIsSelectingSource] = useState(false);
   const [isPreparingNotePhotos, setIsPreparingNotePhotos] = useState(false);
+  const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
   const processStepScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
@@ -405,6 +407,12 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       setCurrentPhotoIndex(photos.length - 1);
     }
   }, [currentPhotoIndex, photos.length, setCurrentPhotoIndex, step]);
+
+  useEffect(() => {
+    if (step !== 'process' || !currentPhoto) {
+      setIsPhotoViewerVisible(false);
+    }
+  }, [currentPhoto, step]);
 
   useEffect(() => {
     if (step !== 'process' || !processType || !currentPhoto) {
@@ -539,11 +547,20 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     (nextIndex: number) => {
       Keyboard.dismiss();
       scrollProcessStepToTop();
+      setIsPhotoViewerVisible(false);
       setCurrentPhotoIndex(nextIndex);
       setErrorMessage(null);
     },
     [scrollProcessStepToTop, setCurrentPhotoIndex],
   );
+
+  const openPhotoViewer = useCallback(() => {
+    setIsPhotoViewerVisible(true);
+  }, []);
+
+  const closePhotoViewer = useCallback(() => {
+    setIsPhotoViewerVisible(false);
+  }, []);
 
   const displayedSavedRestaurants = useMemo(() => {
     return allDisplayedSavedRestaurants.slice(0, 12);
@@ -1425,7 +1442,14 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
         {linkedNoteCard}
 
         <Card style={styles.photoPreviewCard}>
-          <Image source={{ uri: currentPhoto.uri }} style={styles.largePhotoPreview} />
+          <Pressable
+            accessibilityLabel={`View photo ${currentPhotoIndex + 1} full screen`}
+            accessibilityRole="button"
+            onPress={openPhotoViewer}
+            testID="process-photo-preview-button"
+          >
+            <Image source={{ uri: currentPhoto.uri }} style={styles.largePhotoPreview} />
+          </Pressable>
         </Card>
 
         {processType === 'restaurant' ? (
@@ -1744,6 +1768,13 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
             />
           </>
         )}
+
+        <PhotoViewerModal
+          initialIndex={0}
+          onRequestClose={closePhotoViewer}
+          urls={[currentPhoto.uri]}
+          visible={isPhotoViewerVisible}
+        />
       </FeatureFormScreenScaffold>
     );
   }

@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   Pressable,
   View,
@@ -38,6 +38,7 @@ import {
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { type HomeInitialViewParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -300,7 +301,33 @@ function formatMineEntryFooterLabel(feedItem: FeedItem): string {
   return formatEntryDateLabel(feedItem.eventAt) || feedItem.eventAt;
 }
 
-export function HomeScreen({ navigation }: HomeScreenProps) {
+function applyInitialViewParams(
+  initialView: HomeInitialViewParams,
+  {
+    setFeedMode,
+    setFiltersExpanded,
+    setSearchQuery,
+    setSortByMode,
+    setTypeFilter,
+  }: {
+    setFeedMode: (value: FeedMode) => void;
+    setFiltersExpanded: (value: boolean) => void;
+    setSearchQuery: (value: string) => void;
+    setSortByMode: Dispatch<SetStateAction<Record<FeedMode, SortFilter>>>;
+    setTypeFilter: (value: TypeFilter) => void;
+  },
+) {
+  setFeedMode(initialView.feedMode);
+  setTypeFilter(initialView.typeFilter);
+  setSearchQuery(initialView.searchQuery);
+  setFiltersExpanded(initialView.filtersExpanded);
+  setSortByMode((previous) => ({
+    ...previous,
+    [initialView.feedMode]: initialView.sortFilter,
+  }));
+}
+
+export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -377,6 +404,25 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const isLoading = homeFeedQuery.isLoading;
   const hasBlockingFeedError = homeFeedState.hasBlockingError;
   const hasFeedRefreshError = homeFeedState.hasRefreshError;
+
+  useEffect(() => {
+    if (!route.params?.initialView) {
+      return;
+    }
+
+    applyInitialViewParams(route.params.initialView, {
+      setFeedMode,
+      setFiltersExpanded,
+      setSearchQuery,
+      setSortByMode,
+      setTypeFilter,
+    });
+
+    navigation.setParams({
+      initialView: undefined,
+    });
+  }, [navigation, route.params]);
+
   const handleRefresh = useCallback(async () => {
     setIsPullRefreshing(true);
 

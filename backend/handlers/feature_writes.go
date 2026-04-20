@@ -15,11 +15,17 @@ import (
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
+const (
+	visitLocalDateFieldName = "visitLocalDate"
+	visitLocalDateLayout    = "2006-01-02"
+)
+
 type visitCreateRequest struct {
 	RestaurantID   string                  `json:"restaurantId"`
 	RestaurantName string                  `json:"restaurantName"`
 	Items          []visitItemWriteRequest `json:"items"`
 	VisitedAt      string                  `json:"visitedAt"`
+	VisitedOn      string                  `json:"visitedOn"`
 	Visibility     string                  `json:"visibility"`
 }
 
@@ -28,6 +34,7 @@ type visitUpdateRequest struct {
 	RestaurantName *string                  `json:"restaurantName"`
 	Items          *[]visitItemWriteRequest `json:"items"`
 	VisitedAt      *string                  `json:"visitedAt"`
+	VisitedOn      *string                  `json:"visitedOn"`
 	Visibility     *string                  `json:"visibility"`
 }
 
@@ -65,7 +72,13 @@ type visitResponse struct {
 }
 
 type buildVisitResponseOptions struct {
-	ItemSort string
+	ItemSort           string
+	PrioritizedItemIDs []string
+}
+
+type visitCreateTransactionResult struct {
+	PrioritizedItemIDs []string
+	VisitRecord        *core.Record
 }
 
 type billCreateRequest struct {
@@ -207,12 +220,14 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 
 		var responsePayload visitResponse
 		if err := app.RunInTransaction(func(txApp core.App) error {
-			visitRecord, err := createVisitTransaction(txApp, e.Auth, requestBody)
+			createResult, err := createVisitTransaction(txApp, e.Auth, requestBody)
 			if err != nil {
 				return err
 			}
 
-			responsePayload, err = buildVisitResponse(txApp, visitRecord, e.Auth, buildVisitResponseOptions{})
+			responsePayload, err = buildVisitResponse(txApp, createResult.VisitRecord, e.Auth, buildVisitResponseOptions{
+				PrioritizedItemIDs: createResult.PrioritizedItemIDs,
+			})
 			if err != nil {
 				return apis.NewApiError(500, "failed to load created visit", err)
 			}
@@ -391,13 +406,19 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 	}).Bind(apis.RequireAuth())
 }
 
-func createVisitTransaction(app core.App, authRecord *core.Record, requestBody visitCreateRequest) (*core.Record, error) {
+func createVisitTransaction(
+	app core.App,
+	authRecord *core.Record,
+	requestBody visitCreateRequest,
+) (visitCreateTransactionResult, error) {
+	result := visitCreateTransactionResult{}
+
 	if strings.TrimSpace(requestBody.RestaurantID) == "" && strings.TrimSpace(requestBody.RestaurantName) == "" {
-		return nil, apis.NewBadRequestError("restaurant name is required", nil)
+		return result, apis.NewBadRequestError("restaurant name is required", nil)
 	}
 
 	if len(requestBody.Items) == 0 {
-		return nil, apis.NewBadRequestError("at least one item is required", nil)
+		return result, apis.NewBadRequestError("at least one item is required", nil)
 	}
 
 	restaurantRecord, err := resolveRestaurantForWrite(app, authRecord, restaurantResolveInput{
@@ -405,29 +426,53 @@ func createVisitTransaction(app core.App, authRecord *core.Record, requestBody v
 		RestaurantName: requestBody.RestaurantName,
 	})
 	if err != nil {
-		return nil, wrapRestaurantResolveError(err)
+		return result, wrapRestaurantResolveError(err)
 	}
 
-	visitsCollection, err := app.FindCollectionByNameOrId("visits")
+	normalizedVisitedAt := normalizeVisitDate(requestBody.VisitedAt)
+	visitLocalDate, err := resolveVisitLocalDate(requestBody.VisitedOn, normalizedVisitedAt)
 	if err != nil {
-		return nil, apis.NewApiError(500, "internal error", err)
+		return result, err
+	}
+	normalizedVisibility := normalizeVisitVisibility(requestBody.Visibility)
+
+	visitRecord, err := findMergeableVisitRecord(
+		app,
+		authRecord.Id,
+		restaurantRecord.Id,
+		normalizedVisibility,
+		visitLocalDate,
+	)
+	if err != nil {
+		return result, apis.NewApiError(500, "failed to load existing visit", err)
 	}
 
-	visitRecord := core.NewRecord(visitsCollection)
-	visitRecord.Set("restaurant", restaurantRecord.Id)
-	visitRecord.Set("user", authRecord.Id)
-	visitRecord.Set("visitDate", normalizeVisitDate(requestBody.VisitedAt))
-	visitRecord.Set("visibility", normalizeVisitVisibility(requestBody.Visibility))
+	if visitRecord == nil {
+		visitsCollection, collectionErr := app.FindCollectionByNameOrId("visits")
+		if collectionErr != nil {
+			return result, apis.NewApiError(500, "internal error", collectionErr)
+		}
 
-	if err := app.Save(visitRecord); err != nil {
-		return nil, apis.NewApiError(500, "failed to create visit", err)
+		visitRecord = core.NewRecord(visitsCollection)
+		visitRecord.Set("restaurant", restaurantRecord.Id)
+		visitRecord.Set("user", authRecord.Id)
+		visitRecord.Set("visitDate", normalizedVisitedAt)
+		visitRecord.Set(visitLocalDateFieldName, visitLocalDate)
+		visitRecord.Set("visibility", normalizedVisibility)
+
+		if err := app.Save(visitRecord); err != nil {
+			return result, apis.NewApiError(500, "failed to create visit", err)
+		}
 	}
 
-	if err := syncVisitItems(app, authRecord.Id, visitRecord.Id, nil, requestBody.Items); err != nil {
-		return nil, err
+	createdItemIDs, err := appendVisitItems(app, authRecord.Id, visitRecord.Id, requestBody.Items)
+	if err != nil {
+		return result, err
 	}
 
-	return visitRecord, nil
+	result.VisitRecord = visitRecord
+	result.PrioritizedItemIDs = createdItemIDs
+	return result, nil
 }
 
 func updateVisitTransaction(
@@ -472,6 +517,23 @@ func updateVisitTransaction(
 		visitRecord.Set("visitDate", normalizeVisitDate(strings.TrimSpace(*requestBody.VisitedAt)))
 	}
 
+	if requestBody.VisitedAt != nil || requestBody.VisitedOn != nil {
+		nextVisitedAt := firstNonEmpty(
+			visitRecord.GetString("visitDate"),
+			visitRecord.GetString("created"),
+		)
+		nextVisitedOn := ""
+		if requestBody.VisitedOn != nil {
+			nextVisitedOn = strings.TrimSpace(*requestBody.VisitedOn)
+		}
+
+		visitLocalDate, resolveErr := resolveVisitLocalDate(nextVisitedOn, nextVisitedAt)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		visitRecord.Set(visitLocalDateFieldName, visitLocalDate)
+	}
+
 	if requestBody.Visibility != nil {
 		visitRecord.Set("visibility", normalizeVisitVisibility(strings.TrimSpace(*requestBody.Visibility)))
 	}
@@ -491,6 +553,45 @@ func updateVisitTransaction(
 	}
 
 	return visitRecord, nil
+}
+
+func appendVisitItems(
+	app core.App,
+	userID string,
+	visitID string,
+	requestItems []visitItemWriteRequest,
+) ([]string, error) {
+	foodItemsCollection, err := app.FindCollectionByNameOrId("food_items")
+	if err != nil {
+		return nil, apis.NewApiError(500, "internal error", err)
+	}
+
+	createdItemIDs := make([]string, 0, len(requestItems))
+	for _, item := range requestItems {
+		trimmedName := strings.TrimSpace(item.Name)
+		if trimmedName == "" {
+			return nil, apis.NewBadRequestError("item name is required", nil)
+		}
+
+		description := strings.TrimSpace(item.Description)
+		notes := strings.TrimSpace(item.Notes)
+
+		createdItem := core.NewRecord(foodItemsCollection)
+		createdItem.Set("name", trimmedName)
+		createdItem.Set("rating", item.Rating)
+		createdItem.Set("description", emptyStringToNil(description))
+		createdItem.Set("notes", emptyStringToNil(notes))
+		createdItem.Set("visit", visitID)
+		createdItem.Set("user", userID)
+		createdItem.Set("itemType", foodItemTypeVisitItem)
+		if err := app.Save(createdItem); err != nil {
+			return nil, apis.NewApiError(500, "failed to create visit item", err)
+		}
+
+		createdItemIDs = append(createdItemIDs, createdItem.Id)
+	}
+
+	return createdItemIDs, nil
 }
 
 func syncVisitItems(
@@ -1071,6 +1172,7 @@ func buildVisitResponse(
 			Notes:       strings.TrimSpace(item.GetString("notes")),
 		})
 	}
+	responseItems = orderVisitResponseItems(responseItems, options.PrioritizedItemIDs)
 
 	response := visitResponse{
 		ID:           visitRecord.Id,
@@ -1291,6 +1393,75 @@ func listFoodItemsForVisitWithSort(app core.App, visitID string, sort string) ([
 	})
 }
 
+func findMergeableVisitRecord(
+	app core.App,
+	userID string,
+	restaurantID string,
+	visibility string,
+	visitLocalDate string,
+) (*core.Record, error) {
+	records, err := app.FindRecordsByFilter(
+		"visits",
+		"user = {:userId} && restaurant = {:restaurantId} && visibility = {:visibility} && "+visitLocalDateFieldName+" = {:visitLocalDate}",
+		"-visitDate,-updated,-created",
+		20,
+		0,
+		dbx.Params{
+			"restaurantId":   restaurantID,
+			"userId":         userID,
+			"visibility":     visibility,
+			"visitLocalDate": visitLocalDate,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, record := range records {
+		if isOwnerAccessibleModerationStatus(record.GetString("moderationStatus")) {
+			return record, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func orderVisitResponseItems(items []visitItemResponse, prioritizedItemIDs []string) []visitItemResponse {
+	if len(prioritizedItemIDs) == 0 || len(items) < 2 {
+		return items
+	}
+
+	itemsByID := make(map[string]visitItemResponse, len(items))
+	for _, item := range items {
+		itemsByID[item.ID] = item
+	}
+
+	orderedItems := make([]visitItemResponse, 0, len(items))
+	seen := make(map[string]struct{}, len(prioritizedItemIDs))
+	for _, itemID := range prioritizedItemIDs {
+		if _, alreadySeen := seen[itemID]; alreadySeen {
+			continue
+		}
+
+		item, ok := itemsByID[itemID]
+		if !ok {
+			continue
+		}
+
+		orderedItems = append(orderedItems, item)
+		seen[itemID] = struct{}{}
+	}
+
+	for _, item := range items {
+		if _, alreadySeen := seen[item.ID]; alreadySeen {
+			continue
+		}
+		orderedItems = append(orderedItems, item)
+	}
+
+	return orderedItems
+}
+
 func canAccessVisitRecord(
 	record *core.Record,
 	userID string,
@@ -1356,6 +1527,26 @@ func normalizeVisitDate(value string) string {
 		return trimmedValue
 	}
 	return time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+func resolveVisitLocalDate(visitedOn string, visitedAt string) (string, error) {
+	trimmedVisitedOn := strings.TrimSpace(visitedOn)
+	if trimmedVisitedOn != "" {
+		if _, err := time.Parse(visitLocalDateLayout, trimmedVisitedOn); err != nil {
+			return "", apis.NewBadRequestError("visitedOn must use YYYY-MM-DD format", err)
+		}
+		return trimmedVisitedOn, nil
+	}
+
+	trimmedVisitedAt := strings.TrimSpace(visitedAt)
+	if len(trimmedVisitedAt) >= len(visitLocalDateLayout) {
+		candidate := trimmedVisitedAt[:len(visitLocalDateLayout)]
+		if _, err := time.Parse(visitLocalDateLayout, candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", apis.NewBadRequestError("visitedAt must include a valid calendar date", nil)
 }
 
 func normalizeVisitVisibility(value string) string {

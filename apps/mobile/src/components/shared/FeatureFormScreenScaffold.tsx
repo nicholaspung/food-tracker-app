@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, View } from 'react-native';
 import type { ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
@@ -42,14 +42,12 @@ const useStyles = createThemedStyles((theme, headerBottomCompact: boolean) => ({
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
-  splitBackgroundUnderlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.background.app,
-  },
   bodyContainer: {
     flex: 1,
+    backgroundColor: theme.colors.background.app,
   },
   headerBottom: {
+    backgroundColor: theme.colors.background.app,
     borderBottomColor: theme.colors.border.subtle,
     borderBottomWidth: 1,
     paddingHorizontal: theme.spacing.md,
@@ -100,12 +98,10 @@ export function FeatureFormScreenScaffold({
   testID,
 }: FeatureFormScreenScaffoldProps) {
   const theme = useTheme();
-  const { height } = useWindowDimensions();
   const internalScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
   const resolvedScrollViewRef = scrollViewRef ?? internalScrollViewRef;
   const [footerHeight, setFooterHeight] = useState(theme.sizes.buttonHeight + theme.spacing.xl);
   const styles = useStyles(headerBottomCompact);
-  const splitBackgroundTopInset = Math.max(220, Math.round(height / 2));
 
   return (
     <Screen
@@ -117,12 +113,6 @@ export function FeatureFormScreenScaffold({
       scroll={false}
       testID={testID}
     >
-      {splitBackground ? (
-        <View
-          pointerEvents="none"
-          style={[styles.splitBackgroundUnderlay, { top: splitBackgroundTopInset }]}
-        />
-      ) : null}
       <ScreenHeader
         backAccessibilityLabel={backAccessibilityLabel}
         onBackPress={onBackPress}
@@ -131,20 +121,7 @@ export function FeatureFormScreenScaffold({
         title={title}
         variant="compact"
       />
-      {headerBottomContent ? (
-        <View
-          style={[
-            styles.headerBottom,
-            {
-              backgroundColor: splitBackground
-                ? theme.colors.background.surface
-                : theme.colors.background.app,
-            },
-          ]}
-        >
-          {headerBottomContent}
-        </View>
-      ) : null}
+      {headerBottomContent ? <View style={styles.headerBottom}>{headerBottomContent}</View> : null}
       <View style={styles.bodyContainer}>
         <KeyboardAwareScrollView
           automaticallyAdjustKeyboardInsets={false}

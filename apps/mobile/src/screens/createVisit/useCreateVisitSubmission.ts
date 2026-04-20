@@ -216,6 +216,7 @@ export function useCreateVisitSubmission({
         photos: item.newPhotos,
       })),
       visitedAt: localDateStringToUTC(trimmedVisitDate),
+      visitedOn: trimmedVisitDate,
       visibility: visitVisibility,
       source: 'visit' as const,
       sourceNoteId,
@@ -247,6 +248,7 @@ export function useCreateVisitSubmission({
             deletePhotoIds: item.deletePhotoIds,
           })),
           visitedAt: localDateStringToUTC(trimmedVisitDate),
+          visitedOn: trimmedVisitDate,
           visibility: visitVisibility,
         };
 
