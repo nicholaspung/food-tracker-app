@@ -14,8 +14,9 @@ import { isProfileQueryKey } from '../features/store/profileQuery';
 const LEGACY_QUERY_CACHE_STORAGE_KEYS = [
   getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1'),
   getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2'),
+  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3'),
 ];
-const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3');
+const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4');
 
 function isFeatureQueryKey(queryKey: QueryKey): queryKey is readonly [string, ...unknown[]] {
   return Array.isArray(queryKey) && queryKey[0] === 'feature';

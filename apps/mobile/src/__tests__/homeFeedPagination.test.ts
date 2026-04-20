@@ -51,7 +51,7 @@ describe('loadHomeFeedPageWithSources', () => {
       visitBatchSize: 2,
     });
 
-    expect(firstPage.items.map((item) => ('visit' in item ? item.visit.id : item.quickTrack.id))).toEqual([
+    expect(firstPage.items.map((item) => ('visit' in item ? item.visit.id : item.foodProduct.id))).toEqual([
       'visit-1',
       'visit-2',
       'food-product-1',
@@ -75,7 +75,7 @@ describe('loadHomeFeedPageWithSources', () => {
       visitBatchSize: 2,
     });
 
-    expect(secondPage.items.map((item) => ('visit' in item ? item.visit.id : item.quickTrack.id))).toEqual([
+    expect(secondPage.items.map((item) => ('visit' in item ? item.visit.id : item.foodProduct.id))).toEqual([
       'visit-3',
       'visit-4',
       'food-product-2',

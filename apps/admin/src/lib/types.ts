@@ -185,7 +185,7 @@ export type ModerationReasonCode =
 
 export interface ModerationFeedEntry {
   id: string;
-  contentType: 'visit' | 'quick-track';
+  contentType: 'visit' | 'food-product';
   moderationStatus?: ModerationContentStatus;
   eventAt: string;
   created: string;
@@ -236,7 +236,7 @@ export interface ModerationRestaurantList {
 
 export interface ModerationCase {
   id: string;
-  targetType: 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'note' | 'photo' | 'user';
+  targetType: 'visit' | 'food-item' | 'food-product' | 'list' | 'list-item' | 'note' | 'photo' | 'user';
   targetRecordId: string;
   targetCollection: string;
   targetLabel?: string;

@@ -8,7 +8,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const defaultAdminRecordType = "quick-track"
+const defaultAdminRecordType = "food-product"
 
 type adminRecordTypeCountsDefinition struct {
 	Description string
@@ -71,17 +71,17 @@ var adminRecordTypeCountsDefinitions = map[string]adminRecordTypeCountsDefinitio
 		WhereClause: "1 = 1",
 	},
 	"photo-upload": {
-		Description: "Photo uploads attached to visits or quick tracks.",
+		Description: "Photo uploads attached to visits or food products.",
 		EventAtExpr: "r.created",
 		Label:       "Photo uploads",
 		TableName:   "visit_photos",
 		UserColumn:  "user",
 		WhereClause: "1 = 1",
 	},
-	"quick-track": {
-		Description: "Quick Track items logged by users.",
+	"food-product": {
+		Description: "Food products logged by users.",
 		EventAtExpr: "COALESCE(NULLIF(r.itemDate, ''), r.created)",
-		Label:       "Quick track items",
+		Label:       "Food products",
 		TableName:   "food_items",
 		UserColumn:  "user",
 		WhereClause: "COALESCE(r.isQuickTrack, 0) = 1",

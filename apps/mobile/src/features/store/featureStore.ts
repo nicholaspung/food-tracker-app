@@ -72,7 +72,7 @@ export interface UpdateRestaurantListInput {
 }
 
 export interface ReportContentInput {
-  contentType: 'visit' | 'quick-track';
+  contentType: 'visit' | 'food-product';
   recordId: string;
   reasonCode: ContentReportReasonCode;
   notes?: string;

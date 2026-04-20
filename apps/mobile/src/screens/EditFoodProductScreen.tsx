@@ -485,7 +485,6 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.detail(foodProductId) }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'foodProduct', foodProductId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'quickTrack', legacyFoodProductId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
       ];
 

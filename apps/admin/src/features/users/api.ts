@@ -114,7 +114,7 @@ export async function getUserModerationProfile(userId: string): Promise<UserMode
 
 export async function deleteModeratedUserContent(input: {
   userId: string;
-  contentType: 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'note' | 'photo';
+  contentType: 'visit' | 'food-item' | 'food-product' | 'list' | 'list-item' | 'note' | 'photo';
   recordId: string;
 }) {
   try {
@@ -152,7 +152,7 @@ export async function updateUserModeration(input: {
 
 export async function moderateUserContent(input: {
   userId: string;
-  contentType: 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'note' | 'photo';
+  contentType: 'visit' | 'food-item' | 'food-product' | 'list' | 'list-item' | 'note' | 'photo';
   recordId: string;
   action: ModerationAction;
   reasonCode?: ModerationReasonCode;

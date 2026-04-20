@@ -175,15 +175,15 @@ type homeFeedEntryRow struct {
 }
 
 type homeFeedCountsRow struct {
-	TotalVisits      int `db:"totalVisits"`
-	TotalQuickTracks int `db:"totalQuickTracks"`
+	TotalVisits       int `db:"totalVisits"`
+	TotalFoodProducts int `db:"totalFoodProducts"`
 }
 
 type homeFeedCursorResponse struct {
 	Page int `json:"page"`
 }
 
-type homeFeedQuickTrackResponse struct {
+type homeFeedFoodProductResponse struct {
 	ID               string  `json:"id"`
 	RestaurantName   string  `json:"restaurantName"`
 	ItemCategory     string  `json:"itemCategory,omitempty"`
@@ -209,19 +209,19 @@ type homeFeedPhotoPreviewResponse struct {
 }
 
 type homeFeedEntryResponse struct {
-	Source     string                      `json:"source"`
-	EventAt    string                      `json:"eventAt"`
-	Visit      *visitResponse              `json:"visit,omitempty"`
-	QuickTrack *homeFeedQuickTrackResponse `json:"quickTrack,omitempty"`
+	Source      string                       `json:"source"`
+	EventAt     string                       `json:"eventAt"`
+	Visit       *visitResponse               `json:"visit,omitempty"`
+	FoodProduct *homeFeedFoodProductResponse `json:"foodProduct,omitempty"`
 }
 
 type homeFeedResponse struct {
-	Items            []homeFeedEntryResponse        `json:"items"`
-	PhotoPreviews    []homeFeedPhotoPreviewResponse `json:"photoPreviews"`
-	Cursor           *homeFeedCursorResponse        `json:"cursor,omitempty"`
-	HasNextPage      bool                           `json:"hasNextPage"`
-	TotalQuickTracks *int                           `json:"totalQuickTracks,omitempty"`
-	TotalVisits      *int                           `json:"totalVisits,omitempty"`
+	Items             []homeFeedEntryResponse        `json:"items"`
+	PhotoPreviews     []homeFeedPhotoPreviewResponse `json:"photoPreviews"`
+	Cursor            *homeFeedCursorResponse        `json:"cursor,omitempty"`
+	HasNextPage       bool                           `json:"hasNextPage"`
+	TotalFoodProducts *int                           `json:"totalFoodProducts,omitempty"`
+	TotalVisits       *int                           `json:"totalVisits,omitempty"`
 }
 
 type visitsPageResponse struct {
@@ -957,8 +957,8 @@ func normalizeHomeFeedTypeFilter(raw string) (string, error) {
 		return "all", nil
 	case "visits":
 		return "visits", nil
-	case "quick-track":
-		return "quick-track", nil
+	case "food-products":
+		return "food-products", nil
 	default:
 		return "", fmt.Errorf("invalid home feed typeFilter")
 	}
@@ -1353,7 +1353,7 @@ func getHomeFeedResponse(
 		}
 
 		response.TotalVisits = &counts.TotalVisits
-		response.TotalQuickTracks = &counts.TotalQuickTracks
+		response.TotalFoodProducts = &counts.TotalFoodProducts
 	}
 
 	rows, err := listHomeFeedEntryRows(app, userID, isAdmin, page, pageSize, scope, search, sort, typeFilter)
@@ -1377,7 +1377,7 @@ func getHomeFeedResponse(
 		switch row.Source {
 		case "visit":
 			visitIDs = append(visitIDs, row.RecordID)
-		case "quick-track":
+		case "food-product":
 			quickTrackIDs = append(quickTrackIDs, row.RecordID)
 		}
 	}
@@ -1490,7 +1490,7 @@ func getHomeFeedResponse(
 					UpdatedAt:             visit.GetString("updated"),
 				},
 			})
-		case "quick-track":
+		case "food-product":
 			quickTrack := quickTrackRecordsByID[row.RecordID]
 			if quickTrack == nil {
 				continue
@@ -1508,13 +1508,13 @@ func getHomeFeedResponse(
 				restaurantName = resolveRestaurantName(linkedRestaurant)
 			}
 			if restaurantName == "" {
-				restaurantName = "Quick Track"
+				restaurantName = "Food Product"
 			}
 
 			items = append(items, homeFeedEntryResponse{
-				Source:  "quick-track",
+				Source:  "food-product",
 				EventAt: row.EventAt,
-				QuickTrack: &homeFeedQuickTrackResponse{
+				FoodProduct: &homeFeedFoodProductResponse{
 					ID:               quickTrack.Id,
 					RestaurantName:   restaurantName,
 					ItemCategory:     strings.TrimSpace(quickTrack.GetString("itemCategory")),
@@ -1642,7 +1642,7 @@ func countHomeFeedEntries(
 	}
 
 	visitCountExpr := "0"
-	if typeFilter != "quick-track" {
+	if typeFilter != "food-products" {
 		visitCountExpr = `SELECT COUNT(*) FROM visits
 			LEFT JOIN restaurants ON restaurants.id = visits.restaurant
 			WHERE ` + buildHomeFeedVisitAccessCondition(scope, isAdmin) + ` AND ` + buildHomeFeedVisitSearchCondition(search)
@@ -1668,7 +1668,7 @@ func countHomeFeedEntries(
 		)
 		SELECT
 			(%s) AS [[totalVisits]],
-			(%s) AS [[totalQuickTracks]]
+			(%s) AS [[totalFoodProducts]]
 	`, visitCountExpr, quickTrackCountExpr)
 
 	err := app.DB().NewQuery(query).Bind(params).One(&row)
@@ -1700,7 +1700,7 @@ func listHomeFeedEntryRows(
 	}
 
 	selects := make([]string, 0, 2)
-	if typeFilter != "quick-track" {
+	if typeFilter != "food-products" {
 		selects = append(selects, `
 			SELECT
 				'visit' AS source,
@@ -1714,7 +1714,7 @@ func listHomeFeedEntryRows(
 	if typeFilter != "visits" {
 		selects = append(selects, `
 			SELECT
-				'quick-track' AS source,
+				'food-product' AS source,
 				food_items.id AS recordId,
 				`+quickTrackEventAtExpression+` AS eventAt,
 				food_items.created AS createdAt
@@ -1938,10 +1938,10 @@ func redactFriendHomeFeedTimestamps(response *homeFeedResponse) {
 			response.Items[index].Visit.UpdatedAt = redactFriendHomeFeedTimestamp(response.Items[index].Visit.UpdatedAt)
 		}
 
-		if response.Items[index].QuickTrack != nil {
-			response.Items[index].QuickTrack.ItemDate = redactFriendHomeFeedTimestamp(response.Items[index].QuickTrack.ItemDate)
-			response.Items[index].QuickTrack.CreatedAt = redactFriendHomeFeedTimestamp(response.Items[index].QuickTrack.CreatedAt)
-			response.Items[index].QuickTrack.UpdatedAt = redactFriendHomeFeedTimestamp(response.Items[index].QuickTrack.UpdatedAt)
+		if response.Items[index].FoodProduct != nil {
+			response.Items[index].FoodProduct.ItemDate = redactFriendHomeFeedTimestamp(response.Items[index].FoodProduct.ItemDate)
+			response.Items[index].FoodProduct.CreatedAt = redactFriendHomeFeedTimestamp(response.Items[index].FoodProduct.CreatedAt)
+			response.Items[index].FoodProduct.UpdatedAt = redactFriendHomeFeedTimestamp(response.Items[index].FoodProduct.UpdatedAt)
 		}
 	}
 }

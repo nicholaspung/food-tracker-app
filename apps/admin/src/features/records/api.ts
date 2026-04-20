@@ -7,7 +7,7 @@ export type AdminRecordType =
   | 'list'
   | 'note'
   | 'photo-upload'
-  | 'quick-track'
+  | 'food-product'
   | 'visit';
 
 export interface AdminRecordTypeCountRow {

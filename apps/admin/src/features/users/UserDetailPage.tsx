@@ -33,16 +33,16 @@ function formatCurrency(value?: number | null) {
 }
 
 function getActivityTitle(entry: UserModerationProfile['feedEntries'][number]) {
-  if (entry.contentType === 'quick-track') {
-    return entry.itemName?.trim() || entry.restaurantName?.trim() || 'Quick track';
+  if (entry.contentType === 'food-product') {
+    return entry.itemName?.trim() || entry.restaurantName?.trim() || 'Food Product';
   }
 
   return entry.restaurantName?.trim() || 'Visit';
 }
 
 function getActivitySummary(entry: UserModerationProfile['feedEntries'][number]) {
-  if (entry.contentType === 'quick-track') {
-    const ratingText = typeof entry.rating === 'number' ? `Rating ${entry.rating}` : 'Quick track';
+  if (entry.contentType === 'food-product') {
+    const ratingText = typeof entry.rating === 'number' ? `Rating ${entry.rating}` : 'Food Product';
     return `${ratingText} • ${formatDateTime(entry.eventAt)}`;
   }
 
@@ -213,7 +213,7 @@ function UserDetailTabPanel({
         <div className="tab-panel-heading">
           <h3>Activity feed</h3>
           <span className="text-muted">
-            {profile.feedEntries.length} recent feed entries across visits and quick tracks.
+            {profile.feedEntries.length} recent feed entries across visits and food products.
           </span>
         </div>
 

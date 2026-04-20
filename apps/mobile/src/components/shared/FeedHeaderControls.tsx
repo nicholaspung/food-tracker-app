@@ -7,7 +7,7 @@ import { FilterChipGroup, type FilterChipOption } from './FilterChipGroup';
 import { SegmentedControl, type SegmentedControlOption } from './SegmentedControl';
 
 export type FeedModeValue = 'mine' | 'friends';
-export type FeedTypeFilterValue = 'all' | 'visits' | 'quick-track';
+export type FeedTypeFilterValue = 'all' | 'visits' | 'food-products';
 export type HomeFeedSortValue = 'created' | 'tracked';
 
 const FEED_MODE_OPTIONS: readonly SegmentedControlOption<FeedModeValue>[] = [
@@ -18,7 +18,7 @@ const FEED_MODE_OPTIONS: readonly SegmentedControlOption<FeedModeValue>[] = [
 const TYPE_FILTER_OPTIONS: readonly FilterChipOption<FeedTypeFilterValue>[] = [
   { label: 'All', value: 'all' },
   { label: 'Visits', value: 'visits' },
-  { label: 'Food Products', value: 'quick-track' },
+  { label: 'Food Products', value: 'food-products' },
 ];
 
 const SORT_FILTER_OPTIONS: readonly FilterChipOption<HomeFeedSortValue>[] = [

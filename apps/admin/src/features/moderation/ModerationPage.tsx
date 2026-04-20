@@ -32,7 +32,7 @@ import type {
 
 type ModerationMainTab = 'queue' | 'cases' | 'lookup';
 
-type ModerationTargetContentType = 'visit' | 'food-item' | 'quick-track' | 'list' | 'list-item' | 'photo';
+type ModerationTargetContentType = 'visit' | 'food-item' | 'food-product' | 'list' | 'list-item' | 'photo';
 
 type ModerationWorkspaceTab = 'account' | 'history' | 'feed' | 'lists';
 
@@ -340,16 +340,16 @@ function buildContentModerationTargetFromCase(
         subtitle: 'Visit entry',
       };
     }
-    case 'quick-track': {
+    case 'food-product': {
       const entry = profile.feedEntries.find(
-        (candidate) => candidate.contentType === 'quick-track' && candidate.id === caseRecord.targetRecordId,
+        (candidate) => candidate.contentType === 'food-product' && candidate.id === caseRecord.targetRecordId,
       );
 
       return {
-        contentType: 'quick-track',
+        contentType: 'food-product',
         recordId: caseRecord.targetRecordId,
-        title: entry?.itemName || caseRecord.targetLabel || 'Quick track',
-        subtitle: 'Quick track entry',
+        title: entry?.itemName || caseRecord.targetLabel || 'Food Product',
+        subtitle: 'Food product entry',
       };
     }
     case 'food-item': {
@@ -680,7 +680,7 @@ function ReportedContentPreview({
   profile: UserModerationProfile;
   showActions?: boolean;
 }) {
-  if (caseRecord.targetType === 'visit' || caseRecord.targetType === 'quick-track') {
+  if (caseRecord.targetType === 'visit' || caseRecord.targetType === 'food-product') {
     const entry = profile.feedEntries.find(
       (candidate) => candidate.contentType === caseRecord.targetType && candidate.id === caseRecord.targetRecordId,
     );
@@ -699,15 +699,15 @@ function ReportedContentPreview({
         deletingKey={deletingKey}
         entry={entry}
         onDelete={() =>
-          onDelete(entry.contentType, entry.id, entry.contentType === 'visit' ? 'visit' : 'quick track')
+          onDelete(entry.contentType, entry.id, entry.contentType === 'visit' ? 'visit' : 'food product')
         }
         onDeleteItem={(item) => onDelete('food-item', item.id, 'visit item')}
         onModerate={() =>
           onModerate({
             contentType: entry.contentType,
             recordId: entry.id,
-            title: entry.contentType === 'visit' ? entry.restaurantName || 'Visit' : entry.itemName || 'Quick track',
-            subtitle: entry.contentType === 'visit' ? 'Visit entry' : 'Quick track entry',
+            title: entry.contentType === 'visit' ? entry.restaurantName || 'Visit' : entry.itemName || 'Food Product',
+            subtitle: entry.contentType === 'visit' ? 'Visit entry' : 'Food product entry',
           })
         }
         onModerateItem={(item) => onModerateVisitItem(entry, item)}
@@ -1108,13 +1108,13 @@ function FeedEntryCard({
   onOpenCarousel: (photos: ModerationPhoto[], initialIndex: number) => void;
   showActions?: boolean;
 }) {
-  if (entry.contentType === 'quick-track') {
+  if (entry.contentType === 'food-product') {
     return (
       <article className="detail-card moderation-entry">
         <div className="summary-row moderation-summary-row-top">
           <div>
-            <p className="eyebrow">Quick track</p>
-            <h3 style={{ marginBottom: 6 }}>{entry.itemName || 'Unnamed quick track'}</h3>
+            <p className="eyebrow">Food Product</p>
+            <h3 style={{ marginBottom: 6 }}>{entry.itemName || 'Unnamed food product'}</h3>
             <div className="tag-row tag-row-start">
               <span className="tag">{formatVisibility(entry.visibility)}</span>
               {entry.itemCategory?.trim() ? <span className="tag">{entry.itemCategory.trim()}</span> : null}
@@ -1125,10 +1125,10 @@ function FeedEntryCard({
           {showActions ? (
             <div className="moderation-inline-actions">
               <button className="button ghost" onClick={onModerate} type="button">
-                Moderate quick track
+                Moderate food product
               </button>
-              <button className="button danger" disabled={deletingKey === `quick-track:${entry.id}`} onClick={onDelete} type="button">
-                {deletingKey === `quick-track:${entry.id}` ? 'Deleting...' : 'Delete quick track'}
+              <button className="button danger" disabled={deletingKey === `food-product:${entry.id}`} onClick={onDelete} type="button">
+                {deletingKey === `food-product:${entry.id}` ? 'Deleting...' : 'Delete food product'}
               </button>
             </div>
           ) : null}
@@ -1136,7 +1136,7 @@ function FeedEntryCard({
         <div className="summary-list">
           <div className="summary-row">
             <span className="text-muted">Shown in feed as</span>
-            <strong>{entry.restaurantName || 'Quick Track'}</strong>
+            <strong>{entry.restaurantName || 'Food Product'}</strong>
           </div>
           <div className="summary-row">
             <span className="text-muted">Created</span>
@@ -1147,10 +1147,10 @@ function FeedEntryCard({
         {entry.notes?.trim() ? <p className="text-muted">"{entry.notes.trim()}"</p> : null}
         <ModerationPhotoStrip
           onPhotoClick={(photoId) => {
-            const quickTrackPhotos = entry.photos ?? [];
-            const initialIndex = quickTrackPhotos.findIndex((photo) => photo.id === photoId);
+            const foodProductPhotos = entry.photos ?? [];
+            const initialIndex = foodProductPhotos.findIndex((photo) => photo.id === photoId);
             if (initialIndex >= 0) {
-              onOpenCarousel(quickTrackPhotos, initialIndex);
+              onOpenCarousel(foodProductPhotos, initialIndex);
             }
           }}
           photos={entry.photos ?? []}
@@ -2487,7 +2487,7 @@ export function ModerationPage() {
                                   requestDelete(
                                     entry.contentType,
                                     entry.id,
-                                    entry.contentType === 'visit' ? 'visit' : 'quick track',
+                                    entry.contentType === 'visit' ? 'visit' : 'food product',
                                   )
                                 }
                                 onDeleteItem={(item) => requestDelete('food-item', item.id, 'visit item')}
@@ -2498,8 +2498,8 @@ export function ModerationPage() {
                                     title:
                                       entry.contentType === 'visit'
                                         ? entry.restaurantName || 'Visit'
-                                        : entry.itemName || 'Quick track',
-                                    subtitle: entry.contentType === 'visit' ? 'Visit entry' : 'Quick track entry',
+                                        : entry.itemName || 'Food Product',
+                                    subtitle: entry.contentType === 'visit' ? 'Visit entry' : 'Food product entry',
                                   })
                                 }
                                 onModerateItem={(item) =>

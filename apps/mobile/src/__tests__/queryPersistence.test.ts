@@ -36,7 +36,7 @@ describe('React Query persistence', () => {
           ],
           cursor: undefined,
           hasNextPage: false,
-          totalQuickTracks: 0,
+          totalFoodProducts: 0,
           totalVisits: 1,
         },
       ],
@@ -270,21 +270,23 @@ describe('React Query persistence', () => {
     restoredClient.clear();
   });
 
-  it('stores persisted queries under the v3 cache key and removes legacy cache keys', async () => {
+  it('stores persisted queries under the v4 cache key and removes legacy cache keys', async () => {
     const legacyCacheKeyV1 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1');
     const legacyCacheKeyV2 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2');
-    const activeCacheKeyV3 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3');
+    const legacyCacheKeyV3 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3');
+    const activeCacheKeyV4 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v4');
 
     await AsyncStorage.setItem(legacyCacheKeyV1, 'legacy-v1');
     await AsyncStorage.setItem(legacyCacheKeyV2, 'legacy-v2');
-    await AsyncStorage.setItem(activeCacheKeyV3, 'active-v3');
+    await AsyncStorage.setItem(legacyCacheKeyV3, 'legacy-v3');
 
     const removedLegacyKeys = await removeLegacyQueryCache();
 
-    expect(removedLegacyKeys).toEqual([legacyCacheKeyV1, legacyCacheKeyV2]);
+    expect(removedLegacyKeys).toEqual([legacyCacheKeyV1, legacyCacheKeyV2, legacyCacheKeyV3]);
     expect(await AsyncStorage.getItem(legacyCacheKeyV1)).toBeNull();
     expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
-    expect(await AsyncStorage.getItem(activeCacheKeyV3)).toBe('active-v3');
+    expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBeNull();
+    expect(await AsyncStorage.getItem(activeCacheKeyV4)).toBeNull();
 
     const queryClient = new QueryClient();
     queryClient.setQueryData(['feature', 'foodProducts'], [{ id: 'food-product-1' }]);
@@ -297,8 +299,9 @@ describe('React Query persistence', () => {
       },
     });
 
-    expect(await AsyncStorage.getItem(activeCacheKeyV3)).not.toBeNull();
+    expect(await AsyncStorage.getItem(activeCacheKeyV4)).not.toBeNull();
     expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
+    expect(await AsyncStorage.getItem(legacyCacheKeyV3)).toBeNull();
 
     queryClient.clear();
   });

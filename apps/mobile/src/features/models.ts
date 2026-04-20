@@ -31,7 +31,7 @@ export interface VisitRecord {
   restaurantCuisineType?: string;
   visitedAt: string;
   items: VisitItem[];
-  source: 'visit' | 'quick-track' | 'tasting-result';
+  source: 'visit' | 'food-product' | 'tasting-result';
   userId?: string;
   userName?: string;
   visibility?: 'friends' | 'private';

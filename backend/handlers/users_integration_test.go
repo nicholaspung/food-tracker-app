@@ -527,7 +527,7 @@ func TestAdminCanDeleteModeratedUserContent(t *testing.T) {
 		t,
 		server.mux,
 		http.MethodDelete,
-		"/api/admin/users/"+targetUser.Id+"/content/quick-track/"+quickTrack.Id,
+		"/api/admin/users/"+targetUser.Id+"/content/food-product/"+quickTrack.Id,
 		adminToken,
 		"",
 	)
@@ -537,7 +537,7 @@ func TestAdminCanDeleteModeratedUserContent(t *testing.T) {
 	}
 
 	if _, err := server.app.FindRecordById("food_items", quickTrack.Id); err == nil {
-		t.Fatalf("expected quick track to be deleted")
+		t.Fatalf("expected food product to be deleted")
 	}
 
 	auditLogs, err := server.app.FindRecordsByFilter(
@@ -564,8 +564,8 @@ func TestAdminCanDeleteModeratedUserContent(t *testing.T) {
 	if metadataMap["source"] != "admin_content_moderation" {
 		t.Fatalf("expected audit source admin_content_moderation, got %#v", metadataMap["source"])
 	}
-	if metadataMap["contentType"] != "quick-track" {
-		t.Fatalf("expected audit contentType quick-track, got %#v", metadataMap["contentType"])
+	if metadataMap["contentType"] != "food-product" {
+		t.Fatalf("expected audit contentType food-product, got %#v", metadataMap["contentType"])
 	}
 }
 
@@ -642,7 +642,7 @@ func TestAdminCanHideModeratedContentWithoutDeleting(t *testing.T) {
 	adminUser, adminToken := createAuthUser(t, server.app, true, false)
 	targetUser, _ := createAuthUser(t, server.app, false, false)
 	quickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Bad quick track",
+		"name":         "Bad food product",
 		"rating":       1,
 		"user":         targetUser.Id,
 		"isQuickTrack": true,
@@ -653,7 +653,7 @@ func TestAdminCanHideModeratedContentWithoutDeleting(t *testing.T) {
 		t,
 		server.mux,
 		http.MethodPatch,
-		"/api/admin/users/"+targetUser.Id+"/content/quick-track/"+quickTrack.Id+"/moderation",
+		"/api/admin/users/"+targetUser.Id+"/content/food-product/"+quickTrack.Id+"/moderation",
 		adminToken,
 		`{
 			"action":"hide",
@@ -669,7 +669,7 @@ func TestAdminCanHideModeratedContentWithoutDeleting(t *testing.T) {
 
 	refreshed, err := server.app.FindRecordById("food_items", quickTrack.Id)
 	if err != nil {
-		t.Fatalf("failed to reload quick track: %v", err)
+		t.Fatalf("failed to reload food product: %v", err)
 	}
 
 	if refreshed.GetString("moderationStatus") != lib.ContentModerationStatusHidden {
@@ -683,7 +683,7 @@ func TestAdminCanHideModeratedContentWithoutDeleting(t *testing.T) {
 		"moderation_cases",
 		"targetType = {:targetType} && targetRecordId = {:targetRecordId}",
 		map[string]any{
-			"targetType":     "quick-track",
+			"targetType":     "food-product",
 			"targetRecordId": quickTrack.Id,
 		},
 	)

@@ -74,13 +74,13 @@ func findAdminRecordCountsRow(
 	return adminRecordCountsResponseRow{}, false
 }
 
-func TestAdminRecordCountsSummarizesQuickTracksByUser(t *testing.T) {
+func TestAdminRecordCountsSummarizesFoodProductsByUser(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterUserHandlers(se, app)
 	})
 
 	_, adminToken := createAuthUser(t, server.app, true, false)
-	baselinePayload := loadAdminRecordCountsResponse(t, server, adminToken, "quick-track")
+	baselinePayload := loadAdminRecordCountsResponse(t, server, adminToken, "food-product")
 
 	firstUser, _ := createAuthUser(t, server.app, false, false)
 	secondUser, _ := createAuthUser(t, server.app, false, false)
@@ -122,20 +122,20 @@ func TestAdminRecordCountsSummarizesQuickTracksByUser(t *testing.T) {
 		"itemDate":     "2026-03-02 08:15:00.000Z",
 	})
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Non quick-track item",
+		"name":         "Non food-product item",
 		"rating":       2,
 		"user":         secondUser.Id,
 		"isQuickTrack": false,
 	})
 
-	payload := loadAdminRecordCountsResponse(t, server, adminToken, "quick-track")
+	payload := loadAdminRecordCountsResponse(t, server, adminToken, "food-product")
 
-	if payload.RecordType != "quick-track" {
-		t.Fatalf("expected recordType quick-track, got %q", payload.RecordType)
+	if payload.RecordType != "food-product" {
+		t.Fatalf("expected recordType food-product, got %q", payload.RecordType)
 	}
 	if payload.TotalRecords != baselinePayload.TotalRecords+3 {
 		t.Fatalf(
-			"expected total quick-track records to increase by 3, got baseline=%d current=%d",
+			"expected total food-product records to increase by 3, got baseline=%d current=%d",
 			baselinePayload.TotalRecords,
 			payload.TotalRecords,
 		)
@@ -153,7 +153,7 @@ func TestAdminRecordCountsSummarizesQuickTracksByUser(t *testing.T) {
 		t.Fatalf("expected a grouped row for first user %s", firstUser.Id)
 	}
 	if firstRow.RecordCount != 2 {
-		t.Fatalf("expected first user to have 2 quick tracks, got %d", firstRow.RecordCount)
+		t.Fatalf("expected first user to have 2 food products, got %d", firstRow.RecordCount)
 	}
 	if firstRow.User.Email != "first.quicktrack@example.com" {
 		t.Fatalf("unexpected first row email: %q", firstRow.User.Email)
@@ -164,7 +164,7 @@ func TestAdminRecordCountsSummarizesQuickTracksByUser(t *testing.T) {
 		t.Fatalf("expected a grouped row for second user %s", secondUser.Id)
 	}
 	if secondRow.RecordCount != 1 {
-		t.Fatalf("expected second user to have 1 quick track, got %d", secondRow.RecordCount)
+		t.Fatalf("expected second user to have 1 food product, got %d", secondRow.RecordCount)
 	}
 	if secondRow.User.Email != "second.quicktrack@example.com" {
 		t.Fatalf("unexpected second row email: %q", secondRow.User.Email)

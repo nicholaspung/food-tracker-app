@@ -139,8 +139,8 @@ func normalizeReportedContentType(value string) (string, error) {
 	switch strings.TrimSpace(value) {
 	case "visit":
 		return "visit", nil
-	case "quick-track":
-		return "quick-track", nil
+	case "food-product":
+		return "food-product", nil
 	default:
 		return "", fmt.Errorf("unsupported report content type")
 	}
@@ -209,28 +209,28 @@ func resolveContentReportTarget(
 			targetType:       "visit",
 			targetUserID:     targetUserID,
 		}, nil
-	case "quick-track":
+	case "food-product":
 		record, err := app.FindRecordById("food_items", recordID)
 		if err != nil {
-			return nil, apis.NewNotFoundError("quick track not found", err)
+			return nil, apis.NewNotFoundError("food product not found", err)
 		}
 		if !record.GetBool("isQuickTrack") {
-			return nil, apis.NewNotFoundError("quick track not found", nil)
+			return nil, apis.NewNotFoundError("food product not found", nil)
 		}
 
 		targetUserID := strings.TrimSpace(record.GetString("user"))
 		if targetUserID == "" {
-			return nil, apis.NewNotFoundError("quick track not found", nil)
+			return nil, apis.NewNotFoundError("food product not found", nil)
 		}
 
-		if !canReportQuickTrack(app, reporterID, record, allowExistingReportUpdate) {
-			return nil, apis.NewNotFoundError("quick track not found", nil)
+		if !canReportFoodProduct(app, reporterID, record, allowExistingReportUpdate) {
+			return nil, apis.NewNotFoundError("food product not found", nil)
 		}
 
 		return &contentReportTarget{
 			record:           record,
 			targetCollection: "food_items",
-			targetType:       "quick-track",
+			targetType:       "food-product",
 			targetUserID:     targetUserID,
 		}, nil
 	default:
@@ -272,7 +272,7 @@ func canReportVisit(app core.App, reporterID string, record *core.Record, allowE
 	return isFriend
 }
 
-func canReportQuickTrack(app core.App, reporterID string, record *core.Record, allowExistingReportUpdate bool) bool {
+func canReportFoodProduct(app core.App, reporterID string, record *core.Record, allowExistingReportUpdate bool) bool {
 	if record == nil {
 		return false
 	}
@@ -351,14 +351,14 @@ func resolveReportedContentLabel(app core.App, targetType string, record *core.R
 		}
 
 		return "Visit", nil
-	case "quick-track":
+	case "food-product":
 		if name := strings.TrimSpace(record.GetString("name")); name != "" {
 			return name, nil
 		}
 		if location := strings.TrimSpace(record.GetString("location_text")); location != "" {
 			return location, nil
 		}
-		return "Quick Track", nil
+		return "Food Product", nil
 	default:
 		return lib.ResolveAuditTargetLabel(record, lib.RecordAuditSnapshot(record)), nil
 	}

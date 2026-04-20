@@ -246,7 +246,7 @@ export function useHomeFeedActionController({
     try {
       await trackWriteTelemetry('content.report');
       await reportContent({
-        contentType: pendingReportTarget.kind === 'food-product' ? 'quick-track' : 'visit',
+        contentType: pendingReportTarget.kind === 'food-product' ? 'food-product' : 'visit',
         recordId: pendingReportTarget.id,
         reasonCode: reportReasonCode,
         notes: reportNotes.trim() || undefined,

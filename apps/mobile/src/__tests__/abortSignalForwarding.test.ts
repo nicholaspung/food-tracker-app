@@ -47,7 +47,7 @@ describe('abort signal forwarding', () => {
       hasNextPage: false,
       items: [],
       photoPreviews: [],
-      totalQuickTracks: 0,
+      totalFoodProducts: 0,
       totalVisits: 0,
     });
 

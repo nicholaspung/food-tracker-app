@@ -21,7 +21,6 @@ import {
   createFriendSuggestionAcceptance,
   friendsQueryKeys,
   getAuthenticatedUserIdOrNull,
-  getLegacyHomeFeedPlaceholderData,
   homeFeedQueryKeys,
   invalidateHomeFeedQueries,
   HOME_FEED_DEFAULT_SORTS,
@@ -332,18 +331,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   const trimmedSearchQuery = searchQuery.trim();
   const currentUserId = getAuthenticatedUserIdOrNull();
   const inviterDisplayName = friendSuggestion?.inviterDisplayName?.trim() || 'your inviter';
-  const legacyPlaceholderData = useMemo(
-    () =>
-      getLegacyHomeFeedPlaceholderData(
-        queryClient,
-        feedScope,
-        typeFilter,
-        sortFilter,
-        trimmedSearchQuery,
-      ),
-    [feedScope, queryClient, sortFilter, trimmedSearchQuery, typeFilter],
-  );
-
   const homeFeedQuery = useInfiniteQuery<
     HomeFeedPageResult,
     Error,
@@ -353,7 +340,6 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
   >({
     queryKey: homeFeedQueryKeys.paginated(feedScope, typeFilter, sortFilter, trimmedSearchQuery),
     initialPageParam: undefined as HomeFeedCursor | undefined,
-    placeholderData: legacyPlaceholderData,
     queryFn: ({ pageParam, signal }) =>
       listHomeFeedPage({
         cursor: pageParam,
@@ -379,7 +365,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       homeFeedState.items.map((item) =>
         item.source === 'visit'
           ? buildVisitFeedItem(item.visit, currentUserId, item.eventAt)
-          : buildFoodProductFeedItem(item.quickTrack, currentUserId, item.eventAt),
+          : buildFoodProductFeedItem(item.foodProduct, currentUserId, item.eventAt),
       ),
     [currentUserId, homeFeedState.items],
   );
@@ -533,7 +519,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
     homeFeedQuery.data?.pages[0]?.totalVisits ??
     loadedFeed.filter((entry) => entry.source === 'visit').length;
   const totalFoodProductCount =
-    homeFeedQuery.data?.pages[0]?.totalQuickTracks ??
+    homeFeedQuery.data?.pages[0]?.totalFoodProducts ??
     loadedFeed.filter((entry) => entry.source === 'food-product').length;
   const totalFeedCount = totalVisitCount + totalFoodProductCount;
 
@@ -552,7 +538,7 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
         : formatCount(totalVisitCount, visitLabel[0], visitLabel[1]);
     }
 
-    if (typeFilter === 'quick-track') {
+    if (typeFilter === 'food-products') {
       return totalFoodProductCount === 0
         ? feedMode === 'friends'
           ? 'No friend food products yet'

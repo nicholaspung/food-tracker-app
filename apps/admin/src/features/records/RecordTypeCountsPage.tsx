@@ -10,7 +10,7 @@ import {
 } from '@/features/records/api';
 import { formatDateTime } from '@/lib/formatters';
 
-const defaultRecordType: AdminRecordType = 'quick-track';
+const defaultRecordType: AdminRecordType = 'food-product';
 
 const recordTypeOptions: Array<{
   description: string;
@@ -18,9 +18,9 @@ const recordTypeOptions: Array<{
   value: AdminRecordType;
 }> = [
   {
-    value: 'quick-track',
-    label: 'Quick track items',
-    description: 'See how many users have logged Quick Track items and how many each user has created.',
+    value: 'food-product',
+    label: 'Food products',
+    description: 'See how many users have logged Food Products and how many each user has created.',
   },
   {
     value: 'visit',
@@ -126,7 +126,7 @@ export function RecordTypeCountsPage() {
         <h2 style={{ marginBottom: 0 }}>Review record volume by user</h2>
         <p className="text-muted" style={{ margin: 0 }}>
           Pick a record type to see how many users have at least one matching record and how many
-          each user has logged. The default view focuses on Quick Track items.
+          each user has logged. The default view focuses on Food Products.
         </p>
       </section>
 

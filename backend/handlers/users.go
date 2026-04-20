@@ -852,12 +852,12 @@ func loadModerationFeedEntries(app core.App, userID string) ([]map[string]any, e
 			restaurantName = resolveRestaurantName(linkedRestaurant)
 		}
 		if restaurantName == "" {
-			restaurantName = "Quick Track"
+			restaurantName = "Food Product"
 		}
 
 		entries = append(entries, map[string]any{
 			"id":               quickTrack.Id,
-			"contentType":      "quick-track",
+			"contentType":      "food-product",
 			"moderationStatus": strings.TrimSpace(quickTrack.GetString("moderationStatus")),
 			"eventAt":          eventAt,
 			"created":          quickTrack.GetString("created"),
@@ -1369,8 +1369,8 @@ func normalizeModerationTargetType(contentType string) string {
 		return "visit"
 	case "food-item":
 		return "food-item"
-	case "quick-track":
-		return "quick-track"
+	case "food-product":
+		return "food-product"
 	case "list":
 		return "list"
 	case "list-item":
@@ -1402,13 +1402,13 @@ func resolveModerationTargetRecord(
 			return nil, apis.NewNotFoundError("visit not found for that user", nil)
 		}
 		return record, nil
-	case "quick-track":
+	case "food-product":
 		record, err := app.FindRecordById("food_items", recordID)
 		if err != nil {
-			return nil, apis.NewNotFoundError("quick track not found", err)
+			return nil, apis.NewNotFoundError("food product not found", err)
 		}
 		if record.GetString("user") != userID || !record.GetBool("isQuickTrack") {
-			return nil, apis.NewNotFoundError("quick track not found for that user", nil)
+			return nil, apis.NewNotFoundError("food product not found for that user", nil)
 		}
 		return record, nil
 	case "food-item":

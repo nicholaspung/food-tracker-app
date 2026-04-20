@@ -139,7 +139,7 @@ func mapModerationTargetType(collectionName string, record *core.Record) string 
 		return "visit"
 	case "food_items":
 		if record != nil && record.GetBool("isQuickTrack") {
-			return "quick-track"
+			return "food-product"
 		}
 		return "food-item"
 	case "restaurant_lists":

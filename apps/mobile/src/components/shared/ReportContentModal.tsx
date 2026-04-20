@@ -19,7 +19,7 @@ const REPORT_REASON_OPTIONS: { label: string; value: ContentReportReasonCode }[]
 
 export interface ReportContentModalProps {
   visible: boolean;
-  contentType: 'visit' | 'quick-track';
+  contentType: 'visit' | 'food-product';
   contentLabel: string;
   selectedReasonCode: ContentReportReasonCode | null;
   notes: string;

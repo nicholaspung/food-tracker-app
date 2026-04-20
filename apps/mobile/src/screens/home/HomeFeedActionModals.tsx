@@ -98,7 +98,7 @@ export function HomeFeedActionModals({
             : 'Food Product')
         }
         contentType={
-          controller.pendingReportTarget?.kind === 'food-product' ? 'quick-track' : 'visit'
+          controller.pendingReportTarget?.kind === 'food-product' ? 'food-product' : 'visit'
         }
         errorMessage={controller.reportErrorMessage}
         isOnline={isOnline}

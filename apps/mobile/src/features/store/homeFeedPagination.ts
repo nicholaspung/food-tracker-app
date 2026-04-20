@@ -2,7 +2,7 @@ import type { FoodProductRecord, VisitRecord } from '../models';
 import { getAuthenticatedUserIdOrNull, sendApiRequest } from './pocketbaseGateway';
 
 export type HomeFeedScope = 'all' | 'mine' | 'friends';
-export type HomeFeedTypeFilter = 'all' | 'visits' | 'quick-track';
+export type HomeFeedTypeFilter = 'all' | 'visits' | 'food-products';
 export type HomeFeedSort = 'created' | 'tracked';
 
 export const HOME_FEED_DEFAULT_SORTS: Record<HomeFeedScope, HomeFeedSort> = {
@@ -26,7 +26,7 @@ export interface HomeFeedSourceCursorState<T> {
 
 export interface BufferedHomeFeedCursor<TVisit, TFoodProduct> {
   visits: HomeFeedSourceCursorState<TVisit>;
-  quickTracks: HomeFeedSourceCursorState<TFoodProduct>;
+  foodProducts: HomeFeedSourceCursorState<TFoodProduct>;
 }
 
 export type BufferedHomeFeedEntry<TVisit, TFoodProduct> =
@@ -36,9 +36,9 @@ export type BufferedHomeFeedEntry<TVisit, TFoodProduct> =
       visit: TVisit;
     }
   | {
-      source: 'quick-track';
+      source: 'food-product';
       eventAt: string;
-      quickTrack: TFoodProduct;
+      foodProduct: TFoodProduct;
     };
 
 export interface HomeFeedCursor {
@@ -60,7 +60,7 @@ export interface HomeFeedPageResult {
   photoPreviews?: HomeFeedPhotoPreviewRecord[];
   cursor?: HomeFeedCursor;
   hasNextPage: boolean;
-  totalQuickTracks?: number;
+  totalFoodProducts?: number;
   totalVisits?: number;
 }
 
@@ -138,7 +138,7 @@ export async function loadHomeFeedPageWithSources<TVisit, TFoodProduct>(
   items: BufferedHomeFeedEntry<TVisit, TFoodProduct>[];
   cursor?: BufferedHomeFeedCursor<TVisit, TFoodProduct>;
   hasNextPage: boolean;
-  totalQuickTracks: number;
+  totalFoodProducts: number;
   totalVisits: number;
 }> {
   const pageSize = normalizePageSize(input.pageSize);
@@ -146,7 +146,7 @@ export async function loadHomeFeedPageWithSources<TVisit, TFoodProduct>(
     ? createSourceState(input.cursor?.visits)
     : createSourceState<TVisit>({ exhausted: true, totalItems: 0 });
   let foodProductState = input.loadFoodProducts
-    ? createSourceState(input.cursor?.quickTracks)
+    ? createSourceState(input.cursor?.foodProducts)
     : createSourceState<TFoodProduct>({ exhausted: true, totalItems: 0 });
   const items: BufferedHomeFeedEntry<TVisit, TFoodProduct>[] = [];
 
@@ -177,8 +177,8 @@ export async function loadHomeFeedPageWithSources<TVisit, TFoodProduct>(
       foodProductState.buffer.shift();
       items.push({
         eventAt: input.getFoodProductEventAt(nextFoodProduct as TFoodProduct),
-        quickTrack: nextFoodProduct as TFoodProduct,
-        source: 'quick-track',
+        foodProduct: nextFoodProduct as TFoodProduct,
+        source: 'food-product',
       });
       continue;
     }
@@ -199,8 +199,8 @@ export async function loadHomeFeedPageWithSources<TVisit, TFoodProduct>(
     foodProductState.buffer.shift();
     items.push({
       eventAt: foodProductEventAt,
-      quickTrack: nextFoodProduct,
-      source: 'quick-track',
+      foodProduct: nextFoodProduct,
+      source: 'food-product',
     });
   }
 
@@ -210,12 +210,12 @@ export async function loadHomeFeedPageWithSources<TVisit, TFoodProduct>(
     items,
     cursor: hasNextPage
       ? {
-          quickTracks: createSourceState(foodProductState),
+          foodProducts: createSourceState(foodProductState),
           visits: createSourceState(visitState),
         }
       : undefined,
     hasNextPage,
-    totalQuickTracks: foodProductState.totalItems ?? 0,
+    totalFoodProducts: foodProductState.totalItems ?? 0,
     totalVisits: visitState.totalItems ?? 0,
   };
 }
@@ -227,7 +227,7 @@ export async function listHomeFeedPage(input?: ListHomeFeedPageInput): Promise<H
       photoPreviews: [],
       cursor: undefined,
       hasNextPage: false,
-      totalQuickTracks: 0,
+      totalFoodProducts: 0,
       totalVisits: 0,
     };
   }

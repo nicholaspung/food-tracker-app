@@ -262,7 +262,7 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		"/api/content-reports",
 		reporterToken,
 		`{
-			"contentType":"quick-track",
+			"contentType":"food-product",
 			"recordId":"`+quickTrack.Id+`",
 			"reasonCode":"other",
 			"notes":"First report"
@@ -279,7 +279,7 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		"/api/content-reports",
 		reporterToken,
 		`{
-			"contentType":"quick-track",
+			"contentType":"food-product",
 			"recordId":"`+quickTrack.Id+`",
 			"reasonCode":"privacy",
 			"notes":"Updated report details"
@@ -296,7 +296,7 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		10,
 		0,
 		map[string]any{
-			"targetType":     "quick-track",
+			"targetType":     "food-product",
 			"targetRecordId": quickTrack.Id,
 		},
 	)
@@ -320,7 +320,7 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		10,
 		0,
 		map[string]any{
-			"targetType":     "quick-track",
+			"targetType":     "food-product",
 			"targetRecordId": quickTrack.Id,
 		},
 	)
@@ -340,10 +340,10 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		"",
 	)
 	if ownerQuickTracks.Code != http.StatusOK {
-		t.Fatalf("expected owner quick track list to succeed, got %d: %s", ownerQuickTracks.Code, ownerQuickTracks.Body.String())
+		t.Fatalf("expected owner food product list to succeed, got %d: %s", ownerQuickTracks.Code, ownerQuickTracks.Body.String())
 	}
 	if !strings.Contains(ownerQuickTracks.Body.String(), quickTrack.Id) {
-		t.Fatalf("expected owner to keep seeing under-review quick track, got %s", ownerQuickTracks.Body.String())
+		t.Fatalf("expected owner to keep seeing under-review food product, got %s", ownerQuickTracks.Body.String())
 	}
 
 	deleteQuickTrackResponse := performJSONRequest(
@@ -355,11 +355,11 @@ func TestUserContentReportReusesExistingReporterRowForQuickTrack(t *testing.T) {
 		"",
 	)
 	if deleteQuickTrackResponse.Code != http.StatusOK && deleteQuickTrackResponse.Code != http.StatusNoContent {
-		t.Fatalf("expected owner to delete under-review quick track, got %d: %s", deleteQuickTrackResponse.Code, deleteQuickTrackResponse.Body.String())
+		t.Fatalf("expected owner to delete under-review food product, got %d: %s", deleteQuickTrackResponse.Code, deleteQuickTrackResponse.Body.String())
 	}
 
 	if _, err := server.app.FindRecordById("food_items", quickTrack.Id); err == nil {
-		t.Fatalf("expected quick track to be deleted by owner")
+		t.Fatalf("expected food product to be deleted by owner")
 	}
 }
 
@@ -394,7 +394,7 @@ func TestAdminModerationCasesIncludeUserReportHistory(t *testing.T) {
 		"/api/content-reports",
 		reporterToken,
 		`{
-			"contentType":"quick-track",
+			"contentType":"food-product",
 			"recordId":"`+quickTrack.Id+`",
 			"reasonCode":"harassment",
 			"notes":"Reported from integration test"
@@ -435,7 +435,7 @@ func TestAdminModerationCasesIncludeUserReportHistory(t *testing.T) {
 		}
 	}
 	if casePayload == nil {
-		t.Fatalf("expected moderation case for quick track %s, got %#v", quickTrack.Id, items)
+		t.Fatalf("expected moderation case for food product %s, got %#v", quickTrack.Id, items)
 	}
 	if casePayload["reportCount"] != float64(1) {
 		t.Fatalf("expected reportCount=1, got %#v", casePayload["reportCount"])
