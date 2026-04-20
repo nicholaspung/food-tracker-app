@@ -267,20 +267,6 @@ export function createVisitApiMutationInput(payload: CreateVisitInput): EnqueueM
   };
 }
 
-export function updateVisitApiMutationInput(
-  visitId: string,
-  updates: UpdateVisitInput,
-): EnqueueMutationInput {
-  return {
-    method: 'PUT',
-    url: `${env.pocketbaseUrl}/api/visits/${encodeURIComponent(visitId)}`,
-    headers: {
-      'X-Mobile-Write-Operation': 'visit.update',
-    },
-    body: updates,
-  };
-}
-
 export function createBillApiMutationInput(payload: CreateBillInput): EnqueueMutationInput {
   return {
     method: 'POST',
