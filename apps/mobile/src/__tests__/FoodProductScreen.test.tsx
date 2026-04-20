@@ -249,10 +249,8 @@ describe('FoodProductScreen', () => {
     expect(navigate).toHaveBeenCalledWith('Home');
   });
 
-  it('reads the legacy rated-before key as a fallback but only writes the new food product key', async () => {
-    mockedAsyncStorage.getItem
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce('1');
+  it('reads and writes only the current food product rated-before key', async () => {
+    mockedAsyncStorage.getItem.mockResolvedValueOnce('1');
 
     writeFeature = jest.fn().mockResolvedValue({
       status: 'completed',
@@ -280,7 +278,6 @@ describe('FoodProductScreen', () => {
     });
 
     expect(mockedAsyncStorage.getItem).toHaveBeenCalledWith('ui.foodProduct.hasRatedBefore');
-    expect(mockedAsyncStorage.getItem).toHaveBeenCalledWith('ui.quickTrack.hasRatedBefore');
 
     await act(async () => {
       renderer.root.findByType('FoodProductFormFields').props.onChange({
@@ -295,6 +292,5 @@ describe('FoodProductScreen', () => {
     });
 
     expect(mockedAsyncStorage.setItem).toHaveBeenCalledWith('ui.foodProduct.hasRatedBefore', '1');
-    expect(mockedAsyncStorage.setItem).not.toHaveBeenCalledWith('ui.quickTrack.hasRatedBefore', '1');
   });
 });

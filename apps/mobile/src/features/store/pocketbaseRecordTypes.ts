@@ -47,8 +47,7 @@ export interface FoodItemCollectionRecord {
   notes?: string;
   visit?: string;
   user: string;
-  itemType?: FoodItemType;
-  isQuickTrack?: boolean;
+  itemType: FoodItemType;
   visibility?: 'friends' | 'private';
   moderationStatus?: ModerationContentStatus;
   location_text?: string;

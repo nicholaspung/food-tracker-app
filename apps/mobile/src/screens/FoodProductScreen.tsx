@@ -51,7 +51,6 @@ import { Button, Card, Text } from '../ui';
 type FoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'FoodProduct'>;
 
 const FOOD_PRODUCT_RATED_BEFORE_KEY = 'ui.foodProduct.hasRatedBefore';
-const LEGACY_QUICK_TRACK_RATED_BEFORE_KEY = 'ui.quickTrack.hasRatedBefore';
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
 type PhotoSource = 'camera' | 'gallery';
@@ -130,12 +129,9 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
     const loadRatedBefore = async () => {
       try {
-        const [foodProductValue, legacyFoodProductRatedValue] = await Promise.all([
-          AsyncStorage.getItem(FOOD_PRODUCT_RATED_BEFORE_KEY),
-          AsyncStorage.getItem(LEGACY_QUICK_TRACK_RATED_BEFORE_KEY),
-        ]);
+        const foodProductValue = await AsyncStorage.getItem(FOOD_PRODUCT_RATED_BEFORE_KEY);
         if (isMounted) {
-          setHasRatedBefore(foodProductValue === '1' || legacyFoodProductRatedValue === '1');
+          setHasRatedBefore(foodProductValue === '1');
         }
       } catch {
         // Ignore storage read errors and keep the default collapsed state.

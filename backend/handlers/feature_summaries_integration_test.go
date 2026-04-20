@@ -1916,7 +1916,7 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 		"user":             friend.Id,
 		"name":             "Hidden Food Product",
 		"rating":           1,
-		"isQuickTrack":     true,
+		"itemType":         "food-product",
 		"visibility":       "friends",
 		"itemDate":         "2026-04-04 08:00:00.000Z",
 		"moderationStatus": "hidden",
@@ -2169,12 +2169,12 @@ func TestHomeFeedDefaultsToCreatedOrderingForMineAndFriends(t *testing.T) {
 	})
 
 	ownerQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"user":         user.Id,
-		"name":         "Older Created Food Product",
-		"rating":       4,
-		"isQuickTrack": true,
-		"visibility":   "private",
-		"itemDate":     "2026-05-20 08:00:00.000Z",
+		"user":       user.Id,
+		"name":       "Older Created Food Product",
+		"rating":     4,
+		"itemType":   "food-product",
+		"visibility": "private",
+		"itemDate":   "2026-05-20 08:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerQuickTrack.Id, "2026-04-01 08:00:00.000Z")
 
@@ -2193,12 +2193,12 @@ func TestHomeFeedDefaultsToCreatedOrderingForMineAndFriends(t *testing.T) {
 	})
 
 	friendQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"user":         friend.Id,
-		"name":         "Older Created Friend Food Product",
-		"rating":       3,
-		"isQuickTrack": true,
-		"visibility":   "friends",
-		"itemDate":     "2026-05-20 10:00:00.000Z",
+		"user":       friend.Id,
+		"name":       "Older Created Friend Food Product",
+		"rating":     3,
+		"itemType":   "food-product",
+		"visibility": "friends",
+		"itemDate":   "2026-05-20 10:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", friendQuickTrack.Id, "2026-04-03 08:00:00.000Z")
 
@@ -2351,12 +2351,12 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 	})
 
 	ownerQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"user":         user.Id,
-		"name":         "Owner Food Product",
-		"rating":       4,
-		"isQuickTrack": true,
-		"visibility":   "private",
-		"itemDate":     "2026-05-20 08:00:00.000Z",
+		"user":       user.Id,
+		"name":       "Owner Food Product",
+		"rating":     4,
+		"itemType":   "food-product",
+		"visibility": "private",
+		"itemDate":   "2026-05-20 08:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerQuickTrack.Id, "2026-04-01 08:00:00.000Z")
 
@@ -2373,22 +2373,22 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 		"name":   "Owner Visit Item",
 		"rating": 5,
 	})
-	ownerFallbackQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"user":         user.Id,
-		"name":         "Owner Fallback Food Product",
-		"rating":       2,
-		"isQuickTrack": true,
-		"visibility":   "private",
+	ownerUndatedFoodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":       user.Id,
+		"name":       "Owner Undated Food Product",
+		"rating":     2,
+		"itemType":   "food-product",
+		"visibility": "private",
 	})
-	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerFallbackQuickTrack.Id, "2026-06-01 07:00:00.000Z")
+	setCollectionRecordCreatedAt(t, server.app, "food_items", ownerUndatedFoodProduct.Id, "2026-06-01 07:00:00.000Z")
 
 	friendQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"user":         friend.Id,
-		"name":         "Friend Food Product",
-		"rating":       3,
-		"isQuickTrack": true,
-		"visibility":   "friends",
-		"itemDate":     "2026-05-20 10:00:00.000Z",
+		"user":       friend.Id,
+		"name":       "Friend Food Product",
+		"rating":     3,
+		"itemType":   "food-product",
+		"visibility": "friends",
+		"itemDate":   "2026-05-20 10:00:00.000Z",
 	})
 	setCollectionRecordCreatedAt(t, server.app, "food_items", friendQuickTrack.Id, "2026-04-03 08:00:00.000Z")
 
@@ -2405,14 +2405,14 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 		"name":   "Friend Visit Item",
 		"rating": 4,
 	})
-	friendFallbackQuickTrack := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"user":         friend.Id,
-		"name":         "Friend Fallback Food Product",
-		"rating":       2,
-		"isQuickTrack": true,
-		"visibility":   "friends",
+	friendUndatedFoodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":       friend.Id,
+		"name":       "Friend Undated Food Product",
+		"rating":     2,
+		"itemType":   "food-product",
+		"visibility": "friends",
 	})
-	setCollectionRecordCreatedAt(t, server.app, "food_items", friendFallbackQuickTrack.Id, "2026-06-02 09:00:00.000Z")
+	setCollectionRecordCreatedAt(t, server.app, "food_items", friendUndatedFoodProduct.Id, "2026-06-02 09:00:00.000Z")
 
 	mineTrackedResponse := performJSONRequest(
 		t,
@@ -2448,11 +2448,11 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 	if len(mineTrackedPayload.Items) != 3 {
 		t.Fatalf("expected 3 mine tracked feed entries, got %d: %#v", len(mineTrackedPayload.Items), mineTrackedPayload.Items)
 	}
-	if mineTrackedPayload.Items[0].Source != "food-product" || mineTrackedPayload.Items[0].FoodProduct == nil || mineTrackedPayload.Items[0].FoodProduct.ID != ownerFallbackQuickTrack.Id {
-		t.Fatalf("expected tracked sort to fall back to createdAt for owner fallback food product, got %#v", mineTrackedPayload.Items[0])
+	if mineTrackedPayload.Items[0].Source != "food-product" || mineTrackedPayload.Items[0].FoodProduct == nil || mineTrackedPayload.Items[0].FoodProduct.ID != ownerUndatedFoodProduct.Id {
+		t.Fatalf("expected tracked sort to fall back to createdAt for owner undated food product, got %#v", mineTrackedPayload.Items[0])
 	}
 	if mineTrackedPayload.Items[0].EventAt != "2026-06-01 07:00:00.000Z" || mineTrackedPayload.Items[0].FoodProduct.ItemDate != "" || mineTrackedPayload.Items[0].FoodProduct.CreatedAt != "2026-06-01 07:00:00.000Z" {
-		t.Fatalf("expected owner fallback food product eventAt to use createdAt, got %#v", mineTrackedPayload.Items[0])
+		t.Fatalf("expected owner undated food product eventAt to use createdAt, got %#v", mineTrackedPayload.Items[0])
 	}
 	if mineTrackedPayload.Items[1].Source != "food-product" || mineTrackedPayload.Items[1].FoodProduct == nil || mineTrackedPayload.Items[1].FoodProduct.ID != ownerQuickTrack.Id {
 		t.Fatalf("expected tracked sort to put owner food product second, got %#v", mineTrackedPayload.Items[1])
@@ -2501,11 +2501,11 @@ func TestHomeFeedExplicitSortOverridesScopeDefaults(t *testing.T) {
 	if len(friendsCreatedPayload.Items) != 3 {
 		t.Fatalf("expected 3 friends tracked feed entries, got %d: %#v", len(friendsCreatedPayload.Items), friendsCreatedPayload.Items)
 	}
-	if friendsCreatedPayload.Items[0].Source != "food-product" || friendsCreatedPayload.Items[0].FoodProduct == nil || friendsCreatedPayload.Items[0].FoodProduct.ID != friendFallbackQuickTrack.Id {
-		t.Fatalf("expected tracked sort to fall back to createdAt for friend fallback food product, got %#v", friendsCreatedPayload.Items[0])
+	if friendsCreatedPayload.Items[0].Source != "food-product" || friendsCreatedPayload.Items[0].FoodProduct == nil || friendsCreatedPayload.Items[0].FoodProduct.ID != friendUndatedFoodProduct.Id {
+		t.Fatalf("expected tracked sort to fall back to createdAt for friend undated food product, got %#v", friendsCreatedPayload.Items[0])
 	}
 	if friendsCreatedPayload.Items[0].EventAt != "2026-06" || friendsCreatedPayload.Items[0].FoodProduct.ItemDate != "" {
-		t.Fatalf("expected friend fallback food product eventAt to use created month, got %#v", friendsCreatedPayload.Items[0])
+		t.Fatalf("expected friend undated food product eventAt to use created month, got %#v", friendsCreatedPayload.Items[0])
 	}
 	if friendsCreatedPayload.Items[1].Source != "food-product" || friendsCreatedPayload.Items[1].FoodProduct == nil || friendsCreatedPayload.Items[1].FoodProduct.ID != friendQuickTrack.Id {
 		t.Fatalf("expected tracked sort to put friend food product second, got %#v", friendsCreatedPayload.Items[1])

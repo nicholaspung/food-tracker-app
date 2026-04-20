@@ -306,7 +306,6 @@ describe('foodProductsStore', () => {
         rating: 4,
         user: 'user-1',
         itemType: 'food-product',
-        isQuickTrack: true,
         visibility: 'friends',
         itemDate: '2026-04-18T07:00:00.000Z',
         location_text: 'Ferry Building',

@@ -17,14 +17,7 @@ func isFoodProductRecord(record *core.Record) bool {
 		return false
 	}
 
-	switch strings.TrimSpace(record.GetString("itemType")) {
-	case foodItemTypeFoodProduct:
-		return true
-	case foodItemTypeVisitItem:
-		return false
-	default:
-		return record.GetBool("isQuickTrack")
-	}
+	return strings.TrimSpace(record.GetString("itemType")) == foodItemTypeFoodProduct
 }
 
 func isVisitItemRecord(record *core.Record) bool {
@@ -32,37 +25,24 @@ func isVisitItemRecord(record *core.Record) bool {
 		return false
 	}
 
-	switch strings.TrimSpace(record.GetString("itemType")) {
-	case foodItemTypeVisitItem:
-		return true
-	case foodItemTypeFoodProduct:
-		return false
-	default:
-		return !record.GetBool("isQuickTrack")
-	}
+	return strings.TrimSpace(record.GetString("itemType")) == foodItemTypeVisitItem
 }
 
 func foodProductSQL(alias string) string {
 	itemTypeColumn := qualifyFoodItemColumn(alias, "itemType")
-	legacyFlagColumn := qualifyFoodItemColumn(alias, "isQuickTrack")
 	return fmt.Sprintf(
-		"((COALESCE(%s, '') = '%s') OR (COALESCE(%s, '') = '' AND COALESCE(%s, 0) = 1))",
+		"(COALESCE(%s, '') = '%s')",
 		itemTypeColumn,
 		foodItemTypeFoodProduct,
-		itemTypeColumn,
-		legacyFlagColumn,
 	)
 }
 
 func visitItemSQL(alias string) string {
 	itemTypeColumn := qualifyFoodItemColumn(alias, "itemType")
-	legacyFlagColumn := qualifyFoodItemColumn(alias, "isQuickTrack")
 	return fmt.Sprintf(
-		"((COALESCE(%s, '') = '%s') OR (COALESCE(%s, '') = '' AND COALESCE(%s, 0) != 1))",
+		"(COALESCE(%s, '') = '%s')",
 		itemTypeColumn,
 		foodItemTypeVisitItem,
-		itemTypeColumn,
-		legacyFlagColumn,
 	)
 }
 

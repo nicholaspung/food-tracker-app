@@ -169,6 +169,22 @@ func TestVisitCreateEndpointCreatesNestedRecords(t *testing.T) {
 	if count := countRecordsByFilter(t, server.app, "food_items", "visit = {:visitId}", map[string]any{"visitId": payload.ID}); count != 2 {
 		t.Fatalf("expected 2 food items, got %d", count)
 	}
+	createdFoodItems, err := server.app.FindRecordsByFilter(
+		"food_items",
+		"visit = {:visitId}",
+		"",
+		10,
+		0,
+		map[string]any{"visitId": payload.ID},
+	)
+	if err != nil {
+		t.Fatalf("failed to reload created food items: %v", err)
+	}
+	for _, foodItem := range createdFoodItems {
+		if foodItem.GetString("itemType") != "visit-item" {
+			t.Fatalf("expected created visit itemType=visit-item, got %q", foodItem.GetString("itemType"))
+		}
+	}
 	if count := countRestaurantsByName(t, server.app, "Noodle House"); count != 1 {
 		t.Fatalf("expected 1 restaurant, got %d", count)
 	}
@@ -817,6 +833,7 @@ func seedFoodItemRecord(t *testing.T, app core.App, visitID string, userID strin
 	record.Set("user", userID)
 	record.Set("name", name)
 	record.Set("rating", rating)
+	record.Set("itemType", "visit-item")
 	if err := app.Save(record); err != nil {
 		t.Fatalf("failed to create food item: %v", err)
 	}

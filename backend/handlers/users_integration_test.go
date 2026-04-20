@@ -45,6 +45,15 @@ func createCollectionRecord(t *testing.T, app core.App, collectionName string, d
 	}
 
 	record := core.NewRecord(collection)
+	if collectionName == "food_items" {
+		if _, hasItemType := data["itemType"]; !hasItemType {
+			if visitID, hasVisit := data["visit"].(string); hasVisit && strings.TrimSpace(visitID) != "" {
+				data["itemType"] = "visit-item"
+			} else {
+				data["itemType"] = "food-product"
+			}
+		}
+	}
 	for key, value := range data {
 		record.Set(key, value)
 	}
@@ -422,7 +431,7 @@ func TestAdminUserProfileIncludesFeedAndLists(t *testing.T) {
 		"name":          "Airport snack",
 		"rating":        3,
 		"user":          targetUser.Id,
-		"isQuickTrack":  true,
+		"itemType":      "food-product",
 		"visibility":    "private",
 		"location_text": "SFO Terminal 2",
 		"itemCategory":  "packaged_food",

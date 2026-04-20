@@ -162,12 +162,5 @@ func isFoodProductRecord(record *core.Record) bool {
 		return false
 	}
 
-	switch strings.TrimSpace(record.GetString("itemType")) {
-	case "food-product":
-		return true
-	case "visit-item":
-		return false
-	default:
-		return record.GetBool("isQuickTrack")
-	}
+	return strings.TrimSpace(record.GetString("itemType")) == "food-product"
 }

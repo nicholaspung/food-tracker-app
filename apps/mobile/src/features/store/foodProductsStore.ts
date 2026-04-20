@@ -57,14 +57,7 @@ function normalizeFoodProductCategory(value: string | null | undefined): string 
 }
 
 function isFoodProductCollectionRecord(record: FoodItemCollectionRecord): boolean {
-  switch (record.itemType) {
-    case 'food-product':
-      return true;
-    case 'visit-item':
-      return false;
-    default:
-      return record.isQuickTrack === true;
-  }
+  return record.itemType === 'food-product';
 }
 
 function mapFoodProductCollectionRecord(record: FoodItemCollectionRecord): FoodProductRecord {
@@ -181,7 +174,6 @@ export async function createFoodProduct(input: CreateFoodProductInput): Promise<
         rating: input.rating,
         user: currentUserId,
         itemType: 'food-product',
-        isQuickTrack: true,
         visibility: input.visibility ?? getDefaultVisitVisibility(),
         itemDate: input.itemDate ?? nowIso(),
         location_text: input.locationText?.trim() || '',

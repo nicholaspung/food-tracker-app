@@ -48,11 +48,11 @@ func TestUserContentReportQuarantinesVisitAndPreservesOwnerAccess(t *testing.T) 
 		"notes":      "Visible before report",
 	})
 	visitItem := createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Spicy Tuna Roll",
-		"rating":       2,
-		"user":         owner.Id,
-		"visit":        visit.Id,
-		"isQuickTrack": false,
+		"name":     "Spicy Tuna Roll",
+		"rating":   2,
+		"user":     owner.Id,
+		"visit":    visit.Id,
+		"itemType": "visit-item",
 	})
 	visitPhotoID := insertVisitPhotoRowRaw(t, server.app, owner.Id, visit.Id, visitItem.Id)
 

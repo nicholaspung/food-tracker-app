@@ -525,9 +525,6 @@ func syncVisitItems(
 			existingItem.Set("rating", item.Rating)
 			existingItem.Set("description", description)
 			existingItem.Set("notes", notes)
-			if strings.TrimSpace(existingItem.GetString("itemType")) == "" {
-				existingItem.Set("itemType", foodItemTypeVisitItem)
-			}
 			if err := app.Save(existingItem); err != nil {
 				return apis.NewApiError(500, "failed to update visit item", err)
 			}
@@ -543,7 +540,6 @@ func syncVisitItems(
 		createdItem.Set("visit", visitID)
 		createdItem.Set("user", userID)
 		createdItem.Set("itemType", foodItemTypeVisitItem)
-		createdItem.Set("isQuickTrack", false)
 		if err := app.Save(createdItem); err != nil {
 			return apis.NewApiError(500, "failed to create visit item", err)
 		}

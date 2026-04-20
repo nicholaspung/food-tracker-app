@@ -106,13 +106,12 @@ func TestAdminRecordCountsSummarizesFoodProductsByUser(t *testing.T) {
 		"itemDate":   "2026-03-01 10:00:00.000Z",
 	})
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
-		"name":         "Matcha Latte",
-		"rating":       5,
-		"user":         firstUser.Id,
-		"isQuickTrack": true,
-		"itemType":     "food-product",
-		"visibility":   "private",
-		"itemDate":     "2026-03-03 12:30:00.000Z",
+		"name":       "Matcha Latte",
+		"rating":     5,
+		"user":       firstUser.Id,
+		"itemType":   "food-product",
+		"visibility": "private",
+		"itemDate":   "2026-03-03 12:30:00.000Z",
 	})
 	createCollectionRecord(t, server.app, "food_items", map[string]any{
 		"name":       "Burger",
