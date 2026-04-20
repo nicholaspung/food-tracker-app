@@ -18,6 +18,7 @@ import {
   createFoodProduct,
   formatLimitExceededMessage,
   getNoteById,
+  homeFeedQueryKeys,
   markNoteUsed,
   parseLimitExceededError,
   promoteCachedNoteToUsed,
@@ -355,7 +356,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       });
 
       const createResult = await writeFeature({
-        operationName: 'quick-track.create',
+        operationName: 'food-product.create',
         offline: {
           strategy: 'outbox',
           payload: foodProductInput,
@@ -388,8 +389,8 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         }
 
         await Promise.all([
+          queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
           queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
@@ -400,8 +401,8 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       }
 
       const invalidations: Promise<unknown>[] = [
+        queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),

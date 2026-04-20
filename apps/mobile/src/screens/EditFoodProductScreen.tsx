@@ -19,6 +19,7 @@ import {
   buildPocketBaseFileUrl,
   formatLimitExceededMessage,
   getFoodProductById,
+  homeFeedQueryKeys,
   listFoodProductPhotos,
   parseLimitExceededError,
   updateFoodProduct,
@@ -409,7 +410,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     if (validationMessage) {
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_VALIDATION_FAILED', {
         source: 'EditFoodProductScreen',
-        quickTrackId: legacyFoodProductId,
+        foodProductId: legacyFoodProductId,
         reason:
           validationMessage === 'Food product name is required.'
             ? 'missing_item'
@@ -455,7 +456,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     setErrorMessage(null);
     trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_STARTED', {
       source: 'EditFoodProductScreen',
-      quickTrackId: legacyFoodProductId,
+      foodProductId: legacyFoodProductId,
       isOnline,
       hasNotes: form.notes.trim().length > 0,
       visibility: form.visibility,
@@ -467,11 +468,11 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
 
     try {
       const updateResult = await writeFeature({
-        operationName: 'quick-track.update',
+        operationName: 'food-product.update',
         offline: {
           strategy: 'outbox',
           payload: {
-            quickTrackId: legacyFoodProductId,
+            foodProductId: legacyFoodProductId,
             updates: foodProductUpdateInput,
           },
         },
@@ -479,9 +480,9 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       });
 
       const invalidations: Promise<unknown>[] = [
+        queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.detail(foodProductId) }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'foodProduct', foodProductId] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'quickTrack', legacyFoodProductId] }),
@@ -492,7 +493,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         await Promise.all(invalidations);
         trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
           source: 'EditFoodProductScreen',
-          quickTrackId: legacyFoodProductId,
+          foodProductId: legacyFoodProductId,
           queued: true,
           visibility: form.visibility,
           photoMode: photoDraftMode,
@@ -509,7 +510,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       await Promise.all(invalidations);
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_SUCCEEDED', {
         source: 'EditFoodProductScreen',
-        quickTrackId: legacyFoodProductId,
+        foodProductId: legacyFoodProductId,
         queued: false,
         visibility: form.visibility,
         photoMode: photoDraftMode,
@@ -537,7 +538,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       setErrorMessage(message);
       trackObservabilityEvent('EDIT_QUICK_TRACK_SUBMIT_FAILED', {
         source: 'EditFoodProductScreen',
-        quickTrackId: legacyFoodProductId,
+        foodProductId: legacyFoodProductId,
         error: message,
       });
     } finally {

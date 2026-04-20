@@ -2,12 +2,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { persistQueryClientRestore, persistQueryClientSave } from '@tanstack/query-persist-client-core';
 import { QueryClient } from '@tanstack/react-query';
 
+import { getEnvironmentStorageKey } from '../config/persistence';
 import { feedbackQueryKeys } from '../features/store/feedbackQuery';
 import { friendsQueryKeys } from '../features/store/friendsQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { profileQueryKeys } from '../features/store/profileQuery';
-import { queryPersister, sanitizePersistedClient, shouldPersistQuery } from '../providers/queryPersistence';
+import {
+  queryPersister,
+  removeLegacyQueryCache,
+  sanitizePersistedClient,
+  shouldPersistQuery,
+} from '../providers/queryPersistence';
 
 describe('React Query persistence', () => {
   beforeEach(async () => {
@@ -179,6 +185,12 @@ describe('React Query persistence', () => {
       id: 'thread_1',
       description: 'Thread detail should not persist',
     });
+    sourceClient.setQueryData(['feature', 'quickTracks'], [
+      {
+        id: 'legacy_food_product_1',
+        itemName: 'Legacy Food Product',
+      },
+    ]);
     sourceClient.setQueryData(friendsQueryKeys.paginated('friends', 'tay'), {
       pages: [
         {
@@ -250,11 +262,45 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(profileQueryKeys.profile)).toEqual(
       sourceClient.getQueryData(profileQueryKeys.profile),
     );
+    expect(restoredClient.getQueryData(['feature', 'quickTracks'])).toBeUndefined();
     expect(restoredClient.getQueryData(['feature', 'feedback', 'thread_1'])).toBeUndefined();
     expect(restoredClient.getQueryData(friendsQueryKeys.paginated('friends', 'tay'))).toBeUndefined();
 
     sourceClient.clear();
     restoredClient.clear();
+  });
+
+  it('stores persisted queries under the v3 cache key and removes legacy cache keys', async () => {
+    const legacyCacheKeyV1 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1');
+    const legacyCacheKeyV2 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2');
+    const activeCacheKeyV3 = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3');
+
+    await AsyncStorage.setItem(legacyCacheKeyV1, 'legacy-v1');
+    await AsyncStorage.setItem(legacyCacheKeyV2, 'legacy-v2');
+    await AsyncStorage.setItem(activeCacheKeyV3, 'active-v3');
+
+    const removedLegacyKeys = await removeLegacyQueryCache();
+
+    expect(removedLegacyKeys).toEqual([legacyCacheKeyV1, legacyCacheKeyV2]);
+    expect(await AsyncStorage.getItem(legacyCacheKeyV1)).toBeNull();
+    expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
+    expect(await AsyncStorage.getItem(activeCacheKeyV3)).toBe('active-v3');
+
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['feature', 'foodProducts'], [{ id: 'food-product-1' }]);
+
+    await persistQueryClientSave({
+      queryClient,
+      persister: queryPersister,
+      dehydrateOptions: {
+        shouldDehydrateQuery: shouldPersistQuery,
+      },
+    });
+
+    expect(await AsyncStorage.getItem(activeCacheKeyV3)).not.toBeNull();
+    expect(await AsyncStorage.getItem(legacyCacheKeyV2)).toBeNull();
+
+    queryClient.clear();
   });
 
   it('redacts sensitive fields from persisted notes and feedback browse data', async () => {

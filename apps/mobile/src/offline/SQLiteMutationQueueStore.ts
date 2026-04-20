@@ -1,6 +1,9 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
+import { Platform } from 'react-native';
 
 import { getEnvironmentDatabaseName } from '../config/persistence';
+import { trackObservabilityEvent } from '../observability';
+import { migrateQueuedFoodProductMutations } from './foodProductOutboxMigration';
 import type {
   EnqueueMutationInput,
   MutationMethod,
@@ -79,6 +82,73 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
       `,
       '%/api/mobile/offline-probe',
     );
+
+    const queuedLocalFeatureRows = await database.getAllAsync<QueueRow>(
+      `
+      SELECT
+        id, method, url, body, headers, status, idempotency_key,
+        attempt_count, max_attempts, next_retry_at, last_error,
+        created_at, updated_at, last_attempt_at
+      FROM ${TABLE_NAME}
+      WHERE url LIKE ?;
+      `,
+      'local://feature/%',
+    );
+
+    const queuedLocalFeatureMutations = queuedLocalFeatureRows.map(deserializeRow);
+    const migrationSummary = migrateQueuedFoodProductMutations(queuedLocalFeatureMutations);
+
+    trackObservabilityEvent('FOOD_PRODUCT_OUTBOX_MIGRATION_STARTED', {
+      platform: Platform.OS,
+      queuedLegacyMutationCount: migrationSummary.queuedLegacyMutationCount,
+      source: 'SQLiteMutationQueueStore',
+    });
+
+    for (const [index, originalRow] of queuedLocalFeatureRows.entries()) {
+      const migratedMutation = migrationSummary.mutations[index];
+      if (
+        !migratedMutation ||
+        (originalRow.url === migratedMutation.url &&
+          originalRow.body === migratedMutation.body &&
+          originalRow.headers === JSON.stringify(migratedMutation.headers) &&
+          originalRow.status === migratedMutation.status &&
+          originalRow.next_retry_at === migratedMutation.nextRetryAt &&
+          originalRow.last_error === migratedMutation.lastError &&
+          originalRow.updated_at === migratedMutation.updatedAt)
+      ) {
+        continue;
+      }
+
+      await database.runAsync(
+        `
+        UPDATE ${TABLE_NAME}
+        SET url = ?,
+            body = ?,
+            headers = ?,
+            status = ?,
+            next_retry_at = ?,
+            last_error = ?,
+            updated_at = ?
+        WHERE id = ?;
+        `,
+        migratedMutation.url,
+        migratedMutation.body,
+        JSON.stringify(migratedMutation.headers),
+        migratedMutation.status,
+        migratedMutation.nextRetryAt,
+        migratedMutation.lastError,
+        migratedMutation.updatedAt,
+        migratedMutation.id,
+      );
+    }
+
+    trackObservabilityEvent('FOOD_PRODUCT_OUTBOX_MIGRATION_COMPLETED', {
+      failedCount: migrationSummary.failedCount,
+      migratedCount: migrationSummary.migratedCount,
+      platform: Platform.OS,
+      queuedLegacyMutationCount: migrationSummary.queuedLegacyMutationCount,
+      source: 'SQLiteMutationQueueStore',
+    });
   }
 
   async enqueue(input: EnqueueMutationInput): Promise<QueuedMutation> {

@@ -7,6 +7,8 @@ import type {
 } from './types';
 
 import { getEnvironmentStorageKey } from '../config/persistence';
+import { trackObservabilityEvent } from '../observability';
+import { migrateQueuedFoodProductMutations } from './foodProductOutboxMigration';
 
 const STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_web_offline_queue_v1');
 const DEFAULT_MAX_ATTEMPTS = 5;
@@ -15,9 +17,26 @@ export class SQLiteMutationQueueStore implements MutationQueueStore {
   private memoryStore: QueuedMutation[] = [];
 
   async initialize(): Promise<void> {
-    this.writeMutations(
-      this.readMutations().filter((mutation) => !mutation.url.includes('/api/mobile/offline-probe')),
+    const filteredMutations = this.readMutations().filter(
+      (mutation) => !mutation.url.includes('/api/mobile/offline-probe'),
     );
+    const migrationSummary = migrateQueuedFoodProductMutations(filteredMutations);
+
+    trackObservabilityEvent('FOOD_PRODUCT_OUTBOX_MIGRATION_STARTED', {
+      platform: 'web',
+      queuedLegacyMutationCount: migrationSummary.queuedLegacyMutationCount,
+      source: 'SQLiteMutationQueueStore.web',
+    });
+
+    this.writeMutations(migrationSummary.mutations);
+
+    trackObservabilityEvent('FOOD_PRODUCT_OUTBOX_MIGRATION_COMPLETED', {
+      failedCount: migrationSummary.failedCount,
+      migratedCount: migrationSummary.migratedCount,
+      platform: 'web',
+      queuedLegacyMutationCount: migrationSummary.queuedLegacyMutationCount,
+      source: 'SQLiteMutationQueueStore.web',
+    });
   }
 
   async enqueue(input: EnqueueMutationInput): Promise<QueuedMutation> {

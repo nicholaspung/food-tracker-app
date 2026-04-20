@@ -41,6 +41,9 @@ jest.mock('../features', () => ({
   createFoodProduct: jest.fn(),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
   getNoteById: jest.fn(),
+  homeFeedQueryKeys: {
+    root: ['feature', 'homeFeed'],
+  },
   markNoteUsed: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),
   promoteCachedNoteToUsed: jest.fn(),
@@ -233,7 +236,7 @@ describe('FoodProductScreen', () => {
 
     expect(writeFeature).toHaveBeenCalledTimes(1);
     expect(writeFeature.mock.calls[0][0]).toMatchObject({
-      operationName: 'quick-track.create',
+      operationName: 'food-product.create',
       offline: {
         strategy: 'outbox',
         payload: expect.objectContaining({

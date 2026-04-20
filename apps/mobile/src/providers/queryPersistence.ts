@@ -12,10 +12,10 @@ import { isNotesSummaryQueryKey, isPaginatedNotesQueryKey } from '../features/st
 import { isProfileQueryKey } from '../features/store/profileQuery';
 
 const LEGACY_QUERY_CACHE_STORAGE_KEYS = [
-  'food_tracker_mobile_query_cache_v1',
-  'food_tracker_mobile_query_cache_v2',
+  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v1'),
+  getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2'),
 ];
-const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v2');
+const QUERY_CACHE_STORAGE_KEY = getEnvironmentStorageKey('food_tracker_mobile_query_cache_v3');
 
 function isFeatureQueryKey(queryKey: QueryKey): queryKey is readonly [string, ...unknown[]] {
   return Array.isArray(queryKey) && queryKey[0] === 'feature';
@@ -59,7 +59,6 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
       return isPaginatedHomeFeedQueryKey(queryKey);
     case 'visits':
     case 'foodProducts':
-    case 'quickTracks':
     case 'bills':
       return queryKey.length === 2;
     case 'visitPhotos':
@@ -190,8 +189,9 @@ export function sanitizePersistedClient(persistedClient: PersistedClient): Persi
   };
 }
 
-export async function removeLegacyQueryCache(): Promise<void> {
+export async function removeLegacyQueryCache(): Promise<string[]> {
   await Promise.all(LEGACY_QUERY_CACHE_STORAGE_KEYS.map((storageKey) => AsyncStorage.removeItem(storageKey)));
+  return [...LEGACY_QUERY_CACHE_STORAGE_KEYS];
 }
 
 export const queryPersister = createAsyncStoragePersister({

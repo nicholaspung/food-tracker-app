@@ -55,7 +55,11 @@ export function AppProviders({ children, screenshotReviewBootstrap }: AppProvide
 
     const restorePersistedQueries = async () => {
       try {
-        await removeLegacyQueryCache();
+        const removedLegacyKeys = await removeLegacyQueryCache();
+        trackObservabilityEvent('QUERY_CACHE_RESET_APPLIED', {
+          removedLegacyKeys,
+          source: 'AppProviders',
+        });
       } catch (error) {
         logger.warn('[AppProviders] Failed to remove legacy React Query cache:', error);
       }

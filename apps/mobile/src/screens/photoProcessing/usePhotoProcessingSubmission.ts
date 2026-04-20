@@ -299,7 +299,7 @@ export function usePhotoProcessingSubmission({
       });
 
       const createResult = await writeFeature({
-        operationName: 'quick-track.create',
+        operationName: 'food-product.create',
         offline: {
           strategy: 'outbox',
           payload: foodProductInput,
@@ -373,7 +373,6 @@ export function usePhotoProcessingSubmission({
         queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'foodProducts'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'quickTracks'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
         queryClient.invalidateQueries({
           queryKey: ['feature', 'usage', 'monthly'],

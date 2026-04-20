@@ -67,12 +67,12 @@ interface VisitDeleteOperationPayload {
 }
 
 interface FoodProductUpdateOperationPayload {
-  quickTrackId: string;
+  foodProductId: string;
   updates: UpdateFoodProductInput;
 }
 
 interface FoodProductDeleteOperationPayload {
-  quickTrackId: string;
+  foodProductId: string;
 }
 
 interface NoteUpdateOperationPayload {
@@ -147,9 +147,9 @@ export interface FeatureOutboxOperationPayloadMap {
   'visit.create': CreateVisitInput;
   'visit.update': VisitUpdateOperationPayload;
   'visit.delete': VisitDeleteOperationPayload;
-  'quick-track.create': CreateFoodProductInput;
-  'quick-track.update': FoodProductUpdateOperationPayload;
-  'quick-track.delete': FoodProductDeleteOperationPayload;
+  'food-product.create': CreateFoodProductInput;
+  'food-product.update': FoodProductUpdateOperationPayload;
+  'food-product.delete': FoodProductDeleteOperationPayload;
   'note.create': CreateNoteInput;
   'note.update': NoteUpdateOperationPayload;
   'note.delete': NoteDeleteOperationPayload;
@@ -187,9 +187,9 @@ const FEATURE_OUTBOX_OPERATION_NAMES = new Set<FeatureOutboxOperationName>([
   'visit.create',
   'visit.update',
   'visit.delete',
-  'quick-track.create',
-  'quick-track.update',
-  'quick-track.delete',
+  'food-product.create',
+  'food-product.update',
+  'food-product.delete',
   'note.create',
   'note.update',
   'note.delete',
@@ -369,17 +369,17 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
       await deleteVisit(visitDeletePayload.visitId);
       return true;
     }
-    case 'quick-track.create':
+    case 'food-product.create':
       await createFoodProduct(payload as CreateFoodProductInput);
       return true;
-    case 'quick-track.update': {
+    case 'food-product.update': {
       const foodProductUpdatePayload = payload as FoodProductUpdateOperationPayload;
-      await updateFoodProduct(foodProductUpdatePayload.quickTrackId, foodProductUpdatePayload.updates);
+      await updateFoodProduct(foodProductUpdatePayload.foodProductId, foodProductUpdatePayload.updates);
       return true;
     }
-    case 'quick-track.delete': {
+    case 'food-product.delete': {
       const foodProductDeletePayload = payload as FoodProductDeleteOperationPayload;
-      await deleteFoodProduct(foodProductDeletePayload.quickTrackId);
+      await deleteFoodProduct(foodProductDeletePayload.foodProductId);
       return true;
     }
     case 'note.create':

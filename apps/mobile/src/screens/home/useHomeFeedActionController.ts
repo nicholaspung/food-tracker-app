@@ -90,10 +90,10 @@ export function useHomeFeedActionController({
   const handleDeleteFoodProduct = useCallback(
     async (foodProductId: string) => {
       const deleteResult = await writeFeature({
-        operationName: 'quick-track.delete',
+        operationName: 'food-product.delete',
         offline: {
           strategy: 'outbox',
-          payload: { quickTrackId: foodProductId },
+          payload: { foodProductId },
         },
         execute: () => deleteFoodProduct(foodProductId),
       });

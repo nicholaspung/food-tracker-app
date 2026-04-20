@@ -1,4 +1,5 @@
 import { MutationReplayService } from '../offline/MutationReplayService';
+import { migrateQueuedFoodProductMutations } from '../offline/foodProductOutboxMigration';
 import type {
   EnqueueMutationInput,
   MutationQueueStats,
@@ -13,10 +14,13 @@ interface SharedQueueState {
 }
 
 class InMemoryQueueStore implements MutationQueueStore {
-  constructor(private readonly sharedState: SharedQueueState = { rows: new Map() }) {}
+  constructor(
+    private readonly sharedState: SharedQueueState = { rows: new Map() },
+    private readonly onInitialize?: (sharedState: SharedQueueState) => Promise<void> | void,
+  ) {}
 
   async initialize(): Promise<void> {
-    return Promise.resolve();
+    await this.onInitialize?.(this.sharedState);
   }
 
   async enqueue(input: EnqueueMutationInput): Promise<QueuedMutation> {
@@ -166,6 +170,30 @@ function cloneMutation(mutation: QueuedMutation): QueuedMutation {
   };
 }
 
+function buildQueuedMutation(overrides?: Partial<QueuedMutation>): QueuedMutation {
+  return {
+    id: 'mut_seeded_1',
+    method: 'POST',
+    url: 'local://feature/quick-track.create',
+    body: JSON.stringify({
+      itemName: 'Sparkling Water',
+    }),
+    headers: {
+      'X-Mobile-Write-Operation': 'quick-track.create',
+    },
+    status: 'pending',
+    idempotencyKey: 'idem_seeded_1',
+    attemptCount: 0,
+    maxAttempts: 5,
+    nextRetryAt: 0,
+    lastError: null,
+    createdAt: 1000,
+    updatedAt: 1000,
+    lastAttemptAt: null,
+    ...overrides,
+  };
+}
+
 describe('MutationReplayService', () => {
   it('replays retryable failures after backoff and eventually succeeds', async () => {
     let now = 1000;
@@ -263,5 +291,58 @@ describe('MutationReplayService', () => {
     await restartedService.start();
 
     expect(restartedService.getSnapshot().queueDepth).toBe(1);
+  });
+
+  it('replays food product mutations after queue initialization migrates legacy local operations', async () => {
+    const sharedState: SharedQueueState = {
+      rows: new Map([
+        [
+          'mut_seeded_1',
+          buildQueuedMutation({
+            body: JSON.stringify({
+              quickTrackId: 'food-product-1',
+              updates: {
+                itemName: 'Sparkling Water',
+              },
+            }),
+            headers: {
+              'X-Mobile-Write-Operation': 'quick-track.update',
+            },
+            method: 'POST',
+            url: 'local://feature/quick-track.update',
+          }),
+        ],
+      ]),
+    };
+    const store = new InMemoryQueueStore(sharedState, (state) => {
+      const summary = migrateQueuedFoodProductMutations([...state.rows.values()]);
+      state.rows = new Map(summary.mutations.map((mutation) => [mutation.id, mutation]));
+    });
+    const transport: MutationTransport = {
+      send: jest.fn(async (mutation) => {
+        expect(mutation.url).toBe('local://feature/food-product.update');
+        expect(mutation.headers['X-Mobile-Write-Operation']).toBe('food-product.update');
+        expect(JSON.parse(mutation.body ?? '{}')).toEqual({
+          foodProductId: 'food-product-1',
+          updates: {
+            itemName: 'Sparkling Water',
+          },
+        });
+
+        return {
+          ok: true,
+          retryable: false,
+          statusCode: 200,
+          errorMessage: null,
+        };
+      }),
+    };
+    const service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    await service.replay('foreground');
+
+    expect(service.getSnapshot().queueDepth).toBe(0);
+    expect(transport.send).toHaveBeenCalledTimes(1);
   });
 });
