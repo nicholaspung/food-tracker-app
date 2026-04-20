@@ -32,7 +32,7 @@ describe('loadHomeFeedPageWithSources', () => {
       { eventAt: '2026-04-08T12:00:00Z', id: 'visit-3' },
       { eventAt: '2026-04-07T12:00:00Z', id: 'visit-4' },
     ]);
-    const quickTrackFetcher = createMockFeedFetcher([
+    const foodProductFetcher = createMockFeedFetcher([
       { eventAt: '2026-04-08T18:00:00Z', id: 'quick-track-1' },
       { eventAt: '2026-04-06T12:00:00Z', id: 'quick-track-2' },
       { eventAt: '2026-04-05T12:00:00Z', id: 'quick-track-3' },
@@ -40,7 +40,7 @@ describe('loadHomeFeedPageWithSources', () => {
     ]);
 
     const firstPage = await loadHomeFeedPageWithSources({
-      fetchQuickTracksPage: quickTrackFetcher.fetchPage,
+      fetchQuickTracksPage: foodProductFetcher.fetchPage,
       fetchVisitsPage: visitFetcher.fetchPage,
       getQuickTrackEventAt: (item) => item.eventAt,
       getVisitEventAt: (item) => item.eventAt,
@@ -60,11 +60,11 @@ describe('loadHomeFeedPageWithSources', () => {
       { page: 1, pageSize: 2 },
       { page: 2, pageSize: 2 },
     ]);
-    expect(quickTrackFetcher.calls).toEqual([{ page: 1, pageSize: 2 }]);
+    expect(foodProductFetcher.calls).toEqual([{ page: 1, pageSize: 2 }]);
 
     const secondPage = await loadHomeFeedPageWithSources({
       cursor: firstPage.cursor,
-      fetchQuickTracksPage: quickTrackFetcher.fetchPage,
+      fetchQuickTracksPage: foodProductFetcher.fetchPage,
       fetchVisitsPage: visitFetcher.fetchPage,
       getQuickTrackEventAt: (item) => item.eventAt,
       getVisitEventAt: (item) => item.eventAt,
@@ -84,7 +84,7 @@ describe('loadHomeFeedPageWithSources', () => {
       { page: 1, pageSize: 2 },
       { page: 2, pageSize: 2 },
     ]);
-    expect(quickTrackFetcher.calls).toEqual([{ page: 1, pageSize: 2 }]);
+    expect(foodProductFetcher.calls).toEqual([{ page: 1, pageSize: 2 }]);
   });
 
   it('tops up only the dominant source instead of fetching full windows from both sources', async () => {
@@ -94,7 +94,7 @@ describe('loadHomeFeedPageWithSources', () => {
         id: `visit-${index + 1}`,
       })),
     );
-    const quickTrackFetcher = createMockFeedFetcher(
+    const foodProductFetcher = createMockFeedFetcher(
       Array.from({ length: 24 }, (_, index) => ({
         eventAt: `2026-03-${String(30 - index).padStart(2, '0')}T12:00:00Z`,
         id: `quick-track-${index + 1}`,
@@ -102,7 +102,7 @@ describe('loadHomeFeedPageWithSources', () => {
     );
 
     const page = await loadHomeFeedPageWithSources({
-      fetchQuickTracksPage: quickTrackFetcher.fetchPage,
+      fetchQuickTracksPage: foodProductFetcher.fetchPage,
       fetchVisitsPage: visitFetcher.fetchPage,
       getQuickTrackEventAt: (item) => item.eventAt,
       getVisitEventAt: (item) => item.eventAt,
@@ -119,6 +119,6 @@ describe('loadHomeFeedPageWithSources', () => {
       { page: 1, pageSize: 10 },
       { page: 2, pageSize: 10 },
     ]);
-    expect(quickTrackFetcher.calls).toEqual([{ page: 1, pageSize: 10 }]);
+    expect(foodProductFetcher.calls).toEqual([{ page: 1, pageSize: 10 }]);
   });
 });

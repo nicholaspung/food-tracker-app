@@ -11,11 +11,11 @@ jest.mock('../features', () => ({
 }));
 
 describe('foodProductForm', () => {
-  it('builds form values from a quick-track record', () => {
+  it('builds form values from a food product record', () => {
     expect(
       buildFoodProductFormFromRecord({
-        id: 'quick-track-1',
-        restaurantName: 'Quick Track',
+        id: 'food-product-1',
+        restaurantName: 'Food Product',
         itemCategory: 'packaged_food',
         itemName: 'Iced Coffee',
         locationText: 'Mission District',
@@ -40,8 +40,8 @@ describe('foodProductForm', () => {
   it('preserves freeform categories and builds a photo-aware update payload', () => {
     expect(
       buildFoodProductFormFromRecord({
-        id: 'quick-track-2',
-        restaurantName: 'Quick Track',
+        id: 'food-product-2',
+        restaurantName: 'Food Product',
         itemCategory: 'restaurant',
         itemName: 'Soup',
         locationText: undefined,

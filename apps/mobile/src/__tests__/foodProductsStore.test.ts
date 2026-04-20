@@ -65,7 +65,7 @@ describe('foodProductsStore', () => {
     };
   });
 
-  it('lists food-product photos from visit_photos using the food item id', async () => {
+  it('lists food product photos from visit_photos using the food item id', async () => {
     const abortController = new AbortController();
     mockedListCollectionRecords.mockResolvedValue([
       {
@@ -206,7 +206,7 @@ describe('foodProductsStore', () => {
     expect(operationOrder).toEqual(['upload', 'delete:photo-1', 'delete:photo-2']);
   });
 
-  it('creates a quick track with freeform location text and clears legacy coordinates', async () => {
+  it('creates a food product with freeform location text and clears legacy coordinates', async () => {
     const foodItemsCollection = {
       create: jest.fn().mockResolvedValue({
         id: 'quick-track-2',
@@ -275,7 +275,7 @@ describe('foodProductsStore', () => {
     );
   });
 
-  it('clears quick-track location text when the user removes it during edit', async () => {
+  it('clears food product location text when the user removes it during edit', async () => {
     const foodItemsCollection = {
       getOne: jest.fn().mockResolvedValue({
         id: 'quick-track-3',

@@ -199,7 +199,7 @@ describe('FoodProductScreen', () => {
     expect(renderer.root.findByType('FoodProductFormFields').props.value.locationText).toBe('');
   });
 
-  it('passes typed location text into the queued quick-track create payload', async () => {
+  it('passes typed location text into the queued food product create payload', async () => {
     const navigate = jest.fn();
     let renderer: any = null;
 

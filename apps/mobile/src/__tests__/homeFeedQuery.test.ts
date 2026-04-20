@@ -30,7 +30,7 @@ function createVisitEntry(id: string, eventAt: string, visitItemId: string) {
   };
 }
 
-function createQuickTrackEntry(id: string, eventAt: string) {
+function createFoodProductEntry(id: string, eventAt: string) {
   return {
     eventAt,
     quickTrack: {
@@ -93,7 +93,7 @@ describe('home feed query helpers', () => {
           hasNextPage: true,
           items: [
             createVisitEntry('visit_1', '2026-04-12T10:00:00.000Z', 'item_1'),
-            createQuickTrackEntry('quick_1', '2026-04-11T10:00:00.000Z'),
+            createFoodProductEntry('quick_1', '2026-04-11T10:00:00.000Z'),
           ],
           photoPreviews: [
             { created: '2026-04-12T10:00:00.000Z', food_item: 'item_1', id: 'photo_1', photo: 'visit-1.jpg' },
@@ -145,7 +145,7 @@ describe('home feed query helpers', () => {
         {
           cursor: undefined,
           hasNextPage: false,
-          items: [createQuickTrackEntry('quick_1', '2026-04-11T10:00:00.000Z')],
+          items: [createFoodProductEntry('quick_1', '2026-04-11T10:00:00.000Z')],
           photoPreviews: [],
           totalQuickTracks: 1,
           totalVisits: 0,

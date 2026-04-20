@@ -222,7 +222,7 @@ describe('EditFoodProductScreen', () => {
     });
   });
 
-  it('preloads the shared quick-track form and current primary photo', async () => {
+  it('preloads the shared food product form and current primary photo', async () => {
     let renderer: any = null;
 
     await act(async () => {
