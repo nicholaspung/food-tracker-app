@@ -1,11 +1,24 @@
 import { ClientResponseError } from 'pocketbase';
 
-import { getVisitById } from '../features/store/visitsStore';
-import { sendApiRequest } from '../features/store/pocketbaseGateway';
+import {
+  getVisitById,
+  listVisitItemPhotos,
+  updateVisit,
+} from '../features/store/visitsStore';
+import {
+  listCollectionRecords,
+  sendApiRequest,
+} from '../features/store/pocketbaseGateway';
+import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
+  listCollectionRecords: jest.fn(),
   sendApiRequest: jest.fn(),
+}));
+
+jest.mock('../features/store/visitPhotoUploads', () => ({
+  uploadVisitPhotos: jest.fn(),
 }));
 
 jest.mock('../lib/pocketbase', () => ({
@@ -22,6 +35,10 @@ jest.mock('../lib/pocketbase', () => ({
 }));
 
 const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
+const mockedListCollectionRecords = listCollectionRecords as jest.MockedFunction<
+  typeof listCollectionRecords
+>;
+const mockedUploadVisitPhotos = uploadVisitPhotos as jest.MockedFunction<typeof uploadVisitPhotos>;
 const mockedPocketBase = pb as typeof pb & {
   authStore: {
     record: {
@@ -30,6 +47,7 @@ const mockedPocketBase = pb as typeof pb & {
       id: string;
     } | null;
   };
+  collection: jest.Mock;
 };
 
 function buildClientResponseError(status: number): ClientResponseError {
@@ -46,6 +64,9 @@ function buildClientResponseError(status: number): ClientResponseError {
 describe('visitsStore.getVisitById', () => {
   beforeEach(() => {
     mockedSendApiRequest.mockReset();
+    mockedListCollectionRecords.mockReset();
+    mockedUploadVisitPhotos.mockReset();
+    mockedPocketBase.collection.mockReset();
     mockedPocketBase.authStore.record = {
       collectionId: 'users',
       collectionName: 'users',
@@ -89,5 +110,170 @@ describe('visitsStore.getVisitById', () => {
     mockedSendApiRequest.mockRejectedValue(buildClientResponseError(404));
 
     await expect(getVisitById('visit-123')).resolves.toBeNull();
+  });
+
+  it('loads visit item photos grouped by visit item id', async () => {
+    const abortController = new AbortController();
+    mockedListCollectionRecords.mockResolvedValue([
+      {
+        id: 'photo-1',
+        food_item: 'item-1',
+        user: 'user-1',
+        photo: 'wontons.jpg',
+        created: '2026-04-05T18:00:00.000Z',
+      },
+      {
+        id: 'photo-2',
+        food_item: 'item-2',
+        user: 'user-1',
+        photo: 'noodles.jpg',
+        created: '2026-04-05T18:05:00.000Z',
+      },
+    ]);
+
+    await expect(
+      listVisitItemPhotos(['item-1', 'item-2'], { signal: abortController.signal }),
+    ).resolves.toEqual({
+      'item-1': [
+        {
+          id: 'photo-1',
+          food_item: 'item-1',
+          user: 'user-1',
+          photo: 'wontons.jpg',
+          collectionName: 'visit_photos',
+          created: '2026-04-05T18:00:00.000Z',
+        },
+      ],
+      'item-2': [
+        {
+          id: 'photo-2',
+          food_item: 'item-2',
+          user: 'user-1',
+          photo: 'noodles.jpg',
+          collectionName: 'visit_photos',
+          created: '2026-04-05T18:05:00.000Z',
+        },
+      ],
+    });
+
+    expect(mockedListCollectionRecords).toHaveBeenCalledWith('visit_photos', {
+      fields: 'id,food_item,user,photo,created',
+      filter: '(food_item = "item-1" || food_item = "item-2")',
+      pageSize: 100,
+      signal: abortController.signal,
+      sort: '-created',
+    });
+  });
+
+  it('deletes removed photo ids before uploading new visit item photos during edit', async () => {
+    const operationOrder: string[] = [];
+    const visitPhotosCollection = {
+      delete: jest
+        .fn()
+        .mockImplementationOnce(async () => {
+          operationOrder.push('delete:photo-1');
+        })
+        .mockImplementationOnce(async () => {
+          operationOrder.push('delete:photo-2');
+          throw buildClientResponseError(404);
+        }),
+    };
+
+    mockedPocketBase.collection.mockImplementation((collectionName: string) => {
+      if (collectionName === 'visit_photos') {
+        return visitPhotosCollection;
+      }
+
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+    mockedSendApiRequest.mockResolvedValue({
+      id: 'visit-123',
+      restaurantId: 'restaurant-1',
+      restaurantName: 'Noodle House',
+      visitedAt: '2026-04-05T18:00:00.000Z',
+      visibility: 'friends',
+      items: [
+        {
+          id: 'visit-item-1',
+          name: 'Spicy Wontons',
+          rating: 4,
+          description: 'Crispy',
+          notes: 'Shareable',
+        },
+      ],
+      source: 'visit',
+      createdAt: '2026-04-05T18:00:00.000Z',
+      updatedAt: '2026-04-05T18:10:00.000Z',
+    });
+    mockedUploadVisitPhotos.mockImplementation(async () => {
+      operationOrder.push('upload');
+    });
+
+    await expect(
+      updateVisit('visit-123', {
+        restaurantName: 'Noodle House',
+        visitedAt: '2026-04-05T18:00:00.000Z',
+        visibility: 'friends',
+        items: [
+          {
+            id: 'draft-item-1',
+            name: 'Spicy Wontons',
+            rating: 4,
+            description: 'Crispy',
+            notes: 'Shareable',
+            deletePhotoIds: ['photo-1', 'photo-2'],
+            newPhotos: [
+              {
+                uri: 'file:///wontons.jpg',
+                name: 'wontons.jpg',
+                mimeType: 'image/jpeg',
+              },
+            ],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      id: 'visit-123',
+      restaurantName: 'Noodle House',
+      items: [
+        {
+          id: 'visit-item-1',
+          name: 'Spicy Wontons',
+        },
+      ],
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/visits/visit-123', {
+      method: 'PUT',
+      body: {
+        restaurantId: undefined,
+        restaurantName: 'Noodle House',
+        items: [
+          {
+            id: 'draft-item-1',
+            name: 'Spicy Wontons',
+            rating: 4,
+            description: 'Crispy',
+            notes: 'Shareable',
+          },
+        ],
+        visitedAt: '2026-04-05T18:00:00.000Z',
+        visibility: 'friends',
+      },
+    });
+    expect(mockedUploadVisitPhotos).toHaveBeenCalledWith(
+      'visit-123',
+      'visit-item-1',
+      'user-1',
+      [
+        {
+          uri: 'file:///wontons.jpg',
+          name: 'wontons.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+      'Crispy',
+    );
+    expect(operationOrder).toEqual(['delete:photo-1', 'delete:photo-2', 'upload']);
   });
 });

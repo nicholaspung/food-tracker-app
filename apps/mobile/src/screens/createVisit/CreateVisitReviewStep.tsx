@@ -22,9 +22,8 @@ interface CreateVisitReviewStepProps {
   draftItems: DraftVisitItem[];
   displayMaxPhotosPerItem: number | null;
   estimatedFreeMonthlyPhotosRemaining: number;
-  isEditMode: boolean;
   onAttachPhoto: (itemId: string, source: 'camera' | 'gallery') => void;
-  onRemoveDraftItemPhoto: (itemId: string, uri: string) => void;
+  onRemoveDraftItemPhoto: (itemId: string, photoId: string) => void;
   onUpdateDraftItem: (
     itemId: string,
     updates: DraftVisitItemUpdates,
@@ -34,6 +33,7 @@ interface CreateVisitReviewStepProps {
   shouldShowPhotoUpgradePrompt: boolean;
   showOfflineUsageWarning: boolean;
   showUsageEstimate: boolean;
+  photoLoadWarningMessage?: string | null;
   visitDate: string;
   visitVisibility: 'friends' | 'private';
 }
@@ -52,7 +52,6 @@ export function CreateVisitReviewStep({
   draftItems,
   displayMaxPhotosPerItem,
   estimatedFreeMonthlyPhotosRemaining,
-  isEditMode,
   onAttachPhoto,
   onRemoveDraftItemPhoto,
   onUpdateDraftItem,
@@ -61,10 +60,12 @@ export function CreateVisitReviewStep({
   shouldShowPhotoUpgradePrompt,
   showOfflineUsageWarning,
   showUsageEstimate,
+  photoLoadWarningMessage = null,
   visitDate,
   visitVisibility,
 }: CreateVisitReviewStepProps) {
   const styles = useStyles();
+  const [photoViewerPreviewUrls, setPhotoViewerPreviewUrls] = useState<string[]>([]);
   const [photoViewerUrls, setPhotoViewerUrls] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
@@ -75,7 +76,8 @@ export function CreateVisitReviewStep({
         return;
       }
 
-      setPhotoViewerUrls(photos.map((photo) => photo.uri));
+      setPhotoViewerPreviewUrls(photos.map((photo) => photo.thumbnailUri));
+      setPhotoViewerUrls(photos.map((photo) => photo.viewerUri));
       setPhotoViewerInitialIndex(initialIndex);
       setIsPhotoViewerVisible(true);
     },
@@ -105,6 +107,12 @@ export function CreateVisitReviewStep({
         </Card>
       ) : null}
 
+      {photoLoadWarningMessage ? (
+        <Card style={styles.statusCard} tone="muted">
+          <Text tone="warning">{photoLoadWarningMessage}</Text>
+        </Card>
+      ) : null}
+
       {shouldShowPhotoUpgradePrompt ? (
         <UpgradePromptCard
           description={
@@ -118,15 +126,6 @@ export function CreateVisitReviewStep({
               : 'You are close to your free limit'
           }
         />
-      ) : null}
-
-      {isEditMode ? (
-        <Card style={styles.statusCard} tone="muted">
-          <Text tone="secondary">
-            Edit mode currently updates restaurant, date, visibility, ratings,
-            descriptions, and notes.
-          </Text>
-        </Card>
       ) : null}
 
       <VisitMetadataCard
@@ -159,40 +158,38 @@ export function CreateVisitReviewStep({
             placeholder="Optional description or modification"
             value={item.description}
           />
-          {!isEditMode ? (
-            <PhotoInputField
-              attachments={item.photos.map((photo, photoIndex) => ({
-                id: `${item.id}-${photo.uri}`,
-                name: photo.name,
-                uri: photo.uri,
-                accessibilityLabel: `View attached photo ${photoIndex + 1} full screen`,
-                onPress: () => {
-                  openPhotoViewer(item.photos, photoIndex);
-                },
-                onRemove: () => {
-                  closePhotoViewer();
-                  onRemoveDraftItemPhoto(item.id, photo.uri);
-                },
-              }))}
-              cameraSubtitle="Camera"
-              cameraTitle="Capture"
-              countLabel={
-                displayMaxPhotosPerItem === null
-                  ? null
-                  : `${item.photos.length}/${displayMaxPhotosPerItem}`
-              }
-              gallerySubtitle="Photo Library"
-              galleryTitle="Upload"
-              iconName="images-outline"
-              label="Add photos"
-              onCameraPress={() => {
-                onAttachPhoto(item.id, 'camera');
-              }}
-              onGalleryPress={() => {
-                onAttachPhoto(item.id, 'gallery');
-              }}
-            />
-          ) : null}
+          <PhotoInputField
+            attachments={item.photos.map((photo, photoIndex) => ({
+              id: photo.id,
+              label: photo.labelDate,
+              uri: photo.thumbnailUri,
+              accessibilityLabel: `View attached photo ${photoIndex + 1} full screen`,
+              onPress: () => {
+                openPhotoViewer(item.photos, photoIndex);
+              },
+              onRemove: () => {
+                closePhotoViewer();
+                onRemoveDraftItemPhoto(item.id, photo.id);
+              },
+            }))}
+            cameraSubtitle="Camera"
+            cameraTitle="Capture"
+            countLabel={
+              displayMaxPhotosPerItem === null
+                ? null
+                : `${item.photos.length}/${displayMaxPhotosPerItem}`
+            }
+            gallerySubtitle="Photo Library"
+            galleryTitle="Upload"
+            iconName="images-outline"
+            label="Add photos"
+            onCameraPress={() => {
+              onAttachPhoto(item.id, 'camera');
+            }}
+            onGalleryPress={() => {
+              onAttachPhoto(item.id, 'gallery');
+            }}
+          />
           <Input
             label="Notes"
             onChangeText={(value) => {
@@ -207,6 +204,7 @@ export function CreateVisitReviewStep({
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}
         onRequestClose={closePhotoViewer}
+        previewUrls={photoViewerPreviewUrls}
         urls={photoViewerUrls}
         visible={isPhotoViewerVisible}
       />

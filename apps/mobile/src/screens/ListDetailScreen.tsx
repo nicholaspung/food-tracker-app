@@ -8,6 +8,7 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   ErrorState,
+  ExpandableText,
   FeatureDetailScreenScaffold,
   PhotoViewerModal,
   RatingPill,
@@ -248,25 +249,18 @@ const useStyles = createThemedStyles((theme) => ({
     ...theme.typography.bodyLgBold,
   },
   locationRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: theme.spacing.xxs,
   },
-  locationPrimaryMeta: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexShrink: 1,
-    gap: theme.spacing.xxs,
-    minWidth: 0,
-  },
-  locationText: {
-    color: theme.colors.text.secondary,
-    ...theme.typography.bodyMd,
+  locationIcon: {
+    flexShrink: 0,
+    marginTop: 1,
   },
   locationPrimaryText: {
     color: theme.colors.text.secondary,
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
     ...theme.typography.bodyMd,
   },
   section: {
@@ -554,6 +548,33 @@ const useStyles = createThemedStyles((theme) => ({
     ...theme.typography.bodySm,
   },
 }));
+
+type ListDetailStyles = ReturnType<typeof useStyles>;
+
+interface RestaurantMetaRowProps {
+  primaryMetaLabel: string;
+  secondaryMetaLabel: string | null;
+  iconColor: string;
+  styles: ListDetailStyles;
+}
+
+function RestaurantMetaRow({
+  primaryMetaLabel,
+  secondaryMetaLabel,
+  iconColor,
+  styles,
+}: RestaurantMetaRowProps) {
+  const metadataLabel = secondaryMetaLabel
+    ? `${primaryMetaLabel} • ${secondaryMetaLabel}`
+    : primaryMetaLabel;
+
+  return (
+    <View style={styles.locationRow}>
+      <Ionicons color={iconColor} name="location-outline" size={14} style={styles.locationIcon} />
+      <Text style={styles.locationPrimaryText}>{metadataLabel}</Text>
+    </View>
+  );
+}
 
 export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   const { listId } = route.params;
@@ -1463,19 +1484,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                   ) : null}
                 </View>
 
-                <View style={styles.locationRow}>
-                  <View style={styles.locationPrimaryMeta}>
-                    <Ionicons
-                      color={theme.colors.text.muted}
-                      name="location-outline"
-                      size={14}
-                    />
-                    <Text style={styles.locationPrimaryText}>{primaryMetaLabel}</Text>
-                  </View>
-                  {secondaryMetaLabel ? (
-                    <Text style={styles.locationText}>{`• ${secondaryMetaLabel}`}</Text>
-                  ) : null}
-                </View>
+                <RestaurantMetaRow
+                  iconColor={theme.colors.text.muted}
+                  primaryMetaLabel={primaryMetaLabel}
+                  secondaryMetaLabel={secondaryMetaLabel}
+                  styles={styles}
+                />
 
                 <View style={styles.section}>
                   <SectionHeader
@@ -1835,9 +1849,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
                         <Ionicons color={theme.colors.text.muted} name={visibilityIconName} size={13} />
                       </View>
                       {targetList.description ? (
-                        <Text numberOfLines={1} style={styles.saveListDescription}>
+                        <ExpandableText
+                          collapsedNumberOfLines={1}
+                          interactionMode="inline-toggle"
+                          stopPropagationOnToggle
+                          style={styles.saveListDescription}
+                        >
                           {targetList.description}
-                        </Text>
+                        </ExpandableText>
                       ) : null}
                       {alreadySavedInList ? <Text style={styles.saveListAlreadyLabel}>Already saved in this list</Text> : null}
                     </View>

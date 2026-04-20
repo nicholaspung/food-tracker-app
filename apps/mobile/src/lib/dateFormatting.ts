@@ -230,3 +230,15 @@ export function formatLocalDateLabel(
 
   return parsedDate.toLocaleDateString(locale, options);
 }
+
+export function formatPhotoAttachmentDateLabel(value: unknown): string {
+  return formatDisplayDate(value, {
+    locale: 'en-US',
+    options: {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    },
+    fallback: 'Unknown date',
+  });
+}

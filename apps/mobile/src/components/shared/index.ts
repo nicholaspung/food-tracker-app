@@ -6,6 +6,7 @@ export * from './ConfirmDestructiveModal';
 export * from './CurrentLocationButton';
 export * from './EmptyState';
 export * from './ErrorState';
+export * from './ExpandableText';
 export * from './FilterChipGroup';
 export * from './FeatureDetailScreenScaffold';
 export * from './FeatureFormScreenScaffold';

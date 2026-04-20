@@ -186,6 +186,7 @@ type homeFeedCursorResponse struct {
 type homeFeedFoodProductResponse struct {
 	ID               string  `json:"id"`
 	RestaurantName   string  `json:"restaurantName"`
+	LocationText     string  `json:"locationText,omitempty"`
 	ItemCategory     string  `json:"itemCategory,omitempty"`
 	ItemName         string  `json:"itemName"`
 	Rating           float64 `json:"rating"`
@@ -240,6 +241,7 @@ type visitPageRow struct {
 // RegisterFeatureSummaryHandlers registers authenticated summary endpoints used by mobile surfaces.
 func RegisterFeatureSummaryHandlers(se *core.ServeEvent, app core.App) {
 	registerRestaurantListDetailSummaryHandler(se, app)
+	registerFoodProductCategorySuggestionHandlers(se, app)
 
 	se.Router.GET("/api/notes/summary", func(e *core.RequestEvent) error {
 		if e.Auth == nil {
@@ -1517,6 +1519,7 @@ func getHomeFeedResponse(
 				FoodProduct: &homeFeedFoodProductResponse{
 					ID:               quickTrack.Id,
 					RestaurantName:   restaurantName,
+					LocationText:     strings.TrimSpace(quickTrack.GetString("location_text")),
 					ItemCategory:     strings.TrimSpace(quickTrack.GetString("itemCategory")),
 					ItemName:         quickTrack.GetString("name"),
 					Rating:           quickTrack.GetFloat("rating"),

@@ -1,6 +1,7 @@
 import { pb } from '../../lib/pocketbase';
-import { sendApiRequest } from './pocketbaseGateway';
+import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 import {
+  buildOrFilter,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
@@ -12,6 +13,7 @@ import {
 import type {
   CreateVisitInput,
   UpdateVisitInput,
+  VisitPhotoRecord,
 } from './featureStore';
 import { markNoteUsed } from './notesStore';
 import type { VisitRecord } from '../models';
@@ -46,6 +48,14 @@ interface VisitApiRecord {
   updatedAt: string;
 }
 
+interface VisitPhotoCollectionRecord {
+  id: string;
+  food_item?: string;
+  user?: string;
+  photo: string;
+  created: string;
+}
+
 function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
   return {
     id: record.id,
@@ -71,6 +81,19 @@ function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
   };
 }
 
+function mapVisitPhotoCollectionRecord(
+  record: VisitPhotoCollectionRecord,
+): VisitPhotoRecord {
+  return {
+    id: record.id,
+    food_item: record.food_item?.trim() || undefined,
+    user: record.user?.trim() || undefined,
+    photo: record.photo.trim(),
+    collectionName: 'visit_photos',
+    created: record.created,
+  };
+}
+
 export async function getVisitById(
   visitId: string,
   options?: { signal?: AbortSignal },
@@ -91,6 +114,45 @@ export async function getVisitById(
     }
     throw error;
   }
+}
+
+export async function listVisitItemPhotos(
+  foodItemIds: string[],
+  options?: { signal?: AbortSignal },
+): Promise<Record<string, VisitPhotoRecord[]>> {
+  const normalizedFoodItemIds = Array.from(
+    new Set(
+      foodItemIds
+        .map((foodItemId) => foodItemId.trim())
+        .filter((foodItemId) => foodItemId.length > 0),
+    ),
+  );
+  if (!pb.authStore.record?.id || normalizedFoodItemIds.length === 0) {
+    return {};
+  }
+
+  const records = await listCollectionRecords<VisitPhotoCollectionRecord>(
+    'visit_photos',
+    {
+      fields: 'id,food_item,user,photo,created',
+      filter: buildOrFilter('food_item', normalizedFoodItemIds),
+      pageSize: Math.max(100, normalizedFoodItemIds.length * 10),
+      signal: options?.signal,
+      sort: '-created',
+    },
+  );
+
+  return records.reduce<Record<string, VisitPhotoRecord[]>>((accumulator, record) => {
+    const mappedRecord = mapVisitPhotoCollectionRecord(record);
+    const foodItemId = mappedRecord.food_item?.trim();
+    if (!foodItemId) {
+      return accumulator;
+    }
+
+    const existingRecords = accumulator[foodItemId] ?? [];
+    accumulator[foodItemId] = [...existingRecords, mappedRecord];
+    return accumulator;
+  }, {});
 }
 
 export async function createVisit(input: CreateVisitInput): Promise<VisitRecord> {
@@ -166,22 +228,115 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
   return trackFeatureMutation(
     'visit.update',
     async () => {
-      return sendApiRequest<VisitRecord>(`/api/visits/${encodeURIComponent(visitId)}`, {
-        method: 'PUT',
-        body: {
-          restaurantId: updates.restaurantId?.trim() || undefined,
-          restaurantName: updates.restaurantName?.trim(),
-          items: updates.items?.map((item) => ({
-            id: item.id,
-            name: item.name.trim(),
-            rating: item.rating,
-            description: item.description?.trim() || undefined,
-            notes: item.notes?.trim() || undefined,
-          })),
-          visitedAt: updates.visitedAt,
-          visibility: updates.visibility,
+      const currentUserId = getAuthenticatedUserId();
+      const normalizedItems = updates.items?.map((item) => ({
+        id: item.id,
+        name: item.name.trim(),
+        rating: item.rating,
+        description: item.description?.trim() || undefined,
+        notes: item.notes?.trim() || undefined,
+        newPhotos: item.newPhotos ?? [],
+        deletePhotoIds: Array.from(
+          new Set(
+            (item.deletePhotoIds ?? [])
+              .map((photoId) => photoId.trim())
+              .filter((photoId) => photoId.length > 0),
+          ),
+        ),
+      }));
+      const updatedVisit = await sendApiRequest<VisitRecord>(
+        `/api/visits/${encodeURIComponent(visitId)}`,
+        {
+          method: 'PUT',
+          body: {
+            restaurantId: updates.restaurantId?.trim() || undefined,
+            restaurantName: updates.restaurantName?.trim(),
+            items: normalizedItems?.map((item) => ({
+              id: item.id,
+              name: item.name,
+              rating: item.rating,
+              description: item.description,
+              notes: item.notes,
+            })),
+            visitedAt: updates.visitedAt,
+            visibility: updates.visibility,
+          },
         },
-      });
+      );
+
+      if (!normalizedItems) {
+        return updatedVisit;
+      }
+
+      const matchedResponseItemIds = new Set<string>();
+      const resolveUpdatedItemId = (
+        requestedItem: (typeof normalizedItems)[number],
+      ): string | null => {
+        const exactMatch = updatedVisit.items.find(
+          (item) => item.id === requestedItem.id && !matchedResponseItemIds.has(item.id),
+        );
+        if (exactMatch) {
+          matchedResponseItemIds.add(exactMatch.id);
+          return exactMatch.id;
+        }
+
+        const normalizedName = requestedItem.name.trim().toLowerCase();
+        const normalizedDescription = requestedItem.description?.trim() ?? '';
+        const normalizedNotes = requestedItem.notes?.trim() ?? '';
+        const contentMatch = updatedVisit.items.find(
+          (item) =>
+            !matchedResponseItemIds.has(item.id) &&
+            item.name.trim().toLowerCase() === normalizedName &&
+            item.rating === requestedItem.rating &&
+            (item.description?.trim() ?? '') === normalizedDescription &&
+            (item.notes?.trim() ?? '') === normalizedNotes,
+        );
+        if (contentMatch) {
+          matchedResponseItemIds.add(contentMatch.id);
+          return contentMatch.id;
+        }
+
+        const fallbackMatch = updatedVisit.items.find(
+          (item) => !matchedResponseItemIds.has(item.id),
+        );
+        if (!fallbackMatch) {
+          return null;
+        }
+
+        matchedResponseItemIds.add(fallbackMatch.id);
+        return fallbackMatch.id;
+      };
+
+      for (const item of normalizedItems) {
+        for (const photoId of item.deletePhotoIds) {
+          try {
+            await pb.collection('visit_photos').delete(photoId);
+          } catch (error) {
+            if (!isNotFoundError(error)) {
+              throw error;
+            }
+          }
+        }
+
+        if (item.newPhotos.length === 0) {
+          continue;
+        }
+
+        const updatedItemId = resolveUpdatedItemId(item);
+        if (!updatedItemId) {
+          continue;
+        }
+
+        await uploadVisitPhotos(
+          visitId,
+          updatedItemId,
+          currentUserId,
+          item.newPhotos,
+          item.description || item.name,
+        );
+      }
+
+      return updatedVisit;
     },
     {
       hasRestaurantNameUpdate: updates.restaurantName !== undefined,
@@ -189,6 +344,16 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
       hasVisibilityUpdate: updates.visibility !== undefined,
       hasItemsUpdate: updates.items !== undefined,
       itemCount: updates.items?.length,
+      deletePhotoCount:
+        updates.items?.reduce(
+          (totalCount, item) => totalCount + (item.deletePhotoIds?.length ?? 0),
+          0,
+        ) ?? 0,
+      newPhotoCount:
+        updates.items?.reduce(
+          (totalCount, item) => totalCount + (item.newPhotos?.length ?? 0),
+          0,
+        ) ?? 0,
     },
   );
 }

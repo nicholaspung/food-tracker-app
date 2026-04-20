@@ -8,6 +8,7 @@ import {
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { ExpandableText } from './ExpandableText';
 import { StatusPill } from './StatusPill';
 
 export interface HomeFeedPhotoRecord {
@@ -359,9 +360,14 @@ export function HomeFeedVisitEntryCard({
                     {item.name}
                   </Text>
                   {item.notes ? (
-                    <Text numberOfLines={2} style={styles.foodItemNotes} variant="label">
-                      "{item.notes}"
-                    </Text>
+                    <ExpandableText
+                      collapsedNumberOfLines={2}
+                      interactionMode="tap-text"
+                      style={styles.foodItemNotes}
+                      variant="label"
+                    >
+                      {`"${item.notes}"`}
+                    </ExpandableText>
                   ) : null}
                 </View>
 

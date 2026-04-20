@@ -3,6 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { ExpandableText } from './ExpandableText';
 import { VisibilityBadge } from './VisibilityBadge';
 
 type MenuItemVisibility = 'private' | 'friends' | 'public';
@@ -135,9 +136,15 @@ export function VisitMenuItemOptionRow({
         </View>
 
         {trimmedDescription ? (
-          <Text numberOfLines={2} tone="secondary" variant="bodySm">
+          <ExpandableText
+            collapsedNumberOfLines={2}
+            interactionMode="inline-toggle"
+            stopPropagationOnToggle
+            tone="secondary"
+            variant="bodySm"
+          >
             {trimmedDescription}
-          </Text>
+          </ExpandableText>
         ) : null}
 
         <View style={styles.metaRow}>

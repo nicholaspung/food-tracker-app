@@ -24,20 +24,24 @@ import {
   type VisitRestaurantSearchOption,
 } from '../components/shared';
 import {
+  buildPocketBaseFileUrl,
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
   getNoteById,
   getVisitById,
+  listVisitItemPhotos,
   type MenuItemRecord,
   useMonthlyUsage,
   type RestaurantRecord,
   type VisitItem,
+  type VisitPhotoRecord,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
   formatDateToLocalDateString,
+  formatPhotoAttachmentDateLabel,
   getTodayLocalDateString,
   isValidLocalDate,
 } from '../lib/dateFormatting';
@@ -393,6 +397,32 @@ const useStyles = createThemedStyles((theme) => ({
   },
 }));
 
+function buildExistingDraftVisitPhoto(
+  photo: VisitPhotoRecord,
+): DraftVisitItemPhoto {
+  const collectionName = photo.collectionName ?? 'visit_photos';
+
+  return {
+    kind: 'existing',
+    id: photo.id,
+    photoId: photo.id,
+    thumbnailUri: buildPocketBaseFileUrl({
+      collectionId: photo.collectionId,
+      collectionName,
+      recordId: photo.id,
+      filename: photo.photo,
+      thumb: '100x100',
+    }),
+    viewerUri: buildPocketBaseFileUrl({
+      collectionId: photo.collectionId,
+      collectionName,
+      recordId: photo.id,
+      filename: photo.photo,
+    }),
+    labelDate: formatPhotoAttachmentDateLabel(photo.created),
+  };
+}
+
 export function CreateVisitScreen({
   navigation,
   route,
@@ -542,6 +572,15 @@ export function CreateVisitScreen({
     },
     enabled: Boolean(editVisitId),
   });
+  const editVisitItemIds = useMemo(
+    () => editVisitQuery.data?.items.map((item) => item.id).filter(Boolean) ?? [],
+    [editVisitQuery.data?.items],
+  );
+  const editVisitPhotosQuery = useQuery({
+    queryKey: ['feature', 'visitPhotos', 'visit', editVisitId ?? ''],
+    queryFn: ({ signal }) => listVisitItemPhotos(editVisitItemIds, { signal }),
+    enabled: Boolean(editVisitId && editVisitQuery.data && editVisitItemIds.length > 0),
+  });
   const linkedNoteQuery = useQuery({
     queryKey: ['feature', 'note', sourceNoteId],
     queryFn: ({ signal }) => (sourceNoteId ? getNoteById(sourceNoteId, { signal }) : Promise.resolve(null)),
@@ -644,6 +683,15 @@ export function CreateVisitScreen({
       return;
     }
 
+    const editVisitPhotosByItemId = editVisitPhotosQuery.data;
+    const areEditVisitPhotosReady =
+      editVisitQuery.data.items.length === 0 ||
+      editVisitPhotosQuery.isError ||
+      editVisitPhotosByItemId !== undefined;
+    if (!areEditVisitPhotosReady) {
+      return;
+    }
+
     const hydratedVisitDate = formatDateToLocalDateString(
       new Date(editVisitQuery.data.visitedAt),
     );
@@ -658,7 +706,11 @@ export function CreateVisitScreen({
         rating: item.rating,
         description: item.description?.trim() ?? "",
         notes: item.notes?.trim() ?? "",
-        photos: [],
+        photos:
+          editVisitPhotosByItemId?.[item.id]?.map((photo) =>
+            buildExistingDraftVisitPhoto(photo),
+          ) ?? [],
+        deletedPhotoIds: [],
       })),
     );
     setVisitDate(
@@ -678,6 +730,8 @@ export function CreateVisitScreen({
   }, [
     clearSearchErrorMessage,
     editVisitId,
+    editVisitPhotosQuery.data,
+    editVisitPhotosQuery.isError,
     editVisitQuery.data,
     hydratedEditVisitId,
     route.params?.returnToStep,
@@ -1038,8 +1092,7 @@ export function CreateVisitScreen({
   };
 
   const applyPhotoCaptureDateToVisit = useCallback(
-    async (asset: ImagePicker.ImagePickerAsset) => {
-      const captureDate = await resolvePhotoCaptureDate(asset);
+    (captureDate: Date | null) => {
       if (!captureDate) {
         return;
       }
@@ -1126,15 +1179,25 @@ export function CreateVisitScreen({
     }
 
     const asset = result.assets[0];
-    const photo: DraftVisitItemPhoto | null = buildLocalPhotoFile(asset, {
+    const upload = buildLocalPhotoFile(asset, {
       fallbackPrefix: 'visit-item',
     });
-    if (!photo) {
+    if (!upload) {
       setErrorMessage('Could not read the selected image.');
       return;
     }
 
-    await applyPhotoCaptureDateToVisit(asset);
+    const captureDate = await resolvePhotoCaptureDate(asset);
+    applyPhotoCaptureDateToVisit(captureDate);
+
+    const nextPhoto: DraftVisitItemPhoto = {
+      kind: 'new',
+      id: upload.uri,
+      upload,
+      thumbnailUri: upload.uri,
+      viewerUri: upload.uri,
+      labelDate: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
+    };
 
     setDraftItems((currentItems) =>
       currentItems.map((item) => {
@@ -1143,14 +1206,18 @@ export function CreateVisitScreen({
         }
 
         if (
-          item.photos.some((existingPhoto) => existingPhoto.uri === photo.uri)
+          item.photos.some(
+            (existingPhoto) =>
+              existingPhoto.kind === 'new' &&
+              existingPhoto.upload.uri === nextPhoto.upload.uri,
+          )
         ) {
           return item;
         }
 
         return {
           ...item,
-          photos: [...item.photos, photo],
+          photos: [...item.photos, nextPhoto],
         };
       }),
     );
@@ -1294,6 +1361,13 @@ export function CreateVisitScreen({
     isDisplayFreeUser &&
     draftPhotoCount > 0 &&
     estimatedFreeMonthlyPhotosRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
+  const editVisitPhotoLoadWarningMessage =
+    isEditMode &&
+    hydratedEditVisitId === editVisitId &&
+    editVisitItemIds.length > 0 &&
+    editVisitPhotosQuery.isError
+      ? 'Could not load current item photos. You can still upload a new photo.'
+      : null;
 
   if (isEditMode && hydratedEditVisitId !== editVisitId) {
     if (editVisitQuery.isError) {
@@ -1766,10 +1840,10 @@ export function CreateVisitScreen({
           estimatedFreeMonthlyPhotosRemaining={
             estimatedFreeMonthlyPhotosRemaining
           }
-          isEditMode={isEditMode}
           onAttachPhoto={(itemId, source) => {
             void attachPhotoToDraftItem(itemId, source);
           }}
+          photoLoadWarningMessage={editVisitPhotoLoadWarningMessage}
           onRemoveDraftItemPhoto={removeDraftItemPhoto}
           onUpdateDraftItem={updateDraftItem}
           onVisitDateChange={handleVisitDateChange}

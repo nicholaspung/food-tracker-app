@@ -3,15 +3,17 @@ import { ClientResponseError } from 'pocketbase';
 import {
   createFoodProduct,
   getFoodProductById,
+  listFoodProductCategorySuggestions,
   listFoodProductPhotos,
   updateFoodProduct,
 } from '../features/store/foodProductsStore';
-import { listCollectionRecords } from '../features/store/pocketbaseGateway';
+import { listCollectionRecords, sendApiRequest } from '../features/store/pocketbaseGateway';
 import { uploadVisitPhotos } from '../features/store/visitPhotoUploads';
 import { pb } from '../lib/pocketbase';
 
 jest.mock('../features/store/pocketbaseGateway', () => ({
   listCollectionRecords: jest.fn(),
+  sendApiRequest: jest.fn(),
 }));
 
 jest.mock('../features/store/visitPhotoUploads', () => ({
@@ -36,6 +38,7 @@ jest.mock('../lib/pocketbase', () => ({
 }));
 
 const mockedListCollectionRecords = listCollectionRecords as jest.MockedFunction<typeof listCollectionRecords>;
+const mockedSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
 const mockedUploadVisitPhotos = uploadVisitPhotos as jest.MockedFunction<typeof uploadVisitPhotos>;
 const mockedPocketBase = pb as typeof pb & {
   authStore: {
@@ -61,6 +64,7 @@ function buildClientResponseError(status: number): ClientResponseError {
 describe('foodProductsStore', () => {
   beforeEach(() => {
     mockedListCollectionRecords.mockReset();
+    mockedSendApiRequest.mockReset();
     mockedUploadVisitPhotos.mockReset();
     (mockedPocketBase.collection as jest.Mock).mockReset();
     mockedPocketBase.authStore.record = {
@@ -102,6 +106,41 @@ describe('foodProductsStore', () => {
       signal: abortController.signal,
       sort: '-created',
     });
+  });
+
+  it('loads normalized category suggestions through the food products api endpoint', async () => {
+    const abortController = new AbortController();
+    mockedSendApiRequest.mockResolvedValue({
+      items: [
+        {
+          label: 'Beverage',
+          normalizedLabel: 'beverage',
+          useCount: 3,
+          lastUsedAt: '2026-04-19T07:00:00.000Z',
+        },
+      ],
+    });
+
+    await expect(
+      listFoodProductCategorySuggestions('  Beverage   ', {
+        signal: abortController.signal,
+      }),
+    ).resolves.toEqual([
+      {
+        label: 'Beverage',
+        normalizedLabel: 'beverage',
+        useCount: 3,
+        lastUsedAt: '2026-04-19T07:00:00.000Z',
+      },
+    ]);
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/food-products/category-suggestions?limit=8&query=Beverage',
+      {
+        method: 'GET',
+        signal: abortController.signal,
+      },
+    );
   });
 
   it('loads a food product when the record uses itemType without the legacy flag', async () => {

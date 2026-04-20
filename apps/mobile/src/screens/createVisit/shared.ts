@@ -6,6 +6,7 @@ import type {
 import {
   resolveDefaultVisitVisibilityFromAuth,
   type MenuItemRecord,
+  type VisitPhotoUploadInput,
 } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 
@@ -20,11 +21,27 @@ export type CreateVisitNavigationProp = NativeStackNavigationProp<
 export type VisitWizardStep = 0 | 1 | 2; // 0-indexed to match StepProgressBar
 export type VisitVisibility = 'friends' | 'private';
 
-export interface DraftVisitItemPhoto {
-  uri: string;
-  name: string;
-  mimeType: string;
+export interface DraftVisitExistingItemPhoto {
+  kind: 'existing';
+  id: string;
+  photoId: string;
+  thumbnailUri: string;
+  viewerUri: string;
+  labelDate: string;
 }
+
+export interface DraftVisitNewItemPhoto {
+  kind: 'new';
+  id: string;
+  upload: VisitPhotoUploadInput;
+  thumbnailUri: string;
+  viewerUri: string;
+  labelDate: string;
+}
+
+export type DraftVisitItemPhoto =
+  | DraftVisitExistingItemPhoto
+  | DraftVisitNewItemPhoto;
 
 export interface DraftVisitItem {
   id: string;
@@ -33,6 +50,7 @@ export interface DraftVisitItem {
   description: string;
   notes: string;
   photos: DraftVisitItemPhoto[];
+  deletedPhotoIds: string[];
   sourceMenuItemId?: string;
 }
 
@@ -76,6 +94,7 @@ export function buildDraftVisitItem(
     description: '',
     notes: '',
     photos: [],
+    deletedPhotoIds: [],
     sourceMenuItemId: menuItem.id,
   };
 }

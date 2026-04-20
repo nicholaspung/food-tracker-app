@@ -30,7 +30,10 @@ import {
 import { foodProductsQueryKeys } from '../features/store/foodProductsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
-import { formatDateToLocalDateString } from '../lib/dateFormatting';
+import {
+  formatDateToLocalDateString,
+  formatPhotoAttachmentDateLabel,
+} from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoCaptureDate } from '../lib/photoMetadata';
@@ -51,6 +54,11 @@ import { Button, Card, Text } from '../ui';
 type EditFoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'EditFoodProduct'>;
 type PhotoSource = 'camera' | 'gallery';
 type PhotoDraftMode = 'keep' | 'replace' | 'remove';
+
+interface DraftReplacementPhoto {
+  label: string;
+  upload: VisitPhotoUploadInput;
+}
 
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
 const FREE_MONTHLY_PHOTO_WARNING_THRESHOLD = 1;
@@ -74,7 +82,7 @@ function buildDraftPhotoInput(asset: ImagePicker.ImagePickerAsset): VisitPhotoUp
 function buildExistingPhotoAttachment(photo: VisitPhotoRecord) {
   return {
     id: photo.id,
-    name: photo.photo,
+    label: formatPhotoAttachmentDateLabel(photo.created),
     thumbnailUri: buildPocketBaseFileUrl({
       collectionId: photo.collectionId,
       collectionName: photo.collectionName ?? 'visit_photos',
@@ -134,7 +142,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const [hydratedFoodProductId, setHydratedFoodProductId] = useState<string | null>(null);
   const [detectedItemDateValue, setDetectedItemDateValue] = useState<string | null>(null);
   const [photoDraftMode, setPhotoDraftMode] = useState<PhotoDraftMode>('keep');
-  const [replacementPhoto, setReplacementPhoto] = useState<VisitPhotoUploadInput | null>(null);
+  const [replacementPhoto, setReplacementPhoto] = useState<DraftReplacementPhoto | null>(null);
   const [previousDateBeforePhotoDraft, setPreviousDateBeforePhotoDraft] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
@@ -180,8 +188,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const primaryExistingPhoto = foodProductPhotosQuery.data?.[0] ?? null;
   const extraLegacyPhotoCount = Math.max((foodProductPhotosQuery.data?.length ?? 0) - 1, 0);
 
-  const applyPhotoCaptureDate = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
-    const captureDate = await resolvePhotoCaptureDate(asset);
+  const applyPhotoCaptureDate = useCallback((captureDate: Date | null) => {
     if (!captureDate) {
       return;
     }
@@ -195,16 +202,20 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   }, []);
 
   const applyReplacementPhoto = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
-    const nextPhoto = buildDraftPhotoInput(asset);
-    if (!nextPhoto) {
+    const nextUpload = buildDraftPhotoInput(asset);
+    if (!nextUpload) {
       throw new Error('Could not read the selected image.');
     }
+    const captureDate = await resolvePhotoCaptureDate(asset);
 
     setPreviousDateBeforePhotoDraft((currentValue) => currentValue ?? form.date);
     setDetectedItemDateValue(null);
-    await applyPhotoCaptureDate(asset);
+    applyPhotoCaptureDate(captureDate);
     setIsPhotoViewerVisible(false);
-    setReplacementPhoto(nextPhoto);
+    setReplacementPhoto({
+      label: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
+      upload: nextUpload,
+    });
     setPhotoDraftMode('replace');
     resetPhotoPermissionNeedsSettings();
   }, [applyPhotoCaptureDate, form.date, resetPhotoPermissionNeedsSettings]);
@@ -259,10 +270,10 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const displayedPhoto = useMemo(() => {
     if (photoDraftMode === 'replace' && replacementPhoto) {
       return {
-        id: replacementPhoto.uri,
-        name: replacementPhoto.name,
-        thumbnailUri: replacementPhoto.uri,
-        viewerUri: replacementPhoto.uri,
+        id: replacementPhoto.upload.uri,
+        label: replacementPhoto.label,
+        thumbnailUri: replacementPhoto.upload.uri,
+        viewerUri: replacementPhoto.upload.uri,
       };
     }
 
@@ -449,7 +460,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         ? [primaryExistingPhoto.id]
         : [];
     const foodProductUpdateInput = buildUpdateFoodProductInput(form, {
-      newPhoto: photoDraftMode === 'replace' ? replacementPhoto ?? undefined : undefined,
+      newPhoto: photoDraftMode === 'replace' ? replacementPhoto?.upload : undefined,
       deletePhotoIds,
     });
 
@@ -549,7 +560,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     ? [
         {
           id: displayedPhoto.id,
-          name: displayedPhoto.name,
+          label: displayedPhoto.label,
           uri: displayedPhoto.thumbnailUri,
           accessibilityLabel: 'View attached photo full screen',
           onPress: () => {

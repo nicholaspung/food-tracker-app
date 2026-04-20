@@ -8,6 +8,7 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   ErrorState,
+  ExpandableText,
   FeatureDetailScreenScaffold,
   HeaderAccessoryButton,
   PhotoViewerModal,
@@ -793,9 +794,13 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
                     ) : null}
 
                     <View style={styles.noteTextContent}>
-                      <Text numberOfLines={note.locationText ? 3 : 4} variant="bodyMd">
+                      <ExpandableText
+                        collapsedNumberOfLines={note.locationText ? 3 : 4}
+                        interactionMode="tap-text"
+                        variant="bodyMd"
+                      >
                         {buildNotePreview(note.content)}
-                      </Text>
+                      </ExpandableText>
                       {note.locationText ? (
                         <View style={styles.locationRow}>
                           <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />

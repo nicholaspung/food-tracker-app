@@ -34,12 +34,19 @@ export function useCreateVisitDraftItems({
   const removeDraftItemPhoto = useCallback((itemId: string, uri: string) => {
     setDraftItems((currentItems) =>
       currentItems.map((item) =>
-        item.id === itemId
-          ? {
+        item.id !== itemId
+          ? item
+          : {
               ...item,
-              photos: item.photos.filter((photo) => photo.uri !== uri),
-            }
-          : item,
+              deletedPhotoIds: item.photos.reduce<string[]>(
+                (nextDeletedPhotoIds, photo) =>
+                  photo.id === uri && photo.kind === 'existing'
+                    ? [...nextDeletedPhotoIds, photo.photoId]
+                    : nextDeletedPhotoIds,
+                item.deletedPhotoIds,
+              ),
+              photos: item.photos.filter((photo) => photo.id !== uri),
+            },
       ),
     );
   }, []);
@@ -75,7 +82,13 @@ export function useCreateVisitDraftItems({
   const draftPhotoCount = useMemo(
     () =>
       draftItems.reduce(
-        (totalCount, item) => totalCount + item.photos.length,
+        (totalCount, item) =>
+          totalCount +
+          item.photos.reduce(
+            (itemPhotoCount, photo) =>
+              itemPhotoCount + (photo.kind === 'new' ? 1 : 0),
+            0,
+          ),
         0,
       ),
     [draftItems],

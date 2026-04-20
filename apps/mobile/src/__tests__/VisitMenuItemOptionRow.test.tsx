@@ -1,0 +1,136 @@
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+
+import { VisitMenuItemOptionRow } from '../components/shared/VisitMenuItemOptionRow';
+
+const mockReact = React;
+const theme = {
+  colors: {
+    border: {
+      subtle: 'subtle-border',
+    },
+    status: {
+      successBg: 'success-background',
+      successBorder: 'success-border',
+    },
+    text: {
+      brand: 'brand',
+      muted: 'muted',
+      secondary: 'secondary',
+      success: 'success',
+    },
+  },
+  radii: {
+    md: 12,
+  },
+  spacing: {
+    sm: 12,
+    xs: 8,
+    xxs: 4,
+  },
+} as const;
+
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: (props: Record<string, unknown>) =>
+    mockReact.createElement('Ionicons', props),
+}));
+
+jest.mock('react-native', () => ({
+  Pressable: ({
+    children,
+    ...props
+  }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Pressable', props, children),
+  View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('View', props, children),
+}));
+
+jest.mock('../theme', () => ({
+  createThemedStyles:
+    (factory: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      factory(theme, ...args),
+  useTheme: () => theme,
+}));
+
+jest.mock('../ui', () => ({
+  Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Text', props, children),
+}));
+
+jest.mock('../components/shared/VisibilityBadge', () => ({
+  VisibilityBadge: (props: Record<string, unknown>) =>
+    mockReact.createElement('VisibilityBadge', props),
+}));
+
+describe('VisitMenuItemOptionRow', () => {
+  it('expands and collapses long descriptions without triggering the row selection handler', async () => {
+    const onPress = jest.fn();
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitMenuItemOptionRow
+          description="Long tasting description"
+          name="Iced Latte"
+          onPress={onPress}
+          optionTestID="menu-item-option"
+          selected={false}
+        />,
+      );
+    });
+
+    const descriptionText = renderer.root.findAll(
+      (node: { type: unknown; props: { children?: React.ReactNode } }) =>
+        node.type === 'Text' &&
+        node.props.children === 'Long tasting description',
+    )[0];
+
+    await act(async () => {
+      descriptionText.props.onTextLayout({
+        nativeEvent: {
+          lines: [{}, {}, {}],
+        },
+      });
+    });
+
+    const showMoreLabel = renderer.root.findByProps({ children: 'Show more' });
+    const stopPropagation = jest.fn();
+
+    await act(async () => {
+      showMoreLabel.parent.props.onPress({ stopPropagation });
+    });
+
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { children?: React.ReactNode; numberOfLines?: number } }) =>
+          node.type === 'Text' &&
+          node.props.children === 'Long tasting description' &&
+          node.props.numberOfLines === undefined,
+      ),
+    ).toHaveLength(1);
+
+    const showLessLabel = renderer.root.findByProps({ children: 'Show less' });
+
+    await act(async () => {
+      showLessLabel.parent.props.onPress({ stopPropagation: jest.fn() });
+    });
+
+    expect(
+      renderer.root.findAll(
+        (node: { type: unknown; props: { children?: React.ReactNode; numberOfLines?: number } }) =>
+          node.type === 'Text' &&
+          node.props.children === 'Long tasting description' &&
+          node.props.numberOfLines === 2,
+      ),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      renderer.root.findByProps({ testID: 'menu-item-option' }).props.onPress();
+    });
+
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+});

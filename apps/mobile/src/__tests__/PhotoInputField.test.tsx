@@ -83,7 +83,7 @@ describe('PhotoInputField', () => {
           attachments={[
             {
               id: 'photo-1',
-              name: 'latte.jpg',
+              label: 'Apr 20, 2026',
               onRemove: jest.fn(),
               uri: 'file:///latte.jpg',
             },
@@ -103,6 +103,7 @@ describe('PhotoInputField', () => {
     };
 
     expect(renderer.root.findByType('PhotoSourceActionCards').props.tone).toBe('muted');
+    expect(renderer.root.findByType('PhotoAttachmentRow').props.label).toBe('Apr 20, 2026');
     expect(json.children?.[1]?.children?.[0]?.type).toBe('PhotoAttachmentRow');
     expect(json.children?.[2]?.type).toBe('PhotoSourceActionCards');
   });

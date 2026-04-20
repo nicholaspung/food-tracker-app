@@ -7,7 +7,7 @@ import { Text } from '../../ui';
 
 interface PhotoAttachmentRowProps {
   uri: string;
-  name: string;
+  label: string;
   onRemove: () => void;
   onPress?: () => void;
   containerStyle?: StyleProp<ViewStyle>;
@@ -53,7 +53,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function PhotoAttachmentRow({
   uri,
-  name,
+  label,
   onRemove,
   onPress,
   containerStyle,
@@ -82,7 +82,7 @@ export function PhotoAttachmentRow({
     >
       <Image source={{ uri }} style={styles.thumbnail} />
       <Text ellipsizeMode="tail" numberOfLines={1} style={styles.name} variant="bodySm">
-        {name}
+        {label}
       </Text>
       <Pressable
         accessibilityLabel="Remove attached photo"

@@ -7,7 +7,6 @@ import type {
   NoteRecord,
   RestaurantListItemRecord,
   RestaurantListRecord,
-  VisitItem,
   VisitRecord,
 } from '../models';
 
@@ -30,7 +29,15 @@ export interface CreateVisitInput {
 export interface UpdateVisitInput {
   restaurantId?: string;
   restaurantName?: string;
-  items?: VisitItem[];
+  items?: {
+    id: string;
+    name: string;
+    rating: number;
+    description?: string;
+    notes?: string;
+    newPhotos?: VisitPhotoUploadInput[];
+    deletePhotoIds?: string[];
+  }[];
   visitedAt?: string;
   visibility?: 'friends' | 'private';
 }
@@ -495,6 +502,7 @@ export {
   createVisit,
   deleteVisit,
   getVisitById,
+  listVisitItemPhotos,
   updateVisit,
 } from './visitsStore';
 

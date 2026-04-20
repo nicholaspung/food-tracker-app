@@ -79,6 +79,7 @@ jest.mock('../components/shared', () => {
     ConfirmDestructiveModal: () => null,
     EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
     ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
+    ExpandableText: jest.requireActual('../components/shared/ExpandableText').ExpandableText,
     FeatureDetailScreenScaffold: ({ children }: { children?: React.ReactNode }) =>
       mockReact.createElement(mockReact.Fragment, null, children),
     HeaderAccessoryButton: () => null,
@@ -453,6 +454,65 @@ describe('NotesScreen', () => {
     expect(locationText).toBeDefined();
     expect(locationText.props.numberOfLines).toBe(1);
     expect(locationText.props.variant).toBe('bodySm');
+  });
+
+  it('expands note previews inline while keeping the location row and actions available', async () => {
+    let renderer: any = null;
+
+    mockNotesQueries({
+      baseItems: [
+        buildNote({
+          content: 'First line\nSecond line\nThird line',
+          locationText: 'Window booth',
+        }),
+      ],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    const previewText = renderer?.root.findAll(
+      (node: any) =>
+        node.type === 'Text' &&
+        node.props.variant === 'bodyMd' &&
+        node.props.children === 'First line\nSecond line\nThird line',
+    )[0];
+
+    await act(async () => {
+      previewText.props.onTextLayout({
+        nativeEvent: {
+          lines: [{}, {}, {}, {}],
+        },
+      });
+    });
+
+    await act(async () => {
+      renderer?.root.findByProps({ accessibilityHint: 'Shows the full text' }).props.onPress();
+    });
+
+    const expandedPreviewText = renderer?.root.findAll(
+      (node: any) =>
+        node.type === 'Text' &&
+        node.props.variant === 'bodyMd' &&
+        node.props.children === 'First line\nSecond line\nThird line',
+    )[0];
+    const locationText = renderer?.root.findAll(
+      (node: any) => node.type === 'Text' && node.props.children === 'Window booth',
+    )[0];
+
+    expect(expandedPreviewText.props.numberOfLines).toBeUndefined();
+    expect(locationText.props.numberOfLines).toBe(1);
+    expect(renderer?.root.findByProps({ testID: 'note-use-button-note_1' })).toBeDefined();
+    expect(renderer?.root.findByProps({ testID: 'note-edit-button-note_1' })).toBeDefined();
+    expect(renderer?.root.findByProps({ testID: 'note-delete-button-note_1' })).toBeDefined();
   });
 
   it('omits the location row when location text is empty and keeps the four-line preview clamp', async () => {

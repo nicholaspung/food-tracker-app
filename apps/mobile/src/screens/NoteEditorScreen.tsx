@@ -28,6 +28,7 @@ import {
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
+import { formatPhotoAttachmentDateLabel } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
 import { resolvePhotoUploadQuotaUi } from '../lib/usageUiRules';
@@ -45,11 +46,12 @@ interface DraftNotePhoto {
   uri: string;
   name: string;
   mimeType: string;
+  label: string;
 }
 
 interface NotePhotoAttachment {
   id: string;
-  name: string;
+  label: string;
   thumbnailUri: string;
   viewerUri: string;
   kind: 'existing' | 'new';
@@ -209,7 +211,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       ...existingPhotos.map((photo) => ({
         id: photo.id,
         kind: 'existing' as const,
-        name: photo.photo,
+        label: formatPhotoAttachmentDateLabel(photo.created),
         thumbnailUri: buildPocketBaseFileUrl({
           collectionName: 'note_photos',
           recordId: photo.id,
@@ -225,7 +227,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       ...newPhotos.map((photo) => ({
         id: photo.id,
         kind: 'new' as const,
-        name: photo.name,
+        label: photo.label,
         thumbnailUri: photo.uri,
         viewerUri: photo.uri,
       })),
@@ -288,7 +290,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     () =>
       photoAttachments.map((photo, index) => ({
         id: `${photo.kind}-${photo.id}`,
-        name: photo.name,
+        label: photo.label,
         uri: photo.thumbnailUri,
         accessibilityLabel: `View attached photo ${index + 1} full screen`,
         onPress: () => {
@@ -357,6 +359,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     mimeType?: string | null;
   }[]) => {
     const batchId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const selectionLabel = formatPhotoAttachmentDateLabel(new Date());
     const nextPhotos: DraftNotePhoto[] = [];
 
     for (const [index, asset] of assets.entries()) {
@@ -369,6 +372,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
       nextPhotos.push({
         id: `draft_photo_${batchId}_${index}`,
+        label: selectionLabel,
         ...nextPhoto,
       });
     }

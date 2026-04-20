@@ -4,6 +4,7 @@ import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { createThemedStyles } from '../../theme';
 import { Card, Text } from '../../ui';
 import type { CardTone } from '../../ui';
+import { ExpandableText } from './ExpandableText';
 
 interface LinkedNoteLike {
   title: string;
@@ -57,9 +58,14 @@ export function LinkedNoteCard({
         ) : note ? (
           <>
             <Text tone="secondary">{note.title}</Text>
-            <Text numberOfLines={4} tone="secondary" variant="bodySm">
+            <ExpandableText
+              collapsedNumberOfLines={4}
+              interactionMode="tap-text"
+              tone="secondary"
+              variant="bodySm"
+            >
               {note.content}
-            </Text>
+            </ExpandableText>
           </>
         ) : (
           <Text tone="warning">Note details unavailable. You can still continue.</Text>

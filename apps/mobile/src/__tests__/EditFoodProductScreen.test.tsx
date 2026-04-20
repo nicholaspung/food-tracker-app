@@ -263,7 +263,7 @@ describe('EditFoodProductScreen', () => {
     expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
       expect.objectContaining({
         id: 'photo-1',
-        name: 'iced-coffee.jpg',
+        label: 'Apr 12, 2026',
         uri: 'pb://photo-1/iced-coffee.jpg?thumb=100x100',
       }),
     ]);
@@ -300,7 +300,7 @@ describe('EditFoodProductScreen', () => {
     expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
       expect.objectContaining({
         id: 'file:///replacement.jpg',
-        name: 'replacement.jpg',
+        label: 'Apr 15, 2026',
         uri: 'file:///replacement.jpg',
       }),
     ]);
@@ -318,7 +318,7 @@ describe('EditFoodProductScreen', () => {
     expect(renderer.root.findByType('PhotoInputField').props.attachments).toEqual([
       expect.objectContaining({
         id: 'photo-1',
-        name: 'iced-coffee.jpg',
+        label: 'Apr 12, 2026',
         uri: 'pb://photo-1/iced-coffee.jpg?thumb=100x100',
       }),
     ]);

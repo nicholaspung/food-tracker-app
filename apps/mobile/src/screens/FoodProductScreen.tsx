@@ -31,6 +31,7 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   formatDateToLocalDateString,
+  formatPhotoAttachmentDateLabel,
 } from '../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { buildLocalPhotoFile } from '../lib/photoFiles';
@@ -49,6 +50,10 @@ import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
 
 type FoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'FoodProduct'>;
+interface DraftFoodProductPhoto {
+  label: string;
+  upload: VisitPhotoUploadInput;
+}
 
 const FOOD_PRODUCT_RATED_BEFORE_KEY = 'ui.foodProduct.hasRatedBefore';
 const FREE_MONTHLY_PHOTO_LIMIT = 5;
@@ -107,7 +112,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
   const [form, setForm] = useState<FoodProductFormValues>(() => buildDefaultFoodProductForm());
   const [detectedItemDateValue, setDetectedItemDateValue] = useState<string | null>(null);
-  const [photo, setPhoto] = useState<VisitPhotoUploadInput | null>(null);
+  const [photo, setPhoto] = useState<DraftFoodProductPhoto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasRatedBefore, setHasRatedBefore] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
@@ -156,8 +161,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     setDidApplyNotePrefill(true);
   }, [didApplyNotePrefill, linkedNoteQuery.data]);
 
-  const applyPhotoCaptureDate = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
-    const captureDate = await resolvePhotoCaptureDate(asset);
+  const applyPhotoCaptureDate = useCallback((captureDate: Date | null) => {
     if (!captureDate) {
       return;
     }
@@ -185,16 +189,20 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         }
 
         const pendingAsset = pendingResult.assets?.[0];
-        const nextPhoto = pendingAsset ? buildDraftPhotoInput(pendingAsset) : null;
-        if (!nextPhoto) {
+        const nextUpload = pendingAsset ? buildDraftPhotoInput(pendingAsset) : null;
+        if (!nextUpload) {
           return;
         }
 
-        if (pendingAsset) {
-          await applyPhotoCaptureDate(pendingAsset);
-        }
+        const captureDate = pendingAsset
+          ? await resolvePhotoCaptureDate(pendingAsset)
+          : null;
+        applyPhotoCaptureDate(captureDate);
         setIsPhotoViewerVisible(false);
-        setPhoto(nextPhoto);
+        setPhoto({
+          label: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
+          upload: nextUpload,
+        });
         trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
           photoSource: 'gallery',
           restoredPendingResult: true,
@@ -287,15 +295,19 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       }
 
       const selectedAsset = pickerResult.assets?.[0];
-      const nextPhoto = selectedAsset ? buildDraftPhotoInput(selectedAsset) : null;
-      if (!nextPhoto) {
+      const nextUpload = selectedAsset ? buildDraftPhotoInput(selectedAsset) : null;
+      if (!nextUpload) {
         throw new Error('Could not read the selected image.');
       }
 
       setDetectedItemDateValue(null);
-      await applyPhotoCaptureDate(selectedAsset);
+      const captureDate = await resolvePhotoCaptureDate(selectedAsset);
+      applyPhotoCaptureDate(captureDate);
       setIsPhotoViewerVisible(false);
-      setPhoto(nextPhoto);
+      setPhoto({
+        label: formatPhotoAttachmentDateLabel(captureDate ?? new Date()),
+        upload: nextUpload,
+      });
       trackObservabilityEvent('FOOD_PRODUCT_PHOTO_PICKED', {
         photoSource: source,
         source: 'FoodProductScreen',
@@ -347,7 +359,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     try {
       const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
       const foodProductInput = buildCreateFoodProductInput(form, {
-        photo: photo ?? undefined,
+        photo: photo?.upload,
         sourceNoteId,
       });
 
@@ -461,9 +473,9 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   const photoInputAttachments = photo
     ? [
         {
-          id: photo.uri,
-          name: photo.name,
-          uri: photo.uri,
+          id: photo.upload.uri,
+          label: photo.label,
+          uri: photo.upload.uri,
           accessibilityLabel: 'View attached photo full screen',
           onPress: () => {
             setIsPhotoViewerVisible(true);
@@ -587,7 +599,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         onRequestClose={() => {
           setIsPhotoViewerVisible(false);
         }}
-        urls={photo ? [photo.uri] : []}
+        urls={photo ? [photo.upload.uri] : []}
         visible={Boolean(photo) && isPhotoViewerVisible}
       />
     </FeatureFormScreenScaffold>

@@ -16,7 +16,6 @@ import {
 } from '../../features';
 import {
   createVisitApiMutationInput,
-  updateVisitApiMutationInput,
 } from '../../features/store/featureOutboxOperations';
 import { notesQueryKeys } from '../../features/store/notesQuery';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
@@ -74,7 +73,12 @@ export function useCreateVisitSubmission({
   const trackWriteTelemetry = useWriteTelemetry();
 
   const invalidateVisitQueries = useCallback(
-    async (options?: { visitId?: string; includeUsage?: boolean; sourceNoteId?: string }) => {
+    async (options?: {
+      visitId?: string;
+      includeUsage?: boolean;
+      includeVisitPhotos?: boolean;
+      sourceNoteId?: string;
+    }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
@@ -93,6 +97,20 @@ export function useCreateVisitSubmission({
               queryClient.invalidateQueries({
                 queryKey: ['feature', 'usage', 'monthly'],
               }),
+            ]
+          : []),
+        ...(options?.includeVisitPhotos
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: ['feature', 'visitPhotos'],
+              }),
+              ...(options.visitId
+                ? [
+                    queryClient.invalidateQueries({
+                      queryKey: ['feature', 'visitPhotos', 'visit', options.visitId],
+                    }),
+                  ]
+                : []),
             ]
           : []),
         ...(options?.sourceNoteId
@@ -145,7 +163,10 @@ export function useCreateVisitSubmission({
       rating: item.rating,
       description: item.description.trim() || undefined,
       notes: item.notes.trim() || undefined,
-      photos: item.photos,
+      newPhotos: item.photos.flatMap((photo) =>
+        photo.kind === 'new' ? [photo.upload] : [],
+      ),
+      deletePhotoIds: item.deletedPhotoIds,
     }));
 
     if (parsedItems.some((item) => item.rating < 1 || item.rating > 5)) {
@@ -159,7 +180,7 @@ export function useCreateVisitSubmission({
       monthlyUsageSnapshot
     ) {
       const photosInSubmission = parsedItems.reduce(
-        (totalCount, item) => totalCount + item.photos.length,
+        (totalCount, item) => totalCount + item.newPhotos.length,
         0,
       );
       const estimatedTotalAfterSubmit =
@@ -187,13 +208,19 @@ export function useCreateVisitSubmission({
     const visitInput = {
       restaurantId: restaurantId?.trim() || undefined,
       restaurantName: trimmedRestaurant,
-      items: parsedItems,
+      items: parsedItems.map((item) => ({
+        name: item.name,
+        rating: item.rating,
+        description: item.description,
+        notes: item.notes,
+        photos: item.newPhotos,
+      })),
       visitedAt: localDateStringToUTC(trimmedVisitDate),
       visibility: visitVisibility,
       source: 'visit' as const,
       sourceNoteId,
     };
-    const hasPhotoUploads = parsedItems.some((item) => item.photos.length > 0);
+    const hasPhotoUploads = parsedItems.some((item) => item.newPhotos.length > 0);
 
     setErrorMessage(null);
     setIsSubmitting(true);
@@ -201,6 +228,12 @@ export function useCreateVisitSubmission({
     try {
       const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
       if (isEditMode && editVisitId) {
+        const hasNewPhotoUploads = parsedItems.some(
+          (item) => item.newPhotos.length > 0,
+        );
+        const hasPhotoChanges =
+          hasNewPhotoUploads ||
+          parsedItems.some((item) => item.deletePhotoIds.length > 0);
         const visitUpdateInput: UpdateVisitInput = {
           restaurantId: restaurantId?.trim() || undefined,
           restaurantName: trimmedRestaurant,
@@ -210,6 +243,8 @@ export function useCreateVisitSubmission({
             rating: item.rating,
             description: item.description,
             notes: item.notes,
+            newPhotos: item.newPhotos,
+            deletePhotoIds: item.deletePhotoIds,
           })),
           visitedAt: localDateStringToUTC(trimmedVisitDate),
           visibility: visitVisibility,
@@ -218,20 +253,31 @@ export function useCreateVisitSubmission({
         const updateResult = await writeFeature({
           operationName: 'visit.update',
           offline: {
-            strategy: 'api',
-            input: updateVisitApiMutationInput(editVisitId, visitUpdateInput),
+            strategy: 'outbox',
+            payload: {
+              visitId: editVisitId,
+              updates: visitUpdateInput,
+            },
           },
           execute: () => updateVisit(editVisitId, visitUpdateInput),
         });
 
         if (updateResult.status === 'queued') {
-          await invalidateVisitQueries({ visitId: editVisitId });
+          await invalidateVisitQueries({
+            visitId: editVisitId,
+            includeUsage: hasNewPhotoUploads,
+            includeVisitPhotos: hasPhotoChanges,
+          });
           showQueuedOfflineAlert('Visit update');
           navigateAfterEdit();
           return;
         }
 
-        await invalidateVisitQueries({ visitId: editVisitId });
+        await invalidateVisitQueries({
+          visitId: editVisitId,
+          includeUsage: hasNewPhotoUploads,
+          includeVisitPhotos: hasPhotoChanges,
+        });
         navigateAfterEdit();
         return;
       }
@@ -314,7 +360,7 @@ export function useCreateVisitSubmission({
       trackObservabilityEvent('Visit Creation Completed', {
         creationMethod: 'manual',
         hasNotes: parsedItems.some((item) => Boolean(item.notes)),
-        hasPhotos: parsedItems.some((item) => item.photos.length > 0),
+        hasPhotos: parsedItems.some((item) => item.newPhotos.length > 0),
         itemCount: parsedItems.length,
         source: 'CreateVisitScreen',
         visitVisibility,

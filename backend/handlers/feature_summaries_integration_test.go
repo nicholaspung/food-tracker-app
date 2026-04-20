@@ -1958,6 +1958,7 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 			FoodProduct *struct {
 				ID             string `json:"id"`
 				RestaurantName string `json:"restaurantName"`
+				LocationText   string `json:"locationText"`
 				ItemName       string `json:"itemName"`
 				UserName       string `json:"userName"`
 			} `json:"foodProduct"`
@@ -2001,7 +2002,9 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	if payload.Items[0].Visit.Items[0].ID != friendVisitItem.Id || payload.Items[0].Visit.Items[0].Notes != "Great broth" {
 		t.Fatalf("expected visit item details, got %#v", payload.Items[0].Visit.Items)
 	}
-	if payload.Items[1].FoodProduct.RestaurantName != "Night Market" || payload.Items[1].FoodProduct.UserName != "Friend User" {
+	if payload.Items[1].FoodProduct.RestaurantName != "Night Market" ||
+		payload.Items[1].FoodProduct.LocationText != "Night Market" ||
+		payload.Items[1].FoodProduct.UserName != "Friend User" {
 		t.Fatalf("expected food product restaurant and user, got %#v", payload.Items[1].FoodProduct)
 	}
 	if payload.Items[2].Visit.ModerationStatus != "under_review" {

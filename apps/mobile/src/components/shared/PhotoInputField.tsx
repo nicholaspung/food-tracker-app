@@ -9,7 +9,7 @@ import { PhotoSourceActionCards } from './PhotoSourceActionCards';
 
 export interface PhotoInputFieldAttachment {
   id: string;
-  name: string;
+  label: string;
   uri: string;
   accessibilityLabel?: string;
   onPress?: () => void;
@@ -76,7 +76,7 @@ export function PhotoInputField({
         <PhotoAttachmentRow
           accessibilityLabel={attachment.accessibilityLabel}
           key={attachment.id}
-          name={attachment.name}
+          label={attachment.label}
           onPress={attachment.onPress}
           onRemove={attachment.onRemove}
           uri={attachment.uri}

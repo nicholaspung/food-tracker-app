@@ -5,6 +5,7 @@ import { buildPocketBaseFileUrl, type FoodProductRecord } from '../../features';
 import { getRatingColor, getRatingLabel } from '../../lib/ratingConstants';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
+import { ExpandableText } from './ExpandableText';
 import type { HomeFeedPhotoRecord } from './HomeFeedVisitEntryCard';
 import { StatusPill } from './StatusPill';
 
@@ -175,6 +176,9 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     minHeight: 56,
   },
+  foodItemContentCompact: {
+    minHeight: 0,
+  },
   metadataText: {
     color: theme.colors.text.secondary,
   },
@@ -198,6 +202,9 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 6,
     justifyContent: 'center',
     minHeight: 56,
+  },
+  foodItemRightCompact: {
+    minHeight: 0,
   },
   ratingDot: {
     borderRadius: theme.radii.pill,
@@ -240,6 +247,7 @@ export function HomeFoodProductEntryCard({
 
   const primaryPhoto = photos[0] ?? null;
   const photoThumb = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
+  const hasPhoto = Boolean(photoThumb);
   const categoryLabel = resolvedFoodProduct.itemCategory
     ? formatCategoryLabel(resolvedFoodProduct.itemCategory)
     : null;
@@ -326,7 +334,10 @@ export function HomeFoodProductEntryCard({
           </Pressable>
         ) : null}
 
-        <View style={styles.foodItemContent}>
+        <View
+          style={[styles.foodItemContent, !hasPhoto && styles.foodItemContentCompact]}
+          testID="home-food-product-entry-content"
+        >
           {locationText ? (
             <View style={styles.metadataRow}>
               <Ionicons
@@ -341,13 +352,21 @@ export function HomeFoodProductEntryCard({
             </View>
           ) : null}
           {resolvedFoodProduct.notes ? (
-            <Text numberOfLines={2} style={styles.foodItemNotes} variant="label">
-              "{resolvedFoodProduct.notes}"
-            </Text>
+            <ExpandableText
+              collapsedNumberOfLines={2}
+              interactionMode="tap-text"
+              style={styles.foodItemNotes}
+              variant="label"
+            >
+              {`"${resolvedFoodProduct.notes}"`}
+            </ExpandableText>
           ) : null}
         </View>
 
-        <View style={styles.foodItemRight}>
+        <View
+          style={[styles.foodItemRight, !hasPhoto && styles.foodItemRightCompact]}
+          testID="home-food-product-entry-right"
+        >
           <View style={styles.ratingRow}>
             <View
               style={[
