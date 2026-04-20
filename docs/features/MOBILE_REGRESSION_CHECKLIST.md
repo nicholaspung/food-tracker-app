@@ -77,8 +77,8 @@ Use [`docs/operations/MOBILE_SDK_55_SIGNOFF.md`](../operations/MOBILE_SDK_55_SIG
 - [ ] `P1` Visit photos open in the photo viewer.
 - [ ] `P0` A visit can be opened for editing from Home.
 - [ ] `P0` A visit can be deleted from Home.
-- [ ] `P0` A quick track can be opened for editing from Home.
-- [ ] `P0` A quick track can be deleted from Home.
+- [ ] `P0` A food product can be opened for editing from Home.
+- [ ] `P0` A food product can be deleted from Home.
 - [ ] `P1` A single dish photo can be shared from Home.
 - [ ] `P1` A multi-item visit can be sent to share customization.
 - [ ] `P1` A pending friend suggestion can be accepted from Home.
@@ -88,7 +88,7 @@ Use [`docs/operations/MOBILE_SDK_55_SIGNOFF.md`](../operations/MOBILE_SDK_55_SIG
 
 - [ ] `P0` Add screen opens and shows all primary entry options.
 - [ ] `P0` Add screen navigates to create visit.
-- [ ] `P0` Add screen navigates to quick track.
+- [ ] `P0` Add screen navigates to food product.
 - [ ] `P0` Add screen navigates to note editor.
 - [ ] `P0` Add screen navigates to photo processing.
 - [ ] `P1` Add screen navigates to notes management.
@@ -113,29 +113,29 @@ Use [`docs/operations/MOBILE_SDK_55_SIGNOFF.md`](../operations/MOBILE_SDK_55_SIG
 - [ ] `P0` Edit visit saves updated restaurant name, item ratings, and notes.
 - [ ] `P0` Edit visit queues successfully offline.
 
-## Quick Track
+## Food Product
 
-- [ ] `P0` Quick track requires item name and valid date.
-- [ ] `P0` Quick track succeeds online.
-- [ ] `P0` Quick track queues successfully offline.
-- [ ] `P1` Quick track supports category, notes, location, and visibility.
-- [ ] `P1` Quick track can attach a photo from camera.
-- [ ] `P1` Quick track can attach a photo from photo library.
-- [ ] `P1` Quick track can capture current location.
-- [ ] `P1` Quick track can be created from a source note.
-- [ ] `P1` Quick track enforces photo upload limits for free users.
-- [ ] `P0` Edit quick track saves updated values.
-- [ ] `P0` Edit quick track queues successfully offline.
+- [ ] `P0` Food product requires item name and valid date.
+- [ ] `P0` Food product succeeds online.
+- [ ] `P0` Food product queues successfully offline.
+- [ ] `P1` Food product supports category, notes, location, and visibility.
+- [ ] `P1` Food product can attach a photo from camera.
+- [ ] `P1` Food product can attach a photo from photo library.
+- [ ] `P1` Food product can capture current location.
+- [ ] `P1` Food product can be created from a source note.
+- [ ] `P1` Food product enforces photo upload limits for free users.
+- [ ] `P0` Edit food product saves updated values.
+- [ ] `P0` Edit food product queues successfully offline.
 
 ## Photo Processing
 
 - [ ] `P1` Photo processing accepts multiple photos from the user.
 - [ ] `P1` Photo processing supports restaurant visit mode.
-- [ ] `P1` Photo processing supports quick track mode.
+- [ ] `P1` Photo processing supports food product mode.
 - [ ] `P1` Photo processing creates visit entries online.
 - [ ] `P1` Photo processing queues visit entries offline.
-- [ ] `P1` Photo processing creates quick tracks online.
-- [ ] `P1` Photo processing queues quick tracks offline.
+- [ ] `P1` Photo processing creates food products online.
+- [ ] `P1` Photo processing queues food products offline.
 - [ ] `P1` Photo processing can create menu items when needed.
 - [ ] `P1` Photo processing enforces photo upload limits for free users.
 
@@ -156,7 +156,7 @@ Use [`docs/operations/MOBILE_SDK_55_SIGNOFF.md`](../operations/MOBILE_SDK_55_SIG
 - [ ] `P1` Note editor can capture current location.
 - [ ] `P0` Note deletion succeeds online.
 - [ ] `P0` Note deletion queues successfully offline.
-- [ ] `P1` A note can launch quick track creation.
+- [ ] `P1` A note can launch food product creation.
 
 ## Friends
 

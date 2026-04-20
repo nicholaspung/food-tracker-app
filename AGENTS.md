@@ -66,7 +66,7 @@
 
 ## Offline Write Pattern
 
-- Required queue coverage for user-authored create/update/delete flows: visits, quick tracks, notes, lists/list items, bills, feedback messages, and friend actions.
+- Required queue coverage for user-authored create/update/delete flows: visits, food products, notes, lists/list items, bills, feedback messages, and friend actions.
 - For new or touched offline-capable flows, queue the actual replayable mutation payload (method/url/headers/body) through `SyncProvider`/offline queue primitives; do not rely on marker-only queue entries as the primary offline behavior.
 - If a touched flow still cannot be moved to true outbox replay in the same task, preserve existing behavior but document the gap in the task summary and avoid introducing new non-queued writes in those domains.
 - Keep queued writes idempotent and retry-safe; sync replay uses retry/backoff from `/Users/developer/programming/food-tracker-app/apps/mobile/src/offline`.
