@@ -47,8 +47,6 @@ import {
   getAdvancedSplitRawValue,
   inferEditSplitMode,
   isAdvancedSplitLocked,
-  normalizeFriendName,
-  normalizeNameKey,
   redistributeAdvancedSplits,
   resolveSplitTarget,
   roundToCurrency,
@@ -60,6 +58,7 @@ import {
   type DraftAdvancedSplitEntry,
   type DraftAdvancedSplitType,
   type DraftBillItem,
+  type DraftCustomParticipant,
   type OwedAmountEntry,
 } from './createBill/shared';
 import { useCreateBillParticipantsController } from './createBill/useCreateBillParticipantsController';
@@ -401,6 +400,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     normalizedFriendSearchQuery,
     participants,
     payerParticipantId,
+    customParticipants,
     selectedFriendIds,
     shouldShowFriendSearch,
     totalAcceptedFriends,
@@ -408,6 +408,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setFriendSearchQuery,
     setIsPayerDropdownOpen,
     setPayerParticipantId,
+    setCustomParticipants,
     setSelectedFriendIds,
   } = useCreateBillParticipantsController({
     currentUserDraftId,
@@ -483,45 +484,19 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         .filter((friend) => Boolean(friend.userId?.trim()))
         .map((friend) => [friend.userId as string, friend]),
     );
-    const friendByName = new Map<string, FriendRecord>();
-    const duplicateFriendNameKeys = new Set<string>();
-    acceptedFriends.forEach((friend) => {
-      const nameKey = normalizeNameKey(normalizeFriendName(friend));
-      if (!nameKey) {
-        return;
-      }
-
-      if (friendByName.has(nameKey)) {
-        duplicateFriendNameKeys.add(nameKey);
-        return;
-      }
-
-      friendByName.set(nameKey, friend);
-    });
     const nextSelectedFriendIds: string[] = [];
+    const nextCustomParticipants: DraftCustomParticipant[] = [];
     const draftIdByParticipantRecordId = new Map<string, string>();
     const nextParticipantRecordIdByDraftId: Record<string, string> = {};
     const nextOwedOverrides: Record<string, string> = {};
-    const unresolvedParticipants: string[] = [];
     let paidDraftParticipantId = '';
 
-    bill.participants.forEach((participant) => {
+    bill.participants.forEach((participant, participantIndex) => {
       let draftParticipantId = '';
       if (participant.userId && participant.userId === user?.id) {
         draftParticipantId = currentUserDraftId;
-      } else {
-        let friend: FriendRecord | undefined;
-        if (participant.userId) {
-          friend = friendByUserId.get(participant.userId);
-        }
-
-        if (!friend && participant.name.trim()) {
-          const participantNameKey = normalizeNameKey(participant.name);
-          if (!duplicateFriendNameKeys.has(participantNameKey)) {
-            friend = friendByName.get(participantNameKey);
-          }
-        }
-
+      } else if (participant.userId) {
+        const friend = friendByUserId.get(participant.userId);
         if (friend) {
           if (!nextSelectedFriendIds.includes(friend.id)) {
             nextSelectedFriendIds.push(friend.id);
@@ -531,8 +506,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       }
 
       if (!draftParticipantId) {
-        unresolvedParticipants.push(participant.name);
-        return;
+        draftParticipantId = `custom:${participant.id}`;
+        nextCustomParticipants.push({
+          id: draftParticipantId,
+          name: sanitizeParticipantName(participant.name, `Person ${participantIndex + 1}`),
+          userId: participant.userId?.trim() || undefined,
+        });
       }
 
       draftIdByParticipantRecordId.set(participant.id, draftParticipantId);
@@ -650,6 +629,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setSplitMode(inferredSplitMode);
     setBillTitle(bill.title);
     setSelectedFriendIds(nextSelectedFriendIds);
+    setCustomParticipants(nextCustomParticipants);
     setFriendSearchQuery('');
     setEqualTotalInput(toCurrencyInput(totalAmount));
     setDraftItemName('');
@@ -671,11 +651,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     setIsPayerDropdownOpen(false);
     setOwedAmountOverrides(nextOwedOverrides);
     setParticipantRecordIdByDraftId(nextParticipantRecordIdByDraftId);
-    setErrorMessage(
-      unresolvedParticipants.length > 0
-        ? 'Some bill participants are unavailable in your friend list and were omitted from edit mode.'
-        : null,
-    );
+    setErrorMessage(null);
     setIsEditHydrated(true);
   }, [
     acceptedFriends,
@@ -686,6 +662,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     isEditHydrated,
     isEditMode,
     setFriendSearchQuery,
+    setCustomParticipants,
     setIsPayerDropdownOpen,
     setPayerParticipantId,
     setSelectedFriendIds,
@@ -1146,6 +1123,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       reason,
       isEditMode,
       splitMode,
+      customParticipantCount: customParticipants.length,
+      participantCount: participants.length,
       selectedFriendCount: selectedFriendIds.length,
       itemCount: items.length,
     });
@@ -1521,13 +1500,18 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       return;
     }
 
-    if (selectedFriendIds.length === 0) {
-      trackSubmitValidationFailed('missing_friends');
-      setErrorMessage('Select at least one friend to split with.');
+    if (participants.length <= 1) {
+      trackSubmitValidationFailed('missing_participants');
+      setErrorMessage('Add at least one other person to split with.');
       return;
     }
 
-    if (participants.length !== selectedFriendIds.length + 1) {
+    if (
+      selectedFriendIds.some((friendId) => {
+        const friend = acceptedFriendById.get(friendId);
+        return !friend?.userId?.trim();
+      })
+    ) {
       trackSubmitValidationFailed('friend_resolution_failed');
       setErrorMessage('Could not resolve one or more selected friends. Refresh and try again.');
       return;
@@ -1961,6 +1945,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       </Card>
 
       <BillParticipantPickerSection
+        customParticipants={customParticipants}
         friendSearchQuery={friendSearchQuery}
         hasBlockingFriendsError={hasBlockingFriendsError}
         isFetchingNextPage={friendsQuery.isFetchingNextPage}
@@ -1972,11 +1957,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         totalAcceptedFriends={totalAcceptedFriends}
         visibleFriends={visibleFriends}
         onChangeFriendSearchQuery={setFriendSearchQuery}
-        onConfirmSelection={(nextSelectedFriendIds) => {
-          if (areStringArraysEqual(selectedFriendIds, nextSelectedFriendIds)) {
-            return;
-          }
-
+        onConfirmSelection={({ friendIds: nextSelectedFriendIds, customParticipants: nextCustomParticipants }) => {
           const previousSelectedFriendIds = new Set(selectedFriendIds);
           const nextSelectedFriendIdSet = new Set(nextSelectedFriendIds);
           const changedFriendIds = Array.from(
@@ -2000,7 +1981,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
             });
           });
 
-          setSelectedFriendIds(nextSelectedFriendIds);
+          if (!areStringArraysEqual(selectedFriendIds, nextSelectedFriendIds)) {
+            setSelectedFriendIds(nextSelectedFriendIds);
+          }
+
+          setCustomParticipants(nextCustomParticipants);
         }}
         onLoadMore={() => {
           void friendsQuery.fetchNextPage();

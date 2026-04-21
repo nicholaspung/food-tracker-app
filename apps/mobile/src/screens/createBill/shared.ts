@@ -32,6 +32,12 @@ export interface DraftParticipant {
   isCurrentUser: boolean;
 }
 
+export interface DraftCustomParticipant {
+  id: string;
+  name: string;
+  userId?: string;
+}
+
 export interface OwedAmountEntry {
   participant: DraftParticipant;
   inputValue: string;
