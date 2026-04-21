@@ -1373,6 +1373,15 @@ func getHomeFeedResponse(
 		return response, nil
 	}
 
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && strings.TrimSpace(userID) != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, userID)
+		if err != nil {
+			return response, err
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
 	visitIDs := make([]string, 0, len(rows))
 	quickTrackIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -1453,9 +1462,26 @@ func getHomeFeedResponse(
 
 	restaurantsByID := mapRecordsByID(restaurantRecords)
 	usersByID := mapRecordsByID(userRecords)
+	foodItemsByID := make(map[string]*core.Record, len(filteredVisitItems)+len(quickTrackRecords))
+	for _, item := range filteredVisitItems {
+		foodItemsByID[item.Id] = item
+	}
+	for _, item := range quickTrackRecords {
+		foodItemsByID[item.Id] = item
+	}
+	visitsByID := make(map[string]*core.Record, len(visitRecords)+len(linkedVisitRecords))
+	for _, visit := range visitRecords {
+		visitsByID[visit.Id] = visit
+	}
+	for _, visit := range linkedVisitRecords {
+		visitsByID[visit.Id] = visit
+	}
 
 	photoPreviews := make([]homeFeedPhotoPreviewResponse, 0, len(photoRecords))
 	for _, photo := range photoRecords {
+		if !canAccessVisitPhotoRecord(photo, foodItemsByID, visitsByID, userID, isAdmin, acceptedFriendIDs) {
+			continue
+		}
 		photoPreviews = append(photoPreviews, mapHomeFeedPhotoPreview(photo))
 	}
 	response.PhotoPreviews = photoPreviews

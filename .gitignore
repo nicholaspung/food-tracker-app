@@ -22,6 +22,7 @@ apps/mobile/e2e/.env.local
 apps/marketing/.dev-dist/
 apps/marketing/.verify-dist/
 backend/myapp
+backend/pocketbase_test
 .cache/
 
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/router"
@@ -92,11 +91,25 @@ func resolveRestaurantForWrite(
 	authRecord *core.Record,
 	input restaurantResolveInput,
 ) (*core.Record, error) {
+	viewerUserID := strings.TrimSpace(authRecord.Id)
+	isAdmin := authRecord.GetBool("isAdmin")
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && viewerUserID != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
+		if err != nil {
+			return nil, apis.NewApiError(500, "failed to resolve restaurant visibility", err)
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
 	trimmedRestaurantID := strings.TrimSpace(input.RestaurantID)
 	if trimmedRestaurantID != "" {
-		record, err := app.FindRecordById("restaurants", trimmedRestaurantID)
+		record, err := findAccessibleRestaurantByID(app, trimmedRestaurantID, viewerUserID, isAdmin, acceptedFriendIDs)
 		if err != nil {
-			return nil, apis.NewNotFoundError("restaurant not found", err)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, apis.NewNotFoundError("restaurant not found", nil)
+			}
+			return nil, apis.NewApiError(500, "failed to resolve restaurant", err)
 		}
 		return record, nil
 	}
@@ -107,9 +120,16 @@ func resolveRestaurantForWrite(
 	}
 
 	trimmedPlaceID := strings.TrimSpace(input.PlaceID)
-	existingRecord, err := findRestaurantByNormalizedKeys(app, trimmedName, trimmedPlaceID)
+	existingRecord, err := findAccessibleRestaurantByNormalizedKeys(
+		app,
+		viewerUserID,
+		isAdmin,
+		acceptedFriendIDs,
+		trimmedName,
+		trimmedPlaceID,
+	)
 	if err != nil {
-		return nil, err
+		return nil, apis.NewApiError(500, "failed to resolve restaurant", err)
 	}
 	if existingRecord != nil {
 		return existingRecord, nil
@@ -152,97 +172,25 @@ func resolveRestaurantForWrite(
 			return nil, err
 		}
 
-		existingRecord, lookupErr := findRestaurantByNormalizedKeys(app, trimmedName, trimmedPlaceID)
+		existingRecord, lookupErr := findAccessibleRestaurantByNormalizedKeys(
+			app,
+			viewerUserID,
+			isAdmin,
+			acceptedFriendIDs,
+			trimmedName,
+			trimmedPlaceID,
+		)
 		if lookupErr != nil {
-			return nil, lookupErr
+			return nil, apis.NewApiError(500, "failed to resolve restaurant", lookupErr)
 		}
 		if existingRecord != nil {
 			return existingRecord, nil
 		}
+
+		return nil, apis.NewApiError(409, "restaurant already exists", nil)
 	}
 
 	return record, nil
-}
-
-func findRestaurantByNormalizedKeys(
-	app core.App,
-	restaurantName string,
-	placeID string,
-) (*core.Record, error) {
-	trimmedPlaceID := strings.TrimSpace(placeID)
-	if trimmedPlaceID != "" {
-		record, err := findRestaurantByPlaceID(app, trimmedPlaceID)
-		if err != nil {
-			return nil, err
-		}
-		if record != nil {
-			return record, nil
-		}
-	}
-
-	trimmedName := strings.TrimSpace(restaurantName)
-	if trimmedName == "" {
-		return nil, nil
-	}
-
-	return findRestaurantByName(app, trimmedName)
-}
-
-func findRestaurantByPlaceID(app core.App, placeID string) (*core.Record, error) {
-	row := struct {
-		ID string `db:"id"`
-	}{}
-
-	err := app.DB().NewQuery(`
-		SELECT id
-		FROM restaurants
-		WHERE LOWER(TRIM(COALESCE(placeId, ''))) = {:normalizedPlaceId}
-		ORDER BY
-			CASE WHEN COALESCE(isGooglePlace, 0) = 1 THEN 0 ELSE 1 END,
-			updated DESC,
-			created DESC,
-			id ASC
-		LIMIT 1
-	`).
-		Bind(dbx.Params{"normalizedPlaceId": strings.ToLower(strings.TrimSpace(placeID))}).
-		One(&row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return app.FindRecordById("restaurants", row.ID)
-}
-
-func findRestaurantByName(app core.App, restaurantName string) (*core.Record, error) {
-	row := struct {
-		ID string `db:"id"`
-	}{}
-
-	err := app.DB().NewQuery(`
-		SELECT id
-		FROM restaurants
-		WHERE LOWER(TRIM(name)) = {:normalizedName}
-		ORDER BY
-			CASE WHEN TRIM(COALESCE(placeId, '')) != '' THEN 0 ELSE 1 END,
-			CASE WHEN COALESCE(isGooglePlace, 0) = 1 THEN 0 ELSE 1 END,
-			updated DESC,
-			created DESC,
-			id ASC
-		LIMIT 1
-	`).
-		Bind(dbx.Params{"normalizedName": strings.ToLower(strings.TrimSpace(restaurantName))}).
-		One(&row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return app.FindRecordById("restaurants", row.ID)
 }
 
 func resolveRestaurantWriteLocation(restaurantName string, location string) string {

@@ -26,7 +26,7 @@ type createMenuReviewRequest struct {
 }
 
 type menuReviewRequestResponse struct {
-	ID           string `json:"id"`
+	ID           string `json:"id,omitempty"`
 	RestaurantID string `json:"restaurantId"`
 	Status       string `json:"status"`
 	Reason       string `json:"reason,omitempty"`
@@ -110,13 +110,26 @@ func createOrReuseMenuReviewRequest(
 		return menuReviewRequestResponse{}, apis.NewBadRequestError("restaurantId is required", nil)
 	}
 
-	if _, err := app.FindRecordById("restaurants", restaurantID); err != nil {
+	viewerUserID := strings.TrimSpace(authRecord.Id)
+	isAdmin := authRecord.GetBool("isAdmin")
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && viewerUserID != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
+		if err != nil {
+			return menuReviewRequestResponse{}, apis.NewApiError(500, "failed to resolve restaurant visibility", err)
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
+	restaurantRecord, err := findAccessibleRestaurantByID(app, restaurantID, viewerUserID, isAdmin, acceptedFriendIDs)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return menuReviewRequestResponse{}, apis.NewNotFoundError("restaurant not found", nil)
 		}
 
-		return menuReviewRequestResponse{}, apis.NewNotFoundError("restaurant not found", err)
+		return menuReviewRequestResponse{}, apis.NewApiError(500, "failed to resolve restaurant", err)
 	}
+	restaurantID = restaurantRecord.Id
 
 	reason := strings.TrimSpace(requestBody.Reason)
 	if reason == "" {
@@ -131,11 +144,23 @@ func createOrReuseMenuReviewRequest(
 
 	existing, err := app.FindFirstRecordByFilter(
 		"menu_review_requests",
-		"restaurant = {:restaurantId} && status = 'pending'",
-		map[string]any{"restaurantId": restaurantID},
+		"restaurant = {:restaurantId} && status = 'pending' && requestedBy = {:userId}",
+		map[string]any{"restaurantId": restaurantID, "userId": viewerUserID},
 	)
 	if err == nil && existing != nil {
 		return buildMenuReviewRequestResponse(existing, true), nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return menuReviewRequestResponse{}, apis.NewApiError(500, "failed to check existing review requests", err)
+	}
+
+	existing, err = app.FindFirstRecordByFilter(
+		"menu_review_requests",
+		"restaurant = {:restaurantId} && status = 'pending' && requestedBy != {:userId}",
+		map[string]any{"restaurantId": restaurantID, "userId": viewerUserID},
+	)
+	if err == nil && existing != nil {
+		return buildMenuReviewRequestDedupedAck(restaurantID), nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return menuReviewRequestResponse{}, apis.NewApiError(500, "failed to check existing review requests", err)
@@ -148,18 +173,27 @@ func createOrReuseMenuReviewRequest(
 
 	record := core.NewRecord(collection)
 	record.Set("restaurant", restaurantID)
-	record.Set("requestedBy", authRecord.Id)
+	record.Set("requestedBy", viewerUserID)
 	record.Set("reason", reason)
 	record.Set("status", "pending")
 
 	if err := app.Save(record); err != nil {
 		existingAfterSave, lookupErr := app.FindFirstRecordByFilter(
 			"menu_review_requests",
-			"restaurant = {:restaurantId} && status = 'pending'",
-			map[string]any{"restaurantId": restaurantID},
+			"restaurant = {:restaurantId} && status = 'pending' && requestedBy = {:userId}",
+			map[string]any{"restaurantId": restaurantID, "userId": viewerUserID},
 		)
 		if lookupErr == nil && existingAfterSave != nil {
 			return buildMenuReviewRequestResponse(existingAfterSave, true), nil
+		}
+
+		existingAfterSave, lookupErr = app.FindFirstRecordByFilter(
+			"menu_review_requests",
+			"restaurant = {:restaurantId} && status = 'pending' && requestedBy != {:userId}",
+			map[string]any{"restaurantId": restaurantID, "userId": viewerUserID},
+		)
+		if lookupErr == nil && existingAfterSave != nil {
+			return buildMenuReviewRequestDedupedAck(restaurantID), nil
 		}
 
 		return menuReviewRequestResponse{}, apis.NewApiError(500, "failed to create review request", err)
@@ -178,20 +212,40 @@ func createMenuItemsFromScan(
 		return menuItemsFromScanResponse{}, apis.NewBadRequestError("restaurantId is required", nil)
 	}
 
-	if _, err := app.FindRecordById("restaurants", restaurantID); err != nil {
+	viewerUserID := strings.TrimSpace(authRecord.Id)
+	isAdmin := authRecord.GetBool("isAdmin")
+	acceptedFriendIDs := map[string]struct{}{}
+	if !isAdmin && viewerUserID != "" {
+		friendIDs, err := listAcceptedFriendIDs(app, viewerUserID)
+		if err != nil {
+			return menuItemsFromScanResponse{}, apis.NewApiError(500, "failed to resolve restaurant visibility", err)
+		}
+		acceptedFriendIDs = friendIDs
+	}
+
+	restaurantRecord, err := findAccessibleRestaurantByID(app, restaurantID, viewerUserID, isAdmin, acceptedFriendIDs)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return menuItemsFromScanResponse{}, apis.NewNotFoundError("restaurant not found", nil)
 		}
 
-		return menuItemsFromScanResponse{}, apis.NewNotFoundError("restaurant not found", err)
+		return menuItemsFromScanResponse{}, apis.NewApiError(500, "failed to resolve restaurant", err)
 	}
+	restaurantID = restaurantRecord.Id
 
 	resolvedNames, err := resolveMenuItemNamesFromScan(requestBody.ItemNames, requestBody.FallbackLabel)
 	if err != nil {
 		return menuItemsFromScanResponse{}, apis.NewBadRequestError(err.Error(), nil)
 	}
 
-	existingByNormalizedName, err := findExistingMenuItemsByNormalizedName(app, restaurantID, resolvedNames)
+	existingByNormalizedName, err := findExistingAccessibleMenuItemsByNormalizedName(
+		app,
+		restaurantRecord,
+		viewerUserID,
+		isAdmin,
+		acceptedFriendIDs,
+		resolvedNames,
+	)
 	if err != nil {
 		return menuItemsFromScanResponse{}, apis.NewApiError(500, "failed to load existing menu items", err)
 	}
@@ -216,12 +270,19 @@ func createMenuItemsFromScan(
 		record := core.NewRecord(menuItemsCollection)
 		record.Set("restaurant", restaurantID)
 		record.Set("name", itemName)
-		record.Set("createdBy", authRecord.Id)
+		record.Set("createdBy", viewerUserID)
 		record.Set("visibility", "friends")
 		record.Set("isFromOCR", true)
 
 		if err := app.Save(record); err != nil {
-			refetchedExisting, lookupErr := findExistingMenuItemsByNormalizedName(app, restaurantID, []string{itemName})
+			refetchedExisting, lookupErr := findExistingAccessibleMenuItemsByNormalizedName(
+				app,
+				restaurantRecord,
+				viewerUserID,
+				isAdmin,
+				acceptedFriendIDs,
+				[]string{itemName},
+			)
 			if lookupErr == nil && refetchedExisting[normalizedName] != nil {
 				existingByNormalizedName[normalizedName] = refetchedExisting[normalizedName]
 				response.ExistingItems = append(response.ExistingItems, buildMenuItemWorkflowResponse(refetchedExisting[normalizedName]))
@@ -308,15 +369,22 @@ func buildFallbackScannedItemNames(fallbackLabel string) []string {
 	return names
 }
 
-func findExistingMenuItemsByNormalizedName(
+func findExistingAccessibleMenuItemsByNormalizedName(
 	app core.App,
-	restaurantID string,
+	restaurantRecord *core.Record,
+	userID string,
+	isAdmin bool,
+	acceptedFriendIDs map[string]struct{},
 	itemNames []string,
 ) (map[string]*core.Record, error) {
+	if !canAccessRestaurantRecord(restaurantRecord, userID, isAdmin, acceptedFriendIDs) {
+		return map[string]*core.Record{}, nil
+	}
+
 	normalizedNames := make([]string, 0, len(itemNames))
 	seen := make(map[string]struct{}, len(itemNames))
 	params := dbx.Params{
-		"restaurantId": restaurantID,
+		"restaurantId": restaurantRecord.Id,
 	}
 	clauses := make([]string, 0, len(itemNames))
 
@@ -373,6 +441,9 @@ func findExistingMenuItemsByNormalizedName(
 
 			return nil, err
 		}
+		if !canAccessMenuItemRecord(record, userID, isAdmin, acceptedFriendIDs) {
+			continue
+		}
 
 		results[normalizedName] = record
 	}
@@ -393,6 +464,14 @@ func buildMenuReviewRequestResponse(record *core.Record, deduped bool) menuRevie
 		Deduped:      deduped,
 		Created:      record.GetString("created"),
 		Updated:      record.GetString("updated"),
+	}
+}
+
+func buildMenuReviewRequestDedupedAck(restaurantID string) menuReviewRequestResponse {
+	return menuReviewRequestResponse{
+		RestaurantID: restaurantID,
+		Status:       "pending",
+		Deduped:      true,
 	}
 }
 

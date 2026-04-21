@@ -2,6 +2,8 @@
 
 Yummy Recs is a multi-app workspace for the mobile product, admin console, backend, and public marketing pages.
 
+Proprietary software. Copyright (c) 2025-2026 Yummy Recs. All rights reserved. No permission is granted to use, copy, modify, distribute, or commercialize this code without prior written permission from Yummy Recs. Permission requests: legal@yummyrecs.com.
+
 ## Apps
 
 - `apps/mobile`: Expo + React Native mobile app

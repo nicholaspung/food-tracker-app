@@ -150,7 +150,10 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 			SavedListIDsByBookmarkLookupID map[string][]string `json:"savedListIdsByBookmarkLookupId"`
 		} `json:"bookmarkState"`
 		PhotoPreviews []struct {
-			ID string `json:"id"`
+			ID         string `json:"id"`
+			FoodItemID string `json:"food_item"`
+			OwnerName  string `json:"ownerName"`
+			Photo      string `json:"photo"`
 		} `json:"photoPreviews"`
 		ViewerLists []struct {
 			ID        string `json:"id"`
@@ -192,8 +195,14 @@ func TestRestaurantListDetailEndpointReturnsHydratedItemsBookmarkStateAndViewerL
 	if got := viewerPayload.BookmarkState.SavedListIDsByBookmarkLookupID[ownerFoodItemA.Id]; len(got) != 1 || got[0] != viewerSavedList.Id {
 		t.Fatalf("expected bookmark state for %s, got %#v", ownerFoodItemA.Id, viewerPayload.BookmarkState.SavedListIDsByBookmarkLookupID)
 	}
-	if len(viewerPayload.PhotoPreviews) != 0 {
-		t.Fatalf("expected viewer photo previews to be empty because photos are owner-only, got %#v", viewerPayload.PhotoPreviews)
+	if len(viewerPayload.PhotoPreviews) != 1 {
+		t.Fatalf("expected accepted friend to see one photo preview, got %#v", viewerPayload.PhotoPreviews)
+	}
+	if viewerPayload.PhotoPreviews[0].FoodItemID != ownerFoodItemA.Id || viewerPayload.PhotoPreviews[0].OwnerName != "List Owner" {
+		t.Fatalf("unexpected viewer photo preview payload: %#v", viewerPayload.PhotoPreviews[0])
+	}
+	if viewerPayload.PhotoPreviews[0].Photo != "test-photo.jpg" {
+		t.Fatalf("expected viewer photo preview filename test-photo.jpg, got %#v", viewerPayload.PhotoPreviews[0])
 	}
 	if len(viewerPayload.ViewerLists) != 1 || viewerPayload.ViewerLists[0].ID != viewerSavedList.Id || !viewerPayload.ViewerLists[0].IsDefault {
 		t.Fatalf("expected hydrated viewer save targets, got %#v", viewerPayload.ViewerLists)

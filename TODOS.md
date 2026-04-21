@@ -1,8 +1,6 @@
 # FEATURE TODOS (Existing)
 
 - maybe in scanning menu for items, double check if the restaurant name corresponds to the restaurant selected, and then if there's discrepancy, alert the user to let them know what they want to do (i.e. still proceed with the menu or cancel it)
-- add a feature that allows a user to input their receipt and be able to assign "friends" to each individual item, along with being able to add a tax percentage and tips to help split bills
-    - add ability to make split even more advanced by allowing user to assign tip split percentage according to "friend"
 - ability to see people's average scores according to all their records
     - ability to see people's average score according to food and restaurant type
     - in friends tab, it will show the average score for the user
@@ -17,8 +15,6 @@
 - add a map view to the home page
     - allow for user to toggle their own locations as well as their own friends
     - add a "toggleable bottom tray" that shows up with the list of visits records
-
-- in the friends tab, add another tab in the "friends/add friend" which will eventually then after each rating, then group can view everyone's ratings before the group eventually disappears, but everyone's ratings will be saved
 
 - add a way for the user to toggle a notification to be sent to the user to either process the note afterwards or to just generally notify the user to track what they just ate
 - when a user is selecting restaurants, currently, they will select a specific google maps location or restaurant they created. what happens when the user goes to a "chain" or similar restaurant names" to view what they ordered? how do we showcase this to the user?

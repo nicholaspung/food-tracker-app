@@ -121,6 +121,129 @@ func TestRestaurantUpsertEndpointPrefersPlaceIDMatch(t *testing.T) {
 	}
 }
 
+func TestRestaurantUpsertEndpointDoesNotReusePrivateNameMatchFromAnotherUser(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	requester, token := createAuthUser(t, server.app, false, true)
+
+	existing := seedRestaurantRecord(t, server.app, owner.Id, "Secret Noodles")
+	existing.Set("visibility", "private")
+	if err := server.app.Save(existing); err != nil {
+		t.Fatalf("failed to update restaurant visibility: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/restaurants/upsert",
+		token,
+		`{
+			"restaurantName":" secret noodles ",
+			"location":"Berkeley"
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload restaurantResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse restaurant payload: %v", err)
+	}
+
+	if payload.ID == existing.Id {
+		t.Fatalf("expected requester to get a new restaurant instead of private match %q", existing.Id)
+	}
+	if count := countRestaurantsByName(t, server.app, "Secret Noodles"); count != 2 {
+		t.Fatalf("expected 2 private restaurants with the same name after isolation, got %d", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "restaurants", "createdBy = {:userId}", map[string]any{"userId": requester.Id}); count != 1 {
+		t.Fatalf("expected requester to own exactly one restaurant, got %d", count)
+	}
+}
+
+func TestRestaurantUpsertEndpointDoesNotReusePrivatePlaceIDMatchFromAnotherUser(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	_, token := createAuthUser(t, server.app, false, true)
+
+	existing := seedRestaurantRecordWithPlaceID(t, server.app, owner.Id, "Secret Place", "place-999")
+	existing.Set("visibility", "private")
+	if err := server.app.Save(existing); err != nil {
+		t.Fatalf("failed to update restaurant visibility: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/restaurants/upsert",
+		token,
+		`{
+			"restaurantName":"Secret Place",
+			"placeId":"place-999"
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload restaurantResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse restaurant payload: %v", err)
+	}
+
+	if payload.ID == existing.Id {
+		t.Fatalf("expected requester to get a new restaurant instead of private place match %q", existing.Id)
+	}
+	if count := countRecordsByFilter(
+		t,
+		server.app,
+		"restaurants",
+		"placeId = 'place-999'",
+		nil,
+	); count != 2 {
+		t.Fatalf("expected 2 isolated restaurants with placeId place-999, got %d", count)
+	}
+}
+
+func TestRestaurantUpsertEndpointReusesFriendVisibleNameMatch(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	friend, token := createAuthUser(t, server.app, false, true)
+	createFriendshipRecord(t, server.app, owner.Id, friend.Id, "accepted")
+
+	existing := seedRestaurantRecord(t, server.app, owner.Id, "Friend Noodles")
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/restaurants/upsert",
+		token,
+		`{
+			"restaurantName":"friend noodles",
+			"location":"Oakland"
+		}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload restaurantResponsePayload
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse restaurant payload: %v", err)
+	}
+
+	if payload.ID != existing.Id {
+		t.Fatalf("expected requester to reuse friend-visible restaurant id %q, got %q", existing.Id, payload.ID)
+	}
+	if count := countRestaurantsByName(t, server.app, "Friend Noodles"); count != 1 {
+		t.Fatalf("expected 1 restaurant after friend-visible reuse, got %d", count)
+	}
+}
+
 func TestVisitCreateEndpointCreatesNestedRecords(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
 	user, token := createAuthUser(t, server.app, false, true)
@@ -187,6 +310,42 @@ func TestVisitCreateEndpointCreatesNestedRecords(t *testing.T) {
 	}
 	if count := countRestaurantsByName(t, server.app, "Noodle House"); count != 1 {
 		t.Fatalf("expected 1 restaurant, got %d", count)
+	}
+}
+
+func TestVisitCreateEndpointRejectsInaccessibleRestaurantID(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, _ := createAuthUser(t, server.app, false, true)
+	requester, token := createAuthUser(t, server.app, false, true)
+
+	existing := seedRestaurantRecord(t, server.app, owner.Id, "Private Bistro")
+	existing.Set("visibility", "private")
+	if err := server.app.Save(existing); err != nil {
+		t.Fatalf("failed to update restaurant visibility: %v", err)
+	}
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visits",
+		token,
+		`{
+			"restaurantId":"`+existing.Id+`",
+			"restaurantName":"Private Bistro",
+			"visitedAt":"2026-04-05T18:00:00Z",
+			"visibility":"friends",
+			"items":[
+				{"name":"Blocked Item","rating":4}
+			]
+		}`,
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
+	}
+
+	if count := countRecordsByFilter(t, server.app, "visits", "user = {:userId}", map[string]any{"userId": requester.Id}); count != 0 {
+		t.Fatalf("expected no requester visit to be created, got %d", count)
 	}
 }
 

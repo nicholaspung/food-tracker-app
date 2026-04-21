@@ -1567,40 +1567,6 @@ func orderVisitResponseItems(items []visitItemResponse, prioritizedItemIDs []str
 	return orderedItems
 }
 
-func canAccessVisitRecord(
-	record *core.Record,
-	userID string,
-	isAdmin bool,
-	acceptedFriendIDs map[string]struct{},
-) bool {
-	if record == nil {
-		return false
-	}
-
-	if isAdmin {
-		return true
-	}
-
-	ownerID := strings.TrimSpace(record.GetString("user"))
-	status := record.GetString("moderationStatus")
-	if ownerID == userID {
-		return isOwnerAccessibleModerationStatus(status)
-	}
-
-	if !isVisibleModerationStatus(status) {
-		return false
-	}
-
-	switch strings.TrimSpace(record.GetString("visibility")) {
-	case "public":
-		return true
-	case "friends":
-		return hasAcceptedFriend(acceptedFriendIDs, ownerID)
-	default:
-		return false
-	}
-}
-
 func listBillParticipants(app core.App, billID string) ([]*core.Record, error) {
 	return app.FindRecordsByFilter("bill_participants", "bill = {:billId}", "created", 200, 0, dbx.Params{
 		"billId": billID,

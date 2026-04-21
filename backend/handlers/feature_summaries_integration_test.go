@@ -1839,7 +1839,7 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	server := newPreparedServer(t, handlers.RegisterFeatureSummaryHandlers)
 	user, token := createAuthUser(t, server.app, false, false)
 	friend, _ := createAuthUser(t, server.app, false, false)
-	stranger, _ := createAuthUser(t, server.app, false, false)
+	stranger, strangerToken := createAuthUser(t, server.app, false, false)
 
 	user.Set("name", "Owner User")
 	friend.Set("name", "Friend User")
@@ -2024,6 +2024,43 @@ func TestHomeFeedEndpointReturnsMixedEntriesAndPhotoPreviews(t *testing.T) {
 	}
 	if photoByFoodItemID[friendQuickTrack.Id] != "test-photo.jpg" {
 		t.Fatalf("expected food product photo preview, got %#v", photoByFoodItemID)
+	}
+
+	strangerResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodGet,
+		"/api/home-feed?page=1&pageSize=10&scope=all",
+		strangerToken,
+		"",
+	)
+	if strangerResponse.Code != http.StatusOK {
+		t.Fatalf("expected stranger response 200 OK, got %d: %s", strangerResponse.Code, strangerResponse.Body.String())
+	}
+
+	var strangerPayload struct {
+		Items []struct {
+			Source string `json:"source"`
+			Visit  *struct {
+				ID string `json:"id"`
+			} `json:"visit"`
+		} `json:"items"`
+		PhotoPreviews []struct {
+			FoodItemID string `json:"food_item"`
+		} `json:"photoPreviews"`
+	}
+	if err := json.Unmarshal(strangerResponse.Body.Bytes(), &strangerPayload); err != nil {
+		t.Fatalf("failed to parse stranger response JSON: %v; body=%s", err, strangerResponse.Body.String())
+	}
+
+	if len(strangerPayload.Items) != 1 || strangerPayload.Items[0].Visit == nil {
+		t.Fatalf("expected stranger to only see their own visit, got %#v", strangerPayload.Items)
+	}
+	if strangerPayload.Items[0].Visit.ID == friendVisit.Id {
+		t.Fatalf("expected stranger feed to exclude friend visit, got %#v", strangerPayload.Items)
+	}
+	if len(strangerPayload.PhotoPreviews) != 0 {
+		t.Fatalf("expected stranger to see no leaked photo previews, got %#v", strangerPayload.PhotoPreviews)
 	}
 
 	searchResponse := performJSONRequest(
