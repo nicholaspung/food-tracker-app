@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -64,6 +64,11 @@ import {
 import { useCreateBillParticipantsController } from './createBill/useCreateBillParticipantsController';
 
 type CreateBillScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBill'>;
+type CreateBillExitMethod =
+  | 'header_back'
+  | 'secondary_cancel'
+  | 'system_back_or_gesture'
+  | 'programmatic_navigation';
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -383,6 +388,10 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<DraftBillItem | null>(null);
+  const hasTrackedFlowOpenRef = useRef(false);
+  const hasTrackedFlowExitRef = useRef(false);
+  const hasCompletedFlowRef = useRef(false);
+  const exitMethodRef = useRef<CreateBillExitMethod | null>(null);
 
   const currentUserName = sanitizeParticipantName(
     user?.name?.trim() || user?.email?.split('@')[0] || 'You',
@@ -1492,6 +1501,104 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
     : 'Build a split bill and confirm who owes what.';
   const primaryActionLabel = isCreating ? (isEditMode ? 'Saving...' : 'Creating...') : (isEditMode ? 'Save Bill' : 'Create Bill');
   const errorToastTitle = isEditMode ? 'Save bill failed' : 'Create bill failed';
+  const hasUnsavedChanges = useMemo(() => {
+    if (isEditMode) {
+      if (!isEditHydrated || !billQuery.data) {
+        return false;
+      }
+
+      return (
+        billTitle.trim() !== billQuery.data.title.trim() ||
+        splitMode !== inferEditSplitMode(billQuery.data) ||
+        participants.length !== billQuery.data.participants.length ||
+        items.length !== billQuery.data.items.length ||
+        payerParticipantId !== participants[0]?.id ||
+        equalTotalInput.trim().length > 0 ||
+        taxInput.trim().length > 0 ||
+        tipInput.trim().length > 0 ||
+        feesInput.trim().length > 0 ||
+        finalTotalInput.trim().length > 0 ||
+        selectedFriendIds.length > 0 ||
+        customParticipants.length > 0 ||
+        isCustomTipEnabled
+      );
+    }
+
+    return (
+      Boolean(billTitle.trim()) ||
+      participants.length > 1 ||
+      items.length > 0 ||
+      Boolean(equalTotalInput.trim()) ||
+      Boolean(taxInput.trim()) ||
+      Boolean(tipInput.trim()) ||
+      Boolean(feesInput.trim()) ||
+      Boolean(finalTotalInput.trim()) ||
+      selectedFriendIds.length > 0 ||
+      customParticipants.length > 0 ||
+      isCustomTipEnabled
+    );
+  }, [
+    billQuery.data,
+    billTitle,
+    customParticipants.length,
+    equalTotalInput,
+    feesInput,
+    finalTotalInput,
+    isCustomTipEnabled,
+    isEditHydrated,
+    isEditMode,
+    items.length,
+    participants,
+    payerParticipantId,
+    selectedFriendIds.length,
+    splitMode,
+    taxInput,
+    tipInput,
+  ]);
+  const buildFlowAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'CreateBillScreen',
+      mode: isEditMode ? 'edit' : 'create',
+      participantCount: participants.length,
+      itemCount: items.length,
+      splitMode,
+      hasTitle: Boolean(billTitle.trim()),
+      hasUnsavedChanges,
+      ...overrides,
+    }),
+    [billTitle, hasUnsavedChanges, isEditMode, items.length, participants.length, splitMode],
+  );
+
+  useEffect(() => {
+    const canTrackOpen = !isEditMode || isEditHydrated;
+    if (!canTrackOpen || hasTrackedFlowOpenRef.current) {
+      return;
+    }
+
+    hasTrackedFlowOpenRef.current = true;
+    trackObservabilityEvent('CREATE_BILL_OPENED', buildFlowAnalyticsPayload());
+  }, [buildFlowAnalyticsPayload, isEditHydrated, isEditMode]);
+
+  useEffect(
+    () => () => {
+      if (
+        hasCompletedFlowRef.current ||
+        hasTrackedFlowExitRef.current ||
+        !hasTrackedFlowOpenRef.current
+      ) {
+        return;
+      }
+
+      hasTrackedFlowExitRef.current = true;
+      trackObservabilityEvent(
+        'CREATE_BILL_EXITED',
+        buildFlowAnalyticsPayload({
+          exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        }),
+      );
+    },
+    [buildFlowAnalyticsPayload],
+  );
 
   const handleCreateBill = async () => {
     if (!billTitle.trim()) {
@@ -1827,7 +1934,11 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
           splitMode,
           queued: true,
         });
-        showQueuedOfflineAlert('Bill');
+        hasCompletedFlowRef.current = true;
+        showQueuedOfflineAlert({
+          analyticsSource: 'CreateBillScreen',
+          subject: 'Bill',
+        });
         navigation.navigate('Bills');
         return;
       }
@@ -1843,6 +1954,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         queued: false,
         billId: savedBill.id,
       });
+      hasCompletedFlowRef.current = true;
       navigation.reset({
         index: 1,
         routes: [
@@ -1873,6 +1985,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       bodyStyle={styles.body}
       keyboardAware
       onBackPress={() => {
+        exitMethodRef.current = 'header_back';
         if (navigation.canGoBack()) {
           navigation.goBack();
           return;
@@ -1889,6 +2002,7 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
       secondaryAction={{
         label: 'Cancel',
         onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
           navigation.goBack();
         },
         disabled: isCreating,
@@ -2489,6 +2603,8 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
 
       <PageErrorToast
         actionLabel="Retry"
+        analyticsProps={buildFlowAnalyticsPayload()}
+        analyticsSource="CreateBillScreen"
         errorMessage={
           hasBlockingFriendsError
             ? 'Could not load your friend list.'
@@ -2501,7 +2617,12 @@ export function CreateBillScreen({ navigation, route }: CreateBillScreenProps) {
         }}
         title={hasBlockingFriendsError ? 'Friends unavailable' : 'Friend list may be stale'}
       />
-      <PageErrorToast errorMessage={errorMessage} title={errorToastTitle} />
+      <PageErrorToast
+        analyticsProps={buildFlowAnalyticsPayload()}
+        analyticsSource="CreateBillScreen"
+        errorMessage={errorMessage}
+        title={errorToastTitle}
+      />
       <ConfirmDestructiveModal
         cancelLabel="Keep Item"
         confirmLabel="Delete Item"

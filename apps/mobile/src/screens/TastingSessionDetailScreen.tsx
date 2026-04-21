@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Share, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -130,6 +130,23 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const isLeader = Boolean(sessionQuery.data && user && sessionQuery.data.createdByUserId === user.id);
   const hasBlockingSessionError = sessionQuery.isError && !sessionQuery.data;
   const hasSessionRefreshError = sessionQuery.isError && Boolean(sessionQuery.data);
+  const buildAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'TastingSessionDetailScreen',
+      isLeader,
+      participantCount: sessionQuery.data?.participants.length ?? 0,
+      itemCount: sessionQuery.data?.items.length ?? 0,
+      status: sessionQuery.data?.status ?? null,
+      ...overrides,
+    }),
+    [isLeader, sessionQuery.data?.items.length, sessionQuery.data?.participants.length, sessionQuery.data?.status],
+  );
+  const trackOfflineBlockedAction = useCallback(
+    (action: string) => {
+      trackObservabilityEvent('TASTING_ACTION_BLOCKED_OFFLINE', buildAnalyticsPayload({ action }));
+    },
+    [buildAnalyticsPayload],
+  );
 
   useEffect(() => {
     const session = sessionQuery.data;
@@ -245,6 +262,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
     try {
       await Clipboard.setStringAsync(session.inviteCode);
+      trackObservabilityEvent('TASTING_INVITE_CODE_COPIED', buildAnalyticsPayload());
       setCopyStatus('Invite code copied.');
     } catch (error) {
       setCopyStatus(error instanceof Error ? error.message : 'Could not copy invite code.');
@@ -283,23 +301,30 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
   const handleRegenerateCode = async () => {
     if (!isOnline) {
+      trackOfflineBlockedAction('regenerate_invite_code');
       setErrorMessage('Tasting sessions require an internet connection.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('TASTING_INVITE_REGENERATE_STARTED', buildAnalyticsPayload());
 
     try {
       await regenerateTastingInviteCode(sessionId);
       await refreshSession();
+      trackObservabilityEvent('TASTING_INVITE_REGENERATE_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not regenerate invite code.';
+      trackObservabilityEvent('TASTING_INVITE_REGENERATE_FAILED', buildAnalyticsPayload({
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
       setErrorMessage(message);
     }
   };
 
   const handleAddItem = async () => {
     if (!isOnline) {
+      trackOfflineBlockedAction('add_item');
       setErrorMessage('Tasting sessions require an internet connection.');
       return;
     }
@@ -310,6 +335,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('TASTING_ITEM_ADD_STARTED', buildAnalyticsPayload());
 
     try {
       await addTastingItem(sessionId, {
@@ -319,8 +345,12 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       setNewItemName('');
       setNewItemDescription('');
       await refreshSession();
+      trackObservabilityEvent('TASTING_ITEM_ADD_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not add item.';
+      trackObservabilityEvent('TASTING_ITEM_ADD_FAILED', buildAnalyticsPayload({
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
       setErrorMessage(message);
     }
   };
@@ -331,19 +361,25 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }
 
     if (!isOnline) {
+      trackOfflineBlockedAction('delete_item');
       setErrorMessage('Tasting sessions require an internet connection.');
       return;
     }
 
     setErrorMessage(null);
     setIsDeletingItem(true);
+    trackObservabilityEvent('TASTING_ITEM_DELETE_STARTED', buildAnalyticsPayload());
 
     try {
       await deleteTastingItem(sessionId, pendingDeleteItem.id);
       setPendingDeleteItem(null);
       await refreshSession();
+      trackObservabilityEvent('TASTING_ITEM_DELETE_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete item.';
+      trackObservabilityEvent('TASTING_ITEM_DELETE_FAILED', buildAnalyticsPayload({
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
       setErrorMessage(message);
     } finally {
       setIsDeletingItem(false);
@@ -352,6 +388,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
 
   const handleSubmitRating = async (itemId: string) => {
     if (!isOnline) {
+      trackOfflineBlockedAction('submit_rating');
       setErrorMessage('Tasting sessions require an internet connection.');
       return;
     }
@@ -368,6 +405,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('TASTING_RATING_SUBMIT_STARTED', buildAnalyticsPayload());
 
     try {
       await submitTastingRating(sessionId, itemId, {
@@ -375,8 +413,12 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
         rating: ratingDraft,
       });
       await refreshSession();
+      trackObservabilityEvent('TASTING_RATING_SUBMIT_SUCCEEDED', buildAnalyticsPayload());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not save rating.';
+      trackObservabilityEvent('TASTING_RATING_SUBMIT_FAILED', buildAnalyticsPayload({
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
       setErrorMessage(message);
     }
   };
@@ -388,6 +430,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     }
 
     if (!isOnline) {
+      trackOfflineBlockedAction('advance_status');
       setErrorMessage('Tasting sessions require an internet connection.');
       return;
     }
@@ -395,12 +438,22 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     const nextStatus = session.status === 'adding_items' ? 'rating' : 'completed';
 
     setErrorMessage(null);
+    trackObservabilityEvent('TASTING_STATUS_ADVANCE_STARTED', buildAnalyticsPayload({
+      nextStatus,
+    }));
 
     try {
       await setTastingSessionStatus(sessionId, nextStatus);
       await refreshSession();
+      trackObservabilityEvent('TASTING_STATUS_ADVANCE_SUCCEEDED', buildAnalyticsPayload({
+        nextStatus,
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update session state.';
+      trackObservabilityEvent('TASTING_STATUS_ADVANCE_FAILED', buildAnalyticsPayload({
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        nextStatus,
+      }));
       setErrorMessage(message);
     }
   };
@@ -418,6 +471,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     return (
       <FeatureDetailScreenScaffold onBackPress={handleBackPress} title="Tasting Session">
         <ErrorState
+          analyticsProps={buildAnalyticsPayload()}
+          analyticsSource="TastingSessionDetailScreen"
           description="Could not load the tasting session."
           onRetry={() => {
             void sessionQuery.refetch();
@@ -433,6 +488,8 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       <FeatureDetailScreenScaffold onBackPress={handleBackPress} title="Tasting Session">
         <EmptyState
           actionLabel="Back to Sessions"
+          analyticsProps={buildAnalyticsPayload()}
+          analyticsSource="TastingSessionDetailScreen"
           onAction={() => {
             navigation.navigate('TastingSessions');
           }}
@@ -458,9 +515,16 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
       subtitle={session.restaurantName}
       title={session.name}
     >
-      <PageErrorToast errorMessage={errorMessage} title="Session update failed" />
+      <PageErrorToast
+        analyticsProps={buildAnalyticsPayload()}
+        analyticsSource="TastingSessionDetailScreen"
+        errorMessage={errorMessage}
+        title="Session update failed"
+      />
       <PageErrorToast
         actionLabel="Retry"
+        analyticsProps={buildAnalyticsPayload()}
+        analyticsSource="TastingSessionDetailScreen"
         errorMessage={
           hasSessionRefreshError ? 'Could not refresh the tasting session. Showing saved data.' : null
         }
@@ -583,7 +647,12 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
         />
 
         {session.items.length === 0 ? (
-          <EmptyState description="Add at least one item to begin." title="No tasting items" />
+          <EmptyState
+            analyticsProps={buildAnalyticsPayload()}
+            analyticsSource="TastingSessionDetailScreen"
+            description="Add at least one item to begin."
+            title="No tasting items"
+          />
         ) : (
           session.items.map((item) => {
             const yourRating = currentParticipant
@@ -641,7 +710,12 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
         ) : null}
 
         {session.items.length === 0 ? (
-          <EmptyState description="Add items before collecting ratings." title="No items to rate" />
+          <EmptyState
+            analyticsProps={buildAnalyticsPayload()}
+            analyticsSource="TastingSessionDetailScreen"
+            description="Add items before collecting ratings."
+            title="No items to rate"
+          />
         ) : (
           session.items.map((item) => {
             const savedRating = currentParticipant

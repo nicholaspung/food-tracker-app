@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-import { trackObservabilityEvent } from '../../observability';
+import { trackObservabilityEvent, type JsonValue } from '../../observability';
 import { useErrorToast } from '../../providers/ErrorToastProvider';
 
 export interface PageErrorToastProps {
@@ -8,6 +8,8 @@ export interface PageErrorToastProps {
   title?: string;
   actionLabel?: string;
   onAction?: () => void;
+  analyticsSource?: string;
+  analyticsProps?: Record<string, JsonValue>;
 }
 
 const DEFAULT_ERROR_TITLE = 'Something went wrong';
@@ -17,17 +19,21 @@ export function PageErrorToast({
   title = DEFAULT_ERROR_TITLE,
   actionLabel,
   onAction,
+  analyticsSource,
+  analyticsProps,
 }: PageErrorToastProps) {
   const { showError } = useErrorToast();
   const lastShownKeyRef = useRef<string | null>(null);
   const handleAction = useCallback(() => {
     trackObservabilityEvent('PAGE_ERROR_TOAST_ACTION_TAPPED', {
       actionLabel: actionLabel ?? null,
+      ...analyticsProps,
+      analyticsSource: analyticsSource ?? null,
       source: 'PageErrorToast',
       title,
     });
     onAction?.();
-  }, [actionLabel, onAction, title]);
+  }, [actionLabel, analyticsProps, analyticsSource, onAction, title]);
 
   useEffect(() => {
     if (!errorMessage) {
@@ -48,6 +54,8 @@ export function PageErrorToast({
     lastShownKeyRef.current = dedupeKey;
     trackObservabilityEvent('PAGE_ERROR_TOAST_SHOWN', {
       hasAction: Boolean(actionLabel && onAction),
+      ...analyticsProps,
+      analyticsSource: analyticsSource ?? null,
       messageLength: normalizedMessage.length,
       source: 'PageErrorToast',
       title,
@@ -58,7 +66,7 @@ export function PageErrorToast({
       source: 'PageErrorToast',
       title,
     });
-  }, [actionLabel, errorMessage, handleAction, onAction, showError, title]);
+  }, [actionLabel, analyticsProps, analyticsSource, errorMessage, handleAction, onAction, showError, title]);
 
   return null;
 }

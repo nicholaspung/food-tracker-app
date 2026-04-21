@@ -63,15 +63,36 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
   const displayedFeedback = feedbackState.items;
   const visibleFeedbackCount = displayedFeedback.length;
   const styles = useStyles();
+  const buildBrowseAnalyticsPayload = (overrides?: Record<string, string | number | boolean | null>) => ({
+    source: 'FeedbackScreen',
+    resultCount: visibleFeedbackCount,
+    ...overrides,
+  });
 
   const handleBackToProfile = () => {
     navigation.navigate('Profile');
   };
   const handleRefresh = async () => {
+    const resultCountBefore = visibleFeedbackCount;
     setIsPullRefreshing(true);
+    trackObservabilityEvent('FEEDBACK_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+      resultCountBefore,
+    }));
 
     try {
-      await feedbackQuery.refetch();
+      const result = await feedbackQuery.refetch();
+      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+      trackObservabilityEvent('FEEDBACK_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        resultCountAfter,
+        deltaCount: resultCountAfter - resultCountBefore,
+      }));
+    } catch (error) {
+      trackObservabilityEvent('FEEDBACK_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
+      throw error;
     } finally {
       setIsPullRefreshing(false);
     }
@@ -118,6 +139,8 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
         ) : null}
 
         <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="FeedbackScreen"
           errorMessage={
             feedbackState.hasBlockingError
               ? 'Could not load feedback history.'
@@ -134,6 +157,8 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
 
         {feedbackState.hasResolvedData && !feedbackState.hasBlockingError && visibleFeedbackCount === 0 ? (
           <EmptyState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="FeedbackScreen"
             description="Your submitted feedback will appear here. Tap the plus button above to start a new thread."
             title="No feedback yet"
           />
@@ -188,7 +213,26 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
             label={feedbackQuery.isFetchingNextPage ? 'Loading more...' : 'Load more feedback'}
             loading={feedbackQuery.isFetchingNextPage}
             onPress={() => {
-              void feedbackQuery.fetchNextPage();
+              const resultCountBefore = visibleFeedbackCount;
+              trackObservabilityEvent('FEEDBACK_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+                resultCountBefore,
+              }));
+              void feedbackQuery.fetchNextPage()
+                .then((result) => {
+                  const resultCountAfter =
+                    result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+                  trackObservabilityEvent('FEEDBACK_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+                    resultCountBefore,
+                    resultCountAfter,
+                    deltaCount: resultCountAfter - resultCountBefore,
+                  }));
+                })
+                .catch((error) => {
+                  trackObservabilityEvent('FEEDBACK_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+                    resultCountBefore,
+                    errorType: error instanceof Error ? error.name : 'unknown_error',
+                  }));
+                });
             }}
             variant="secondary"
           />

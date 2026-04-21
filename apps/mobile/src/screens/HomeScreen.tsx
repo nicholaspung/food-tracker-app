@@ -404,6 +404,18 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const isLoading = homeFeedQuery.isLoading;
   const hasBlockingFeedError = homeFeedState.hasBlockingError;
   const hasFeedRefreshError = homeFeedState.hasRefreshError;
+  const buildBrowseAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'HomeScreen',
+      feedMode,
+      typeFilter,
+      sortFilter,
+      queryLength: trimmedSearchQuery.length,
+      resultCount: loadedFeed.length,
+      ...overrides,
+    }),
+    [feedMode, loadedFeed.length, sortFilter, trimmedSearchQuery.length, typeFilter],
+  );
 
   useEffect(() => {
     if (!route.params?.initialView) {
@@ -424,14 +436,30 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   }, [navigation, route.params]);
 
   const handleRefresh = useCallback(async () => {
+    const resultCountBefore = loadedFeed.length;
     setIsPullRefreshing(true);
+    trackObservabilityEvent('HOME_FEED_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+      resultCountBefore,
+    }));
 
     try {
-      await homeFeedQuery.refetch();
+      const result = await homeFeedQuery.refetch();
+      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+      trackObservabilityEvent('HOME_FEED_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        resultCountAfter,
+        deltaCount: resultCountAfter - resultCountBefore,
+      }));
+    } catch (error) {
+      trackObservabilityEvent('HOME_FEED_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
+      throw error;
     } finally {
       setIsPullRefreshing(false);
     }
-  }, [homeFeedQuery]);
+  }, [buildBrowseAnalyticsPayload, homeFeedQuery, loadedFeed.length]);
 
   useEffect(() => {
     let isMounted = true;
@@ -754,8 +782,26 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       return;
     }
 
-    void homeFeedQuery.fetchNextPage();
-  }, [homeFeedQuery]);
+    const resultCountBefore = loadedFeed.length;
+    trackObservabilityEvent('HOME_FEED_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+      resultCountBefore,
+    }));
+    void homeFeedQuery.fetchNextPage()
+      .then((result) => {
+        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+        trackObservabilityEvent('HOME_FEED_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          resultCountAfter,
+          deltaCount: resultCountAfter - resultCountBefore,
+        }));
+      })
+      .catch((error) => {
+        trackObservabilityEvent('HOME_FEED_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        }));
+      });
+  }, [buildBrowseAnalyticsPayload, homeFeedQuery, loadedFeed.length]);
 
   const handleDismissFriendSuggestion = useCallback(() => {
     setFriendSuggestionErrorMessage(null);
@@ -1015,6 +1061,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         ) : null}
 
         <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="HomeScreen"
           errorMessage={
             hasBlockingFeedError
               ? 'Could not load your ratings feed.'
@@ -1029,10 +1077,17 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
           }}
         />
         <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="HomeScreen"
           errorMessage={homeFeedActions.deleteErrorMessage}
           title="Delete failed"
         />
-        <PageErrorToast errorMessage={friendSuggestionErrorMessage} title="Friend suggestion unavailable" />
+        <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="HomeScreen"
+          errorMessage={friendSuggestionErrorMessage}
+          title="Friend suggestion unavailable"
+        />
         {friendSuggestion ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle} variant="bodyLgBold">
@@ -1088,6 +1143,8 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         {showMineEmptyState ? (
           <EmptyState
             actionLabel="Create your first entry"
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="HomeScreen"
             description="Start with Add Visit or Food Product."
             fill
             onAction={() => {

@@ -54,6 +54,11 @@ import { Button, Card, Text } from '../ui';
 type EditFoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'EditFoodProduct'>;
 type PhotoSource = 'camera' | 'gallery';
 type PhotoDraftMode = 'keep' | 'replace' | 'remove';
+type FoodProductEditorExitMethod =
+  | 'header_back'
+  | 'secondary_cancel'
+  | 'system_back_or_gesture'
+  | 'programmatic_navigation';
 
 interface DraftReplacementPhoto {
   label: string;
@@ -147,6 +152,10 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const hasTrackedEditorOpenRef = useRef(false);
+  const hasTrackedEditorExitRef = useRef(false);
+  const hasCompletedEditorFlowRef = useRef(false);
+  const exitMethodRef = useRef<FoodProductEditorExitMethod | null>(null);
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
     requestPermission: requestPhotoPickerPermission,
@@ -508,7 +517,11 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
           visibility: form.visibility,
           photoMode: photoDraftMode,
         });
-        showQueuedOfflineAlert('Food product update');
+        hasCompletedEditorFlowRef.current = true;
+        showQueuedOfflineAlert({
+          analyticsSource: 'EditFoodProductScreen',
+          subject: 'Food product update',
+        });
         handleBackPress();
         return;
       }
@@ -525,6 +538,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         visibility: form.visibility,
         photoMode: photoDraftMode,
       });
+      hasCompletedEditorFlowRef.current = true;
       handleBackPress();
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -570,11 +584,73 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         },
       ]
     : [];
+  const hasUnsavedChanges = useMemo(() => {
+    if (!foodProductQuery.data) {
+      return false;
+    }
+
+    const initialForm = buildFoodProductFormFromRecord(foodProductQuery.data);
+    return (
+      form.itemName.trim() !== initialForm.itemName.trim() ||
+      form.category.trim() !== initialForm.category.trim() ||
+      form.notes.trim() !== initialForm.notes.trim() ||
+      form.locationText.trim() !== initialForm.locationText.trim() ||
+      form.date !== initialForm.date ||
+      form.rating !== initialForm.rating ||
+      form.visibility !== initialForm.visibility ||
+      photoDraftMode !== 'keep'
+    );
+  }, [foodProductQuery.data, form, photoDraftMode]);
+  const buildEditorAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'EditFoodProductScreen',
+      mode: 'edit',
+      hasName: Boolean(form.itemName.trim()),
+      hasRating: form.rating > 0,
+      photoCount: displayedPhoto ? 1 : 0,
+      hasUnsavedChanges,
+      ...overrides,
+    }),
+    [displayedPhoto, form.itemName, form.rating, hasUnsavedChanges],
+  );
+
+  useEffect(() => {
+    if (hasTrackedEditorOpenRef.current || !foodProductQuery.data) {
+      return;
+    }
+
+    hasTrackedEditorOpenRef.current = true;
+    trackObservabilityEvent('FOOD_PRODUCT_EDITOR_OPENED', buildEditorAnalyticsPayload());
+  }, [buildEditorAnalyticsPayload, foodProductQuery.data]);
+
+  useEffect(
+    () => () => {
+      if (
+        hasCompletedEditorFlowRef.current ||
+        hasTrackedEditorExitRef.current ||
+        !hasTrackedEditorOpenRef.current
+      ) {
+        return;
+      }
+
+      hasTrackedEditorExitRef.current = true;
+      trackObservabilityEvent(
+        'FOOD_PRODUCT_EDITOR_EXITED',
+        buildEditorAnalyticsPayload({
+          exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        }),
+      );
+    },
+    [buildEditorAnalyticsPayload],
+  );
 
   if (foodProductQuery.isLoading) {
     return (
       <FeatureFormScreenScaffold
-        onBackPress={handleBackPress}
+        onBackPress={() => {
+          exitMethodRef.current = 'header_back';
+          handleBackPress();
+        }}
         primaryAction={{
           label: 'Save Changes',
           disabled: true,
@@ -582,7 +658,10 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         }}
         secondaryAction={{
           label: 'Cancel',
-          onPress: handleBackPress,
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            handleBackPress();
+          },
         }}
         title="Edit Food Product"
       >
@@ -597,7 +676,10 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   if (foodProductQuery.isError) {
     return (
       <FeatureFormScreenScaffold
-        onBackPress={handleBackPress}
+        onBackPress={() => {
+          exitMethodRef.current = 'header_back';
+          handleBackPress();
+        }}
         primaryAction={{
           label: 'Save Changes',
           disabled: true,
@@ -605,12 +687,17 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         }}
         secondaryAction={{
           label: 'Cancel',
-          onPress: handleBackPress,
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            handleBackPress();
+          },
         }}
         subtitle="Update the saved details for this food product."
         title="Edit Food Product"
       >
         <ErrorState
+          analyticsProps={buildEditorAnalyticsPayload()}
+          analyticsSource="EditFoodProductScreen"
           description="Could not load food product."
           onRetry={() => {
             void foodProductQuery.refetch();
@@ -624,7 +711,10 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   if (!foodProductQuery.data) {
     return (
       <FeatureFormScreenScaffold
-        onBackPress={handleBackPress}
+        onBackPress={() => {
+          exitMethodRef.current = 'header_back';
+          handleBackPress();
+        }}
         primaryAction={{
           label: 'Save Changes',
           disabled: true,
@@ -632,14 +722,20 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         }}
         secondaryAction={{
           label: 'Cancel',
-          onPress: handleBackPress,
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            handleBackPress();
+          },
         }}
         subtitle="Update the saved details for this food product."
         title="Edit Food Product"
       >
         <EmptyState
           actionLabel="Back to Home"
+          analyticsProps={buildEditorAnalyticsPayload()}
+          analyticsSource="EditFoodProductScreen"
           onAction={() => {
+            exitMethodRef.current = 'programmatic_navigation';
             navigation.navigate('Home');
           }}
           title="Food product not found"
@@ -651,7 +747,10 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
   return (
     <FeatureFormScreenScaffold
       keyboardAware
-      onBackPress={handleBackPress}
+      onBackPress={() => {
+        exitMethodRef.current = 'header_back';
+        handleBackPress();
+      }}
       primaryAction={{
         label: 'Save Changes',
         disabled: isSubmitting || !form.itemName.trim(),
@@ -663,14 +762,22 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       secondaryAction={{
         label: 'Cancel',
         disabled: isSubmitting,
-        onPress: handleBackPress,
+        onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
+          handleBackPress();
+        },
       }}
       subtitle="Update the saved details for this food product."
       testID="food-product-edit-screen"
       title="Edit Food Product"
     >
       <View style={styles.body}>
-        <PageErrorToast errorMessage={errorMessage} title="Could not save food product" />
+        <PageErrorToast
+          analyticsProps={buildEditorAnalyticsPayload()}
+          analyticsSource="EditFoodProductScreen"
+          errorMessage={errorMessage}
+          title="Could not save food product"
+        />
 
         {!isOnline && isDisplayFreeUser ? (
           <Card style={styles.sectionCard} tone="muted">

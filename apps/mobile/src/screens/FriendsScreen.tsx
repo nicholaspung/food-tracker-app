@@ -302,6 +302,13 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   }, [navigation, route.params]);
 
   const styles = useStyles();
+  const buildBrowseAnalyticsPayload = (overrides?: Record<string, string | number | boolean | null>) => ({
+    source: 'FriendsScreen',
+    mainTab,
+    friendsSubTab,
+    resultCount: visibleFriends.length,
+    ...overrides,
+  });
 
   const invalidateFriends = async () => {
     await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
@@ -335,7 +342,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           queued: true,
           subTab: friendsSubTab,
         });
-        showQueuedOfflineAlert('Friend action');
+        showQueuedOfflineAlert({
+          analyticsSource: 'FriendsScreen',
+          subject: 'Friend action',
+        });
         return;
       }
 
@@ -391,7 +401,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           queued: true,
           subTab: friendsSubTab,
         });
-        showQueuedOfflineAlert('Friend action');
+        showQueuedOfflineAlert({
+          analyticsSource: 'FriendsScreen',
+          subject: 'Friend action',
+        });
         return true;
       }
 
@@ -428,12 +441,34 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     setPendingRemoveFriend(null);
   };
   const handleRefresh = async () => {
+    const resultCountBefore = visibleFriends.length;
     setIsPullRefreshing(true);
+    trackObservabilityEvent('FRIENDS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+      resultCountBefore,
+    }));
 
     try {
       if (mainTab === 'friends-list') {
-        await friendsQuery.refetch();
+        const result = await friendsQuery.refetch();
+        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+        trackObservabilityEvent('FRIENDS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          resultCountAfter,
+          deltaCount: resultCountAfter - resultCountBefore,
+        }));
+        return;
       }
+      trackObservabilityEvent('FRIENDS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        resultCountAfter: resultCountBefore,
+        deltaCount: 0,
+      }));
+    } catch (error) {
+      trackObservabilityEvent('FRIENDS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
+      throw error;
     } finally {
       setIsPullRefreshing(false);
     }
@@ -506,6 +541,8 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       return (
         <>
           <PageErrorToast
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="FriendsScreen"
             errorMessage="Could not load friendship data."
             title="Friends unavailable"
             actionLabel="Retry"
@@ -513,7 +550,12 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
               void friendsQuery.refetch();
             }}
           />
-          <EmptyState description="Could not load friendship data." title="Friends unavailable" />
+          <EmptyState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="FriendsScreen"
+            description="Could not load friendship data."
+            title="Friends unavailable"
+          />
         </>
       );
     }
@@ -523,7 +565,26 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         label={friendsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more'}
         loading={friendsQuery.isFetchingNextPage}
         onPress={() => {
-          void friendsQuery.fetchNextPage();
+          const resultCountBefore = visibleFriends.length;
+          trackObservabilityEvent('FRIENDS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+            resultCountBefore,
+          }));
+          void friendsQuery.fetchNextPage()
+            .then((result) => {
+              const resultCountAfter =
+                result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+              trackObservabilityEvent('FRIENDS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+                resultCountBefore,
+                resultCountAfter,
+                deltaCount: resultCountAfter - resultCountBefore,
+              }));
+            })
+            .catch((error) => {
+              trackObservabilityEvent('FRIENDS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+                resultCountBefore,
+                errorType: error instanceof Error ? error.name : 'unknown_error',
+              }));
+            });
         }}
         variant="secondary"
       />
@@ -533,6 +594,8 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       if (visibleFriends.length === 0) {
         return (
           <EmptyState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="FriendsScreen"
             description="Add friends to compare visits and food ratings."
             tone="default"
             title="No friends yet"
@@ -577,7 +640,15 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
     if (friendsSubTab === 'requests') {
       if (visibleFriends.length === 0) {
-        return <EmptyState description="Incoming requests appear here." tone="default" title="No pending requests" />;
+        return (
+          <EmptyState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="FriendsScreen"
+            description="Incoming requests appear here."
+            tone="default"
+            title="No pending requests"
+          />
+        );
       }
 
       return (
@@ -632,7 +703,15 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     }
 
     if (visibleFriends.length === 0) {
-      return <EmptyState description="Requests you send will show up here." tone="default" title="No sent requests" />;
+      return (
+        <EmptyState
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="FriendsScreen"
+          description="Requests you send will show up here."
+          tone="default"
+          title="No sent requests"
+        />
+      );
     }
 
     return (
@@ -701,8 +780,15 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       </View>
 
       <View style={styles.body}>
-        <PageErrorToast errorMessage={errorMessage} title="Friend operation failed" />
         <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="FriendsScreen"
+          errorMessage={errorMessage}
+          title="Friend operation failed"
+        />
+        <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="FriendsScreen"
           errorMessage={friendsState.hasRefreshError ? 'Could not refresh friendship data. Showing saved data.' : null}
           title="Friends unavailable"
           actionLabel="Retry"

@@ -78,6 +78,45 @@ import { useCreateVisitSubmission } from './createVisit/useCreateVisitSubmission
 import { createThemedStyles, useTheme } from '../theme';
 import { Card, Input, Text } from '../ui';
 
+type CreateVisitEntrySource = 'add_visit' | 'source_note' | 'source_list' | 'edit';
+type CreateVisitExitMethod =
+  | 'header_back'
+  | 'secondary_cancel'
+  | 'system_back_or_gesture'
+  | 'programmatic_navigation';
+
+function resolveCreateVisitEntrySource(options: {
+  editVisitId?: string;
+  sourceListItemId?: string;
+  sourceNoteId?: string;
+}): CreateVisitEntrySource {
+  if (options.editVisitId) {
+    return 'edit';
+  }
+
+  if (options.sourceNoteId) {
+    return 'source_note';
+  }
+
+  if (options.sourceListItemId) {
+    return 'source_list';
+  }
+
+  return 'add_visit';
+}
+
+function resolveCreateVisitStepName(step: VisitWizardStep): 'restaurant' | 'menu_items' | 'review' {
+  if (step === 0) {
+    return 'restaurant';
+  }
+
+  if (step === 1) {
+    return 'menu_items';
+  }
+
+  return 'review';
+}
+
 const useStyles = createThemedStyles((theme) => ({
   sectionCard: {
     gap: theme.spacing.sm,
@@ -457,6 +496,20 @@ export function CreateVisitScreen({
   const editVisitId = route.params?.editVisitId;
   const sourceNoteId = route.params?.sourceNoteId;
   const isEditMode = Boolean(editVisitId);
+  const entrySourceRef = useRef<CreateVisitEntrySource>(
+    resolveCreateVisitEntrySource({
+      editVisitId,
+      sourceListItemId: route.params?.sourceListItemId,
+      sourceNoteId,
+    }),
+  );
+  const hasTrackedFlowOpenRef = useRef(false);
+  const lastTrackedStepRef = useRef<VisitWizardStep | null>(null);
+  const hasCompletedFlowRef = useRef(false);
+  const hasTrackedFlowExitRef = useRef(false);
+  const exitMethodRef = useRef<CreateVisitExitMethod | null>(null);
+  const hasTrackedEditLoadFailureRef = useRef(false);
+  const hasTrackedEditNotFoundRef = useRef(false);
 
   const [step, setStep] = useState<VisitWizardStep>(0);
   const [restaurantName, setRestaurantName] = useState("");
@@ -900,6 +953,7 @@ export function CreateVisitScreen({
     }
 
     try {
+      trackObservabilityEvent('CREATE_VISIT_MENU_REVIEW_REQUEST_STARTED', buildFlowAnalyticsPayload());
       await createMenuReviewRequest({
         restaurantId: selectedRestaurantId,
         reason: "User reported incorrect menu items",
@@ -912,11 +966,15 @@ export function CreateVisitScreen({
       setTimeout(() => {
         setMenuReviewSubmitted(false);
       }, 3000);
+      trackObservabilityEvent('CREATE_VISIT_MENU_REVIEW_REQUEST_SUCCEEDED', buildFlowAnalyticsPayload());
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : "Could not submit review request.";
+      trackObservabilityEvent('CREATE_VISIT_MENU_REVIEW_REQUEST_FAILED', buildFlowAnalyticsPayload({
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
       setErrorMessage(message);
     }
   };
@@ -1236,6 +1294,9 @@ export function CreateVisitScreen({
     isOnline,
     monthlyUsageSnapshot: monthlyUsage.snapshot,
     navigation,
+    onSubmitSucceeded: () => {
+      hasCompletedFlowRef.current = true;
+    },
     queryClient,
     restaurantId: selectedRestaurantId,
     restaurantName,
@@ -1256,6 +1317,7 @@ export function CreateVisitScreen({
       return;
     }
 
+    exitMethodRef.current = 'header_back';
     setSourceListItemId(null);
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -1298,6 +1360,7 @@ export function CreateVisitScreen({
       ? {
           label: "Cancel",
           onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
             setSourceListItemId(null);
             if (navigation.canGoBack()) {
               navigation.goBack();
@@ -1369,6 +1432,169 @@ export function CreateVisitScreen({
     editVisitPhotosQuery.isError
       ? 'Could not load current item photos. You can still upload a new photo.'
       : null;
+  const initialEditVisitDate = editVisitQuery.data?.visitedAt
+    ? formatDateToLocalDateString(new Date(editVisitQuery.data.visitedAt))
+    : null;
+  const hasUnsavedChanges = useMemo(() => {
+    if (isEditMode && editVisitQuery.data && hydratedEditVisitId === editVisitId) {
+      const originalVisibility =
+        editVisitQuery.data.visibility === 'private' ? 'private' : 'friends';
+
+      if (restaurantName.trim() !== editVisitQuery.data.restaurantName.trim()) {
+        return true;
+      }
+
+      if ((selectedRestaurantId ?? '') !== (editVisitQuery.data.restaurantId ?? '')) {
+        return true;
+      }
+
+      if (visitDate !== initialEditVisitDate) {
+        return true;
+      }
+
+      if (visitVisibility !== originalVisibility) {
+        return true;
+      }
+
+      if (draftItems.length !== editVisitQuery.data.items.length) {
+        return true;
+      }
+
+      return draftItems.some((item, index) => {
+        const originalItem = editVisitQuery.data?.items[index];
+        if (!originalItem) {
+          return true;
+        }
+
+        return (
+          item.name.trim() !== originalItem.name.trim() ||
+          item.rating !== originalItem.rating ||
+          item.description.trim() !== (originalItem.description?.trim() ?? '') ||
+          item.notes.trim() !== (originalItem.notes?.trim() ?? '') ||
+          item.deletedPhotoIds.length > 0 ||
+          item.photos.some((photo) => photo.kind === 'new')
+        );
+      });
+    }
+
+    return (
+      Boolean(restaurantName.trim()) ||
+      Boolean(selectedRestaurantId) ||
+      draftItems.length > 0 ||
+      sourceListItemId !== null ||
+      visitVisibility !== resolveDefaultVisitVisibility() ||
+      visitDate !== getTodayLocalDateString()
+    );
+  }, [
+    draftItems,
+    editVisitId,
+    editVisitQuery.data,
+    hydratedEditVisitId,
+    initialEditVisitDate,
+    isEditMode,
+    restaurantName,
+    selectedRestaurantId,
+    sourceListItemId,
+    visitDate,
+    visitVisibility,
+  ]);
+  const buildFlowAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'CreateVisitScreen',
+      mode: isEditMode ? 'edit' : 'create',
+      entrySource: entrySourceRef.current,
+      step: resolveCreateVisitStepName(step),
+      restaurantSelected: Boolean(selectedRestaurantId && restaurantName.trim()),
+      selectedMenuItemCount,
+      draftItemCount: draftItems.length,
+      draftPhotoCount,
+      hasUnsavedChanges,
+      ...overrides,
+    }),
+    [
+      draftItems.length,
+      draftPhotoCount,
+      hasUnsavedChanges,
+      isEditMode,
+      restaurantName,
+      selectedMenuItemCount,
+      selectedRestaurantId,
+      step,
+    ],
+  );
+  const trackFlowExited = useCallback(
+    (exitMethod: CreateVisitExitMethod) => {
+      if (hasCompletedFlowRef.current || hasTrackedFlowExitRef.current || !hasTrackedFlowOpenRef.current) {
+        return;
+      }
+
+      hasTrackedFlowExitRef.current = true;
+      trackObservabilityEvent('CREATE_VISIT_FLOW_EXITED', buildFlowAnalyticsPayload({
+        exitMethod,
+      }));
+    },
+    [buildFlowAnalyticsPayload],
+  );
+
+  useEffect(() => {
+    const canTrackFlow = !isEditMode || hydratedEditVisitId === editVisitId;
+    if (!canTrackFlow || hasTrackedFlowOpenRef.current) {
+      return;
+    }
+
+    hasTrackedFlowOpenRef.current = true;
+    trackObservabilityEvent('CREATE_VISIT_FLOW_OPENED', buildFlowAnalyticsPayload());
+  }, [buildFlowAnalyticsPayload, editVisitId, hydratedEditVisitId, isEditMode]);
+
+  useEffect(() => {
+    const canTrackStep = !isEditMode || hydratedEditVisitId === editVisitId;
+    if (!canTrackStep || lastTrackedStepRef.current === step) {
+      return;
+    }
+
+    lastTrackedStepRef.current = step;
+    trackObservabilityEvent('CREATE_VISIT_STEP_VIEWED', buildFlowAnalyticsPayload());
+  }, [buildFlowAnalyticsPayload, editVisitId, hydratedEditVisitId, isEditMode, step]);
+
+  useEffect(() => {
+    if (!isEditMode || hydratedEditVisitId === editVisitId || !editVisitQuery.isError || hasTrackedEditLoadFailureRef.current) {
+      return;
+    }
+
+    hasTrackedEditLoadFailureRef.current = true;
+    trackObservabilityEvent('CREATE_VISIT_EDIT_LOAD_FAILED', {
+      entrySource: entrySourceRef.current,
+      mode: 'edit',
+      source: 'CreateVisitScreen',
+    });
+  }, [editVisitId, editVisitQuery.isError, hydratedEditVisitId, isEditMode]);
+
+  useEffect(() => {
+    if (
+      !isEditMode ||
+      hydratedEditVisitId === editVisitId ||
+      editVisitQuery.isLoading ||
+      editVisitQuery.isError ||
+      editVisitQuery.data ||
+      hasTrackedEditNotFoundRef.current
+    ) {
+      return;
+    }
+
+    hasTrackedEditNotFoundRef.current = true;
+    trackObservabilityEvent('CREATE_VISIT_EDIT_NOT_FOUND', {
+      entrySource: entrySourceRef.current,
+      mode: 'edit',
+      source: 'CreateVisitScreen',
+    });
+  }, [editVisitId, editVisitQuery.data, editVisitQuery.isError, editVisitQuery.isLoading, hydratedEditVisitId, isEditMode]);
+
+  useEffect(
+    () => () => {
+      trackFlowExited(exitMethodRef.current ?? 'system_back_or_gesture');
+    },
+    [trackFlowExited],
+  );
 
   if (isEditMode && hydratedEditVisitId !== editVisitId) {
     if (editVisitQuery.isError) {
@@ -1390,6 +1616,11 @@ export function CreateVisitScreen({
           title="Edit Restaurant Visit"
         >
           <ErrorState
+            analyticsProps={{
+              entrySource: entrySourceRef.current,
+              mode: 'edit',
+            }}
+            analyticsSource="CreateVisitScreen"
             description="Could not load visit details."
             onRetry={() => {
               void editVisitQuery.refetch();
@@ -1420,7 +1651,13 @@ export function CreateVisitScreen({
         >
           <EmptyState
             actionLabel="Back to Home"
+            analyticsProps={{
+              entrySource: entrySourceRef.current,
+              mode: 'edit',
+            }}
+            analyticsSource="CreateVisitScreen"
             onAction={() => {
+              exitMethodRef.current = 'programmatic_navigation';
               navigation.navigate("Home");
             }}
             title="Visit not found"
@@ -1465,6 +1702,8 @@ export function CreateVisitScreen({
     >
       <PageErrorToast
         actionLabel={photoPermissionNeedsSettings ? "Open Settings" : undefined}
+        analyticsProps={buildFlowAnalyticsPayload()}
+        analyticsSource="CreateVisitScreen"
         errorMessage={errorMessage}
         onAction={
           photoPermissionNeedsSettings

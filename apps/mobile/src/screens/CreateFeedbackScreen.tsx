@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -20,6 +20,11 @@ import { createThemedStyles } from '../theme';
 import { Card, Input } from '../ui';
 
 type CreateFeedbackScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateFeedback'>;
+type CreateFeedbackExitMethod =
+  | 'header_back'
+  | 'secondary_cancel'
+  | 'system_back_or_gesture'
+  | 'programmatic_navigation';
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -47,10 +52,55 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const hasTrackedFlowOpenRef = useRef(false);
+  const hasTrackedFlowExitRef = useRef(false);
+  const hasCompletedFlowRef = useRef(false);
+  const exitMethodRef = useRef<CreateFeedbackExitMethod | null>(null);
 
   const canSubmit = useMemo(() => {
     return subject.trim().length > 0 && message.trim().length > 0 && !isSubmitting;
   }, [isSubmitting, message, subject]);
+  const hasUnsavedChanges = subject.trim().length > 0 || message.trim().length > 0;
+  const buildFlowAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'CreateFeedbackScreen',
+      hasTitle: subject.trim().length > 0,
+      hasBody: message.trim().length > 0,
+      hasUnsavedChanges,
+      ...overrides,
+    }),
+    [hasUnsavedChanges, message, subject],
+  );
+
+  useEffect(() => {
+    if (hasTrackedFlowOpenRef.current) {
+      return;
+    }
+
+    hasTrackedFlowOpenRef.current = true;
+    trackObservabilityEvent('CREATE_FEEDBACK_OPENED', buildFlowAnalyticsPayload());
+  }, [buildFlowAnalyticsPayload]);
+
+  useEffect(
+    () => () => {
+      if (
+        hasCompletedFlowRef.current ||
+        hasTrackedFlowExitRef.current ||
+        !hasTrackedFlowOpenRef.current
+      ) {
+        return;
+      }
+
+      hasTrackedFlowExitRef.current = true;
+      trackObservabilityEvent(
+        'CREATE_FEEDBACK_EXITED',
+        buildFlowAnalyticsPayload({
+          exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        }),
+      );
+    },
+    [buildFlowAnalyticsPayload],
+  );
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -106,7 +156,11 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
           source: 'CreateFeedbackScreen',
           queued: true,
         });
-        showQueuedOfflineAlert('Feedback');
+        hasCompletedFlowRef.current = true;
+        showQueuedOfflineAlert({
+          analyticsSource: 'CreateFeedbackScreen',
+          subject: 'Feedback',
+        });
         navigation.replace('Feedback');
         return;
       }
@@ -130,6 +184,7 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
         queued: false,
         feedbackId: createdFeedback.id,
       });
+      hasCompletedFlowRef.current = true;
       navigation.replace('Feedback');
     } catch (error) {
       const nextErrorMessage = error instanceof Error ? error.message : 'Could not submit feedback.';
@@ -146,7 +201,10 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
   return (
     <FeatureFormScreenScaffold
       keyboardAware
-      onBackPress={handleBack}
+      onBackPress={() => {
+        exitMethodRef.current = 'header_back';
+        handleBack();
+      }}
       primaryAction={{
         disabled: !canSubmit,
         label: 'Submit Feedback',
@@ -157,14 +215,22 @@ export function CreateFeedbackScreen({ navigation }: CreateFeedbackScreenProps) 
       }}
       secondaryAction={{
         label: 'Cancel',
-        onPress: handleBack,
+        onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
+          handleBack();
+        },
       }}
       subtitle="Describe the issue, idea, or support request you want to send."
       testID="create-feedback-screen"
       title="New Feedback"
     >
       <View style={styles.body}>
-        <PageErrorToast errorMessage={errorMessage} title="Could not submit feedback" />
+        <PageErrorToast
+          analyticsProps={buildFlowAnalyticsPayload()}
+          analyticsSource="CreateFeedbackScreen"
+          errorMessage={errorMessage}
+          title="Could not submit feedback"
+        />
 
         <Card style={styles.formCard}>
           <Input

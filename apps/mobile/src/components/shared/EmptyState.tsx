@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { trackObservabilityEvent } from '../../observability';
+import { trackObservabilityEvent, type JsonValue } from '../../observability';
 import { createThemedStyles } from '../../theme';
 import { Button, Card, Text } from '../../ui';
 import type { CardProps } from '../../ui';
@@ -14,6 +14,8 @@ export interface EmptyStateProps {
   onAction?: () => void;
   fill?: boolean;
   tone?: CardProps['tone'];
+  analyticsSource?: string;
+  analyticsProps?: Record<string, JsonValue>;
 }
 
 const useStyles = createThemedStyles((theme) => ({
@@ -46,6 +48,8 @@ export function EmptyState({
   onAction,
   fill = false,
   tone = 'muted',
+  analyticsSource,
+  analyticsProps,
 }: EmptyStateProps) {
   const lastShownKeyRef = useRef<string | null>(null);
   const hasAction = Boolean(actionLabel && onAction);
@@ -59,13 +63,15 @@ export function EmptyState({
 
     lastShownKeyRef.current = shownKey;
     trackObservabilityEvent('EMPTY_STATE_SHOWN', {
+      ...analyticsProps,
+      analyticsSource: analyticsSource ?? null,
       hasAction,
       hasDescription: Boolean(description),
       source: 'EmptyState',
       title,
       variant: fill ? 'fill' : 'inline',
     });
-  }, [description, fill, hasAction, shownKey, title]);
+  }, [analyticsProps, analyticsSource, description, fill, hasAction, shownKey, title]);
 
   const handleActionPress = useCallback(() => {
     if (!actionLabel || !onAction) {
@@ -73,13 +79,15 @@ export function EmptyState({
     }
 
     trackObservabilityEvent('EMPTY_STATE_ACTION_TAPPED', {
+      ...analyticsProps,
       actionLabel,
+      analyticsSource: analyticsSource ?? null,
       source: 'EmptyState',
       title,
       variant: fill ? 'fill' : 'inline',
     });
     onAction();
-  }, [actionLabel, fill, onAction, title]);
+  }, [actionLabel, analyticsProps, analyticsSource, fill, onAction, title]);
 
   return (
     <Card style={fill ? styles.cardFill : undefined} tone={tone}>

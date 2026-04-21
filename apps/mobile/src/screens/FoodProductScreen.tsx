@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -51,6 +51,11 @@ import { createThemedStyles } from '../theme';
 import { Button, Card, Text } from '../ui';
 
 type FoodProductScreenProps = NativeStackScreenProps<RootStackParamList, 'FoodProduct'>;
+type FoodProductEditorExitMethod =
+  | 'header_back'
+  | 'secondary_cancel'
+  | 'system_back_or_gesture'
+  | 'programmatic_navigation';
 interface DraftFoodProductPhoto {
   label: string;
   upload: VisitPhotoUploadInput;
@@ -119,6 +124,10 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [didApplyNotePrefill, setDidApplyNotePrefill] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const hasTrackedEditorOpenRef = useRef(false);
+  const hasTrackedEditorExitRef = useRef(false);
+  const hasCompletedEditorFlowRef = useRef(false);
+  const exitMethodRef = useRef<FoodProductEditorExitMethod | null>(null);
   const {
     permissionNeedsSettings: photoPermissionNeedsSettings,
     requestPermission: requestPhotoPickerPermission,
@@ -427,7 +436,11 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           sourceNoteAttached: Boolean(sourceNoteId),
           visibility: form.visibility,
         });
-        showQueuedOfflineAlert('Food product');
+        hasCompletedEditorFlowRef.current = true;
+        showQueuedOfflineAlert({
+          analyticsSource: 'FoodProductScreen',
+          subject: 'Food product',
+        });
         navigation.navigate('Home', buildFoodProductCreatedHomeParams());
         return;
       }
@@ -461,6 +474,7 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         sourceNoteAttached: Boolean(sourceNoteId),
         visibility: form.visibility,
       });
+      hasCompletedEditorFlowRef.current = true;
       navigation.navigate('Home', buildFoodProductCreatedHomeParams());
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -528,11 +542,62 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         },
       ]
     : [];
+  const hasUnsavedChanges =
+    Boolean(form.itemName.trim()) ||
+    Boolean(form.notes.trim()) ||
+    Boolean(form.locationText.trim()) ||
+    Boolean(photo) ||
+    form.rating !== 3;
+  const buildEditorAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'FoodProductScreen',
+      mode: 'create',
+      hasName: Boolean(form.itemName.trim()),
+      hasRating: form.rating > 0,
+      photoCount: photo ? 1 : 0,
+      hasUnsavedChanges,
+      ...overrides,
+    }),
+    [form.itemName, form.rating, hasUnsavedChanges, photo],
+  );
+
+  useEffect(() => {
+    if (hasTrackedEditorOpenRef.current) {
+      return;
+    }
+
+    hasTrackedEditorOpenRef.current = true;
+    trackObservabilityEvent('FOOD_PRODUCT_EDITOR_OPENED', buildEditorAnalyticsPayload());
+  }, [buildEditorAnalyticsPayload]);
+
+  useEffect(
+    () => () => {
+      if (
+        hasCompletedEditorFlowRef.current ||
+        hasTrackedEditorExitRef.current ||
+        !hasTrackedEditorOpenRef.current
+      ) {
+        return;
+      }
+
+      hasTrackedEditorExitRef.current = true;
+      trackObservabilityEvent(
+        'FOOD_PRODUCT_EDITOR_EXITED',
+        buildEditorAnalyticsPayload({
+          exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        }),
+      );
+    },
+    [buildEditorAnalyticsPayload],
+  );
 
   return (
     <FeatureFormScreenScaffold
       keyboardAware
-      onBackPress={handleCancel}
+      onBackPress={() => {
+        exitMethodRef.current = 'header_back';
+        handleCancel();
+      }}
       primaryAction={{
         label: 'Save Product',
         disabled: isSubmitting || !form.itemName.trim(),
@@ -544,14 +609,22 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
       secondaryAction={{
         label: 'Cancel',
         disabled: isSubmitting,
-        onPress: handleCancel,
+        onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
+          handleCancel();
+        },
       }}
       subtitle="Rate a grocery, convenience-store, or market item."
       testID="food-product-screen"
       title="Food Product"
     >
       <View style={styles.body}>
-        <PageErrorToast errorMessage={errorMessage} title="Food product failed" />
+        <PageErrorToast
+          analyticsProps={buildEditorAnalyticsPayload()}
+          analyticsSource="FoodProductScreen"
+          errorMessage={errorMessage}
+          title="Food product failed"
+        />
 
         {!isOnline && isDisplayFreeUser ? (
           <Card style={styles.sectionCard} tone="muted">

@@ -40,6 +40,11 @@ import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
 type NoteEditorScreenProps = NativeStackScreenProps<RootStackParamList, 'NoteEditor'>;
+type NoteEditorExitMethod =
+  | 'header_back'
+  | 'secondary_cancel'
+  | 'system_back_or_gesture'
+  | 'programmatic_navigation';
 
 interface DraftNotePhoto {
   id: string;
@@ -175,6 +180,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isPhotoViewerVisible, setIsPhotoViewerVisible] = useState(false);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
+  const hasTrackedEditorOpenRef = useRef(false);
+  const hasTrackedEditorExitRef = useRef(false);
+  const hasCompletedEditorFlowRef = useRef(false);
+  const exitMethodRef = useRef<NoteEditorExitMethod | null>(null);
 
   const existingPhotos = useMemo(() => {
     const deletedIds = new Set(photosToDelete);
@@ -242,6 +251,30 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     () => photoAttachments.map((photo) => photo.thumbnailUri),
     [photoAttachments],
   );
+  const hasUnsavedChanges = useMemo(() => {
+    if (isEditing && noteDetailQuery.data?.note) {
+      return (
+        content.trim() !== noteDetailQuery.data.note.content.trim() ||
+        locationText.trim() !== (noteDetailQuery.data.note.locationText ?? '').trim() ||
+        photosToDelete.length > 0 ||
+        newPhotos.length > 0
+      );
+    }
+
+    return Boolean(content.trim()) || Boolean(locationText.trim()) || newPhotos.length > 0;
+  }, [content, isEditing, locationText, newPhotos.length, noteDetailQuery.data?.note, photosToDelete.length]);
+  const buildEditorAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'NoteEditorScreen',
+      mode: isEditing ? 'edit' : 'create',
+      hasText: Boolean(content.trim()),
+      photoCount: existingPhotos.length + newPhotos.length,
+      hasRestaurantSelection: false,
+      hasUnsavedChanges,
+      ...overrides,
+    }),
+    [content, existingPhotos.length, hasUnsavedChanges, isEditing, newPhotos.length],
+  );
 
   useEffect(() => {
     if (!noteDetailQuery.data?.note) {
@@ -254,6 +287,36 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     setNewPhotos([]);
     setErrorMessage(null);
   }, [noteDetailQuery.data?.note]);
+
+  useEffect(() => {
+    if (hasTrackedEditorOpenRef.current) {
+      return;
+    }
+
+    hasTrackedEditorOpenRef.current = true;
+    trackObservabilityEvent('NOTE_EDITOR_OPENED', buildEditorAnalyticsPayload());
+  }, [buildEditorAnalyticsPayload]);
+
+  useEffect(
+    () => () => {
+      if (
+        hasCompletedEditorFlowRef.current ||
+        hasTrackedEditorExitRef.current ||
+        !hasTrackedEditorOpenRef.current
+      ) {
+        return;
+      }
+
+      hasTrackedEditorExitRef.current = true;
+      trackObservabilityEvent(
+        'NOTE_EDITOR_EXITED',
+        buildEditorAnalyticsPayload({
+          exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        }),
+      );
+    },
+    [buildEditorAnalyticsPayload],
+  );
 
   const closeEditor = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -610,7 +673,11 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
           newPhotoCount: uploadPhotos.length,
           totalPhotoCount,
         });
-        showQueuedOfflineAlert('Note');
+        hasCompletedEditorFlowRef.current = true;
+        showQueuedOfflineAlert({
+          analyticsSource: 'NoteEditorScreen',
+          subject: 'Note',
+        });
         navigation.navigate('Notes');
         return;
       }
@@ -643,6 +710,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         totalPhotoCount,
       });
 
+      hasCompletedEditorFlowRef.current = true;
       navigation.navigate('Notes');
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -699,7 +767,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   if (isEditing && noteDetailQuery.isLoading) {
     return (
       <FeatureFormScreenScaffold
-        onBackPress={closeEditor}
+        onBackPress={() => {
+          exitMethodRef.current = 'header_back';
+          closeEditor();
+        }}
         primaryAction={{
           label: 'Save Changes',
           onPress: () => undefined,
@@ -707,7 +778,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         }}
         secondaryAction={{
           label: 'Cancel',
-          onPress: closeEditor,
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            closeEditor();
+          },
           disabled: true,
         }}
         subtitle="Update your saved note details."
@@ -723,7 +797,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   if (isEditing && noteDetailQuery.isError) {
     return (
       <FeatureFormScreenScaffold
-        onBackPress={closeEditor}
+        onBackPress={() => {
+          exitMethodRef.current = 'header_back';
+          closeEditor();
+        }}
         primaryAction={{
           label: 'Retry',
           onPress: () => {
@@ -732,13 +809,18 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         }}
         secondaryAction={{
           label: 'Cancel',
-          onPress: closeEditor,
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            closeEditor();
+          },
           variant: 'secondary',
         }}
         subtitle="Could not load this note."
         title="Edit Note"
       >
         <ErrorState
+          analyticsProps={buildEditorAnalyticsPayload()}
+          analyticsSource="NoteEditorScreen"
           description="Could not load note."
           onRetry={() => {
             void noteDetailQuery.refetch();
@@ -752,16 +834,23 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   if (isEditing && !noteDetailQuery.data?.note) {
     return (
       <FeatureFormScreenScaffold
-        onBackPress={closeEditor}
+        onBackPress={() => {
+          exitMethodRef.current = 'header_back';
+          closeEditor();
+        }}
         primaryAction={{
           label: 'Back to Notes',
           onPress: () => {
+            exitMethodRef.current = 'programmatic_navigation';
             navigation.navigate('Notes');
           },
         }}
         secondaryAction={{
           label: 'Cancel',
-          onPress: closeEditor,
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            closeEditor();
+          },
           variant: 'secondary',
         }}
         subtitle="This note no longer exists."
@@ -769,7 +858,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       >
         <EmptyState
           actionLabel="Back to Notes"
+          analyticsProps={buildEditorAnalyticsPayload()}
+          analyticsSource="NoteEditorScreen"
           onAction={() => {
+            exitMethodRef.current = 'programmatic_navigation';
             navigation.navigate('Notes');
           }}
           title="Note not found"
@@ -783,7 +875,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       <FeatureFormScreenScaffold
         bodyStyle={styles.body}
         keyboardAware
-        onBackPress={closeEditor}
+        onBackPress={() => {
+          exitMethodRef.current = 'header_back';
+          closeEditor();
+        }}
         primaryAction={{
           label: isEditing ? 'Save Changes' : 'Save Note',
           loading: isSubmitting,
@@ -794,7 +889,10 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         }}
         secondaryAction={{
           label: 'Cancel',
-          onPress: closeEditor,
+          onPress: () => {
+            exitMethodRef.current = 'secondary_cancel';
+            closeEditor();
+          },
           disabled: isSubmitting,
           variant: 'secondary',
         }}
@@ -887,6 +985,8 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
         {errorMessage ? (
           <ErrorState
+            analyticsProps={buildEditorAnalyticsPayload()}
+            analyticsSource="NoteEditorScreen"
             description={errorMessage}
             title="Could not save note"
           />

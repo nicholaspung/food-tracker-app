@@ -269,6 +269,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const lastRejectedSearchResultsKeyRef = useRef<string | null>(null);
+  const lastTrackedSearchExecutionKeyRef = useRef<string | null>(null);
   const noteStatusFilter = resolveNoteStatusFilter(activeFilter);
   const trimmedSearchQuery = searchQuery.trim();
   const debouncedTrimmedSearchQuery = useDebouncedValue(
@@ -399,6 +400,36 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const unusedCount = noteSummary?.draftCount ?? baseNotes.filter((note) => note.status === 'draft').length;
   const usedCount = noteSummary?.usedCount ?? baseNotes.filter((note) => note.status === 'used').length;
   const allCount = noteSummary?.allCount ?? baseNotes.length;
+  const buildBrowseAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'NotesScreen',
+      activeFilter,
+      queryLength: trimmedSearchQuery.length,
+      resultCount: notes.length,
+      ...overrides,
+    }),
+    [activeFilter, notes.length, trimmedSearchQuery.length],
+  );
+
+  useEffect(() => {
+    if (!hasSearch) {
+      lastTrackedSearchExecutionKeyRef.current = null;
+      return;
+    }
+
+    const trackingKey = `${activeFilter}::${trimmedSearchQuery}::${notes.length}`;
+    if (lastTrackedSearchExecutionKeyRef.current === trackingKey) {
+      return;
+    }
+
+    lastTrackedSearchExecutionKeyRef.current = trackingKey;
+    trackObservabilityEvent('NOTES_SEARCH_EXECUTED', {
+      activeFilter,
+      queryLength: trimmedSearchQuery.length,
+      resultCount: notes.length,
+      source: 'NotesScreen',
+    });
+  }, [activeFilter, hasSearch, notes.length, trimmedSearchQuery]);
 
   const filterOptions = useMemo<readonly SegmentedControlOption<NotesFilter>[]>(
     () => [
@@ -523,7 +554,10 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           wasUsed,
         });
         setPendingDeleteNote(null);
-        showQueuedOfflineAlert('Note delete');
+        showQueuedOfflineAlert({
+          analyticsSource: 'NotesScreen',
+          subject: 'Note delete',
+        });
         return;
       }
 
@@ -553,19 +587,42 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   }, [isOnline, pendingDeleteNote, queryClient, writeFeature]);
 
   const handleRefresh = useCallback(async () => {
+    const resultCountBefore = notes.length;
     setIsPullRefreshing(true);
+    trackObservabilityEvent('NOTES_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+      resultCountBefore,
+    }));
 
     try {
       if (shouldQueryNotesBySearch) {
-        await Promise.all([baseNotesQuery.refetch(), searchedNotesQuery.refetch()]);
+        const [, searchResult] = await Promise.all([baseNotesQuery.refetch(), searchedNotesQuery.refetch()]);
+        const resultCountAfter =
+          searchResult.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+        trackObservabilityEvent('NOTES_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          resultCountAfter,
+          deltaCount: resultCountAfter - resultCountBefore,
+        }));
         return;
       }
 
-      await baseNotesQuery.refetch();
+      const result = await baseNotesQuery.refetch();
+      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+      trackObservabilityEvent('NOTES_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        resultCountAfter,
+        deltaCount: resultCountAfter - resultCountBefore,
+      }));
+    } catch (error) {
+      trackObservabilityEvent('NOTES_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
+      throw error;
     } finally {
       setIsPullRefreshing(false);
     }
-  }, [baseNotesQuery, searchedNotesQuery, shouldQueryNotesBySearch]);
+  }, [baseNotesQuery, buildBrowseAnalyticsPayload, notes.length, searchedNotesQuery, shouldQueryNotesBySearch]);
 
   const hasSearchFallbackError =
     shouldQueryNotesBySearch &&
@@ -653,9 +710,18 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           </View>
         ) : null}
 
-        {actionErrorMessage ? <ErrorState description={actionErrorMessage} title="Notes action failed" /> : null}
+        {actionErrorMessage ? (
+          <ErrorState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="NotesScreen"
+            description={actionErrorMessage}
+            title="Notes action failed"
+          />
+        ) : null}
 
         <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="NotesScreen"
           errorMessage={notesErrorMessage}
           title="Notes unavailable"
           actionLabel="Retry"
@@ -679,6 +745,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
         {baseNotesState.hasBlockingError ? (
           <ErrorState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="NotesScreen"
             description="Could not load notes."
             onRetry={() => {
               void baseNotesQuery.refetch();
@@ -691,6 +759,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           hasSearch ? (
             <EmptyState
               actionLabel="Clear Search"
+              analyticsProps={buildBrowseAnalyticsPayload()}
+              analyticsSource="NotesScreen"
               description="Try a different search term."
               onAction={() => {
                 setSearchQuery('');
@@ -701,6 +771,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           ) : (
             <EmptyState
               actionLabel="Log a Note"
+              analyticsProps={buildBrowseAnalyticsPayload()}
+              analyticsSource="NotesScreen"
               description={
                 activeFilter === 'unused'
                   ? 'No unused notes.'
@@ -854,7 +926,26 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
             label={activePaginationQuery.isFetchingNextPage ? 'Loading more...' : 'Load more notes'}
             loading={activePaginationQuery.isFetchingNextPage}
             onPress={() => {
-              void activePaginationQuery.fetchNextPage();
+              const resultCountBefore = notes.length;
+              trackObservabilityEvent('NOTES_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+                resultCountBefore,
+              }));
+              void activePaginationQuery.fetchNextPage()
+                .then((result) => {
+                  const resultCountAfter =
+                    result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+                  trackObservabilityEvent('NOTES_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+                    resultCountBefore,
+                    resultCountAfter,
+                    deltaCount: resultCountAfter - resultCountBefore,
+                  }));
+                })
+                .catch((error) => {
+                  trackObservabilityEvent('NOTES_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+                    resultCountBefore,
+                    errorType: error instanceof Error ? error.name : 'unknown_error',
+                  }));
+                });
             }}
             variant="secondary"
           />

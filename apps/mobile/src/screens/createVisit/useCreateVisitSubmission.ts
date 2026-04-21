@@ -43,6 +43,7 @@ interface UseCreateVisitSubmissionParams {
   restaurantName: string;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setSourceListItemId: Dispatch<SetStateAction<string | null>>;
+  onSubmitSucceeded?: () => void;
   shouldEnforceUsageLimitsClientSide: boolean;
   sourceNoteId?: string;
   sourceListItemId: string | null;
@@ -64,6 +65,7 @@ export function useCreateVisitSubmission({
   restaurantName,
   setErrorMessage,
   setSourceListItemId,
+  onSubmitSucceeded,
   shouldEnforceUsageLimitsClientSide,
   sourceNoteId,
   sourceListItemId,
@@ -300,6 +302,7 @@ export function useCreateVisitSubmission({
         });
 
         if (updateResult.status === 'queued') {
+          onSubmitSucceeded?.();
           await invalidateVisitQueries({
             visitId: editVisitId,
             includeUsage: hasNewPhotoUploads,
@@ -316,7 +319,10 @@ export function useCreateVisitSubmission({
             sourceNoteAttached,
             sourceListItemAttached,
           });
-          showQueuedOfflineAlert('Visit update');
+          showQueuedOfflineAlert({
+            analyticsSource: 'CreateVisitScreen',
+            subject: 'Visit update',
+          });
           navigateAfterEdit();
           return;
         }
@@ -326,6 +332,7 @@ export function useCreateVisitSubmission({
           includeUsage: hasNewPhotoUploads,
           includeVisitPhotos: hasPhotoChanges,
         });
+        onSubmitSucceeded?.();
         trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
           source: 'CreateVisitScreen',
           mode,
@@ -385,6 +392,7 @@ export function useCreateVisitSubmission({
 
         setSourceListItemId(null);
         await invalidateVisitQueries({ sourceNoteId });
+        onSubmitSucceeded?.();
         trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
           source: 'CreateVisitScreen',
           mode,
@@ -396,7 +404,10 @@ export function useCreateVisitSubmission({
           sourceNoteAttached,
           sourceListItemAttached,
         });
-        showQueuedOfflineAlert('Visit');
+        showQueuedOfflineAlert({
+          analyticsSource: 'CreateVisitScreen',
+          subject: 'Visit',
+        });
         navigation.navigate('Home');
         return;
       }
@@ -455,6 +466,7 @@ export function useCreateVisitSubmission({
       }
 
       await invalidateVisitQueries({ includeUsage: true, sourceNoteId });
+      onSubmitSucceeded?.();
       navigation.navigate('Home');
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -511,6 +523,7 @@ export function useCreateVisitSubmission({
     restaurantName,
     setErrorMessage,
     setSourceListItemId,
+    onSubmitSucceeded,
     shouldEnforceUsageLimitsClientSide,
     sourceNoteId,
     sourceListItemId,

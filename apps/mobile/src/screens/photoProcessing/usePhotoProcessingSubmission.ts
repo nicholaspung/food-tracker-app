@@ -49,6 +49,7 @@ interface UsePhotoProcessingSubmissionParams {
   processType: ProcessType | null;
   queryClient: QueryClient;
   foodProductForms: Record<string, FoodProductFormValues>;
+  onSubmitSucceeded?: () => void;
   restaurantForms: Record<string, RestaurantPhotoForm>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<GeneralPhotoStep>>;
@@ -76,6 +77,7 @@ export function usePhotoProcessingSubmission({
   processType,
   queryClient,
   foodProductForms,
+  onSubmitSucceeded,
   restaurantForms,
   setErrorMessage,
   setStep,
@@ -416,9 +418,13 @@ export function usePhotoProcessingSubmission({
       });
 
       if (!isOnline) {
-        showQueuedOfflineAlert('Photo entries');
+        showQueuedOfflineAlert({
+          analyticsSource: 'PhotoProcessingScreen',
+          subject: 'Photo entries',
+        });
       }
 
+      onSubmitSucceeded?.();
       if (processType === 'foodProduct') {
         navigation.navigate('Home', buildFoodProductCreatedHomeParams());
       } else {
@@ -471,6 +477,7 @@ export function usePhotoProcessingSubmission({
     setErrorMessage,
     shouldEnforceUsageLimitsClientSide,
     sourceNoteId,
+    onSubmitSucceeded,
     submitFoodProductItems,
     submitRestaurantVisits,
   ]);

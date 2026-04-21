@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
 
-type JsonValue =
+export type JsonValue =
   | string
   | number
   | boolean
@@ -13,12 +13,13 @@ type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-type EventProperties = Record<string, JsonValue>;
+export type EventProperties = Record<string, JsonValue>;
 type ContextPropertiesInput = Record<string, JsonValue | undefined>;
 
 let initialized = false;
 let posthogClient: PostHog | null = null;
 let contextProperties: EventProperties = {};
+const warnedRedactionKeys = new Set<string>();
 
 const staticEventProperties: EventProperties = {
   appEnvironment: __DEV__ ? 'development' : 'production',
@@ -91,10 +92,15 @@ export function trackObservabilityEvent(eventName: string, properties?: EventPro
     return;
   }
 
+  const { redactedKeys, sanitized } = sanitizeEventProperties(properties);
+  if (__DEV__ && redactedKeys.length > 0) {
+    warnOnRedactedEventProperties(eventName, redactedKeys);
+  }
+
   posthogClient?.capture(eventName, {
     ...staticEventProperties,
     ...contextProperties,
-    ...sanitizeEventProperties(properties),
+    ...sanitized,
   });
 }
 
@@ -118,15 +124,22 @@ export function captureObservabilityError(error: unknown): void {
   });
 }
 
-function sanitizeEventProperties(properties?: EventProperties): EventProperties {
+function sanitizeEventProperties(
+  properties?: EventProperties,
+): { sanitized: EventProperties; redactedKeys: string[] } {
   if (!properties) {
-    return {};
+    return {
+      sanitized: {},
+      redactedKeys: [],
+    };
   }
 
   const sanitized: EventProperties = {};
+  const redactedKeys: string[] = [];
 
   Object.entries(properties).forEach(([key, value]) => {
     if (shouldRedactObservabilityKey(key)) {
+      redactedKeys.push(key);
       return;
     }
 
@@ -136,7 +149,24 @@ function sanitizeEventProperties(properties?: EventProperties): EventProperties 
     }
   });
 
-  return sanitized;
+  return {
+    sanitized,
+    redactedKeys,
+  };
+}
+
+function warnOnRedactedEventProperties(eventName: string, redactedKeys: string[]): void {
+  const sortedKeys = [...redactedKeys].sort();
+  const warningKey = `${eventName}::${sortedKeys.join(',')}`;
+  if (warnedRedactionKeys.has(warningKey)) {
+    return;
+  }
+
+  warnedRedactionKeys.add(warningKey);
+  logger.warn('[Observability] Redacted event properties before PostHog capture.', {
+    eventName,
+    redactedKeys: sortedKeys,
+  });
 }
 
 function shouldRedactObservabilityKey(key: string): boolean {

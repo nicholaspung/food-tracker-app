@@ -78,15 +78,40 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     return bills;
   }, [activeFilter, billsState.items]);
   const styles = useStyles();
+  const buildBrowseAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'BillsScreen',
+      activeFilter,
+      resultCount: filteredBills.length,
+      ...overrides,
+    }),
+    [activeFilter, filteredBills.length],
+  );
   const handleRefresh = useCallback(async () => {
+    const resultCountBefore = filteredBills.length;
     setIsPullRefreshing(true);
+    trackObservabilityEvent('BILLS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+      resultCountBefore,
+    }));
 
     try {
-      await billsQuery.refetch();
+      const result = await billsQuery.refetch();
+      const resultCountAfter = result.data?.length ?? resultCountBefore;
+      trackObservabilityEvent('BILLS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        resultCountAfter,
+        deltaCount: resultCountAfter - resultCountBefore,
+      }));
+    } catch (error) {
+      trackObservabilityEvent('BILLS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
+      throw error;
     } finally {
       setIsPullRefreshing(false);
     }
-  }, [billsQuery]);
+  }, [billsQuery, buildBrowseAnalyticsPayload, filteredBills.length]);
 
   return (
     <BackHeaderScreenScaffold
@@ -145,6 +170,8 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
         ) : null}
 
         <PageErrorToast
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="BillsScreen"
           errorMessage={
             billsState.hasBlockingError
               ? 'Could not load bills.'
@@ -161,6 +188,8 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
 
         {!billsQuery.isLoading && !billsState.hasBlockingError && filteredBills.length === 0 ? (
           <EmptyState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="BillsScreen"
             description={
               activeFilter === 'all'
                 ? 'Create a split bill to get started.'

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Platform, StyleSheet, View, type AppStateStatus } from 'react-native';
 import {
   DefaultTheme,
   NavigationContainer,
@@ -301,6 +301,9 @@ export function RootNavigator() {
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const [currentRouteName, setCurrentRouteName] = useState<keyof RootStackParamList>();
   const previousRouteNameRef = useRef<keyof RootStackParamList | null>(null);
+  const activeRouteNameRef = useRef<keyof RootStackParamList | null>(null);
+  const routeStartedAtRef = useRef<number | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -309,10 +312,6 @@ export function RootNavigator() {
 
     document.title = getWebDocumentTitle(currentRouteName);
   }, [currentRouteName]);
-
-  if (status === 'bootstrapping') {
-    return <SplashScreen />;
-  }
 
   const navigationTheme = {
     ...DefaultTheme,
@@ -326,21 +325,62 @@ export function RootNavigator() {
     },
   };
 
-  const updateCurrentRoute = () => {
+  const trackScreenDwellCompleted = useCallback((options: {
+    nextScreenName?: keyof RootStackParamList;
+    reason?: 'app_background';
+  }) => {
+    const activeRouteName = activeRouteNameRef.current;
+    const routeStartedAt = routeStartedAtRef.current;
+    if (!activeRouteName || routeStartedAt === null) {
+      return;
+    }
+
+    trackObservabilityEvent('SCREEN_DWELL_COMPLETED', {
+      durationMs: Math.max(0, Date.now() - routeStartedAt),
+      nextScreenName: options.nextScreenName ?? null,
+      reason: options.reason ?? null,
+      screenName: activeRouteName,
+    });
+  }, []);
+
+  const updateCurrentRoute = useCallback(() => {
     const routeName = navigationRef.getCurrentRoute()?.name;
     const typedRouteName = routeName as keyof RootStackParamList | undefined;
     setCurrentRouteName(typedRouteName);
 
-    if (!typedRouteName || previousRouteNameRef.current === typedRouteName) {
+    if (!typedRouteName) {
       return;
     }
 
+    const previousRouteName = previousRouteNameRef.current;
+    if (!previousRouteName) {
+      activeRouteNameRef.current = typedRouteName;
+      routeStartedAtRef.current = Date.now();
+      trackObservabilityEvent('SCREEN_VIEW', {
+        screenName: typedRouteName,
+        previousScreenName: null,
+      });
+      previousRouteNameRef.current = typedRouteName;
+      return;
+    }
+
+    if (previousRouteName === typedRouteName) {
+      activeRouteNameRef.current = typedRouteName;
+      if (routeStartedAtRef.current === null) {
+        routeStartedAtRef.current = Date.now();
+      }
+      return;
+    }
+
+    trackScreenDwellCompleted({ nextScreenName: typedRouteName });
     trackObservabilityEvent('SCREEN_VIEW', {
       screenName: typedRouteName,
-      previousScreenName: previousRouteNameRef.current,
+      previousScreenName: previousRouteName,
     });
+    activeRouteNameRef.current = typedRouteName;
+    routeStartedAtRef.current = Date.now();
     previousRouteNameRef.current = typedRouteName;
-  };
+  }, [navigationRef, trackScreenDwellCompleted]);
 
   const hasBottomTabsRoute =
     status === 'authenticated' &&
@@ -369,6 +409,31 @@ export function RootNavigator() {
     });
     navigationRef.navigate(route);
   };
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if (previousState === 'active' && nextState === 'background') {
+        trackScreenDwellCompleted({ reason: 'app_background' });
+        routeStartedAtRef.current = null;
+        return;
+      }
+
+      if (previousState === 'background' && nextState === 'active' && activeRouteNameRef.current) {
+        routeStartedAtRef.current = Date.now();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [trackScreenDwellCompleted]);
+
+  if (status === 'bootstrapping') {
+    return <SplashScreen />;
+  }
 
   return (
     <NavigationContainer

@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import type { ComponentProps } from 'react';
 
@@ -174,6 +174,7 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
   const theme = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
   const carouselRef = useRef<ScrollView | null>(null);
+  const lastTrackedCardViewKeyRef = useRef<string | null>(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const carouselCardWidth = Math.min(viewportWidth - theme.spacing.lg * 2, theme.sizes.modalMaxWidth);
   const boundedActiveCardIndex = Math.min(activeCardIndex, ONBOARDING_CARDS.length - 1);
@@ -187,8 +188,33 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
     });
   }, [boundedActiveCardIndex, carouselCardWidth]);
 
+  const trackCardViewed = useCallback((index: number, trigger: 'initial' | 'swipe' | 'indicator') => {
+    const card = ONBOARDING_CARDS[index];
+    if (!card) {
+      return;
+    }
+
+    const trackingKey = `${card.id}::${index}::${trigger}`;
+    if (lastTrackedCardViewKeyRef.current === trackingKey) {
+      return;
+    }
+
+    lastTrackedCardViewKeyRef.current = trackingKey;
+    trackObservabilityEvent('AUTH_ONBOARDING_CARD_VIEWED', {
+      source: 'OnboardingScreen',
+      card: card.id,
+      index,
+      trigger,
+    });
+  }, []);
+
+  useEffect(() => {
+    trackCardViewed(boundedActiveCardIndex, 'initial');
+  }, [boundedActiveCardIndex, trackCardViewed]);
+
   const handleCardIndicatorPress = (index: number) => {
     setActiveCardIndex(index);
+    trackCardViewed(index, 'indicator');
     carouselRef.current?.scrollTo({
       animated: true,
       x: index * carouselCardWidth,
@@ -232,7 +258,9 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
             horizontal
             onMomentumScrollEnd={(event) => {
               const nextIndex = Math.round(event.nativeEvent.contentOffset.x / carouselCardWidth);
-              setActiveCardIndex(Math.max(0, Math.min(ONBOARDING_CARDS.length - 1, nextIndex)));
+              const boundedIndex = Math.max(0, Math.min(ONBOARDING_CARDS.length - 1, nextIndex));
+              setActiveCardIndex(boundedIndex);
+              trackCardViewed(boundedIndex, 'swipe');
             }}
             pagingEnabled
             ref={carouselRef}

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -305,6 +305,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const hasTriedCreatingDefault = useRef(false);
+  const lastTrackedSearchExecutionKeyRef = useRef<string | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
 
   const myListsQuery = useInfiniteQuery({
@@ -472,15 +473,61 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
   const isLoading = activeQuery.isLoading || (activeTab === 'my' && isCreatingDefaultList);
   const hasSearch = trimmedSearchQuery.length > 0;
+  const buildBrowseAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'ListsScreen',
+      activeTab,
+      queryLength: trimmedSearchQuery.length,
+      resultCount: visibleLists.length,
+      ...overrides,
+    }),
+    [activeTab, trimmedSearchQuery.length, visibleLists.length],
+  );
   const handleRefresh = async () => {
+    const resultCountBefore = visibleLists.length;
     setIsPullRefreshing(true);
+    trackObservabilityEvent('LISTS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+      resultCountBefore,
+    }));
 
     try {
-      await activeQuery.refetch();
+      const result = await activeQuery.refetch();
+      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+      trackObservabilityEvent('LISTS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        resultCountAfter,
+        deltaCount: resultCountAfter - resultCountBefore,
+      }));
+    } catch (error) {
+      trackObservabilityEvent('LISTS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      }));
+      throw error;
     } finally {
       setIsPullRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    if (!hasSearch) {
+      lastTrackedSearchExecutionKeyRef.current = null;
+      return;
+    }
+
+    const trackingKey = `${activeTab}::${trimmedSearchQuery}::${visibleLists.length}`;
+    if (lastTrackedSearchExecutionKeyRef.current === trackingKey) {
+      return;
+    }
+
+    lastTrackedSearchExecutionKeyRef.current = trackingKey;
+    trackObservabilityEvent('LISTS_SEARCH_EXECUTED', {
+      source: 'ListsScreen',
+      activeTab,
+      queryLength: trimmedSearchQuery.length,
+      resultCount: visibleLists.length,
+    });
+  }, [activeTab, hasSearch, trimmedSearchQuery, visibleLists.length]);
 
   const handleTabChange = (tab: ListTab) => {
     trackObservabilityEvent('LISTS_TAB_CHANGED', {
@@ -496,6 +543,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       return (
         <EmptyState
           actionLabel="Create Your First List"
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="ListsScreen"
           description="Create your first list to organize favorite restaurants."
           icon={
             <View style={styles.emptyIconWrap}>
@@ -517,6 +566,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     if (activeTab === 'friends') {
       return (
         <EmptyState
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="ListsScreen"
           description="Add friends to see the lists they share."
           icon={
             <View style={styles.emptyIconWrap}>
@@ -534,6 +585,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const renderNoSearchResults = () => (
     <EmptyState
       actionLabel="Clear Search"
+      analyticsProps={buildBrowseAnalyticsPayload()}
+      analyticsSource="ListsScreen"
       description="Try a different search term."
       icon={
         <View style={styles.emptyIconWrap}>
@@ -650,7 +703,12 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       testID="lists-screen"
       title="Lists"
     >
-      <PageErrorToast errorMessage={errorMessage} title="List operation failed" />
+      <PageErrorToast
+        analyticsProps={buildBrowseAnalyticsPayload()}
+        analyticsSource="ListsScreen"
+        errorMessage={errorMessage}
+        title="List operation failed"
+      />
 
       <SegmentedControl
         getOptionTestID={(value) => `lists-tab-${value}`}
@@ -686,6 +744,8 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
       <PageErrorToast
         actionLabel="Retry"
+        analyticsProps={buildBrowseAnalyticsPayload()}
+        analyticsSource="ListsScreen"
         errorMessage={
           activeState.hasBlockingError
             ? 'Could not load lists.'
@@ -720,7 +780,26 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
                     label={activeQuery.isFetchingNextPage ? 'Loading more...' : 'Load more lists'}
                     loading={activeQuery.isFetchingNextPage}
                     onPress={() => {
-                      void activeQuery.fetchNextPage();
+                      const resultCountBefore = visibleLists.length;
+                      trackObservabilityEvent('LISTS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+                        resultCountBefore,
+                      }));
+                      void activeQuery.fetchNextPage()
+                        .then((result) => {
+                          const resultCountAfter =
+                            result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+                          trackObservabilityEvent('LISTS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+                            resultCountBefore,
+                            resultCountAfter,
+                            deltaCount: resultCountAfter - resultCountBefore,
+                          }));
+                        })
+                        .catch((error) => {
+                          trackObservabilityEvent('LISTS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+                            resultCountBefore,
+                            errorType: error instanceof Error ? error.name : 'unknown_error',
+                          }));
+                        });
                     }}
                     variant="secondary"
                   />

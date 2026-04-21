@@ -4,6 +4,7 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { trackObservabilityEvent } from '../observability';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { NotesScreen } from '../screens/NotesScreen';
 
 const mockReact = React;
@@ -59,6 +60,10 @@ jest.mock('../observability', () => ({
   trackObservabilityEvent: jest.fn(),
 }));
 
+jest.mock('../providers/ConnectivityProvider', () => ({
+  useConnectivity: jest.fn(),
+}));
+
 jest.mock('../theme', () => ({
   createThemedStyles:
     (factory: (...args: unknown[]) => unknown) =>
@@ -103,6 +108,7 @@ const mockedUseQueryClient = useQueryClient as jest.MockedFunction<typeof useQue
 const mockedUseOfflineAwareFeatureWrite = useOfflineAwareFeatureWrite as jest.MockedFunction<
   typeof useOfflineAwareFeatureWrite
 >;
+const mockedUseConnectivity = useConnectivity as jest.MockedFunction<typeof useConnectivity>;
 const mockedTrackObservabilityEvent = trackObservabilityEvent as jest.MockedFunction<
   typeof trackObservabilityEvent
 >;
@@ -254,6 +260,7 @@ describe('NotesScreen', () => {
       invalidateQueries: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(jest.fn() as ReturnType<typeof useOfflineAwareFeatureWrite>);
+    mockedUseConnectivity.mockReturnValue({ isOnline: true } as ReturnType<typeof useConnectivity>);
   });
 
   afterEach(() => {

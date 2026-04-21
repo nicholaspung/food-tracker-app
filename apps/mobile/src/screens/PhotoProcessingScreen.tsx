@@ -92,6 +92,12 @@ import { usePhotoProcessingSubmission } from './photoProcessing/usePhotoProcessi
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 
+type PhotoProcessingExitMethod =
+  | 'header_back'
+  | 'secondary_cancel'
+  | 'system_back_or_gesture'
+  | 'programmatic_navigation';
+
 const useStyles = createThemedStyles((theme) => ({
   choiceContent: {
     backgroundColor: theme.colors.background.muted,
@@ -316,6 +322,11 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const [isCreatingMenuItem, setIsCreatingMenuItem] = useState(false);
   const [lastRequestedSource, setLastRequestedSource] = useState<ScanSource>('gallery');
   const processStepScrollViewRef = useRef<KeyboardAwareScrollViewRef | null>(null);
+  const hasTrackedFlowOpenRef = useRef(false);
+  const hasTrackedFlowExitRef = useRef(false);
+  const hasCompletedFlowRef = useRef(false);
+  const lastTrackedStepRef = useRef<GeneralPhotoStep | null>(null);
+  const exitMethodRef = useRef<PhotoProcessingExitMethod | null>(null);
   const { permissionNeedsSettings, pickImageAssets } = useImageSourcePicker({
     cameraBlockedMessage: 'Camera permission is blocked. Enable it in device settings.',
     cameraRequiredMessage: 'Camera permission is required to take a photo.',
@@ -690,6 +701,38 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
   const shouldShowPhotoUpgradePrompt =
     isDisplayFreeUser &&
     estimatedFreeMonthlyPhotoRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
+  const ratedCount = useMemo(() => {
+    if (processType === 'restaurant') {
+      return Object.values(restaurantForms).filter(
+        (form) => Boolean(form.menuItemName.trim()) && form.rating > 0,
+      ).length;
+    }
+
+    if (processType === 'foodProduct') {
+      return Object.values(foodProductForms).filter(
+        (form) => Boolean(form.itemName.trim()) && form.rating > 0,
+      ).length;
+    }
+
+    return 0;
+  }, [foodProductForms, processType, restaurantForms]);
+  const hasUnsavedChanges =
+    processType !== null ||
+    photos.length > 0 ||
+    Object.keys(restaurantForms).length > 0 ||
+    Object.keys(foodProductForms).length > 0;
+  const buildFlowAnalyticsPayload = useCallback(
+    (overrides?: Record<string, string | number | boolean | null>) => ({
+      source: 'PhotoProcessingScreen',
+      processType: processType ?? 'unselected',
+      step,
+      photoCount: photos.length,
+      ratedCount,
+      hasUnsavedChanges,
+      ...overrides,
+    }),
+    [hasUnsavedChanges, photos.length, processType, ratedCount, step],
+  );
   const { handleProcessNext, handleSubmitAll, isSubmitting } =
     usePhotoProcessingSubmission({
       currentPhoto,
@@ -701,6 +744,9 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       isOnline,
       monthlyUsageSnapshot: monthlyUsage.snapshot,
       navigation,
+      onSubmitSucceeded: () => {
+        hasCompletedFlowRef.current = true;
+      },
       photos,
       processType,
       queryClient,
@@ -713,6 +759,45 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       visitVisibility,
       writeFeature,
     });
+
+  useEffect(() => {
+    if (hasTrackedFlowOpenRef.current) {
+      return;
+    }
+
+    hasTrackedFlowOpenRef.current = true;
+    trackObservabilityEvent('PHOTO_PROCESSING_FLOW_OPENED', buildFlowAnalyticsPayload());
+  }, [buildFlowAnalyticsPayload]);
+
+  useEffect(() => {
+    if (lastTrackedStepRef.current === step) {
+      return;
+    }
+
+    lastTrackedStepRef.current = step;
+    trackObservabilityEvent('PHOTO_PROCESSING_STEP_VIEWED', buildFlowAnalyticsPayload());
+  }, [buildFlowAnalyticsPayload, step]);
+
+  useEffect(
+    () => () => {
+      if (
+        hasCompletedFlowRef.current ||
+        hasTrackedFlowExitRef.current ||
+        !hasTrackedFlowOpenRef.current
+      ) {
+        return;
+      }
+
+      hasTrackedFlowExitRef.current = true;
+      trackObservabilityEvent(
+        'PHOTO_PROCESSING_FLOW_EXITED',
+        buildFlowAnalyticsPayload({
+          exitMethod: exitMethodRef.current ?? 'system_back_or_gesture',
+        }),
+      );
+    },
+    [buildFlowAnalyticsPayload],
+  );
 
   const handleSearchByText = async (collapseAfterSearch = false) => {
     dismissCurrentPhotoLocationHint();
@@ -1134,6 +1219,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       >
         <ScreenHeader
           onBackPress={() => {
+            exitMethodRef.current = 'header_back';
             navigation.goBack();
           }}
           subtitle={isNoteDrivenFlow ? 'Choose how you want to use this note.' : 'What would you like to track?'}
@@ -1141,7 +1227,13 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           variant="compact"
         />
         <View style={styles.choiceBody} testID={isNoteDrivenFlow ? 'note-use-choice-screen' : undefined}>
-          <PageErrorToast actionLabel={errorActionLabel} errorMessage={errorMessage} onAction={errorAction} />
+          <PageErrorToast
+            actionLabel={errorActionLabel}
+            analyticsProps={buildFlowAnalyticsPayload()}
+            analyticsSource="PhotoProcessingScreen"
+            errorMessage={errorMessage}
+            onAction={errorAction}
+          />
           {linkedNoteCard}
           <StepProgressBar
             compact
@@ -1153,6 +1245,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
           {isBlockingNotePhotoLoad ? <LoadingState label="Loading note photos..." /> : null}
           {hasBlockingNotePhotoError ? (
             <ErrorState
+              analyticsProps={buildFlowAnalyticsPayload()}
+              analyticsSource="PhotoProcessingScreen"
               description="Could not load note photos."
               onRetry={() => {
                 void noteDetailQuery.refetch();
@@ -1181,6 +1275,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     }
 
                     setErrorMessage(null);
+                    exitMethodRef.current = 'programmatic_navigation';
                     navigation.navigate('CreateVisit', { sourceNoteId });
                     return;
                   }
@@ -1210,6 +1305,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     }
 
                     setErrorMessage(null);
+                    exitMethodRef.current = 'programmatic_navigation';
                     navigation.navigate('FoodProduct', {
                       returnToPrevious: true,
                       sourceNoteId,
@@ -1263,7 +1359,12 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     );
     const photoSelectionCard = !hasSelectedPhotos ? (
       <Card>
-        <EmptyState description="Add photos to start processing." title="No photos selected" />
+        <EmptyState
+          analyticsProps={buildFlowAnalyticsPayload()}
+          analyticsSource="PhotoProcessingScreen"
+          description="Add photos to start processing."
+          title="No photos selected"
+        />
       </Card>
     ) : (
       <Card style={styles.uploadCard}>
@@ -1339,6 +1440,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       >
         <PageErrorToast
           actionLabel={errorActionLabel}
+          analyticsProps={buildFlowAnalyticsPayload()}
+          analyticsSource="PhotoProcessingScreen"
           errorMessage={errorMessage}
           onAction={errorAction}
           title="Photo upload issue"
@@ -1435,6 +1538,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       >
         <PageErrorToast
           actionLabel={errorActionLabel}
+          analyticsProps={buildFlowAnalyticsPayload()}
+          analyticsSource="PhotoProcessingScreen"
           errorMessage={errorMessage}
           onAction={errorAction}
           title="Photo details issue"
@@ -1603,6 +1708,8 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
                     {!menuItemsQuery.isLoading && !menuItemsQuery.isError ? (
                       displayedMenuItems.length === 0 ? (
                         <EmptyState
+                          analyticsProps={buildFlowAnalyticsPayload()}
+                          analyticsSource="PhotoProcessingScreen"
                           description={
                             menuItemSearchQuery.trim()
                               ? 'No matching items found. Try another search or create a new one.'
@@ -1842,11 +1949,13 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     <FeatureFormScreenScaffold
       keyboardAware={false}
       onBackPress={() => {
+        exitMethodRef.current = 'header_back';
         navigation.goBack();
       }}
       primaryAction={{
         label: 'Back',
         onPress: () => {
+          exitMethodRef.current = 'secondary_cancel';
           navigation.goBack();
         },
       }}
@@ -1856,7 +1965,12 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
       <Card>
         <Text tone="secondary">Start from Add tab to begin processing photos.</Text>
       </Card>
-      <PageErrorToast errorMessage={errorMessage} title="Process photos issue" />
+      <PageErrorToast
+        analyticsProps={buildFlowAnalyticsPayload()}
+        analyticsSource="PhotoProcessingScreen"
+        errorMessage={errorMessage}
+        title="Process photos issue"
+      />
       {permissionNeedsSettings ? (
         <Button
           label="Open Settings"
