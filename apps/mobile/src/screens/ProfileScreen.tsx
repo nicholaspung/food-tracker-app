@@ -393,6 +393,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       return updatedProfile.displayName.trim() || trimmedName;
     },
     onSuccess: (nextName) => {
+      trackObservabilityEvent("PROFILE_ACCOUNT_NAME_SAVE_SUCCEEDED", {
+        source: "ProfileScreen",
+        nameLength: nextName.length,
+      });
       setAccountNameErrorMessage(null);
       setIsEditingAccountName(false);
       setEditedAccountName(nextName);
@@ -413,19 +417,29 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
       );
     },
     onError: (error: unknown) => {
-      setAccountNameErrorMessage(
-        getErrorMessage(error, "Could not update name."),
-      );
+      const message = getErrorMessage(error, "Could not update name.");
+      trackObservabilityEvent("PROFILE_ACCOUNT_NAME_SAVE_FAILED", {
+        source: "ProfileScreen",
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : "unknown_error",
+      });
+      setAccountNameErrorMessage(message);
     },
   });
 
   const handleStartEditAccountName = () => {
+    trackObservabilityEvent("PROFILE_ACCOUNT_NAME_EDIT_STARTED", {
+      source: "ProfileScreen",
+    });
     setAccountNameErrorMessage(null);
     setEditedAccountName(editableAccountName);
     setIsEditingAccountName(true);
   };
 
   const handleCancelEditAccountName = () => {
+    trackObservabilityEvent("PROFILE_ACCOUNT_NAME_EDIT_CANCELED", {
+      source: "ProfileScreen",
+    });
     setAccountNameErrorMessage(null);
     setEditedAccountName(editableAccountName);
     setIsEditingAccountName(false);
@@ -434,6 +448,10 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const handleSaveAccountName = () => {
     const trimmedName = editedAccountName.trim();
     if (!trimmedName) {
+      trackObservabilityEvent("PROFILE_ACCOUNT_NAME_SAVE_VALIDATION_FAILED", {
+        source: "ProfileScreen",
+        reason: "missing_name",
+      });
       setAccountNameErrorMessage("Name cannot be empty.");
       return;
     }
@@ -444,30 +462,52 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     }
 
     setAccountNameErrorMessage(null);
+    trackObservabilityEvent("PROFILE_ACCOUNT_NAME_SAVE_STARTED", {
+      source: "ProfileScreen",
+      nameLength: trimmedName.length,
+    });
     updateAccountNameMutation.mutate(trimmedName);
   };
 
   const handleDeleteAccount = async () => {
     if (!user?.id) {
+      trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_VALIDATION_FAILED", {
+        source: "ProfileScreen",
+        reason: "missing_user",
+      });
       setDangerErrorMessage("Could not find user account.");
       return;
     }
 
     if (!deleteAccountPassword.trim()) {
+      trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_VALIDATION_FAILED", {
+        source: "ProfileScreen",
+        reason: "missing_password",
+      });
       setDangerErrorMessage("Current password is required.");
       return;
     }
 
     setDangerErrorMessage(null);
+    trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_STARTED", {
+      source: "ProfileScreen",
+    });
     setIsDeletingAccount(true);
 
     try {
       await deleteAccount(deleteAccountPassword);
+      trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_SUCCEEDED", {
+        source: "ProfileScreen",
+      });
       await signOut();
     } catch (error) {
-      setDangerErrorMessage(
-        getErrorMessage(error, "Could not delete account."),
-      );
+      const message = getErrorMessage(error, "Could not delete account.");
+      trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_FAILED", {
+        source: "ProfileScreen",
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : "unknown_error",
+      });
+      setDangerErrorMessage(message);
     } finally {
       setIsDeletingAccount(false);
     }
@@ -880,6 +920,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
               <Button
                 label="Delete Account"
                 onPress={() => {
+                  trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_TAPPED", {
+                    source: "ProfileScreen",
+                  });
                   setDangerErrorMessage(null);
                   setDeleteAccountPassword("");
                   setShowDeleteConfirm(true);
@@ -909,6 +952,9 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
         loading={isDeletingAccount}
         onCancel={closeDeleteAccountModal}
         onConfirm={() => {
+          trackObservabilityEvent("PROFILE_DELETE_ACCOUNT_CONFIRMED", {
+            source: "ProfileScreen",
+          });
           void handleDeleteAccount();
         }}
         testID="profile-delete-account-confirmation-modal"

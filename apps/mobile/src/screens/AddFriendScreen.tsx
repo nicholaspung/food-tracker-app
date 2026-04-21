@@ -8,7 +8,9 @@ import { friendsQueryKeys, inviteFriend } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 
@@ -47,6 +49,7 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
   const { user } = useAuth();
+  const { isOnline } = useConnectivity();
 
   const [friendCode, setFriendCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -74,16 +77,34 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
     const normalizedCode = sanitizeFriendCode(friendCode);
 
     if (!normalizedCode) {
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
+        source: 'AddFriendScreen',
+        entryMethod: 'manual_code',
+        reason: 'missing_code',
+        isOnline,
+      });
       setErrorMessage('Friend code is required.');
       return;
     }
 
     if (normalizedCode === myFriendCode) {
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
+        source: 'AddFriendScreen',
+        entryMethod: 'manual_code',
+        reason: 'self_code',
+        isOnline,
+      });
       setErrorMessage('You cannot add yourself as a friend.');
       return;
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('FRIEND_REQUEST_SEND_STARTED', {
+      source: 'AddFriendScreen',
+      entryMethod: 'manual_code',
+      codeLength: normalizedCode.length,
+      isOnline,
+    });
     setIsSubmitting(true);
 
     try {
@@ -98,15 +119,32 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
 
       if (requestResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
+        trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
+          source: 'AddFriendScreen',
+          entryMethod: 'manual_code',
+          queued: true,
+        });
         showQueuedOfflineAlert('Friend request');
         handleRequestComplete();
         return;
       }
 
       await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
+        source: 'AddFriendScreen',
+        entryMethod: 'manual_code',
+        queued: false,
+      });
       handleRequestComplete();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not send friend request.';
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_FAILED', {
+        source: 'AddFriendScreen',
+        entryMethod: 'manual_code',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+      });
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
@@ -152,6 +190,9 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
             disabled={isSubmitting}
             label="Scan QR"
             onPress={() => {
+              trackObservabilityEvent('ADD_FRIEND_SCAN_QR_TAPPED', {
+                source: 'AddFriendScreen',
+              });
               navigation.navigate('QRScanner');
             }}
             style={styles.scanAction}

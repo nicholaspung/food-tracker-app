@@ -167,12 +167,24 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
       source: 'QRScannerScreen',
     });
     if (normalizedCode.length !== 8) {
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
+        source: 'QRScannerScreen',
+        entryMethod: 'qr_scan',
+        reason: 'invalid_code_length',
+        codeLength: normalizedCode.length,
+      });
       setErrorMessage('Friend code must be 8 characters.');
       setHasScanned(true);
       return;
     }
 
     if (normalizedCode === myFriendCode) {
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_VALIDATION_FAILED', {
+        source: 'QRScannerScreen',
+        entryMethod: 'qr_scan',
+        reason: 'self_code',
+        codeLength: normalizedCode.length,
+      });
       setErrorMessage('You cannot add yourself as a friend.');
       setHasScanned(true);
       return;
@@ -180,6 +192,11 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
 
     setErrorMessage(null);
     setScannedCode(normalizedCode);
+    trackObservabilityEvent('FRIEND_REQUEST_SEND_STARTED', {
+      source: 'QRScannerScreen',
+      entryMethod: 'qr_scan',
+      codeLength: normalizedCode.length,
+    });
     setIsSubmitting(true);
 
     try {
@@ -202,6 +219,15 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
 
       if (requestResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
+        trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
+          source: 'QRScannerScreen',
+          entryMethod: 'qr_scan',
+          queued: true,
+        });
+        trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
+          source: 'QRScannerScreen',
+          queued: true,
+        });
         showQueuedOfflineAlert('Friend request');
         navigation.navigate('Friends', {
           initialFriendsSubTab: 'sent',
@@ -211,8 +237,14 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
       }
 
       await queryClient.invalidateQueries({ queryKey: friendsQueryKeys.root });
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_SUCCEEDED', {
+        source: 'QRScannerScreen',
+        entryMethod: 'qr_scan',
+        queued: false,
+      });
       trackObservabilityEvent('QR_SCAN_SUBMIT_COMPLETED', {
         source: 'QRScannerScreen',
+        queued: false,
       });
       navigation.navigate('Friends', {
         initialFriendsSubTab: 'sent',
@@ -220,6 +252,12 @@ export function QRScannerScreen({ navigation }: QRScannerScreenProps) {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not process QR invite.';
+      trackObservabilityEvent('FRIEND_REQUEST_SEND_FAILED', {
+        source: 'QRScannerScreen',
+        entryMethod: 'qr_scan',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+      });
       trackObservabilityEvent('QR_SCAN_SUBMIT_FAILED', {
         errorMessage: message,
         errorType: error instanceof Error ? error.name : 'unknown_error',

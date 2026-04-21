@@ -1233,6 +1233,7 @@ export function CreateVisitScreen({
     editVisitId,
     isDisplayFreeUser,
     isEditMode,
+    isOnline,
     monthlyUsageSnapshot: monthlyUsage.snapshot,
     navigation,
     queryClient,

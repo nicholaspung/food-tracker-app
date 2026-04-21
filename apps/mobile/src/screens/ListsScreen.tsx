@@ -28,6 +28,7 @@ import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, ListItem, Text } from '../ui';
 
@@ -294,6 +295,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const { user } = useAuth();
+  const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
 
@@ -379,6 +381,13 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     setIsCreatingDefaultList(true);
 
     void (async () => {
+      trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_STARTED', {
+        source: 'ListsScreen',
+        isOnline,
+        listCountBeforeCreate: myLists.length,
+        trigger: 'missing_default_list',
+      });
+
       try {
         const createResult = await writeFeature({
           operationName: 'list.default.create',
@@ -391,12 +400,32 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
 
         if (createResult.status === 'queued') {
           await invalidateRestaurantListCollectionQueries(queryClient, 'my');
+          trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_SUCCEEDED', {
+            source: 'ListsScreen',
+            listCountBeforeCreate: myLists.length,
+            queued: true,
+            trigger: 'missing_default_list',
+          });
           return;
         }
 
         await invalidateRestaurantListCollectionQueries(queryClient, 'my');
+        trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_SUCCEEDED', {
+          source: 'ListsScreen',
+          listCountBeforeCreate: myLists.length,
+          queued: false,
+          trigger: 'missing_default_list',
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not prepare your Saved list.';
+        trackObservabilityEvent('LISTS_DEFAULT_LIST_AUTO_CREATE_FAILED', {
+          source: 'ListsScreen',
+          errorMessage: message,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          isOnline,
+          listCountBeforeCreate: myLists.length,
+          trigger: 'missing_default_list',
+        });
         setErrorMessage(message);
         hasTriedCreatingDefault.current = false;
       } finally {
@@ -411,6 +440,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     myListsQuery.data,
     myListsQuery.isError,
     myListsQuery.isLoading,
+    isOnline,
     queryClient,
     writeFeature,
   ]);

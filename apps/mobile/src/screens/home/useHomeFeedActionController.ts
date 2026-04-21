@@ -17,6 +17,7 @@ import {
 import { moveVisitItemApiMutationInput } from '../../features/store/featureOutboxOperations';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
+import { trackObservabilityEvent } from '../../observability';
 import type {
   PendingDeleteTarget,
   PendingMoveVisitItem,
@@ -212,11 +213,21 @@ export function useHomeFeedActionController({
 
       if (deleteResult.status === 'queued') {
         await invalidateHomeFeed();
+        trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
+          source: 'HomeFeedActionController',
+          contentType: 'food-product',
+          queued: true,
+        });
         showQueuedOfflineAlert('Food product delete');
         return;
       }
 
       await invalidateHomeFeed();
+      trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
+        source: 'HomeFeedActionController',
+        contentType: 'food-product',
+        queued: false,
+      });
     },
     [invalidateHomeFeed, writeFeature],
   );
@@ -234,17 +245,32 @@ export function useHomeFeedActionController({
 
       if (deleteResult.status === 'queued') {
         await invalidateHomeFeed();
+        trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
+          source: 'HomeFeedActionController',
+          contentType: 'visit',
+          queued: true,
+        });
         showQueuedOfflineAlert('Visit delete');
         return;
       }
 
       await invalidateHomeFeed();
+      trackObservabilityEvent('HOME_FEED_DELETE_SUCCEEDED', {
+        source: 'HomeFeedActionController',
+        contentType: 'visit',
+        queued: false,
+      });
     },
     [invalidateHomeFeed, writeFeature],
   );
 
   const promptDeleteFoodProduct = useCallback(
     (foodProductId: string, itemName: string) => {
+      trackObservabilityEvent('HOME_FEED_DELETE_TAPPED', {
+        source: 'HomeFeedActionController',
+        contentType: 'food-product',
+        isOnline,
+      });
       setDeleteErrorMessage(null);
       setPendingDeleteTarget({
         id: foodProductId,
@@ -252,22 +278,31 @@ export function useHomeFeedActionController({
         kind: 'food-product',
       });
     },
-    [],
+    [isOnline],
   );
 
   const promptDeleteVisit = useCallback((visitId: string, itemName: string) => {
+    trackObservabilityEvent('HOME_FEED_DELETE_TAPPED', {
+      source: 'HomeFeedActionController',
+      contentType: 'visit',
+      isOnline,
+    });
     setDeleteErrorMessage(null);
     setPendingDeleteTarget({
       id: visitId,
       itemName,
       kind: 'visit',
     });
-  }, []);
+  }, [isOnline]);
 
   const promptMoveVisitItem = useCallback((target: PendingMoveVisitItem) => {
+    trackObservabilityEvent('HOME_FEED_MOVE_ITEM_TAPPED', {
+      source: 'HomeFeedActionController',
+      isOnline,
+    });
     setMoveErrorMessage(null);
     setPendingMoveItem(target);
-  }, []);
+  }, [isOnline]);
 
   const closeDeleteModal = useCallback(() => {
     if (isDeletingTarget) {
@@ -291,6 +326,11 @@ export function useHomeFeedActionController({
       return;
     }
 
+    trackObservabilityEvent('HOME_FEED_DELETE_CONFIRMED', {
+      source: 'HomeFeedActionController',
+      contentType: pendingDeleteTarget.kind,
+      isOnline,
+    });
     setIsDeletingTarget(true);
 
     try {
@@ -309,6 +349,13 @@ export function useHomeFeedActionController({
           : pendingDeleteTarget.kind === 'visit'
             ? 'Could not delete visit.'
             : 'Could not delete food product.';
+      trackObservabilityEvent('HOME_FEED_DELETE_FAILED', {
+        source: 'HomeFeedActionController',
+        contentType: pendingDeleteTarget.kind,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+      });
       setDeleteErrorMessage(message);
     } finally {
       setIsDeletingTarget(false);
@@ -317,6 +364,7 @@ export function useHomeFeedActionController({
     handleDeleteFoodProduct,
     handleDeleteVisit,
     isDeletingTarget,
+    isOnline,
     pendingDeleteTarget,
   ]);
 
@@ -349,6 +397,10 @@ export function useHomeFeedActionController({
         queryClient.getQueryData<VisitRecord | null>(destinationVisitQueryKey);
 
       setMoveErrorMessage(null);
+      trackObservabilityEvent('HOME_FEED_MOVE_ITEM_STARTED', {
+        source: 'HomeFeedActionController',
+        isOnline,
+      });
       setIsMovingVisitItem(true);
 
       queryClient.setQueriesData<HomeFeedInfiniteData>(
@@ -407,6 +459,10 @@ export function useHomeFeedActionController({
           pendingMoveItem.sourceVisitId,
           destinationVisit.id,
         );
+        trackObservabilityEvent('HOME_FEED_MOVE_ITEM_SUCCEEDED', {
+          source: 'HomeFeedActionController',
+          queued: moveResult.status === 'queued',
+        });
 
         if (moveResult.status === 'queued') {
           showQueuedOfflineAlert('Visit item move');
@@ -431,6 +487,12 @@ export function useHomeFeedActionController({
 
         const message =
           error instanceof Error ? error.message : 'Could not move visit item.';
+        trackObservabilityEvent('HOME_FEED_MOVE_ITEM_FAILED', {
+          source: 'HomeFeedActionController',
+          errorMessage: message,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          isOnline,
+        });
         setMoveErrorMessage(message);
       } finally {
         setIsMovingVisitItem(false);
@@ -438,6 +500,7 @@ export function useHomeFeedActionController({
     },
     [
       invalidateMoveVisitItemQueries,
+      isOnline,
       isMovingVisitItem,
       pendingMoveItem,
       queryClient,
@@ -446,6 +509,10 @@ export function useHomeFeedActionController({
   );
 
   const promptReportMenuTarget = useCallback((target: PendingReportTarget) => {
+    trackObservabilityEvent('HOME_FEED_REPORT_MENU_OPENED', {
+      source: 'HomeFeedActionController',
+      contentType: target.kind,
+    });
     setPendingReportMenuTarget(target);
   }, []);
 
@@ -487,11 +554,24 @@ export function useHomeFeedActionController({
     }
 
     if (!isOnline) {
+      trackObservabilityEvent('HOME_FEED_REPORT_SUBMIT_FAILED', {
+        source: 'HomeFeedActionController',
+        contentType: pendingReportTarget.kind,
+        errorMessage: 'Connect to the internet to submit a report.',
+        errorType: 'offline',
+      });
       setReportErrorMessage('Connect to the internet to submit a report.');
       return;
     }
 
     setReportErrorMessage(null);
+    trackObservabilityEvent('HOME_FEED_REPORT_SUBMIT_STARTED', {
+      source: 'HomeFeedActionController',
+      contentType: pendingReportTarget.kind,
+      hasNotes: Boolean(reportNotes.trim()),
+      reasonCode: reportReasonCode,
+      isOnline,
+    });
     setIsSubmittingReport(true);
 
     try {
@@ -508,9 +588,24 @@ export function useHomeFeedActionController({
 
       closeReportModal();
       await invalidateHomeFeed();
+      trackObservabilityEvent('HOME_FEED_REPORT_SUBMIT_SUCCEEDED', {
+        source: 'HomeFeedActionController',
+        contentType: pendingReportTarget.kind,
+        hasNotes: Boolean(reportNotes.trim()),
+        reasonCode: reportReasonCode,
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Could not submit report.';
+      trackObservabilityEvent('HOME_FEED_REPORT_SUBMIT_FAILED', {
+        source: 'HomeFeedActionController',
+        contentType: pendingReportTarget.kind,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        hasNotes: Boolean(reportNotes.trim()),
+        reasonCode: reportReasonCode,
+        isOnline,
+      });
       setReportErrorMessage(message);
     } finally {
       setIsSubmittingReport(false);

@@ -35,6 +35,7 @@ interface UseCreateVisitSubmissionParams {
   editVisitId?: string;
   isDisplayFreeUser: boolean;
   isEditMode: boolean;
+  isOnline?: boolean;
   monthlyUsageSnapshot: MonthlyUsageSnapshot | null;
   navigation: CreateVisitNavigationProp;
   queryClient: QueryClient;
@@ -55,6 +56,7 @@ export function useCreateVisitSubmission({
   editVisitId,
   isDisplayFreeUser,
   isEditMode,
+  isOnline,
   monthlyUsageSnapshot,
   navigation,
   queryClient,
@@ -71,6 +73,7 @@ export function useCreateVisitSubmission({
 }: UseCreateVisitSubmissionParams) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const trackWriteTelemetry = useWriteTelemetry();
+  const isCurrentlyOnline = isOnline ?? false;
 
   const invalidateVisitQueries = useCallback(
     async (options?: {
@@ -141,18 +144,35 @@ export function useCreateVisitSubmission({
   const submitVisit = useCallback(async () => {
     const trimmedRestaurant = restaurantName.trim();
     const trimmedVisitDate = visitDate.trim();
+    const mode = isEditMode ? 'edit' : 'create';
+    const sourceNoteAttached = Boolean(sourceNoteId);
+    const sourceListItemAttached = Boolean(sourceListItemId);
+    const trackSubmitValidationFailed = (reason: string) => {
+      trackObservabilityEvent('CREATE_VISIT_SUBMIT_VALIDATION_FAILED', {
+        source: 'CreateVisitScreen',
+        mode,
+        reason,
+        itemCount: draftItems.length,
+        visitVisibility,
+        sourceNoteAttached,
+        sourceListItemAttached,
+      });
+    };
 
     if (!trimmedRestaurant) {
+      trackSubmitValidationFailed('missing_restaurant');
       setErrorMessage('Select a restaurant before continuing.');
       return;
     }
 
     if (draftItems.length === 0) {
+      trackSubmitValidationFailed('missing_items');
       setErrorMessage('Add at least one item.');
       return;
     }
 
     if (!isValidLocalDate(trimmedVisitDate)) {
+      trackSubmitValidationFailed('invalid_visit_date');
       setErrorMessage('Visit date must be in YYYY-MM-DD format.');
       return;
     }
@@ -168,8 +188,12 @@ export function useCreateVisitSubmission({
       ),
       deletePhotoIds: item.deletedPhotoIds,
     }));
+    const itemCount = parsedItems.length;
+    const hasNotes = parsedItems.some((item) => Boolean(item.notes));
+    const hasPhotos = parsedItems.some((item) => item.newPhotos.length > 0);
 
     if (parsedItems.some((item) => item.rating < 1 || item.rating > 5)) {
+      trackSubmitValidationFailed('invalid_ratings');
       setErrorMessage('Ratings must be between 1 and 5.');
       return;
     }
@@ -221,9 +245,20 @@ export function useCreateVisitSubmission({
       source: 'visit' as const,
       sourceNoteId,
     };
-    const hasPhotoUploads = parsedItems.some((item) => item.newPhotos.length > 0);
+    const hasPhotoUploads = hasPhotos;
 
     setErrorMessage(null);
+    trackObservabilityEvent('CREATE_VISIT_SUBMIT_STARTED', {
+      source: 'CreateVisitScreen',
+      mode,
+      isOnline: isCurrentlyOnline,
+      itemCount,
+      hasNotes,
+      hasPhotos,
+      visitVisibility,
+      sourceNoteAttached,
+      sourceListItemAttached,
+    });
     setIsSubmitting(true);
 
     try {
@@ -270,6 +305,17 @@ export function useCreateVisitSubmission({
             includeUsage: hasNewPhotoUploads,
             includeVisitPhotos: hasPhotoChanges,
           });
+          trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
+            source: 'CreateVisitScreen',
+            mode,
+            queued: true,
+            itemCount,
+            hasNotes,
+            hasPhotos,
+            visitVisibility,
+            sourceNoteAttached,
+            sourceListItemAttached,
+          });
           showQueuedOfflineAlert('Visit update');
           navigateAfterEdit();
           return;
@@ -279,6 +325,17 @@ export function useCreateVisitSubmission({
           visitId: editVisitId,
           includeUsage: hasNewPhotoUploads,
           includeVisitPhotos: hasPhotoChanges,
+        });
+        trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
+          source: 'CreateVisitScreen',
+          mode,
+          queued: false,
+          itemCount,
+          hasNotes,
+          hasPhotos,
+          visitVisibility,
+          sourceNoteAttached,
+          sourceListItemAttached,
         });
         navigateAfterEdit();
         return;
@@ -328,6 +385,17 @@ export function useCreateVisitSubmission({
 
         setSourceListItemId(null);
         await invalidateVisitQueries({ sourceNoteId });
+        trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
+          source: 'CreateVisitScreen',
+          mode,
+          queued: true,
+          itemCount,
+          hasNotes,
+          hasPhotos,
+          visitVisibility,
+          sourceNoteAttached,
+          sourceListItemAttached,
+        });
         showQueuedOfflineAlert('Visit');
         navigation.navigate('Home');
         return;
@@ -361,11 +429,22 @@ export function useCreateVisitSubmission({
 
       trackObservabilityEvent('Visit Creation Completed', {
         creationMethod: 'manual',
-        hasNotes: parsedItems.some((item) => Boolean(item.notes)),
-        hasPhotos: parsedItems.some((item) => item.newPhotos.length > 0),
-        itemCount: parsedItems.length,
+        hasNotes,
+        hasPhotos,
+        itemCount,
         source: 'CreateVisitScreen',
         visitVisibility,
+      });
+      trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
+        source: 'CreateVisitScreen',
+        mode,
+        queued: false,
+        itemCount,
+        hasNotes,
+        hasPhotos,
+        visitVisibility,
+        sourceNoteAttached,
+        sourceListItemAttached,
       });
 
       if (sourceNoteId && noteUsedAt) {
@@ -397,6 +476,18 @@ export function useCreateVisitSubmission({
           ? error.message
           : 'Could not save visit.';
       setErrorMessage(message);
+      trackObservabilityEvent('CREATE_VISIT_SUBMIT_FAILED', {
+        source: 'CreateVisitScreen',
+        mode,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        itemCount,
+        hasNotes,
+        hasPhotos,
+        visitVisibility,
+        sourceNoteAttached,
+        sourceListItemAttached,
+      });
       trackObservabilityEvent('Visit Creation Failed', {
         errorMessage: message,
         errorType: error instanceof Error ? error.name : 'unknown_error',
@@ -411,6 +502,7 @@ export function useCreateVisitSubmission({
     invalidateVisitQueries,
     isDisplayFreeUser,
     isEditMode,
+    isCurrentlyOnline,
     monthlyUsageSnapshot,
     navigation,
     navigateAfterEdit,

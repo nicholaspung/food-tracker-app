@@ -93,6 +93,22 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   ];
 
   const handleOptionPress = (optionId: AddOptionId) => {
+    const normalizedOption =
+      optionId === 'restaurant-visit'
+        ? 'restaurant_visit'
+        : optionId === 'food-product'
+          ? 'food_product'
+          : optionId === 'process-photos'
+            ? 'process_photos'
+            : optionId === 'log-note'
+              ? 'log_note'
+              : 'manage_notes';
+
+    trackObservabilityEvent('ADD_VISIT_OPTION_SELECTED', {
+      source: 'AddVisitScreen',
+      option: normalizedOption,
+    });
+
     if (optionId === 'restaurant-visit') {
       trackObservabilityEvent('Visit Creation Started', { source: 'AddVisitScreen' });
       navigation.navigate('CreateVisit');

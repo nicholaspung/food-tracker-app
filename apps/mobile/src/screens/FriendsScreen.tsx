@@ -32,6 +32,7 @@ import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -41,6 +42,14 @@ type FriendsScreenProps = NativeStackScreenProps<RootStackParamList, 'Friends'>;
 type MainTab = 'my-code' | 'friends-list';
 type FriendsSubTab = 'friends' | 'requests' | 'sent';
 type FriendRemoveOperationName = 'friend.remove' | 'friend.request.reject' | 'friend.request.cancel';
+type FriendActionName = 'accept' | 'reject' | 'cancel' | 'remove';
+
+const FRIEND_ACTION_BY_OPERATION: Record<'friend.accept' | FriendRemoveOperationName, FriendActionName> = {
+  'friend.accept': 'accept',
+  'friend.remove': 'remove',
+  'friend.request.reject': 'reject',
+  'friend.request.cancel': 'cancel',
+};
 
 const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
   {
@@ -199,6 +208,7 @@ function formatDate(value: string): string {
 export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const theme = useTheme();
   const { user } = useAuth();
+  const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
 
@@ -298,6 +308,12 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   };
 
   const handleAccept = async (friendId: string) => {
+    trackObservabilityEvent('FRIEND_ACTION_STARTED', {
+      source: 'FriendsScreen',
+      action: 'accept',
+      isOnline,
+      subTab: friendsSubTab,
+    });
     setErrorMessage(null);
     setIsMutating(true);
 
@@ -313,13 +329,33 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
       if (acceptResult.status === 'queued') {
         await invalidateFriends();
+        trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
+          source: 'FriendsScreen',
+          action: 'accept',
+          queued: true,
+          subTab: friendsSubTab,
+        });
         showQueuedOfflineAlert('Friend action');
         return;
       }
 
       await invalidateFriends();
+      trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
+        source: 'FriendsScreen',
+        action: 'accept',
+        queued: false,
+        subTab: friendsSubTab,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not accept friend request.';
+      trackObservabilityEvent('FRIEND_ACTION_FAILED', {
+        source: 'FriendsScreen',
+        action: 'accept',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+        subTab: friendsSubTab,
+      });
       setErrorMessage(message);
     } finally {
       setIsMutating(false);
@@ -327,6 +363,13 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   };
 
   const handleRemove = async (friendId: string, operationName: FriendRemoveOperationName) => {
+    const action = FRIEND_ACTION_BY_OPERATION[operationName];
+    trackObservabilityEvent('FRIEND_ACTION_STARTED', {
+      source: 'FriendsScreen',
+      action,
+      isOnline,
+      subTab: friendsSubTab,
+    });
     setErrorMessage(null);
     setIsMutating(true);
 
@@ -342,14 +385,34 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
       if (removeResult.status === 'queued') {
         await invalidateFriends();
+        trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
+          source: 'FriendsScreen',
+          action,
+          queued: true,
+          subTab: friendsSubTab,
+        });
         showQueuedOfflineAlert('Friend action');
         return true;
       }
 
       await invalidateFriends();
+      trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
+        source: 'FriendsScreen',
+        action,
+        queued: false,
+        subTab: friendsSubTab,
+      });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not update this friend entry.';
+      trackObservabilityEvent('FRIEND_ACTION_FAILED', {
+        source: 'FriendsScreen',
+        action,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+        subTab: friendsSubTab,
+      });
       setErrorMessage(message);
       return false;
     } finally {
@@ -381,10 +444,29 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       return;
     }
 
+    trackObservabilityEvent('FRIEND_REMOVE_CONFIRMED', {
+      source: 'FriendsScreen',
+    });
     const removed = await handleRemove(pendingRemoveFriend.id, 'friend.remove');
     if (removed) {
       setPendingRemoveFriend(null);
     }
+  };
+
+  const handleMainTabChange = (nextMainTab: MainTab) => {
+    trackObservabilityEvent('FRIENDS_MAIN_TAB_CHANGED', {
+      source: 'FriendsScreen',
+      nextMainTab,
+    });
+    setMainTab(nextMainTab);
+  };
+
+  const handleFriendsSubTabChange = (nextFriendsSubTab: FriendsSubTab) => {
+    trackObservabilityEvent('FRIENDS_SUB_TAB_CHANGED', {
+      source: 'FriendsScreen',
+      nextFriendsSubTab,
+    });
+    setFriendsSubTab(nextFriendsSubTab);
   };
 
   const handleCopyFriendCode = async () => {
@@ -475,6 +557,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                   disabled={isMutating}
                   onPress={() => {
                     setErrorMessage(null);
+                    trackObservabilityEvent('FRIEND_REMOVE_TAPPED', {
+                      source: 'FriendsScreen',
+                    });
                     setPendingRemoveFriend(friend);
                   }}
                   style={styles.iconAction}
@@ -597,6 +682,9 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
             accessibilityLabel="Add friend"
             label="Add Friend"
             onPress={() => {
+              trackObservabilityEvent('FRIENDS_ADD_FRIEND_TAPPED', {
+                source: 'FriendsScreen',
+              });
               navigation.navigate('AddFriend');
             }}
             testID="friends-add-friend-button"
@@ -609,7 +697,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       />
 
       <View style={styles.mainTabsSection}>
-        <SegmentedControl onChange={setMainTab} options={MAIN_TAB_OPTIONS} value={mainTab} />
+        <SegmentedControl onChange={handleMainTabChange} options={MAIN_TAB_OPTIONS} value={mainTab} />
       </View>
 
       <View style={styles.body}>
@@ -660,7 +748,11 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
         {mainTab === 'friends-list' ? (
           <>
-            <SegmentedControl onChange={setFriendsSubTab} options={friendsSubTabOptions} value={friendsSubTab} />
+            <SegmentedControl
+              onChange={handleFriendsSubTabChange}
+              options={friendsSubTabOptions}
+              value={friendsSubTab}
+            />
 
             {renderFriendsTabContent()}
           </>

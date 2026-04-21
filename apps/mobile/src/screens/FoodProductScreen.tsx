@@ -328,6 +328,13 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
   const handleCreate = async () => {
     const validationMessage = validateFoodProductForm(form);
     if (validationMessage) {
+      trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_VALIDATION_FAILED', {
+        source: 'FoodProductScreen',
+        validationMessage,
+        visibility: form.visibility,
+        hasPhoto: Boolean(photo),
+        sourceNoteAttached: Boolean(sourceNoteId),
+      });
       setErrorMessage(validationMessage);
       return;
     }
@@ -355,6 +362,15 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_STARTED', {
+      source: 'FoodProductScreen',
+      isOnline,
+      hasPhoto: Boolean(photo),
+      hasNotes: form.notes.trim().length > 0,
+      rating: form.rating,
+      sourceNoteAttached: Boolean(sourceNoteId),
+      visibility: form.visibility,
+    });
     setIsSubmitting(true);
 
     try {
@@ -404,6 +420,13 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
         ]);
+        trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
+          source: 'FoodProductScreen',
+          queued: true,
+          hasPhoto: Boolean(photo),
+          sourceNoteAttached: Boolean(sourceNoteId),
+          visibility: form.visibility,
+        });
         showQueuedOfflineAlert('Food product');
         navigation.navigate('Home', buildFoodProductCreatedHomeParams());
         return;
@@ -431,6 +454,13 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
 
       await Promise.all(invalidations);
       await AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1');
+      trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
+        source: 'FoodProductScreen',
+        queued: false,
+        hasPhoto: Boolean(photo),
+        sourceNoteAttached: Boolean(sourceNoteId),
+        visibility: form.visibility,
+      });
       navigation.navigate('Home', buildFoodProductCreatedHomeParams());
     } catch (error) {
       const limitPayload = parseLimitExceededError(error);
@@ -451,6 +481,15 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         : error instanceof Error
           ? error.message
           : 'Could not save food product.';
+      trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_FAILED', {
+        source: 'FoodProductScreen',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        hasPhoto: Boolean(photo),
+        isOnline,
+        sourceNoteAttached: Boolean(sourceNoteId),
+        visibility: form.visibility,
+      });
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);

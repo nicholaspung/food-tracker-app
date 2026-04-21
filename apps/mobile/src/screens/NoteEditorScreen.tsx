@@ -500,7 +500,16 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   }, [addDraftPhotos]);
 
   const handleSave = useCallback(async () => {
+    const mode = isEditing ? 'edit' : 'create';
+    const hasLocation = locationText.trim().length > 0;
+
     if (!content.trim()) {
+      trackObservabilityEvent('NOTE_SUBMIT_VALIDATION_FAILED', {
+        source: 'NoteEditorScreen',
+        mode,
+        reason: 'missing_content',
+        isOnline,
+      });
       setErrorMessage('Please describe what you want to remember.');
       return;
     }
@@ -524,6 +533,13 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     };
 
     if (totalPhotoCount > perNotePhotoLimit) {
+      trackObservabilityEvent('NOTE_SUBMIT_VALIDATION_FAILED', {
+        source: 'NoteEditorScreen',
+        mode,
+        reason: 'photo_limit_exceeded',
+        perNotePhotoLimit,
+        totalPhotoCount,
+      });
       setErrorMessage(formatPhotoPerNoteLimitMessage(perNotePhotoLimit));
       return;
     }
@@ -551,6 +567,15 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('NOTE_SUBMIT_STARTED', {
+      source: 'NoteEditorScreen',
+      mode,
+      isOnline,
+      hasLocation,
+      newPhotoCount: uploadPhotos.length,
+      deletePhotoCount: photosToDelete.length,
+      totalPhotoCount,
+    });
     setIsSubmitting(true);
 
     try {
@@ -577,6 +602,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
       if (saveResult.status === 'queued') {
         await queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] });
+        trackObservabilityEvent('NOTE_SUBMIT_SUCCEEDED', {
+          source: 'NoteEditorScreen',
+          mode,
+          queued: true,
+          hasLocation,
+          newPhotoCount: uploadPhotos.length,
+          totalPhotoCount,
+        });
         showQueuedOfflineAlert('Note');
         navigation.navigate('Notes');
         return;
@@ -601,6 +634,14 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
       }
 
       await Promise.all(invalidations);
+      trackObservabilityEvent('NOTE_SUBMIT_SUCCEEDED', {
+        source: 'NoteEditorScreen',
+        mode,
+        queued: false,
+        hasLocation,
+        newPhotoCount: uploadPhotos.length,
+        totalPhotoCount,
+      });
 
       navigation.navigate('Notes');
     } catch (error) {
@@ -622,6 +663,17 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
         : error instanceof Error
           ? error.message
           : 'Could not save note.';
+      trackObservabilityEvent('NOTE_SUBMIT_FAILED', {
+        source: 'NoteEditorScreen',
+        mode,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        hasLocation,
+        isOnline,
+        newPhotoCount: uploadPhotos.length,
+        deletePhotoCount: photosToDelete.length,
+        totalPhotoCount,
+      });
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
@@ -630,6 +682,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
     content,
     isDisplayFreeUser,
     isEditing,
+    isOnline,
     monthlyUsage.snapshot,
     locationText,
     navigation,

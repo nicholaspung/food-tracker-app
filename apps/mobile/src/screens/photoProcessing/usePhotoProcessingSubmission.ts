@@ -58,6 +58,10 @@ interface UsePhotoProcessingSubmissionParams {
   writeFeature: OfflineAwareFeatureWrite;
 }
 
+interface PhotoProcessingSubmitResult {
+  queued: boolean;
+}
+
 export function usePhotoProcessingSubmission({
   currentPhoto,
   currentPhotoIndex,
@@ -185,8 +189,9 @@ export function usePhotoProcessingSubmission({
     validateRestaurantForm,
   ]);
 
-  const submitRestaurantVisits = useCallback(async () => {
+  const submitRestaurantVisits = useCallback(async (): Promise<PhotoProcessingSubmitResult> => {
     const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
+    let queued = false;
     const groupedVisits = new Map<
       string,
       {
@@ -251,6 +256,7 @@ export function usePhotoProcessingSubmission({
         },
         execute: () => createVisit(visitInput),
       });
+      queued = queued || createResult.status === 'queued';
 
       if (sourceNoteId && groupedVisits.size === 1 && noteUsedAt) {
         if (createResult.status === 'queued') {
@@ -271,6 +277,7 @@ export function usePhotoProcessingSubmission({
       photoCount: photos.length,
       visitCount: groupedVisits.size,
     });
+    return { queued };
   }, [
     photos,
     restaurantForms,
@@ -282,8 +289,9 @@ export function usePhotoProcessingSubmission({
     writeFeature,
   ]);
 
-  const submitFoodProductItems = useCallback(async () => {
+  const submitFoodProductItems = useCallback(async (): Promise<PhotoProcessingSubmitResult> => {
     const noteUsedAt = sourceNoteId ? new Date().toISOString() : null;
+    let queued = false;
     for (const [index, photo] of photos.entries()) {
       const form = foodProductForms[photo.id];
       if (!form) {
@@ -308,6 +316,7 @@ export function usePhotoProcessingSubmission({
         },
         execute: () => createFoodProduct(foodProductInput),
       });
+      queued = queued || createResult.status === 'queued';
 
       if (sourceNoteId && photos.length === 1 && noteUsedAt) {
         if (createResult.status === 'queued') {
@@ -327,6 +336,7 @@ export function usePhotoProcessingSubmission({
       source: 'PhotoProcessingScreen',
       itemCount: photos.length,
     });
+    return { queued };
   }, [photos, foodProductForms, persistSourceNoteUsed, sourceNoteId, syncSourceNoteUsedState, writeFeature]);
 
   const handleSubmitAll = useCallback(async () => {
@@ -362,14 +372,20 @@ export function usePhotoProcessingSubmission({
     }
 
     setErrorMessage(null);
+    trackObservabilityEvent('PHOTO_PROCESSING_SUBMIT_STARTED', {
+      source: 'PhotoProcessingScreen',
+      processType,
+      isOnline,
+      photoCount: photos.length,
+      sourceNoteAttached: Boolean(sourceNoteId),
+    });
     setIsSubmitting(true);
 
     try {
-      if (processType === 'restaurant') {
-        await submitRestaurantVisits();
-      } else {
-        await submitFoodProductItems();
-      }
+      const submitResult =
+        processType === 'restaurant'
+          ? await submitRestaurantVisits()
+          : await submitFoodProductItems();
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
@@ -391,6 +407,13 @@ export function usePhotoProcessingSubmission({
             ]
           : []),
       ]);
+      trackObservabilityEvent('PHOTO_PROCESSING_SUBMIT_SUCCEEDED', {
+        source: 'PhotoProcessingScreen',
+        processType,
+        queued: submitResult.queued,
+        photoCount: photos.length,
+        sourceNoteAttached: Boolean(sourceNoteId),
+      });
 
       if (!isOnline) {
         showQueuedOfflineAlert('Photo entries');
@@ -421,6 +444,14 @@ export function usePhotoProcessingSubmission({
           ? error.message
           : 'Could not process photos.';
       setErrorMessage(message);
+      trackObservabilityEvent('PHOTO_PROCESSING_SUBMIT_FAILED', {
+        source: 'PhotoProcessingScreen',
+        processType: processType ?? 'unknown',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        photoCount: photos.length,
+        sourceNoteAttached: Boolean(sourceNoteId),
+      });
       trackObservabilityEvent('Photo Processing Failed', {
         errorMessage: message,
         processType: processType ?? 'unknown',

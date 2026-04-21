@@ -33,6 +33,7 @@ import { notesQueryKeys } from '../features/store/notesQuery';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Input, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -251,6 +252,7 @@ function compareNotesByCreatedAtDesc(left: Pick<NoteRecord, 'createdAt' | 'updat
 
 export function NotesScreen({ navigation }: NotesScreenProps) {
   const theme = useTheme();
+  const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
   const [activeFilter, setActiveFilter] = useState<NotesFilter>('unused');
@@ -485,10 +487,16 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     if (!pendingDeleteNote) {
       return;
     }
+    const wasUsed = pendingDeleteNote.status === 'used';
 
     trackObservabilityEvent('NOTE_DELETE_CONFIRMED', {
       source: 'NotesScreen',
-      wasUsed: pendingDeleteNote.status === 'used',
+      wasUsed,
+    });
+    trackObservabilityEvent('NOTE_DELETE_STARTED', {
+      source: 'NotesScreen',
+      isOnline,
+      wasUsed,
     });
 
     setActionErrorMessage(null);
@@ -509,6 +517,11 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
           queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
           queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
         ]);
+        trackObservabilityEvent('NOTE_DELETE_SUCCEEDED', {
+          source: 'NotesScreen',
+          queued: true,
+          wasUsed,
+        });
         setPendingDeleteNote(null);
         showQueuedOfflineAlert('Note delete');
         return;
@@ -518,14 +531,26 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
         queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
       ]);
+      trackObservabilityEvent('NOTE_DELETE_SUCCEEDED', {
+        source: 'NotesScreen',
+        queued: false,
+        wasUsed,
+      });
       setPendingDeleteNote(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete note.';
+      trackObservabilityEvent('NOTE_DELETE_FAILED', {
+        source: 'NotesScreen',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+        wasUsed,
+      });
       setActionErrorMessage(message);
     } finally {
       setIsDeletingNote(false);
     }
-  }, [pendingDeleteNote, queryClient, writeFeature]);
+  }, [isOnline, pendingDeleteNote, queryClient, writeFeature]);
 
   const handleRefresh = useCallback(async () => {
     setIsPullRefreshing(true);

@@ -122,6 +122,11 @@ interface SaveBookmarkTarget {
   sourceNote?: string;
 }
 
+interface SaveBookmarkTrackingContext {
+  entryMethod: 'quick_default' | 'selected_lists';
+  createdDefaultList: boolean;
+}
+
 type PendingDeleteListItem =
   | {
       kind: 'source';
@@ -897,6 +902,15 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     return descriptionLabel ? `${baseLabel}\n${descriptionLabel}` : baseLabel;
   }, [groupedRestaurants.length, isOwner, list]);
 
+  const listAnalyticsContext = useMemo(
+    () => ({
+      source: 'ListDetailScreen',
+      isDefaultList: Boolean(list?.isDefault),
+      restaurantCount: list?.restaurantCount ?? groupedRestaurants.length,
+    }),
+    [groupedRestaurants.length, list?.isDefault, list?.restaurantCount],
+  );
+
   const handleBack = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -914,15 +928,18 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     await invalidateRestaurantListSaveTargetQueries(queryClient, listId);
   }, [listId, queryClient]);
 
-  const deleteList = async () => {
+  const deleteList = useCallback(async () => {
     if (!list || !isOwner || list.isDefault) {
       return;
     }
 
     trackObservabilityEvent('LIST_DETAIL_DELETE_CONFIRMED', {
-      source: 'ListDetailScreen',
+      ...listAnalyticsContext,
       isOnline,
-      isDefaultList: Boolean(list.isDefault),
+    });
+    trackObservabilityEvent('LIST_DETAIL_DELETE_STARTED', {
+      ...listAnalyticsContext,
+      isOnline,
     });
     setErrorMessage(null);
     setIsDeletingList(true);
@@ -933,6 +950,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         await invalidateRestaurantListCollectionQueries(queryClient);
         removeRestaurantListQueries(queryClient, list.id);
         setIsDeleteConfirmVisible(false);
+        trackObservabilityEvent('LIST_DETAIL_DELETE_SUCCEEDED', {
+          ...listAnalyticsContext,
+          queued: true,
+        });
         showQueuedOfflineAlert('List delete');
         navigation.navigate('Lists');
         return;
@@ -943,14 +964,24 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       await invalidateRestaurantListCollectionQueries(queryClient);
       removeRestaurantListQueries(queryClient, list.id);
       setIsDeleteConfirmVisible(false);
+      trackObservabilityEvent('LIST_DETAIL_DELETE_SUCCEEDED', {
+        ...listAnalyticsContext,
+        queued: false,
+      });
       navigation.navigate('Lists');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not delete list.';
+      trackObservabilityEvent('LIST_DETAIL_DELETE_FAILED', {
+        ...listAnalyticsContext,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+      });
       setErrorMessage(message);
     } finally {
       setIsDeletingList(false);
     }
-  };
+  }, [isOnline, isOwner, list, listAnalyticsContext, navigation, queryClient, queueFeatureOutbox, trackWriteTelemetry]);
 
   const confirmDeleteList = () => {
     if (!list || !isOwner) {
@@ -958,10 +989,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
 
     trackObservabilityEvent('LIST_DETAIL_DELETE_TAPPED', {
-      source: 'ListDetailScreen',
-      isDefaultList: Boolean(list.isDefault),
+      ...listAnalyticsContext,
     });
     if (list.isDefault) {
+      trackObservabilityEvent('LIST_DETAIL_DELETE_VALIDATION_FAILED', {
+        ...listAnalyticsContext,
+        reason: 'default_list',
+      });
       setErrorMessage('The Saved list cannot be deleted.');
       return;
     }
@@ -975,7 +1009,12 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
 
     trackObservabilityEvent('LIST_DETAIL_REORDER_TAPPED', {
-      source: 'ListDetailScreen',
+      ...listAnalyticsContext,
+      direction,
+      isOnline,
+    });
+    trackObservabilityEvent('LIST_DETAIL_REORDER_STARTED', {
+      ...listAnalyticsContext,
       direction,
       isOnline,
     });
@@ -986,6 +1025,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       if (!isOnline) {
         await queueFeatureOutbox('list.restaurant.reorder', { listId, restaurantId, direction });
         await invalidateCurrentListDetailQueries();
+        trackObservabilityEvent('LIST_DETAIL_REORDER_SUCCEEDED', {
+          ...listAnalyticsContext,
+          direction,
+          queued: true,
+        });
         showQueuedOfflineAlert('List reorder');
         return;
       }
@@ -993,22 +1037,45 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       await trackWriteTelemetry('list.restaurant.reorder');
       await moveRestaurantListRestaurant({ listId, restaurantId, direction });
       await invalidateCurrentListDetailQueries();
+      trackObservabilityEvent('LIST_DETAIL_REORDER_SUCCEEDED', {
+        ...listAnalyticsContext,
+        direction,
+        queued: false,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not reorder restaurant.';
+      trackObservabilityEvent('LIST_DETAIL_REORDER_FAILED', {
+        ...listAnalyticsContext,
+        direction,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+      });
       setErrorMessage(message);
     } finally {
       setMovingRestaurantId(null);
     }
   };
 
-  const handleRemoveSourceRating = async (input: { listItemId: string; foodItemId: string }): Promise<boolean> => {
+  const handleRemoveSourceRating = async (
+    input: { listItemId: string; foodItemId: string },
+    itemKind: 'source' | 'user_standalone' = 'source',
+  ): Promise<boolean> => {
     if (!isOwner) {
       return false;
     }
 
-    trackObservabilityEvent('LIST_DETAIL_SOURCE_RATING_REMOVE_TAPPED', {
-      source: 'ListDetailScreen',
+    trackObservabilityEvent(
+      itemKind === 'source' ? 'LIST_DETAIL_SOURCE_RATING_REMOVE_TAPPED' : 'LIST_DETAIL_USER_RATING_REMOVE_TAPPED',
+      {
+        ...listAnalyticsContext,
+        isOnline,
+      },
+    );
+    trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_STARTED', {
+      ...listAnalyticsContext,
       isOnline,
+      itemKind,
     });
     setErrorMessage(null);
 
@@ -1020,6 +1087,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           foodItemId: input.foodItemId,
         });
         await invalidateCurrentListDetailQueries();
+        trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
+          ...listAnalyticsContext,
+          itemKind,
+          queued: true,
+        });
         showQueuedOfflineAlert('List update');
         return true;
       }
@@ -1031,9 +1103,21 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         foodItemId: input.foodItemId,
       });
       await invalidateCurrentListDetailQueries();
+      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
+        ...listAnalyticsContext,
+        itemKind,
+        queued: false,
+      });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
+      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_FAILED', {
+        ...listAnalyticsContext,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+        itemKind,
+      });
       setErrorMessage(message);
       return false;
     }
@@ -1045,8 +1129,13 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     }
 
     trackObservabilityEvent('LIST_DETAIL_USER_RATING_REMOVE_TAPPED', {
-      source: 'ListDetailScreen',
+      ...listAnalyticsContext,
       isOnline,
+    });
+    trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_STARTED', {
+      ...listAnalyticsContext,
+      isOnline,
+      itemKind: 'user_linked',
     });
     setErrorMessage(null);
 
@@ -1054,6 +1143,11 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       if (!isOnline) {
         await queueFeatureOutbox('list.restaurant.remove.user', { listId, listItemId });
         await invalidateCurrentListDetailQueries();
+        trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
+          ...listAnalyticsContext,
+          itemKind: 'user_linked',
+          queued: true,
+        });
         showQueuedOfflineAlert('List update');
         return true;
       }
@@ -1061,9 +1155,21 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       await trackWriteTelemetry('list.restaurant.remove.user');
       await removeRestaurantListUserRating(listId, listItemId);
       await invalidateCurrentListDetailQueries();
+      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_SUCCEEDED', {
+        ...listAnalyticsContext,
+        itemKind: 'user_linked',
+        queued: false,
+      });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not remove rating.';
+      trackObservabilityEvent('LIST_DETAIL_ITEM_DELETE_FAILED', {
+        ...listAnalyticsContext,
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        isOnline,
+        itemKind: 'user_linked',
+      });
       setErrorMessage(message);
       return false;
     }
@@ -1104,7 +1210,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
             : await handleRemoveSourceRating({
                 listItemId: pendingDeleteItem.listItemId,
                 foodItemId: pendingDeleteItem.foodItemId,
-              });
+              }, 'user_standalone');
 
       if (didDelete) {
         setPendingDeleteItem(null);
@@ -1178,7 +1284,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     });
   };
 
-  const saveBookmarkToLists = async (targetListIds: string[]) => {
+  const saveBookmarkToLists = async (
+    targetListIds: string[],
+    trackingContext: SaveBookmarkTrackingContext,
+  ) => {
     if (!saveBookmarkTarget || !list || targetListIds.length === 0) {
       return;
     }
@@ -1204,6 +1313,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         }
 
         await invalidateSaveTargetQueries();
+        trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
+          source: 'ListDetailScreen',
+          entryMethod: trackingContext.entryMethod,
+          queued: true,
+          targetListCount: targetListIds.length,
+          createdDefaultList: trackingContext.createdDefaultList,
+          isOnline,
+        });
 
         setSaveBookmarkTarget(null);
         setSelectedSaveListIds(new Set());
@@ -1225,12 +1342,30 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       }
 
       await invalidateSaveTargetQueries();
+      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
+        source: 'ListDetailScreen',
+        entryMethod: trackingContext.entryMethod,
+        queued: false,
+        targetListCount: targetListIds.length,
+        createdDefaultList: trackingContext.createdDefaultList,
+        isOnline,
+      });
 
       setSaveBookmarkTarget(null);
       setSelectedSaveListIds(new Set());
       setSaveModalError(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not save this bookmark.';
+      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_FAILED', {
+        source: 'ListDetailScreen',
+        entryMethod: trackingContext.entryMethod,
+        stage: 'bookmark_save',
+        errorMessage: message,
+        errorType: error instanceof Error ? error.name : 'unknown_error',
+        targetListCount: targetListIds.length,
+        createdDefaultList: trackingContext.createdDefaultList,
+        isOnline,
+      });
       setSaveModalError(message);
     } finally {
       setIsSavingBookmark(false);
@@ -1259,6 +1394,14 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
           });
 
           await invalidateSaveTargetQueries();
+          trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_SUCCEEDED', {
+            source: 'ListDetailScreen',
+            entryMethod: 'quick_default',
+            queued: true,
+            targetListCount: 1,
+            createdDefaultList: true,
+            isOnline,
+          });
           setSaveBookmarkTarget(null);
           setSelectedSaveListIds(new Set());
           setSaveModalError(null);
@@ -1271,22 +1414,51 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
         targetDefaultListId = createdDefaultList.id;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not create your Saved list.';
+        trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_FAILED', {
+          source: 'ListDetailScreen',
+          entryMethod: 'quick_default',
+          stage: 'default_list_create',
+          errorMessage: message,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+          targetListCount: 1,
+          createdDefaultList: true,
+          isOnline,
+        });
         setSaveModalError(message);
         return;
       }
     }
 
     if (!targetDefaultListId) {
+      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
+        source: 'ListDetailScreen',
+        entryMethod: 'quick_default',
+        reason: 'default_list_unavailable',
+        targetListCount: 1,
+        hasDefaultList: Boolean(defaultList?.id),
+        isOnline,
+      });
       setSaveModalError('Saved list is not available.');
       return;
     }
 
     if (alreadySavedListIdsForTarget.has(targetDefaultListId)) {
+      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
+        source: 'ListDetailScreen',
+        entryMethod: 'quick_default',
+        reason: 'already_saved_in_default_list',
+        targetListCount: 1,
+        hasDefaultList: Boolean(defaultList?.id),
+        isOnline,
+      });
       setSaveModalError('This item is already in your Saved list.');
       return;
     }
 
-    await saveBookmarkToLists([targetDefaultListId]);
+    await saveBookmarkToLists([targetDefaultListId], {
+      entryMethod: 'quick_default',
+      createdDefaultList: !defaultList?.id,
+    });
   };
 
   const handleSaveToSelectedLists = async () => {
@@ -1296,11 +1468,22 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
       selectedListCount: targetListIds.length,
     });
     if (targetListIds.length === 0) {
+      trackObservabilityEvent('LIST_DETAIL_SAVE_TO_LISTS_VALIDATION_FAILED', {
+        source: 'ListDetailScreen',
+        entryMethod: 'selected_lists',
+        reason: 'no_target_lists',
+        targetListCount: 0,
+        hasDefaultList: Boolean(defaultList?.id),
+        isOnline,
+      });
       setSaveModalError('Select at least one list.');
       return;
     }
 
-    await saveBookmarkToLists(targetListIds);
+    await saveBookmarkToLists(targetListIds, {
+      entryMethod: 'selected_lists',
+      createdDefaultList: false,
+    });
   };
   const handleRefresh = useCallback(async () => {
     setIsPullRefreshing(true);
