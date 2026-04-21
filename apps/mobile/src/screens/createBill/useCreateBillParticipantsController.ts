@@ -13,6 +13,8 @@ import {
   mapBillParticipantToFriendRecord,
   mergeFriendCollections,
   normalizeFriendName,
+  sanitizeParticipantName,
+  type DraftCustomParticipant,
   type DraftParticipant,
 } from './shared';
 
@@ -55,6 +57,7 @@ export function useCreateBillParticipantsController({
   onToggleFriend,
 }: UseCreateBillParticipantsControllerParams) {
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
+  const [customParticipants, setCustomParticipants] = useState<DraftCustomParticipant[]>([]);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [payerParticipantId, setPayerParticipantId] = useState('');
   const [isPayerDropdownOpen, setIsPayerDropdownOpen] = useState(false);
@@ -172,9 +175,19 @@ export function useCreateBillParticipantsController({
       });
     });
 
+    customParticipants.forEach((participant, index) => {
+      mappedParticipants.push({
+        id: participant.id,
+        name: sanitizeParticipantName(participant.name, `Person ${index + 1}`),
+        userId: participant.userId,
+        isCurrentUser: false,
+      });
+    });
+
     return mappedParticipants;
   }, [
     acceptedFriendRecordById,
+    customParticipants,
     currentUserDraftId,
     currentUserId,
     currentUserName,
@@ -219,6 +232,7 @@ export function useCreateBillParticipantsController({
     }
 
     setSelectedFriendIds([]);
+    setCustomParticipants([]);
     setFriendSearchQuery('');
     setPayerParticipantId('');
     setIsPayerDropdownOpen(false);
@@ -282,6 +296,7 @@ export function useCreateBillParticipantsController({
   return {
     acceptedFriends,
     billQuery,
+    customParticipants,
     friendSearchQuery,
     friendsQuery,
     hasBlockingFriendsError,
@@ -298,6 +313,7 @@ export function useCreateBillParticipantsController({
     setFriendSearchQuery,
     setIsPayerDropdownOpen,
     setPayerParticipantId,
+    setCustomParticipants,
     setSelectedFriendIds,
   };
 }
