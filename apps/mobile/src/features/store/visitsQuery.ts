@@ -21,7 +21,7 @@ export const visitsQueryKeys = {
   },
 };
 
-export function isPaginatedVisitsQueryKey(queryKey: QueryKey): boolean {
+function isPaginatedVisitsQueryKey(queryKey: QueryKey): boolean {
   return (
     Array.isArray(queryKey) &&
     (queryKey.length === 4 || queryKey.length === 5) &&
