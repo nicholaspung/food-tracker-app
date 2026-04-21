@@ -278,7 +278,7 @@ function GeneralPhotoProcessingScreen({ navigation, route }: PhotoProcessingScre
     ? monthlyUsage.snapshot?.remaining.placesQueriesMonthly ?? null
     : null;
   const noteDetailQuery = useQuery({
-    queryKey: sourceNoteId ? notesQueryKeys.detail(sourceNoteId) : ['feature', 'notes', 'detail', ''],
+    queryKey: notesQueryKeys.detail(sourceNoteId ?? ''),
     queryFn: ({ signal }) => (sourceNoteId ? getNoteDetail(sourceNoteId, { signal }) : Promise.resolve(null)),
     enabled: isNoteDrivenFlow,
   });

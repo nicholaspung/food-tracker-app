@@ -15,8 +15,10 @@ import type {
 import {
   buildOrFilter,
   createEmptyPaginatedResult,
+  deleteCollectionRecordsIgnoringNotFound,
   getAuthenticatedUserId,
   isNotFoundError,
+  nowIso,
   resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
@@ -218,25 +220,6 @@ async function uploadNotePhotos(
   }
 }
 
-export async function getNoteById(noteId: string, options?: ReadRequestOptions): Promise<NoteRecord | null> {
-  if (!pb.authStore.record?.id) {
-    return null;
-  }
-
-  try {
-    const record = await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
-      expand: 'restaurant',
-      signal: options?.signal,
-    });
-    return mapNoteCollectionRecord(record);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return null;
-    }
-    throw error;
-  }
-}
-
 export async function getNoteDetail(
   noteId: string,
   options?: ReadRequestOptions,
@@ -335,17 +318,7 @@ export async function updateNote(noteId: string, updates: UpdateNoteInput): Prom
       payload.latitude = null;
       payload.longitude = null;
 
-      if (updates.deletePhotoIds && updates.deletePhotoIds.length > 0) {
-        for (const photoId of updates.deletePhotoIds) {
-          try {
-            await pb.collection('note_photos').delete(photoId);
-          } catch (error) {
-            if (!isNotFoundError(error)) {
-              throw error;
-            }
-          }
-        }
-      }
+      await deleteCollectionRecordsIgnoringNotFound('note_photos', updates.deletePhotoIds ?? []);
 
       const record =
         Object.keys(payload).length > 0
@@ -392,31 +365,23 @@ export async function markNoteUsed(input: MarkNoteUsedInput): Promise<void> {
   await trackFeatureMutation(
     'note.mark_used',
     async () => {
+      const trimmedVisitId = input.usedInVisitId?.trim();
+      const trimmedFoodItemId = input.usedInFoodItemId?.trim();
+      const trimmedUsedAt = input.usedAt?.trim();
+      const payload: Record<string, unknown> = {
+        status: 'used',
+        usedAt: trimmedUsedAt || nowIso(),
+      };
+
+      if (trimmedVisitId) {
+        payload.usedInVisit = trimmedVisitId;
+      }
+
+      if (trimmedFoodItemId) {
+        payload.usedInFoodItem = trimmedFoodItemId;
+      }
+
       try {
-        const currentNote = await pb.collection('notes').getOne<NoteCollectionRecord>(trimmedNoteId);
-        const payload: Record<string, unknown> = {};
-        const trimmedVisitId = input.usedInVisitId?.trim();
-        const trimmedFoodItemId = input.usedInFoodItemId?.trim();
-        const trimmedUsedAt = input.usedAt?.trim();
-        const currentUsedAt = currentNote.usedAt?.trim();
-
-        if (currentNote.status !== 'used') {
-          payload.status = 'used';
-        }
-        if (!currentUsedAt) {
-          payload.usedAt = trimmedUsedAt || new Date().toISOString();
-        }
-        if (trimmedVisitId && trimmedVisitId !== currentNote.usedInVisit?.trim()) {
-          payload.usedInVisit = trimmedVisitId;
-        }
-        if (trimmedFoodItemId && trimmedFoodItemId !== currentNote.usedInFoodItem?.trim()) {
-          payload.usedInFoodItem = trimmedFoodItemId;
-        }
-
-        if (Object.keys(payload).length === 0) {
-          return;
-        }
-
         await pb.collection('notes').update(trimmedNoteId, payload);
       } catch (error) {
         if (!isNotFoundError(error)) {

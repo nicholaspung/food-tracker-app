@@ -11,6 +11,8 @@ export * from './pocketbaseGateway';
 export * from './profileQuery';
 export * from './restaurantListQuery';
 export * from './settingsQuery';
+export * from './usageQuery';
 export * from './usageLimitsGateway';
 export * from './useMonthlyUsage';
+export * from './visitPhotosQuery';
 export * from './visitsQuery';

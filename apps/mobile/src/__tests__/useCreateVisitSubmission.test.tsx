@@ -9,9 +9,6 @@ jest.mock('../features', () => ({
   formatLimitExceededMessage: jest.fn(
     (payload: { message?: string }) => payload.message ?? 'Limit exceeded',
   ),
-  homeFeedQueryKeys: {
-    root: ['feature', 'homeFeed'],
-  },
   linkVisitToListBookmark: jest.fn(),
   markNoteUsed: jest.fn(),
   parseLimitExceededError: jest.fn(() => null),
@@ -20,6 +17,7 @@ jest.mock('../features', () => ({
     detailRoot: ['feature', 'restaurantLists', 'detail'],
     itemsRoot: ['feature', 'restaurantLists', 'items'],
   },
+  syncVisitMutationCaches: jest.fn().mockResolvedValue(undefined),
   updateVisit: jest.fn(),
 }));
 

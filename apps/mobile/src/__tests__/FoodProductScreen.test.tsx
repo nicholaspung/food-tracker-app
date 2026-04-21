@@ -45,7 +45,7 @@ jest.mock('expo-image-picker', () => ({
 jest.mock('../features', () => ({
   createFoodProduct: jest.fn(),
   formatLimitExceededMessage: jest.fn((payload: { message?: string }) => payload.message ?? 'Limit exceeded'),
-  getNoteById: jest.fn(),
+  getNoteDetail: jest.fn(),
   homeFeedQueryKeys: {
     root: ['feature', 'homeFeed'],
   },
@@ -143,10 +143,12 @@ function buildQueryResult<T>(data: T) {
 
 describe('FoodProductScreen', () => {
   let invalidateQueries: jest.Mock;
+  let setQueryData: jest.Mock;
   let writeFeature: jest.Mock;
 
   beforeEach(() => {
     invalidateQueries = jest.fn().mockResolvedValue(undefined);
+    setQueryData = jest.fn();
     writeFeature = jest.fn().mockResolvedValue({ status: 'queued' });
 
     mockedAsyncStorage.getItem.mockReset();
@@ -157,6 +159,7 @@ describe('FoodProductScreen', () => {
     mockedUseQuery.mockReturnValue(buildQueryResult(null));
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries,
+      setQueryData,
     } as unknown as ReturnType<typeof useQueryClient>);
     mockedUseMonthlyUsage.mockReturnValue({
       snapshot: null,

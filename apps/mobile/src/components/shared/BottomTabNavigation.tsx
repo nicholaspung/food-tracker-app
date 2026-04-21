@@ -1,8 +1,8 @@
 import { Pressable, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 
-import { friendsQueryKeys, getFriendsCountSummary } from '../../features';
+import { friendsQueryKeys, getCachedFriendsSummary, getFriendsCountSummary } from '../../features';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { createThemedStyles, useTheme } from '../../theme';
 import { Text } from '../../ui';
@@ -153,9 +153,13 @@ export function BottomTabNavigation({
 }: BottomTabNavigationProps) {
   const theme = useTheme();
   const styles = useStyles(bottomPadding);
+  const queryClient = useQueryClient();
+  const cachedFriendsSummary = getCachedFriendsSummary(queryClient);
   const { data: friendsSummary } = useQuery({
     queryKey: friendsQueryKeys.summary,
     queryFn: ({ signal }) => getFriendsCountSummary({ signal }),
+    initialData: cachedFriendsSummary?.summary,
+    initialDataUpdatedAt: cachedFriendsSummary?.updatedAt,
     refetchOnReconnect: 'always',
   });
   const pendingInvitesCount = friendsSummary?.requestsCount ?? 0;

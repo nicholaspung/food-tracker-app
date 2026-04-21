@@ -1,4 +1,4 @@
-import type { InfiniteData, QueryKey } from '@tanstack/react-query';
+import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
 
 import type { FriendsCountSummary } from './featureStore';
 import type { FriendsPageResult, ListFriendsPageInput } from './friendsStore';
@@ -10,6 +10,11 @@ export type FriendsPaginatedQueryKey =
   | readonly ['feature', 'friends', 'paginated', FriendsSection, string];
 
 const FRIENDS_SECTIONS = ['friends', 'requests', 'sent'] as const;
+
+interface CachedFriendsSummary {
+  summary: FriendsCountSummary;
+  updatedAt: number;
+}
 
 export const friendsQueryKeys = {
   root: ['feature', 'friends'] as const,
@@ -63,4 +68,73 @@ export function selectFriendsSummary(
   }
 
   return data.summary;
+}
+
+function areFriendsSummariesEqual(
+  left: FriendsCountSummary | undefined,
+  right: FriendsCountSummary | undefined,
+): boolean {
+  return (
+    left?.friendsCount === right?.friendsCount &&
+    left?.requestsCount === right?.requestsCount &&
+    left?.sentCount === right?.sentCount
+  );
+}
+
+function getCachedFriendsSummaryCandidate(
+  summary: FriendsCountSummary | undefined,
+  updatedAt: number | undefined,
+): CachedFriendsSummary | undefined {
+  if (!summary) {
+    return undefined;
+  }
+
+  return {
+    summary,
+    updatedAt: updatedAt ?? 0,
+  };
+}
+
+export function getCachedFriendsSummary(queryClient: QueryClient): CachedFriendsSummary | undefined {
+  const cachedSummaryQuery = getCachedFriendsSummaryCandidate(
+    queryClient.getQueryData<FriendsCountSummary>(friendsQueryKeys.summary),
+    queryClient.getQueryState(friendsQueryKeys.summary)?.dataUpdatedAt,
+  );
+
+  return FRIENDS_SECTIONS.reduce<CachedFriendsSummary | undefined>((latestSummary, section) => {
+    const paginatedQueryKey = friendsQueryKeys.paginated(section);
+    const paginatedSummary = getCachedFriendsSummaryCandidate(
+      selectFriendsSummary(
+        queryClient.getQueryData<InfiniteData<FriendsPageResult, unknown>>(paginatedQueryKey),
+      ),
+      queryClient.getQueryState(paginatedQueryKey)?.dataUpdatedAt,
+    );
+
+    if (!paginatedSummary) {
+      return latestSummary;
+    }
+
+    if (!latestSummary || paginatedSummary.updatedAt > latestSummary.updatedAt) {
+      return paginatedSummary;
+    }
+
+    return latestSummary;
+  }, cachedSummaryQuery);
+}
+
+export function hydrateFriendsSummaryFromPaginatedData(
+  queryClient: QueryClient,
+  data: InfiniteData<FriendsPageResult, unknown> | FriendsPageResult | undefined,
+): void {
+  const nextSummary = selectFriendsSummary(data);
+  if (!nextSummary) {
+    return;
+  }
+
+  const currentSummary = queryClient.getQueryData<FriendsCountSummary>(friendsQueryKeys.summary);
+  if (areFriendsSummariesEqual(currentSummary, nextSummary)) {
+    return;
+  }
+
+  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
 }

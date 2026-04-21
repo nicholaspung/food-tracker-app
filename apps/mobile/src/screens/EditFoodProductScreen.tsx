@@ -19,7 +19,6 @@ import {
   buildPocketBaseFileUrl,
   formatLimitExceededMessage,
   getFoodProductById,
-  homeFeedQueryKeys,
   listFoodProductPhotos,
   parseLimitExceededError,
   updateFoodProduct,
@@ -27,8 +26,9 @@ import {
   type VisitPhotoRecord,
   type VisitPhotoUploadInput,
 } from '../features';
-import { foodProductsQueryKeys } from '../features/store/foodProductsQuery';
+import { foodProductsQueryKeys, syncFoodProductMutationCaches } from '../features/store/foodProductsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import {
   formatDateToLocalDateString,
@@ -138,7 +138,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
     queryFn: ({ signal }) => getFoodProductById(foodProductId, { signal }),
   });
   const foodProductPhotosQuery = useQuery({
-    queryKey: ['feature', 'visitPhotos', 'foodProduct', foodProductId],
+    queryKey: visitPhotosQueryKeys.foodProduct(foodProductId),
     queryFn: ({ signal }) => listFoodProductPhotos(foodProductId, { signal }),
     enabled: Boolean(foodProductId),
   });
@@ -468,6 +468,7 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
       primaryExistingPhoto && (photoDraftMode === 'replace' || photoDraftMode === 'remove')
         ? [primaryExistingPhoto.id]
         : [];
+    const hasPhotoChanges = deletePhotoIds.length > 0 || photoDraftMode === 'replace';
     const foodProductUpdateInput = buildUpdateFoodProductInput(form, {
       newPhoto: photoDraftMode === 'replace' ? replacementPhoto?.upload : undefined,
       deletePhotoIds,
@@ -499,17 +500,12 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         execute: () => updateFoodProduct(legacyFoodProductId, foodProductUpdateInput),
       });
 
-      const invalidations: Promise<unknown>[] = [
-        queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
-        queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
-        queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.detail(foodProductId) }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos', 'foodProduct', foodProductId] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
-      ];
-
       if (updateResult.status === 'queued') {
-        await Promise.all(invalidations);
+        await syncFoodProductMutationCaches(queryClient, {
+          foodProductId,
+          includeFoodProductPhotos: hasPhotoChanges,
+          includeUsage: Boolean(replacementPhoto),
+        });
         trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
           source: 'EditFoodProductScreen',
           foodProductId: legacyFoodProductId,
@@ -526,11 +522,11 @@ export function EditFoodProductScreen({ navigation, route }: EditFoodProductScre
         return;
       }
 
-      if (replacementPhoto) {
-        invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }));
-      }
-
-      await Promise.all(invalidations);
+      await syncFoodProductMutationCaches(queryClient, {
+        foodProduct: updateResult.result,
+        includeFoodProductPhotos: hasPhotoChanges,
+        includeUsage: Boolean(replacementPhoto),
+      });
       trackObservabilityEvent('EDIT_FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
         source: 'EditFoodProductScreen',
         foodProductId: legacyFoodProductId,

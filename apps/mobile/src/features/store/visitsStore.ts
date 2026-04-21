@@ -2,6 +2,7 @@ import { pb } from '../../lib/pocketbase';
 import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 import {
   buildOrFilter,
+  deleteCollectionRecordsIgnoringNotFound,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
@@ -260,10 +261,12 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
       }
 
       if (input.sourceNoteId) {
+        const noteUsedAt = nowIso();
         try {
           await markNoteUsed({
             noteId: input.sourceNoteId,
             usedInVisitId: createdVisit.id,
+            usedAt: noteUsedAt,
           });
         } catch {
           // Best effort only: visit create should still succeed if note linking fails.
@@ -367,15 +370,7 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
       };
 
       for (const item of normalizedItems) {
-        for (const photoId of item.deletePhotoIds) {
-          try {
-            await pb.collection('visit_photos').delete(photoId);
-          } catch (error) {
-            if (!isNotFoundError(error)) {
-              throw error;
-            }
-          }
-        }
+        await deleteCollectionRecordsIgnoringNotFound('visit_photos', item.deletePhotoIds);
 
         if (item.newPhotos.length === 0) {
           continue;

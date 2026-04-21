@@ -134,6 +134,32 @@ export function isNotFoundError(error: unknown): boolean {
   return error instanceof ClientResponseError && error.status === 404;
 }
 
+export async function deleteCollectionRecordsIgnoringNotFound(
+  collectionName: string,
+  recordIds: readonly string[],
+): Promise<void> {
+  const normalizedRecordIds = Array.from(
+    new Set(
+      recordIds
+        .map((recordId) => recordId.trim())
+        .filter((recordId) => recordId.length > 0),
+    ),
+  );
+  if (normalizedRecordIds.length === 0) {
+    return;
+  }
+
+  const deleteResults = await Promise.allSettled(
+    normalizedRecordIds.map((recordId) => pb.collection(collectionName).delete(recordId)),
+  );
+
+  for (const deleteResult of deleteResults) {
+    if (deleteResult.status === 'rejected' && !isNotFoundError(deleteResult.reason)) {
+      throw deleteResult.reason;
+    }
+  }
+}
+
 export function escapeFilterValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }

@@ -542,7 +542,6 @@ export {
   createNote,
   deleteNote,
   getNoteDetail,
-  getNoteById,
   listNotePhotosForNote,
   listNotesOverviewPage,
   markNoteUsed,

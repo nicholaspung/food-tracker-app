@@ -666,6 +666,7 @@ export async function createRestaurantList(input: CreateRestaurantListInput): Pr
 export async function updateRestaurantList(
   listId: string,
   updates: UpdateRestaurantListInput,
+  currentList?: Pick<RestaurantListRecord, 'isDefault'> | null,
 ): Promise<RestaurantListRecord> {
   return trackFeatureMutation(
     'restaurant_list.update',
@@ -689,11 +690,7 @@ export async function updateRestaurantList(
         payload.visibility = normalizeListVisibility(updates.visibility);
       }
 
-      const existingRecord = await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
-        expand: 'user',
-      });
-
-      if (existingRecord.isDefault === true && Object.keys(payload).length > 0) {
+      if (currentList?.isDefault === true && Object.keys(payload).length > 0) {
         throw new Error('The Saved list cannot be edited.');
       }
 
@@ -702,7 +699,9 @@ export async function updateRestaurantList(
           ? await pb.collection('restaurant_lists').update<RestaurantListCollectionRecord>(listId, payload, {
               expand: 'user',
             })
-          : existingRecord;
+          : await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
+              expand: 'user',
+            });
 
       return mapRestaurantListCollectionRecord(updatedRecord);
     },

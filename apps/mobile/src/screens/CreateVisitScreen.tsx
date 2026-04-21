@@ -27,7 +27,7 @@ import {
   buildPocketBaseFileUrl,
   createMenuReviewRequest,
   getAuthenticatedUserIdOrNull,
-  getNoteById,
+  getNoteDetail,
   getVisitById,
   listVisitItemPhotos,
   type MenuItemRecord,
@@ -36,7 +36,9 @@ import {
   type VisitItem,
   type VisitPhotoRecord,
 } from '../features';
+import { notesQueryKeys } from '../features/store/notesQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
+import { visitPhotosQueryKeys } from '../features/store/visitPhotosQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
 import { useRestaurantSelectionFlow } from '../hooks/useRestaurantSelectionFlow';
 import {
@@ -630,14 +632,15 @@ export function CreateVisitScreen({
     [editVisitQuery.data?.items],
   );
   const editVisitPhotosQuery = useQuery({
-    queryKey: ['feature', 'visitPhotos', 'visit', editVisitId ?? ''],
+    queryKey: visitPhotosQueryKeys.visit(editVisitId ?? ''),
     queryFn: ({ signal }) => listVisitItemPhotos(editVisitItemIds, { signal }),
     enabled: Boolean(editVisitId && editVisitQuery.data && editVisitItemIds.length > 0),
   });
   const linkedNoteQuery = useQuery({
-    queryKey: ['feature', 'note', sourceNoteId],
-    queryFn: ({ signal }) => (sourceNoteId ? getNoteById(sourceNoteId, { signal }) : Promise.resolve(null)),
+    queryKey: notesQueryKeys.detail(sourceNoteId ?? ''),
+    queryFn: ({ signal }) => (sourceNoteId ? getNoteDetail(sourceNoteId, { signal }) : Promise.resolve(null)),
     enabled: Boolean(sourceNoteId),
+    select: (detail) => detail?.note ?? null,
   });
 
   useEffect(() => {

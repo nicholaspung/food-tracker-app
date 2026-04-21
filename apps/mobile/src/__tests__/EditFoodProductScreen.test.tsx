@@ -175,6 +175,7 @@ describe('EditFoodProductScreen', () => {
     });
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
     mockedUseMonthlyUsage.mockReturnValue({
       snapshot: null,
@@ -377,6 +378,7 @@ describe('EditFoodProductScreen', () => {
     });
     mockedUseQueryClient.mockReturnValue({
       invalidateQueries,
+      setQueryData: jest.fn(),
     } as unknown as ReturnType<typeof useQueryClient>);
     mockedUseOfflineAwareFeatureWrite.mockReturnValue(writeFeature as ReturnType<typeof useOfflineAwareFeatureWrite>);
 
@@ -400,9 +402,7 @@ describe('EditFoodProductScreen', () => {
     });
 
     await act(async () => {
-      renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
-      await Promise.resolve();
-      await Promise.resolve();
+      await renderer.root.findByType('FeatureFormScreenScaffold').props.primaryAction.onPress();
     });
 
     expect(mockedTrackObservabilityEvent).toHaveBeenCalledWith(

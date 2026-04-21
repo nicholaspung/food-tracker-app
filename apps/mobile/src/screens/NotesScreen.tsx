@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { FlatList, Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -47,6 +47,32 @@ const NOTE_SEARCH_DEBOUNCE_MS = 250;
 const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  listFooter: {
+    paddingTop: theme.spacing.md,
+  },
+  listHeader: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+  },
+  noteSeparator: {
+    height: theme.spacing.md,
+  },
+  screenBody: {
+    flex: 1,
+    gap: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   searchRow: {
     flexDirection: 'row',
@@ -641,13 +667,314 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       ? searchedNotesQuery
       : baseNotesQuery;
 
+  const renderNoteItem = useCallback(
+    ({ item: note }: { item: NoteOverviewItemRecord }) => {
+      const photoPreview = note.photoPreview;
+      const extraPhotoCount = photoPreview ? Math.max(photoPreview.count - 1, 0) : 0;
+      const thumbnailUrl = photoPreview
+        ? buildPocketBaseFileUrl({
+            collectionName: 'note_photos',
+            recordId: photoPreview.id,
+            filename: photoPreview.photo,
+            thumb: '100x100',
+          })
+        : null;
+
+      return (
+        <Card tone={note.status === 'used' ? 'default' : 'info'}>
+          <View style={styles.noteTopRow}>
+            <View style={styles.noteMeta}>
+              <Ionicons color={theme.colors.text.muted} name="document-text-outline" size={14} />
+              <Text tone="muted" variant="bodySm">
+                {formatTimeAgo(note.createdAt)}
+              </Text>
+              {note.status === 'used' ? <StatusPill label="Used" tone="success" /> : null}
+            </View>
+
+            <View style={styles.noteActionsInline}>
+              {note.status === 'draft' ? (
+                <Pressable
+                  accessibilityLabel="Use note"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    trackObservabilityEvent('NOTE_USE_TAPPED', {
+                      source: 'NotesScreen',
+                      noteStatus: note.status,
+                    });
+                    navigation.navigate('ProcessPhotos', { sourceNoteId: note.id });
+                  }}
+                  testID={`note-use-button-${note.id}`}
+                >
+                  <Text style={styles.useActionLabel} variant="bodyBaseSemiBold">Use</Text>
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                accessibilityLabel="Edit note"
+                accessibilityRole="button"
+                onPress={() => {
+                  trackObservabilityEvent('NOTE_EDIT_TAPPED', {
+                    source: 'NotesScreen',
+                    noteStatus: note.status,
+                  });
+                  navigation.navigate('NoteEditor', { noteId: note.id });
+                }}
+                style={styles.iconAction}
+                testID={`note-edit-button-${note.id}`}
+              >
+                <Ionicons color={theme.colors.text.primary} name="create-outline" size={18} />
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="Delete note"
+                accessibilityRole="button"
+                onPress={() => {
+                  trackObservabilityEvent('NOTE_DELETE_TAPPED', {
+                    source: 'NotesScreen',
+                    noteStatus: note.status,
+                  });
+                  setActionErrorMessage(null);
+                  setPendingDeleteNote(note);
+                }}
+                style={styles.iconAction}
+                testID={`note-delete-button-${note.id}`}
+              >
+                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.noteContentRow}>
+            {thumbnailUrl ? (
+              <Pressable
+                accessibilityLabel={`View photos for note ${note.id}`}
+                disabled={loadingPhotoNoteId === note.id}
+                onPress={() => {
+                  void handleOpenNotePhotos(note);
+                }}
+                style={[
+                  styles.photoWrap,
+                  loadingPhotoNoteId === note.id ? styles.photoWrapLoading : null,
+                ]}
+              >
+                <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
+                {extraPhotoCount > 0 ? (
+                  <View style={styles.photoCountBadge}>
+                    <Text style={styles.photoCountText} variant="captionStrong">
+                      +{extraPhotoCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            ) : null}
+
+            <View style={styles.noteTextContent}>
+              <ExpandableText
+                collapsedNumberOfLines={note.locationText ? 3 : 4}
+                containerStyle={styles.notePreviewTapTarget}
+                interactionMode="tap-text"
+                variant="bodyMd"
+              >
+                {buildNotePreview(note.content)}
+              </ExpandableText>
+              {note.locationText ? (
+                <View style={styles.locationRow}>
+                  <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />
+                  <Text numberOfLines={1} style={styles.locationText} variant="bodySm">
+                    {note.locationText}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </Card>
+      );
+    },
+    [handleOpenNotePhotos, loadingPhotoNoteId, navigation, styles, theme.colors.text.danger, theme.colors.text.muted, theme.colors.text.primary],
+  );
+
+  const notesListHeader = (
+    <View style={styles.listHeader}>
+      <SegmentedControl
+        onChange={(nextFilter) => {
+          trackObservabilityEvent('NOTES_FILTER_CHANGED', {
+            source: 'NotesScreen',
+            filter: nextFilter,
+          });
+          setActiveFilter(nextFilter);
+        }}
+        options={filterOptions}
+        value={activeFilter}
+      />
+
+      <View style={styles.searchRow}>
+        <Input
+          containerStyle={styles.searchField}
+          onChangeText={setSearchQuery}
+          placeholder="Search notes..."
+          testID="notes-search-input"
+          value={searchQuery}
+        />
+        {hasSearch ? (
+          <Pressable
+            accessibilityLabel="Clear search"
+            accessibilityRole="button"
+            onPress={() => {
+              setSearchQuery('');
+            }}
+            style={({ pressed }) => [styles.clearSearchButton, pressed ? styles.clearSearchButtonPressed : null]}
+          >
+            <Text style={styles.clearSearchLabel} variant="labelMd">Clear</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {activeFilter === 'used' ? (
+        <View testID="notes-used-retention-banner">
+          <Card tone="info">
+            <Text tone="secondary">
+              Used notes auto-delete 30 days after first use. Editing does not reset the timer.
+            </Text>
+          </Card>
+        </View>
+      ) : null}
+
+      {actionErrorMessage ? (
+        <ErrorState
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="NotesScreen"
+          description={actionErrorMessage}
+          title="Notes action failed"
+        />
+      ) : null}
+
+      <PageErrorToast
+        analyticsProps={buildBrowseAnalyticsPayload()}
+        analyticsSource="NotesScreen"
+        errorMessage={notesErrorMessage}
+        title="Notes unavailable"
+        actionLabel="Retry"
+        onAction={() => {
+          if (hasSearchFallbackError) {
+            void searchedNotesQuery.refetch();
+            return;
+          }
+
+          void baseNotesQuery.refetch();
+        }}
+      />
+    </View>
+  );
+
+  const notesListEmptyComponent = (() => {
+    if (baseNotesQuery.isLoading) {
+      return (
+        <View style={styles.body}>
+          <Skeleton height={20} />
+          <Skeleton height={20} />
+          <Skeleton height={20} />
+        </View>
+      );
+    }
+
+    if (baseNotesState.hasBlockingError) {
+      return (
+        <ErrorState
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="NotesScreen"
+          description="Could not load notes."
+          onRetry={() => {
+            void baseNotesQuery.refetch();
+          }}
+          title="Notes unavailable"
+        />
+      );
+    }
+
+    if (notes.length === 0) {
+      return hasSearch ? (
+        <EmptyState
+          actionLabel="Clear Search"
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="NotesScreen"
+          description="Try a different search term."
+          onAction={() => {
+            setSearchQuery('');
+          }}
+          tone="muted"
+          title="No matching notes"
+        />
+      ) : (
+        <EmptyState
+          actionLabel="Log a Note"
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="NotesScreen"
+          description={
+            activeFilter === 'unused'
+              ? 'No unused notes.'
+              : activeFilter === 'used'
+                ? 'No used notes yet.'
+                : 'No notes yet.'
+          }
+          onAction={() => {
+            trackObservabilityEvent('NOTES_CREATE_CTA_TAPPED', {
+              source: 'NotesScreen',
+              placement: 'empty_state',
+            });
+            navigation.navigate('NoteEditor');
+          }}
+          tone="muted"
+          title="Nothing to show"
+        />
+      );
+    }
+
+    return null;
+  })();
+
+  const notesListFooter =
+    !baseNotesQuery.isLoading &&
+    !baseNotesState.hasBlockingError &&
+    notes.length > 0 &&
+    activePaginationQuery.hasNextPage ? (
+      <View style={styles.listFooter}>
+        <Button
+          label={activePaginationQuery.isFetchingNextPage ? 'Loading more...' : 'Load more notes'}
+          loading={activePaginationQuery.isFetchingNextPage}
+          onPress={() => {
+            const resultCountBefore = notes.length;
+            trackObservabilityEvent('NOTES_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+              resultCountBefore,
+            }));
+            void activePaginationQuery.fetchNextPage()
+              .then((result) => {
+                const resultCountAfter =
+                  result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+                trackObservabilityEvent('NOTES_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+                  resultCountBefore,
+                  resultCountAfter,
+                  deltaCount: resultCountAfter - resultCountBefore,
+                }));
+              })
+              .catch((error) => {
+                trackObservabilityEvent('NOTES_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+                  resultCountBefore,
+                  errorType: error instanceof Error ? error.name : 'unknown_error',
+                }));
+              });
+          }}
+          variant="secondary"
+        />
+      </View>
+    ) : null;
+
   return (
     <FeatureDetailScreenScaffold
-      onRefresh={handleRefresh}
+      bodyStyle={styles.screenBody}
+      scroll={false}
       onBackPress={() => {
         navigation.navigate('AddVisit');
       }}
-      refreshing={isPullRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           accessibilityLabel="Create note"
@@ -665,292 +992,21 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       subtitle="View, edit, or delete your saved notes."
       title="My Notes"
     >
-      <View style={styles.body}>
-        <SegmentedControl
-          onChange={(nextFilter) => {
-            trackObservabilityEvent('NOTES_FILTER_CHANGED', {
-              source: 'NotesScreen',
-              filter: nextFilter,
-            });
-            setActiveFilter(nextFilter);
-          }}
-          options={filterOptions}
-          value={activeFilter}
-        />
-
-        <View style={styles.searchRow}>
-          <Input
-            containerStyle={styles.searchField}
-            onChangeText={setSearchQuery}
-            placeholder="Search notes..."
-            testID="notes-search-input"
-            value={searchQuery}
-          />
-          {hasSearch ? (
-            <Pressable
-              accessibilityLabel="Clear search"
-              accessibilityRole="button"
-              onPress={() => {
-                setSearchQuery('');
-              }}
-              style={({ pressed }) => [styles.clearSearchButton, pressed ? styles.clearSearchButtonPressed : null]}
-            >
-              <Text style={styles.clearSearchLabel} variant="labelMd">Clear</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
-        {activeFilter === 'used' ? (
-          <View testID="notes-used-retention-banner">
-            <Card tone="info">
-              <Text tone="secondary">
-                Used notes auto-delete 30 days after first use. Editing does not reset the timer.
-              </Text>
-            </Card>
-          </View>
-        ) : null}
-
-        {actionErrorMessage ? (
-          <ErrorState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="NotesScreen"
-            description={actionErrorMessage}
-            title="Notes action failed"
-          />
-        ) : null}
-
-        <PageErrorToast
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="NotesScreen"
-          errorMessage={notesErrorMessage}
-          title="Notes unavailable"
-          actionLabel="Retry"
-          onAction={() => {
-            if (hasSearchFallbackError) {
-              void searchedNotesQuery.refetch();
-              return;
-            }
-
-            void baseNotesQuery.refetch();
-          }}
-        />
-
-        {baseNotesQuery.isLoading ? (
-          <>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </>
-        ) : null}
-
-        {baseNotesState.hasBlockingError ? (
-          <ErrorState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="NotesScreen"
-            description="Could not load notes."
-            onRetry={() => {
-              void baseNotesQuery.refetch();
-            }}
-            title="Notes unavailable"
-          />
-        ) : null}
-
-        {!baseNotesQuery.isLoading && !baseNotesState.hasBlockingError && notes.length === 0 ? (
-          hasSearch ? (
-            <EmptyState
-              actionLabel="Clear Search"
-              analyticsProps={buildBrowseAnalyticsPayload()}
-              analyticsSource="NotesScreen"
-              description="Try a different search term."
-              onAction={() => {
-                setSearchQuery('');
-              }}
-              tone="muted"
-              title="No matching notes"
-            />
-          ) : (
-            <EmptyState
-              actionLabel="Log a Note"
-              analyticsProps={buildBrowseAnalyticsPayload()}
-              analyticsSource="NotesScreen"
-              description={
-                activeFilter === 'unused'
-                  ? 'No unused notes.'
-                  : activeFilter === 'used'
-                    ? 'No used notes yet.'
-                    : 'No notes yet.'
-              }
-              onAction={() => {
-                trackObservabilityEvent('NOTES_CREATE_CTA_TAPPED', {
-                  source: 'NotesScreen',
-                  placement: 'empty_state',
-                });
-                navigation.navigate('NoteEditor');
-              }}
-              tone="muted"
-              title="Nothing to show"
-            />
-          )
-        ) : null}
-
-        {!baseNotesQuery.isLoading && !baseNotesState.hasBlockingError
-          ? notes.map((note) => {
-              const photoPreview = note.photoPreview;
-              const extraPhotoCount = photoPreview ? Math.max(photoPreview.count - 1, 0) : 0;
-              const thumbnailUrl = photoPreview
-                ? buildPocketBaseFileUrl({
-                    collectionName: 'note_photos',
-                    recordId: photoPreview.id,
-                    filename: photoPreview.photo,
-                    thumb: '100x100',
-                  })
-                : null;
-
-              return (
-                <Card key={note.id} tone={note.status === 'used' ? 'default' : 'info'}>
-                  <View style={styles.noteTopRow}>
-                    <View style={styles.noteMeta}>
-                      <Ionicons color={theme.colors.text.muted} name="document-text-outline" size={14} />
-                      <Text tone="muted" variant="bodySm">
-                        {formatTimeAgo(note.createdAt)}
-                      </Text>
-                      {note.status === 'used' ? <StatusPill label="Used" tone="success" /> : null}
-                    </View>
-
-                    <View style={styles.noteActionsInline}>
-                      {note.status === 'draft' ? (
-                        <Pressable
-                          accessibilityLabel="Use note"
-                          accessibilityRole="button"
-                          onPress={() => {
-                            trackObservabilityEvent('NOTE_USE_TAPPED', {
-                              source: 'NotesScreen',
-                              noteStatus: note.status,
-                            });
-                            navigation.navigate('ProcessPhotos', { sourceNoteId: note.id });
-                          }}
-                          testID={`note-use-button-${note.id}`}
-                        >
-                          <Text style={styles.useActionLabel} variant="bodyBaseSemiBold">Use</Text>
-                        </Pressable>
-                      ) : null}
-
-                      <Pressable
-                        accessibilityLabel="Edit note"
-                        accessibilityRole="button"
-                        onPress={() => {
-                          trackObservabilityEvent('NOTE_EDIT_TAPPED', {
-                            source: 'NotesScreen',
-                            noteStatus: note.status,
-                          });
-                          navigation.navigate('NoteEditor', { noteId: note.id });
-                        }}
-                        style={styles.iconAction}
-                        testID={`note-edit-button-${note.id}`}
-                      >
-                        <Ionicons color={theme.colors.text.primary} name="create-outline" size={18} />
-                      </Pressable>
-
-                      <Pressable
-                        accessibilityLabel="Delete note"
-                        accessibilityRole="button"
-                        onPress={() => {
-                          trackObservabilityEvent('NOTE_DELETE_TAPPED', {
-                            source: 'NotesScreen',
-                            noteStatus: note.status,
-                          });
-                          setActionErrorMessage(null);
-                          setPendingDeleteNote(note);
-                        }}
-                        style={styles.iconAction}
-                        testID={`note-delete-button-${note.id}`}
-                      >
-                        <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  <View style={styles.noteContentRow}>
-                    {thumbnailUrl ? (
-                      <Pressable
-                        accessibilityLabel={`View photos for note ${note.id}`}
-                        disabled={loadingPhotoNoteId === note.id}
-                        onPress={() => {
-                          void handleOpenNotePhotos(note);
-                        }}
-                        style={[
-                          styles.photoWrap,
-                          loadingPhotoNoteId === note.id ? styles.photoWrapLoading : null,
-                        ]}
-                      >
-                        <Image source={{ uri: thumbnailUrl }} style={styles.photoThumb} />
-                        {extraPhotoCount > 0 ? (
-                          <View style={styles.photoCountBadge}>
-                            <Text style={styles.photoCountText} variant="captionStrong">
-                              +{extraPhotoCount}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </Pressable>
-                    ) : null}
-
-                    <View style={styles.noteTextContent}>
-                      <ExpandableText
-                        collapsedNumberOfLines={note.locationText ? 3 : 4}
-                        containerStyle={styles.notePreviewTapTarget}
-                        interactionMode="tap-text"
-                        variant="bodyMd"
-                      >
-                        {buildNotePreview(note.content)}
-                      </ExpandableText>
-                      {note.locationText ? (
-                        <View style={styles.locationRow}>
-                          <Ionicons color={theme.colors.text.muted} name="location-outline" size={14} />
-                          <Text numberOfLines={1} style={styles.locationText} variant="bodySm">
-                            {note.locationText}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                </Card>
-              );
-            })
-          : null}
-
-        {!baseNotesQuery.isLoading &&
-        !baseNotesState.hasBlockingError &&
-        notes.length > 0 &&
-        activePaginationQuery.hasNextPage ? (
-          <Button
-            label={activePaginationQuery.isFetchingNextPage ? 'Loading more...' : 'Load more notes'}
-            loading={activePaginationQuery.isFetchingNextPage}
-            onPress={() => {
-              const resultCountBefore = notes.length;
-              trackObservabilityEvent('NOTES_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
-                resultCountBefore,
-              }));
-              void activePaginationQuery.fetchNextPage()
-                .then((result) => {
-                  const resultCountAfter =
-                    result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-                  trackObservabilityEvent('NOTES_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
-                    resultCountBefore,
-                    resultCountAfter,
-                    deltaCount: resultCountAfter - resultCountBefore,
-                  }));
-                })
-                .catch((error) => {
-                  trackObservabilityEvent('NOTES_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
-                    resultCountBefore,
-                    errorType: error instanceof Error ? error.name : 'unknown_error',
-                  }));
-                });
-            }}
-            variant="secondary"
-          />
-        ) : null}
-      </View>
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={!baseNotesQuery.isLoading && !baseNotesState.hasBlockingError ? notes : []}
+        ItemSeparatorComponent={() => <View style={styles.noteSeparator} />}
+        keyboardShouldPersistTaps="handled"
+        keyExtractor={(note) => note.id}
+        ListEmptyComponent={notesListEmptyComponent}
+        ListFooterComponent={notesListFooter}
+        ListHeaderComponent={notesListHeader}
+        onRefresh={handleRefresh}
+        refreshing={isPullRefreshing}
+        removeClippedSubviews
+        renderItem={renderNoteItem}
+        style={styles.list}
+      />
 
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}

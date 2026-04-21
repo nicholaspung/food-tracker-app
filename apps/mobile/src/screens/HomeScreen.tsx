@@ -1,7 +1,9 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
+  FlatList,
   Pressable,
+  SectionList,
   View,
 } from 'react-native';
 import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
@@ -85,9 +87,14 @@ interface GroupedMonth {
   entries: FeedItem[];
 }
 
+type FriendFeedSection = GroupedMonth & {
+  data: FeedItem[];
+};
+
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
     backgroundColor: theme.colors.background.app,
+    flex: 1,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
@@ -102,11 +109,10 @@ const useStyles = createThemedStyles((theme) => ({
     paddingTop: theme.spacing.sm,
   },
   body: {
-    flex: 1,
     gap: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
     paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
   },
   deleteConfirmationModalSentinel: {
     backgroundColor: theme.colors.background.surface,
@@ -163,6 +169,43 @@ const useStyles = createThemedStyles((theme) => ({
   },
   entries: {
     gap: theme.spacing.xs,
+  },
+  emptyStateWrap: {
+    flex: 1,
+    gap: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: theme.spacing.sm,
+  },
+  listFooter: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+  },
+  listItemRow: {
+    paddingHorizontal: theme.spacing.sm,
+  },
+  listItemSeparator: {
+    height: theme.spacing.xs,
+  },
+  monthEntryRow: {
+    paddingLeft: theme.spacing.lg,
+    paddingRight: theme.spacing.sm,
+  },
+  monthFirstEntryRow: {
+    paddingTop: theme.spacing.xs,
+  },
+  monthSectionHeader: {
+    paddingHorizontal: theme.spacing.sm,
+  },
+  monthSectionSeparator: {
+    height: theme.spacing.sm,
   },
   infoCard: {
     backgroundColor: theme.colors.background.surface,
@@ -588,6 +631,15 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         ? loadedFeed.findIndex((entry) => entry.source === 'visit')
         : -1,
     [feedMode, loadedFeed],
+  );
+  const firstFriendMonthKey = groupedMonths[0]?.monthKey ?? null;
+  const friendFeedSections = useMemo<FriendFeedSection[]>(
+    () =>
+      groupedMonths.map((month) => ({
+        ...month,
+        data: expandedMonths.has(month.monthKey) ? month.entries : [],
+      })),
+    [expandedMonths, groupedMonths],
   );
   const moveVisitFallbackVisits = useMemo(
     () =>
@@ -1024,14 +1076,86 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     feedMode === 'mine' &&
     totalFeedCount === 0;
 
-  return (
-    <TabRootScreenScaffold
-      contentStyle={styles.screenContent}
-      onRefresh={handleRefresh}
-      refreshing={isPullRefreshing}
-      scrollUnderlayColor={colors.screenBackground}
-      testID="home-screen"
-    >
+  const renderMineFeedItem = useCallback(
+    ({ item, index }: { item: FeedItem; index: number }) => (
+      <View style={styles.listItemRow}>
+        {renderStandardFeedEntry({
+          deleteTestID: index === firstMineVisitIndex ? 'home-first-visit-delete-button' : undefined,
+          editTestID: index === firstMineVisitIndex ? 'home-first-visit-edit-button' : undefined,
+          feedItem: item,
+          footerLabel: formatMineEntryFooterLabel(item),
+        })}
+      </View>
+    ),
+    [firstMineVisitIndex, renderStandardFeedEntry, styles],
+  );
+
+  const renderFriendFeedItem = useCallback(
+    ({
+      item,
+      index,
+      section,
+    }: {
+      item: FeedItem;
+      index: number;
+      section: FriendFeedSection;
+    }) => (
+      <View
+        style={[
+          styles.monthEntryRow,
+          index === 0 ? styles.monthFirstEntryRow : null,
+        ]}
+      >
+        {renderStandardFeedEntry({
+          deleteTestID:
+            section.monthKey === firstFriendMonthKey && index === 0
+              ? 'home-first-visit-delete-button'
+              : undefined,
+          editTestID:
+            section.monthKey === firstFriendMonthKey && index === 0
+              ? 'home-first-visit-edit-button'
+              : undefined,
+          feedItem: item,
+          footerLabel: formatFriendEntryMonthLabel(item.eventAt),
+        })}
+      </View>
+    ),
+    [firstFriendMonthKey, renderStandardFeedEntry, styles],
+  );
+
+  const renderFriendFeedSectionHeader = useCallback(
+    ({ section }: { section: FriendFeedSection }) => {
+      const isMonthExpanded = expandedMonths.has(section.monthKey);
+
+      return (
+        <View style={styles.monthSectionHeader}>
+          <Pressable
+            onPress={() => {
+              toggleMonth(section.monthKey);
+            }}
+            style={styles.monthHeader}
+          >
+            <View style={styles.monthHeaderLeft}>
+              <Text style={styles.monthChevron} variant="labelMdBold">
+                {isMonthExpanded ? 'v' : '>'}
+              </Text>
+              <Text style={styles.monthLabel} variant="titleSm">{section.monthLabel}</Text>
+            </View>
+            <View style={styles.monthCountWrap}>
+              <Text style={styles.monthCount} variant="metric">{section.totalCount}</Text>
+              <Text style={styles.monthCountMeta} variant="bodySmTightMedium">
+                ({section.visitsCount}v • {section.foodProductCount}p)
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+      );
+    },
+    [expandedMonths, styles, toggleMonth],
+  );
+
+  const homeListHeader = (
+    <>
       <View style={styles.header}>
         <FeedHeaderControls
           feedMode={feedMode}
@@ -1052,14 +1176,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       </View>
 
       <View style={styles.body}>
-        {isLoading ? (
-          <>
-            <Skeleton height={16} />
-            <Skeleton height={16} />
-            <Skeleton height={16} />
-          </>
-        ) : null}
-
         <PageErrorToast
           analyticsProps={buildBrowseAnalyticsPayload()}
           analyticsSource="HomeScreen"
@@ -1118,8 +1234,28 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             </View>
           </View>
         ) : null}
+      </View>
+    </>
+  );
 
-        {showFriendsEmptyState ? (
+  const homeListEmptyComponent = (() => {
+    if (isLoading) {
+      return (
+        <View style={styles.emptyStateWrap}>
+          <Skeleton height={16} />
+          <Skeleton height={16} />
+          <Skeleton height={16} />
+        </View>
+      );
+    }
+
+    if (hasBlockingFeedError) {
+      return null;
+    }
+
+    if (showFriendsEmptyState) {
+      return (
+        <View style={styles.emptyStateWrap}>
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle} variant="bodyLgBold">No friend activity yet</Text>
             <Text style={styles.infoDescription} variant="bodyLgCompact">
@@ -1138,9 +1274,13 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
               </Pressable>
             </View>
           </View>
-        ) : null}
+        </View>
+      );
+    }
 
-        {showMineEmptyState ? (
+    if (showMineEmptyState) {
+      return (
+        <View style={styles.emptyStateWrap}>
           <EmptyState
             actionLabel="Create your first entry"
             analyticsProps={buildBrowseAnalyticsPayload()}
@@ -1152,9 +1292,13 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             }}
             title="No ratings yet"
           />
-        ) : null}
+        </View>
+      );
+    }
 
-        {showFilteredEmptyState ? (
+    if (showFilteredEmptyState) {
+      return (
+        <View style={styles.emptyStateWrap}>
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle} variant="bodyLgBold">No matching ratings</Text>
             <Text style={styles.infoDescription} variant="bodyLgCompact">
@@ -1176,84 +1320,67 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
               </Pressable>
             </View>
           </View>
-        ) : null}
+        </View>
+      );
+    }
 
-        {!isLoading && !hasBlockingFeedError && loadedFeed.length > 0 ? (
-          feedMode === 'mine' ? (
-            <View style={styles.entries}>
-              {loadedFeed.map((feedItem, entryIndex) =>
-                renderStandardFeedEntry({
-                  deleteTestID:
-                    entryIndex === firstMineVisitIndex ? 'home-first-visit-delete-button' : undefined,
-                  editTestID:
-                    entryIndex === firstMineVisitIndex ? 'home-first-visit-edit-button' : undefined,
-                  feedItem,
-                  footerLabel: formatMineEntryFooterLabel(feedItem),
-                }),
-              )}
-            </View>
-          ) : (
-            groupedMonths.map((month, monthIndex) => {
-              const isMonthExpanded = expandedMonths.has(month.monthKey);
+    return null;
+  })();
 
-              return (
-                <View key={month.monthKey} style={styles.monthSection}>
-                  <Pressable
-                    onPress={() => {
-                      toggleMonth(month.monthKey);
-                    }}
-                    style={styles.monthHeader}
-                  >
-                    <View style={styles.monthHeaderLeft}>
-                      <Text style={styles.monthChevron} variant="labelMdBold">
-                        {isMonthExpanded ? 'v' : '>'}
-                      </Text>
-                      <Text style={styles.monthLabel} variant="titleSm">{month.monthLabel}</Text>
-                    </View>
-                    <View style={styles.monthCountWrap}>
-                      <Text style={styles.monthCount} variant="metric">{month.totalCount}</Text>
-                      <Text style={styles.monthCountMeta} variant="bodySmTightMedium">
-                        ({month.visitsCount}v • {month.foodProductCount}p)
-                      </Text>
-                    </View>
-                  </Pressable>
-
-                  {isMonthExpanded ? (
-                    <View style={styles.monthContent}>
-                      <View style={styles.entries}>
-                        {month.entries.map((feedItem, entryIndex) =>
-                          renderStandardFeedEntry({
-                            deleteTestID:
-                              monthIndex === 0 && entryIndex === 0
-                                ? 'home-first-visit-delete-button'
-                                : undefined,
-                            editTestID:
-                              monthIndex === 0 && entryIndex === 0
-                                ? 'home-first-visit-edit-button'
-                                : undefined,
-                            feedItem,
-                            footerLabel: formatFriendEntryMonthLabel(feedItem.eventAt),
-                          }),
-                        )}
-                      </View>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })
-          )
-        ) : null}
-
-        {!isLoading && !hasBlockingFeedError && homeFeedQuery.hasNextPage ? (
-          <Button
-            label={homeFeedQuery.isFetchingNextPage ? 'Loading more...' : 'Load more activity'}
-            loading={homeFeedQuery.isFetchingNextPage}
-            onPress={handleLoadMoreFeed}
-            variant="secondary"
-          />
-        ) : null}
-
+  const homeListFooter =
+    !isLoading && !hasBlockingFeedError && homeFeedQuery.hasNextPage ? (
+      <View style={styles.listFooter}>
+        <Button
+          label={homeFeedQuery.isFetchingNextPage ? 'Loading more...' : 'Load more activity'}
+          loading={homeFeedQuery.isFetchingNextPage}
+          onPress={handleLoadMoreFeed}
+          variant="secondary"
+        />
       </View>
+    ) : null;
+
+  return (
+    <TabRootScreenScaffold
+      contentStyle={styles.screenContent}
+      scroll={false}
+      scrollUnderlayColor={colors.screenBackground}
+      testID="home-screen"
+    >
+      {feedMode === 'mine' ? (
+        <FlatList
+          contentContainerStyle={styles.listContent}
+          data={!isLoading && !hasBlockingFeedError ? loadedFeed : []}
+          ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
+          keyboardShouldPersistTaps="handled"
+          keyExtractor={(item) => item.id}
+          ListEmptyComponent={homeListEmptyComponent}
+          ListFooterComponent={homeListFooter}
+          ListHeaderComponent={homeListHeader}
+          onRefresh={handleRefresh}
+          refreshing={isPullRefreshing}
+          removeClippedSubviews
+          renderItem={renderMineFeedItem}
+          style={styles.list}
+        />
+      ) : (
+        <SectionList
+          contentContainerStyle={styles.listContent}
+          keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={homeListEmptyComponent}
+          ListFooterComponent={homeListFooter}
+          ListHeaderComponent={homeListHeader}
+          onRefresh={handleRefresh}
+          refreshing={isPullRefreshing}
+          removeClippedSubviews
+          renderItem={renderFriendFeedItem}
+          renderSectionHeader={renderFriendFeedSectionHeader}
+          sections={!isLoading && !hasBlockingFeedError ? friendFeedSections : []}
+          SectionSeparatorComponent={() => <View style={styles.monthSectionSeparator} />}
+          stickySectionHeadersEnabled={false}
+          style={styles.list}
+        />
+      )}
 
       <HomeFeedActionModals
         controller={homeFeedActions}

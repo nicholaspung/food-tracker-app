@@ -129,7 +129,7 @@ export function EditRestaurantListScreen({ navigation, route }: EditRestaurantLi
             updates: listUpdateInput,
           },
         },
-        execute: () => updateRestaurantList(listId, listUpdateInput),
+        execute: () => updateRestaurantList(listId, listUpdateInput, listQuery.data),
       });
 
       if (updateResult.status === 'queued') {

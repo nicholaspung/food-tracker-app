@@ -1,5 +1,9 @@
+import { QueryClient } from '@tanstack/react-query';
+
 import {
   friendsQueryKeys,
+  getCachedFriendsSummary,
+  hydrateFriendsSummaryFromPaginatedData,
   isFriendsSummaryQueryKey,
   isPaginatedFriendsQueryKey,
   selectFriendsSummary,
@@ -52,6 +56,67 @@ describe('friendsQuery', () => {
       friendsCount: 3,
       requestsCount: 2,
       sentCount: 1,
+    });
+  });
+
+  it('hydrates the canonical friends summary query from paginated friends data', () => {
+    const queryClient = new QueryClient();
+    const paginatedData = {
+      pageParams: [1],
+      pages: [
+        {
+          items: [],
+          page: 1,
+          pageSize: 20,
+          summary: {
+            friendsCount: 6,
+            requestsCount: 3,
+            sentCount: 2,
+          },
+          totalItems: 6,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+    };
+
+    hydrateFriendsSummaryFromPaginatedData(queryClient, paginatedData);
+
+    expect(queryClient.getQueryData(friendsQueryKeys.summary)).toEqual({
+      friendsCount: 6,
+      requestsCount: 3,
+      sentCount: 2,
+    });
+  });
+
+  it('reads cached friends summary metadata from base paginated queries', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(friendsQueryKeys.paginated('requests'), {
+      pageParams: [1],
+      pages: [
+        {
+          items: [],
+          page: 1,
+          pageSize: 20,
+          summary: {
+            friendsCount: 4,
+            requestsCount: 2,
+            sentCount: 1,
+          },
+          totalItems: 2,
+          totalPages: 1,
+          hasNextPage: false,
+        },
+      ],
+    });
+
+    expect(getCachedFriendsSummary(queryClient)).toEqual({
+      summary: {
+        friendsCount: 4,
+        requestsCount: 2,
+        sentCount: 1,
+      },
+      updatedAt: expect.any(Number),
     });
   });
 });

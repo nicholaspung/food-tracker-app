@@ -11,7 +11,6 @@ import {
   promoteCachedNoteToUsed,
   type MonthlyUsageSnapshot,
 } from '../../features';
-import { notesQueryKeys } from '../../features/store/notesQuery';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
@@ -400,12 +399,6 @@ export function usePhotoProcessingSubmission({
         ...(sourceNoteId
           ? [
               queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-              queryClient.invalidateQueries({
-                queryKey: ['feature', 'note', sourceNoteId],
-              }),
-              queryClient.invalidateQueries({
-                queryKey: notesQueryKeys.detail(sourceNoteId),
-              }),
             ]
           : []),
       ]);

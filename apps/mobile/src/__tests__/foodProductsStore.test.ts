@@ -186,12 +186,9 @@ describe('foodProductsStore', () => {
   it('uploads a replacement photo before deleting old primary photo ids', async () => {
     const operationOrder: string[] = [];
     const foodItemsCollection = {
-      getOne: jest.fn().mockResolvedValue({
-        id: 'food-product-1',
-        itemType: 'food-product',
-      }),
       update: jest.fn().mockResolvedValue({
         id: 'food-product-1',
+        itemType: 'food-product',
         name: 'Updated Latte',
         location_text: 'Market Hall',
         rating: 5,
@@ -361,12 +358,9 @@ describe('foodProductsStore', () => {
 
   it('clears food product location text when the user removes it during edit', async () => {
     const foodItemsCollection = {
-      getOne: jest.fn().mockResolvedValue({
-        id: 'food-product-3',
-        itemType: 'food-product',
-      }),
       update: jest.fn().mockResolvedValue({
         id: 'food-product-3',
+        itemType: 'food-product',
         name: 'Cold Brew',
         location_text: '',
         rating: 3,
@@ -393,6 +387,40 @@ describe('foodProductsStore', () => {
       'food-product-3',
       {
         location_text: '',
+        latitude: null,
+        longitude: null,
+      },
+      {
+        expand: 'user,visit,visit.restaurant',
+      },
+    );
+  });
+
+  it('rejects updates when the returned record is not a food product', async () => {
+    const foodItemsCollection = {
+      update: jest.fn().mockResolvedValue({
+        id: 'visit-item-1',
+        itemType: 'visit-item',
+      }),
+    };
+
+    (mockedPocketBase.collection as jest.Mock).mockImplementation((collectionName: string) => {
+      if (collectionName === 'food_items') {
+        return foodItemsCollection;
+      }
+      throw new Error(`Unexpected collection: ${collectionName}`);
+    });
+
+    await expect(
+      updateFoodProduct('visit-item-1', {
+        itemName: '  Updated Latte  ',
+      }),
+    ).rejects.toThrow('Food product record not found.');
+
+    expect(foodItemsCollection.update).toHaveBeenCalledWith(
+      'visit-item-1',
+      {
+        name: 'Updated Latte',
         latitude: null,
         longitude: null,
       },

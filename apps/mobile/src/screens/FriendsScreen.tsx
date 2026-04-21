@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -20,6 +20,7 @@ import {
 } from '../components/shared';
 import {
   friendsQueryKeys,
+  hydrateFriendsSummaryFromPaginatedData,
   listFriendsPage,
   markFriendInviteAccepted,
   removeFriend,
@@ -65,9 +66,17 @@ const MAIN_TAB_OPTIONS: readonly SegmentedControlOption<MainTab>[] = [
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
     backgroundColor: theme.colors.background.app,
+    flex: 1,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: theme.spacing.md,
   },
   mainTabsSection: {
     backgroundColor: theme.colors.background.surface,
@@ -81,6 +90,9 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.md,
     paddingTop: theme.spacing.sm,
+  },
+  cardsListSeparator: {
+    height: theme.spacing.sm,
   },
   cardDescription: {
     color: theme.colors.text.secondary,
@@ -248,6 +260,10 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     friendsSummary?.requestsCount ?? (friendsSubTab === 'requests' ? visibleFriends.length : 0);
   const pendingSentCount =
     friendsSummary?.sentCount ?? (friendsSubTab === 'sent' ? visibleFriends.length : 0);
+
+  useEffect(() => {
+    hydrateFriendsSummaryFromPaginatedData(queryClient, friendsQuery.data);
+  }, [friendsQuery.data, queryClient]);
 
   const myFriendCode = useMemo(
     () => generateFriendCode(user?.id, user?.friendCode),
@@ -526,235 +542,115 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     }
   };
 
-  const renderFriendsTabContent = () => {
-    if (friendsQuery.isLoading) {
-      return (
-        <View style={styles.skeletonList}>
-          <Skeleton height={110} />
-          <Skeleton height={110} />
-          <Skeleton height={110} />
-        </View>
-      );
-    }
-
-    if (friendsState.hasBlockingError) {
-      return (
-        <>
-          <PageErrorToast
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="FriendsScreen"
-            errorMessage="Could not load friendship data."
-            title="Friends unavailable"
-            actionLabel="Retry"
-            onAction={() => {
-              void friendsQuery.refetch();
-            }}
-          />
-          <EmptyState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="FriendsScreen"
-            description="Could not load friendship data."
-            title="Friends unavailable"
-          />
-        </>
-      );
-    }
-
-    const loadMoreButton = friendsQuery.hasNextPage ? (
-      <Button
-        label={friendsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more'}
-        loading={friendsQuery.isFetchingNextPage}
-        onPress={() => {
-          const resultCountBefore = visibleFriends.length;
-          trackObservabilityEvent('FRIENDS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
-            resultCountBefore,
-          }));
-          void friendsQuery.fetchNextPage()
-            .then((result) => {
-              const resultCountAfter =
-                result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-              trackObservabilityEvent('FRIENDS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
-                resultCountBefore,
-                resultCountAfter,
-                deltaCount: resultCountAfter - resultCountBefore,
-              }));
-            })
-            .catch((error) => {
-              trackObservabilityEvent('FRIENDS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
-                resultCountBefore,
-                errorType: error instanceof Error ? error.name : 'unknown_error',
-              }));
-            });
-        }}
-        variant="secondary"
-      />
-    ) : null;
-
+  const renderFriendItem = ({
+    item: friend,
+  }: {
+    item: FriendRecord;
+  }) => {
     if (friendsSubTab === 'friends') {
-      if (visibleFriends.length === 0) {
-        return (
-          <EmptyState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="FriendsScreen"
-            description="Add friends to compare visits and food ratings."
-            tone="default"
-            title="No friends yet"
-          />
-        );
-      }
-
       return (
-        <View style={styles.cardsList}>
-          {visibleFriends.map((friend) => (
-            <FriendListItemCard
-              iconColor={theme.colors.text.info}
-              iconName="people-outline"
-              key={friend.id}
-              meta={`Friends since ${formatDate(friend.createdAt)}`}
-              name={friend.name}
-              tone="info"
-              rightContent={
-                <Pressable
-                  accessibilityLabel={`Remove friend ${friend.name}`}
-                  accessibilityRole="button"
-                  disabled={isMutating}
-                  onPress={() => {
-                    setErrorMessage(null);
-                    trackObservabilityEvent('FRIEND_REMOVE_TAPPED', {
-                      source: 'FriendsScreen',
-                    });
-                    setPendingRemoveFriend(friend);
-                  }}
-                  style={styles.iconAction}
-                  testID={`friend-remove-button-${friend.id}`}
-                >
-                  <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
-                </Pressable>
-              }
-            />
-          ))}
-          {loadMoreButton}
-        </View>
+        <FriendListItemCard
+          iconColor={theme.colors.text.info}
+          iconName="people-outline"
+          meta={`Friends since ${formatDate(friend.createdAt)}`}
+          name={friend.name}
+          tone="info"
+          rightContent={
+            <Pressable
+              accessibilityLabel={`Remove friend ${friend.name}`}
+              accessibilityRole="button"
+              disabled={isMutating}
+              onPress={() => {
+                setErrorMessage(null);
+                trackObservabilityEvent('FRIEND_REMOVE_TAPPED', {
+                  source: 'FriendsScreen',
+                });
+                setPendingRemoveFriend(friend);
+              }}
+              style={styles.iconAction}
+              testID={`friend-remove-button-${friend.id}`}
+            >
+              <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
+            </Pressable>
+          }
+        />
       );
     }
 
     if (friendsSubTab === 'requests') {
-      if (visibleFriends.length === 0) {
-        return (
-          <EmptyState
-            analyticsProps={buildBrowseAnalyticsPayload()}
-            analyticsSource="FriendsScreen"
-            description="Incoming requests appear here."
-            tone="default"
-            title="No pending requests"
-          />
-        );
-      }
-
       return (
-        <View style={styles.cardsList}>
-          {visibleFriends.map((friend) => (
-            <FriendListItemCard
-              iconColor={theme.colors.text.warning}
-              iconName="person-add-outline"
-              key={friend.id}
-              meta={`Sent ${formatDate(friend.createdAt)}`}
-              name={friend.name}
-              tone="warning"
-              rightContent={
-                <View style={styles.requestActions}>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={isMutating}
-                    onPress={() => {
-                      void handleAccept(friend.id);
-                    }}
-                    style={[styles.actionPill, styles.actionPillSuccess]}
-                  >
-                    <Text
-                      style={[styles.actionPillLabel, styles.actionPillSuccessLabel]}
-                      variant="metaTightStrong"
-                    >
-                      Accept
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={isMutating}
-                    onPress={() => {
-                      void handleRemove(friend.id, 'friend.request.reject');
-                    }}
-                    style={[styles.actionPill, styles.actionPillDanger]}
-                  >
-                    <Text
-                      style={[styles.actionPillLabel, styles.actionPillDangerLabel]}
-                      variant="metaTightStrong"
-                    >
-                      Decline
-                    </Text>
-                  </Pressable>
-                </View>
-              }
-            />
-          ))}
-          {loadMoreButton}
-        </View>
-      );
-    }
-
-    if (visibleFriends.length === 0) {
-      return (
-        <EmptyState
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="FriendsScreen"
-          description="Requests you send will show up here."
-          tone="default"
-          title="No sent requests"
+        <FriendListItemCard
+          iconColor={theme.colors.text.warning}
+          iconName="person-add-outline"
+          meta={`Sent ${formatDate(friend.createdAt)}`}
+          name={friend.name}
+          tone="warning"
+          rightContent={
+            <View style={styles.requestActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isMutating}
+                onPress={() => {
+                  void handleAccept(friend.id);
+                }}
+                style={[styles.actionPill, styles.actionPillSuccess]}
+              >
+                <Text
+                  style={[styles.actionPillLabel, styles.actionPillSuccessLabel]}
+                  variant="metaTightStrong"
+                >
+                  Accept
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isMutating}
+                onPress={() => {
+                  void handleRemove(friend.id, 'friend.request.reject');
+                }}
+                style={[styles.actionPill, styles.actionPillDanger]}
+              >
+                <Text
+                  style={[styles.actionPillLabel, styles.actionPillDangerLabel]}
+                  variant="metaTightStrong"
+                >
+                  Decline
+                </Text>
+              </Pressable>
+            </View>
+          }
         />
       );
     }
 
     return (
-      <View style={styles.cardsList}>
-        {visibleFriends.map((friend) => (
-          <FriendListItemCard
-            iconColor={theme.colors.text.secondary}
-            iconName="time-outline"
-            key={friend.id}
-            meta={`Sent ${formatDate(friend.createdAt)}`}
-            name={friend.name}
-            tone="muted"
-            rightContent={
-              <View style={styles.sentActions}>
-                <StatusPill label="Pending" tone="warning" />
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={isMutating}
-                  onPress={() => {
-                    void handleRemove(friend.id, 'friend.request.cancel');
-                  }}
-                  style={styles.textAction}
-                >
-                  <Text style={styles.textActionMuted} variant="bodyBaseSemiBold">Cancel</Text>
-                </Pressable>
-              </View>
-            }
-          />
-        ))}
-        {loadMoreButton}
-      </View>
+      <FriendListItemCard
+        iconColor={theme.colors.text.secondary}
+        iconName="time-outline"
+        meta={`Sent ${formatDate(friend.createdAt)}`}
+        name={friend.name}
+        tone="muted"
+        rightContent={
+          <View style={styles.sentActions}>
+            <StatusPill label="Pending" tone="warning" />
+            <Pressable
+              accessibilityRole="button"
+              disabled={isMutating}
+              onPress={() => {
+                void handleRemove(friend.id, 'friend.request.cancel');
+              }}
+              style={styles.textAction}
+            >
+              <Text style={styles.textActionMuted} variant="bodyBaseSemiBold">Cancel</Text>
+            </Pressable>
+          </View>
+        }
+      />
     );
   };
 
-  return (
-    <TabRootScreenScaffold
-      contentStyle={styles.screenContent}
-      keyboardAware
-      onRefresh={handleRefresh}
-      refreshing={isPullRefreshing}
-      scrollUnderlayColor={theme.colors.background.app}
-      testID="friends-screen"
-    >
+  const friendsListHeader = (
+    <>
       <TabBrandHeader
         rightAccessory={
           <HeaderAccessoryButton
@@ -797,7 +693,21 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
           }}
         />
 
-        {mainTab === 'my-code' ? (
+        {mainTab === 'friends-list' ? (
+          <SegmentedControl
+            onChange={handleFriendsSubTabChange}
+            options={friendsSubTabOptions}
+            value={friendsSubTab}
+          />
+        ) : null}
+      </View>
+    </>
+  );
+
+  const friendsListEmptyComponent = (() => {
+    if (mainTab === 'my-code') {
+      return (
+        <View style={styles.body}>
           <Card>
             <Text style={styles.cardTitle} variant="sectionTitleTight">My Friend Code</Text>
             <Text style={styles.cardDescription}>Share this code so friends can send you a request.</Text>
@@ -830,20 +740,133 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
               </Text>
             </View>
           </Card>
-        ) : null}
+        </View>
+      );
+    }
 
-        {mainTab === 'friends-list' ? (
-          <>
-            <SegmentedControl
-              onChange={handleFriendsSubTabChange}
-              options={friendsSubTabOptions}
-              value={friendsSubTab}
+    if (friendsQuery.isLoading) {
+      return (
+        <View style={styles.body}>
+          <View style={styles.skeletonList}>
+            <Skeleton height={110} />
+            <Skeleton height={110} />
+            <Skeleton height={110} />
+          </View>
+        </View>
+      );
+    }
+
+    if (friendsState.hasBlockingError) {
+      return (
+        <View style={styles.body}>
+          <EmptyState
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="FriendsScreen"
+            description="Could not load friendship data."
+            title="Friends unavailable"
+          />
+        </View>
+      );
+    }
+
+    if (visibleFriends.length === 0) {
+      return (
+        <View style={styles.body}>
+          {friendsSubTab === 'friends' ? (
+            <EmptyState
+              analyticsProps={buildBrowseAnalyticsPayload()}
+              analyticsSource="FriendsScreen"
+              description="Add friends to compare visits and food ratings."
+              tone="default"
+              title="No friends yet"
             />
+          ) : friendsSubTab === 'requests' ? (
+            <EmptyState
+              analyticsProps={buildBrowseAnalyticsPayload()}
+              analyticsSource="FriendsScreen"
+              description="Incoming requests appear here."
+              tone="default"
+              title="No pending requests"
+            />
+          ) : (
+            <EmptyState
+              analyticsProps={buildBrowseAnalyticsPayload()}
+              analyticsSource="FriendsScreen"
+              description="Requests you send will show up here."
+              tone="default"
+              title="No sent requests"
+            />
+          )}
+        </View>
+      );
+    }
 
-            {renderFriendsTabContent()}
-          </>
-        ) : null}
+    return null;
+  })();
+
+  const friendsListFooter =
+    mainTab === 'friends-list' &&
+    !friendsQuery.isLoading &&
+    !friendsState.hasBlockingError &&
+    visibleFriends.length > 0 &&
+    friendsQuery.hasNextPage ? (
+      <View style={styles.body}>
+        <Button
+          label={friendsQuery.isFetchingNextPage ? 'Loading more...' : 'Load more'}
+          loading={friendsQuery.isFetchingNextPage}
+          onPress={() => {
+            const resultCountBefore = visibleFriends.length;
+            trackObservabilityEvent('FRIENDS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+              resultCountBefore,
+            }));
+            void friendsQuery.fetchNextPage()
+              .then((result) => {
+                const resultCountAfter =
+                  result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+                trackObservabilityEvent('FRIENDS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+                  resultCountBefore,
+                  resultCountAfter,
+                  deltaCount: resultCountAfter - resultCountBefore,
+                }));
+              })
+              .catch((error) => {
+                trackObservabilityEvent('FRIENDS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+                  resultCountBefore,
+                  errorType: error instanceof Error ? error.name : 'unknown_error',
+                }));
+              });
+          }}
+          variant="secondary"
+        />
       </View>
+    ) : null;
+
+  return (
+    <TabRootScreenScaffold
+      contentStyle={styles.screenContent}
+      keyboardAware
+      scroll={false}
+      scrollUnderlayColor={theme.colors.background.app}
+      testID="friends-screen"
+    >
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={
+          mainTab === 'friends-list' && !friendsQuery.isLoading && !friendsState.hasBlockingError
+            ? visibleFriends
+            : []
+        }
+        ItemSeparatorComponent={() => <View style={styles.cardsListSeparator} />}
+        keyExtractor={(friend) => friend.id}
+        ListEmptyComponent={friendsListEmptyComponent}
+        ListFooterComponent={friendsListFooter}
+        ListHeaderComponent={friendsListHeader}
+        onRefresh={mainTab === 'friends-list' ? handleRefresh : undefined}
+        refreshing={mainTab === 'friends-list' ? isPullRefreshing : false}
+        removeClippedSubviews
+        renderItem={renderFriendItem}
+        style={styles.list}
+      />
 
       <ConfirmDestructiveModal
         cancelLabel="Keep Friend"

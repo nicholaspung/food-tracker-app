@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { readUsageSnapshotCache, writeUsageSnapshotCache, type CachedUsageSnapshot } from '../../lib/usageSnapshotCache';
 import { getAuthenticatedUserIdOrNull } from './pocketbaseGateway';
+import { usageQueryKeys } from './usageQuery';
 import { getMonthlyUsage, type MonthlyUsageSnapshot, type UsagePreviewTier } from './usageLimitsGateway';
 
 interface UseMonthlyUsageResult {
@@ -26,7 +27,7 @@ export function useMonthlyUsage(options?: UseMonthlyUsageOptions): UseMonthlyUsa
   const [cachedSnapshot, setCachedSnapshot] = useState<CachedUsageSnapshot | null>(null);
 
   const monthlyUsageQuery = useQuery({
-    queryKey: ['feature', 'usage', 'monthly', cacheScope],
+    queryKey: usageQueryKeys.monthly(cacheScope),
     queryFn: ({ signal }) => getMonthlyUsage(viewAsTier ? { signal, viewAsTier } : { signal }),
     enabled: Boolean(userId),
     retry: false,

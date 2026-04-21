@@ -17,15 +17,14 @@ import {
 import {
   createFoodProduct,
   formatLimitExceededMessage,
-  getNoteById,
-  homeFeedQueryKeys,
+  getNoteDetail,
   markNoteUsed,
   parseLimitExceededError,
   promoteCachedNoteToUsed,
   useMonthlyUsage,
   type VisitPhotoUploadInput,
 } from '../features';
-import { foodProductsQueryKeys } from '../features/store/foodProductsQuery';
+import { syncFoodProductMutationCaches } from '../features/store/foodProductsQuery';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { usePhotoPickerPermissions } from '../hooks/usePhotoPickerPermissions';
@@ -110,9 +109,10 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
     estimatedFreePhotoRemaining <= FREE_MONTHLY_PHOTO_WARNING_THRESHOLD;
 
   const linkedNoteQuery = useQuery({
-    queryKey: ['feature', 'note', sourceNoteId],
-    queryFn: ({ signal }) => (sourceNoteId ? getNoteById(sourceNoteId, { signal }) : Promise.resolve(null)),
+    queryKey: notesQueryKeys.detail(sourceNoteId ?? ''),
+    queryFn: ({ signal }) => (sourceNoteId ? getNoteDetail(sourceNoteId, { signal }) : Promise.resolve(null)),
     enabled: Boolean(sourceNoteId),
+    select: (detail) => detail?.note ?? null,
   });
   const returnToPrevious = route.params?.returnToPrevious === true;
 
@@ -422,13 +422,10 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
           });
         }
 
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
-          queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
-          queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
-        ]);
+        await syncFoodProductMutationCaches(queryClient, {
+          includeUsage: Boolean(photo),
+          sourceNoteId,
+        });
         trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
           source: 'FoodProductScreen',
           queued: true,
@@ -445,14 +442,6 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
         return;
       }
 
-      const invalidations: Promise<unknown>[] = [
-        queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
-        queryClient.invalidateQueries({ queryKey: foodProductsQueryKeys.root }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'foodProductCategorySuggestions'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'usage', 'monthly'] }),
-      ];
-
       if (sourceNoteId) {
         if (noteUsedAt) {
           promoteCachedNoteToUsed(queryClient, {
@@ -460,12 +449,13 @@ export function FoodProductScreen({ navigation, route }: FoodProductScreenProps)
             usedAt: noteUsedAt,
           });
         }
-        invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }));
-        invalidations.push(queryClient.invalidateQueries({ queryKey: ['feature', 'note', sourceNoteId] }));
-        invalidations.push(queryClient.invalidateQueries({ queryKey: notesQueryKeys.detail(sourceNoteId) }));
       }
 
-      await Promise.all(invalidations);
+      await syncFoodProductMutationCaches(queryClient, {
+        foodProduct: createResult.result,
+        includeUsage: Boolean(photo),
+        sourceNoteId,
+      });
       await AsyncStorage.setItem(FOOD_PRODUCT_RATED_BEFORE_KEY, '1');
       trackObservabilityEvent('FOOD_PRODUCT_SUBMIT_SUCCEEDED', {
         source: 'FoodProductScreen',

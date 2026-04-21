@@ -86,7 +86,6 @@ describe('notesCache', () => {
     const draftNote = buildNote('note_1', 'draft', '2026-03-01T00:00:00.000Z', '2026-03-02T00:00:00.000Z');
     const existingUsedNote = buildNote('note_3', 'used', '2026-02-01T00:00:00.000Z', '2026-02-02T00:00:00.000Z');
 
-    queryClient.setQueryData(['feature', 'note', 'note_1'], draftNote);
     queryClient.setQueryData<NoteDetailRecord>(notesQueryKeys.detail('note_1'), {
       note: draftNote,
       photos: [],
@@ -113,11 +112,6 @@ describe('notesCache', () => {
       usedAt: '2026-04-01T12:00:00.000Z',
     });
 
-    expect(queryClient.getQueryData<NoteOverviewItemRecord>(['feature', 'note', 'note_1'])).toMatchObject({
-      id: 'note_1',
-      status: 'used',
-      usedAt: '2026-04-01T12:00:00.000Z',
-    });
     expect(queryClient.getQueryData<NoteDetailRecord>(notesQueryKeys.detail('note_1'))?.note).toMatchObject({
       id: 'note_1',
       status: 'used',

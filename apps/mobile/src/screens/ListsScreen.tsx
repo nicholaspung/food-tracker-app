@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { FlatList, Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -45,9 +45,35 @@ const useStyles = createThemedStyles((theme) => ({
   body: {
     gap: theme.spacing.md,
   },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+  },
+  listFooter: {
+    paddingTop: theme.spacing.md,
+  },
+  listHeader: {
+    gap: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+  },
+  listSeparator: {
+    height: theme.spacing.sm,
+  },
   searchRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  screenBody: {
+    flex: 1,
+    gap: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   searchField: {
     flex: 1,
@@ -621,7 +647,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         : theme.colors.text.muted;
 
     return (
-      <Card key={list.id} style={[styles.listCard, list.isDefault ? styles.defaultListCard : null]}>
+      <Card style={[styles.listCard, list.isDefault ? styles.defaultListCard : null]}>
         {coverImage ? (
           <View style={styles.coverImageWrap}>
             <Image source={{ uri: coverImage }} style={styles.coverImage} />
@@ -672,37 +698,11 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
           }
         />
       </Card>
-    );
+      );
   };
 
-  return (
-    <BackHeaderScreenScaffold
-      bodyStyle={styles.body}
-      keyboardAware
-      onRefresh={handleRefresh}
-      onBackPress={() => {
-        navigation.navigate('Misc');
-      }}
-      refreshing={isPullRefreshing}
-      rightAccessory={
-        activeTab === 'my' ? (
-          <HeaderAccessoryButton
-            label="New List"
-            onPress={() => {
-              trackObservabilityEvent('LISTS_CREATE_CTA_TAPPED', {
-                source: 'ListsScreen',
-                placement: 'header',
-              });
-              navigation.navigate('CreateRestaurantList');
-            }}
-            testID="create-list-button"
-          />
-        ) : undefined
-      }
-      subtitle="Create, organize, and browse the restaurant lists your friends share."
-      testID="lists-screen"
-      title="Lists"
-    >
+  const listsHeader = (
+    <View style={styles.listHeader}>
       <PageErrorToast
         analyticsProps={buildBrowseAnalyticsPayload()}
         analyticsSource="ListsScreen"
@@ -716,6 +716,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         options={tabOptions}
         value={activeTab}
       />
+
       <View style={styles.searchRow}>
         <Input
           containerStyle={styles.searchField}
@@ -758,55 +759,102 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
         }}
         title="Lists unavailable"
       />
+    </View>
+  );
 
-      {isLoading ? (
+  const listsEmptyComponent = (() => {
+    if (isLoading) {
+      return (
         <View style={styles.skeletonWrap}>
           <Skeleton height={136} />
           <Skeleton height={136} />
           <Skeleton height={136} />
         </View>
-      ) : null}
+      );
+    }
 
-      {!isLoading && !activeState.hasBlockingError
-        ? visibleLists.length === 0
-          ? hasSearch
-            ? renderNoSearchResults()
-            : renderEmptyState()
-          : (
-              <View style={styles.listsWrap}>
-                {visibleLists.map((list, index) => renderListCard(list, index))}
-                {activeQuery.hasNextPage ? (
-                  <Button
-                    label={activeQuery.isFetchingNextPage ? 'Loading more...' : 'Load more lists'}
-                    loading={activeQuery.isFetchingNextPage}
-                    onPress={() => {
-                      const resultCountBefore = visibleLists.length;
-                      trackObservabilityEvent('LISTS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
-                        resultCountBefore,
-                      }));
-                      void activeQuery.fetchNextPage()
-                        .then((result) => {
-                          const resultCountAfter =
-                            result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-                          trackObservabilityEvent('LISTS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
-                            resultCountBefore,
-                            resultCountAfter,
-                            deltaCount: resultCountAfter - resultCountBefore,
-                          }));
-                        })
-                        .catch((error) => {
-                          trackObservabilityEvent('LISTS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
-                            resultCountBefore,
-                            errorType: error instanceof Error ? error.name : 'unknown_error',
-                          }));
-                        });
-                    }}
-                    variant="secondary"
-                  />
-                ) : null}
-              </View>
-            )
-        : null}
+    if (!activeState.hasBlockingError && visibleLists.length === 0) {
+      return hasSearch ? renderNoSearchResults() : renderEmptyState();
+    }
+
+    return null;
+  })();
+
+  const listsFooter =
+    !isLoading && !activeState.hasBlockingError && visibleLists.length > 0 && activeQuery.hasNextPage ? (
+      <View style={styles.listFooter}>
+        <Button
+          label={activeQuery.isFetchingNextPage ? 'Loading more...' : 'Load more lists'}
+          loading={activeQuery.isFetchingNextPage}
+          onPress={() => {
+            const resultCountBefore = visibleLists.length;
+            trackObservabilityEvent('LISTS_LOAD_MORE_STARTED', buildBrowseAnalyticsPayload({
+              resultCountBefore,
+            }));
+            void activeQuery.fetchNextPage()
+              .then((result) => {
+                const resultCountAfter =
+                  result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+                trackObservabilityEvent('LISTS_LOAD_MORE_COMPLETED', buildBrowseAnalyticsPayload({
+                  resultCountBefore,
+                  resultCountAfter,
+                  deltaCount: resultCountAfter - resultCountBefore,
+                }));
+              })
+              .catch((error) => {
+                trackObservabilityEvent('LISTS_LOAD_MORE_FAILED', buildBrowseAnalyticsPayload({
+                  resultCountBefore,
+                  errorType: error instanceof Error ? error.name : 'unknown_error',
+                }));
+              });
+          }}
+          variant="secondary"
+        />
+      </View>
+    ) : null;
+
+  return (
+    <BackHeaderScreenScaffold
+      bodyStyle={styles.screenBody}
+      keyboardAware
+      onBackPress={() => {
+        navigation.navigate('Misc');
+      }}
+      scroll={false}
+      rightAccessory={
+        activeTab === 'my' ? (
+          <HeaderAccessoryButton
+            label="New List"
+            onPress={() => {
+              trackObservabilityEvent('LISTS_CREATE_CTA_TAPPED', {
+                source: 'ListsScreen',
+                placement: 'header',
+              });
+              navigation.navigate('CreateRestaurantList');
+            }}
+            testID="create-list-button"
+          />
+        ) : undefined
+      }
+      subtitle="Create, organize, and browse the restaurant lists your friends share."
+      testID="lists-screen"
+      title="Lists"
+    >
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={!isLoading && !activeState.hasBlockingError ? visibleLists : []}
+        ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
+        keyboardShouldPersistTaps="handled"
+        keyExtractor={(list) => list.id}
+        ListEmptyComponent={listsEmptyComponent}
+        ListFooterComponent={listsFooter}
+        ListHeaderComponent={listsHeader}
+        onRefresh={handleRefresh}
+        refreshing={isPullRefreshing}
+        removeClippedSubviews
+        renderItem={({ item, index }) => renderListCard(item, index)}
+        style={styles.list}
+      />
     </BackHeaderScreenScaffold>
   );
 }

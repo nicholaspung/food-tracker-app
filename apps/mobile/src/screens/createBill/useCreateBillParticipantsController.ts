@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   friendsQueryKeys,
   getBillById,
+  hydrateFriendsSummaryFromPaginatedData,
   listFriendsPage,
   type FriendRecord,
 } from '../../features';
@@ -64,6 +65,7 @@ export function useCreateBillParticipantsController({
   const [cachedFriendRecordsById, setCachedFriendRecordsById] = useState<
     Record<string, FriendRecord>
   >({});
+  const queryClient = useQueryClient();
 
   const normalizedFriendSearchQuery = friendSearchQuery.trim();
   const debouncedNormalizedFriendSearchQuery = useDebouncedValue(
@@ -150,6 +152,14 @@ export function useCreateBillParticipantsController({
   ]);
   const hasBlockingFriendsError = friendsState.hasBlockingError;
   const hasFriendsRefreshError = friendsState.hasRefreshError;
+
+  useEffect(() => {
+    if (activeFriendSearchQuery) {
+      return;
+    }
+
+    hydrateFriendsSummaryFromPaginatedData(queryClient, friendsQuery.data);
+  }, [activeFriendSearchQuery, friendsQuery.data, queryClient]);
 
   const participants = useMemo<DraftParticipant[]>(() => {
     const mappedParticipants: DraftParticipant[] = [

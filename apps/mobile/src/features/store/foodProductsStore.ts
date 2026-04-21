@@ -7,6 +7,7 @@ import type {
 } from './featureStore';
 import { markNoteUsed } from './notesStore';
 import {
+  deleteCollectionRecordsIgnoringNotFound,
   buildOrFilter,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
@@ -198,10 +199,12 @@ export async function createFoodProduct(input: CreateFoodProductInput): Promise<
       }
 
       if (input.sourceNoteId) {
+        const noteUsedAt = nowIso();
         try {
           await markNoteUsed({
             noteId: input.sourceNoteId,
             usedInFoodItemId: record.id,
+            usedAt: noteUsedAt,
           });
         } catch {
           // Best effort only: food product create should still succeed if note linking fails.
@@ -231,11 +234,6 @@ export async function updateFoodProduct(
   return trackFeatureMutation(
     'food_product.update',
     async () => {
-      const currentRecord = await pb.collection('food_items').getOne<FoodItemCollectionRecord>(foodProductId);
-      if (!isFoodProductCollectionRecord(currentRecord)) {
-        throw new Error('Food product record not found.');
-      }
-
       const payload: Record<string, unknown> = {};
       if (updates.itemName !== undefined) {
         const trimmedName = updates.itemName.trim();
@@ -272,36 +270,20 @@ export async function updateFoodProduct(
       payload.latitude = null;
       payload.longitude = null;
 
-      const updatedRecord =
-        Object.keys(payload).length > 0
-          ? await pb.collection('food_items').update<FoodItemCollectionRecord>(foodProductId, payload, {
-              expand: 'user,visit,visit.restaurant',
-            })
-          : await pb.collection('food_items').getOne<FoodItemCollectionRecord>(foodProductId, {
-              expand: 'user,visit,visit.restaurant',
-            });
+      const updatedRecord = await pb.collection('food_items').update<FoodItemCollectionRecord>(foodProductId, payload, {
+        expand: 'user,visit,visit.restaurant',
+      });
+
+      if (!isFoodProductCollectionRecord(updatedRecord)) {
+        throw new Error('Food product record not found.');
+      }
 
       if (updates.newPhoto) {
         const currentUserId = getAuthenticatedUserId();
         await uploadVisitPhotos(undefined, foodProductId, currentUserId, [updates.newPhoto]);
       }
 
-      const deletePhotoIds = Array.from(
-        new Set(
-          (updates.deletePhotoIds ?? [])
-            .map((photoId) => photoId.trim())
-            .filter((photoId) => photoId.length > 0),
-        ),
-      );
-      for (const photoId of deletePhotoIds) {
-        try {
-          await pb.collection('visit_photos').delete(photoId);
-        } catch (error) {
-          if (!isNotFoundError(error)) {
-            throw error;
-          }
-        }
-      }
+      await deleteCollectionRecordsIgnoringNotFound('visit_photos', updates.deletePhotoIds ?? []);
 
       return mapFoodProductCollectionRecord(updatedRecord);
     },

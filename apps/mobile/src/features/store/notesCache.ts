@@ -79,11 +79,6 @@ function adjustFirstPageSummary(
 }
 
 function findCachedNote(queryClient: QueryClient, noteId: string): NoteRecord | undefined {
-  const directNote = queryClient.getQueryData<NoteRecord | null>(['feature', 'note', noteId]);
-  if (directNote) {
-    return directNote;
-  }
-
   const detailNote = queryClient.getQueryData<NoteDetailRecord | null>(notesQueryKeys.detail(noteId))?.note;
   if (detailNote) {
     return detailNote;
@@ -104,10 +99,6 @@ export function promoteCachedNoteToUsed(
   const existingNote = findCachedNote(queryClient, noteId);
   const shouldAdjustSummary = existingNote?.status === 'draft' || isNotePresentInPages(draftData, noteId);
   const promotedNote = existingNote ? buildPromotedNote(existingNote, usedAt) : null;
-
-  queryClient.setQueryData<NoteRecord | null>(['feature', 'note', noteId], (currentNote) =>
-    currentNote ? buildPromotedNote(currentNote, usedAt) : currentNote,
-  );
 
   queryClient.setQueryData<NoteDetailRecord | null>(notesQueryKeys.detail(noteId), (currentDetail) =>
     currentDetail?.note

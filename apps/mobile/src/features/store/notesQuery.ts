@@ -9,9 +9,13 @@ type NotesPaginatedQueryKey =
 
 const NOTE_BROWSE_STATUSES = ['all', 'draft', 'used'] as const;
 
+function normalizeNoteIdQueryValue(noteId: string): string {
+  return noteId.trim();
+}
+
 export const notesQueryKeys = {
   root: ['feature', 'notes'] as const,
-  detail: (noteId: string) => ['feature', 'notes', 'detail', noteId] as const,
+  detail: (noteId: string) => ['feature', 'notes', 'detail', normalizeNoteIdQueryValue(noteId)] as const,
   paginated: (status: NoteBrowseStatus, searchQuery = ''): NotesPaginatedQueryKey => {
     const trimmedSearchQuery = searchQuery.trim();
     if (!trimmedSearchQuery) {

@@ -145,7 +145,7 @@ jest.mock('../components/shared', () => ({
 jest.mock('../features', () => ({
   createMenuReviewRequest: jest.fn(),
   getAuthenticatedUserIdOrNull: jest.fn(() => 'user-1'),
-  getNoteById: jest.fn(),
+  getNoteDetail: jest.fn(),
   getVisitById: jest.fn(),
   resolveDefaultVisitVisibilityFromAuth: jest.fn(() => 'friends'),
   useMonthlyUsage: jest.fn(),

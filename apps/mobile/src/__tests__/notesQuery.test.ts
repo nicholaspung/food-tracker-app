@@ -11,6 +11,10 @@ describe('notesQuery', () => {
     expect(isNoteDetailQueryKey(notesQueryKeys.detail('note_1'))).toBe(true);
   });
 
+  it('normalizes whitespace in the canonical note detail key', () => {
+    expect(notesQueryKeys.detail('  note_1  ')).toEqual(['feature', 'notes', 'detail', 'note_1']);
+  });
+
   it('uses the canonical paginated notes browse key', () => {
     expect(notesQueryKeys.paginated('draft')).toEqual(['feature', 'notes', 'paginated', 'draft']);
     expect(isPaginatedNotesQueryKey(notesQueryKeys.paginated('draft'))).toBe(true);

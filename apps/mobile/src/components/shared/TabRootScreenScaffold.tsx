@@ -14,6 +14,7 @@ export interface TabRootScreenScaffoldProps {
   contentStyle?: StyleProp<ViewStyle>;
   scrollUnderlayColor: string;
   scrollUnderlayTopInset?: number;
+  scroll?: boolean;
   keyboardAware?: boolean;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onRefresh?: () => void | Promise<void>;
@@ -31,6 +32,7 @@ export function TabRootScreenScaffold({
   contentStyle,
   scrollUnderlayColor,
   scrollUnderlayTopInset,
+  scroll = true,
   keyboardAware = true,
   onScroll,
   onRefresh,
@@ -51,10 +53,10 @@ export function TabRootScreenScaffold({
       onRefresh={onRefresh}
       padded={false}
       refreshing={refreshing}
-      scroll
+      scroll={scroll}
       scrollEventThrottle={scrollEventThrottle}
-      scrollUnderlayColor={scrollUnderlayColor}
-      scrollUnderlayTopInset={resolvedScrollUnderlayTopInset}
+      scrollUnderlayColor={scroll ? scrollUnderlayColor : undefined}
+      scrollUnderlayTopInset={scroll ? resolvedScrollUnderlayTopInset : undefined}
       testID={testID}
     >
       {children}

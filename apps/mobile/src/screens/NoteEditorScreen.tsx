@@ -166,7 +166,7 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
   });
 
   const noteDetailQuery = useQuery({
-    queryKey: noteId ? notesQueryKeys.detail(noteId) : ['feature', 'notes', 'detail', ''],
+    queryKey: notesQueryKeys.detail(noteId ?? ''),
     queryFn: ({ signal }) => (noteId ? getNoteDetail(noteId, { signal }) : Promise.resolve(null)),
     enabled: Boolean(noteId),
   });
@@ -684,12 +684,6 @@ export function NoteEditorScreen({ navigation, route }: NoteEditorScreenProps) {
 
       const invalidations: Promise<unknown>[] = [
         queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-        ...(noteId
-          ? [
-              queryClient.invalidateQueries({ queryKey: ['feature', 'note', noteId] }),
-              queryClient.invalidateQueries({ queryKey: notesQueryKeys.detail(noteId) }),
-            ]
-          : []),
         queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
         ...(noteId ? [queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos', noteId] })] : []),
       ];

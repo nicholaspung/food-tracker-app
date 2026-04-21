@@ -4,12 +4,12 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   createVisit,
   formatLimitExceededMessage,
-  homeFeedQueryKeys,
   linkVisitToListBookmark,
   markNoteUsed,
   parseLimitExceededError,
   promoteCachedNoteToUsed,
   restaurantListQueryKeys,
+  syncVisitMutationCaches,
   updateVisit,
   type MonthlyUsageSnapshot,
   type UpdateVisitInput,
@@ -17,7 +17,6 @@ import {
 import {
   createVisitApiMutationInput,
 } from '../../features/store/featureOutboxOperations';
-import { notesQueryKeys } from '../../features/store/notesQuery';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { useWriteTelemetry } from '../../features/store/useWriteTelemetry';
 import { isValidLocalDate, localDateStringToUTC } from '../../lib/dateFormatting';
@@ -76,63 +75,6 @@ export function useCreateVisitSubmission({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const trackWriteTelemetry = useWriteTelemetry();
   const isCurrentlyOnline = isOnline ?? false;
-
-  const invalidateVisitQueries = useCallback(
-    async (options?: {
-      visitId?: string;
-      includeUsage?: boolean;
-      includeVisitPhotos?: boolean;
-      sourceNoteId?: string;
-    }) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: homeFeedQueryKeys.root }),
-        queryClient.invalidateQueries({ queryKey: ['feature', 'visits'] }),
-        queryClient.invalidateQueries({
-          queryKey: ['feature', 'restaurants', 'visitStats'],
-        }),
-        ...(options?.visitId
-          ? [
-              queryClient.invalidateQueries({
-                queryKey: ['feature', 'visit', options.visitId],
-              }),
-            ]
-          : []),
-        ...(options?.includeUsage
-          ? [
-              queryClient.invalidateQueries({
-                queryKey: ['feature', 'usage', 'monthly'],
-              }),
-            ]
-          : []),
-        ...(options?.includeVisitPhotos
-          ? [
-              queryClient.invalidateQueries({
-                queryKey: ['feature', 'visitPhotos'],
-              }),
-              ...(options.visitId
-                ? [
-                    queryClient.invalidateQueries({
-                      queryKey: ['feature', 'visitPhotos', 'visit', options.visitId],
-                    }),
-                  ]
-                : []),
-            ]
-          : []),
-        ...(options?.sourceNoteId
-          ? [
-              queryClient.invalidateQueries({ queryKey: ['feature', 'notes'] }),
-              queryClient.invalidateQueries({
-                queryKey: ['feature', 'note', options.sourceNoteId],
-              }),
-              queryClient.invalidateQueries({
-                queryKey: notesQueryKeys.detail(options.sourceNoteId),
-              }),
-            ]
-          : []),
-      ]);
-    },
-    [queryClient],
-  );
 
   const navigateAfterEdit = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -303,7 +245,7 @@ export function useCreateVisitSubmission({
 
         if (updateResult.status === 'queued') {
           onSubmitSucceeded?.();
-          await invalidateVisitQueries({
+          await syncVisitMutationCaches(queryClient, {
             visitId: editVisitId,
             includeUsage: hasNewPhotoUploads,
             includeVisitPhotos: hasPhotoChanges,
@@ -327,8 +269,8 @@ export function useCreateVisitSubmission({
           return;
         }
 
-        await invalidateVisitQueries({
-          visitId: editVisitId,
+        await syncVisitMutationCaches(queryClient, {
+          visit: updateResult.result,
           includeUsage: hasNewPhotoUploads,
           includeVisitPhotos: hasPhotoChanges,
         });
@@ -391,7 +333,10 @@ export function useCreateVisitSubmission({
         }
 
         setSourceListItemId(null);
-        await invalidateVisitQueries({ sourceNoteId });
+        await syncVisitMutationCaches(queryClient, {
+          includeUsage: hasPhotoUploads,
+          sourceNoteId,
+        });
         onSubmitSucceeded?.();
         trackObservabilityEvent('CREATE_VISIT_SUBMIT_SUCCEEDED', {
           source: 'CreateVisitScreen',
@@ -465,7 +410,11 @@ export function useCreateVisitSubmission({
         });
       }
 
-      await invalidateVisitQueries({ includeUsage: true, sourceNoteId });
+      await syncVisitMutationCaches(queryClient, {
+        visit: createdVisit,
+        includeUsage: hasPhotoUploads,
+        sourceNoteId,
+      });
       onSubmitSucceeded?.();
       navigation.navigate('Home');
     } catch (error) {
@@ -511,7 +460,6 @@ export function useCreateVisitSubmission({
   }, [
     draftItems,
     editVisitId,
-    invalidateVisitQueries,
     isDisplayFreeUser,
     isEditMode,
     isCurrentlyOnline,
