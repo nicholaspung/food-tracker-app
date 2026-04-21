@@ -22,7 +22,7 @@ export const foodProductsQueryKeys = {
     ['feature', 'foodProductCategorySuggestions', normalizeFoodProductCategoryQuery(query)] as const,
 };
 
-export function setCachedFoodProductDetail(
+function setCachedFoodProductDetail(
   queryClient: QueryClient,
   foodProduct: FoodProductRecord,
 ): void {

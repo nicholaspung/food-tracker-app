@@ -33,7 +33,7 @@ const visitStatsQueryKeys = {
   root: ['feature', 'restaurants', 'visitStats'] as const,
 };
 
-export function setCachedVisitDetail(
+function setCachedVisitDetail(
   queryClient: QueryClient,
   visit: VisitRecord,
 ): void {

@@ -51,9 +51,9 @@
     "start-server-and-test": "3.0.2"
   },
   "dependencies": {
-    "expo": "~55.0.15",
+    "expo": "~55.0.16",
     "react": "19.2.0",
-    "react-native": "0.83.4"
+    "react-native": "0.83.6"
   },
   "pnpm": {
     "overrides": {
