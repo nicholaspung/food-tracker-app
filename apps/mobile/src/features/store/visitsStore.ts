@@ -12,6 +12,10 @@ import {
 } from './featureStoreShared';
 import type {
   CreateVisitInput,
+  ListVisitsPageInput,
+  MoveVisitItemInput,
+  MoveVisitItemResult,
+  PaginatedResult,
   UpdateVisitInput,
   VisitPhotoRecord,
 } from './featureStore';
@@ -21,6 +25,9 @@ import { uploadVisitPhotos } from './visitPhotoUploads';
 
 export type {
   CreateVisitInput,
+  ListVisitsPageInput,
+  MoveVisitItemInput,
+  MoveVisitItemResult,
   UpdateVisitInput,
 } from './featureStore';
 
@@ -54,6 +61,14 @@ interface VisitPhotoCollectionRecord {
   user?: string;
   photo: string;
   created: string;
+}
+
+function normalizePageNumber(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.floor(value));
 }
 
 function mapVisitApiRecord(record: VisitApiRecord): VisitRecord {
@@ -91,6 +106,48 @@ function mapVisitPhotoCollectionRecord(
     photo: record.photo.trim(),
     collectionName: 'visit_photos',
     created: record.created,
+  };
+}
+
+export async function listVisitsPage(
+  input?: ListVisitsPageInput,
+): Promise<PaginatedResult<VisitRecord>> {
+  const page = normalizePageNumber(input?.page, 1);
+  const pageSize = normalizePageNumber(input?.pageSize, 20);
+  const scope = input?.scope ?? 'mine';
+  const trimmedSearch = input?.search?.trim() || undefined;
+
+  if (!pb.authStore.record?.id) {
+    return {
+      items: [],
+      page,
+      pageSize,
+      totalItems: 0,
+      totalPages: 0,
+      hasNextPage: false,
+    };
+  }
+
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    scope,
+  });
+  if (trimmedSearch) {
+    query.set('search', trimmedSearch);
+  }
+
+  const response = await sendApiRequest<PaginatedResult<VisitApiRecord>>(
+    `/api/visits?${query.toString()}`,
+    {
+      method: 'GET',
+      signal: input?.signal,
+    },
+  );
+
+  return {
+    ...response,
+    items: response.items.map(mapVisitApiRecord),
   };
 }
 
@@ -356,6 +413,40 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
           (totalCount, item) => totalCount + (item.newPhotos?.length ?? 0),
           0,
         ) ?? 0,
+    },
+  );
+}
+
+export async function moveVisitItem(
+  input: MoveVisitItemInput,
+): Promise<MoveVisitItemResult> {
+  return trackFeatureMutation(
+    'visit.item.move',
+    async () => {
+      const trimmedItemId = input.itemId.trim();
+      const trimmedDestinationVisitId = input.destinationVisitId.trim();
+
+      if (!trimmedItemId) {
+        throw new Error('Visit item is required.');
+      }
+
+      if (!trimmedDestinationVisitId) {
+        throw new Error('Destination visit is required.');
+      }
+
+      return sendApiRequest<MoveVisitItemResult>(
+        `/api/visit-items/${encodeURIComponent(trimmedItemId)}/move`,
+        {
+          method: 'POST',
+          body: {
+            destinationVisitId: trimmedDestinationVisitId,
+          },
+        },
+      );
+    },
+    {
+      destinationVisitId: input.destinationVisitId.trim(),
+      itemId: input.itemId.trim(),
     },
   );
 }

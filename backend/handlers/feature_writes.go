@@ -46,12 +46,21 @@ type visitItemWriteRequest struct {
 	Notes       string  `json:"notes"`
 }
 
+type moveVisitItemRequest struct {
+	DestinationVisitID string `json:"destinationVisitId"`
+}
+
 type visitItemResponse struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Rating      float64 `json:"rating"`
 	Description string  `json:"description,omitempty"`
 	Notes       string  `json:"notes,omitempty"`
+}
+
+type moveVisitItemResponse struct {
+	ItemID             string `json:"itemId"`
+	DestinationVisitID string `json:"destinationVisitId"`
 }
 
 type visitResponse struct {
@@ -267,6 +276,37 @@ func RegisterFeatureWriteHandlers(se *core.ServeEvent, app core.App) {
 				return apis.NewApiError(500, "failed to load updated visit", err)
 			}
 
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		return e.JSON(200, responsePayload)
+	}).Bind(apis.RequireAuth())
+
+	se.Router.POST("/api/visit-items/{itemId}/move", func(e *core.RequestEvent) error {
+		if e.Auth == nil {
+			return apis.NewUnauthorizedError("authentication required", nil)
+		}
+
+		itemID := strings.TrimSpace(e.Request.PathValue("itemId"))
+		if itemID == "" {
+			return apis.NewBadRequestError("itemId is required", nil)
+		}
+
+		requestBody := moveVisitItemRequest{}
+		if err := e.BindBody(&requestBody); err != nil {
+			return apis.NewBadRequestError("invalid request body", err)
+		}
+
+		var responsePayload moveVisitItemResponse
+		if err := app.RunInTransaction(func(txApp core.App) error {
+			moveResult, err := moveVisitItemTransaction(txApp, e.Auth, itemID, requestBody)
+			if err != nil {
+				return err
+			}
+
+			responsePayload = moveResult
 			return nil
 		}); err != nil {
 			return err
@@ -657,6 +697,71 @@ func syncVisitItems(
 	}
 
 	return nil
+}
+
+func moveVisitItemTransaction(
+	app core.App,
+	authRecord *core.Record,
+	itemID string,
+	requestBody moveVisitItemRequest,
+) (moveVisitItemResponse, error) {
+	response := moveVisitItemResponse{}
+	destinationVisitID := strings.TrimSpace(requestBody.DestinationVisitID)
+	if destinationVisitID == "" {
+		return response, apis.NewBadRequestError("destinationVisitId is required", nil)
+	}
+
+	itemRecord, err := app.FindRecordById("food_items", itemID)
+	if err != nil {
+		return response, apis.NewNotFoundError("visit item not found", err)
+	}
+
+	if itemRecord.GetString("user") != authRecord.Id {
+		return response, apis.NewForbiddenError("you can only move your own visit items", nil)
+	}
+
+	currentVisitID := strings.TrimSpace(itemRecord.GetString("visit"))
+	if !isVisitItemRecord(itemRecord) || currentVisitID == "" {
+		return response, apis.NewBadRequestError("only visit items can be moved", nil)
+	}
+
+	destinationVisitRecord, err := app.FindRecordById("visits", destinationVisitID)
+	if err != nil {
+		return response, apis.NewNotFoundError("destination visit not found", err)
+	}
+
+	if destinationVisitRecord.GetString("user") != authRecord.Id {
+		return response, apis.NewForbiddenError("you can only move items into your own visits", nil)
+	}
+
+	if currentVisitID == destinationVisitID {
+		return moveVisitItemResponse{
+			ItemID:             itemRecord.Id,
+			DestinationVisitID: destinationVisitID,
+		}, nil
+	}
+
+	itemRecord.Set("visit", destinationVisitID)
+	if err := app.Save(itemRecord); err != nil {
+		return response, apis.NewApiError(500, "failed to move visit item", err)
+	}
+
+	photoRecords, err := findRecordsByRelationValues(app, "visit_photos", "food_item", []string{itemRecord.Id}, "")
+	if err != nil {
+		return response, apis.NewApiError(500, "failed to load visit item photos", err)
+	}
+
+	for _, photoRecord := range photoRecords {
+		photoRecord.Set("visit", destinationVisitID)
+		if err := app.Save(photoRecord); err != nil {
+			return response, apis.NewApiError(500, "failed to move visit item photos", err)
+		}
+	}
+
+	return moveVisitItemResponse{
+		ItemID:             itemRecord.Id,
+		DestinationVisitID: destinationVisitID,
+	}, nil
 }
 
 func createBillTransaction(app core.App, authRecord *core.Record, requestBody billCreateRequest) (*core.Record, error) {

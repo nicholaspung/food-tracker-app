@@ -561,6 +561,13 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         : -1,
     [feedMode, loadedFeed],
   );
+  const moveVisitFallbackVisits = useMemo(
+    () =>
+      loadedFeed.flatMap((entry) =>
+        entry.source === 'visit' && !entry.isFriend ? [entry.visit] : [],
+      ),
+    [loadedFeed],
+  );
   const totalVisitCount =
     homeFeedQuery.data?.pages[0]?.totalVisits ??
     loadedFeed.filter((entry) => entry.source === 'visit').length;
@@ -835,6 +842,17 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                     navigation.push('CreateVisit', {
                       editVisitId: visit.id,
                       returnToStep: 2,
+                    });
+                  }
+                : undefined
+            }
+            onItemLongPress={
+              !feedItem.isFriend
+                ? (item) => {
+                    homeFeedActions.promptMoveVisitItem({
+                      item,
+                      sourceVisitId: visit.id,
+                      sourceVisitName: visit.restaurantName,
                     });
                   }
                 : undefined
@@ -1180,7 +1198,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
       </View>
 
-      <HomeFeedActionModals controller={homeFeedActions} isOnline={isOnline} />
+      <HomeFeedActionModals
+        controller={homeFeedActions}
+        fallbackVisits={moveVisitFallbackVisits}
+        isOnline={isOnline}
+      />
     </TabRootScreenScaffold>
   );
 }

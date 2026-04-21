@@ -1,6 +1,13 @@
 import type { HomeFeedPhotoRecord } from '../../components/shared';
+import type { VisitRecord } from '../../features';
 
 export type VisitPhotoRecord = HomeFeedPhotoRecord;
+
+export interface PendingMoveVisitItem {
+  item: VisitRecord['items'][number];
+  sourceVisitId: string;
+  sourceVisitName: string;
+}
 
 export type PendingDeleteTarget =
   | {

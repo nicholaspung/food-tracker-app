@@ -607,6 +607,189 @@ func TestVisitUpdateEndpointSynchronizesVisitLocalDate(t *testing.T) {
 	}
 }
 
+func TestMoveVisitItemEndpointMovesItemAndPhotos(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	sourceRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Source Bistro")
+	destinationRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Destination Bistro")
+	sourceVisit := seedVisitRecord(t, server.app, sourceRestaurant.Id, user.Id, "friends")
+	destinationVisit := seedVisitRecord(t, server.app, destinationRestaurant.Id, user.Id, "friends")
+	item := seedFoodItemRecord(t, server.app, sourceVisit.Id, user.Id, "Spicy Wontons", 4)
+	photoID := insertVisitPhotoRowRaw(t, server.app, user.Id, sourceVisit.Id, item.Id)
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+item.Id+"/move",
+		token,
+		`{"destinationVisitId":"`+destinationVisit.Id+`"}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload struct {
+		ItemID             string `json:"itemId"`
+		DestinationVisitID string `json:"destinationVisitId"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse move payload: %v", err)
+	}
+	if payload.ItemID != item.Id || payload.DestinationVisitID != destinationVisit.Id {
+		t.Fatalf("unexpected move payload: %#v", payload)
+	}
+
+	reloadedItem, err := server.app.FindRecordById("food_items", item.Id)
+	if err != nil {
+		t.Fatalf("failed to reload moved item: %v", err)
+	}
+	if reloadedItem.GetString("visit") != destinationVisit.Id {
+		t.Fatalf("expected moved item visit=%q, got %q", destinationVisit.Id, reloadedItem.GetString("visit"))
+	}
+
+	reloadedPhoto, err := server.app.FindRecordById("visit_photos", photoID)
+	if err != nil {
+		t.Fatalf("failed to reload moved photo: %v", err)
+	}
+	if reloadedPhoto.GetString("visit") != destinationVisit.Id {
+		t.Fatalf("expected moved photo visit=%q, got %q", destinationVisit.Id, reloadedPhoto.GetString("visit"))
+	}
+
+	if count := countRecordsByFilter(t, server.app, "food_items", "visit = {:visitId}", map[string]any{"visitId": sourceVisit.Id}); count != 0 {
+		t.Fatalf("expected source visit to have 0 items after move, got %d", count)
+	}
+	if count := countRecordsByFilter(t, server.app, "food_items", "visit = {:visitId}", map[string]any{"visitId": destinationVisit.Id}); count != 1 {
+		t.Fatalf("expected destination visit to have 1 item after move, got %d", count)
+	}
+}
+
+func TestMoveVisitItemEndpointIsIdempotent(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	sourceRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Source Bistro")
+	destinationRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Destination Bistro")
+	sourceVisit := seedVisitRecord(t, server.app, sourceRestaurant.Id, user.Id, "friends")
+	destinationVisit := seedVisitRecord(t, server.app, destinationRestaurant.Id, user.Id, "friends")
+	item := seedFoodItemRecord(t, server.app, sourceVisit.Id, user.Id, "Soup", 4)
+	photoID := insertVisitPhotoRowRaw(t, server.app, user.Id, sourceVisit.Id, item.Id)
+
+	firstResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+item.Id+"/move",
+		token,
+		`{"destinationVisitId":"`+destinationVisit.Id+`"}`,
+	)
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("expected first move 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	secondResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+item.Id+"/move",
+		token,
+		`{"destinationVisitId":"`+destinationVisit.Id+`"}`,
+	)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second move 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
+	}
+
+	reloadedItem, err := server.app.FindRecordById("food_items", item.Id)
+	if err != nil {
+		t.Fatalf("failed to reload item after repeated move: %v", err)
+	}
+	if reloadedItem.GetString("visit") != destinationVisit.Id {
+		t.Fatalf("expected item to remain on destination visit, got %q", reloadedItem.GetString("visit"))
+	}
+
+	reloadedPhoto, err := server.app.FindRecordById("visit_photos", photoID)
+	if err != nil {
+		t.Fatalf("failed to reload photo after repeated move: %v", err)
+	}
+	if reloadedPhoto.GetString("visit") != destinationVisit.Id {
+		t.Fatalf("expected photo to remain on destination visit, got %q", reloadedPhoto.GetString("visit"))
+	}
+}
+
+func TestMoveVisitItemEndpointRejectsInvalidOwnership(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	owner, ownerToken := createAuthUser(t, server.app, false, true)
+	_, intruderToken := createAuthUser(t, server.app, false, true)
+	otherOwner, _ := createAuthUser(t, server.app, false, true)
+
+	sourceRestaurant := seedRestaurantRecord(t, server.app, owner.Id, "Owner Bistro")
+	ownerDestinationRestaurant := seedRestaurantRecord(t, server.app, owner.Id, "Owner Destination")
+	otherDestinationRestaurant := seedRestaurantRecord(t, server.app, otherOwner.Id, "Other Destination")
+	sourceVisit := seedVisitRecord(t, server.app, sourceRestaurant.Id, owner.Id, "friends")
+	ownerDestinationVisit := seedVisitRecord(t, server.app, ownerDestinationRestaurant.Id, owner.Id, "friends")
+	otherDestinationVisit := seedVisitRecord(t, server.app, otherDestinationRestaurant.Id, otherOwner.Id, "friends")
+	item := seedFoodItemRecord(t, server.app, sourceVisit.Id, owner.Id, "Soup", 4)
+
+	forbiddenItemResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+item.Id+"/move",
+		intruderToken,
+		`{"destinationVisitId":"`+ownerDestinationVisit.Id+`"}`,
+	)
+	if forbiddenItemResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected foreign item move to return 403, got %d: %s", forbiddenItemResponse.Code, forbiddenItemResponse.Body.String())
+	}
+
+	forbiddenDestinationResponse := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+item.Id+"/move",
+		ownerToken,
+		`{"destinationVisitId":"`+otherDestinationVisit.Id+`"}`,
+	)
+	if forbiddenDestinationResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected foreign destination move to return 403, got %d: %s", forbiddenDestinationResponse.Code, forbiddenDestinationResponse.Body.String())
+	}
+
+	reloadedItem, err := server.app.FindRecordById("food_items", item.Id)
+	if err != nil {
+		t.Fatalf("failed to reload item after forbidden moves: %v", err)
+	}
+	if reloadedItem.GetString("visit") != sourceVisit.Id {
+		t.Fatalf("expected item to remain on source visit, got %q", reloadedItem.GetString("visit"))
+	}
+}
+
+func TestMoveVisitItemEndpointRejectsNonVisitItems(t *testing.T) {
+	server := newPreparedServer(t, handlers.RegisterFeatureWriteHandlers)
+	user, token := createAuthUser(t, server.app, false, true)
+
+	destinationRestaurant := seedRestaurantRecord(t, server.app, user.Id, "Destination Bistro")
+	destinationVisit := seedVisitRecord(t, server.app, destinationRestaurant.Id, user.Id, "friends")
+	foodProduct := createCollectionRecord(t, server.app, "food_items", map[string]any{
+		"user":     user.Id,
+		"name":     "Bagged Chips",
+		"rating":   4,
+		"itemType": "food-product",
+	})
+
+	response := performJSONRequest(
+		t,
+		server.mux,
+		http.MethodPost,
+		"/api/visit-items/"+foodProduct.Id+"/move",
+		token,
+		`{"destinationVisitId":"`+destinationVisit.Id+`"}`,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected non-visit move to return 400, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestHomeFeedEndpointShowsMergedVisitAsSingleEntry(t *testing.T) {
 	server := newPreparedServer(t, func(se *core.ServeEvent, app core.App) {
 		handlers.RegisterFeatureWriteHandlers(se, app)

@@ -268,6 +268,22 @@ export function createVisitApiMutationInput(payload: CreateVisitInput): EnqueueM
   };
 }
 
+export function moveVisitItemApiMutationInput(
+  itemId: string,
+  destinationVisitId: string,
+): EnqueueMutationInput {
+  return {
+    method: 'POST',
+    url: `${env.pocketbaseUrl}/api/visit-items/${encodeURIComponent(itemId)}/move`,
+    headers: {
+      'X-Mobile-Write-Operation': 'visit.item.move',
+    },
+    body: {
+      destinationVisitId,
+    },
+  };
+}
+
 export function createBillApiMutationInput(payload: CreateBillInput): EnqueueMutationInput {
   return {
     method: 'POST',

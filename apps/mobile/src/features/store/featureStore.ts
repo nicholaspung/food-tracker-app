@@ -44,6 +44,16 @@ export interface UpdateVisitInput {
   visibility?: 'friends' | 'private';
 }
 
+export interface MoveVisitItemInput {
+  itemId: string;
+  destinationVisitId: string;
+}
+
+export interface MoveVisitItemResult {
+  itemId: string;
+  destinationVisitId: string;
+}
+
 export interface CreateFoodProductInput {
   itemName: string;
   locationText?: string;
@@ -504,7 +514,9 @@ export {
   createVisit,
   deleteVisit,
   getVisitById,
+  listVisitsPage,
   listVisitItemPhotos,
+  moveVisitItem,
   updateVisit,
 } from './visitsStore';
 

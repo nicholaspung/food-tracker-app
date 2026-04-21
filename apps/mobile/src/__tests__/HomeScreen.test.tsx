@@ -206,11 +206,38 @@ describe('HomeScreen', () => {
     } as never);
     mockedUseHomeFeedActionController.mockReset();
     mockedUseHomeFeedActionController.mockReturnValue({
+      closeDeleteModal: jest.fn(),
+      closeMoveVisitItemModal: jest.fn(),
+      closePhotoViewer: jest.fn(),
+      closeReportMenu: jest.fn(),
+      closeReportModal: jest.fn(),
+      confirmDeleteTarget: jest.fn(),
+      confirmMoveVisitItem: jest.fn(),
       deleteErrorMessage: null,
+      isDeletingTarget: false,
+      isMovingVisitItem: false,
+      isPhotoViewerVisible: false,
+      isSubmittingReport: false,
+      moveErrorMessage: null,
       openPhotoViewer: jest.fn(),
+      openReportModalFromMenu: jest.fn(),
+      pendingDeleteTarget: null,
+      pendingMoveItem: null,
+      pendingReportMenuTarget: null,
+      pendingReportTarget: null,
+      photoViewerInitialIndex: 0,
+      photoViewerPreviewUrls: [],
+      photoViewerUrls: [],
+      promptMoveVisitItem: jest.fn(),
       promptDeleteFoodProduct: jest.fn(),
       promptDeleteVisit: jest.fn(),
       promptReportMenuTarget: jest.fn(),
+      reportErrorMessage: null,
+      reportNotes: '',
+      reportReasonCode: null,
+      changeReportNotes: jest.fn(),
+      changeReportReasonCode: jest.fn(),
+      submitReport: jest.fn(),
     } as never);
   });
 
@@ -244,5 +271,80 @@ describe('HomeScreen', () => {
     expect(setParams).toHaveBeenCalledWith({
       initialView: undefined,
     });
+  });
+
+  it('only enables visit-item move affordances for owned visits and passes owned fallbacks', async () => {
+    let renderer: any = null;
+
+    mockedUsePaginatedQueryState.mockReturnValue({
+      hasBlockingError: false,
+      hasRefreshError: false,
+      items: [
+        {
+          eventAt: '2026-04-18T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-own',
+            restaurantName: 'Own Bistro',
+            visitedAt: '2026-04-18T08:00:00.000Z',
+            items: [],
+            source: 'visit',
+            userId: 'user-1',
+            createdAt: '2026-04-18T08:00:00.000Z',
+            updatedAt: '2026-04-18T08:05:00.000Z',
+          },
+        },
+        {
+          eventAt: '2026-04-18T09:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-friend',
+            restaurantName: 'Friend Bistro',
+            visitedAt: '2026-04-18T09:00:00.000Z',
+            items: [],
+            source: 'visit',
+            userId: 'user-2',
+            userName: 'Friend',
+            createdAt: '2026-04-18T09:00:00.000Z',
+            updatedAt: '2026-04-18T09:05:00.000Z',
+          },
+        },
+      ],
+    } as never);
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const visitCards = renderer.root.findAllByType('HomeFeedVisitEntryCard');
+
+    expect(visitCards).toHaveLength(2);
+    expect(typeof visitCards[0].props.onItemLongPress).toBe('function');
+    expect(visitCards[1].props.onItemLongPress).toBeUndefined();
+    expect(renderer.root.findByType('HomeFeedActionModals').props.fallbackVisits).toEqual([
+      {
+        id: 'visit-own',
+        restaurantName: 'Own Bistro',
+        visitedAt: '2026-04-18T08:00:00.000Z',
+        items: [],
+        source: 'visit',
+        userId: 'user-1',
+        createdAt: '2026-04-18T08:00:00.000Z',
+        updatedAt: '2026-04-18T08:05:00.000Z',
+      },
+    ]);
   });
 });

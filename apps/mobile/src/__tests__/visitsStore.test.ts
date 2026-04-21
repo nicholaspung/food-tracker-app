@@ -3,7 +3,9 @@ import { ClientResponseError } from 'pocketbase';
 import {
   createVisit,
   getVisitById,
+  listVisitsPage,
   listVisitItemPhotos,
+  moveVisitItem,
   updateVisit,
 } from '../features/store/visitsStore';
 import {
@@ -164,6 +166,98 @@ describe('visitsStore.getVisitById', () => {
       signal: abortController.signal,
       sort: '-created',
     });
+  });
+
+  it('loads paginated visits through the visits page endpoint', async () => {
+    const abortController = new AbortController();
+    mockedSendApiRequest.mockResolvedValue({
+      items: [
+        {
+          id: 'visit-123',
+          restaurantName: 'Noodle House',
+          visitedAt: '2026-04-05T18:00:00.000Z',
+          items: [],
+          moderationStatus: 'active',
+          userName: 'Taylor',
+          createdAt: '2026-04-05T18:00:00.000Z',
+          updatedAt: '2026-04-05T18:10:00.000Z',
+        },
+      ],
+      page: 2,
+      pageSize: 15,
+      totalItems: 16,
+      totalPages: 2,
+      hasNextPage: false,
+    });
+
+    await expect(
+      listVisitsPage({
+        page: 2,
+        pageSize: 15,
+        scope: 'mine',
+        search: 'broth',
+        signal: abortController.signal,
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 'visit-123',
+          restaurantId: undefined,
+          restaurantName: 'Noodle House',
+          restaurantLocation: undefined,
+          restaurantCuisineType: undefined,
+          visitedAt: '2026-04-05T18:00:00.000Z',
+          items: [],
+          source: 'visit',
+          userId: undefined,
+          userName: 'Taylor',
+          visibility: 'friends',
+          moderationStatus: 'active',
+          createdAt: '2026-04-05T18:00:00.000Z',
+          updatedAt: '2026-04-05T18:10:00.000Z',
+        },
+      ],
+      page: 2,
+      pageSize: 15,
+      totalItems: 16,
+      totalPages: 2,
+      hasNextPage: false,
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/visits?page=2&pageSize=15&scope=mine&search=broth',
+      {
+        method: 'GET',
+        signal: abortController.signal,
+      },
+    );
+  });
+
+  it('moves a visit item through the visit-item move endpoint', async () => {
+    mockedSendApiRequest.mockResolvedValue({
+      itemId: 'visit-item-1',
+      destinationVisitId: 'visit-456',
+    });
+
+    await expect(
+      moveVisitItem({
+        itemId: 'visit-item-1',
+        destinationVisitId: 'visit-456',
+      }),
+    ).resolves.toEqual({
+      itemId: 'visit-item-1',
+      destinationVisitId: 'visit-456',
+    });
+
+    expect(mockedSendApiRequest).toHaveBeenCalledWith(
+      '/api/visit-items/visit-item-1/move',
+      {
+        method: 'POST',
+        body: {
+          destinationVisitId: 'visit-456',
+        },
+      },
+    );
   });
 
   it('sends visitedOn on create and uploads photos to the newly created item ids first', async () => {

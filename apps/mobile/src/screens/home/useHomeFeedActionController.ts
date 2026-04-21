@@ -5,14 +5,21 @@ import {
   buildPocketBaseFileUrl,
   deleteFoodProduct,
   deleteVisit,
+  homeFeedQueryKeys,
   invalidateHomeFeedQueries,
+  moveVisitItem,
   reportContent,
   type ContentReportReasonCode,
+  type HomeFeedInfiniteData,
+  type VisitRecord,
+  visitsQueryKeys,
 } from '../../features';
+import { moveVisitItemApiMutationInput } from '../../features/store/featureOutboxOperations';
 import type { OfflineAwareFeatureWrite } from '../../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../../lib/offlineAlerts';
 import type {
   PendingDeleteTarget,
+  PendingMoveVisitItem,
   PendingReportTarget,
   VisitPhotoRecord,
 } from './shared';
@@ -24,12 +31,93 @@ interface UseHomeFeedActionControllerParams {
   writeFeature: OfflineAwareFeatureWrite;
 }
 
+type VisitItemRecord = VisitRecord['items'][number];
+
+function removeVisitItem(visit: VisitRecord, itemId: string): VisitRecord {
+  return {
+    ...visit,
+    items: visit.items.filter((item) => item.id !== itemId),
+  };
+}
+
+function appendVisitItem(visit: VisitRecord, item: VisitItemRecord): VisitRecord {
+  if (visit.items.some((existingItem) => existingItem.id === item.id)) {
+    return visit;
+  }
+
+  return {
+    ...visit,
+    items: [...visit.items, item],
+  };
+}
+
+function patchVisitRecordForMovedItem(
+  visit: VisitRecord | null | undefined,
+  pendingMoveItem: PendingMoveVisitItem,
+  destinationVisit: VisitRecord,
+): VisitRecord | null | undefined {
+  if (!visit) {
+    return visit;
+  }
+
+  if (visit.id === pendingMoveItem.sourceVisitId) {
+    return removeVisitItem(visit, pendingMoveItem.item.id);
+  }
+
+  if (visit.id === destinationVisit.id) {
+    return appendVisitItem(visit, pendingMoveItem.item);
+  }
+
+  return visit;
+}
+
+function patchHomeFeedDataForMovedItem(
+  currentData: HomeFeedInfiniteData | undefined,
+  pendingMoveItem: PendingMoveVisitItem,
+  destinationVisit: VisitRecord,
+): HomeFeedInfiniteData | undefined {
+  if (!currentData) {
+    return currentData;
+  }
+
+  return {
+    ...currentData,
+    pages: currentData.pages.map((page) => ({
+      ...page,
+      items: page.items.map((entry) => {
+        if (entry.source !== 'visit') {
+          return entry;
+        }
+
+        if (entry.visit.id === pendingMoveItem.sourceVisitId) {
+          return {
+            ...entry,
+            visit: removeVisitItem(entry.visit, pendingMoveItem.item.id),
+          };
+        }
+
+        if (entry.visit.id === destinationVisit.id) {
+          return {
+            ...entry,
+            visit: appendVisitItem(entry.visit, pendingMoveItem.item),
+          };
+        }
+
+        return entry;
+      }),
+    })),
+  };
+}
+
 export interface HomeFeedActionController {
   deleteErrorMessage: string | null;
   isDeletingTarget: boolean;
+  isMovingVisitItem: boolean;
   isPhotoViewerVisible: boolean;
   isSubmittingReport: boolean;
+  moveErrorMessage: string | null;
   pendingDeleteTarget: PendingDeleteTarget | null;
+  pendingMoveItem: PendingMoveVisitItem | null;
   pendingReportMenuTarget: PendingReportTarget | null;
   pendingReportTarget: PendingReportTarget | null;
   photoViewerInitialIndex: number;
@@ -41,14 +129,17 @@ export interface HomeFeedActionController {
   changeReportNotes: (value: string) => void;
   changeReportReasonCode: (value: ContentReportReasonCode) => void;
   closeDeleteModal: () => void;
+  closeMoveVisitItemModal: () => void;
   closePhotoViewer: () => void;
   closeReportMenu: () => void;
   closeReportModal: () => void;
   confirmDeleteTarget: () => Promise<void>;
+  confirmMoveVisitItem: (destinationVisit: VisitRecord) => Promise<void>;
   openPhotoViewer: (photos: VisitPhotoRecord[], initialIndex?: number) => void;
   openReportModalFromMenu: () => void;
   promptDeleteFoodProduct: (foodProductId: string, itemName: string) => void;
   promptDeleteVisit: (visitId: string, itemName: string) => void;
+  promptMoveVisitItem: (target: PendingMoveVisitItem) => void;
   promptReportMenuTarget: (target: PendingReportTarget) => void;
   submitReport: () => Promise<void>;
 }
@@ -71,6 +162,10 @@ export function useHomeFeedActionController({
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(
     null,
   );
+  const [pendingMoveItem, setPendingMoveItem] =
+    useState<PendingMoveVisitItem | null>(null);
+  const [isMovingVisitItem, setIsMovingVisitItem] = useState(false);
+  const [moveErrorMessage, setMoveErrorMessage] = useState<string | null>(null);
   const [pendingReportMenuTarget, setPendingReportMenuTarget] =
     useState<PendingReportTarget | null>(null);
   const [pendingReportTarget, setPendingReportTarget] =
@@ -86,6 +181,23 @@ export function useHomeFeedActionController({
   const invalidateHomeFeed = useCallback(async () => {
     await invalidateHomeFeedQueries(queryClient);
   }, [queryClient]);
+
+  const invalidateMoveVisitItemQueries = useCallback(
+    async (sourceVisitId: string, destinationVisitId: string) => {
+      await Promise.all([
+        invalidateHomeFeedQueries(queryClient),
+        queryClient.invalidateQueries({ queryKey: visitsQueryKeys.root }),
+        queryClient.invalidateQueries({
+          queryKey: ['feature', 'visit', sourceVisitId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['feature', 'visit', destinationVisitId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['feature', 'visitPhotos'] }),
+      ]);
+    },
+    [queryClient],
+  );
 
   const handleDeleteFoodProduct = useCallback(
     async (foodProductId: string) => {
@@ -152,6 +264,11 @@ export function useHomeFeedActionController({
     });
   }, []);
 
+  const promptMoveVisitItem = useCallback((target: PendingMoveVisitItem) => {
+    setMoveErrorMessage(null);
+    setPendingMoveItem(target);
+  }, []);
+
   const closeDeleteModal = useCallback(() => {
     if (isDeletingTarget) {
       return;
@@ -159,6 +276,15 @@ export function useHomeFeedActionController({
 
     setPendingDeleteTarget(null);
   }, [isDeletingTarget]);
+
+  const closeMoveVisitItemModal = useCallback(() => {
+    if (isMovingVisitItem) {
+      return;
+    }
+
+    setPendingMoveItem(null);
+    setMoveErrorMessage(null);
+  }, [isMovingVisitItem]);
 
   const confirmDeleteTarget = useCallback(async () => {
     if (!pendingDeleteTarget || isDeletingTarget) {
@@ -193,6 +319,131 @@ export function useHomeFeedActionController({
     isDeletingTarget,
     pendingDeleteTarget,
   ]);
+
+  const confirmMoveVisitItem = useCallback(
+    async (destinationVisit: VisitRecord) => {
+      if (!pendingMoveItem || isMovingVisitItem) {
+        return;
+      }
+
+      if (pendingMoveItem.sourceVisitId === destinationVisit.id) {
+        return;
+      }
+
+      const sourceVisitQueryKey = [
+        'feature',
+        'visit',
+        pendingMoveItem.sourceVisitId,
+      ] as const;
+      const destinationVisitQueryKey = [
+        'feature',
+        'visit',
+        destinationVisit.id,
+      ] as const;
+      const homeFeedSnapshots = queryClient.getQueriesData<HomeFeedInfiniteData>({
+        queryKey: homeFeedQueryKeys.root,
+      });
+      const sourceVisitSnapshot =
+        queryClient.getQueryData<VisitRecord | null>(sourceVisitQueryKey);
+      const destinationVisitSnapshot =
+        queryClient.getQueryData<VisitRecord | null>(destinationVisitQueryKey);
+
+      setMoveErrorMessage(null);
+      setIsMovingVisitItem(true);
+
+      queryClient.setQueriesData<HomeFeedInfiniteData>(
+        { queryKey: homeFeedQueryKeys.root },
+        (currentData) =>
+          patchHomeFeedDataForMovedItem(
+            currentData,
+            pendingMoveItem,
+            destinationVisit,
+          ),
+      );
+
+      if (sourceVisitSnapshot !== undefined) {
+        queryClient.setQueryData<VisitRecord | null>(
+          sourceVisitQueryKey,
+          patchVisitRecordForMovedItem(
+            sourceVisitSnapshot,
+            pendingMoveItem,
+            destinationVisit,
+          ),
+        );
+      }
+
+      if (destinationVisitSnapshot !== undefined) {
+        queryClient.setQueryData<VisitRecord | null>(
+          destinationVisitQueryKey,
+          patchVisitRecordForMovedItem(
+            destinationVisitSnapshot,
+            pendingMoveItem,
+            destinationVisit,
+          ),
+        );
+      }
+
+      try {
+        const moveResult = await writeFeature({
+          operationName: 'visit.item.move',
+          offline: {
+            strategy: 'api',
+            input: moveVisitItemApiMutationInput(
+              pendingMoveItem.item.id,
+              destinationVisit.id,
+            ),
+          },
+          execute: () =>
+            moveVisitItem({
+              itemId: pendingMoveItem.item.id,
+              destinationVisitId: destinationVisit.id,
+            }),
+        });
+
+        setPendingMoveItem(null);
+        setMoveErrorMessage(null);
+
+        await invalidateMoveVisitItemQueries(
+          pendingMoveItem.sourceVisitId,
+          destinationVisit.id,
+        );
+
+        if (moveResult.status === 'queued') {
+          showQueuedOfflineAlert('Visit item move');
+        }
+      } catch (error) {
+        for (const [queryKey, snapshot] of homeFeedSnapshots) {
+          if (snapshot !== undefined) {
+            queryClient.setQueryData(queryKey, snapshot);
+          }
+        }
+
+        if (sourceVisitSnapshot !== undefined) {
+          queryClient.setQueryData(sourceVisitQueryKey, sourceVisitSnapshot);
+        }
+
+        if (destinationVisitSnapshot !== undefined) {
+          queryClient.setQueryData(
+            destinationVisitQueryKey,
+            destinationVisitSnapshot,
+          );
+        }
+
+        const message =
+          error instanceof Error ? error.message : 'Could not move visit item.';
+        setMoveErrorMessage(message);
+      } finally {
+        setIsMovingVisitItem(false);
+      }
+    },
+    [
+      invalidateMoveVisitItemQueries,
+      isMovingVisitItem,
+      pendingMoveItem,
+      queryClient,
+      writeFeature,
+    ],
+  );
 
   const promptReportMenuTarget = useCallback((target: PendingReportTarget) => {
     setPendingReportMenuTarget(target);
@@ -246,7 +497,10 @@ export function useHomeFeedActionController({
     try {
       await trackWriteTelemetry('content.report');
       await reportContent({
-        contentType: pendingReportTarget.kind === 'food-product' ? 'food-product' : 'visit',
+        contentType:
+          pendingReportTarget.kind === 'food-product'
+            ? 'food-product'
+            : 'visit',
         recordId: pendingReportTarget.id,
         reasonCode: reportReasonCode,
         notes: reportNotes.trim() || undefined,
@@ -337,9 +591,12 @@ export function useHomeFeedActionController({
   return {
     deleteErrorMessage,
     isDeletingTarget,
+    isMovingVisitItem,
     isPhotoViewerVisible,
     isSubmittingReport,
+    moveErrorMessage,
     pendingDeleteTarget,
+    pendingMoveItem,
     pendingReportMenuTarget,
     pendingReportTarget,
     photoViewerInitialIndex,
@@ -351,14 +608,17 @@ export function useHomeFeedActionController({
     changeReportNotes,
     changeReportReasonCode,
     closeDeleteModal,
+    closeMoveVisitItemModal,
     closePhotoViewer,
     closeReportMenu,
     closeReportModal,
     confirmDeleteTarget,
+    confirmMoveVisitItem,
     openPhotoViewer,
     openReportModalFromMenu,
     promptDeleteFoodProduct,
     promptDeleteVisit,
+    promptMoveVisitItem,
     promptReportMenuTarget,
     submitReport,
   };

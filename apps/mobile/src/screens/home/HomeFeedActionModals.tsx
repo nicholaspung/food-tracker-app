@@ -5,13 +5,16 @@ import {
   PhotoViewerModal,
   ReportContentModal,
 } from '../../components/shared';
+import type { VisitRecord } from '../../features';
 import { createThemedStyles, useTheme } from '../../theme';
 import { View } from 'react-native';
 import { Modal } from '../../ui';
+import { HomeFeedMoveVisitItemModal } from './HomeFeedMoveVisitItemModal';
 import type { HomeFeedActionController } from './useHomeFeedActionController';
 
 interface HomeFeedActionModalsProps {
   controller: HomeFeedActionController;
+  fallbackVisits: VisitRecord[];
   isOnline: boolean;
 }
 
@@ -32,6 +35,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function HomeFeedActionModals({
   controller,
+  fallbackVisits,
   isOnline,
 }: HomeFeedActionModalsProps) {
   const theme = useTheme();
@@ -45,6 +49,10 @@ export function HomeFeedActionModals({
         previewUrls={controller.photoViewerPreviewUrls}
         urls={controller.photoViewerUrls}
         visible={controller.isPhotoViewerVisible}
+      />
+      <HomeFeedMoveVisitItemModal
+        controller={controller}
+        fallbackVisits={fallbackVisits}
       />
       <Modal
         description={

@@ -37,6 +37,7 @@ interface HomeFeedVisitEntryCardProps {
   restaurantMetaLabel?: string;
   onDelete?: () => void;
   onEdit?: () => void;
+  onItemLongPress?: (item: VisitRecord['items'][number]) => void;
   onOpenPhotoViewer?: (photos: HomeFeedPhotoRecord[], initialIndex?: number) => void;
   onMoreActions?: () => void;
   onSharePhoto?: (input: SharePhotoInput) => void;
@@ -156,6 +157,9 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.spacing.xs,
     padding: theme.spacing.xs,
   },
+  foodItemRowPressed: {
+    backgroundColor: theme.colors.status.infoBg,
+  },
   photoWrap: {
     position: 'relative',
   },
@@ -225,6 +229,7 @@ export function HomeFeedVisitEntryCard({
   restaurantMetaLabel,
   onDelete,
   onEdit,
+  onItemLongPress,
   onOpenPhotoViewer,
   onMoreActions,
   onSharePhoto,
@@ -325,8 +330,8 @@ export function HomeFeedVisitEntryCard({
             const primaryPhoto = itemPhotos[0] ?? null;
             const thumbnailUrl = primaryPhoto ? buildPhotoThumbnailUrl(primaryPhoto) : null;
 
-            return (
-              <View key={item.id} style={styles.foodItemRow}>
+            const renderItemRowContent = (pressed = false) => (
+              <View style={[styles.foodItemRow, pressed ? styles.foodItemRowPressed : null]}>
                 {thumbnailUrl ? (
                   onOpenPhotoViewer ? (
                     <Pressable
@@ -402,6 +407,29 @@ export function HomeFeedVisitEntryCard({
                   ) : null}
                 </View>
               </View>
+            );
+
+            if (!onItemLongPress) {
+              return (
+                <View key={item.id}>
+                  {renderItemRowContent()}
+                </View>
+              );
+            }
+
+            return (
+              <Pressable
+                accessibilityHint="Long press to move this item to another visit"
+                accessibilityLabel={`Move ${item.name} to another visit`}
+                delayLongPress={250}
+                key={item.id}
+                onLongPress={() => {
+                  onItemLongPress(item);
+                }}
+                testID={`home-feed-visit-item-${item.id}`}
+              >
+                {({ pressed }) => renderItemRowContent(pressed)}
+              </Pressable>
             );
           })}
         </View>

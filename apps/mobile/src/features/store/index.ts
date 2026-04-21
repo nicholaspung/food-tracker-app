@@ -13,3 +13,4 @@ export * from './restaurantListQuery';
 export * from './settingsQuery';
 export * from './usageLimitsGateway';
 export * from './useMonthlyUsage';
+export * from './visitsQuery';
