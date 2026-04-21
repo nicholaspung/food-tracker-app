@@ -32,12 +32,6 @@ export interface DraftParticipant {
   isCurrentUser: boolean;
 }
 
-export interface DraftCustomParticipant {
-  id: string;
-  name: string;
-  userId?: string;
-}
-
 export interface OwedAmountEntry {
   participant: DraftParticipant;
   inputValue: string;
@@ -111,10 +105,6 @@ export function mapBillParticipantToFriendRecord(
     status: 'friend',
     createdAt: '',
   };
-}
-
-export function normalizeNameKey(value: string): string {
-  return value.trim().toLowerCase();
 }
 
 export function toCurrencyInput(value: number): string {
