@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useWindowDimensions } from 'react-native';
@@ -8,6 +8,7 @@ import { Screen } from '../../ui';
 import { ScreenHeader } from './ScreenHeader';
 
 type ContentBackgroundTone = 'app' | 'surface' | 'muted';
+type OverscrollBackgroundStrategy = 'measured-header' | 'legacy-midpoint';
 
 /**
  * Shared screen scaffold for any page that uses the custom header with a back button.
@@ -26,6 +27,7 @@ export interface BackHeaderScreenScaffoldProps {
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
   contentBackgroundTone?: ContentBackgroundTone;
+  overscrollBackgroundStrategy?: OverscrollBackgroundStrategy;
   contentStyle?: StyleProp<ViewStyle>;
   bodyStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
@@ -59,6 +61,7 @@ export function BackHeaderScreenScaffold({
   onRefresh,
   refreshing = false,
   contentBackgroundTone = 'app',
+  overscrollBackgroundStrategy = 'measured-header',
   contentStyle,
   bodyStyle,
   children,
@@ -66,6 +69,7 @@ export function BackHeaderScreenScaffold({
 }: BackHeaderScreenScaffoldProps) {
   const theme = useTheme();
   const { height } = useWindowDimensions();
+  const [headerHeight, setHeaderHeight] = useState(0);
 
   const backgroundColor =
     contentBackgroundTone === 'app'
@@ -73,7 +77,11 @@ export function BackHeaderScreenScaffold({
       : contentBackgroundTone === 'surface'
         ? theme.colors.background.surface
         : theme.colors.background.muted;
-  const scrollUnderlayTopInset = Math.max(220, Math.round(height / 2));
+  const legacyMidpointInset = Math.max(220, Math.round(height / 2));
+  const scrollUnderlayTopInset =
+    overscrollBackgroundStrategy === 'legacy-midpoint'
+      ? legacyMidpointInset
+      : headerHeight;
   const styles = useStyles(backgroundColor);
 
   return (
@@ -90,14 +98,24 @@ export function BackHeaderScreenScaffold({
       scrollUnderlayTopInset={scroll ? scrollUnderlayTopInset : undefined}
       testID={testID}
     >
-      <ScreenHeader
-        backAccessibilityLabel={backAccessibilityLabel}
-        onBackPress={onBackPress}
-        rightAccessory={rightAccessory}
-        subtitle={subtitle}
-        title={title}
-        variant={headerVariant}
-      />
+      <View
+        onLayout={(event) => {
+          const nextHeaderHeight = event.nativeEvent.layout.height;
+
+          setHeaderHeight((currentHeaderHeight) =>
+            currentHeaderHeight === nextHeaderHeight ? currentHeaderHeight : nextHeaderHeight,
+          );
+        }}
+      >
+        <ScreenHeader
+          backAccessibilityLabel={backAccessibilityLabel}
+          onBackPress={onBackPress}
+          rightAccessory={rightAccessory}
+          subtitle={subtitle}
+          title={title}
+          variant={headerVariant}
+        />
+      </View>
       <View style={[styles.body, bodyStyle]}>{children}</View>
     </Screen>
   );
