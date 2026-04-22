@@ -317,21 +317,6 @@ export async function confirmUserPasswordReset(
   }
 }
 
-export async function confirmUserEmailVerification(token: string): Promise<void> {
-  try {
-    await pb.collection('users').confirmVerification(token);
-    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_SUCCEEDED', {
-      source: 'pocketbaseGateway',
-    });
-  } catch (error) {
-    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_FAILED', {
-      source: 'pocketbaseGateway',
-      ...resolveErrorProperties(error),
-    });
-    throw error;
-  }
-}
-
 function resolveErrorProperties(error: unknown): {
   errorMessage: string;
   errorType: string;

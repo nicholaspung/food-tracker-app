@@ -29,6 +29,7 @@ import {
   updateBillApiMutationInput,
   updateBillParticipantPaidStatusApiMutationInput,
 } from '../features/store/featureOutboxOperations';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -274,7 +275,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
   const [updatingParticipantId, setUpdatingParticipantId] = useState<string | null>(null);
   const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
   const [isDeletingBill, setIsDeletingBill] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(billQuery.isRefetching);
 
   const bill = billQuery.data;
   const isCreator = bill?.createdByUserId === user?.id;
@@ -541,14 +542,10 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
     }
   };
   const handleRefresh = useCallback(async () => {
-    setIsPullRefreshing(true);
-
-    try {
+    await runPullRefresh(async () => {
       await billQuery.refetch();
-    } finally {
-      setIsPullRefreshing(false);
-    }
-  }, [billQuery]);
+    });
+  }, [billQuery, runPullRefresh]);
 
   return (
     <FeatureDetailScreenScaffold

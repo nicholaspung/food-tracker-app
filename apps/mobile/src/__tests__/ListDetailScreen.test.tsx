@@ -145,8 +145,9 @@ jest.mock('../components/shared', () => ({
   EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
   ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
   ExpandableText: jest.requireActual('../components/shared/ExpandableText').ExpandableText,
-  FeatureDetailScreenScaffold: ({ children }: { children?: React.ReactNode }) =>
-    mockReact.createElement(mockReact.Fragment, null, children),
+  FeatureDetailScreenScaffold: (
+    { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+  ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
   PhotoViewerModal: () => null,
   RatingPill: () => null,
   SectionHeader: (props: Record<string, unknown>) => mockReact.createElement('SectionHeader', props),
@@ -215,9 +216,25 @@ function buildQueryResult(data = buildDetail()) {
     isError: false,
     isFetching: false,
     isLoading: false,
+    isRefetching: false,
     isSuccess: true,
     refetch: jest.fn(),
   } as unknown as ReturnType<typeof useQuery>;
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
 }
 
 function findExactTextNodes(root: any, value: string) {
@@ -349,5 +366,53 @@ describe('ListDetailScreen', () => {
     expect(findExactTextNodes(renderer.root, 'Thai')).toHaveLength(1);
     expect(findExactTextNodes(renderer.root, '• Thai')).toHaveLength(0);
     expect(findExactTextNodes(renderer.root, 'Location not set')).toHaveLength(1);
+  });
+
+  it('keeps the detail scaffold refreshing prop active until the refetch lifecycle settles', async () => {
+    const refetchDeferred = createDeferred<{ data: RestaurantListDetailRecord }>();
+    const queryResult = buildQueryResult();
+    queryResult.refetch = jest.fn(() => refetchDeferred.promise as never);
+    queryResult.isRefetching = false;
+    mockedUseQuery.mockReturnValue(queryResult);
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+    });
+
+    const findScaffold = () => renderer.root.findByType('FeatureDetailScreenScaffold');
+
+    expect(findScaffold().props.refreshing).toBe(false);
+
+    let refreshPromise: Promise<unknown> | null = null;
+    act(() => {
+      refreshPromise = findScaffold().props.onRefresh();
+    });
+
+    expect(findScaffold().props.refreshing).toBe(true);
+
+    await act(async () => {
+      queryResult.isRefetching = true;
+      renderer.update(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+      await Promise.resolve();
+    });
+
+    expect(findScaffold().props.refreshing).toBe(true);
+
+    await act(async () => {
+      refetchDeferred.resolve({ data: buildDetail() });
+      await refreshPromise;
+    });
+
+    expect(findScaffold().props.refreshing).toBe(true);
+
+    await act(async () => {
+      queryResult.isRefetching = false;
+      renderer.update(<ListDetailScreen navigation={navigation as any} route={route as any} />);
+      await Promise.resolve();
+    });
+
+    expect(findScaffold().props.refreshing).toBe(false);
   });
 });

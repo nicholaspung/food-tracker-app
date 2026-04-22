@@ -35,6 +35,7 @@ type AuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 
 type RolePreviewSettingKey = keyof RolePreviewSettings;
 
 export const AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Please verify your email to continue.';
+const AUTH_VERIFICATION_STATUS_REFRESH_INTERVAL_MS = 15_000;
 
 export interface AuthBootstrapResult {
   authRecord: RecordModel;
@@ -162,6 +163,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
 
   const canUseRolePreview = actualUser?.isAdmin === true;
   const effectiveRolePreviewSettings = useMemo<RolePreviewSettings>(
@@ -196,7 +198,9 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       if (shouldClearCachedSessionAfterRefreshFailure(refreshError)) {
         pb.authStore.clear();
       }
-      logger.warn('[AuthProvider] authRefresh failed:', refreshError);
+      if (!isVerificationRequiredError(refreshError)) {
+        logger.warn('[AuthProvider] authRefresh failed:', refreshError);
+      }
       syncAuthSnapshot();
       throw refreshError;
     }
@@ -338,9 +342,33 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
   }, [status, syncAuthSnapshot, verificationGraceEndsAt, verificationStatus]);
 
   useEffect(() => {
+    const shouldPollVerificationStatus =
+      appState === 'active' &&
+      Boolean(pb.authStore.token) &&
+      verificationStatus !== 'verified' &&
+      (status === 'authenticated' || status === 'verification_required');
+
+    if (!shouldPollVerificationStatus) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      void refreshAuthSession().catch(() => {
+        // Foreground and manual refresh hooks already surface meaningful auth failures.
+        // Keep background verification polling silent for expected unverified states.
+      });
+    }, AUTH_VERIFICATION_STATUS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [appState, refreshAuthSession, status, verificationStatus]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       const previousState = appStateRef.current;
       appStateRef.current = nextState;
+      setAppState(nextState);
 
       if (previousState === 'background' && nextState === 'active') {
         if (!pb.authStore.token) {

@@ -13,6 +13,7 @@ import type {
   ViewStyle,
 } from 'react-native';
 
+import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
 
 interface ScreenProps {
@@ -75,7 +76,11 @@ export function Screen({
   testID,
 }: PropsWithChildren<ScreenProps>) {
   const theme = useTheme();
+  const { topInsetConsumedByOverlay, topOverlayHeight } = useLayoutChrome();
   const styles = useStyles(background, padded);
+  const resolvedEdges = topInsetConsumedByOverlay
+    ? edges.filter((edge) => edge !== 'top')
+    : edges;
 
   const body = scroll ? (
     <KeyboardAwareScrollView
@@ -107,14 +112,14 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView edges={edges} style={[styles.safeArea, style]} testID={testID}>
+    <SafeAreaView edges={resolvedEdges} style={[styles.safeArea, style]} testID={testID}>
       {scroll && scrollUnderlayColor ? (
         <View
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFillObject,
             {
-              top: scrollUnderlayTopInset,
+              top: scrollUnderlayTopInset + topOverlayHeight,
               backgroundColor: scrollUnderlayColor,
             },
           ]}

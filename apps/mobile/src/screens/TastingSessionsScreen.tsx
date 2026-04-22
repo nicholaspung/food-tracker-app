@@ -18,6 +18,7 @@ import {
   type TastingSessionStatus,
 } from '../features';
 import { useSavedRestaurantSuggestions } from '../hooks/useRestaurantSelectionFlow';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -89,7 +90,7 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const [joinCode, setJoinCode] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasActivatedRestaurantSuggestions, setHasActivatedRestaurantSuggestions] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(sessionsQuery.isRefetching);
   const {
     savedRestaurantRecords: filteredRestaurants,
     savedRestaurantsErrorMessage: restaurantSuggestionsErrorMessage,
@@ -104,14 +105,10 @@ export function TastingSessionsScreen({ navigation }: TastingSessionsScreenProps
   const hasBlockingSessionsError = sessionsQuery.isError && sessions.length === 0;
   const hasSessionsRefreshError = sessionsQuery.isError && sessions.length > 0;
   const handleRefresh = useCallback(async () => {
-    setIsPullRefreshing(true);
-
-    try {
+    await runPullRefresh(async () => {
       await sessionsQuery.refetch();
-    } finally {
-      setIsPullRefreshing(false);
-    }
-  }, [sessionsQuery]);
+    });
+  }, [runPullRefresh, sessionsQuery]);
 
   const filteredSessions = useMemo(() => {
     if (filter === 'completed') {

@@ -8,6 +8,7 @@ import { usePaginatedQueryState } from '../hooks/useListQueryState';
 import { buildFoodProductCreatedHomeParams } from '../navigation/homeRouteParams';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import { HomeScreen } from '../screens/HomeScreen';
 import {
   getPendingFriendSuggestion,
@@ -15,6 +16,100 @@ import {
 import { useHomeFeedActionController } from '../screens/home/useHomeFeedActionController';
 
 const mockReact = React;
+
+jest.mock('react-native', () => {
+  const renderListElement = (element: unknown, props: Record<string, unknown> = {}) => {
+    if (!element) {
+      return null;
+    }
+
+    if (mockReact.isValidElement(element)) {
+      return element;
+    }
+
+    if (typeof element === 'function') {
+      return element(props);
+    }
+
+    return null;
+  };
+
+  return {
+    FlatList: ({
+      ListEmptyComponent,
+      ListFooterComponent,
+      ListHeaderComponent,
+      data = [],
+      renderItem,
+      ...props
+    }: Record<string, unknown>) =>
+      mockReact.createElement(
+        'FlatList',
+        { ...props, ListEmptyComponent, ListFooterComponent, ListHeaderComponent, data, renderItem },
+        renderListElement(ListHeaderComponent),
+        Array.isArray(data) && data.length > 0 && typeof renderItem === 'function'
+          ? data.map((item, index) =>
+              mockReact.createElement(
+                mockReact.Fragment,
+                { key: `flat-item-${index}` },
+                renderItem({ index, item }),
+              ),
+            )
+          : renderListElement(ListEmptyComponent),
+        renderListElement(ListFooterComponent),
+      ),
+    Pressable: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      mockReact.createElement('Pressable', props, children),
+    SectionList: ({
+      ListEmptyComponent,
+      ListFooterComponent,
+      ListHeaderComponent,
+      renderItem,
+      renderSectionHeader,
+      sections = [],
+      ...props
+    }: Record<string, unknown>) => {
+      const typedSections = Array.isArray(sections)
+        ? (sections as { data?: unknown[] }[])
+        : [];
+
+      return mockReact.createElement(
+        'SectionList',
+        {
+          ...props,
+          ListEmptyComponent,
+          ListFooterComponent,
+          ListHeaderComponent,
+          renderItem,
+          renderSectionHeader,
+          sections,
+        },
+        renderListElement(ListHeaderComponent),
+        typedSections.length > 0
+          ? typedSections.flatMap((section, sectionIndex) => [
+              mockReact.createElement(
+                mockReact.Fragment,
+                { key: `section-header-${sectionIndex}` },
+                renderListElement(renderSectionHeader, { section }),
+              ),
+              ...(Array.isArray(section.data) && typeof renderItem === 'function'
+                ? section.data.map((item: unknown, index: number) =>
+                    mockReact.createElement(
+                      mockReact.Fragment,
+                      { key: `section-item-${sectionIndex}-${index}` },
+                      renderItem({ index, item, section }),
+                    ),
+                  )
+                : []),
+            ])
+          : renderListElement(ListEmptyComponent),
+        renderListElement(ListFooterComponent),
+      );
+    },
+    View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+      mockReact.createElement('View', props, children),
+  };
+});
 
 jest.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: jest.fn(),
@@ -28,6 +123,9 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('HomeFeedVisitEntryCard', props),
   HomeFoodProductEntryCard: (props: Record<string, unknown>) =>
     mockReact.createElement('HomeFoodProductEntryCard', props),
+  ScreenContentSection: (
+    { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+  ) => mockReact.createElement('ScreenContentSection', props, children),
   Skeleton: (props: Record<string, unknown>) => mockReact.createElement('Skeleton', props),
   TabRootScreenScaffold: (
     { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
@@ -153,6 +251,36 @@ const mockedUseHomeFeedActionController = useHomeFeedActionController as jest.Mo
   typeof useHomeFeedActionController
 >;
 
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (!style || typeof style !== 'object') {
+    return {};
+  }
+
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (accumulator, entry) => ({ ...accumulator, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style as Record<string, unknown>;
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+}
+
 describe('HomeScreen', () => {
   beforeEach(() => {
     mockedUseInfiniteQuery.mockReset();
@@ -175,6 +303,7 @@ describe('HomeScreen', () => {
       isFetching: false,
       isFetchingNextPage: false,
       isLoading: false,
+      isRefetching: false,
       isSuccess: true,
       refetch: jest.fn(),
     } as never);
@@ -239,6 +368,10 @@ describe('HomeScreen', () => {
       changeReportReasonCode: jest.fn(),
       submitReport: jest.fn(),
     } as never);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('applies and consumes the one-shot food product success view params', async () => {
@@ -314,17 +447,19 @@ describe('HomeScreen', () => {
 
     await act(async () => {
       renderer = create(
-        <HomeScreen
-          navigation={{
-            navigate: jest.fn(),
-            push: jest.fn(),
-            setParams: jest.fn(),
-          } as never}
-          route={{
-            key: 'home',
-            name: 'Home',
-          } as never}
-        />,
+        <LayoutChromeProvider topInsetConsumedByOverlay topOverlayHeight={72}>
+          <HomeScreen
+            navigation={{
+              navigate: jest.fn(),
+              push: jest.fn(),
+              setParams: jest.fn(),
+            } as never}
+            route={{
+              key: 'home',
+              name: 'Home',
+            } as never}
+          />
+        </LayoutChromeProvider>,
       );
       await Promise.resolve();
     });
@@ -346,5 +481,147 @@ describe('HomeScreen', () => {
         updatedAt: '2026-04-18T08:05:00.000Z',
       },
     ]);
+  });
+
+  it('renders the measured home header backdrop above the orange content area', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const headerLayoutView = renderer.root.find(
+      (node: any) =>
+        node.type === 'View' &&
+        typeof node.props.onLayout === 'function' &&
+        node.findAllByType('FeedHeaderControls').length > 0,
+    );
+
+    await act(async () => {
+      headerLayoutView.props.onLayout({
+        nativeEvent: {
+          layout: {
+            height: 84,
+            width: 360,
+            x: 0,
+            y: 0,
+          },
+        },
+      });
+    });
+
+    const headerBackdrop = renderer.root.findByProps({ testID: 'home-screen-header-backdrop' });
+    const recordsSection = renderer.root.findByProps({ testID: 'home-screen-records-section' });
+    expect(renderer.root.findAllByProps({ testID: 'home-screen-lower-backdrop' })).toHaveLength(0);
+    expect(flattenStyle(headerBackdrop.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'surface-background',
+        height: 84,
+      }),
+    );
+    expect(recordsSection).toBeTruthy();
+  });
+
+  it('keeps the home list refresh prop active until the refetch lifecycle settles', async () => {
+    const refetchDeferred = createDeferred<{
+      data: {
+        pages: { items: unknown[] }[];
+      };
+    }>();
+    const queryResult = {
+      data: {
+        pageParams: [undefined],
+        pages: [
+          {
+            cursor: undefined,
+            hasNextPage: false,
+            items: [],
+            totalFoodProducts: 0,
+            totalVisits: 0,
+          },
+        ],
+      },
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isError: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isRefetching: false,
+      isSuccess: true,
+      refetch: jest.fn(() => refetchDeferred.promise),
+    };
+    mockedUseInfiniteQuery.mockReturnValue(queryResult as never);
+
+    const navigation = {
+      navigate: jest.fn(),
+      push: jest.fn(),
+      setParams: jest.fn(),
+    };
+    const route = {
+      key: 'home',
+      name: 'Home',
+    };
+
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<HomeScreen navigation={navigation as never} route={route as never} />);
+      await Promise.resolve();
+    });
+
+    const findRefreshableList = () =>
+      renderer.root.find(
+        (node: any) => typeof node.props.onRefresh === 'function' && typeof node.props.refreshing === 'boolean',
+      );
+
+    expect(findRefreshableList().props.refreshing).toBe(false);
+
+    let refreshPromise: Promise<unknown> | null = null;
+    act(() => {
+      refreshPromise = findRefreshableList().props.onRefresh();
+    });
+
+    expect(findRefreshableList().props.refreshing).toBe(true);
+
+    await act(async () => {
+      queryResult.isRefetching = true;
+      renderer.update(<HomeScreen navigation={navigation as never} route={route as never} />);
+      await Promise.resolve();
+    });
+
+    expect(findRefreshableList().props.refreshing).toBe(true);
+
+    await act(async () => {
+      refetchDeferred.resolve({
+        data: {
+          pages: [{ items: [] }],
+        },
+      });
+      await refreshPromise;
+    });
+
+    expect(findRefreshableList().props.refreshing).toBe(true);
+
+    await act(async () => {
+      queryResult.isRefetching = false;
+      renderer.update(<HomeScreen navigation={navigation as never} route={route as never} />);
+      await Promise.resolve();
+    });
+
+    expect(findRefreshableList().props.refreshing).toBe(false);
   });
 });

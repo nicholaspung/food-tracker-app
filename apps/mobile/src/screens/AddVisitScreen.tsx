@@ -1,9 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
-import { TabBrandHeader, TabRootScreenScaffold } from '../components/shared';
+import { ScreenContentSection, TabBrandHeader, TabRootScreenScaffold } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { createThemedStyles, useTheme } from '../theme';
@@ -39,6 +40,7 @@ const useStyles = createThemedStyles((theme) => ({
 export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
+  const [topChromeHeight, setTopChromeHeight] = useState(0);
 
   const optionColors = {
     restaurant: theme.colors.text.info,
@@ -141,31 +143,40 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
       scrollUnderlayColor={theme.colors.background.app}
+      scrollUnderlayTopInset={topChromeHeight}
       testID="add-visit-selector"
     >
-      <TabBrandHeader
-        showBrand={false}
-        subtitle="Choose how you want to track your food"
-        title="Add New"
-        titleVariant="displayMd"
-      />
-
-      <View style={styles.body}>
-        {options.map((option) => (
-          <AddOptionCard
-            description={option.description}
-            icon={option.icon}
-            iconBackground={option.iconBackground}
-            iconColor={option.iconColor}
-            key={option.id}
-            onPress={() => {
-              handleOptionPress(option.id);
-            }}
-            testID={`add-option-${option.id}`}
-            title={option.title}
-          />
-        ))}
+      <View
+        onLayout={(event) => {
+          setTopChromeHeight(event.nativeEvent.layout.height);
+        }}
+      >
+        <TabBrandHeader
+          showBrand={false}
+          subtitle="Choose how you want to track your food"
+          title="Add New"
+          titleVariant="displayMd"
+        />
       </View>
+
+      <ScreenContentSection fill testID="add-screen-content-section">
+        <View style={styles.body}>
+          {options.map((option) => (
+            <AddOptionCard
+              description={option.description}
+              icon={option.icon}
+              iconBackground={option.iconBackground}
+              iconColor={option.iconColor}
+              key={option.id}
+              onPress={() => {
+                handleOptionPress(option.id);
+              }}
+              testID={`add-option-${option.id}`}
+              title={option.title}
+            />
+          ))}
+        </View>
+      </ScreenContentSection>
     </TabRootScreenScaffold>
   );
 }

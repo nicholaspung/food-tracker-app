@@ -11,6 +11,7 @@ import {
   ConfirmDestructiveModal,
   EmptyState,
   HeaderAccessoryButton,
+  ScreenContentSection,
   SegmentedControl,
   Skeleton,
   StatusPill,
@@ -28,12 +29,14 @@ import {
   type FriendRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Card, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -70,6 +73,12 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
+  },
+  topBackdrop: {
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   list: {
     flex: 1,
@@ -219,6 +228,7 @@ function formatDate(value: string): string {
 
 export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const theme = useTheme();
+  const { topOverlayHeight } = useLayoutChrome();
   const { user } = useAuth();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
@@ -229,7 +239,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [pendingRemoveFriend, setPendingRemoveFriend] = useState<FriendRecord | null>(null);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [topChromeHeight, setTopChromeHeight] = useState(0);
   const friendsQuery = useInfiniteQuery({
     queryKey: friendsQueryKeys.paginated(friendsSubTab),
     queryFn: ({ pageParam, signal }) =>
@@ -252,6 +262,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     isLoading: friendsQuery.isLoading,
     isSuccess: friendsQuery.isSuccess,
   });
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(friendsQuery.isRefetching);
   const visibleFriends = friendsState.items;
   const friendsSummary = selectFriendsSummary(friendsQuery.data);
   const acceptedFriendsCount =
@@ -457,37 +468,37 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     setPendingRemoveFriend(null);
   };
   const handleRefresh = async () => {
-    const resultCountBefore = visibleFriends.length;
-    setIsPullRefreshing(true);
-    trackObservabilityEvent('FRIENDS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-      resultCountBefore,
-    }));
+    await runPullRefresh(async () => {
+      const resultCountBefore = visibleFriends.length;
+      trackObservabilityEvent('FRIENDS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+      }));
 
-    try {
-      if (mainTab === 'friends-list') {
-        const result = await friendsQuery.refetch();
-        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+      try {
+        if (mainTab === 'friends-list') {
+          const result = await friendsQuery.refetch();
+          const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+          trackObservabilityEvent('FRIENDS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+            resultCountBefore,
+            resultCountAfter,
+            deltaCount: resultCountAfter - resultCountBefore,
+          }));
+          return;
+        }
+
         trackObservabilityEvent('FRIENDS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
           resultCountBefore,
-          resultCountAfter,
-          deltaCount: resultCountAfter - resultCountBefore,
+          resultCountAfter: resultCountBefore,
+          deltaCount: 0,
         }));
-        return;
+      } catch (error) {
+        trackObservabilityEvent('FRIENDS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        }));
+        throw error;
       }
-      trackObservabilityEvent('FRIENDS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        resultCountAfter: resultCountBefore,
-        deltaCount: 0,
-      }));
-    } catch (error) {
-      trackObservabilityEvent('FRIENDS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      }));
-      throw error;
-    } finally {
-      setIsPullRefreshing(false);
-    }
+    });
   };
 
   const handleConfirmRemoveFriend = async () => {
@@ -651,28 +662,34 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
 
   const friendsListHeader = (
     <>
-      <TabBrandHeader
-        rightAccessory={
-          <HeaderAccessoryButton
-            accessibilityLabel="Add friend"
-            label="Add Friend"
-            onPress={() => {
-              trackObservabilityEvent('FRIENDS_ADD_FRIEND_TAPPED', {
-                source: 'FriendsScreen',
-              });
-              navigation.navigate('AddFriend');
-            }}
-            testID="friends-add-friend-button"
-          />
-        }
-        showBrand={false}
-        subtitle={friendSummary}
-        title="Friends"
-        titleVariant="displayLg"
-      />
+      <View
+        onLayout={(event) => {
+          setTopChromeHeight(event.nativeEvent.layout.height);
+        }}
+      >
+        <TabBrandHeader
+          rightAccessory={
+            <HeaderAccessoryButton
+              accessibilityLabel="Add friend"
+              label="Add Friend"
+              onPress={() => {
+                trackObservabilityEvent('FRIENDS_ADD_FRIEND_TAPPED', {
+                  source: 'FriendsScreen',
+                });
+                navigation.navigate('AddFriend');
+              }}
+              testID="friends-add-friend-button"
+            />
+          }
+          showBrand={false}
+          subtitle={friendSummary}
+          title="Friends"
+          titleVariant="displayLg"
+        />
 
-      <View style={styles.mainTabsSection}>
-        <SegmentedControl onChange={handleMainTabChange} options={MAIN_TAB_OPTIONS} value={mainTab} />
+        <View style={styles.mainTabsSection}>
+          <SegmentedControl onChange={handleMainTabChange} options={MAIN_TAB_OPTIONS} value={mainTab} />
+        </View>
       </View>
 
       <View style={styles.body}>
@@ -849,24 +866,37 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
       scrollUnderlayColor={theme.colors.background.app}
       testID="friends-screen"
     >
-      <FlatList
-        contentContainerStyle={styles.listContent}
-        data={
-          mainTab === 'friends-list' && !friendsQuery.isLoading && !friendsState.hasBlockingError
-            ? visibleFriends
-            : []
-        }
-        ItemSeparatorComponent={() => <View style={styles.cardsListSeparator} />}
-        keyExtractor={(friend) => friend.id}
-        ListEmptyComponent={friendsListEmptyComponent}
-        ListFooterComponent={friendsListFooter}
-        ListHeaderComponent={friendsListHeader}
-        onRefresh={mainTab === 'friends-list' ? handleRefresh : undefined}
-        refreshing={mainTab === 'friends-list' ? isPullRefreshing : false}
-        removeClippedSubviews
-        renderItem={renderFriendItem}
-        style={styles.list}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.topBackdrop,
+          {
+            backgroundColor: theme.colors.background.surface,
+            height: topChromeHeight + topOverlayHeight,
+          },
+        ]}
+        testID="friends-screen-top-backdrop"
       />
+      <ScreenContentSection fill testID="friends-screen-records-section">
+        <FlatList
+          contentContainerStyle={styles.listContent}
+          data={
+            mainTab === 'friends-list' && !friendsQuery.isLoading && !friendsState.hasBlockingError
+              ? visibleFriends
+              : []
+          }
+          ItemSeparatorComponent={() => <View style={styles.cardsListSeparator} />}
+          keyExtractor={(friend) => friend.id}
+          ListEmptyComponent={friendsListEmptyComponent}
+          ListFooterComponent={friendsListFooter}
+          ListHeaderComponent={friendsListHeader}
+          onRefresh={mainTab === 'friends-list' ? handleRefresh : undefined}
+          refreshing={mainTab === 'friends-list' ? isPullRefreshing : false}
+          removeClippedSubviews
+          renderItem={renderFriendItem}
+          style={styles.list}
+        />
+      </ScreenContentSection>
 
       <ConfirmDestructiveModal
         cancelLabel="Keep Friend"

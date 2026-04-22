@@ -29,6 +29,15 @@ jest.mock('../config/env', () => ({
   },
 }));
 
+jest.mock('react-native', () => ({
+  AppState: {
+    currentState: 'active',
+    addEventListener: jest.fn(() => ({
+      remove: jest.fn(),
+    })),
+  },
+}));
+
 jest.mock('../lib/pocketbase', () => ({
   pb: {
     authStore: {
@@ -172,5 +181,37 @@ describe('AuthProvider', () => {
     const expiredState = renderer.root.findByType('AuthState').props;
     expect(expiredState.status).toBe('verification_required');
     expect(expiredState.verificationStatus).toBe('grace_expired');
+  });
+
+  it('polls auth refresh while verification is still pending', async () => {
+    mockAuthStoreState.record = {
+      id: 'user_1',
+      email: 'user@example.com',
+      verified: false,
+      created: '2026-04-20T12:00:00.000Z',
+    };
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    mockAuthRefresh.mockClear();
+
+    await act(async () => {
+      jest.advanceTimersByTime(15_000);
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findByType('AuthState').props.verificationStatus).toBe('grace_period');
+    expect(mockAuthRefresh).toHaveBeenCalledTimes(1);
   });
 });

@@ -18,6 +18,7 @@ import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { useAuth } from '../providers/AuthProvider';
+import { LayoutChromeProvider } from '../providers/LayoutChromeProvider';
 import { trackObservabilityEvent } from '../observability';
 import {
   AddRestaurantToListScreen,
@@ -300,6 +301,7 @@ export function RootNavigator() {
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const [currentRouteName, setCurrentRouteName] = useState<keyof RootStackParamList>();
+  const [verificationBannerHeight, setVerificationBannerHeight] = useState(0);
   const previousRouteNameRef = useRef<keyof RootStackParamList | null>(null);
   const activeRouteNameRef = useRef<keyof RootStackParamList | null>(null);
   const routeStartedAtRef = useRef<number | null>(null);
@@ -448,182 +450,193 @@ export function RootNavigator() {
       ref={navigationRef}
       theme={navigationTheme}
     >
-      <View style={styles.container}>
-        {shouldShowVerificationBanner && verificationGraceEndsAt ? (
-          <EmailVerificationGraceBanner
-            graceEndsAt={verificationGraceEndsAt}
-            onVerifyPress={() => {
-              navigationRef.navigate('VerifyEmail', {
-                source: 'banner',
-              });
-            }}
-          />
-        ) : null}
-        <View style={styles.navigatorBody}>
-          <Stack.Navigator
-            screenOptions={{
-              animation: 'none',
-              headerStyle: {
-                backgroundColor: theme.colors.background.surface,
-              },
-              headerTintColor: theme.colors.text.primary,
-              headerTitleStyle: {
-                ...theme.typography.label,
-              },
-              contentStyle: {
-                backgroundColor: theme.colors.background.app,
-              },
-            }}
-          >
-            {status === 'authenticated' ? (
-              <>
-                <Stack.Screen component={HomeScreen} name="Home" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={VisitShareCustomizationScreen}
-                  name="VisitShareCustomization"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={AddVisitScreen} name="AddVisit" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={CreateVisitScreen}
-                  name="CreateVisit"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={CreateVisitAddRestaurantScreen}
-                  name="CreateVisitAddRestaurant"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={CreateVisitAddMenuItemScreen}
-                  name="CreateVisitAddMenuItem"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={CreateVisitEditMenuItemScreen}
-                  name="CreateVisitEditMenuItem"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={EditVisitScreen} name="EditVisit" options={{ headerShown: false }} />
-                <Stack.Screen component={FoodProductScreen} name="FoodProduct" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={EditFoodProductScreen}
-                  name="EditFoodProduct"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={PhotoProcessingScreen}
-                  name="ProcessPhotos"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={ListsScreen} name="Lists" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={CreateRestaurantListScreen}
-                  name="CreateRestaurantList"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={ListDetailScreen} name="ListDetail" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={EditRestaurantListScreen}
-                  name="EditRestaurantList"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={AddRestaurantToListScreen}
-                  name="AddRestaurantToList"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={NotesScreen} name="Notes" options={{ headerShown: false }} />
-                <Stack.Screen component={NoteEditorScreen} name="NoteEditor" options={{ headerShown: false }} />
-                <Stack.Screen component={FriendsScreen} name="Friends" options={{ headerShown: false }} />
-                <Stack.Screen component={AddFriendScreen} name="AddFriend" options={{ headerShown: false }} />
-                <Stack.Screen component={ProfileScreen} name="Profile" options={{ headerShown: false }} />
-                <Stack.Screen component={AboutScreen} name="About" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={TermsOfServiceScreen}
-                  name="TermsOfService"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={PrivacyPolicyScreen}
-                  name="PrivacyPolicy"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={QRScannerScreen} name="QRScanner" options={{ headerShown: false }} />
-                <Stack.Screen component={SettingsScreen} name="Settings" options={{ headerShown: false }} />
-                <Stack.Screen component={FeedbackScreen} name="Feedback" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={CreateFeedbackScreen}
-                  name="CreateFeedback"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={FeedbackDetailScreen}
-                  name="FeedbackDetail"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={MiscScreen} name="Misc" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={user?.isAdmin ? TastingSessionsScreen : AdminOnlyRouteGuard}
-                  name="TastingSessions"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={user?.isAdmin ? TastingSessionDetailScreen : AdminOnlyRouteGuard}
-                  name="TastingSessionDetail"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
-                <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
-                <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
-                <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={VerifyEmailScreen}
-                  name="VerifyEmail"
-                  options={{ headerShown: false }}
-                />
-              </>
-            ) : status === 'verification_required' ? (
-              <>
-                <Stack.Screen
-                  component={VerifyEmailScreen}
-                  initialParams={{ source: 'expired_entry' }}
-                  name="VerifyEmail"
-                  options={{ headerShown: false }}
-                />
-              </>
-            ) : (
-              <>
-                <Stack.Screen component={OnboardingScreen} name="Onboarding" options={{ headerShown: false }} />
-                <Stack.Screen component={LoginScreen} name="Login" options={{ headerShown: false }} />
-                <Stack.Screen component={SignUpScreen} name="SignUp" options={{ headerShown: false }} />
-                <Stack.Screen
-                  component={ForgotPasswordScreen}
-                  name="ForgotPassword"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={ResetPasswordScreen}
-                  name="ResetPassword"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  component={VerifyEmailScreen}
-                  name="VerifyEmail"
-                  options={{ headerShown: false }}
-                />
-              </>
-            )}
-          </Stack.Navigator>
+      <LayoutChromeProvider
+        topInsetConsumedByOverlay={shouldShowVerificationBanner}
+        topOverlayHeight={shouldShowVerificationBanner ? verificationBannerHeight : 0}
+      >
+        <View style={styles.container}>
+          {shouldShowVerificationBanner && verificationGraceEndsAt ? (
+            <View
+              onLayout={(event) => {
+                setVerificationBannerHeight(event.nativeEvent.layout.height);
+              }}
+            >
+              <EmailVerificationGraceBanner
+                graceEndsAt={verificationGraceEndsAt}
+                onVerifyPress={() => {
+                  navigationRef.navigate('VerifyEmail', {
+                    source: 'banner',
+                  });
+                }}
+              />
+            </View>
+          ) : null}
+          <View style={styles.navigatorBody}>
+            <Stack.Navigator
+              screenOptions={{
+                animation: 'none',
+                headerStyle: {
+                  backgroundColor: theme.colors.background.surface,
+                },
+                headerTintColor: theme.colors.text.primary,
+                headerTitleStyle: {
+                  ...theme.typography.label,
+                },
+                contentStyle: {
+                  backgroundColor: theme.colors.background.app,
+                },
+              }}
+            >
+              {status === 'authenticated' ? (
+                <>
+                  <Stack.Screen component={HomeScreen} name="Home" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={VisitShareCustomizationScreen}
+                    name="VisitShareCustomization"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={AddVisitScreen} name="AddVisit" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={CreateVisitScreen}
+                    name="CreateVisit"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={CreateVisitAddRestaurantScreen}
+                    name="CreateVisitAddRestaurant"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={CreateVisitAddMenuItemScreen}
+                    name="CreateVisitAddMenuItem"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={CreateVisitEditMenuItemScreen}
+                    name="CreateVisitEditMenuItem"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={EditVisitScreen} name="EditVisit" options={{ headerShown: false }} />
+                  <Stack.Screen component={FoodProductScreen} name="FoodProduct" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={EditFoodProductScreen}
+                    name="EditFoodProduct"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={PhotoProcessingScreen}
+                    name="ProcessPhotos"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={ListsScreen} name="Lists" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={CreateRestaurantListScreen}
+                    name="CreateRestaurantList"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={ListDetailScreen} name="ListDetail" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={EditRestaurantListScreen}
+                    name="EditRestaurantList"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={AddRestaurantToListScreen}
+                    name="AddRestaurantToList"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={NotesScreen} name="Notes" options={{ headerShown: false }} />
+                  <Stack.Screen component={NoteEditorScreen} name="NoteEditor" options={{ headerShown: false }} />
+                  <Stack.Screen component={FriendsScreen} name="Friends" options={{ headerShown: false }} />
+                  <Stack.Screen component={AddFriendScreen} name="AddFriend" options={{ headerShown: false }} />
+                  <Stack.Screen component={ProfileScreen} name="Profile" options={{ headerShown: false }} />
+                  <Stack.Screen component={AboutScreen} name="About" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={TermsOfServiceScreen}
+                    name="TermsOfService"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={PrivacyPolicyScreen}
+                    name="PrivacyPolicy"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={QRScannerScreen} name="QRScanner" options={{ headerShown: false }} />
+                  <Stack.Screen component={SettingsScreen} name="Settings" options={{ headerShown: false }} />
+                  <Stack.Screen component={FeedbackScreen} name="Feedback" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={CreateFeedbackScreen}
+                    name="CreateFeedback"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={FeedbackDetailScreen}
+                    name="FeedbackDetail"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={MiscScreen} name="Misc" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={user?.isAdmin ? TastingSessionsScreen : AdminOnlyRouteGuard}
+                    name="TastingSessions"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={user?.isAdmin ? TastingSessionDetailScreen : AdminOnlyRouteGuard}
+                    name="TastingSessionDetail"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen component={BillsScreen} name="Bills" options={{ headerShown: false }} />
+                  <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
+                  <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
+                  <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={VerifyEmailScreen}
+                    name="VerifyEmail"
+                    options={{ headerShown: false }}
+                  />
+                </>
+              ) : status === 'verification_required' ? (
+                <>
+                  <Stack.Screen
+                    component={VerifyEmailScreen}
+                    initialParams={{ source: 'expired_entry' }}
+                    name="VerifyEmail"
+                    options={{ headerShown: false }}
+                  />
+                </>
+              ) : (
+                <>
+                  <Stack.Screen component={OnboardingScreen} name="Onboarding" options={{ headerShown: false }} />
+                  <Stack.Screen component={LoginScreen} name="Login" options={{ headerShown: false }} />
+                  <Stack.Screen component={SignUpScreen} name="SignUp" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    component={ForgotPasswordScreen}
+                    name="ForgotPassword"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={ResetPasswordScreen}
+                    name="ResetPassword"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    component={VerifyEmailScreen}
+                    name="VerifyEmail"
+                    options={{ headerShown: false }}
+                  />
+                </>
+              )}
+            </Stack.Navigator>
+          </View>
+          {hasBottomTabsRoute ? (
+            <BottomTabNavigation
+              bottomPadding={bottomPadding}
+              currentRouteName={currentRouteName}
+              onNavigate={handleTabPress}
+            />
+          ) : null}
         </View>
-        {hasBottomTabsRoute ? (
-          <BottomTabNavigation
-            bottomPadding={bottomPadding}
-            currentRouteName={currentRouteName}
-            onNavigate={handleTabPress}
-          />
-        ) : null}
-      </View>
+      </LayoutChromeProvider>
     </NavigationContainer>
   );
 }

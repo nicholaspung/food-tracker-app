@@ -2,17 +2,14 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import {
-  confirmUserEmailVerification,
   requestUserEmailVerification,
 } from '../features';
-import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
 
 const mockReact = React;
 
 jest.mock('../features', () => ({
-  confirmUserEmailVerification: jest.fn(),
   requestUserEmailVerification: jest.fn(),
 }));
 
@@ -32,9 +29,10 @@ jest.mock('../ui', () => ({
   Button: (props: Record<string, unknown>) => mockReact.createElement('Button', props),
   Card: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Card', props, children),
-  Input: (props: Record<string, unknown>) => mockReact.createElement('Input', props),
   Screen: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('Screen', props, children),
+  Text: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('Text', props, children),
 }));
 
 jest.mock('../components/shared', () => ({
@@ -50,20 +48,9 @@ jest.mock('../components/shared/PageErrorToast', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
 }));
 
-const mockedConfirmUserEmailVerification =
-  confirmUserEmailVerification as jest.MockedFunction<typeof confirmUserEmailVerification>;
 const mockedRequestUserEmailVerification =
   requestUserEmailVerification as jest.MockedFunction<typeof requestUserEmailVerification>;
-const mockedTrackObservabilityEvent =
-  trackObservabilityEvent as jest.MockedFunction<typeof trackObservabilityEvent>;
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-
-function setToken(renderer: any, value: string) {
-  const input = renderer.root.findByType('Input');
-  act(() => {
-    input.props.onChangeText(value);
-  });
-}
 
 function pressButtonByLabel(renderer: any, label: string) {
   const button = renderer.root.findAllByType('Button').find((node: any) => node.props.label === label);
@@ -85,28 +72,31 @@ describe('VerifyEmailScreen', () => {
   };
 
   beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-04-21T12:00:00.000Z'));
     navigation.canGoBack.mockReturnValue(true);
     navigation.goBack.mockReset();
     navigation.navigate.mockReset();
     navigation.reset.mockReset();
-    mockedConfirmUserEmailVerification.mockReset();
     mockedRequestUserEmailVerification.mockReset();
-    mockedTrackObservabilityEvent.mockReset();
     mockedUseAuth.mockReset();
   });
 
-  it('refreshes the retained session after a successful verification', async () => {
-    const refreshAuthSession = jest.fn().mockResolvedValue(undefined);
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('auto-sends a verification email when the screen opens', async () => {
     mockedUseAuth.mockReturnValue({
       actualUser: {
         email: 'user@example.com',
       },
-      refreshAuthSession,
-      signInWithPassword: jest.fn(),
+      refreshAuthSession: jest.fn(),
       signOut: jest.fn(),
       status: 'verification_required',
+      verificationStatus: 'grace_expired',
     } as unknown as ReturnType<typeof useAuth>);
-    mockedConfirmUserEmailVerification.mockResolvedValue(undefined);
+    mockedRequestUserEmailVerification.mockResolvedValue(undefined);
 
     let renderer: any;
     await act(async () => {
@@ -124,28 +114,22 @@ describe('VerifyEmailScreen', () => {
       );
     });
 
-    setToken(renderer, 'verification-token');
-    await act(async () => {
-      pressButtonByLabel(renderer, 'Verify and Refresh Access');
-    });
-
-    expect(mockedConfirmUserEmailVerification).toHaveBeenCalledWith('verification-token');
-    expect(refreshAuthSession).toHaveBeenCalled();
-    expect(navigation.reset).toHaveBeenCalledWith({
-      index: 0,
-      routes: [{ name: 'Home' }],
-    });
+    expect(mockedRequestUserEmailVerification).toHaveBeenCalledWith('user@example.com');
+    const resendButton = renderer.root.findAllByType('Button').find(
+      (node: any) => node.props.label === 'Resend in 60s',
+    );
+    expect(resendButton).toBeDefined();
   });
 
-  it('requests another verification email from the resend action', async () => {
+  it('redirects home when a retained session becomes verified', async () => {
     mockedUseAuth.mockReturnValue({
       actualUser: {
-        email: 'user@example.com',
+        email: 'verified-user@example.com',
       },
       refreshAuthSession: jest.fn(),
-      signInWithPassword: jest.fn(),
       signOut: jest.fn(),
       status: 'authenticated',
+      verificationStatus: 'grace_period',
     } as unknown as ReturnType<typeof useAuth>);
     mockedRequestUserEmailVerification.mockResolvedValue(undefined);
 
@@ -165,10 +149,75 @@ describe('VerifyEmailScreen', () => {
       );
     });
 
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        email: 'verified-user@example.com',
+      },
+      refreshAuthSession: jest.fn(),
+      signOut: jest.fn(),
+      status: 'authenticated',
+      verificationStatus: 'verified',
+    } as unknown as ReturnType<typeof useAuth>);
+
+    await act(async () => {
+      renderer.update(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-test',
+            name: 'VerifyEmail',
+            params: {
+              source: 'profile',
+            },
+          }}
+        />,
+      );
+    });
+
+    expect(navigation.reset).toHaveBeenCalledWith({
+      index: 0,
+      routes: [{ name: 'Home' }],
+    });
+  });
+
+  it('allows another resend after the cooldown expires', async () => {
+    mockedUseAuth.mockReturnValue({
+      actualUser: {
+        email: 'cooldown-user@example.com',
+      },
+      refreshAuthSession: jest.fn(),
+      signOut: jest.fn(),
+      status: 'authenticated',
+      verificationStatus: 'grace_period',
+    } as unknown as ReturnType<typeof useAuth>);
+    mockedRequestUserEmailVerification.mockResolvedValue(undefined);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <VerifyEmailScreen
+          navigation={navigation as never}
+          route={{
+            key: 'VerifyEmail-cooldown',
+            name: 'VerifyEmail',
+            params: {
+              source: 'profile',
+            },
+          }}
+        />,
+      );
+    });
+
+    expect(mockedRequestUserEmailVerification).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
     await act(async () => {
       pressButtonByLabel(renderer, 'Resend Verification Email');
     });
 
-    expect(mockedRequestUserEmailVerification).toHaveBeenCalledWith('user@example.com');
+    expect(mockedRequestUserEmailVerification).toHaveBeenCalledTimes(2);
   });
 });

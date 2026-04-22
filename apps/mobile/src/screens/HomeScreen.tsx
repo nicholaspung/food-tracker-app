@@ -13,6 +13,7 @@ import {
   FeedHeaderControls,
   HomeFeedVisitEntryCard,
   HomeFoodProductEntryCard,
+  ScreenContentSection,
   Skeleton,
   TabRootScreenScaffold,
   type FeedModeValue,
@@ -40,11 +41,13 @@ import {
   type PendingFriendSuggestion,
 } from '../lib/pendingFriendSuggestion';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { type HomeInitialViewParams } from '../navigation/homeRouteParams';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, useTheme } from '../theme';
 import { Button, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -98,6 +101,12 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
+  },
+  headerBackdrop: {
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   header: {
     backgroundColor: theme.colors.background.surface,
@@ -372,6 +381,7 @@ function applyInitialViewParams(
 
 export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const theme = useTheme();
+  const { topOverlayHeight } = useLayoutChrome();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
@@ -389,7 +399,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   const [friendSuggestion, setFriendSuggestion] = useState<PendingFriendSuggestion | null>(null);
   const [friendSuggestionErrorMessage, setFriendSuggestionErrorMessage] = useState<string | null>(null);
   const [isApplyingFriendSuggestion, setIsApplyingFriendSuggestion] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(0);
   const homeFeedActions = useHomeFeedActionController({
     isOnline,
     queryClient,
@@ -429,6 +439,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     isLoading: homeFeedQuery.isLoading,
     isSuccess: homeFeedQuery.isSuccess,
   });
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(homeFeedQuery.isRefetching);
 
   const loadedFeed = useMemo(
     () =>
@@ -479,30 +490,29 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
   }, [navigation, route.params]);
 
   const handleRefresh = useCallback(async () => {
-    const resultCountBefore = loadedFeed.length;
-    setIsPullRefreshing(true);
-    trackObservabilityEvent('HOME_FEED_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-      resultCountBefore,
-    }));
+    return runPullRefresh(async () => {
+      const resultCountBefore = loadedFeed.length;
+      trackObservabilityEvent('HOME_FEED_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+      }));
 
-    try {
-      const result = await homeFeedQuery.refetch();
-      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-      trackObservabilityEvent('HOME_FEED_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        resultCountAfter,
-        deltaCount: resultCountAfter - resultCountBefore,
-      }));
-    } catch (error) {
-      trackObservabilityEvent('HOME_FEED_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      }));
-      throw error;
-    } finally {
-      setIsPullRefreshing(false);
-    }
-  }, [buildBrowseAnalyticsPayload, homeFeedQuery, loadedFeed.length]);
+      try {
+        const result = await homeFeedQuery.refetch();
+        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+        trackObservabilityEvent('HOME_FEED_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          resultCountAfter,
+          deltaCount: resultCountAfter - resultCountBefore,
+        }));
+      } catch (error) {
+        trackObservabilityEvent('HOME_FEED_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        }));
+        throw error;
+      }
+    });
+  }, [buildBrowseAnalyticsPayload, homeFeedQuery, loadedFeed.length, runPullRefresh]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1156,7 +1166,12 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
 
   const homeListHeader = (
     <>
-      <View style={styles.header}>
+      <View
+        onLayout={(event) => {
+          setHeaderHeight(event.nativeEvent.layout.height);
+        }}
+        style={styles.header}
+      >
         <FeedHeaderControls
           feedMode={feedMode}
           filtersExpanded={filtersExpanded}
@@ -1346,41 +1361,54 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       scrollUnderlayColor={colors.screenBackground}
       testID="home-screen"
     >
-      {feedMode === 'mine' ? (
-        <FlatList
-          contentContainerStyle={styles.listContent}
-          data={!isLoading && !hasBlockingFeedError ? loadedFeed : []}
-          ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
-          keyboardShouldPersistTaps="handled"
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={homeListEmptyComponent}
-          ListFooterComponent={homeListFooter}
-          ListHeaderComponent={homeListHeader}
-          onRefresh={handleRefresh}
-          refreshing={isPullRefreshing}
-          removeClippedSubviews
-          renderItem={renderMineFeedItem}
-          style={styles.list}
-        />
-      ) : (
-        <SectionList
-          contentContainerStyle={styles.listContent}
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={homeListEmptyComponent}
-          ListFooterComponent={homeListFooter}
-          ListHeaderComponent={homeListHeader}
-          onRefresh={handleRefresh}
-          refreshing={isPullRefreshing}
-          removeClippedSubviews
-          renderItem={renderFriendFeedItem}
-          renderSectionHeader={renderFriendFeedSectionHeader}
-          sections={!isLoading && !hasBlockingFeedError ? friendFeedSections : []}
-          SectionSeparatorComponent={() => <View style={styles.monthSectionSeparator} />}
-          stickySectionHeadersEnabled={false}
-          style={styles.list}
-        />
-      )}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.headerBackdrop,
+          {
+            backgroundColor: theme.colors.background.surface,
+            height: headerHeight + topOverlayHeight,
+          },
+        ]}
+        testID="home-screen-header-backdrop"
+      />
+      <ScreenContentSection fill testID="home-screen-records-section">
+        {feedMode === 'mine' ? (
+          <FlatList
+            contentContainerStyle={styles.listContent}
+            data={!isLoading && !hasBlockingFeedError ? loadedFeed : []}
+            ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
+            keyboardShouldPersistTaps="handled"
+            keyExtractor={(item) => item.id}
+            ListEmptyComponent={homeListEmptyComponent}
+            ListFooterComponent={homeListFooter}
+            ListHeaderComponent={homeListHeader}
+            onRefresh={handleRefresh}
+            refreshing={isPullRefreshing}
+            removeClippedSubviews
+            renderItem={renderMineFeedItem}
+            style={styles.list}
+          />
+        ) : (
+          <SectionList
+            contentContainerStyle={styles.listContent}
+            keyExtractor={(item) => item.id}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={homeListEmptyComponent}
+            ListFooterComponent={homeListFooter}
+            ListHeaderComponent={homeListHeader}
+            onRefresh={handleRefresh}
+            refreshing={isPullRefreshing}
+            removeClippedSubviews
+            renderItem={renderFriendFeedItem}
+            renderSectionHeader={renderFriendFeedSectionHeader}
+            sections={!isLoading && !hasBlockingFeedError ? friendFeedSections : []}
+            SectionSeparatorComponent={() => <View style={styles.monthSectionSeparator} />}
+            stickySectionHeadersEnabled={false}
+            style={styles.list}
+          />
+        )}
+      </ScreenContentSection>
 
       <HomeFeedActionModals
         controller={homeFeedActions}

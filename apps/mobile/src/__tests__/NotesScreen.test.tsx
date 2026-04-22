@@ -89,8 +89,9 @@ jest.mock('../components/shared', () => {
     EmptyState: (props: Record<string, unknown>) => mockReact.createElement('EmptyState', props),
     ErrorState: (props: Record<string, unknown>) => mockReact.createElement('ErrorState', props),
     ExpandableText: jest.requireActual('../components/shared/ExpandableText').ExpandableText,
-    FeatureDetailScreenScaffold: ({ children }: { children?: React.ReactNode }) =>
-      mockReact.createElement(mockReact.Fragment, null, children),
+    FeatureDetailScreenScaffold: (
+      { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+    ) => mockReact.createElement('FeatureDetailScreenScaffold', props, children),
     HeaderAccessoryButton: () => null,
     PhotoViewerModal: () => null,
     SegmentedControl: (props: Record<string, unknown>) => mockReact.createElement('MockSegmentedControl', props),
@@ -137,6 +138,21 @@ function styleIncludes(style: unknown, expected: Record<string, unknown>): boole
   });
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+}
+
 function buildNotesQueryResult(
   items: Record<string, unknown>[],
   overrides: Record<string, unknown> = {},
@@ -166,6 +182,7 @@ function buildNotesQueryResult(
     isError: false,
     isFetching: false,
     isLoading: false,
+    isRefetching: false,
     isSuccess: true,
     hasNextPage: false,
     isFetchingNextPage: false,
@@ -181,6 +198,7 @@ function buildDisabledNotesQueryResult() {
     isError: false,
     isFetching: false,
     isLoading: false,
+    isRefetching: false,
     isSuccess: false,
     hasNextPage: false,
     isFetchingNextPage: false,
@@ -194,6 +212,7 @@ function buildLoadingNotesQueryResult() {
     data: undefined,
     isFetching: true,
     isLoading: true,
+    isRefetching: false,
     isSuccess: false,
   });
 }
@@ -202,6 +221,7 @@ function buildErrorNotesQueryResult() {
   return buildNotesQueryResult([], {
     data: undefined,
     isError: true,
+    isRefetching: false,
     isSuccess: false,
   });
 }
@@ -945,5 +965,70 @@ describe('NotesScreen', () => {
 
     expect(emptyState.props.title).toBe('Nothing to show');
     expect(emptyState.props.tone).toBe('muted');
+  });
+
+  it('keeps the notes list refreshing prop active until the refetch lifecycle settles', async () => {
+    const refetchDeferred = createDeferred<{
+      data: {
+        pages: { items: Record<string, unknown>[] }[];
+      };
+    }>();
+    const baseQueryResult = buildNotesQueryResult([buildNote()], {
+      isRefetching: false,
+      refetch: jest.fn(() => refetchDeferred.promise),
+    });
+    const disabledSearchQueryResult = buildDisabledNotesQueryResult();
+    mockedUseInfiniteQuery.mockImplementation((queryOptions: Record<string, any>) =>
+      queryOptions.enabled === false ? disabledSearchQueryResult : baseQueryResult,
+    );
+
+    const navigation = {
+      navigate: jest.fn(),
+    };
+    const route = {};
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(<NotesScreen navigation={navigation as never} route={route as never} />);
+    });
+
+    const findRefreshableScaffold = () => renderer.root.findByType('FeatureDetailScreenScaffold');
+
+    expect(findRefreshableScaffold().props.refreshing).toBe(false);
+    expect(renderer.root.findAllByType('FlatList')).toHaveLength(0);
+
+    let refreshPromise: Promise<unknown> | null = null;
+    act(() => {
+      refreshPromise = findRefreshableScaffold().props.onRefresh();
+    });
+
+    expect(findRefreshableScaffold().props.refreshing).toBe(true);
+
+    await act(async () => {
+      baseQueryResult.isRefetching = true;
+      renderer.update(<NotesScreen navigation={navigation as never} route={route as never} />);
+      await Promise.resolve();
+    });
+
+    expect(findRefreshableScaffold().props.refreshing).toBe(true);
+
+    await act(async () => {
+      refetchDeferred.resolve({
+        data: {
+          pages: [{ items: [buildNote()] }],
+        },
+      });
+      await refreshPromise;
+    });
+
+    expect(findRefreshableScaffold().props.refreshing).toBe(true);
+
+    await act(async () => {
+      baseQueryResult.isRefetching = false;
+      renderer.update(<NotesScreen navigation={navigation as never} route={route as never} />);
+      await Promise.resolve();
+    });
+
+    expect(findRefreshableScaffold().props.refreshing).toBe(false);
   });
 });

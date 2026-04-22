@@ -15,6 +15,7 @@ import {
   OptionList,
   OptionListInlineBody,
   OptionListRow,
+  ScreenContentSection,
   Skeleton,
   StatusPill,
   TabBrandHeader,
@@ -253,6 +254,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isEditingAccountName, setIsEditingAccountName] = useState(false);
   const [editedAccountName, setEditedAccountName] = useState("");
+  const [topChromeHeight, setTopChromeHeight] = useState(0);
   const [accountNameErrorMessage, setAccountNameErrorMessage] = useState<
     string | null
   >(null);
@@ -567,39 +569,47 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
       scrollUnderlayColor={theme.colors.background.app}
+      scrollUnderlayTopInset={topChromeHeight}
       testID="profile-screen"
     >
-      <TabBrandHeader subtitle="Your account information" title="Profile" />
+      <View
+        onLayout={(event) => {
+          setTopChromeHeight(event.nativeEvent.layout.height);
+        }}
+      >
+        <TabBrandHeader subtitle="Your account information" title="Profile" />
+      </View>
 
-      <View style={styles.body}>
-        <PageErrorToast
-          actionLabel="Retry"
-          errorMessage={
-            hasProfileRefreshError
-              ? "Could not refresh profile. Showing saved data."
-              : null
-          }
-          onAction={() => {
-            void profileQuery.refetch();
-          }}
-          title="Profile may be stale"
-        />
+      <ScreenContentSection fill testID="profile-screen-content-section">
+        <View style={styles.body}>
+          <PageErrorToast
+            actionLabel="Retry"
+            errorMessage={
+              hasProfileRefreshError
+                ? "Could not refresh profile. Showing saved data."
+                : null
+            }
+            onAction={() => {
+              void profileQuery.refetch();
+            }}
+            title="Profile may be stale"
+          />
 
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle} variant="cardTitle">Account</Text>
-          <OptionList>
-            <OptionListRow
-              chevron={expandedPanels.account ? "up" : "down"}
-              connected={expandedPanels.account}
-              iconName="person-circle-outline"
-              isLast={!expandedPanels.account}
-              onPress={() => {
-                togglePanel("account");
-              }}
-              subtitle="Name, email, status, and user info"
-              testID="profile-account-details-toggle"
-              title="Account Details"
-            />
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle} variant="cardTitle">Account</Text>
+            <OptionList>
+              <OptionListRow
+                chevron={expandedPanels.account ? "up" : "down"}
+                connected={expandedPanels.account}
+                iconName="person-circle-outline"
+                isLast={!expandedPanels.account}
+                onPress={() => {
+                  togglePanel("account");
+                }}
+                subtitle="Name, email, status, and user info"
+                testID="profile-account-details-toggle"
+                title="Account Details"
+              />
 
             {expandedPanels.account ? (
               <OptionListInlineBody testID="profile-account-details-panel">
@@ -966,16 +976,17 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           ) : null}
         </Card>
 
-        <Button
-          label="Log out"
-          onPress={() => {
-            void signOut();
-          }}
-          style={styles.logoutButton}
-          testID="profile-logout-button"
-          variant="secondary"
-        />
-      </View>
+          <Button
+            label="Log out"
+            onPress={() => {
+              void signOut();
+            }}
+            style={styles.logoutButton}
+            testID="profile-logout-button"
+            variant="secondary"
+          />
+        </View>
+      </ScreenContentSection>
 
       <ConfirmDestructiveModal
         cancelLabel="Keep Account"

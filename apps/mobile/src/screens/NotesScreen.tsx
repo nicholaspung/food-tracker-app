@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, Pressable, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -28,6 +28,7 @@ import {
 } from '../features';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { notesQueryKeys } from '../features/store/notesQuery';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
@@ -293,7 +294,6 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
     [],
   );
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const lastRejectedSearchResultsKeyRef = useRef<string | null>(null);
   const lastTrackedSearchExecutionKeyRef = useRef<string | null>(null);
   const noteStatusFilter = resolveNoteStatusFilter(activeFilter);
@@ -364,6 +364,11 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   const searchedNotesMatchCurrentQuery = useMemo(
     () => serverSearchResultsMatchQuery(searchedNotes, trimmedSearchQuery),
     [searchedNotes, trimmedSearchQuery],
+  );
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(
+    shouldQueryNotesBySearch
+      ? baseNotesQuery.isRefetching || searchedNotesQuery.isRefetching
+      : baseNotesQuery.isRefetching,
   );
   const shouldUseServerSearchResults =
     shouldQueryNotesBySearch &&
@@ -613,42 +618,41 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   }, [isOnline, pendingDeleteNote, queryClient, writeFeature]);
 
   const handleRefresh = useCallback(async () => {
-    const resultCountBefore = notes.length;
-    setIsPullRefreshing(true);
-    trackObservabilityEvent('NOTES_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-      resultCountBefore,
-    }));
+    return runPullRefresh(async () => {
+      const resultCountBefore = notes.length;
+      trackObservabilityEvent('NOTES_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+      }));
 
-    try {
-      if (shouldQueryNotesBySearch) {
-        const [, searchResult] = await Promise.all([baseNotesQuery.refetch(), searchedNotesQuery.refetch()]);
-        const resultCountAfter =
-          searchResult.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+      try {
+        if (shouldQueryNotesBySearch) {
+          const [, searchResult] = await Promise.all([baseNotesQuery.refetch(), searchedNotesQuery.refetch()]);
+          const resultCountAfter =
+            searchResult.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+          trackObservabilityEvent('NOTES_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+            resultCountBefore,
+            resultCountAfter,
+            deltaCount: resultCountAfter - resultCountBefore,
+          }));
+          return;
+        }
+
+        const result = await baseNotesQuery.refetch();
+        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
         trackObservabilityEvent('NOTES_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
           resultCountBefore,
           resultCountAfter,
           deltaCount: resultCountAfter - resultCountBefore,
         }));
-        return;
+      } catch (error) {
+        trackObservabilityEvent('NOTES_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        }));
+        throw error;
       }
-
-      const result = await baseNotesQuery.refetch();
-      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-      trackObservabilityEvent('NOTES_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        resultCountAfter,
-        deltaCount: resultCountAfter - resultCountBefore,
-      }));
-    } catch (error) {
-      trackObservabilityEvent('NOTES_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      }));
-      throw error;
-    } finally {
-      setIsPullRefreshing(false);
-    }
-  }, [baseNotesQuery, buildBrowseAnalyticsPayload, notes.length, searchedNotesQuery, shouldQueryNotesBySearch]);
+    });
+  }, [baseNotesQuery, buildBrowseAnalyticsPayload, notes.length, runPullRefresh, searchedNotesQuery, shouldQueryNotesBySearch]);
 
   const hasSearchFallbackError =
     shouldQueryNotesBySearch &&
@@ -667,8 +671,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       ? searchedNotesQuery
       : baseNotesQuery;
 
-  const renderNoteItem = useCallback(
-    ({ item: note }: { item: NoteOverviewItemRecord }) => {
+  const renderNoteCard = useCallback(
+    (note: NoteOverviewItemRecord) => {
       const photoPreview = note.photoPreview;
       const extraPhotoCount = photoPreview ? Math.max(photoPreview.count - 1, 0) : 0;
       const thumbnailUrl = photoPreview
@@ -968,13 +972,55 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       </View>
     ) : null;
 
+  const notesBodyContent = (() => {
+    if (baseNotesQuery.isLoading) {
+      return (
+        <View style={styles.body}>
+          <Skeleton height={20} />
+          <Skeleton height={20} />
+          <Skeleton height={20} />
+        </View>
+      );
+    }
+
+    if (baseNotesState.hasBlockingError) {
+      return (
+        <ErrorState
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="NotesScreen"
+          description="Could not load notes."
+          onRetry={() => {
+            void baseNotesQuery.refetch();
+          }}
+          title="Notes unavailable"
+        />
+      );
+    }
+
+    if (notes.length === 0) {
+      return notesListEmptyComponent;
+    }
+
+    return (
+      <View>
+        {notes.map((note, index) => (
+          <View key={note.id}>
+            {index > 0 ? <View style={styles.noteSeparator} /> : null}
+            {renderNoteCard(note)}
+          </View>
+        ))}
+      </View>
+    );
+  })();
+
   return (
     <FeatureDetailScreenScaffold
       bodyStyle={styles.screenBody}
-      scroll={false}
       onBackPress={() => {
         navigation.navigate('AddVisit');
       }}
+      onRefresh={handleRefresh}
+      refreshing={isPullRefreshing}
       rightAccessory={
         <HeaderAccessoryButton
           accessibilityLabel="Create note"
@@ -992,21 +1038,11 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
       subtitle="View, edit, or delete your saved notes."
       title="My Notes"
     >
-      <FlatList
-        contentContainerStyle={styles.listContent}
-        data={!baseNotesQuery.isLoading && !baseNotesState.hasBlockingError ? notes : []}
-        ItemSeparatorComponent={() => <View style={styles.noteSeparator} />}
-        keyboardShouldPersistTaps="handled"
-        keyExtractor={(note) => note.id}
-        ListEmptyComponent={notesListEmptyComponent}
-        ListFooterComponent={notesListFooter}
-        ListHeaderComponent={notesListHeader}
-        onRefresh={handleRefresh}
-        refreshing={isPullRefreshing}
-        removeClippedSubviews
-        renderItem={renderNoteItem}
-        style={styles.list}
-      />
+      <View style={styles.listContent}>
+        {notesListHeader}
+        {notesBodyContent}
+        {notesListFooter}
+      </View>
 
       <PhotoViewerModal
         initialIndex={photoViewerInitialIndex}

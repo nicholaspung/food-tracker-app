@@ -15,6 +15,7 @@ import {
 } from '../components/shared';
 import { listBillSummaries } from '../features';
 import { useQueryListState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { formatCurrency } from '../features/bills/billCalculations';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -54,7 +55,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
   });
 
   const [activeFilter, setActiveFilter] = useState<BillFilter>('you_owe');
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(billsQuery.isRefetching);
 
   const filteredBills = useMemo(() => {
     const bills = billsState.items;
@@ -88,30 +89,29 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
     [activeFilter, filteredBills.length],
   );
   const handleRefresh = useCallback(async () => {
-    const resultCountBefore = filteredBills.length;
-    setIsPullRefreshing(true);
-    trackObservabilityEvent('BILLS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-      resultCountBefore,
-    }));
+    return runPullRefresh(async () => {
+      const resultCountBefore = filteredBills.length;
+      trackObservabilityEvent('BILLS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+      }));
 
-    try {
-      const result = await billsQuery.refetch();
-      const resultCountAfter = result.data?.length ?? resultCountBefore;
-      trackObservabilityEvent('BILLS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        resultCountAfter,
-        deltaCount: resultCountAfter - resultCountBefore,
-      }));
-    } catch (error) {
-      trackObservabilityEvent('BILLS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      }));
-      throw error;
-    } finally {
-      setIsPullRefreshing(false);
-    }
-  }, [billsQuery, buildBrowseAnalyticsPayload, filteredBills.length]);
+      try {
+        const result = await billsQuery.refetch();
+        const resultCountAfter = result.data?.length ?? resultCountBefore;
+        trackObservabilityEvent('BILLS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          resultCountAfter,
+          deltaCount: resultCountAfter - resultCountBefore,
+        }));
+      } catch (error) {
+        trackObservabilityEvent('BILLS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        }));
+        throw error;
+      }
+    });
+  }, [billsQuery, buildBrowseAnalyticsPayload, filteredBills.length, runPullRefresh]);
 
   return (
     <BackHeaderScreenScaffold

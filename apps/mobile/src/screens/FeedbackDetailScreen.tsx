@@ -28,6 +28,7 @@ import {
   upsertFeedbackListItem,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -253,7 +254,6 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
   const [draftMessage, setDraftMessage] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const [hasHydratedInitialMessages, setHasHydratedInitialMessages] = useState(false);
   const threadQueryKey = useMemo(() => feedbackQueryKeys.thread(feedbackId), [feedbackId]);
   const messagesQueryKey = useMemo(() => feedbackQueryKeys.messages(feedbackId), [feedbackId]);
@@ -311,6 +311,9 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     isLoading: messagesQuery.isLoading,
     isSuccess: messagesQuery.isSuccess,
   });
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(
+    threadQuery.isRefetching || messagesQuery.isRefetching,
+  );
   const displayedMessages = useMemo(() => {
     const pages = messagesQuery.data?.pages ?? [];
     return pages
@@ -487,14 +490,10 @@ export function FeedbackDetailScreen({ navigation, route }: FeedbackDetailScreen
     navigation.navigate('Feedback');
   };
   const handleRefresh = useCallback(async () => {
-    setIsPullRefreshing(true);
-
-    try {
+    await runPullRefresh(async () => {
       await Promise.all([threadQuery.refetch(), messagesQuery.refetch()]);
-    } finally {
-      setIsPullRefreshing(false);
-    }
-  }, [messagesQuery, threadQuery]);
+    });
+  }, [messagesQuery, runPullRefresh, threadQuery]);
 
   return (
     <FeatureDetailScreenScaffold

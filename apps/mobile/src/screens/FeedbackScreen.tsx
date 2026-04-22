@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, View } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -12,6 +11,7 @@ import {
 } from '../components/shared';
 import { feedbackQueryKeys, listFeedbackPage } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
@@ -40,7 +40,6 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const feedbackQuery = useInfiniteQuery({
     queryKey: feedbackQueryKeys.list,
     queryFn: ({ pageParam, signal }) =>
@@ -60,6 +59,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     isLoading: feedbackQuery.isLoading,
     isSuccess: feedbackQuery.isSuccess,
   });
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(feedbackQuery.isRefetching);
   const displayedFeedback = feedbackState.items;
   const visibleFeedbackCount = displayedFeedback.length;
   const styles = useStyles();
@@ -73,29 +73,28 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     navigation.navigate('Profile');
   };
   const handleRefresh = async () => {
-    const resultCountBefore = visibleFeedbackCount;
-    setIsPullRefreshing(true);
-    trackObservabilityEvent('FEEDBACK_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-      resultCountBefore,
-    }));
+    await runPullRefresh(async () => {
+      const resultCountBefore = visibleFeedbackCount;
+      trackObservabilityEvent('FEEDBACK_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+      }));
 
-    try {
-      const result = await feedbackQuery.refetch();
-      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-      trackObservabilityEvent('FEEDBACK_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        resultCountAfter,
-        deltaCount: resultCountAfter - resultCountBefore,
-      }));
-    } catch (error) {
-      trackObservabilityEvent('FEEDBACK_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      }));
-      throw error;
-    } finally {
-      setIsPullRefreshing(false);
-    }
+      try {
+        const result = await feedbackQuery.refetch();
+        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+        trackObservabilityEvent('FEEDBACK_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          resultCountAfter,
+          deltaCount: resultCountAfter - resultCountBefore,
+        }));
+      } catch (error) {
+        trackObservabilityEvent('FEEDBACK_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        }));
+        throw error;
+      }
+    });
   };
 
   return (

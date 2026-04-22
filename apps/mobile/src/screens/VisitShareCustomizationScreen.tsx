@@ -20,6 +20,7 @@ import { APP_NAME, BRAND_LOGO } from '../lib/branding';
 import { getRatingColor, getRatingLabel } from '../lib/ratingConstants';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useLayoutChrome } from '../providers/LayoutChromeProvider';
 import { createThemedStyles, getVisitSharePalette, useTheme } from '../theme';
 import { Button, Text } from '../ui';
 
@@ -386,6 +387,7 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
 export function VisitShareCustomizationScreen({ navigation, route }: VisitShareCustomizationScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { topInsetConsumedByOverlay } = useLayoutChrome();
   const { width: viewportWidth } = useWindowDimensions();
   const shareCanvasRef = useRef<View>(null);
 
@@ -445,6 +447,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
 
   const sharePalette = useMemo(() => getVisitSharePalette(theme, shareTheme), [shareTheme, theme]);
   const styles = useStyles(sharePalette);
+  const effectiveTopInset = topInsetConsumedByOverlay ? 0 : insets.top;
 
   const markPhotoReady = useCallback((photoId: string) => {
     setReadyPhotoIds((previous) => {
@@ -549,7 +552,7 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: Math.max(theme.spacing.sm, insets.top + theme.spacing.xs) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(theme.spacing.sm, effectiveTopInset + theme.spacing.xs) }]}>
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle} variant="cardTitle">
             Share Visit

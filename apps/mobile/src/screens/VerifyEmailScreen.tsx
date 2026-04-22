@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   AuthIntroCard,
@@ -9,17 +9,19 @@ import {
   LoadingOverlay,
 } from '../components/shared';
 import {
-  confirmUserEmailVerification,
   requestUserEmailVerification,
 } from '../features';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
-import { Button, Card, Input, Screen } from '../ui';
+import { Button, Card, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
 
 type VerifyEmailScreenProps = NativeStackScreenProps<RootStackParamList, 'VerifyEmail'>;
+const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60_000;
+
+const verificationEmailCooldownUntilByEmail = new Map<string, number>();
 
 const useStyles = createThemedStyles((theme) => ({
   formContent: {
@@ -28,52 +30,92 @@ const useStyles = createThemedStyles((theme) => ({
   formCard: {
     gap: theme.spacing.sm,
   },
+  helperText: {
+    color: theme.colors.text.secondary,
+  },
+  cooldownText: {
+    color: theme.colors.text.muted,
+  },
 }));
 
-function resolveVerificationErrorMessage(error: unknown): string {
+function normalizeEmailAddress(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function getVerificationEmailCooldownUntil(email: string): number {
+  return verificationEmailCooldownUntilByEmail.get(normalizeEmailAddress(email)) ?? 0;
+}
+
+function setVerificationEmailCooldownUntil(email: string, cooldownUntil: number) {
+  verificationEmailCooldownUntilByEmail.set(normalizeEmailAddress(email), cooldownUntil);
+}
+
+function formatResendCooldownLabel(remainingSeconds: number): string {
+  return `Resend in ${remainingSeconds}s`;
+}
+
+function resolveVerificationEmailErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'status' in error) {
     const status = (error as { status?: number }).status;
-    if (status === 400) {
-      return 'Verification code is incorrect or expired.';
+    if (status === 429) {
+      return 'Please wait about a minute before requesting another verification email.';
     }
   }
 
   if (error instanceof Error) {
     const normalized = error.message.toLowerCase();
     if (
-      normalized.includes('token') ||
-      normalized.includes('verify') ||
-      normalized.includes('invalid') ||
-      normalized.includes('expired')
+      normalized.includes('already requested') ||
+      normalized.includes('rate') ||
+      normalized.includes('too many') ||
+      normalized.includes('try again later')
     ) {
-      return 'Verification code is incorrect or expired.';
+      return 'Please wait about a minute before requesting another verification email.';
     }
 
-    return error.message;
+    return 'Could not send a verification email right now.';
   }
 
-  return 'Verification failed.';
+  return 'Could not send a verification email right now.';
 }
 
 export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps) {
-  const { actualUser, refreshAuthSession, signInWithPassword, signOut, status } = useAuth();
-  const [token, setToken] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    actualUser,
+    signOut,
+    status,
+    verificationStatus,
+  } = useAuth();
   const [isResending, setIsResending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [cooldownTick, setCooldownTick] = useState(() => Date.now());
+  const [resendCooldownUntil, setResendCooldownUntil] = useState<number>(() =>
+    pendingEmailFromRouteOrUser(route.params?.email, actualUser?.email),
+  );
   const pendingEmail =
     route.params?.email?.trim().toLowerCase() ?? actualUser?.email?.trim().toLowerCase() ?? '';
-  const pendingPassword = route.params?.password ?? '';
   const hasRetainedSession = Boolean(actualUser);
-  const shouldAutoSignIn = !hasRetainedSession && Boolean(pendingEmail && pendingPassword);
   const source = route.params?.source;
   const isExpiredEntry = status === 'verification_required' || source === 'expired_entry';
   const styles = useStyles();
+  const hasTriggeredInitialSendRef = useRef(false);
+  const resendRemainingSeconds = Math.max(
+    0,
+    Math.ceil((resendCooldownUntil - cooldownTick) / 1000),
+  );
+  const canResendVerificationEmail =
+    Boolean(pendingEmail) && resendRemainingSeconds === 0 && !isResending;
+  const resendButtonLabel =
+    resendRemainingSeconds > 0
+      ? formatResendCooldownLabel(resendRemainingSeconds)
+      : 'Resend Verification Email';
 
   const subtitle = pendingEmail
-    ? `Use the link sent to ${pendingEmail}, or paste the verification token below.`
-    : 'Use the link in your email, or paste the verification token below.';
+    ? hasRetainedSession
+      ? `We'll send a verification link to ${pendingEmail}. Open the email, tap Verify, and the app will refresh automatically once your account is updated.`
+      : `We'll send a verification link to ${pendingEmail}. Open the email, tap Verify, then return to sign in.`
+    : 'We can send another verification email to your account. Open the email and tap Verify to continue.';
 
   const modeBanner = useMemo(() => {
     if (isExpiredEntry) {
@@ -97,86 +139,23 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     return null;
   }, [hasRetainedSession, isExpiredEntry]);
 
-  const handleVerify = async () => {
-    const trimmedToken = token.trim();
-    if (!trimmedToken) {
-      trackObservabilityEvent('AUTH_EMAIL_VERIFY_VALIDATION_FAILED', {
-        source: 'VerifyEmailScreen',
-        reason: 'missing_token',
-      });
-      setErrorMessage('Verification token is required.');
-      return;
-    }
-
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setIsSubmitting(true);
-    trackObservabilityEvent('AUTH_EMAIL_VERIFY_SUBMIT_STARTED', {
-      source: 'VerifyEmailScreen',
-      tokenLength: trimmedToken.length,
-    });
-
-    try {
-      await confirmUserEmailVerification(trimmedToken);
-      trackObservabilityEvent('AUTH_EMAIL_VERIFY_SUBMIT_SUCCEEDED', {
-        source: 'VerifyEmailScreen',
-      });
-
-      if (hasRetainedSession) {
-        try {
-          await refreshAuthSession();
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Home' }],
-          });
-          return;
-        } catch (refreshError) {
-          trackObservabilityEvent('AUTH_EMAIL_VERIFY_REFRESH_FAILED', {
-            source: 'VerifyEmailScreen',
-            errorMessage: refreshError instanceof Error ? refreshError.message : String(refreshError),
-          });
-        }
-      }
-
-      if (shouldAutoSignIn) {
-        try {
-          await signInWithPassword(pendingEmail, pendingPassword);
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Home' }],
-          });
-          return;
-        } catch (autoSignInError) {
-          trackObservabilityEvent('AUTH_EMAIL_VERIFY_AUTO_SIGNIN_FAILED', {
-            source: 'VerifyEmailScreen',
-            errorMessage: autoSignInError instanceof Error ? autoSignInError.message : String(autoSignInError),
-          });
-          setSuccessMessage('Email verified successfully. Please sign in to continue.');
-          return;
-        }
-      }
-
-      setSuccessMessage(
-        hasRetainedSession
-          ? 'Email verified successfully. If access does not resume immediately, sign in again.'
-          : 'Email verified successfully. You can now sign in.',
-      );
-    } catch (error) {
-      trackObservabilityEvent('AUTH_EMAIL_VERIFY_SUBMIT_FAILED', {
-        source: 'VerifyEmailScreen',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-      const message = resolveVerificationErrorMessage(error);
-      setErrorMessage(message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleResendVerificationEmail = async () => {
+  const sendVerificationEmail = useCallback(async (trigger: 'screen_open' | 'manual') => {
     if (!pendingEmail) {
       setErrorMessage('Email address is required to resend verification.');
-      return;
+      return false;
+    }
+
+    const now = Date.now();
+    const existingCooldownUntil = getVerificationEmailCooldownUntil(pendingEmail);
+    if (existingCooldownUntil > now) {
+      setResendCooldownUntil(existingCooldownUntil);
+      setErrorMessage(null);
+      setSuccessMessage(
+        `Check ${pendingEmail} for the latest verification email. You can request another one in ${Math.ceil(
+          (existingCooldownUntil - now) / 1000,
+        )} seconds.`,
+      );
+      return false;
     }
 
     setErrorMessage(null);
@@ -184,24 +163,86 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     setIsResending(true);
     trackObservabilityEvent('AUTH_EMAIL_VERIFY_RESEND_STARTED', {
       source: 'VerifyEmailScreen',
+      trigger,
     });
 
     try {
       await requestUserEmailVerification(pendingEmail);
+      const nextCooldownUntil = Date.now() + EMAIL_VERIFICATION_RESEND_COOLDOWN_MS;
+      setVerificationEmailCooldownUntil(pendingEmail, nextCooldownUntil);
+      setResendCooldownUntil(nextCooldownUntil);
+      setCooldownTick(Date.now());
       trackObservabilityEvent('AUTH_EMAIL_VERIFY_RESEND_SUCCEEDED', {
         source: 'VerifyEmailScreen',
+        trigger,
       });
-      setSuccessMessage('Verification email sent. You can use the link in your inbox or paste the token here.');
+      setSuccessMessage(
+        hasRetainedSession
+          ? `Verification email sent to ${pendingEmail}. Tap Verify in your inbox and the banner will clear automatically once PocketBase reports the updated status.`
+          : `Verification email sent to ${pendingEmail}. Tap Verify in your inbox, then return to sign in.`,
+      );
+      return true;
     } catch (error) {
+      if (
+        (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 429) ||
+        (error instanceof Error &&
+          /already requested|rate|too many|try again later/i.test(error.message))
+      ) {
+        const nextCooldownUntil = Date.now() + EMAIL_VERIFICATION_RESEND_COOLDOWN_MS;
+        setVerificationEmailCooldownUntil(pendingEmail, nextCooldownUntil);
+        setResendCooldownUntil(nextCooldownUntil);
+        setCooldownTick(Date.now());
+      }
       trackObservabilityEvent('AUTH_EMAIL_VERIFY_RESEND_FAILED', {
         source: 'VerifyEmailScreen',
+        trigger,
         errorMessage: error instanceof Error ? error.message : String(error),
       });
-      setErrorMessage(resolveVerificationErrorMessage(error));
+      setErrorMessage(resolveVerificationEmailErrorMessage(error));
+      return false;
     } finally {
       setIsResending(false);
     }
-  };
+  }, [hasRetainedSession, pendingEmail]);
+
+  useEffect(() => {
+    setResendCooldownUntil(pendingEmail ? getVerificationEmailCooldownUntil(pendingEmail) : 0);
+    setCooldownTick(Date.now());
+  }, [pendingEmail]);
+
+  useEffect(() => {
+    if (resendCooldownUntil <= Date.now()) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      setCooldownTick(Date.now());
+    }, 1_000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [resendCooldownUntil]);
+
+  useEffect(() => {
+    if (!pendingEmail || hasTriggeredInitialSendRef.current || verificationStatus === 'verified') {
+      return;
+    }
+
+    hasTriggeredInitialSendRef.current = true;
+    void sendVerificationEmail('screen_open');
+  }, [pendingEmail, sendVerificationEmail, verificationStatus]);
+
+  useEffect(() => {
+    if (!hasRetainedSession || verificationStatus !== 'verified') {
+      return;
+    }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Home' }],
+    });
+  }, [hasRetainedSession, navigation, verificationStatus]);
 
   const handleSecondaryAction = async () => {
     trackObservabilityEvent('AUTH_NAVIGATION_CTA_TAPPED', {
@@ -225,9 +266,9 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
     }
 
     try {
-      if (hasRetainedSession) {
-        await signOut();
-      }
+        if (hasRetainedSession) {
+          await signOut();
+        }
     } finally {
       navigation.reset({
         index: 0,
@@ -270,37 +311,30 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
         {modeBanner}
 
         <Card style={styles.formCard}>
-          <Input
-            autoCapitalize="none"
-            autoCorrect={false}
-            label="Verification Token"
-            onChangeText={setToken}
-            placeholder="Enter token"
-            value={token}
-          />
+          <Text style={styles.helperText}>
+            Keep this screen open after tapping the link if you're already signed in. Otherwise, verify your email and
+            then return to sign in again.
+          </Text>
 
           <PageErrorToast errorMessage={errorMessage} title="Verification failed" />
 
           {successMessage ? <FormResultBanner message={successMessage} tone="success" /> : null}
 
           <Button
-            disabled={!token.trim()}
-            label={hasRetainedSession ? 'Verify and Refresh Access' : 'Verify'}
-            loading={isSubmitting}
+            disabled={!canResendVerificationEmail}
+            label={resendButtonLabel}
+            loading={isResending}
             onPress={() => {
-              void handleVerify();
+              void sendVerificationEmail('manual');
             }}
           />
 
-          <Button
-            disabled={!pendingEmail}
-            label="Resend Verification Email"
-            loading={isResending}
-            onPress={() => {
-              void handleResendVerificationEmail();
-            }}
-            variant="secondary"
-          />
+          {resendRemainingSeconds > 0 ? (
+            <Text style={styles.cooldownText} variant="bodySm">
+              For deliverability and abuse protection, you can request another email in {resendRemainingSeconds}
+              seconds.
+            </Text>
+          ) : null}
 
           <Button
             label={
@@ -308,7 +342,7 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
                 ? isExpiredEntry
                   ? 'Sign Out'
                   : 'Back'
-                : 'Cancel Verification'
+                : 'Back to Sign In'
             }
             onPress={() => {
               void handleSecondaryAction();
@@ -317,10 +351,12 @@ export function VerifyEmailScreen({ navigation, route }: VerifyEmailScreenProps)
           />
         </Card>
       </FormScaffold>
-      <LoadingOverlay
-        label={isSubmitting ? 'Verifying email...' : 'Sending verification email...'}
-        visible={isSubmitting || isResending}
-      />
+      <LoadingOverlay label="Sending verification email..." visible={isResending} />
     </Screen>
   );
+}
+
+function pendingEmailFromRouteOrUser(routeEmail?: string, actualUserEmail?: string): number {
+  const resolvedEmail = routeEmail?.trim().toLowerCase() ?? actualUserEmail?.trim().toLowerCase() ?? '';
+  return resolvedEmail ? getVerificationEmailCooldownUntil(resolvedEmail) : 0;
 }

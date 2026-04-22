@@ -6,6 +6,7 @@ import { RootNavigator } from '../navigation/RootNavigator';
 
 const mockReact = React;
 const mockNavigate = jest.fn();
+let mockCurrentRouteName = 'Home';
 
 jest.mock('react-native', () => {
   return {
@@ -30,10 +31,21 @@ jest.mock('@react-navigation/native', () => ({
   DefaultTheme: {
     colors: {},
   },
-  NavigationContainer: ({ children }: { children?: React.ReactNode }) =>
-    mockReact.createElement('NavigationContainer', null, children),
+  NavigationContainer: ({
+    children,
+    onReady,
+  }: {
+    children?: React.ReactNode;
+    onReady?: () => void;
+  }) => {
+    mockReact.useEffect(() => {
+      onReady?.();
+    }, [onReady]);
+
+    return mockReact.createElement('NavigationContainer', null, children);
+  },
   useNavigationContainerRef: () => ({
-    getCurrentRoute: () => ({ name: 'Home' }),
+    getCurrentRoute: () => ({ name: mockCurrentRouteName }),
     isReady: () => true,
     navigate: mockNavigate,
   }),
@@ -187,6 +199,7 @@ describe('RootNavigator', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
     mockedUseAuth.mockReset();
+    mockCurrentRouteName = 'Home';
   });
 
   it('renders the grace-period banner for authenticated unverified users', async () => {
@@ -206,6 +219,26 @@ describe('RootNavigator', () => {
     });
 
     expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(1);
+  });
+
+  it('does not render the grace-period banner on the VerifyEmail route', async () => {
+    mockCurrentRouteName = 'VerifyEmail';
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 'user_1',
+        isAdmin: false,
+      },
+      verificationStatus: 'grace_period',
+      verificationGraceEndsAt: '2026-04-24T12:00:00.000Z',
+    } as unknown as ReturnType<typeof useAuth>);
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(<RootNavigator />);
+    });
+
+    expect(renderer.root.findAllByType('EmailVerificationGraceBanner')).toHaveLength(0);
   });
 
   it('renders only the verification flow after the grace period expires', async () => {

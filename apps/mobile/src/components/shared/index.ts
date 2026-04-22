@@ -38,6 +38,7 @@ export * from './RatingPill';
 export * from './RatingSelector';
 export * from './ReportContentModal';
 export * from './ScreenHeader';
+export * from './ScreenContentSection';
 export * from './SegmentedControl';
 export * from './SectionCard';
 export * from './SectionHeader';

@@ -32,6 +32,7 @@ import {
   type RestaurantListDetailPhotoPreviewRecord,
 } from '../features';
 import { useQueryListState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useFeatureOutboxQueue } from '../features/store/useFeatureOutboxQueue';
 import { useWriteTelemetry } from '../features/store/useWriteTelemetry';
 import { formatDisplayDate } from '../lib/dateFormatting';
@@ -606,7 +607,6 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
   );
   const [photoViewerOwnerLabels, setPhotoViewerOwnerLabels] = useState<string[]>([]);
   const [photoViewerInitialIndex, setPhotoViewerInitialIndex] = useState(0);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: restaurantListQueryKeys.detail(listId),
@@ -621,6 +621,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     isLoading: detailQuery.isLoading,
     isSuccess: detailQuery.isSuccess,
   });
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(detailQuery.isRefetching);
 
   const list = detailQuery.data?.list ?? null;
   const isOwner = Boolean(list && user?.id && list.userId === user.id);
@@ -1486,14 +1487,10 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
     });
   };
   const handleRefresh = useCallback(async () => {
-    setIsPullRefreshing(true);
-
-    try {
+    await runPullRefresh(async () => {
       await detailQuery.refetch();
-    } finally {
-      setIsPullRefreshing(false);
-    }
-  }, [detailQuery]);
+    });
+  }, [detailQuery, runPullRefresh]);
 
   if (detailQuery.isLoading) {
     return (

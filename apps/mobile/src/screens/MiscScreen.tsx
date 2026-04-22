@@ -7,6 +7,7 @@ import { Pressable, View } from 'react-native';
 import {
   OptionList,
   OptionListRow,
+  ScreenContentSection,
   StatusPill,
   TabBrandHeader,
   TabRootScreenScaffold,
@@ -151,9 +152,9 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   const { user } = useAuth();
   const isAdmin = Boolean(user?.isAdmin);
   const [expandedTips, setExpandedTips] = useState(false);
+  const [topChromeHeight, setTopChromeHeight] = useState(0);
 
   const sectionColors = {
-    background: theme.colors.background.muted,
     cardBorder: theme.colors.border.subtle,
     rowBackground: theme.colors.background.app,
     title: theme.colors.text.primary,
@@ -250,57 +251,36 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
-      scrollUnderlayColor={sectionColors.background}
+      scrollUnderlayColor={theme.colors.background.app}
+      scrollUnderlayTopInset={topChromeHeight}
       testID="misc-page"
     >
-      <TabBrandHeader
-        showBrand={false}
-        subtitle="Additional features and helpful tips"
-        title="More"
-        titleVariant="displayMd"
-      />
+      <View
+        onLayout={(event) => {
+          setTopChromeHeight(event.nativeEvent.layout.height);
+        }}
+      >
+        <TabBrandHeader
+          showBrand={false}
+          subtitle="Additional features and helpful tips"
+          title="More"
+          titleVariant="displayMd"
+        />
+      </View>
 
-      <View style={styles.body}>
-        <TabSectionCard
-          description="Create and organize lists of your favorite restaurants"
-          descriptionStyle={styles.sectionDescription}
-          style={styles.sectionCard}
-          title="Restaurant Lists"
-          titleLeading={<Ionicons color={sectionColors.blue} name="list-outline" size={20} />}
-        >
-          <OptionList style={styles.optionList}>
-            {restaurantListActions.map((action, index) => (
-              <OptionListRow
-                isLast={index === restaurantListActions.length - 1}
-                key={action.title}
-                leading={
-                  <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
-                    <Ionicons color={action.iconColor} name={action.icon} size={18} />
-                  </View>
-                }
-                onPress={action.onPress}
-                style={styles.featureRow}
-                subtitle={action.description}
-                testID={action.testID}
-                title={action.title}
-              />
-            ))}
-          </OptionList>
-        </TabSectionCard>
-
-        {isAdmin ? (
+      <ScreenContentSection fill testID="misc-screen-content-section">
+        <View style={styles.body}>
           <TabSectionCard
-            description="Organize group food tasting sessions and rate together"
+            description="Create and organize lists of your favorite restaurants"
             descriptionStyle={styles.sectionDescription}
             style={styles.sectionCard}
-            title="Group Tastings"
-            titleAccessory={<StatusPill label="Beta" tone="brand" uppercase />}
-            titleLeading={<Ionicons color={sectionColors.purple} name="people-outline" size={20} />}
+            title="Restaurant Lists"
+            titleLeading={<Ionicons color={sectionColors.blue} name="list-outline" size={20} />}
           >
             <OptionList style={styles.optionList}>
-              {groupTastingsActions.map((action, index) => (
+              {restaurantListActions.map((action, index) => (
                 <OptionListRow
-                  isLast={index === groupTastingsActions.length - 1}
+                  isLast={index === restaurantListActions.length - 1}
                   key={action.title}
                   leading={
                     <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
@@ -316,71 +296,101 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
               ))}
             </OptionList>
           </TabSectionCard>
-        ) : null}
 
-        <TabSectionCard
-          description="Split bills and calculate tips quickly"
-          descriptionStyle={styles.sectionDescription}
-          style={styles.sectionCard}
-          title="Bills & Tips"
-          titleLeading={<Ionicons color={sectionColors.green} name="cash-outline" size={20} />}
-        >
-          <OptionList style={styles.optionList}>
-            {billsAndTipsActions.map((action, index) => (
-              <OptionListRow
-                isLast={index === billsAndTipsActions.length - 1}
-                key={action.title}
-                leading={
-                  <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
-                    <Ionicons color={action.iconColor} name={action.icon} size={18} />
-                  </View>
-                }
-                onPress={action.onPress}
-                style={styles.featureRow}
-                subtitle={action.description}
-                testID={action.testID}
-                title={action.title}
-              />
-            ))}
-          </OptionList>
-        </TabSectionCard>
+          {isAdmin ? (
+            <TabSectionCard
+              description="Organize group food tasting sessions and rate together"
+              descriptionStyle={styles.sectionDescription}
+              style={styles.sectionCard}
+              title="Group Tastings"
+              titleAccessory={<StatusPill label="Beta" tone="brand" uppercase />}
+              titleLeading={<Ionicons color={sectionColors.purple} name="people-outline" size={20} />}
+            >
+              <OptionList style={styles.optionList}>
+                {groupTastingsActions.map((action, index) => (
+                  <OptionListRow
+                    isLast={index === groupTastingsActions.length - 1}
+                    key={action.title}
+                    leading={
+                      <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
+                        <Ionicons color={action.iconColor} name={action.icon} size={18} />
+                      </View>
+                    }
+                    onPress={action.onPress}
+                    style={styles.featureRow}
+                    subtitle={action.description}
+                    testID={action.testID}
+                    title={action.title}
+                  />
+                ))}
+              </OptionList>
+            </TabSectionCard>
+          ) : null}
 
-        <TabSectionCard
-          description="Get the most out of Yummy Recs"
-          descriptionStyle={styles.sectionDescription}
-          style={styles.sectionCard}
-          title="Tips & Tricks"
-          titleLeading={<Ionicons color={sectionColors.yellow} name="bulb-outline" size={20} />}
-        >
-          <View style={styles.sectionActions}>
-            {visibleTips.map((tip) => (
-              <View key={tip.title} style={styles.tipCard}>
-                <Text style={styles.tipTitle} variant="label">{tip.title}</Text>
-                <Text style={styles.tipDescription} variant="bodyMd">{tip.description}</Text>
-              </View>
-            ))}
+          <TabSectionCard
+            description="Split bills and calculate tips quickly"
+            descriptionStyle={styles.sectionDescription}
+            style={styles.sectionCard}
+            title="Bills & Tips"
+            titleLeading={<Ionicons color={sectionColors.green} name="cash-outline" size={20} />}
+          >
+            <OptionList style={styles.optionList}>
+              {billsAndTipsActions.map((action, index) => (
+                <OptionListRow
+                  isLast={index === billsAndTipsActions.length - 1}
+                  key={action.title}
+                  leading={
+                    <View style={[styles.featureIconWrap, { backgroundColor: action.iconBackground }]}>
+                      <Ionicons color={action.iconColor} name={action.icon} size={18} />
+                    </View>
+                  }
+                  onPress={action.onPress}
+                  style={styles.featureRow}
+                  subtitle={action.description}
+                  testID={action.testID}
+                  title={action.title}
+                />
+              ))}
+            </OptionList>
+          </TabSectionCard>
 
-            {TIPS.length > 3 ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  const nextExpanded = !expandedTips;
-                  trackObservabilityEvent('MISC_TIPS_TOGGLED', {
-                    source: 'MiscScreen',
-                    expanded: nextExpanded,
-                  });
-                  setExpandedTips(nextExpanded);
-                }}
-                style={({ pressed }) => [styles.tipsToggle, pressed ? styles.tipsTogglePressed : null]}
-              >
-                <Text style={styles.tipsToggleLabel} variant="bodyMdSemiBold">
-                  {expandedTips ? 'Show Less' : `Show ${TIPS.length - 3} More Tips`}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </TabSectionCard>
-      </View>
+          <TabSectionCard
+            description="Get the most out of Yummy Recs"
+            descriptionStyle={styles.sectionDescription}
+            style={styles.sectionCard}
+            title="Tips & Tricks"
+            titleLeading={<Ionicons color={sectionColors.yellow} name="bulb-outline" size={20} />}
+          >
+            <View style={styles.sectionActions}>
+              {visibleTips.map((tip) => (
+                <View key={tip.title} style={styles.tipCard}>
+                  <Text style={styles.tipTitle} variant="label">{tip.title}</Text>
+                  <Text style={styles.tipDescription} variant="bodyMd">{tip.description}</Text>
+                </View>
+              ))}
+
+              {TIPS.length > 3 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const nextExpanded = !expandedTips;
+                    trackObservabilityEvent('MISC_TIPS_TOGGLED', {
+                      source: 'MiscScreen',
+                      expanded: nextExpanded,
+                    });
+                    setExpandedTips(nextExpanded);
+                  }}
+                  style={({ pressed }) => [styles.tipsToggle, pressed ? styles.tipsTogglePressed : null]}
+                >
+                  <Text style={styles.tipsToggleLabel} variant="bodyMdSemiBold">
+                    {expandedTips ? 'Show Less' : `Show ${TIPS.length - 3} More Tips`}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </TabSectionCard>
+        </View>
+      </ScreenContentSection>
     </TabRootScreenScaffold>
   );
 }

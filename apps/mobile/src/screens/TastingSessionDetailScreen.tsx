@@ -22,6 +22,7 @@ import {
   type TastingSessionItem,
   type TastingSessionStatus,
 } from '../features';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { useAuth } from '../providers/AuthProvider';
@@ -116,7 +117,7 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingDeleteItem, setPendingDeleteItem] = useState<PendingDeleteItemState | null>(null);
   const [isDeletingItem, setIsDeletingItem] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(sessionQuery.isRefetching);
 
   const currentParticipant = useMemo(() => {
     const session = sessionQuery.data;
@@ -245,13 +246,9 @@ export function TastingSessionDetailScreen({ navigation, route }: TastingSession
     ]);
   };
   const handleRefresh = async () => {
-    setIsPullRefreshing(true);
-
-    try {
+    await runPullRefresh(async () => {
       await sessionQuery.refetch();
-    } finally {
-      setIsPullRefreshing(false);
-    }
+    });
   };
 
   const handleCopyInviteCode = async () => {

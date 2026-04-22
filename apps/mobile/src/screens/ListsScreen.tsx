@@ -2,12 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, Pressable, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   BackHeaderScreenScaffold,
   EmptyState,
+  ErrorState,
   HeaderAccessoryButton,
   PageErrorToast,
   SegmentedControl,
@@ -23,6 +24,7 @@ import {
   type RestaurantListRecord,
 } from '../features';
 import { usePaginatedQueryState } from '../hooks/useListQueryState';
+import { usePullToRefreshState } from '../hooks/usePullToRefreshState';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { formatDisplayDate } from '../lib/dateFormatting';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -329,7 +331,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreatingDefaultList, setIsCreatingDefaultList] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const hasTriedCreatingDefault = useRef(false);
   const lastTrackedSearchExecutionKeyRef = useRef<string | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
@@ -476,6 +477,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   const friendLists = friendsListsState.items;
   const activeQuery = activeTab === 'my' ? myListsQuery : friendsListsQuery;
   const activeState = activeTab === 'my' ? myListsState : friendsListsState;
+  const { isPullRefreshing, runPullRefresh } = usePullToRefreshState(activeQuery.isRefetching);
 
   const visibleLists = useMemo(
     () => (activeTab === 'friends' ? friendLists : myLists),
@@ -510,29 +512,28 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     [activeTab, trimmedSearchQuery.length, visibleLists.length],
   );
   const handleRefresh = async () => {
-    const resultCountBefore = visibleLists.length;
-    setIsPullRefreshing(true);
-    trackObservabilityEvent('LISTS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
-      resultCountBefore,
-    }));
+    await runPullRefresh(async () => {
+      const resultCountBefore = visibleLists.length;
+      trackObservabilityEvent('LISTS_REFRESH_STARTED', buildBrowseAnalyticsPayload({
+        resultCountBefore,
+      }));
 
-    try {
-      const result = await activeQuery.refetch();
-      const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
-      trackObservabilityEvent('LISTS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        resultCountAfter,
-        deltaCount: resultCountAfter - resultCountBefore,
-      }));
-    } catch (error) {
-      trackObservabilityEvent('LISTS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
-        resultCountBefore,
-        errorType: error instanceof Error ? error.name : 'unknown_error',
-      }));
-      throw error;
-    } finally {
-      setIsPullRefreshing(false);
-    }
+      try {
+        const result = await activeQuery.refetch();
+        const resultCountAfter = result.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? resultCountBefore;
+        trackObservabilityEvent('LISTS_REFRESH_COMPLETED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          resultCountAfter,
+          deltaCount: resultCountAfter - resultCountBefore,
+        }));
+      } catch (error) {
+        trackObservabilityEvent('LISTS_REFRESH_FAILED', buildBrowseAnalyticsPayload({
+          resultCountBefore,
+          errorType: error instanceof Error ? error.name : 'unknown_error',
+        }));
+        throw error;
+      }
+    });
   };
 
   useEffect(() => {
@@ -762,24 +763,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
     </View>
   );
 
-  const listsEmptyComponent = (() => {
-    if (isLoading) {
-      return (
-        <View style={styles.skeletonWrap}>
-          <Skeleton height={136} />
-          <Skeleton height={136} />
-          <Skeleton height={136} />
-        </View>
-      );
-    }
-
-    if (!activeState.hasBlockingError && visibleLists.length === 0) {
-      return hasSearch ? renderNoSearchResults() : renderEmptyState();
-    }
-
-    return null;
-  })();
-
   const listsFooter =
     !isLoading && !activeState.hasBlockingError && visibleLists.length > 0 && activeQuery.hasNextPage ? (
       <View style={styles.listFooter}>
@@ -813,6 +796,47 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       </View>
     ) : null;
 
+  const listsBodyContent = (() => {
+    if (isLoading) {
+      return (
+        <View style={styles.skeletonWrap}>
+          <Skeleton height={136} />
+          <Skeleton height={136} />
+          <Skeleton height={136} />
+        </View>
+      );
+    }
+
+    if (activeState.hasBlockingError) {
+      return (
+        <ErrorState
+          analyticsProps={buildBrowseAnalyticsPayload()}
+          analyticsSource="ListsScreen"
+          description="Could not load lists."
+          onRetry={() => {
+            void activeQuery.refetch();
+          }}
+          title="Lists unavailable"
+        />
+      );
+    }
+
+    if (visibleLists.length === 0) {
+      return hasSearch ? renderNoSearchResults() : renderEmptyState();
+    }
+
+    return (
+      <View>
+        {visibleLists.map((list, index) => (
+          <View key={list.id}>
+            {index > 0 ? <View style={styles.listSeparator} /> : null}
+            {renderListCard(list, index)}
+          </View>
+        ))}
+      </View>
+    );
+  })();
+
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.screenBody}
@@ -820,7 +844,6 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       onBackPress={() => {
         navigation.navigate('Misc');
       }}
-      scroll={false}
       rightAccessory={
         activeTab === 'my' ? (
           <HeaderAccessoryButton
@@ -839,22 +862,14 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
       subtitle="Create, organize, and browse the restaurant lists your friends share."
       testID="lists-screen"
       title="Lists"
+      onRefresh={handleRefresh}
+      refreshing={isPullRefreshing}
     >
-      <FlatList
-        contentContainerStyle={styles.listContent}
-        data={!isLoading && !activeState.hasBlockingError ? visibleLists : []}
-        ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
-        keyboardShouldPersistTaps="handled"
-        keyExtractor={(list) => list.id}
-        ListEmptyComponent={listsEmptyComponent}
-        ListFooterComponent={listsFooter}
-        ListHeaderComponent={listsHeader}
-        onRefresh={handleRefresh}
-        refreshing={isPullRefreshing}
-        removeClippedSubviews
-        renderItem={({ item, index }) => renderListCard(item, index)}
-        style={styles.list}
-      />
+      <View style={styles.listContent}>
+        {listsHeader}
+        {listsBodyContent}
+        {listsFooter}
+      </View>
     </BackHeaderScreenScaffold>
   );
 }
