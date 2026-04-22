@@ -10,6 +10,7 @@ import { queryPersister, removeLegacyQueryCache, shouldPersistQuery } from './qu
 import { AuthProvider, type AuthBootstrap } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { ErrorToastProvider } from './ErrorToastProvider';
+import { OtaUpdatesProvider } from './OtaUpdatesProvider';
 import { SyncProvider } from './SyncProvider';
 
 const queryClient = new QueryClient({
@@ -157,9 +158,11 @@ export function AppProviders({ children, screenshotReviewBootstrap }: AppProvide
       <QueryClientProvider client={queryClient}>
         <SyncProvider>
           {isQueryPersistenceReady ? (
-            <AuthProvider screenshotReviewBootstrap={screenshotReviewBootstrap}>
-              <ErrorToastProvider>{children}</ErrorToastProvider>
-            </AuthProvider>
+            <OtaUpdatesProvider>
+              <AuthProvider screenshotReviewBootstrap={screenshotReviewBootstrap}>
+                <ErrorToastProvider>{children}</ErrorToastProvider>
+              </AuthProvider>
+            </OtaUpdatesProvider>
           ) : (
             <SplashScreen />
           )}

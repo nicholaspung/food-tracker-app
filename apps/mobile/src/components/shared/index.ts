@@ -26,7 +26,6 @@ export * from './LinearProgressBar';
 export * from './LinkedNoteCard';
 export * from './LocalDatePickerField';
 export * from './OptionList';
-export * from './OtaUpdateCard';
 export * from './PhotoViewerModal';
 export * from './PageErrorToast';
 export * from './PhotoDetectedDateField';

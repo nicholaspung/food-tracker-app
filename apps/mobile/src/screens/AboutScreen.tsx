@@ -1,14 +1,10 @@
-import { useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   BackHeaderScreenScaffold,
   OptionList,
-  OptionListInlineBody,
   OptionListRow,
-  OtaUpdateStatusDetails,
   SectionCard,
-  useOtaUpdateStatus,
 } from '../components/shared';
 import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -16,26 +12,6 @@ import { createThemedStyles } from '../theme';
 import { Text } from '../ui';
 
 type AboutScreenProps = NativeStackScreenProps<RootStackParamList, 'About'>;
-
-function getVersionSubtitle(options: {
-  hasAvailableUpdate: boolean;
-  isChecking: boolean;
-  isUpdatePending: boolean;
-}): string {
-  if (options.isUpdatePending) {
-    return 'A downloaded OTA update is ready to apply';
-  }
-
-  if (options.hasAvailableUpdate) {
-    return 'A newer OTA update is available for this app version';
-  }
-
-  if (options.isChecking) {
-    return 'Checking whether a newer OTA update is available';
-  }
-
-  return 'Current app version and native build';
-}
 
 const useStyles = createThemedStyles((theme) => ({
   body: {
@@ -49,14 +25,6 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function AboutScreen({ navigation }: AboutScreenProps) {
   const appVersionLabel = formatAppVersionLabel();
-  const otaUpdateState = useOtaUpdateStatus('AboutScreen');
-  const [isVersionExpanded, setIsVersionExpanded] = useState(otaUpdateState.shouldAutoExpand);
-
-  useEffect(() => {
-    if (otaUpdateState.shouldAutoExpand) {
-      setIsVersionExpanded(true);
-    }
-  }, [otaUpdateState.shouldAutoExpand]);
   const styles = useStyles();
 
   const handleBackPress = () => {
@@ -67,8 +35,6 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
 
     navigation.navigate('Profile');
   };
-
-  const showVersionDetails = isVersionExpanded;
 
   return (
     <BackHeaderScreenScaffold
@@ -81,26 +47,12 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
       <SectionCard title="App Information">
         <OptionList>
           <OptionListRow
-            chevron={showVersionDetails ? 'up' : 'down'}
-            connected={showVersionDetails}
             iconName="phone-portrait-outline"
-            isLast={!showVersionDetails}
-            onPress={() => {
-              setIsVersionExpanded((current) => !current);
-            }}
+            isLast
             rightAccessory={<Text style={styles.metaValue}>{appVersionLabel}</Text>}
-            subtitle={getVersionSubtitle({
-              hasAvailableUpdate: otaUpdateState.hasAvailableUpdate,
-              isChecking: otaUpdateState.isChecking,
-              isUpdatePending: otaUpdateState.isUpdatePending,
-            })}
+            subtitle="Current app version and native build"
             title="Version"
           />
-          {showVersionDetails ? (
-            <OptionListInlineBody>
-              <OtaUpdateStatusDetails state={otaUpdateState} />
-            </OptionListInlineBody>
-          ) : null}
         </OptionList>
       </SectionCard>
 
