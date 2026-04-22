@@ -94,7 +94,11 @@ type FriendFeedSection = GroupedMonth & {
   data: FeedItem[];
 };
 
-const useStyles = createThemedStyles((theme) => ({
+const useStyles = createThemedStyles((theme) => {
+  const feedGap = theme.spacing.xs;
+  const leadInGap = theme.spacing.sm;
+
+  return {
   screenContent: {
     backgroundColor: theme.colors.background.app,
     flex: 1,
@@ -119,9 +123,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   body: {
     gap: theme.spacing.sm,
+    paddingBottom: 0,
     paddingHorizontal: theme.spacing.sm,
     paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
   },
   deleteConfirmationModalSentinel: {
     backgroundColor: theme.colors.background.surface,
@@ -136,7 +140,7 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.colors.text.danger,
   },
   monthSection: {
-    gap: theme.spacing.xs,
+    gap: feedGap,
   },
   monthHeader: {
     alignItems: 'center',
@@ -147,7 +151,7 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
   },
   monthHeaderLeft: {
     alignItems: 'center',
@@ -177,7 +181,7 @@ const useStyles = createThemedStyles((theme) => ({
     paddingLeft: theme.spacing.sm,
   },
   entries: {
-    gap: theme.spacing.xs,
+    gap: feedGap,
   },
   emptyStateWrap: {
     flex: 1,
@@ -202,21 +206,22 @@ const useStyles = createThemedStyles((theme) => ({
   listItemRow: {
     paddingHorizontal: theme.spacing.sm,
   },
+  listFirstItemRow: {
+    paddingTop: leadInGap,
+  },
   listItemSeparator: {
-    height: theme.spacing.xs,
+    height: feedGap,
   },
   monthEntryRow: {
     paddingLeft: theme.spacing.lg,
     paddingRight: theme.spacing.sm,
   },
   monthFirstEntryRow: {
-    paddingTop: theme.spacing.xs,
+    paddingTop: leadInGap,
   },
   monthSectionHeader: {
     paddingHorizontal: theme.spacing.sm,
-  },
-  monthSectionSeparator: {
-    height: theme.spacing.sm,
+    paddingTop: feedGap,
   },
   infoCard: {
     backgroundColor: theme.colors.background.surface,
@@ -259,7 +264,8 @@ const useStyles = createThemedStyles((theme) => ({
   quickActionPrimaryLabel: {
     color: theme.colors.text.inverse,
   },
-}));
+  };
+});
 
 const monthFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -1087,10 +1093,21 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     !hasBlockingFeedError &&
     feedMode === 'mine' &&
     totalFeedCount === 0;
+  const homeFeedErrorMessage = hasBlockingFeedError
+    ? 'Could not load your ratings feed.'
+    : hasFeedRefreshError
+      ? 'Could not refresh your feed. Showing saved data.'
+      : null;
+  const deleteErrorMessage = homeFeedActions.deleteErrorMessage;
+  const showHomeListBody =
+    homeFeedErrorMessage !== null ||
+    deleteErrorMessage !== null ||
+    friendSuggestionErrorMessage !== null ||
+    friendSuggestion !== null;
 
   const renderMineFeedItem = useCallback(
     ({ item, index }: { item: FeedItem; index: number }) => (
-      <View style={styles.listItemRow}>
+      <View style={index === 0 ? [styles.listItemRow, styles.listFirstItemRow] : styles.listItemRow}>
         {renderStandardFeedEntry({
           deleteTestID: index === firstMineVisitIndex ? 'home-first-visit-delete-button' : undefined,
           editTestID: index === firstMineVisitIndex ? 'home-first-visit-edit-button' : undefined,
@@ -1112,12 +1129,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       index: number;
       section: FriendFeedSection;
     }) => (
-      <View
-        style={[
-          styles.monthEntryRow,
-          index === 0 ? styles.monthFirstEntryRow : null,
-        ]}
-      >
+      <View style={index === 0 ? [styles.monthEntryRow, styles.monthFirstEntryRow] : styles.monthEntryRow}>
         {renderStandardFeedEntry({
           deleteTestID:
             section.monthKey === firstFriendMonthKey && index === 0
@@ -1192,66 +1204,62 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         />
       </View>
 
-      <View style={styles.body}>
-        <PageErrorToast
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="HomeScreen"
-          errorMessage={
-            hasBlockingFeedError
-              ? 'Could not load your ratings feed.'
-              : hasFeedRefreshError
-                ? 'Could not refresh your feed. Showing saved data.'
-                : null
-          }
-          title="Feed unavailable"
-          actionLabel="Retry"
-          onAction={() => {
-            void homeFeedQuery.refetch();
-          }}
-        />
-        <PageErrorToast
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="HomeScreen"
-          errorMessage={homeFeedActions.deleteErrorMessage}
-          title="Delete failed"
-        />
-        <PageErrorToast
-          analyticsProps={buildBrowseAnalyticsPayload()}
-          analyticsSource="HomeScreen"
-          errorMessage={friendSuggestionErrorMessage}
-          title="Friend suggestion unavailable"
-        />
-        {friendSuggestion ? (
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle} variant="bodyLgBold">
-              Add {inviterDisplayName} as a friend?
-            </Text>
-            <Text style={styles.infoDescription} variant="bodyLgCompact">
-              They invited you to Yummy Recs. Add them now so you can see each other's food activity.
-            </Text>
-            <View style={styles.infoActionRow}>
-              <Pressable
-                disabled={isApplyingFriendSuggestion}
-                onPress={() => {
-                  void handleAcceptFriendSuggestion();
-                }}
-                style={[styles.quickActionButton, styles.quickActionPrimary]}
-              >
-                <Text style={[styles.quickActionLabel, styles.quickActionPrimaryLabel]} variant="labelMd">
-                  {isApplyingFriendSuggestion ? 'Adding...' : 'Add Friend'}
-                </Text>
-              </Pressable>
-              <Pressable
-                disabled={isApplyingFriendSuggestion}
-                onPress={handleDismissFriendSuggestion}
-                style={styles.quickActionButton}
-              >
-                <Text style={styles.quickActionLabel} variant="labelMd">Not Now</Text>
-              </Pressable>
+      {showHomeListBody ? (
+        <View style={styles.body}>
+          <PageErrorToast
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="HomeScreen"
+            errorMessage={homeFeedErrorMessage}
+            title="Feed unavailable"
+            actionLabel="Retry"
+            onAction={() => {
+              void homeFeedQuery.refetch();
+            }}
+          />
+          <PageErrorToast
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="HomeScreen"
+            errorMessage={deleteErrorMessage}
+            title="Delete failed"
+          />
+          <PageErrorToast
+            analyticsProps={buildBrowseAnalyticsPayload()}
+            analyticsSource="HomeScreen"
+            errorMessage={friendSuggestionErrorMessage}
+            title="Friend suggestion unavailable"
+          />
+          {friendSuggestion ? (
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle} variant="bodyLgBold">
+                Add {inviterDisplayName} as a friend?
+              </Text>
+              <Text style={styles.infoDescription} variant="bodyLgCompact">
+                They invited you to Yummy Recs. Add them now so you can see each other's food activity.
+              </Text>
+              <View style={styles.infoActionRow}>
+                <Pressable
+                  disabled={isApplyingFriendSuggestion}
+                  onPress={() => {
+                    void handleAcceptFriendSuggestion();
+                  }}
+                  style={[styles.quickActionButton, styles.quickActionPrimary]}
+                >
+                  <Text style={[styles.quickActionLabel, styles.quickActionPrimaryLabel]} variant="labelMd">
+                    {isApplyingFriendSuggestion ? 'Adding...' : 'Add Friend'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={isApplyingFriendSuggestion}
+                  onPress={handleDismissFriendSuggestion}
+                  style={styles.quickActionButton}
+                >
+                  <Text style={styles.quickActionLabel} variant="labelMd">Not Now</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        ) : null}
-      </View>
+          ) : null}
+        </View>
+      ) : null}
     </>
   );
 
@@ -1402,6 +1410,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         ) : (
           <SectionList
             contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={homeListEmptyComponent}
@@ -1413,7 +1422,6 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
             renderItem={renderFriendFeedItem}
             renderSectionHeader={renderFriendFeedSectionHeader}
             sections={!isLoading && !hasBlockingFeedError ? friendFeedSections : []}
-            SectionSeparatorComponent={() => <View style={styles.monthSectionSeparator} />}
             stickySectionHeadersEnabled={false}
             style={styles.list}
           />

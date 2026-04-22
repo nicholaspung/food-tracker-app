@@ -540,6 +540,124 @@ describe('HomeScreen', () => {
     expect(recordsSection).toBeTruthy();
   });
 
+  it('skips the padded header body when there are no toasts or friend suggestions', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findAllByType('PageErrorToast')).toHaveLength(0);
+  });
+
+  it('adds the first-row spacing path only to the first mine feed item', async () => {
+    let renderer: any = null;
+
+    mockedUsePaginatedQueryState.mockReturnValue({
+      hasBlockingError: false,
+      hasRefreshError: false,
+      items: [
+        {
+          eventAt: '2026-04-20T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-one',
+            restaurantName: 'First Place',
+            visitedAt: '2026-04-20T08:00:00.000Z',
+            items: [],
+            source: 'visit',
+            userId: 'user-1',
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-04-20T08:05:00.000Z',
+          },
+        },
+        {
+          eventAt: '2026-04-19T08:00:00.000Z',
+          source: 'visit',
+          visit: {
+            id: 'visit-two',
+            restaurantName: 'Second Place',
+            visitedAt: '2026-04-19T08:00:00.000Z',
+            items: [],
+            source: 'visit',
+            userId: 'user-1',
+            createdAt: '2026-04-19T08:00:00.000Z',
+            updatedAt: '2026-04-19T08:05:00.000Z',
+          },
+        },
+      ],
+    } as never);
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const itemRows = renderer.root.findAll(
+      (node: any) => node.type === 'View' && node.findAllByType('HomeFeedVisitEntryCard').length === 1,
+    );
+
+    expect(itemRows).toHaveLength(2);
+    expect(Array.isArray(itemRows[0].props.style)).toBe(true);
+    expect(Array.isArray(itemRows[1].props.style)).toBe(false);
+  });
+
+  it('applies an item separator to the friends month list', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <HomeScreen
+          navigation={{
+            navigate: jest.fn(),
+            push: jest.fn(),
+            setParams: jest.fn(),
+          } as never}
+          route={{
+            key: 'home',
+            name: 'Home',
+          } as never}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      renderer.root.findByType('FeedHeaderControls').props.onFeedModeChange('friends');
+      await Promise.resolve();
+    });
+
+    const sectionList = renderer.root.findByType('SectionList');
+
+    expect(typeof sectionList.props.ItemSeparatorComponent).toBe('function');
+    expect(sectionList.props.SectionSeparatorComponent).toBeUndefined();
+  });
+
   it('keeps the home list refresh prop active until the refetch lifecycle settles', async () => {
     const refetchDeferred = createDeferred<{
       data: {
