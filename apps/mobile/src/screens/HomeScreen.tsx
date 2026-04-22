@@ -187,9 +187,11 @@ const useStyles = createThemedStyles((theme) => ({
     paddingTop: theme.spacing.sm,
   },
   list: {
+    backgroundColor: 'transparent',
     flex: 1,
   },
   listContent: {
+    backgroundColor: theme.colors.background.app,
     flexGrow: 1,
     paddingBottom: theme.spacing.sm,
   },
@@ -1372,7 +1374,15 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         ]}
         testID="home-screen-header-backdrop"
       />
-      <ScreenContentSection fill testID="home-screen-records-section">
+      <ScreenContentSection
+        fill
+        overscrollBackgroundSplit={{
+          bottomColor: theme.colors.background.app,
+          topColor: theme.colors.background.surface,
+          topRatio: 0.6,
+        }}
+        testID="home-screen-records-section"
+      >
         {feedMode === 'mine' ? (
           <FlatList
             contentContainerStyle={styles.listContent}

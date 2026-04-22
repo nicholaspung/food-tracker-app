@@ -81,9 +81,11 @@ const useStyles = createThemedStyles((theme) => ({
     top: 0,
   },
   list: {
+    backgroundColor: 'transparent',
     flex: 1,
   },
   listContent: {
+    backgroundColor: theme.colors.background.app,
     flexGrow: 1,
     paddingBottom: theme.spacing.md,
   },
@@ -877,7 +879,15 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         ]}
         testID="friends-screen-top-backdrop"
       />
-      <ScreenContentSection fill testID="friends-screen-records-section">
+      <ScreenContentSection
+        fill
+        overscrollBackgroundSplit={{
+          bottomColor: theme.colors.background.app,
+          topColor: theme.colors.background.surface,
+          topRatio: 0.6,
+        }}
+        testID="friends-screen-records-section"
+      >
         <FlatList
           contentContainerStyle={styles.listContent}
           data={

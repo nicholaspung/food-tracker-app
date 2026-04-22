@@ -532,6 +532,11 @@ describe('HomeScreen', () => {
         height: 84,
       }),
     );
+    expect(recordsSection.props.overscrollBackgroundSplit).toEqual({
+      bottomColor: 'app-background',
+      topColor: 'surface-background',
+      topRatio: 0.6,
+    });
     expect(recordsSection).toBeTruthy();
   });
 
