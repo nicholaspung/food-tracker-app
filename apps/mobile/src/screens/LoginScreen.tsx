@@ -5,7 +5,7 @@ import { Pressable, View } from 'react-native';
 import { AuthIntroCard, AuthTopBar, FormScaffold, LoadingOverlay } from '../components/shared';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
-import { AUTH_EMAIL_UNVERIFIED_ERROR, useAuth } from '../providers/AuthProvider';
+import { AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE, useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -34,11 +34,13 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
   const [password, setPassword] = useState('');
   const { signInWithPassword, isSubmitting, authError } = useAuth();
   const prefilledEmail = route.params?.email?.trim().toLowerCase() ?? '';
-  const signInErrorMessage = authError ? 'Cannot log in. Please try again.' : null;
+  const normalizedEmail = email.trim().toLowerCase();
+  const signInErrorMessage = authError;
+  const shouldShowVerifyEmailAction =
+    authError === AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE && Boolean(normalizedEmail);
   const styles = useStyles();
 
   const handleSignIn = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
     trackObservabilityEvent('AUTH_LOGIN_SUBMIT_STARTED', {
       source: 'LoginScreen',
       hasEmail: Boolean(normalizedEmail),
@@ -46,15 +48,7 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     try {
       await signInWithPassword(normalizedEmail, password);
-    } catch (error) {
-      if (error instanceof Error && error.message === AUTH_EMAIL_UNVERIFIED_ERROR) {
-        navigation.navigate('VerifyEmail', {
-          email: normalizedEmail,
-          password,
-          source: 'login',
-        });
-      }
-    }
+    } catch {}
   };
 
   useEffect(() => {
@@ -138,6 +132,20 @@ export function LoginScreen({ navigation, route }: LoginScreenProps) {
             }}
             testID="login-submit-button"
           />
+
+          {shouldShowVerifyEmailAction ? (
+            <Button
+              label="Verify Email"
+              onPress={() => {
+                navigation.navigate('VerifyEmail', {
+                  email: normalizedEmail,
+                  password,
+                  source: 'expired_entry',
+                });
+              }}
+              variant="secondary"
+            />
+          ) : null}
         </Card>
 
         <View style={styles.secondaryActions}>

@@ -34,6 +34,7 @@ import {
   updateProfile,
 } from '../features';
 import { formatDisplayDate } from '../lib/dateFormatting';
+import { formatEmailVerificationRemainingTime } from '../lib/emailVerificationAccess';
 import { getErrorMessage } from '../lib/errorUtils';
 import { formatAppVersionLabel } from '../lib/appMetadata';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -184,6 +185,9 @@ const useStyles = createThemedStyles((theme) => ({
   logoutButton: {
     marginTop: theme.spacing.xs,
   },
+  verificationCard: {
+    marginTop: theme.spacing.xs,
+  },
 }));
 
 function buildInviteShareMessage(code: string): string {
@@ -205,7 +209,13 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
   const queryClient = useQueryClient();
-  const { actualUser, user, signOut } = useAuth();
+  const {
+    actualUser,
+    user,
+    signOut,
+    verificationGraceEndsAt,
+    verificationStatus,
+  } = useAuth();
   const authRecord = getAuthRecord();
   const isAdmin = actualUser?.isAdmin === true;
   const isSubscriber = actualUser?.isSubscriber === true;
@@ -287,6 +297,13 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const accountCreated = formatDisplayDate(authRecord?.created, {
     fallback: "Unknown",
   });
+  const verificationDeadline = formatDisplayDate(verificationGraceEndsAt, {
+    fallback: 'your verification deadline',
+  });
+  const verificationReminderMessage =
+    verificationStatus === 'grace_period' && verificationGraceEndsAt
+      ? `Verify by ${verificationDeadline} to keep using the app. ${formatEmailVerificationRemainingTime(verificationGraceEndsAt)}`
+      : 'Please verify your email to continue using the app.';
   const hasBlockingProfileError = profileQuery.isError && !profileQuery.data;
   const hasProfileRefreshError = profileQuery.isError && Boolean(profileQuery.data);
   const inviteCodes = inviteCodesQuery.data ?? [];
@@ -696,6 +713,23 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                   <Text style={styles.detailLabel} variant="metaTightSemiBold">Account Created</Text>
                   <Text style={styles.detailValue} variant="titleSmSemiBold">{accountCreated}</Text>
                 </View>
+                {!user?.verified ? (
+                  <Card style={styles.verificationCard} tone="warning">
+                    <Text tone="warning" variant="metaTightSemiBold">
+                      Verification Required
+                    </Text>
+                    <Text>{verificationReminderMessage}</Text>
+                    <Button
+                      label="Verify Email"
+                      onPress={() => {
+                        navigation.navigate('VerifyEmail', {
+                          source: 'profile',
+                        });
+                      }}
+                      variant="secondary"
+                    />
+                  </Card>
+                ) : null}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel} variant="metaTightSemiBold">Membership</Text>
                   <View style={styles.statusRow}>

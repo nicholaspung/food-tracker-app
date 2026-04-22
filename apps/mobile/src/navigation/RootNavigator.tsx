@@ -14,7 +14,7 @@ import {
   getBottomTabRouteForScreen,
   type BottomTabRoute,
 } from '../components/shared/BottomTabNavigation';
-import { EmptyState } from '../components/shared';
+import { EmailVerificationGraceBanner, EmptyState } from '../components/shared';
 import { APP_NAME } from '../lib/branding';
 import type { HomeInitialViewParams } from './homeRouteParams';
 import { useAuth } from '../providers/AuthProvider';
@@ -90,7 +90,7 @@ export type RootStackParamList = {
     | {
         email?: string;
         password?: string;
-        source?: 'sign_up' | 'login';
+        source?: 'sign_up' | 'login' | 'banner' | 'profile' | 'expired_entry';
       }
     | undefined;
   Home:
@@ -295,7 +295,7 @@ function AdminOnlyRouteGuard() {
 }
 
 export function RootNavigator() {
-  const { status, user } = useAuth();
+  const { status, user, verificationGraceEndsAt, verificationStatus } = useAuth();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
@@ -386,6 +386,11 @@ export function RootNavigator() {
     status === 'authenticated' &&
     !!currentRouteName &&
     ROUTES_WITH_TABS.includes(currentRouteName);
+  const shouldShowVerificationBanner =
+    status === 'authenticated' &&
+    verificationStatus === 'grace_period' &&
+    Boolean(verificationGraceEndsAt) &&
+    currentRouteName !== 'VerifyEmail';
 
   const bottomPadding = Math.max(6, Math.min(insets.bottom, 10));
 
@@ -444,6 +449,16 @@ export function RootNavigator() {
       theme={navigationTheme}
     >
       <View style={styles.container}>
+        {shouldShowVerificationBanner && verificationGraceEndsAt ? (
+          <EmailVerificationGraceBanner
+            graceEndsAt={verificationGraceEndsAt}
+            onVerifyPress={() => {
+              navigationRef.navigate('VerifyEmail', {
+                source: 'banner',
+              });
+            }}
+          />
+        ) : null}
         <View style={styles.navigatorBody}>
           <Stack.Navigator
             screenOptions={{
@@ -562,6 +577,20 @@ export function RootNavigator() {
                 <Stack.Screen component={CreateBillScreen} name="CreateBill" options={{ headerShown: false }} />
                 <Stack.Screen component={BillDetailScreen} name="BillDetail" options={{ headerShown: false }} />
                 <Stack.Screen component={TipCalculatorScreen} name="TipCalculator" options={{ headerShown: false }} />
+                <Stack.Screen
+                  component={VerifyEmailScreen}
+                  name="VerifyEmail"
+                  options={{ headerShown: false }}
+                />
+              </>
+            ) : status === 'verification_required' ? (
+              <>
+                <Stack.Screen
+                  component={VerifyEmailScreen}
+                  initialParams={{ source: 'expired_entry' }}
+                  name="VerifyEmail"
+                  options={{ headerShown: false }}
+                />
               </>
             ) : (
               <>

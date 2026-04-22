@@ -1,7 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ClientResponseError, type RecordModel } from 'pocketbase';
 
 import { env } from '../config/env';
+import { resolveDateValue } from '../lib/dateFormatting';
+import {
+  resolveEmailVerificationAccess,
+  type EmailVerificationStatus,
+} from '../lib/emailVerificationAccess';
 import { pb } from '../lib/pocketbase';
 import { authStore } from '../lib/pocketbaseAuthStore';
 import { logger } from '../lib/logger';
@@ -25,14 +31,17 @@ import {
 } from './authErrorMessages';
 import { normalizeAuthUser, type AuthUser } from '../types/auth';
 
-type AuthStatus = 'bootstrapping' | 'authenticated' | 'unauthenticated';
+type AuthStatus = 'bootstrapping' | 'authenticated' | 'verification_required' | 'unauthenticated';
 type RolePreviewSettingKey = keyof RolePreviewSettings;
-export const AUTH_EMAIL_UNVERIFIED_ERROR = 'AUTH_EMAIL_UNVERIFIED';
+
+export const AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Please verify your email to continue.';
+
 export interface AuthBootstrapResult {
   authRecord: RecordModel;
   authToken: string;
   user: AuthUser;
 }
+
 export type AuthBootstrap = () => AuthBootstrapResult | null;
 
 interface AuthContextValue {
@@ -41,17 +50,43 @@ interface AuthContextValue {
   actualUser: AuthUser | null;
   canUseRolePreview: boolean;
   rolePreviewSettings: RolePreviewSettings;
+  verificationStatus: EmailVerificationStatus;
+  verificationGraceEndsAt: string | null;
   setRolePreviewSetting: (setting: RolePreviewSettingKey, enabled: boolean) => void;
   resetRolePreviewSettings: () => void;
   isSubmitting: boolean;
   authError: string | null;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshAuthSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function resolveClientResponseMessage(error: ClientResponseError): string {
+  if (typeof error.response?.message === 'string' && error.response.message.trim().length > 0) {
+    return error.response.message;
+  }
+
+  return error.message;
+}
+
+function isVerificationRequiredError(error: unknown): boolean {
+  if (error instanceof ClientResponseError) {
+    return (
+      error.status === 403 &&
+      resolveClientResponseMessage(error).trim() === AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE
+    );
+  }
+
+  return error instanceof Error && error.message.trim() === AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE;
+}
+
 function shouldClearCachedSessionAfterRefreshFailure(error: unknown): boolean {
+  if (isVerificationRequiredError(error)) {
+    return false;
+  }
+
   if (error instanceof ClientResponseError) {
     return [400, 401, 403, 404].includes(error.status);
   }
@@ -65,6 +100,34 @@ function shouldClearCachedSessionAfterRefreshFailure(error: unknown): boolean {
 
 function getCurrentUser(): AuthUser | null {
   return normalizeAuthUser(pb.authStore.record as Record<string, unknown> | null);
+}
+
+function resolveAuthenticationState(nextUser: AuthUser | null): {
+  actualUser: AuthUser | null;
+  status: AuthStatus;
+  verificationStatus: EmailVerificationStatus;
+  verificationGraceEndsAt: string | null;
+} {
+  if (!nextUser || (!env.isScreenshotReviewMode && !pb.authStore.isValid)) {
+    return {
+      actualUser: null,
+      status: 'unauthenticated',
+      verificationStatus: 'verified',
+      verificationGraceEndsAt: null,
+    };
+  }
+
+  const verificationAccess = resolveEmailVerificationAccess({
+    verified: nextUser.verified,
+    createdAt: nextUser.createdAt,
+  });
+
+  return {
+    actualUser: nextUser,
+    status: verificationAccess.status === 'grace_expired' ? 'verification_required' : 'authenticated',
+    verificationStatus: verificationAccess.status,
+    verificationGraceEndsAt: verificationAccess.graceEndsAt,
+  };
 }
 
 function resolveAuthUserTier(user: AuthUser | null): 'admin' | 'subscriber' | 'free' | 'anonymous' {
@@ -94,8 +157,11 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
   const [rolePreviewSettings, setRolePreviewSettings] = useState<RolePreviewSettings>(
     DEFAULT_ROLE_PREVIEW_SETTINGS,
   );
+  const [verificationStatus, setVerificationStatus] = useState<EmailVerificationStatus>('verified');
+  const [verificationGraceEndsAt, setVerificationGraceEndsAt] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   const canUseRolePreview = actualUser?.isAdmin === true;
   const effectiveRolePreviewSettings = useMemo<RolePreviewSettings>(
@@ -109,16 +175,34 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
 
   const syncAuthSnapshot = useCallback(() => {
     const nextUser = getCurrentUser();
+    const nextState = resolveAuthenticationState(nextUser);
 
-    if (nextUser && (env.isScreenshotReviewMode || pb.authStore.isValid)) {
-      setActualUser(nextUser);
-      setStatus('authenticated');
-      return;
+    setActualUser(nextState.actualUser);
+    setStatus(nextState.status);
+    setVerificationStatus(nextState.verificationStatus);
+    setVerificationGraceEndsAt(nextState.verificationGraceEndsAt);
+  }, []);
+
+  const refreshAuthSession = useCallback(async () => {
+    if (!pb.authStore.token || (!env.isScreenshotReviewMode && !pb.authStore.isValid)) {
+      syncAuthSnapshot();
+      throw new Error('No active session available for auth refresh.');
     }
 
-    setActualUser(null);
-    setStatus('unauthenticated');
-  }, []);
+    try {
+      await pb.collection('users').authRefresh();
+      setAuthError(null);
+    } catch (refreshError) {
+      if (shouldClearCachedSessionAfterRefreshFailure(refreshError)) {
+        pb.authStore.clear();
+      }
+      logger.warn('[AuthProvider] authRefresh failed:', refreshError);
+      syncAuthSnapshot();
+      throw refreshError;
+    }
+
+    syncAuthSnapshot();
+  }, [syncAuthSnapshot]);
 
   useEffect(() => {
     let isMounted = true;
@@ -145,8 +229,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
             );
 
             if (isMounted) {
-              setActualUser(screenshotReviewAuth.user);
-              setStatus('authenticated');
+              syncAuthSnapshot();
               setAuthError(null);
             }
 
@@ -191,7 +274,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
         trackObservabilityEvent('AUTH_SESSION_RESTORE_SUCCEEDED', {
           durationMs: Date.now() - restoreStartedAt,
           hadPersistedToken,
-          hasValidSession: Boolean(pb.authStore.isValid && getCurrentUser()),
+          hasValidSession: Boolean(pb.authStore.token && getCurrentUser()),
           refreshFailed,
           source: 'AuthProvider',
         });
@@ -206,6 +289,8 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
         if (isMounted) {
           setStatus('unauthenticated');
           setActualUser(null);
+          setVerificationStatus('verified');
+          setVerificationGraceEndsAt(null);
           setAuthError('Unable to restore session. Please sign in again.');
           captureObservabilityError(error);
         }
@@ -227,6 +312,54 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
   }, [screenshotReviewBootstrap, syncAuthSnapshot]);
 
   useEffect(() => {
+    if (status === 'bootstrapping' || verificationStatus !== 'grace_period' || !verificationGraceEndsAt) {
+      return undefined;
+    }
+
+    const graceEndsAtDate = resolveDateValue(verificationGraceEndsAt);
+    if (!graceEndsAtDate) {
+      syncAuthSnapshot();
+      return undefined;
+    }
+
+    const delayMs = graceEndsAtDate.getTime() - Date.now();
+    if (delayMs <= 0) {
+      syncAuthSnapshot();
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      syncAuthSnapshot();
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [status, syncAuthSnapshot, verificationGraceEndsAt, verificationStatus]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if (previousState === 'background' && nextState === 'active') {
+        if (!pb.authStore.token) {
+          syncAuthSnapshot();
+          return;
+        }
+
+        void refreshAuthSession().catch((error) => {
+          logger.warn('[AuthProvider] foreground auth refresh failed:', error);
+        });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshAuthSession, syncAuthSnapshot]);
+
+  useEffect(() => {
     const isRolePreviewActive =
       canUseRolePreview &&
       (rolePreviewSettings.viewAsNonAdmin || rolePreviewSettings.viewAsNonSubscriber);
@@ -236,6 +369,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       authStatus: status,
       isRolePreviewActive,
       userTier: resolveAuthUserTier(user),
+      verificationStatus,
     });
   }, [
     actualUser,
@@ -244,6 +378,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
     rolePreviewSettings.viewAsNonSubscriber,
     status,
     user,
+    verificationStatus,
   ]);
 
   useEffect(() => {
@@ -304,49 +439,54 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
     });
   }, []);
 
-  const signInWithPassword = useCallback(async (email: string, password: string) => {
-    setIsSubmitting(true);
-    setAuthError(null);
+  const signInWithPassword = useCallback(
+    async (email: string, password: string) => {
+      setIsSubmitting(true);
+      setAuthError(null);
 
-    try {
-      const authData = await pb.collection('users').authWithPassword(email.trim(), password);
-      const authUser = normalizeAuthUser(authData.record as Record<string, unknown> | null);
+      try {
+        const authData = await pb.collection('users').authWithPassword(email.trim(), password);
+        const authUser = normalizeAuthUser(authData.record as Record<string, unknown> | null);
 
-      if (!authUser) {
-        throw new Error('Authentication succeeded but user payload was invalid.');
-      }
+        if (!authUser) {
+          throw new Error('Authentication succeeded but user payload was invalid.');
+        }
 
-      if (!authUser.verified) {
-        pb.authStore.clear();
-        throw new Error(AUTH_EMAIL_UNVERIFIED_ERROR);
-      }
+        const nextState = resolveAuthenticationState(authUser);
+        setActualUser(nextState.actualUser);
+        setStatus(nextState.status);
+        setVerificationStatus(nextState.verificationStatus);
+        setVerificationGraceEndsAt(nextState.verificationGraceEndsAt);
+        setAuthError(null);
 
-      setActualUser(authUser);
-      setStatus('authenticated');
-      trackObservabilityEvent('LOGIN_SUCCESS', {
-        source: 'mobile_auth_shell',
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message === AUTH_EMAIL_UNVERIFIED_ERROR
-          ? 'Please verify your email to continue.'
+        trackObservabilityEvent('LOGIN_SUCCESS', {
+          source: 'mobile_auth_shell',
+        });
+      } catch (error) {
+        const message = isVerificationRequiredError(error)
+          ? AUTH_EMAIL_VERIFICATION_REQUIRED_MESSAGE
           : formatAuthErrorMessage(error, {
               environment: env.environment,
               isAdmin: actualUser?.isAdmin === true,
             });
-      setAuthError(message);
-      setStatus('unauthenticated');
-      setActualUser(null);
-      captureObservabilityError(error);
-      trackObservabilityEvent('LOGIN_FAILED', {
-        ...buildAuthErrorObservabilityProperties(error),
-        source: 'mobile_auth_shell',
-      });
-      throw error;
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [actualUser?.isAdmin]);
+
+        setAuthError(message);
+        setStatus('unauthenticated');
+        setActualUser(null);
+        setVerificationStatus('verified');
+        setVerificationGraceEndsAt(null);
+        captureObservabilityError(error);
+        trackObservabilityEvent('LOGIN_FAILED', {
+          ...buildAuthErrorObservabilityProperties(error),
+          source: 'mobile_auth_shell',
+        });
+        throw error;
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [actualUser?.isAdmin],
+  );
 
   const signOut = useCallback(async () => {
     pb.authStore.clear();
@@ -356,6 +496,8 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       logger.warn('[AuthProvider] Failed to clear role preview settings on sign-out:', error);
     });
     setStatus('unauthenticated');
+    setVerificationStatus('verified');
+    setVerificationGraceEndsAt(null);
     setAuthError(null);
     trackObservabilityEvent('LOGOUT', {
       source: 'mobile_auth_shell',
@@ -370,18 +512,22 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       actualUser,
       canUseRolePreview,
       rolePreviewSettings,
+      verificationStatus,
+      verificationGraceEndsAt,
       setRolePreviewSetting,
       resetRolePreviewSettings,
       isSubmitting,
       authError,
       signInWithPassword,
       signOut,
+      refreshAuthSession,
     }),
     [
       actualUser,
       authError,
       canUseRolePreview,
       isSubmitting,
+      refreshAuthSession,
       resetRolePreviewSettings,
       rolePreviewSettings,
       setRolePreviewSetting,
@@ -389,6 +535,8 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       signOut,
       status,
       user,
+      verificationGraceEndsAt,
+      verificationStatus,
     ],
   );
 

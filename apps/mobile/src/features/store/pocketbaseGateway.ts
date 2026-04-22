@@ -283,6 +283,21 @@ export async function requestUserPasswordReset(email: string): Promise<void> {
   }
 }
 
+export async function requestUserEmailVerification(email: string): Promise<void> {
+  try {
+    await pb.collection('users').requestVerification(email);
+    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_REQUEST_SUCCEEDED', {
+      source: 'pocketbaseGateway',
+    });
+  } catch (error) {
+    trackObservabilityEvent('AUTH_EMAIL_VERIFICATION_REQUEST_FAILED', {
+      source: 'pocketbaseGateway',
+      ...resolveErrorProperties(error),
+    });
+    throw error;
+  }
+}
+
 export async function confirmUserPasswordReset(
   token: string,
   password: string,

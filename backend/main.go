@@ -50,6 +50,7 @@ func main() {
 	defer lib.CloseAnalytics()
 
 	app := pocketbase.New()
+	hooks.RegisterEmailVerificationHooks(app)
 
 	// Register migrations with automigrate enabled when running with `go run`
 	isGoRun := strings.HasPrefix(os.Args[0], os.TempDir())

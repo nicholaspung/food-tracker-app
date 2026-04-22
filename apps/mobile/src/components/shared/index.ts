@@ -5,6 +5,7 @@ export * from './BackHeaderScreenScaffold';
 export * from './ConfirmDestructiveModal';
 export * from './CurrentLocationButton';
 export * from './EmptyState';
+export * from './EmailVerificationGraceBanner';
 export * from './ErrorState';
 export * from './ExpandableText';
 export * from './FilterChipGroup';

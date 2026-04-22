@@ -3,6 +3,7 @@ export interface AuthUser {
   email: string;
   name?: string;
   friendCode?: string;
+  createdAt?: string;
   verified: boolean;
   isAdmin?: boolean;
   isSubscriber?: boolean;
@@ -26,6 +27,7 @@ export function normalizeAuthUser(record: Record<string, unknown> | null | undef
     email,
     name: typeof record.name === 'string' ? record.name : undefined,
     friendCode: typeof record.friendCode === 'string' ? record.friendCode : undefined,
+    createdAt: typeof record.created === 'string' ? record.created : undefined,
     verified: Boolean(record.verified),
     isAdmin: Boolean(record.isAdmin),
     isSubscriber: Boolean(record.isSubscriber),

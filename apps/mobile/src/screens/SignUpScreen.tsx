@@ -9,6 +9,7 @@ import { getErrorMessage } from '../lib/errorUtils';
 import { savePendingFriendSuggestion, type PendingFriendSuggestion } from '../lib/pendingFriendSuggestion';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useAuth } from '../providers/AuthProvider';
 import { createThemedStyles } from '../theme';
 import { Button, Card, Input, Screen, Text } from '../ui';
 import { PageErrorToast } from '../components/shared/PageErrorToast';
@@ -38,6 +39,7 @@ const useStyles = createThemedStyles((theme) => ({
 
 export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const isScreenshotReviewMode = env.isScreenshotReviewMode;
+  const { signInWithPassword } = useAuth();
   const prefilledInviteCode =
     route.params?.inviteCode?.trim() ?? route.params?.code?.trim() ?? '';
   const [name, setName] = useState('');
@@ -150,11 +152,20 @@ export function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         source: 'SignUpScreen',
         hasInviter: Boolean(pendingFriendSuggestion),
       });
-      navigation.navigate('VerifyEmail', {
-        email: trimmedEmail,
-        password,
-        source: 'sign_up',
-      });
+
+      try {
+        await signInWithPassword(trimmedEmail, password);
+      } catch (signInError) {
+        trackObservabilityEvent('AUTH_SIGNUP_POST_CREATE_SIGNIN_FAILED', {
+          source: 'SignUpScreen',
+          errorMessage: signInError instanceof Error ? signInError.message : String(signInError),
+        });
+        navigation.navigate('VerifyEmail', {
+          email: trimmedEmail,
+          password,
+          source: 'sign_up',
+        });
+      }
     } catch (error) {
       trackObservabilityEvent('AUTH_SIGNUP_SUBMIT_FAILED', {
         source: 'SignUpScreen',
