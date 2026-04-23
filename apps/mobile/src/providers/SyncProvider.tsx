@@ -5,6 +5,7 @@ import { getAuthRecord } from '../features';
 import { resolveEmailVerificationAccess } from '../lib/emailVerificationAccess';
 import { logger } from '../lib/logger';
 import { pb } from '../lib/pocketbase';
+import { authStore } from '../lib/pocketbaseAuthStore';
 import { syncEngine } from '../offline';
 import type { EnqueueMutationInput, QueuedMutation, SyncSnapshot } from '../offline';
 import { useConnectivity } from './ConnectivityProvider';
@@ -44,8 +45,8 @@ function shouldBlockReplayForEmailVerification(): boolean {
   );
 }
 
-function hasAuthenticatedSession(): boolean {
-  return Boolean(pb.authStore.token && pb.authStore.record?.id);
+function hasReplayableSession(): boolean {
+  return Boolean(pb.authStore.token && pb.authStore.isValid && pb.authStore.record?.id);
 }
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
@@ -67,13 +68,18 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    const authReadyPromise = authStore.waitUntilReady().catch((error) => {
+      logger.warn('[SyncProvider] Failed waiting for auth restore before startup replay:', error);
+    });
+
     void syncEngine
       .start()
+      .then(() => authReadyPromise)
       .then(() => {
         if (
           isMounted &&
           isOnlineRef.current &&
-          hasAuthenticatedSession() &&
+          hasReplayableSession() &&
           !shouldBlockReplayForEmailVerification()
         ) {
           return syncEngine.replay('foreground');
@@ -98,7 +104,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     wasOnlineRef.current = isOnline;
 
     if (!wasOnline && isOnline) {
-      if (hasAuthenticatedSession() && !shouldBlockReplayForEmailVerification()) {
+      if (hasReplayableSession() && !shouldBlockReplayForEmailVerification()) {
         void syncEngine.replay('reconnect');
       }
     }
@@ -109,7 +115,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       if (
         nextState === 'active' &&
         isOnline &&
-        hasAuthenticatedSession() &&
+        hasReplayableSession() &&
         !shouldBlockReplayForEmailVerification()
       ) {
         void syncEngine.replay('foreground');
@@ -124,7 +130,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const enqueueMutation = useCallback(
     async (input: EnqueueMutationInput): Promise<QueuedMutation> => {
       const mutation = await syncEngine.enqueue(input);
-      if (isOnline && hasAuthenticatedSession() && !shouldBlockReplayForEmailVerification()) {
+      if (isOnline && hasReplayableSession() && !shouldBlockReplayForEmailVerification()) {
         void syncEngine.replay('enqueue');
       }
 
@@ -135,7 +141,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   const retryAllFailed = useCallback(async (): Promise<number> => {
     const resetCount = await syncEngine.retryAllFailed();
-    if (isOnline && hasAuthenticatedSession() && !shouldBlockReplayForEmailVerification()) {
+    if (isOnline && hasReplayableSession() && !shouldBlockReplayForEmailVerification()) {
       void syncEngine.replay('manual');
     }
     return resetCount;
@@ -152,7 +158,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const replayNow = useCallback(async (): Promise<void> => {
-    if (!isOnline || !hasAuthenticatedSession() || shouldBlockReplayForEmailVerification()) {
+    if (!isOnline || !hasReplayableSession() || shouldBlockReplayForEmailVerification()) {
       return;
     }
 
