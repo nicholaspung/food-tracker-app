@@ -286,6 +286,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
   if (!user?.id) {
     return (
       <BackHeaderScreenScaffold
+        headerScrollMode="fixed"
         onBackPress={() => {
           navigation.navigate('Profile');
         }}
@@ -306,6 +307,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   return (
     <BackHeaderScreenScaffold
+      headerScrollMode="fixed"
       onBackPress={() => {
         navigation.navigate('Profile');
       }}

@@ -12,6 +12,9 @@ const TEST_THEME = {
       muted: 'muted-background',
       surface: 'surface-background',
     },
+    text: {
+      brand: 'brand-text',
+    },
   },
   spacing: {
     md: 16,
@@ -21,12 +24,22 @@ const TEST_THEME = {
 } as const;
 
 jest.mock('react-native', () => ({
+  Platform: {
+    OS: 'ios',
+  },
+  RefreshControl: (props: Record<string, unknown>) => mockReact.createElement('RefreshControl', props),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
   useWindowDimensions: () => ({
     height: 640,
     width: 360,
   }),
+}));
+
+jest.mock('react-native-keyboard-controller', () => ({
+  KeyboardAwareScrollView: (
+    { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+  ) => mockReact.createElement('KeyboardAwareScrollView', props, children),
 }));
 
 jest.mock('../theme', () => ({
@@ -47,6 +60,21 @@ jest.mock('../ui', () => ({
 jest.mock('../components/shared/ScreenHeader', () => ({
   ScreenHeader: (props: Record<string, unknown>) => mockReact.createElement('ScreenHeader', props),
 }));
+
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (!style || typeof style !== 'object') {
+    return {};
+  }
+
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (accumulator, entry) => ({ ...accumulator, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style as Record<string, unknown>;
+}
 
 function triggerHeaderLayout(renderer: any, height: number) {
   const headerWrapper = renderer.root.find(
@@ -74,6 +102,7 @@ function renderScaffold(props: Partial<React.ComponentProps<typeof BackHeaderScr
   return create(
     <BackHeaderScreenScaffold
       onBackPress={() => {}}
+      testID="example-screen"
       title="Example"
       {...props}
     >
@@ -83,7 +112,7 @@ function renderScaffold(props: Partial<React.ComponentProps<typeof BackHeaderScr
 }
 
 describe('BackHeaderScreenScaffold', () => {
-  it('uses the measured header height for the default overscroll split', async () => {
+  it('keeps the default attached scroll behavior for screens that do not opt in', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -95,25 +124,70 @@ describe('BackHeaderScreenScaffold', () => {
     const screen = renderer.root.findByType('Screen');
 
     expect(screen.props.background).toBe('surface');
+    expect(flattenStyle(screen.props.contentStyle)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+      }),
+    );
+    expect(screen.props.scroll).toBe(true);
     expect(screen.props.scrollUnderlayColor).toBe('app-background');
     expect(screen.props.scrollUnderlayTopInset).toBe(96);
   });
 
-  it('keeps the measured-header split when the content tone is muted', async () => {
+  it('supports fixed-header scrolling for targeted screens', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = renderScaffold({
+        headerScrollMode: 'fixed',
+      });
+    });
+
+    const screen = renderer.root.findByType('Screen');
+    const scrollView = renderer.root.findByType('KeyboardAwareScrollView');
+
+    expect(screen.props.scroll).toBe(false);
+    expect(flattenStyle(screen.props.contentStyle)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'surface-background',
+      }),
+    );
+    expect(flattenStyle(scrollView.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+        flex: 1,
+      }),
+    );
+    expect(flattenStyle(scrollView.props.contentContainerStyle)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+        flexGrow: 1,
+      }),
+    );
+  });
+
+  it('keeps the body tone when fixed-header mode is used with muted content', async () => {
     let renderer: any = null;
 
     await act(async () => {
       renderer = renderScaffold({
         contentBackgroundTone: 'muted',
+        headerScrollMode: 'fixed',
       });
     });
 
-    triggerHeaderLayout(renderer, 88);
+    const scrollView = renderer.root.findByType('KeyboardAwareScrollView');
 
-    const screen = renderer.root.findByType('Screen');
-
-    expect(screen.props.scrollUnderlayColor).toBe('muted-background');
-    expect(screen.props.scrollUnderlayTopInset).toBe(88);
+    expect(flattenStyle(scrollView.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'muted-background',
+      }),
+    );
+    expect(flattenStyle(scrollView.props.contentContainerStyle)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'muted-background',
+      }),
+    );
   });
 
   it('supports opting back into the legacy midpoint overscroll split', async () => {
@@ -129,6 +203,12 @@ describe('BackHeaderScreenScaffold', () => {
 
     const screen = renderer.root.findByType('Screen');
 
+    expect(flattenStyle(screen.props.contentStyle)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+      }),
+    );
+    expect(screen.props.scroll).toBe(true);
     expect(screen.props.scrollUnderlayTopInset).toBe(320);
   });
 });

@@ -39,6 +39,7 @@ export function AboutScreen({ navigation }: AboutScreenProps) {
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
+      headerScrollMode="fixed"
       onBackPress={handleBackPress}
       subtitle="Version details, legal pages, and app information"
       testID="about-screen"

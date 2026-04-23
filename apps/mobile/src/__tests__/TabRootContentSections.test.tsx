@@ -20,8 +20,16 @@ jest.mock('react-native', () => ({
   Share: {
     share: jest.fn(),
   },
+  ScrollView: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
+    mockReact.createElement('ScrollView', props, children),
   View: ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) =>
     mockReact.createElement('View', props, children),
+}));
+
+jest.mock('react-native-keyboard-controller', () => ({
+  KeyboardAwareScrollView: (
+    { children, ...props }: Record<string, unknown> & { children?: React.ReactNode },
+  ) => mockReact.createElement('KeyboardAwareScrollView', props, children),
 }));
 
 jest.mock('@tanstack/react-query', () => ({
@@ -222,26 +230,19 @@ function renderWithNavigation(element: React.ReactElement) {
   return create(element);
 }
 
-function triggerHeaderMeasurement(renderer: any, height: number) {
-  const headerWrapper = renderer.root.find(
-    (node: any) =>
-      node.type === 'View' &&
-      typeof node.props.onLayout === 'function' &&
-      node.findAllByType('TabBrandHeader').length > 0,
-  );
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (!style || typeof style !== 'object') {
+    return {};
+  }
 
-  act(() => {
-    headerWrapper.props.onLayout({
-      nativeEvent: {
-        layout: {
-          height,
-          width: 360,
-          x: 0,
-          y: 0,
-        },
-      },
-    });
-  });
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (accumulator, entry) => ({ ...accumulator, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style as Record<string, unknown>;
 }
 
 describe('tab root content sections', () => {
@@ -275,7 +276,7 @@ describe('tab root content sections', () => {
     } as never);
   });
 
-  it('measures the Add tab header and keeps the body in its orange content section', async () => {
+  it('keeps the Add tab header fixed and scrolls the orange body section underneath it', async () => {
     let renderer: any = null;
 
     await act(async () => {
@@ -287,14 +288,19 @@ describe('tab root content sections', () => {
       );
     });
 
-    triggerHeaderMeasurement(renderer, 112);
-
     const scaffold = renderer.root.findByType('TabRootScreenScaffold');
-    expect(scaffold.props.scrollUnderlayTopInset).toBe(112);
+    const scrollView = renderer.root.findByType('ScrollView');
+    expect(scaffold.props.scroll).toBe(false);
+    expect(flattenStyle(scrollView.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+        flex: 1,
+      }),
+    );
     expect(renderer.root.findByProps({ testID: 'add-screen-content-section' })).toBeTruthy();
   });
 
-  it('measures the More tab header, keeps the underlay orange, and renders an explicit content section', async () => {
+  it('keeps the More tab header fixed and renders an orange scroll body', async () => {
     mockedUseAuth.mockReturnValue({
       user: {
         isAdmin: false,
@@ -312,15 +318,19 @@ describe('tab root content sections', () => {
       );
     });
 
-    triggerHeaderMeasurement(renderer, 104);
-
     const scaffold = renderer.root.findByType('TabRootScreenScaffold');
-    expect(scaffold.props.scrollUnderlayTopInset).toBe(104);
-    expect(scaffold.props.scrollUnderlayColor).toBe('app-background');
+    const scrollView = renderer.root.findByType('ScrollView');
+    expect(scaffold.props.scroll).toBe(false);
+    expect(flattenStyle(scrollView.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+        flex: 1,
+      }),
+    );
     expect(renderer.root.findByProps({ testID: 'misc-screen-content-section' })).toBeTruthy();
   });
 
-  it('measures the Profile tab header and wraps the body in an orange content section', async () => {
+  it('keeps the Profile tab header fixed and uses a keyboard-aware orange body scroller', async () => {
     mockedUseQuery.mockImplementation((options) => {
       const queryKey = JSON.stringify(options.queryKey);
 
@@ -366,10 +376,15 @@ describe('tab root content sections', () => {
       );
     });
 
-    triggerHeaderMeasurement(renderer, 126);
-
     const scaffold = renderer.root.findByType('TabRootScreenScaffold');
-    expect(scaffold.props.scrollUnderlayTopInset).toBe(126);
+    const scrollView = renderer.root.findByType('KeyboardAwareScrollView');
+    expect(scaffold.props.scroll).toBe(false);
+    expect(flattenStyle(scrollView.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'app-background',
+        flex: 1,
+      }),
+    );
     expect(renderer.root.findByProps({ testID: 'profile-screen-content-section' })).toBeTruthy();
   });
 });

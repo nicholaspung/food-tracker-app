@@ -1016,6 +1016,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
   return (
     <FeatureDetailScreenScaffold
       bodyStyle={styles.screenBody}
+      headerScrollMode="fixed"
       onBackPress={() => {
         navigation.navigate('AddVisit');
       }}

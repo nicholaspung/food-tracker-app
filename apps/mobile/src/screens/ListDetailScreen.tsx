@@ -1494,7 +1494,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   if (detailQuery.isLoading) {
     return (
-      <FeatureDetailScreenScaffold onBackPress={handleBack} title="List">
+      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={handleBack} title="List">
         <Skeleton height={20} />
         <Skeleton height={20} />
       </FeatureDetailScreenScaffold>
@@ -1503,7 +1503,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   if (hasBlockingListItemsError) {
     return (
-      <FeatureDetailScreenScaffold onBackPress={handleBack} title="List">
+      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={handleBack} title="List">
         <ErrorState
           description="Could not load list detail."
           onRetry={() => {
@@ -1517,7 +1517,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   if (!list) {
     return (
-      <FeatureDetailScreenScaffold onBackPress={handleBack} title="List">
+      <FeatureDetailScreenScaffold headerScrollMode="fixed" onBackPress={handleBack} title="List">
         <EmptyState
           actionLabel="Back to Lists"
           onAction={handleBack}
@@ -1529,6 +1529,7 @@ export function ListDetailScreen({ navigation, route }: ListDetailScreenProps) {
 
   return (
     <FeatureDetailScreenScaffold
+      headerScrollMode="fixed"
       onRefresh={handleRefresh}
       onBackPress={handleBack}
       refreshing={isPullRefreshing}

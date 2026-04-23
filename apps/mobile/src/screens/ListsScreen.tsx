@@ -840,6 +840,7 @@ export function ListsScreen({ navigation }: ListsScreenProps) {
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.screenBody}
+      headerScrollMode="fixed"
       keyboardAware
       onBackPress={() => {
         navigation.navigate('Misc');

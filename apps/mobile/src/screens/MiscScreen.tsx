@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import {
   OptionList,
@@ -82,12 +82,17 @@ const TIPS: TipItem[] = [
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.app,
+    backgroundColor: theme.colors.background.surface,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
+  bodyScroll: {
+    backgroundColor: theme.colors.background.app,
+    flex: 1,
+  },
   body: {
+    flexGrow: 1,
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
     paddingHorizontal: theme.spacing.md,
@@ -152,7 +157,6 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   const { user } = useAuth();
   const isAdmin = Boolean(user?.isAdmin);
   const [expandedTips, setExpandedTips] = useState(false);
-  const [topChromeHeight, setTopChromeHeight] = useState(0);
 
   const sectionColors = {
     cardBorder: theme.colors.border.subtle,
@@ -251,25 +255,24 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
+      keyboardAware={false}
+      scroll={false}
       scrollUnderlayColor={theme.colors.background.app}
-      scrollUnderlayTopInset={topChromeHeight}
       testID="misc-page"
     >
-      <View
-        onLayout={(event) => {
-          setTopChromeHeight(event.nativeEvent.layout.height);
-        }}
-      >
-        <TabBrandHeader
-          showBrand={false}
-          subtitle="Additional features and helpful tips"
-          title="More"
-          titleVariant="displayMd"
-        />
-      </View>
+      <TabBrandHeader
+        showBrand={false}
+        subtitle="Additional features and helpful tips"
+        title="More"
+        titleVariant="displayMd"
+      />
 
       <ScreenContentSection fill testID="misc-screen-content-section">
-        <View style={styles.body}>
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          style={styles.bodyScroll}
+        >
           <TabSectionCard
             description="Create and organize lists of your favorite restaurants"
             descriptionStyle={styles.sectionDescription}
@@ -389,7 +392,7 @@ export function MiscScreen({ navigation }: MiscScreenProps) {
               ) : null}
             </View>
           </TabSectionCard>
-        </View>
+        </ScrollView>
       </ScreenContentSection>
     </TabRootScreenScaffold>
   );

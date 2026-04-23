@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { Platform, RefreshControl, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useWindowDimensions } from 'react-native';
 
 import { createThemedStyles, useTheme } from '../../theme';
@@ -9,6 +10,7 @@ import { ScreenHeader } from './ScreenHeader';
 
 type ContentBackgroundTone = 'app' | 'surface' | 'muted';
 type OverscrollBackgroundStrategy = 'measured-header' | 'legacy-midpoint';
+type HeaderScrollMode = 'attached' | 'fixed';
 
 /**
  * Shared screen scaffold for any page that uses the custom header with a back button.
@@ -28,20 +30,32 @@ export interface BackHeaderScreenScaffoldProps {
   refreshing?: boolean;
   contentBackgroundTone?: ContentBackgroundTone;
   overscrollBackgroundStrategy?: OverscrollBackgroundStrategy;
+  headerScrollMode?: HeaderScrollMode;
   contentStyle?: StyleProp<ViewStyle>;
   bodyStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
   testID?: string;
 }
 
-const useStyles = createThemedStyles((theme, backgroundColor: string) => ({
+const useStyles = createThemedStyles((
+  theme,
+  screenContentBackgroundColor: string,
+  bodyBackgroundColor: string,
+  growBody: boolean,
+) => ({
   screenContent: {
-    backgroundColor,
+    backgroundColor: screenContentBackgroundColor,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
+  scrollBody: {
+    backgroundColor: bodyBackgroundColor,
+    flex: 1,
+  },
   body: {
+    backgroundColor: bodyBackgroundColor,
+    ...(growBody ? { flexGrow: 1 } : {}),
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
     paddingHorizontal: theme.spacing.md,
@@ -62,6 +76,7 @@ export function BackHeaderScreenScaffold({
   refreshing = false,
   contentBackgroundTone = 'app',
   overscrollBackgroundStrategy = 'measured-header',
+  headerScrollMode = 'attached',
   contentStyle,
   bodyStyle,
   children,
@@ -77,25 +92,30 @@ export function BackHeaderScreenScaffold({
       : contentBackgroundTone === 'surface'
         ? theme.colors.background.surface
         : theme.colors.background.muted;
+  const usesFixedHeaderScroll = scroll && headerScrollMode === 'fixed';
   const legacyMidpointInset = Math.max(220, Math.round(height / 2));
   const scrollUnderlayTopInset =
     overscrollBackgroundStrategy === 'legacy-midpoint'
       ? legacyMidpointInset
       : headerHeight;
-  const styles = useStyles(backgroundColor);
+  const styles = useStyles(
+    usesFixedHeaderScroll ? theme.colors.background.surface : backgroundColor,
+    backgroundColor,
+    usesFixedHeaderScroll,
+  );
 
   return (
     <Screen
       background={scroll ? 'surface' : contentBackgroundTone === 'app' ? 'app' : 'surface'}
       contentStyle={[styles.screenContent, contentStyle]}
       edges={['top']}
-      keyboardAware={keyboardAware}
-      onRefresh={onRefresh}
+      keyboardAware={usesFixedHeaderScroll ? false : keyboardAware}
+      onRefresh={usesFixedHeaderScroll ? undefined : onRefresh}
       padded={false}
-      refreshing={refreshing}
-      scroll={scroll}
-      scrollUnderlayColor={scroll ? backgroundColor : undefined}
-      scrollUnderlayTopInset={scroll ? scrollUnderlayTopInset : undefined}
+      refreshing={usesFixedHeaderScroll ? false : refreshing}
+      scroll={usesFixedHeaderScroll ? false : scroll}
+      scrollUnderlayColor={usesFixedHeaderScroll ? undefined : scroll ? backgroundColor : undefined}
+      scrollUnderlayTopInset={usesFixedHeaderScroll ? undefined : scroll ? scrollUnderlayTopInset : undefined}
       testID={testID}
     >
       <View
@@ -116,7 +136,32 @@ export function BackHeaderScreenScaffold({
           variant={headerVariant}
         />
       </View>
-      <View style={[styles.body, bodyStyle]}>{children}</View>
+      {usesFixedHeaderScroll ? (
+        <KeyboardAwareScrollView
+          automaticallyAdjustKeyboardInsets={false}
+          bottomOffset={theme.spacing.sm}
+          contentContainerStyle={[styles.body, bodyStyle]}
+          enabled={keyboardAware}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                colors={[theme.colors.text.brand]}
+                onRefresh={onRefresh}
+                progressBackgroundColor={theme.colors.background.surface}
+                refreshing={refreshing}
+                tintColor={theme.colors.text.brand}
+              />
+            ) : undefined
+          }
+          style={styles.scrollBody}
+        >
+          {children}
+        </KeyboardAwareScrollView>
+      ) : (
+        <View style={[styles.body, bodyStyle]}>{children}</View>
+      )}
     </Screen>
   );
 }

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import {
   ActivityIndicator,
   Pressable,
@@ -52,13 +53,17 @@ const INVITE_SIGNUP_DEEP_LINK_PREFIX = 'yummyrecs://signup?code=';
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.app,
+    backgroundColor: theme.colors.background.surface,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
-  body: {
+  bodyScroll: {
+    backgroundColor: theme.colors.background.app,
     flex: 1,
+  },
+  body: {
+    flexGrow: 1,
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
     paddingHorizontal: theme.spacing.md,
@@ -254,7 +259,6 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isEditingAccountName, setIsEditingAccountName] = useState(false);
   const [editedAccountName, setEditedAccountName] = useState("");
-  const [topChromeHeight, setTopChromeHeight] = useState(0);
   const [accountNameErrorMessage, setAccountNameErrorMessage] = useState<
     string | null
   >(null);
@@ -568,20 +572,22 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
+      keyboardAware={false}
+      scroll={false}
       scrollUnderlayColor={theme.colors.background.app}
-      scrollUnderlayTopInset={topChromeHeight}
       testID="profile-screen"
     >
-      <View
-        onLayout={(event) => {
-          setTopChromeHeight(event.nativeEvent.layout.height);
-        }}
-      >
-        <TabBrandHeader subtitle="Your account information" title="Profile" />
-      </View>
+      <TabBrandHeader subtitle="Your account information" title="Profile" />
 
       <ScreenContentSection fill testID="profile-screen-content-section">
-        <View style={styles.body}>
+        <KeyboardAwareScrollView
+          automaticallyAdjustKeyboardInsets={false}
+          bottomOffset={theme.spacing.sm}
+          contentContainerStyle={styles.body}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          style={styles.bodyScroll}
+        >
           <PageErrorToast
             actionLabel="Retry"
             errorMessage={
@@ -985,7 +991,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
             testID="profile-logout-button"
             variant="secondary"
           />
-        </View>
+        </KeyboardAwareScrollView>
       </ScreenContentSection>
 
       <ConfirmDestructiveModal

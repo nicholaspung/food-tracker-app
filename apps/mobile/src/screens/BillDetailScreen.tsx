@@ -549,6 +549,7 @@ export function BillDetailScreen({ navigation, route }: BillDetailScreenProps) {
 
   return (
     <FeatureDetailScreenScaffold
+      headerScrollMode="fixed"
       keyboardAware
       onRefresh={handleRefresh}
       onBackPress={() => {

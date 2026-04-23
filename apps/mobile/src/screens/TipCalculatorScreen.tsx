@@ -106,6 +106,7 @@ export function TipCalculatorScreen({ navigation }: TipCalculatorScreenProps) {
 
   return (
     <BackHeaderScreenScaffold
+      headerScrollMode="fixed"
       keyboardAware
       onBackPress={() => {
         if (navigation.canGoBack()) {

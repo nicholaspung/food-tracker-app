@@ -51,6 +51,7 @@ export function StaticContentSectionsScreen({
   return (
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
+      headerScrollMode="fixed"
       onBackPress={onBackPress}
       subtitle={subtitle}
       testID={testID}

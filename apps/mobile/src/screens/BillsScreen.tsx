@@ -115,6 +115,7 @@ export function BillsScreen({ navigation }: BillsScreenProps) {
 
   return (
     <BackHeaderScreenScaffold
+      headerScrollMode="fixed"
       onRefresh={handleRefresh}
       onBackPress={() => {
         if (navigation.canGoBack()) {

@@ -101,6 +101,7 @@ export function FeedbackScreen({ navigation }: FeedbackScreenProps) {
     <BackHeaderScreenScaffold
       bodyStyle={styles.body}
       contentBackgroundTone="app"
+      headerScrollMode="fixed"
       keyboardAware
       onRefresh={handleRefresh}
       onBackPress={handleBackToProfile}

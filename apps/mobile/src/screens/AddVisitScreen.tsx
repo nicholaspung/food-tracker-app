@@ -1,7 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { ScrollView } from 'react-native';
 
 import { AddOptionCard } from '../components/add';
 import { ScreenContentSection, TabBrandHeader, TabRootScreenScaffold } from '../components/shared';
@@ -23,13 +22,17 @@ interface AddOptionConfig {
 
 const useStyles = createThemedStyles((theme) => ({
   screenContent: {
-    backgroundColor: theme.colors.background.app,
+    backgroundColor: theme.colors.background.surface,
     gap: 0,
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
-  body: {
+  bodyScroll: {
+    backgroundColor: theme.colors.background.app,
     flex: 1,
+  },
+  body: {
+    flexGrow: 1,
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
     paddingHorizontal: theme.spacing.md,
@@ -40,7 +43,6 @@ const useStyles = createThemedStyles((theme) => ({
 export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   const theme = useTheme();
   const styles = useStyles();
-  const [topChromeHeight, setTopChromeHeight] = useState(0);
 
   const optionColors = {
     restaurant: theme.colors.text.info,
@@ -142,25 +144,24 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
   return (
     <TabRootScreenScaffold
       contentStyle={styles.screenContent}
+      keyboardAware={false}
+      scroll={false}
       scrollUnderlayColor={theme.colors.background.app}
-      scrollUnderlayTopInset={topChromeHeight}
       testID="add-visit-selector"
     >
-      <View
-        onLayout={(event) => {
-          setTopChromeHeight(event.nativeEvent.layout.height);
-        }}
-      >
-        <TabBrandHeader
-          showBrand={false}
-          subtitle="Choose how you want to track your food"
-          title="Add New"
-          titleVariant="displayMd"
-        />
-      </View>
+      <TabBrandHeader
+        showBrand={false}
+        subtitle="Choose how you want to track your food"
+        title="Add New"
+        titleVariant="displayMd"
+      />
 
       <ScreenContentSection fill testID="add-screen-content-section">
-        <View style={styles.body}>
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          style={styles.bodyScroll}
+        >
           {options.map((option) => (
             <AddOptionCard
               description={option.description}
@@ -175,7 +176,7 @@ export function AddVisitScreen({ navigation }: AddVisitScreenProps) {
               title={option.title}
             />
           ))}
-        </View>
+        </ScrollView>
       </ScreenContentSection>
     </TabRootScreenScaffold>
   );
