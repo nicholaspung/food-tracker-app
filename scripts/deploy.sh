@@ -901,6 +901,40 @@ pocketbase_domain_health_check() {
     return 1
 }
 
+probe_static_site_root() {
+    local domain="$1"
+    local headers_file="$2"
+    local body_file="$3"
+    local error_file="$4"
+
+    curl -k -f -s -S -L \
+        --connect-timeout 3 \
+        --max-time 10 \
+        --dump-header "$headers_file" \
+        --output "$body_file" \
+        --resolve "$domain:80:127.0.0.1" \
+        --resolve "$domain:443:127.0.0.1" \
+        "http://$domain/" > /dev/null 2>"$error_file"
+}
+
+response_content_type() {
+    local headers_file="$1"
+
+    grep -i '^content-type:' "$headers_file" | tail -n 1 | cut -d ':' -f 2- | sed 's/^[[:space:]]*//; s/\r$//' | tr '[:upper:]' '[:lower:]'
+}
+
+body_looks_like_html() {
+    local body_file="$1"
+
+    grep -qiE '<!doctype html>|<html[[:space:]>]' "$body_file"
+}
+
+response_preview() {
+    local body_file="$1"
+
+    LC_ALL=C head -c 200 "$body_file" | tr '\r\n' '  '
+}
+
 health_check_static_site() {
     local site_key="$1"
     local domain
@@ -972,21 +1006,39 @@ smoke_test() {
     local site_key
     for site_key in $(site_keys); do
         local domain
-        local html_response
+        local headers_file
+        local body_file
+        local error_file
+        local content_type
+        local preview
         domain=$(site_domain "$site_key")
+        headers_file=$(mktemp)
+        body_file=$(mktemp)
+        error_file=$(mktemp)
 
-        if ! html_response=$(curl -k -f -s -L \
-            --resolve "$domain:80:127.0.0.1" \
-            --resolve "$domain:443:127.0.0.1" \
-            "http://$domain/"); then
+        if ! probe_static_site_root "$domain" "$headers_file" "$body_file" "$error_file"; then
+            local curl_error
+            curl_error=$(tr '\r\n' ' ' < "$error_file" | sed 's/[[:space:]]\+/ /g')
+            rm -f "$headers_file" "$body_file" "$error_file"
             error "Smoke test failed: $(site_label "$site_key") is not reachable for $domain"
+            if [ -n "$curl_error" ]; then
+                error "curl: $curl_error"
+            fi
             return 1
         fi
 
-        if ! printf '%s' "$html_response" | grep -qi "<!doctype html>"; then
-            error "Smoke test failed: $(site_label "$site_key") is not serving HTML for $domain"
+        content_type=$(response_content_type "$headers_file")
+        if ! body_looks_like_html "$body_file" && [[ "$content_type" != text/html* && "$content_type" != application/xhtml+xml* ]]; then
+            preview=$(response_preview "$body_file")
+            rm -f "$headers_file" "$body_file" "$error_file"
+            error "Smoke test failed: $(site_label "$site_key") is not serving HTML for $domain (content-type: ${content_type:-unknown})"
+            if [ -n "$preview" ]; then
+                error "Response preview: $preview"
+            fi
             return 1
         fi
+
+        rm -f "$headers_file" "$body_file" "$error_file"
     done
 
     if ! pocketbase_domain_health_check "$POCKETBASE_DOMAIN"; then

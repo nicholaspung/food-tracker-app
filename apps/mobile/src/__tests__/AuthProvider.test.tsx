@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from '../providers/AuthProvider';
 import { useSync } from '../providers/SyncProvider';
 
 const mockAuthRefresh = jest.fn();
+const mockAuthWithPassword = jest.fn();
 const mockOnChange = jest.fn();
 const mockClear = jest.fn();
 const mockClearPersistedQueryCache = jest.fn();
@@ -65,6 +66,7 @@ jest.mock('../lib/pocketbase', () => ({
     },
     collection: () => ({
       authRefresh: mockAuthRefresh,
+      authWithPassword: mockAuthWithPassword,
     }),
   },
 }));
@@ -113,9 +115,10 @@ jest.mock('../providers/authErrorMessages', () => ({
 }));
 
 function AuthConsumer() {
-  const { signOut, status, verificationStatus } = useAuth();
+  const { signInWithPassword, signOut, status, verificationStatus } = useAuth();
 
   return React.createElement('AuthState', {
+    signInWithPassword,
     signOut,
     status,
     verificationStatus,
@@ -141,6 +144,7 @@ describe('AuthProvider', () => {
 
     authChangeListener = null;
     mockAuthRefresh.mockReset();
+    mockAuthWithPassword.mockReset();
     mockOnChange.mockReset();
     mockClear.mockReset();
     mockClearPersistedQueryCache.mockReset();
@@ -174,6 +178,20 @@ describe('AuthProvider', () => {
       mockAuthStoreState.record = record as typeof mockAuthStoreState.record;
       mockAuthStoreState.isValid = true;
       authChangeListener?.();
+    });
+    mockAuthWithPassword.mockImplementation(async (email: string) => {
+      const record = {
+        id: 'user_2',
+        email,
+        verified: true,
+        created: '2026-04-21T12:00:00.000Z',
+      };
+
+      mockSave('token_2', record);
+
+      return {
+        record,
+      };
     });
     mockClearPersistedQueryCache.mockResolvedValue(undefined);
     mockDiscardQueuedMutations.mockResolvedValue(0);
@@ -308,7 +326,34 @@ describe('AuthProvider', () => {
     expect(renderer.root.findByType('AuthState').props.status).toBe('unauthenticated');
   });
 
-  it('does not clear authenticated local state on the initial unauthenticated-to-authenticated bootstrap transition', async () => {
+  it('clears authenticated local state when bootstrap auth refresh falls back to unauthenticated', async () => {
+    mockAuthRefresh.mockRejectedValue(new Error('Unauthorized'));
+
+    let renderer: any;
+    await act(async () => {
+      renderer = create(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
+    expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
+    expect(mockDiscardQueuedMutations).toHaveBeenCalledWith('auth_change');
+    expect(mockClear).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByType('AuthState').props.status).toBe('unauthenticated');
+  });
+
+  it('clears authenticated local state when signing in after bootstrapping unauthenticated', async () => {
     mockAuthStoreState.token = '';
     mockAuthStoreState.record = null;
     mockAuthStoreState.isValid = false;
@@ -331,12 +376,7 @@ describe('AuthProvider', () => {
     mockDiscardQueuedMutations.mockClear();
 
     await act(async () => {
-      mockSave('token_2', {
-        id: 'user_2',
-        email: 'next@example.com',
-        verified: true,
-        created: '2026-04-21T12:00:00.000Z',
-      });
+      await renderer.root.findByType('AuthState').props.signInWithPassword('next@example.com', 'password');
       await Promise.resolve();
     });
 
@@ -344,9 +384,9 @@ describe('AuthProvider', () => {
       await Promise.resolve();
     });
 
-    expect(mockQueryClientClear).not.toHaveBeenCalled();
-    expect(mockClearPersistedQueryCache).not.toHaveBeenCalled();
-    expect(mockDiscardQueuedMutations).not.toHaveBeenCalled();
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
+    expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
+    expect(mockDiscardQueuedMutations).toHaveBeenCalledWith('auth_change');
     expect(renderer.root.findByType('AuthState').props.status).toBe('authenticated');
   });
 });

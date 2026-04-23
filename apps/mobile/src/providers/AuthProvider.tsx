@@ -1,5 +1,14 @@
 import { AppState, type AppStateStatus } from 'react-native';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { ClientResponseError, type RecordModel } from 'pocketbase';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -268,6 +277,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
     const bootstrap = async () => {
       const restoreStartedAt = Date.now();
       const hadPersistedToken = Boolean(pb.authStore.token);
+      let hadRestoredSession = false;
       let refreshFailed = false;
       trackObservabilityEvent('AUTH_SESSION_RESTORE_STARTED', {
         hadPersistedToken,
@@ -303,6 +313,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
         }
 
         await authStore.waitUntilReady();
+        hadRestoredSession = Boolean(pb.authStore.token);
         const loadedRolePreviewSettings = await loadRolePreviewSettings();
 
         if (isMounted) {
@@ -325,6 +336,10 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
           }
         }
 
+        if (hadRestoredSession && !getCurrentUser()) {
+          await resetAuthenticatedLocalState('auth_change');
+        }
+
         if (isMounted) {
           syncAuthSnapshot();
         }
@@ -337,6 +352,10 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
           source: 'AuthProvider',
         });
       } catch (error) {
+        if (hadRestoredSession || Boolean(pb.authStore.token)) {
+          await resetAuthenticatedLocalState('auth_change');
+        }
+
         trackObservabilityEvent('AUTH_SESSION_RESTORE_FAILED', {
           durationMs: Date.now() - restoreStartedAt,
           errorMessage: error instanceof Error ? error.message : String(error),
@@ -367,9 +386,9 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       isMounted = false;
       unsubscribe();
     };
-  }, [screenshotReviewBootstrap, syncAuthSnapshot]);
+  }, [resetAuthenticatedLocalState, screenshotReviewBootstrap, syncAuthSnapshot]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (status === 'bootstrapping') {
       return;
     }
@@ -382,7 +401,7 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
       return;
     }
 
-    if (previousAuthenticatedUserId && previousAuthenticatedUserId !== nextAuthenticatedUserId) {
+    if (previousAuthenticatedUserId !== nextAuthenticatedUserId) {
       if (suppressNextAuthBoundaryResetRef.current) {
         suppressNextAuthBoundaryResetRef.current = false;
       } else {
