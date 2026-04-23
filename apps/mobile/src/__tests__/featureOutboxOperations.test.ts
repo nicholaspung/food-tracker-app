@@ -1,0 +1,123 @@
+import {
+  replayFeatureOutboxMutation,
+} from '../features/store/featureOutboxOperations';
+import {
+  createVisit,
+} from '../features/store/featureStore';
+import type { QueuedMutation } from '../offline/types';
+
+jest.mock('../features/store/featureStore', () => ({
+  addRestaurantVisitRatingsToList: jest.fn(),
+  createBill: jest.fn(),
+  createDefaultRestaurantList: jest.fn(),
+  createFeedback: jest.fn(),
+  createFoodProduct: jest.fn(),
+  createNote: jest.fn(),
+  createRestaurantList: jest.fn(),
+  createVisit: jest.fn(),
+  deleteBill: jest.fn(),
+  deleteFoodProduct: jest.fn(),
+  deleteNote: jest.fn(),
+  deleteRestaurantList: jest.fn(),
+  deleteVisit: jest.fn(),
+  inviteFriend: jest.fn(),
+  markBillParticipantPaid: jest.fn(),
+  markFriendInviteAccepted: jest.fn(),
+  markNoteUsed: jest.fn(),
+  moveRestaurantListRestaurant: jest.fn(),
+  removeFriend: jest.fn(),
+  removeRestaurantListSourceRating: jest.fn(),
+  removeRestaurantListUserRating: jest.fn(),
+  saveRestaurantFoodItemToList: jest.fn(),
+  sendFeedbackMessage: jest.fn(),
+  updateBill: jest.fn(),
+  updateFoodProduct: jest.fn(),
+  updateNote: jest.fn(),
+  updateRestaurantList: jest.fn(),
+  updateVisit: jest.fn(),
+}));
+
+jest.mock('../features/store/pocketbaseGateway', () => ({
+  saveAuthRecord: jest.fn(),
+  updateCollectionRecord: jest.fn(),
+}));
+
+const mockedCreateVisit = createVisit as jest.MockedFunction<typeof createVisit>;
+
+function createQueuedMutation(overrides: Partial<QueuedMutation> = {}): QueuedMutation {
+  return {
+    id: 'mut_1',
+    method: 'POST',
+    url: 'local://feature/visit.create',
+    body: JSON.stringify({
+      restaurantName: 'Noodle House',
+      items: [
+        {
+          name: 'Spicy Wontons',
+          rating: 5,
+        },
+      ],
+    }),
+    headers: {
+      'X-Mobile-Write-Operation': 'visit.create',
+    },
+    status: 'pending',
+    idempotencyKey: 'idem_123',
+    attemptCount: 0,
+    maxAttempts: 5,
+    nextRetryAt: 0,
+    lastError: null,
+    createdAt: 1,
+    updatedAt: 1,
+    lastAttemptAt: null,
+    ...overrides,
+  };
+}
+
+describe('featureOutboxOperations', () => {
+  beforeEach(() => {
+    mockedCreateVisit.mockReset();
+  });
+
+  it('passes queued idempotency headers into replayed local feature writes', async () => {
+    mockedCreateVisit.mockResolvedValue({
+      id: 'visit-1',
+      restaurantName: 'Noodle House',
+      visitedAt: '2026-04-23T18:00:00.000Z',
+      items: [],
+      source: 'visit',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      updatedAt: '2026-04-23T18:00:00.000Z',
+    } as Awaited<ReturnType<typeof createVisit>>);
+
+    const handled = await replayFeatureOutboxMutation(
+      createQueuedMutation({
+        headers: {
+          'X-Custom-Header': 'custom-value',
+          'X-Mobile-Write-Operation': 'visit.create',
+        },
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(mockedCreateVisit).toHaveBeenCalledWith(
+      {
+        restaurantName: 'Noodle House',
+        items: [
+          {
+            name: 'Spicy Wontons',
+            rating: 5,
+          },
+        ],
+      },
+      {
+        headers: {
+          'X-Custom-Header': 'custom-value',
+          'X-Mobile-Write-Operation': 'visit.create',
+          'Idempotency-Key': 'idem_123',
+          'X-Idempotency-Key': 'idem_123',
+        },
+      },
+    );
+  });
+});

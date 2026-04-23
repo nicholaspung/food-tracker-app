@@ -11,9 +11,11 @@ import type {
 import {
   createEmptyPaginatedResult,
   escapeFilterValue,
+  type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   mapPaginatedResult,
   nowIso,
+  resolveFeatureWriteHeaders,
   resolvePaginationInput,
   resolveExpandedUserName,
   trackFeatureMutation,
@@ -233,7 +235,10 @@ export async function getFeedbackThreadDetail(
   };
 }
 
-export async function createFeedback(input: CreateFeedbackInput): Promise<FeedbackRecord> {
+export async function createFeedback(
+  input: CreateFeedbackInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<FeedbackRecord> {
   return trackFeatureMutation(
     'feedback.create',
     async () => {
@@ -251,6 +256,7 @@ export async function createFeedback(input: CreateFeedbackInput): Promise<Feedba
         },
         {
           expand: 'user',
+          headers: resolveFeatureWriteHeaders(requestOptions),
         },
       );
 
@@ -297,7 +303,10 @@ export async function markFeedbackAsRead(feedbackId: string): Promise<FeedbackMa
   });
 }
 
-export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Promise<FeedbackReplyResult> {
+export async function sendFeedbackMessage(
+  input: SendFeedbackMessageInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<FeedbackReplyResult> {
   return trackFeatureMutation(
     'feedback.message.send',
     async () => {
@@ -311,6 +320,7 @@ export async function sendFeedbackMessage(input: SendFeedbackMessageInput): Prom
         `/api/feedback/${encodeURIComponent(input.feedbackId)}/reply`,
         {
           method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             message: trimmedMessage,
           },

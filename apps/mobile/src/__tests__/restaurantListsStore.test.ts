@@ -128,6 +128,7 @@ describe('restaurantListsStore.updateRestaurantList', () => {
       },
       {
         expand: 'user',
+        headers: undefined,
       },
     );
   });

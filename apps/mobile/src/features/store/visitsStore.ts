@@ -3,12 +3,14 @@ import { listCollectionRecords, sendApiRequest } from './pocketbaseGateway';
 import {
   buildOrFilter,
   deleteCollectionRecordsIgnoringNotFound,
+  type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
   normalizeModerationContentStatus,
   normalizeStoredVisibility,
   nowIso,
+  resolveFeatureWriteHeaders,
   trackFeatureMutation,
 } from './featureStoreShared';
 import type {
@@ -213,7 +215,10 @@ export async function listVisitItemPhotos(
   }, {});
 }
 
-export async function createVisit(input: CreateVisitInput): Promise<VisitRecord> {
+export async function createVisit(
+  input: CreateVisitInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<VisitRecord> {
   return trackFeatureMutation(
     'visit.create',
     async () => {
@@ -230,6 +235,7 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
 
       const createdVisit = await sendApiRequest<VisitRecord>('/api/visits', {
         method: 'POST',
+        headers: resolveFeatureWriteHeaders(requestOptions),
         body: {
           restaurantId: input.restaurantId?.trim() || undefined,
           restaurantName: trimmedRestaurantName,
@@ -257,6 +263,7 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
           currentUserId,
           item.photos ?? [],
           item.description || item.name,
+          requestOptions,
         );
       }
 
@@ -267,7 +274,7 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
             noteId: input.sourceNoteId,
             usedInVisitId: createdVisit.id,
             usedAt: noteUsedAt,
-          });
+          }, requestOptions);
         } catch {
           // Best effort only: visit create should still succeed if note linking fails.
         }
@@ -285,7 +292,11 @@ export async function createVisit(input: CreateVisitInput): Promise<VisitRecord>
   );
 }
 
-export async function updateVisit(visitId: string, updates: UpdateVisitInput): Promise<VisitRecord> {
+export async function updateVisit(
+  visitId: string,
+  updates: UpdateVisitInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<VisitRecord> {
   return trackFeatureMutation(
     'visit.update',
     async () => {
@@ -309,6 +320,7 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
         `/api/visits/${encodeURIComponent(visitId)}`,
         {
           method: 'PUT',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             restaurantId: updates.restaurantId?.trim() || undefined,
             restaurantName: updates.restaurantName?.trim(),
@@ -370,7 +382,11 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
       };
 
       for (const item of normalizedItems) {
-        await deleteCollectionRecordsIgnoringNotFound('visit_photos', item.deletePhotoIds);
+        await deleteCollectionRecordsIgnoringNotFound(
+          'visit_photos',
+          item.deletePhotoIds,
+          requestOptions,
+        );
 
         if (item.newPhotos.length === 0) {
           continue;
@@ -387,6 +403,7 @@ export async function updateVisit(visitId: string, updates: UpdateVisitInput): P
           currentUserId,
           item.newPhotos,
           item.description || item.name,
+          requestOptions,
         );
       }
 
@@ -446,10 +463,15 @@ export async function moveVisitItem(
   );
 }
 
-export async function deleteVisit(visitId: string): Promise<void> {
+export async function deleteVisit(
+  visitId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('visit.delete', async () => {
     try {
-      await pb.collection('visits').delete(visitId);
+      await pb.collection('visits').delete(visitId, {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      });
     } catch (error) {
       if (isNotFoundError(error)) {
         return;

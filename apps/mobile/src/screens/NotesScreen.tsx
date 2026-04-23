@@ -22,6 +22,7 @@ import {
   deleteNote,
   listNotePhotosForNote,
   listNotesOverviewPage,
+  removeCachedNote,
   type NoteOverviewItemRecord,
   type NotePhotoRecord,
   type NoteRecord,
@@ -573,6 +574,8 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
         },
         execute: () => deleteNote(pendingDeleteNote.id),
       });
+
+      removeCachedNote(queryClient, pendingDeleteNote.id);
 
       if (deleteResult.status === 'queued') {
         await Promise.all([

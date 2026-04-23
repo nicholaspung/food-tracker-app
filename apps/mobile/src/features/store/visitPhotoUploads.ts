@@ -2,6 +2,8 @@ import { ClientResponseError } from 'pocketbase';
 
 import { pb } from '../../lib/pocketbase';
 import type { VisitPhotoUploadInput } from './featureStore';
+import type { FeatureWriteRequestOptions } from './featureStoreShared';
+import { resolveFeatureWriteHeaders } from './featureStoreShared';
 
 function buildVisitPhotoFormData(
   visitId: string | undefined,
@@ -36,6 +38,7 @@ export async function uploadVisitPhotos(
   userId: string,
   photos: VisitPhotoUploadInput[],
   caption?: string,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<void> {
   if (photos.length === 0) {
     return;
@@ -44,7 +47,9 @@ export async function uploadVisitPhotos(
   for (const photo of photos) {
     const formData = buildVisitPhotoFormData(visitId, foodItemId, userId, photo, caption);
     try {
-      await pb.collection('visit_photos').create(formData);
+      await pb.collection('visit_photos').create(formData, {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      });
     } catch (error) {
       if (error instanceof ClientResponseError && error.status !== 429) {
         throw normalizeVisitPhotoUploadError(error, photo);

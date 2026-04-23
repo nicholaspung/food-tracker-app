@@ -81,6 +81,8 @@ describe('notesStore.markNoteUsed', () => {
       usedAt: '2026-04-21T18:00:00.000Z',
       usedInVisit: 'visit-1',
       usedInFoodItem: 'food-item-1',
+    }, {
+      headers: undefined,
     });
   });
 
@@ -109,6 +111,8 @@ describe('notesStore.markNoteUsed', () => {
     expect(notesCollection.update).toHaveBeenCalledWith('note-404', {
       status: 'used',
       usedAt: '2026-04-21T18:00:00.000Z',
+    }, {
+      headers: undefined,
     });
   });
 });

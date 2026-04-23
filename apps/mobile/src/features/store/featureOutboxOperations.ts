@@ -3,6 +3,7 @@ import type { RecordModel } from 'pocketbase';
 import { env } from '../../config/env';
 import type { EnqueueMutationInput, QueuedMutation } from '../../offline/types';
 import { saveAuthRecord, updateCollectionRecord } from './pocketbaseGateway';
+import type { FeatureWriteRequestOptions } from './featureStoreShared';
 import type { BillParticipantRecord, BillRecord } from '../models';
 import {
   addRestaurantVisitRatingsToList,
@@ -343,6 +344,7 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
   }
 
   const payload = parseMutationPayload(mutation.body);
+  const requestOptions = createReplayFeatureWriteRequestOptions(mutation);
 
   switch (operationName) {
     case 'settings.visibility.save': {
@@ -355,115 +357,137 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
           defaultRestaurantVisibility: settingsPayload.defaultRestaurantVisibility,
           defaultVisitVisibility: settingsPayload.defaultVisitVisibility,
         },
+        {
+          headers: requestOptions.headers,
+        },
       );
       saveAuthRecord(updatedRecord);
       return true;
     }
     case 'visit.create':
-      await createVisit(payload as CreateVisitInput);
+      await createVisit(payload as CreateVisitInput, requestOptions);
       return true;
     case 'visit.update': {
       const visitUpdatePayload = payload as VisitUpdateOperationPayload;
-      await updateVisit(visitUpdatePayload.visitId, visitUpdatePayload.updates);
+      await updateVisit(visitUpdatePayload.visitId, visitUpdatePayload.updates, requestOptions);
       return true;
     }
     case 'visit.delete': {
       const visitDeletePayload = payload as VisitDeleteOperationPayload;
-      await deleteVisit(visitDeletePayload.visitId);
+      await deleteVisit(visitDeletePayload.visitId, requestOptions);
       return true;
     }
     case 'food-product.create':
-      await createFoodProduct(payload as CreateFoodProductInput);
+      await createFoodProduct(payload as CreateFoodProductInput, requestOptions);
       return true;
     case 'food-product.update': {
       const foodProductUpdatePayload = payload as FoodProductUpdateOperationPayload;
-      await updateFoodProduct(foodProductUpdatePayload.foodProductId, foodProductUpdatePayload.updates);
+      await updateFoodProduct(
+        foodProductUpdatePayload.foodProductId,
+        foodProductUpdatePayload.updates,
+        requestOptions,
+      );
       return true;
     }
     case 'food-product.delete': {
       const foodProductDeletePayload = payload as FoodProductDeleteOperationPayload;
-      await deleteFoodProduct(foodProductDeletePayload.foodProductId);
+      await deleteFoodProduct(foodProductDeletePayload.foodProductId, requestOptions);
       return true;
     }
     case 'note.create':
-      await createNote(payload as CreateNoteInput);
+      await createNote(payload as CreateNoteInput, requestOptions);
       return true;
     case 'note.update': {
       const noteUpdatePayload = payload as NoteUpdateOperationPayload;
-      await updateNote(noteUpdatePayload.noteId, noteUpdatePayload.updates);
+      await updateNote(noteUpdatePayload.noteId, noteUpdatePayload.updates, requestOptions);
       return true;
     }
     case 'note.delete': {
       const noteDeletePayload = payload as NoteDeleteOperationPayload;
-      await deleteNote(noteDeletePayload.noteId);
+      await deleteNote(noteDeletePayload.noteId, requestOptions);
       return true;
     }
     case 'note.mark-used':
-      await markNoteUsed(payload as NoteMarkUsedOperationPayload);
+      await markNoteUsed(payload as NoteMarkUsedOperationPayload, requestOptions);
       return true;
     case 'list.create':
-      await createRestaurantList(payload as CreateRestaurantListInput);
+      await createRestaurantList(payload as CreateRestaurantListInput, requestOptions);
       return true;
     case 'list.update': {
       const listUpdatePayload = payload as RestaurantListUpdateOperationPayload;
-      await updateRestaurantList(listUpdatePayload.listId, listUpdatePayload.updates);
+      await updateRestaurantList(
+        listUpdatePayload.listId,
+        listUpdatePayload.updates,
+        undefined,
+        requestOptions,
+      );
       return true;
     }
     case 'list.delete': {
       const listDeletePayload = payload as RestaurantListDeleteOperationPayload;
-      await deleteRestaurantList(listDeletePayload.listId);
+      await deleteRestaurantList(listDeletePayload.listId, requestOptions);
       return true;
     }
     case 'list.default.create':
-      await createDefaultRestaurantList();
+      await createDefaultRestaurantList(requestOptions);
       return true;
     case 'list.default.bookmark.save': {
       const saveToDefaultPayload = payload as SaveBookmarkToDefaultListOperationPayload;
-      const defaultList = await createDefaultRestaurantList();
+      const defaultList = await createDefaultRestaurantList(requestOptions);
       await saveRestaurantFoodItemToList({
         listId: defaultList.id,
         restaurantId: saveToDefaultPayload.restaurantId,
         foodItemId: saveToDefaultPayload.foodItemId,
         note: saveToDefaultPayload.note,
         sourceUserId: saveToDefaultPayload.sourceUserId,
-      });
+      }, requestOptions);
       return true;
     }
     case 'list.restaurant.add':
-      await addRestaurantVisitRatingsToList(payload as AddRestaurantVisitRatingsToListInput);
+      await addRestaurantVisitRatingsToList(
+        payload as AddRestaurantVisitRatingsToListInput,
+        requestOptions,
+      );
       return true;
     case 'list.restaurant.reorder':
-      await moveRestaurantListRestaurant(payload as MoveRestaurantListRestaurantInput);
+      await moveRestaurantListRestaurant(payload as MoveRestaurantListRestaurantInput, requestOptions);
       return true;
     case 'list.restaurant.remove.source':
-      await removeRestaurantListSourceRating(payload as RemoveRestaurantListSourceRatingInput);
+      await removeRestaurantListSourceRating(
+        payload as RemoveRestaurantListSourceRatingInput,
+        requestOptions,
+      );
       return true;
     case 'list.restaurant.remove.user': {
       const removeUserRatingPayload = payload as RemoveRestaurantListUserRatingOperationPayload;
-      await removeRestaurantListUserRating(removeUserRatingPayload.listId, removeUserRatingPayload.listItemId);
+      await removeRestaurantListUserRating(
+        removeUserRatingPayload.listId,
+        removeUserRatingPayload.listItemId,
+        requestOptions,
+      );
       return true;
     }
     case 'list.bookmark.save':
-      await saveRestaurantFoodItemToList(payload as SaveRestaurantFoodItemToListInput);
+      await saveRestaurantFoodItemToList(payload as SaveRestaurantFoodItemToListInput, requestOptions);
       return true;
     case 'bill.create':
-      await createBill(payload as CreateBillInput);
+      await createBill(payload as CreateBillInput, requestOptions);
       return true;
     case 'bill.update': {
       const billUpdatePayload = payload as BillUpdateOperationPayload;
-      await updateBill(billUpdatePayload.billId, billUpdatePayload.updates);
+      await updateBill(billUpdatePayload.billId, billUpdatePayload.updates, requestOptions);
       return true;
     }
     case 'bill.delete': {
       const billDeletePayload = payload as BillDeleteOperationPayload;
-      await deleteBill(billDeletePayload.billId);
+      await deleteBill(billDeletePayload.billId, requestOptions);
       return true;
     }
     case 'bill.status.toggle': {
       const billStatusPayload = payload as BillStatusToggleOperationPayload;
       await updateBill(billStatusPayload.billId, {
         status: billStatusPayload.status,
-      });
+      }, requestOptions);
       return true;
     }
     case 'bill.participant.toggle-paid': {
@@ -472,36 +496,37 @@ export async function replayFeatureOutboxMutation(mutation: QueuedMutation): Pro
         billParticipantPayload.billId,
         billParticipantPayload.participantId,
         billParticipantPayload.paidStatus,
+        requestOptions,
       );
       return true;
     }
     case 'feedback.create':
-      await createFeedback(payload as CreateFeedbackInput);
+      await createFeedback(payload as CreateFeedbackInput, requestOptions);
       return true;
     case 'feedback.message.send':
-      await sendFeedbackMessage(payload as SendFeedbackMessageInput);
+      await sendFeedbackMessage(payload as SendFeedbackMessageInput, requestOptions);
       return true;
     case 'friend.accept': {
       const friendAcceptPayload = payload as FriendAcceptOperationPayload;
-      await markFriendInviteAccepted(friendAcceptPayload.friendId);
+      await markFriendInviteAccepted(friendAcceptPayload.friendId, requestOptions);
       return true;
     }
     case 'friend.remove': {
       const friendRemovePayload = payload as FriendRemoveOperationPayload;
-      await removeFriend(friendRemovePayload.friendId);
+      await removeFriend(friendRemovePayload.friendId, requestOptions);
       return true;
     }
     case 'friend.request.send':
-      await inviteFriend(payload as InviteFriendInput);
+      await inviteFriend(payload as InviteFriendInput, requestOptions);
       return true;
     case 'friend.request.reject': {
       const friendRejectPayload = payload as FriendRemoveOperationPayload;
-      await removeFriend(friendRejectPayload.friendId);
+      await removeFriend(friendRejectPayload.friendId, requestOptions);
       return true;
     }
     case 'friend.request.cancel': {
       const friendCancelPayload = payload as FriendRemoveOperationPayload;
-      await removeFriend(friendCancelPayload.friendId);
+      await removeFriend(friendCancelPayload.friendId, requestOptions);
       return true;
     }
     default:
@@ -519,4 +544,16 @@ function parseMutationPayload(value: string | null): unknown {
   } catch {
     return {};
   }
+}
+
+function createReplayFeatureWriteRequestOptions(
+  mutation: QueuedMutation,
+): FeatureWriteRequestOptions {
+  return {
+    headers: {
+      ...mutation.headers,
+      'Idempotency-Key': mutation.idempotencyKey,
+      'X-Idempotency-Key': mutation.idempotencyKey,
+    },
+  };
 }

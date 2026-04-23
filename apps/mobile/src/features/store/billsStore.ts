@@ -6,7 +6,9 @@ import type {
   UpdateBillInput,
 } from './featureStore';
 import {
+  type FeatureWriteRequestOptions,
   isNotFoundError,
+  resolveFeatureWriteHeaders,
   trackFeatureMutation,
 } from './featureStoreShared';
 import { sendApiRequest } from './pocketbaseGateway';
@@ -234,7 +236,10 @@ export async function getBillById(
   }
 }
 
-export async function createBill(input: CreateBillInput): Promise<BillRecord> {
+export async function createBill(
+  input: CreateBillInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<BillRecord> {
   return trackFeatureMutation(
     'bill.create',
     async () => {
@@ -246,6 +251,7 @@ export async function createBill(input: CreateBillInput): Promise<BillRecord> {
 
       const response = await sendApiRequest<BillApiResponse>('/api/bills', {
         method: 'POST',
+        headers: resolveFeatureWriteHeaders(requestOptions),
         body: {
           title: trimmedTitle,
           restaurantName: input.restaurantName.trim(),
@@ -293,12 +299,17 @@ export async function createBill(input: CreateBillInput): Promise<BillRecord> {
   );
 }
 
-export async function updateBill(billId: string, updates: UpdateBillInput): Promise<BillRecord> {
+export async function updateBill(
+  billId: string,
+  updates: UpdateBillInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<BillRecord> {
   return trackFeatureMutation(
     'bill.update',
     async () => {
       const response = await sendApiRequest<BillApiResponse>(`/api/bills/${encodeURIComponent(billId)}`, {
         method: 'PUT',
+        headers: resolveFeatureWriteHeaders(requestOptions),
         body: {
           title: updates.title?.trim(),
           items: updates.items?.map((item) => ({
@@ -354,11 +365,15 @@ export async function updateBill(billId: string, updates: UpdateBillInput): Prom
   );
 }
 
-export async function deleteBill(billId: string): Promise<void> {
+export async function deleteBill(
+  billId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('bill.delete', async () => {
     try {
       await sendApiRequest(`/api/bills/${encodeURIComponent(billId)}`, {
         method: 'DELETE',
+        headers: resolveFeatureWriteHeaders(requestOptions),
       });
     } catch (error) {
       if (isNotFoundError(error)) {
@@ -373,6 +388,7 @@ export async function markBillParticipantPaid(
   billId: string,
   participantId: string,
   paidStatus: BillParticipantRecord['paidStatus'],
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<BillRecord> {
   return trackFeatureMutation(
     'bill.participant.mark_paid',
@@ -381,6 +397,7 @@ export async function markBillParticipantPaid(
         `/api/bills/${encodeURIComponent(billId)}/participants/${encodeURIComponent(participantId)}/paid-status`,
         {
           method: 'PATCH',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             paidStatus,
           },

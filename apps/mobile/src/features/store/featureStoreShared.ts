@@ -16,6 +16,10 @@ const DEFAULT_FEATURE_PAGE_SIZE = 20;
 type MutationPropertyValue = string | number | boolean | null | undefined;
 type MutationProperties = Record<string, MutationPropertyValue>;
 
+export interface FeatureWriteRequestOptions {
+  headers?: Record<string, string>;
+}
+
 function compactMutationProperties(
   properties: MutationProperties | undefined,
 ): Record<string, string | number | boolean | null> {
@@ -137,6 +141,7 @@ export function isNotFoundError(error: unknown): boolean {
 export async function deleteCollectionRecordsIgnoringNotFound(
   collectionName: string,
   recordIds: readonly string[],
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<void> {
   const normalizedRecordIds = Array.from(
     new Set(
@@ -150,7 +155,11 @@ export async function deleteCollectionRecordsIgnoringNotFound(
   }
 
   const deleteResults = await Promise.allSettled(
-    normalizedRecordIds.map((recordId) => pb.collection(collectionName).delete(recordId)),
+    normalizedRecordIds.map((recordId) =>
+      pb.collection(collectionName).delete(recordId, {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      }),
+    ),
   );
 
   for (const deleteResult of deleteResults) {
@@ -205,4 +214,18 @@ export function normalizeModerationContentStatus(value: unknown): ModerationCont
     default:
       return undefined;
   }
+}
+
+export function resolveFeatureWriteHeaders(
+  requestOptions?: FeatureWriteRequestOptions,
+): Record<string, string> | undefined {
+  if (!requestOptions?.headers) {
+    return undefined;
+  }
+
+  const normalizedHeaders = Object.fromEntries(
+    Object.entries(requestOptions.headers).filter(([, value]) => typeof value === 'string' && value.length > 0),
+  );
+
+  return Object.keys(normalizedHeaders).length > 0 ? normalizedHeaders : undefined;
 }

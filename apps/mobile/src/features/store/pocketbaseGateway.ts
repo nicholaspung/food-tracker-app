@@ -40,6 +40,7 @@ interface CollectionGetOptions extends PocketBaseRequestOptions {
 interface CollectionUpdateOptions extends PocketBaseRequestOptions {
   expand?: string;
   fields?: string;
+  headers?: Record<string, string>;
 }
 
 function sanitizeCollectionOptions<T extends Record<string, string | number | undefined>>(

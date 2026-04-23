@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
 import type { NoteDetailRecord, NoteOverviewItemRecord, NoteOverviewPage } from '../features/store/featureStore';
-import { promoteCachedNoteToUsed } from '../features/store/notesCache';
+import { promoteCachedNoteToUsed, removeCachedNote } from '../features/store/notesCache';
 import { notesQueryKeys } from '../features/store/notesQuery';
 
 function buildNote(
@@ -136,6 +136,89 @@ describe('notesCache', () => {
       allCount: 3,
       draftCount: 1,
       usedCount: 2,
+    });
+  });
+
+  it('removes a deleted note from cached detail, browse, and summary queries', () => {
+    const deletedNote = buildNote('note_1', 'draft', '2026-03-01T00:00:00.000Z', '2026-03-02T00:00:00.000Z');
+    const remainingNote = buildNote('note_2', 'draft', '2026-02-01T00:00:00.000Z', '2026-02-02T00:00:00.000Z');
+    const noteSearchKey = notesQueryKeys.paginated('all', 'note_1');
+
+    queryClient.setQueryData<NoteDetailRecord>(notesQueryKeys.detail('note_1'), {
+      note: deletedNote,
+      photos: [],
+    });
+    queryClient.setQueryData(notesQueryKeys.paginated('draft'), {
+      pages: [
+        buildNotesPage([deletedNote, remainingNote], {
+          summary: {
+            allCount: 2,
+            draftCount: 2,
+            usedCount: 0,
+          },
+          totalItems: 2,
+        }),
+      ],
+      pageParams: [1],
+    });
+    queryClient.setQueryData(noteSearchKey, {
+      pages: [
+        buildNotesPage([deletedNote], {
+          summary: {
+            allCount: 2,
+            draftCount: 2,
+            usedCount: 0,
+          },
+          totalItems: 1,
+        }),
+      ],
+      pageParams: [1],
+    });
+    queryClient.setQueryData(notesQueryKeys.summary, {
+      allCount: 2,
+      draftCount: 2,
+      usedCount: 0,
+    });
+
+    removeCachedNote(queryClient, 'note_1');
+
+    expect(queryClient.getQueryData(notesQueryKeys.detail('note_1'))).toBeUndefined();
+    expect(
+      queryClient.getQueryData<{
+        pages: NoteOverviewPage[];
+        pageParams: number[];
+      }>(notesQueryKeys.paginated('draft'))?.pages[0],
+    ).toEqual(
+      expect.objectContaining({
+        items: [remainingNote],
+        summary: {
+          allCount: 1,
+          draftCount: 1,
+          usedCount: 0,
+        },
+        totalItems: 1,
+      }),
+    );
+    expect(
+      queryClient.getQueryData<{
+        pages: NoteOverviewPage[];
+        pageParams: number[];
+      }>(noteSearchKey)?.pages[0],
+    ).toEqual(
+      expect.objectContaining({
+        items: [],
+        summary: {
+          allCount: 1,
+          draftCount: 1,
+          usedCount: 0,
+        },
+        totalItems: 0,
+      }),
+    );
+    expect(queryClient.getQueryData(notesQueryKeys.summary)).toEqual({
+      allCount: 1,
+      draftCount: 1,
+      usedCount: 0,
     });
   });
 });

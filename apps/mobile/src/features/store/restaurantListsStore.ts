@@ -22,8 +22,10 @@ import type {
 import {
   buildOrFilter,
   createEmptyPaginatedResult,
+  type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   isNotFoundError,
+  resolveFeatureWriteHeaders,
   resolvePaginationInput,
   resolveExpandedUserName,
   trackFeatureMutation,
@@ -619,19 +621,25 @@ export async function getRestaurantListCandidateRestaurants(
   }
 }
 
-export async function createDefaultRestaurantList(): Promise<RestaurantListRecord> {
+export async function createDefaultRestaurantList(
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<RestaurantListRecord> {
   return trackFeatureMutation('restaurant_list.default.create', async () => {
     getAuthenticatedUserId();
 
     const response = await sendApiRequest<RestaurantListDetailApiListRecord>('/api/restaurant-lists/default', {
       method: 'POST',
+      headers: resolveFeatureWriteHeaders(requestOptions),
     });
 
     return mapRestaurantListDetailApiListRecord(response);
   });
 }
 
-export async function createRestaurantList(input: CreateRestaurantListInput): Promise<RestaurantListRecord> {
+export async function createRestaurantList(
+  input: CreateRestaurantListInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<RestaurantListRecord> {
   return trackFeatureMutation(
     'restaurant_list.create',
     async () => {
@@ -651,6 +659,7 @@ export async function createRestaurantList(input: CreateRestaurantListInput): Pr
         },
         {
           expand: 'user',
+          headers: resolveFeatureWriteHeaders(requestOptions),
         },
       );
 
@@ -667,6 +676,7 @@ export async function updateRestaurantList(
   listId: string,
   updates: UpdateRestaurantListInput,
   currentList?: Pick<RestaurantListRecord, 'isDefault'> | null,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RestaurantListRecord> {
   return trackFeatureMutation(
     'restaurant_list.update',
@@ -698,6 +708,7 @@ export async function updateRestaurantList(
         Object.keys(payload).length > 0
           ? await pb.collection('restaurant_lists').update<RestaurantListCollectionRecord>(listId, payload, {
               expand: 'user',
+              headers: resolveFeatureWriteHeaders(requestOptions),
             })
           : await pb.collection('restaurant_lists').getOne<RestaurantListCollectionRecord>(listId, {
               expand: 'user',
@@ -713,12 +724,17 @@ export async function updateRestaurantList(
   );
 }
 
-export async function deleteRestaurantList(listId: string): Promise<void> {
+export async function deleteRestaurantList(
+  listId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('restaurant_list.delete', async () => {
     getAuthenticatedUserId();
 
     try {
-      await pb.collection('restaurant_lists').delete(listId);
+      await pb.collection('restaurant_lists').delete(listId, {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      });
     } catch (error) {
       if (isNotFoundError(error)) {
         return;
@@ -730,6 +746,7 @@ export async function deleteRestaurantList(listId: string): Promise<void> {
 
 export async function saveRestaurantFoodItemToList(
   input: SaveRestaurantFoodItemToListInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation(
     'restaurant_list.food_item.save',
@@ -757,6 +774,7 @@ export async function saveRestaurantFoodItemToList(
         `/api/restaurant-lists/${encodeURIComponent(listId)}/bookmarks`,
         {
           method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             restaurantId,
             foodItemId,
@@ -807,6 +825,7 @@ export async function linkVisitToListBookmark(
 
 export async function addRestaurantVisitRatingsToList(
   input: AddRestaurantVisitRatingsToListInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation(
     'restaurant_list.visit_ratings.add',
@@ -830,6 +849,7 @@ export async function addRestaurantVisitRatingsToList(
         `/api/restaurant-lists/${encodeURIComponent(listId)}/restaurants`,
         {
           method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             restaurantId,
             foodItemIds: uniqueRequestedFoodItemIds,
@@ -849,6 +869,7 @@ export async function addRestaurantVisitRatingsToList(
 
 export async function moveRestaurantListRestaurant(
   input: MoveRestaurantListRestaurantInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation(
     'restaurant_list.restaurant.move',
@@ -874,6 +895,7 @@ export async function moveRestaurantListRestaurant(
         `/api/restaurant-lists/${encodeURIComponent(listId)}/restaurants/reorder`,
         {
           method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             restaurantId,
             direction,
@@ -891,6 +913,7 @@ export async function moveRestaurantListRestaurant(
 
 export async function removeRestaurantListSourceRating(
   input: RemoveRestaurantListSourceRatingInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation('restaurant_list.source_rating.remove', async () => {
     getAuthenticatedUserId();
@@ -907,6 +930,7 @@ export async function removeRestaurantListSourceRating(
         `/api/restaurant-lists/${encodeURIComponent(listId)}/list-items/${encodeURIComponent(listItemId)}/remove-source-rating`,
         {
           method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
           body: {
             foodItemId,
           },
@@ -926,6 +950,7 @@ export async function removeRestaurantListSourceRating(
 export async function removeRestaurantListUserRating(
   listId: string,
   listItemId: string,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<RestaurantListItemRecord[]> {
   return trackFeatureMutation('restaurant_list.user_rating.remove', async () => {
     getAuthenticatedUserId();
@@ -941,6 +966,7 @@ export async function removeRestaurantListUserRating(
         `/api/restaurant-lists/${encodeURIComponent(trimmedListId)}/list-items/${encodeURIComponent(trimmedListItemId)}/remove-user-rating`,
         {
           method: 'POST',
+          headers: resolveFeatureWriteHeaders(requestOptions),
         },
       );
 

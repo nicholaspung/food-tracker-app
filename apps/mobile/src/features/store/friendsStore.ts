@@ -8,8 +8,10 @@ import type {
 } from './featureStore';
 import {
   createEmptyPaginatedResult,
+  type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   mapPaginatedResult,
+  resolveFeatureWriteHeaders,
   resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
@@ -179,7 +181,10 @@ export async function getFriendsCountSummary(options?: ReadRequestOptions): Prom
   });
 }
 
-export async function inviteFriend(input: InviteFriendInput): Promise<FriendRecord> {
+export async function inviteFriend(
+  input: InviteFriendInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<FriendRecord> {
   return trackFeatureMutation('friend.invite', async () => {
     const normalizedCode = input.code.trim().toUpperCase();
 
@@ -189,6 +194,7 @@ export async function inviteFriend(input: InviteFriendInput): Promise<FriendReco
 
     const response = await sendApiRequest<FriendListApiItem>('/api/friends/invite', {
       method: 'POST',
+      headers: resolveFeatureWriteHeaders(requestOptions),
       body: {
         code: normalizedCode,
       },
@@ -215,7 +221,10 @@ export async function createFriendSuggestionAcceptance(input: { inviterId: strin
   });
 }
 
-export async function markFriendInviteAccepted(friendId: string): Promise<FriendRecord> {
+export async function markFriendInviteAccepted(
+  friendId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<FriendRecord> {
   return trackFeatureMutation('friend.accept', async () => {
     const currentUserId = getAuthenticatedUserId();
     const updatedFriendship = await pb.collection('friendships').update<FriendshipRecord>(
@@ -225,6 +234,7 @@ export async function markFriendInviteAccepted(friendId: string): Promise<Friend
       },
       {
         expand: 'user,friend',
+        headers: resolveFeatureWriteHeaders(requestOptions),
       },
     );
 
@@ -237,9 +247,14 @@ export async function markFriendInviteAccepted(friendId: string): Promise<Friend
   });
 }
 
-export async function removeFriend(friendId: string): Promise<void> {
+export async function removeFriend(
+  friendId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('friend.remove', async () => {
     getAuthenticatedUserId();
-    await pb.collection('friendships').delete(friendId);
+    await pb.collection('friendships').delete(friendId, {
+      headers: resolveFeatureWriteHeaders(requestOptions),
+    });
   });
 }

@@ -9,12 +9,14 @@ import { markNoteUsed } from './notesStore';
 import {
   deleteCollectionRecordsIgnoringNotFound,
   buildOrFilter,
+  type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   getDefaultVisitVisibility,
   isNotFoundError,
   nowIso,
   normalizeModerationContentStatus,
   normalizeStoredVisibility,
+  resolveFeatureWriteHeaders,
   resolveExpandedUserName,
   trackFeatureMutation,
 } from './featureStoreShared';
@@ -160,7 +162,10 @@ export async function listFoodProductCategorySuggestions(
   return response.items ?? [];
 }
 
-export async function createFoodProduct(input: CreateFoodProductInput): Promise<FoodProductRecord> {
+export async function createFoodProduct(
+  input: CreateFoodProductInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<FoodProductRecord> {
   return trackFeatureMutation(
     'food_product.create',
     async () => {
@@ -192,10 +197,11 @@ export async function createFoodProduct(input: CreateFoodProductInput): Promise<
 
       const record = await pb.collection('food_items').create<FoodItemCollectionRecord>(payload, {
         expand: 'user,visit,visit.restaurant',
+        headers: resolveFeatureWriteHeaders(requestOptions),
       });
 
       if (input.photo) {
-        await uploadVisitPhotos(undefined, record.id, currentUserId, [input.photo]);
+        await uploadVisitPhotos(undefined, record.id, currentUserId, [input.photo], undefined, requestOptions);
       }
 
       if (input.sourceNoteId) {
@@ -205,7 +211,7 @@ export async function createFoodProduct(input: CreateFoodProductInput): Promise<
             noteId: input.sourceNoteId,
             usedInFoodItemId: record.id,
             usedAt: noteUsedAt,
-          });
+          }, requestOptions);
         } catch {
           // Best effort only: food product create should still succeed if note linking fails.
         }
@@ -230,6 +236,7 @@ export async function createFoodProduct(input: CreateFoodProductInput): Promise<
 export async function updateFoodProduct(
   foodProductId: string,
   updates: UpdateFoodProductInput,
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<FoodProductRecord> {
   return trackFeatureMutation(
     'food_product.update',
@@ -270,9 +277,14 @@ export async function updateFoodProduct(
       payload.latitude = null;
       payload.longitude = null;
 
-      const updatedRecord = await pb.collection('food_items').update<FoodItemCollectionRecord>(foodProductId, payload, {
-        expand: 'user,visit,visit.restaurant',
-      });
+      const updatedRecord = await pb.collection('food_items').update<FoodItemCollectionRecord>(
+        foodProductId,
+        payload,
+        {
+          expand: 'user,visit,visit.restaurant',
+          headers: resolveFeatureWriteHeaders(requestOptions),
+        },
+      );
 
       if (!isFoodProductCollectionRecord(updatedRecord)) {
         throw new Error('Food product record not found.');
@@ -280,10 +292,21 @@ export async function updateFoodProduct(
 
       if (updates.newPhoto) {
         const currentUserId = getAuthenticatedUserId();
-        await uploadVisitPhotos(undefined, foodProductId, currentUserId, [updates.newPhoto]);
+        await uploadVisitPhotos(
+          undefined,
+          foodProductId,
+          currentUserId,
+          [updates.newPhoto],
+          undefined,
+          requestOptions,
+        );
       }
 
-      await deleteCollectionRecordsIgnoringNotFound('visit_photos', updates.deletePhotoIds ?? []);
+      await deleteCollectionRecordsIgnoringNotFound(
+        'visit_photos',
+        updates.deletePhotoIds ?? [],
+        requestOptions,
+      );
 
       return mapFoodProductCollectionRecord(updatedRecord);
     },
@@ -301,10 +324,15 @@ export async function updateFoodProduct(
   );
 }
 
-export async function deleteFoodProduct(foodProductId: string): Promise<void> {
+export async function deleteFoodProduct(
+  foodProductId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('food_product.delete', async () => {
     try {
-      await pb.collection('food_items').delete(foodProductId);
+      await pb.collection('food_items').delete(foodProductId, {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      });
     } catch (error) {
       if (isNotFoundError(error)) {
         return;

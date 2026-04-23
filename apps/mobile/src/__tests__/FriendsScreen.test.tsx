@@ -166,6 +166,7 @@ jest.mock('../components/shared/PageErrorToast', () => ({
 }));
 
 jest.mock('../features', () => ({
+  acceptCachedFriendRequest: jest.fn(),
   evictFriendshipDependentQueries: jest.fn(),
   friendsQueryKeys: {
     paginated: jest.fn(() => ['feature', 'friends', 'paginated', 'friends']),
@@ -174,6 +175,7 @@ jest.mock('../features', () => ({
   hydrateFriendsSummaryFromPaginatedData: jest.fn(),
   listFriendsPage: jest.fn(),
   markFriendInviteAccepted: jest.fn(),
+  removeCachedFriend: jest.fn(),
   removeFriend: jest.fn(),
   selectFriendsSummary: jest.fn(() => ({
     friendsCount: 0,

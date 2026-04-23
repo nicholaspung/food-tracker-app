@@ -16,9 +16,11 @@ import {
   buildOrFilter,
   createEmptyPaginatedResult,
   deleteCollectionRecordsIgnoringNotFound,
+  type FeatureWriteRequestOptions,
   getAuthenticatedUserId,
   isNotFoundError,
   nowIso,
+  resolveFeatureWriteHeaders,
   resolvePaginationInput,
   trackFeatureMutation,
 } from './featureStoreShared';
@@ -209,6 +211,7 @@ async function uploadNotePhotos(
   noteId: string,
   userId: string,
   photos: NotePhotoUploadInput[],
+  requestOptions?: FeatureWriteRequestOptions,
 ): Promise<void> {
   if (photos.length === 0) {
     return;
@@ -216,7 +219,9 @@ async function uploadNotePhotos(
 
   for (const photo of photos) {
     const formData = buildNotePhotoFormData(noteId, userId, photo);
-    await pb.collection('note_photos').create(formData);
+    await pb.collection('note_photos').create(formData, {
+      headers: resolveFeatureWriteHeaders(requestOptions),
+    });
   }
 }
 
@@ -256,7 +261,10 @@ export async function getNoteDetail(
   }
 }
 
-export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
+export async function createNote(
+  input: CreateNoteInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<NoteRecord> {
   return trackFeatureMutation(
     'note.create',
     async () => {
@@ -280,10 +288,11 @@ export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
         payload,
         {
           expand: 'restaurant',
+          headers: resolveFeatureWriteHeaders(requestOptions),
         },
       );
 
-      await uploadNotePhotos(record.id, currentUserId, input.photos ?? []);
+      await uploadNotePhotos(record.id, currentUserId, input.photos ?? [], requestOptions);
 
       return mapNoteCollectionRecord(record);
     },
@@ -295,7 +304,11 @@ export async function createNote(input: CreateNoteInput): Promise<NoteRecord> {
   );
 }
 
-export async function updateNote(noteId: string, updates: UpdateNoteInput): Promise<NoteRecord> {
+export async function updateNote(
+  noteId: string,
+  updates: UpdateNoteInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<NoteRecord> {
   return trackFeatureMutation(
     'note.update',
     async () => {
@@ -318,18 +331,23 @@ export async function updateNote(noteId: string, updates: UpdateNoteInput): Prom
       payload.latitude = null;
       payload.longitude = null;
 
-      await deleteCollectionRecordsIgnoringNotFound('note_photos', updates.deletePhotoIds ?? []);
+      await deleteCollectionRecordsIgnoringNotFound(
+        'note_photos',
+        updates.deletePhotoIds ?? [],
+        requestOptions,
+      );
 
       const record =
         Object.keys(payload).length > 0
           ? await pb.collection('notes').update<NoteCollectionRecord>(noteId, payload, {
               expand: 'restaurant',
+              headers: resolveFeatureWriteHeaders(requestOptions),
             })
           : await pb.collection('notes').getOne<NoteCollectionRecord>(noteId, {
               expand: 'restaurant',
             });
 
-      await uploadNotePhotos(noteId, currentUserId, updates.newPhotos ?? []);
+      await uploadNotePhotos(noteId, currentUserId, updates.newPhotos ?? [], requestOptions);
 
       return mapNoteCollectionRecord(record);
     },
@@ -343,10 +361,15 @@ export async function updateNote(noteId: string, updates: UpdateNoteInput): Prom
   );
 }
 
-export async function deleteNote(noteId: string): Promise<void> {
+export async function deleteNote(
+  noteId: string,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   return trackFeatureMutation('note.delete', async () => {
     try {
-      await pb.collection('notes').delete(noteId);
+      await pb.collection('notes').delete(noteId, {
+        headers: resolveFeatureWriteHeaders(requestOptions),
+      });
     } catch (error) {
       if (isNotFoundError(error)) {
         return;
@@ -356,7 +379,10 @@ export async function deleteNote(noteId: string): Promise<void> {
   });
 }
 
-export async function markNoteUsed(input: MarkNoteUsedInput): Promise<void> {
+export async function markNoteUsed(
+  input: MarkNoteUsedInput,
+  requestOptions?: FeatureWriteRequestOptions,
+): Promise<void> {
   const trimmedNoteId = input.noteId.trim();
   if (!trimmedNoteId) {
     throw new Error('Note id is required.');
@@ -382,7 +408,9 @@ export async function markNoteUsed(input: MarkNoteUsedInput): Promise<void> {
       }
 
       try {
-        await pb.collection('notes').update(trimmedNoteId, payload);
+        await pb.collection('notes').update(trimmedNoteId, payload, {
+          headers: resolveFeatureWriteHeaders(requestOptions),
+        });
       } catch (error) {
         if (!isNotFoundError(error)) {
           throw error;

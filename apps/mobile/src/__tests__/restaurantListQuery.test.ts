@@ -6,7 +6,9 @@ import {
   invalidateRestaurantListContentQueries,
   removeRestaurantListQueries,
   restaurantListQueryKeys,
+  upsertRestaurantListInCollectionCaches,
 } from '../features/store/restaurantListQuery';
+import type { RestaurantListRecord } from '../features/models';
 
 function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -16,6 +18,34 @@ function createQueryClient(): QueryClient {
       },
     },
   });
+}
+
+function buildList(overrides: Partial<RestaurantListRecord> = {}): RestaurantListRecord {
+  return {
+    id: 'list_1',
+    name: 'Saved Spots',
+    visibility: 'friends',
+    userId: 'user-1',
+    createdAt: '2026-04-01T00:00:00.000Z',
+    updatedAt: '2026-04-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function buildListPage(items: RestaurantListRecord[]) {
+  return {
+    pageParams: [1],
+    pages: [
+      {
+        items,
+        page: 1,
+        pageSize: 20,
+        totalItems: items.length,
+        totalPages: items.length === 0 ? 0 : 1,
+        hasNextPage: false,
+      },
+    ],
+  };
 }
 
 describe('restaurantListQuery', () => {
@@ -92,5 +122,40 @@ describe('restaurantListQuery', () => {
     expect(queryClient.getQueryData(restaurantListQueryKeys.itemLinks(listId))).toBeUndefined();
     expect(queryClient.getQueryData(candidateKey)).toBeUndefined();
     expect(queryClient.getQueryData(listPageKey)).toEqual({ pages: [], pageParams: [] });
+  });
+
+  it('adds a queued list into cached collection queries and seeds the base my-lists query', () => {
+    const queryClient = createQueryClient();
+    const pizzaSearchKey = restaurantListQueryKeys.paginated('my', 'pizza');
+    const sushiSearchKey = restaurantListQueryKeys.paginated('my', 'sushi');
+    const existingPizzaList = buildList({ id: 'list_existing', name: 'Pizza Night' });
+    const existingSushiList = buildList({ id: 'list_other', name: 'Sushi Trail' });
+    const queuedList = buildList({ id: 'offline_list_1', name: 'Pizza Crawl' });
+
+    queryClient.setQueryData(pizzaSearchKey, buildListPage([existingPizzaList]));
+    queryClient.setQueryData(sushiSearchKey, buildListPage([existingSushiList]));
+
+    upsertRestaurantListInCollectionCaches(queryClient, queuedList, 'my');
+
+    expect(
+      queryClient.getQueryData<{ pages: { items: RestaurantListRecord[] }[] }>(
+        restaurantListQueryKeys.paginated('my', ''),
+      )?.pages[0]?.items.map((item) => item.id),
+    ).toEqual(['offline_list_1']);
+    expect(
+      queryClient.getQueryData<{ pages: { items: RestaurantListRecord[]; totalItems?: number }[] }>(
+        pizzaSearchKey,
+      )?.pages[0],
+    ).toEqual(
+      expect.objectContaining({
+        totalItems: 2,
+        items: [queuedList, existingPizzaList],
+      }),
+    );
+    expect(
+      queryClient.getQueryData<{ pages: { items: RestaurantListRecord[] }[] }>(
+        sushiSearchKey,
+      )?.pages[0]?.items.map((item) => item.id),
+    ).toEqual(['list_other']);
   });
 });

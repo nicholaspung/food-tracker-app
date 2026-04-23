@@ -1,5 +1,6 @@
 import type { InfiniteData, Query, QueryClient, QueryKey } from '@tanstack/react-query';
 
+import type { FriendRecord } from '../models';
 import type { FriendsCountSummary, RestaurantListDetailRecord } from './featureStore';
 import type { FriendsPageResult, ListFriendsPageInput } from './friendsStore';
 import { isPaginatedHomeFeedQueryKey } from './homeFeedQuery';
@@ -18,6 +19,8 @@ interface CachedFriendsSummary {
   updatedAt: number;
 }
 
+type FriendsInfiniteData = InfiniteData<FriendsPageResult, unknown>;
+
 export const friendsQueryKeys = {
   root: ['feature', 'friends'] as const,
   summary: ['feature', 'friends', 'summary'] as const,
@@ -30,6 +33,199 @@ export const friendsQueryKeys = {
     return ['feature', 'friends', 'paginated', section, normalizedSearch];
   },
 };
+
+function parseTimestamp(value: string | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function sortFriendsByCreatedAtDesc(friends: readonly FriendRecord[]): FriendRecord[] {
+  return [...friends].sort((left, right) => parseTimestamp(right.createdAt) - parseTimestamp(left.createdAt));
+}
+
+function normalizeFriendSearchQuery(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function matchesFriendSearchQuery(friend: FriendRecord, searchQuery: string): boolean {
+  const normalizedSearch = normalizeFriendSearchQuery(searchQuery);
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  return (
+    friend.name.toLowerCase().includes(normalizedSearch) ||
+    friend.email.toLowerCase().includes(normalizedSearch)
+  );
+}
+
+function createFriendsInfiniteData(
+  items: FriendRecord[],
+  summary?: FriendsCountSummary,
+): FriendsInfiniteData {
+  return {
+    pageParams: [1],
+    pages: [
+      {
+        items: sortFriendsByCreatedAtDesc(items),
+        page: 1,
+        pageSize: 20,
+        totalItems: items.length,
+        totalPages: items.length === 0 ? 0 : 1,
+        hasNextPage: false,
+        summary,
+      },
+    ],
+  };
+}
+
+function resolveNextTotalPages(totalItems: number, pageSize: number, currentTotalPages: number): number {
+  if (!Number.isFinite(pageSize) || pageSize <= 0) {
+    return currentTotalPages;
+  }
+
+  if (totalItems === 0) {
+    return 0;
+  }
+
+  return Math.max(1, Math.ceil(totalItems / pageSize));
+}
+
+function patchFriendsDataAfterRemoval(
+  currentData: FriendsInfiniteData | undefined,
+  friendId: string,
+  shouldAdjustCount: boolean,
+): FriendsInfiniteData | undefined {
+  if (!currentData) {
+    return currentData;
+  }
+
+  const hasExistingFriend = currentData.pages.some((page) => page.items.some((item) => item.id === friendId));
+  if (!hasExistingFriend && !shouldAdjustCount) {
+    return currentData;
+  }
+
+  return {
+    ...currentData,
+    pages: currentData.pages.map((page) => {
+      const nextTotalItems = shouldAdjustCount ? Math.max(page.totalItems - 1, 0) : page.totalItems;
+
+      return {
+        ...page,
+        items: page.items.filter((item) => item.id !== friendId),
+        totalItems: nextTotalItems,
+        totalPages: resolveNextTotalPages(nextTotalItems, page.pageSize, page.totalPages),
+      };
+    }),
+  };
+}
+
+function patchFriendsDataAfterUpsert(
+  currentData: FriendsInfiniteData | undefined,
+  friend: FriendRecord,
+  shouldIncludeFriend: boolean,
+): FriendsInfiniteData | undefined {
+  if (!currentData || currentData.pages.length === 0) {
+    return shouldIncludeFriend ? createFriendsInfiniteData([friend]) : currentData;
+  }
+
+  const hasExistingFriend = currentData.pages.some((page) => page.items.some((item) => item.id === friend.id));
+  if (!shouldIncludeFriend && !hasExistingFriend) {
+    return currentData;
+  }
+
+  const totalDelta = shouldIncludeFriend ? (hasExistingFriend ? 0 : 1) : -1;
+
+  return {
+    ...currentData,
+    pages: currentData.pages.map((page, pageIndex) => {
+      const itemsWithoutFriend = page.items.filter((item) => item.id !== friend.id);
+      const nextItems =
+        pageIndex === 0 && shouldIncludeFriend
+          ? sortFriendsByCreatedAtDesc([friend, ...itemsWithoutFriend])
+          : itemsWithoutFriend;
+      const nextTotalItems = Math.max(page.totalItems + totalDelta, 0);
+
+      return {
+        ...page,
+        items: nextItems,
+        totalItems: nextTotalItems,
+        totalPages: resolveNextTotalPages(nextTotalItems, page.pageSize, page.totalPages),
+      };
+    }),
+  };
+}
+
+function resolveFriendsSearchQuery(queryKey: QueryKey): string {
+  return Array.isArray(queryKey) && queryKey.length === 5 && typeof queryKey[4] === 'string'
+    ? queryKey[4]
+    : '';
+}
+
+function applySummaryToPaginatedFriendsQueries(
+  queryClient: QueryClient,
+  summary: FriendsCountSummary,
+): void {
+  const paginatedFriendQueries = queryClient.getQueriesData<FriendsInfiniteData>({
+    queryKey: friendsQueryKeys.root,
+  });
+
+  for (const [queryKey, currentData] of paginatedFriendQueries) {
+    if (!isPaginatedFriendsQueryKey(queryKey) || !currentData || currentData.pages.length === 0) {
+      continue;
+    }
+
+    queryClient.setQueryData(queryKey, {
+      ...currentData,
+      pages: currentData.pages.map((page, pageIndex) =>
+        pageIndex === 0
+          ? {
+              ...page,
+              summary,
+            }
+          : page,
+      ),
+    });
+  }
+}
+
+function adjustFriendsSummary(
+  summary: FriendsCountSummary,
+  delta: Partial<Record<'friendsCount' | 'requestsCount' | 'sentCount', number>>,
+): FriendsCountSummary {
+  return {
+    friendsCount: Math.max(summary.friendsCount + (delta.friendsCount ?? 0), 0),
+    requestsCount: Math.max(summary.requestsCount + (delta.requestsCount ?? 0), 0),
+    sentCount: Math.max(summary.sentCount + (delta.sentCount ?? 0), 0),
+  };
+}
+
+function getMutableFriendsSummary(queryClient: QueryClient): FriendsCountSummary {
+  return (
+    getCachedFriendsSummary(queryClient)?.summary ??
+    queryClient.getQueryData<FriendsCountSummary>(friendsQueryKeys.summary) ?? {
+      friendsCount: 0,
+      requestsCount: 0,
+      sentCount: 0,
+    }
+  );
+}
+
+function getFriendsSectionForStatus(status: FriendRecord['status']): FriendsSection {
+  if (status === 'pending_received') {
+    return 'requests';
+  }
+
+  if (status === 'pending_sent') {
+    return 'sent';
+  }
+
+  return 'friends';
+}
 
 export function isPaginatedFriendsQueryKey(queryKey: QueryKey): boolean {
   return (
@@ -141,6 +337,83 @@ export function hydrateFriendsSummaryFromPaginatedData(
   queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
 }
 
+export function acceptCachedFriendRequest(
+  queryClient: QueryClient,
+  friend: FriendRecord,
+  acceptedFriend?: FriendRecord,
+): void {
+  const nextFriend: FriendRecord = {
+    ...friend,
+    ...acceptedFriend,
+    status: 'friend',
+  };
+  const nextSummary = adjustFriendsSummary(getMutableFriendsSummary(queryClient), {
+    friendsCount: 1,
+    requestsCount: -1,
+  });
+
+  const requestQueries = queryClient.getQueriesData<FriendsInfiniteData>({
+    queryKey: friendsQueryKeys.paginated('requests'),
+  });
+  for (const [queryKey, currentData] of requestQueries) {
+    if (!isPaginatedFriendsQueryKey(queryKey)) {
+      continue;
+    }
+
+    const shouldAdjustCount = matchesFriendSearchQuery(friend, resolveFriendsSearchQuery(queryKey));
+    queryClient.setQueryData(queryKey, patchFriendsDataAfterRemoval(currentData, friend.id, shouldAdjustCount));
+  }
+
+  const friendsQueries = queryClient.getQueriesData<FriendsInfiniteData>({
+    queryKey: friendsQueryKeys.paginated('friends'),
+  });
+  for (const [queryKey, currentData] of friendsQueries) {
+    if (!isPaginatedFriendsQueryKey(queryKey)) {
+      continue;
+    }
+
+    const shouldIncludeFriend = matchesFriendSearchQuery(nextFriend, resolveFriendsSearchQuery(queryKey));
+    queryClient.setQueryData(queryKey, patchFriendsDataAfterUpsert(currentData, nextFriend, shouldIncludeFriend));
+  }
+
+  const baseFriendsQueryKey = friendsQueryKeys.paginated('friends');
+  if (queryClient.getQueryData(baseFriendsQueryKey) === undefined) {
+    queryClient.setQueryData(baseFriendsQueryKey, createFriendsInfiniteData([nextFriend], nextSummary));
+  }
+
+  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
+  applySummaryToPaginatedFriendsQueries(queryClient, nextSummary);
+}
+
+export function removeCachedFriend(queryClient: QueryClient, friend: FriendRecord): void {
+  const currentSection = getFriendsSectionForStatus(friend.status);
+  const nextSummary = adjustFriendsSummary(
+    getMutableFriendsSummary(queryClient),
+    friend.status === 'pending_received'
+      ? { requestsCount: -1 }
+      : friend.status === 'pending_sent'
+        ? { sentCount: -1 }
+        : { friendsCount: -1 },
+  );
+  const paginatedFriendQueries = queryClient.getQueriesData<FriendsInfiniteData>({
+    queryKey: friendsQueryKeys.root,
+  });
+
+  for (const [queryKey, currentData] of paginatedFriendQueries) {
+    if (!isPaginatedFriendsQueryKey(queryKey)) {
+      continue;
+    }
+
+    const shouldAdjustCount =
+      queryKey[3] === currentSection &&
+      matchesFriendSearchQuery(friend, resolveFriendsSearchQuery(queryKey));
+    queryClient.setQueryData(queryKey, patchFriendsDataAfterRemoval(currentData, friend.id, shouldAdjustCount));
+  }
+
+  queryClient.setQueryData<FriendsCountSummary>(friendsQueryKeys.summary, nextSummary);
+  applySummaryToPaginatedFriendsQueries(queryClient, nextSummary);
+}
+
 function isFriendsHomeFeedQuery(query: Query): boolean {
   return isPaginatedHomeFeedQueryKey(query.queryKey) && query.queryKey[3] === 'friends';
 }
@@ -172,6 +445,7 @@ function isRestaurantListDetailQueryForRemovedFriend(query: Query, removedUserId
 
 interface EvictFriendshipDependentQueriesOptions {
   removedUserId?: string;
+  preserveFriendsQueries?: boolean;
 }
 
 export async function evictFriendshipDependentQueries(
@@ -179,25 +453,31 @@ export async function evictFriendshipDependentQueries(
   options: EvictFriendshipDependentQueriesOptions = {},
 ): Promise<void> {
   const removedUserId = options.removedUserId;
+  const preserveFriendsQueries = options.preserveFriendsQueries === true;
   const detailQueryFilters = removedUserId
     ? {
         predicate: (query: Query) => isRestaurantListDetailQueryForRemovedFriend(query, removedUserId),
       }
     : { queryKey: restaurantListQueryKeys.detailRoot };
 
-  await Promise.all([
-    queryClient.cancelQueries({ queryKey: friendsQueryKeys.root }),
+  const cancelPromises = [
     queryClient.cancelQueries({ predicate: isFriendsHomeFeedQuery }),
     queryClient.cancelQueries({ queryKey: restaurantListQueryKeys.scope('friends') }),
     queryClient.cancelQueries(detailQueryFilters),
-  ]);
-
-  await Promise.all([
-    queryClient.resetQueries({ queryKey: friendsQueryKeys.root }),
+  ];
+  const resetPromises = [
     queryClient.resetQueries({ predicate: isFriendsHomeFeedQuery }),
     queryClient.resetQueries({ queryKey: restaurantListQueryKeys.scope('friends') }),
     queryClient.resetQueries(detailQueryFilters),
-  ]);
+  ];
+
+  if (!preserveFriendsQueries) {
+    cancelPromises.unshift(queryClient.cancelQueries({ queryKey: friendsQueryKeys.root }));
+    resetPromises.unshift(queryClient.resetQueries({ queryKey: friendsQueryKeys.root }));
+  }
+
+  await Promise.all(cancelPromises);
+  await Promise.all(resetPromises);
 }
 
 export async function invalidateFriendshipDependentQueries(

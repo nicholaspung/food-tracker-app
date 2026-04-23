@@ -261,6 +261,13 @@ describe('visitsStore.getVisitById', () => {
   });
 
   it('sends visitedOn on create and uploads photos to the newly created item ids first', async () => {
+    const replayRequestOptions = {
+      headers: {
+        'Idempotency-Key': 'idem_123',
+        'X-Idempotency-Key': 'idem_123',
+      },
+    };
+
     mockedSendApiRequest.mockResolvedValue({
       id: 'visit-123',
       restaurantId: 'restaurant-1',
@@ -308,7 +315,7 @@ describe('visitsStore.getVisitById', () => {
             ],
           },
         ],
-      }),
+      }, replayRequestOptions),
     ).resolves.toEqual(
       expect.objectContaining({
       id: 'visit-123',
@@ -323,6 +330,10 @@ describe('visitsStore.getVisitById', () => {
 
     expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/visits', {
       method: 'POST',
+      headers: {
+        'Idempotency-Key': 'idem_123',
+        'X-Idempotency-Key': 'idem_123',
+      },
       body: {
         restaurantId: 'restaurant-1',
         restaurantName: 'Noodle House',
@@ -351,6 +362,7 @@ describe('visitsStore.getVisitById', () => {
         },
       ],
       'Crispy',
+      replayRequestOptions,
     );
   });
 
@@ -435,6 +447,7 @@ describe('visitsStore.getVisitById', () => {
 
     expect(mockedSendApiRequest).toHaveBeenCalledWith('/api/visits/visit-123', {
       method: 'PUT',
+      headers: undefined,
       body: {
         restaurantId: undefined,
         restaurantName: 'Noodle House',
@@ -464,6 +477,7 @@ describe('visitsStore.getVisitById', () => {
         },
       ],
       'Crispy',
+      undefined,
     );
     expect(operationOrder).toEqual(['delete:photo-1', 'delete:photo-2', 'upload']);
   });

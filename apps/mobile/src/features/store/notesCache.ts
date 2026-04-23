@@ -1,8 +1,8 @@
-import type { InfiniteData, QueryClient } from '@tanstack/react-query';
+import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
 
 import type { NoteRecord } from '../models';
-import type { NoteDetailRecord, NoteOverviewItemRecord, NoteOverviewPage } from './featureStore';
-import { notesQueryKeys } from './notesQuery';
+import type { NoteCountSummary, NoteDetailRecord, NoteOverviewItemRecord, NoteOverviewPage } from './featureStore';
+import { isPaginatedNotesQueryKey, notesQueryKeys } from './notesQuery';
 
 interface PromoteCachedNoteToUsedInput {
   noteId: string;
@@ -18,6 +18,100 @@ function parseTimestamp(value: string | undefined): number {
 
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function matchesCachedNoteSearch(note: Pick<NoteRecord, 'content' | 'locationText'>, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    note.content.toLowerCase().includes(normalizedQuery) ||
+    note.locationText?.toLowerCase().includes(normalizedQuery) === true
+  );
+}
+
+function adjustSummaryForDeletedNote(
+  summary: NoteCountSummary | undefined,
+  noteStatus: NoteRecord['status'],
+): NoteCountSummary | undefined {
+  if (!summary) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    allCount: Math.max(summary.allCount - 1, 0),
+    draftCount:
+      noteStatus === 'draft'
+        ? Math.max(summary.draftCount - 1, 0)
+        : summary.draftCount,
+    usedCount:
+      noteStatus === 'used'
+        ? Math.max(summary.usedCount - 1, 0)
+        : summary.usedCount,
+  };
+}
+
+function resolveNextTotalPages(totalItems: number | undefined, pageSize: number, currentTotalPages?: number): number | undefined {
+  if (totalItems === undefined || !Number.isFinite(pageSize) || pageSize <= 0) {
+    return currentTotalPages;
+  }
+
+  if (totalItems === 0) {
+    return 0;
+  }
+
+  return Math.max(1, Math.ceil(totalItems / pageSize));
+}
+
+function resolveCachedNoteSearchQuery(queryKey: QueryKey): string {
+  return Array.isArray(queryKey) && queryKey.length === 5 && typeof queryKey[4] === 'string'
+    ? queryKey[4]
+    : '';
+}
+
+function shouldAdjustNotesQueryForDeletedNote(queryKey: QueryKey, note: NoteRecord): boolean {
+  if (!isPaginatedNotesQueryKey(queryKey)) {
+    return false;
+  }
+
+  const statusFilter = queryKey[3];
+  if (statusFilter !== 'all' && statusFilter !== note.status) {
+    return false;
+  }
+
+  return matchesCachedNoteSearch(note, resolveCachedNoteSearchQuery(queryKey));
+}
+
+function removeCachedNoteFromInfiniteData(
+  currentData: NotesInfiniteData | undefined,
+  noteId: string,
+  noteStatus: NoteRecord['status'],
+  shouldAdjustCounts: boolean,
+): NotesInfiniteData | undefined {
+  if (!currentData) {
+    return currentData;
+  }
+
+  return {
+    ...currentData,
+    pages: currentData.pages.map((page) => {
+      const nextTotalItems =
+        shouldAdjustCounts && typeof page.totalItems === 'number'
+          ? Math.max(page.totalItems - 1, 0)
+          : page.totalItems;
+
+      return {
+        ...page,
+        items: page.items.filter((item) => item.id !== noteId),
+        summary: shouldAdjustCounts ? adjustSummaryForDeletedNote(page.summary, noteStatus) : page.summary,
+        totalItems: nextTotalItems,
+        totalPages: resolveNextTotalPages(nextTotalItems, page.pageSize, page.totalPages),
+      };
+    }),
+  };
 }
 
 function sortNotesByCreatedAtDesc<T extends Pick<NoteRecord, 'createdAt' | 'updatedAt'>>(notes: readonly T[]): T[] {
@@ -173,4 +267,40 @@ export function promoteCachedNoteToUsed(
       shouldAdjustSummary,
     );
   });
+}
+
+export function removeCachedNote(queryClient: QueryClient, noteId: string): void {
+  const existingNote = findCachedNote(queryClient, noteId);
+
+  queryClient.removeQueries({ queryKey: notesQueryKeys.detail(noteId) });
+  queryClient.removeQueries({ queryKey: ['feature', 'notePhotos', noteId] });
+
+  if (!existingNote) {
+    return;
+  }
+
+  const notesQueryData = queryClient.getQueriesData<NotesInfiniteData>({
+    queryKey: notesQueryKeys.root,
+  });
+
+  for (const [queryKey, currentData] of notesQueryData) {
+    if (!isPaginatedNotesQueryKey(queryKey)) {
+      continue;
+    }
+
+    const hasLoadedNote = currentData?.pages.some((page) => page.items.some((item) => item.id === noteId)) === true;
+    const shouldAdjustCounts = shouldAdjustNotesQueryForDeletedNote(queryKey, existingNote) || hasLoadedNote;
+    if (!shouldAdjustCounts && !hasLoadedNote) {
+      continue;
+    }
+
+    queryClient.setQueryData(
+      queryKey,
+      removeCachedNoteFromInfiniteData(currentData, noteId, existingNote.status, shouldAdjustCounts),
+    );
+  }
+
+  queryClient.setQueryData<NoteCountSummary | undefined>(notesQueryKeys.summary, (currentSummary) =>
+    adjustSummaryForDeletedNote(currentSummary, existingNote.status),
+  );
 }

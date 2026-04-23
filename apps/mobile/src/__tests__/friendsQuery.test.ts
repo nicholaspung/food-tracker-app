@@ -1,16 +1,51 @@
 import { QueryClient } from '@tanstack/react-query';
 
 import {
+  acceptCachedFriendRequest,
   evictFriendshipDependentQueries,
   friendsQueryKeys,
   getCachedFriendsSummary,
   hydrateFriendsSummaryFromPaginatedData,
   isFriendsSummaryQueryKey,
   isPaginatedFriendsQueryKey,
+  removeCachedFriend,
   selectFriendsSummary,
 } from '../features/store/friendsQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { restaurantListQueryKeys } from '../features/store/restaurantListQuery';
+import type { FriendRecord } from '../features/models';
+
+function buildFriend(overrides: Partial<FriendRecord> = {}): FriendRecord {
+  return {
+    id: 'friendship-1',
+    userId: 'user-2',
+    name: 'Sam',
+    email: 'sam@example.com',
+    status: 'pending_received',
+    createdAt: '2026-04-18T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function buildFriendsPage(
+  items: FriendRecord[],
+  summary?: { friendsCount: number; requestsCount: number; sentCount: number },
+) {
+  return {
+    pageParams: [1],
+    pages: [
+      {
+        items,
+        page: 1,
+        pageSize: 20,
+        totalItems: items.length,
+        totalPages: items.length === 0 ? 0 : 1,
+        hasNextPage: false,
+        summary,
+      },
+    ],
+  };
+}
 
 describe('friendsQuery', () => {
   it('uses the canonical paginated friends browse key', () => {
@@ -123,6 +158,75 @@ describe('friendsQuery', () => {
     });
   });
 
+  it('moves an accepted request into cached friends data and updates summary counts', () => {
+    const queryClient = new QueryClient();
+    const pendingRequest = buildFriend();
+
+    queryClient.setQueryData(
+      friendsQueryKeys.paginated('requests'),
+      buildFriendsPage([pendingRequest], {
+        friendsCount: 2,
+        requestsCount: 1,
+        sentCount: 0,
+      }),
+    );
+
+    acceptCachedFriendRequest(queryClient, pendingRequest);
+
+    expect(
+      queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
+        friendsQueryKeys.paginated('requests'),
+      )?.pages[0]?.items,
+    ).toEqual([]);
+    expect(
+      queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
+        friendsQueryKeys.paginated('friends'),
+      )?.pages[0]?.items,
+    ).toEqual([
+      {
+        ...pendingRequest,
+        status: 'friend',
+      },
+    ]);
+    expect(queryClient.getQueryData(friendsQueryKeys.summary)).toEqual({
+      friendsCount: 3,
+      requestsCount: 0,
+      sentCount: 0,
+    });
+  });
+
+  it('removes a cached friend from loaded queries and decrements summary counts', () => {
+    const queryClient = new QueryClient();
+    const existingFriend = buildFriend({ status: 'friend' });
+    const summary = {
+      friendsCount: 2,
+      requestsCount: 1,
+      sentCount: 0,
+    };
+
+    queryClient.setQueryData(friendsQueryKeys.summary, summary);
+    queryClient.setQueryData(friendsQueryKeys.paginated('friends'), buildFriendsPage([existingFriend], summary));
+    queryClient.setQueryData(friendsQueryKeys.paginated('friends', 'sam'), buildFriendsPage([existingFriend], summary));
+
+    removeCachedFriend(queryClient, existingFriend);
+
+    expect(
+      queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
+        friendsQueryKeys.paginated('friends'),
+      )?.pages[0]?.items,
+    ).toEqual([]);
+    expect(
+      queryClient.getQueryData<{ pages: { items: FriendRecord[] }[] }>(
+        friendsQueryKeys.paginated('friends', 'sam'),
+      )?.pages[0]?.items,
+    ).toEqual([]);
+    expect(queryClient.getQueryData(friendsQueryKeys.summary)).toEqual({
+      friendsCount: 1,
+      requestsCount: 1,
+      sentCount: 0,
+    });
+  });
+
   it('evicts friendship-dependent home and list caches together', async () => {
     const queryClient = new QueryClient();
     const removedUserId = 'user-2';
@@ -184,5 +288,44 @@ describe('friendsQuery', () => {
       items: [],
       list: { id: 'list_3', userId: 'user-1' },
     });
+  });
+
+  it('can evict friend-gated caches while preserving the patched friends queries', async () => {
+    const queryClient = new QueryClient();
+    const removedUserId = 'user-2';
+    const friendsSummaryKey = friendsQueryKeys.summary;
+    const friendsKey = friendsQueryKeys.paginated('friends');
+    const homeFeedKey = homeFeedQueryKeys.paginated('friends', 'all', 'created', '');
+    const friendsListsKey = restaurantListQueryKeys.paginated('friends', '');
+    const friendListDetailKey = restaurantListQueryKeys.detail('list_1');
+    const currentFriend = buildFriend({ status: 'friend' });
+
+    queryClient.setQueryData(friendsSummaryKey, {
+      friendsCount: 3,
+      requestsCount: 0,
+      sentCount: 0,
+    });
+    queryClient.setQueryData(friendsKey, buildFriendsPage([currentFriend]));
+    queryClient.setQueryData(homeFeedKey, { pageParams: [undefined], pages: [] });
+    queryClient.setQueryData(friendsListsKey, { pageParams: [1], pages: [] });
+    queryClient.setQueryData(friendListDetailKey, {
+      items: [],
+      list: { id: 'list_1', userId: removedUserId },
+    });
+
+    await evictFriendshipDependentQueries(queryClient, {
+      removedUserId,
+      preserveFriendsQueries: true,
+    });
+
+    expect(queryClient.getQueryData(friendsSummaryKey)).toEqual({
+      friendsCount: 3,
+      requestsCount: 0,
+      sentCount: 0,
+    });
+    expect(queryClient.getQueryData(friendsKey)).toEqual(buildFriendsPage([currentFriend]));
+    expect(queryClient.getQueryState(homeFeedKey)?.data).toBeUndefined();
+    expect(queryClient.getQueryState(friendsListsKey)?.data).toBeUndefined();
+    expect(queryClient.getQueryState(friendListDetailKey)?.data).toBeUndefined();
   });
 });

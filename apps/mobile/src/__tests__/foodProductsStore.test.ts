@@ -274,15 +274,23 @@ describe('foodProductsStore', () => {
       },
       {
         expand: 'user,visit,visit.restaurant',
+        headers: undefined,
       },
     );
-    expect(mockedUploadVisitPhotos).toHaveBeenCalledWith(undefined, 'food-product-1', 'user-1', [
-      {
-        uri: 'file:///latte.jpg',
-        name: 'latte.jpg',
-        mimeType: 'image/jpeg',
-      },
-    ]);
+    expect(mockedUploadVisitPhotos).toHaveBeenCalledWith(
+      undefined,
+      'food-product-1',
+      'user-1',
+      [
+        {
+          uri: 'file:///latte.jpg',
+          name: 'latte.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+      undefined,
+      undefined,
+    );
     expect(visitPhotosCollection.delete).toHaveBeenCalledTimes(2);
     expect(operationOrder).toEqual(['upload', 'delete:photo-1', 'delete:photo-2']);
   });
@@ -352,6 +360,7 @@ describe('foodProductsStore', () => {
       },
       {
         expand: 'user,visit,visit.restaurant',
+        headers: undefined,
       },
     );
   });
@@ -392,6 +401,7 @@ describe('foodProductsStore', () => {
       },
       {
         expand: 'user,visit,visit.restaurant',
+        headers: undefined,
       },
     );
   });
@@ -426,6 +436,7 @@ describe('foodProductsStore', () => {
       },
       {
         expand: 'user,visit,visit.restaurant',
+        headers: undefined,
       },
     );
   });

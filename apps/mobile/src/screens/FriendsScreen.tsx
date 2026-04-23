@@ -20,11 +20,13 @@ import {
   type SegmentedControlOption,
 } from '../components/shared';
 import {
+  acceptCachedFriendRequest,
   evictFriendshipDependentQueries,
   friendsQueryKeys,
   hydrateFriendsSummaryFromPaginatedData,
   listFriendsPage,
   markFriendInviteAccepted,
+  removeCachedFriend,
   removeFriend,
   selectFriendsSummary,
   type FriendRecord,
@@ -350,16 +352,22 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   const invalidateFriendRemovalQueries = async (
     operationName: FriendRemoveOperationName,
     removedUserId?: string,
+    options?: {
+      preserveFriendsQueries?: boolean;
+    },
   ) => {
     if (operationName === 'friend.remove') {
-      await evictFriendshipDependentQueries(queryClient, { removedUserId });
+      await evictFriendshipDependentQueries(queryClient, {
+        removedUserId,
+        preserveFriendsQueries: options?.preserveFriendsQueries,
+      });
       return;
     }
 
     await invalidateFriends();
   };
 
-  const handleAccept = async (friendId: string) => {
+  const handleAccept = async (friend: FriendRecord) => {
     trackObservabilityEvent('FRIEND_ACTION_STARTED', {
       source: 'FriendsScreen',
       action: 'accept',
@@ -374,10 +382,16 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         operationName: 'friend.accept',
         offline: {
           strategy: 'outbox',
-          payload: { friendId },
+          payload: { friendId: friend.id },
         },
-        execute: () => markFriendInviteAccepted(friendId),
+        execute: () => markFriendInviteAccepted(friend.id),
       });
+
+      acceptCachedFriendRequest(
+        queryClient,
+        friend,
+        acceptResult.status === 'queued' ? undefined : acceptResult.result,
+      );
 
       if (acceptResult.status === 'queued') {
         await invalidateFriends();
@@ -418,7 +432,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   };
 
   const handleRemove = async (
-    friendId: string,
+    friend: FriendRecord,
     operationName: FriendRemoveOperationName,
     removedUserId?: string,
   ) => {
@@ -437,13 +451,17 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
         operationName,
         offline: {
           strategy: 'outbox',
-          payload: { friendId },
+          payload: { friendId: friend.id },
         },
-        execute: () => removeFriend(friendId),
+        execute: () => removeFriend(friend.id),
       });
 
+      removeCachedFriend(queryClient, friend);
+
       if (removeResult.status === 'queued') {
-        await invalidateFriendRemovalQueries(operationName, removedUserId);
+        await invalidateFriendRemovalQueries(operationName, removedUserId, {
+          preserveFriendsQueries: true,
+        });
         trackObservabilityEvent('FRIEND_ACTION_SUCCEEDED', {
           source: 'FriendsScreen',
           action,
@@ -531,7 +549,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
     trackObservabilityEvent('FRIEND_REMOVE_CONFIRMED', {
       source: 'FriendsScreen',
     });
-    const removed = await handleRemove(pendingRemoveFriend.id, 'friend.remove', pendingRemoveFriend.userId);
+    const removed = await handleRemove(pendingRemoveFriend, 'friend.remove', pendingRemoveFriend.userId);
     if (removed) {
       setPendingRemoveFriend(null);
     }
@@ -627,7 +645,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                   accessibilityRole="button"
                   disabled={isMutating}
                   onPress={() => {
-                    void handleAccept(friend.id);
+                    void handleAccept(friend);
                   }}
                   style={[styles.actionPill, styles.actionPillSuccess]}
                 >
@@ -642,7 +660,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                   accessibilityRole="button"
                   disabled={isMutating}
                   onPress={() => {
-                    void handleRemove(friend.id, 'friend.request.reject');
+                    void handleRemove(friend, 'friend.request.reject');
                   }}
                   style={[styles.actionPill, styles.actionPillDanger]}
                 >
@@ -675,7 +693,7 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
                 accessibilityRole="button"
                 disabled={isMutating}
                 onPress={() => {
-                  void handleRemove(friend.id, 'friend.request.cancel');
+                  void handleRemove(friend, 'friend.request.cancel');
                 }}
                 style={styles.textAction}
               >

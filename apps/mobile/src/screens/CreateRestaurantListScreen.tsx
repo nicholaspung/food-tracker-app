@@ -13,12 +13,14 @@ import {
   createRestaurantList,
   invalidateRestaurantListCollectionQueries,
   resolveDefaultListVisibilityFromAuth,
+  upsertRestaurantListInCollectionCaches,
   type RestaurantListRecord,
 } from '../features';
 import { useOfflineAwareFeatureWrite } from '../features/store/useOfflineAwareFeatureWrite';
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
+import { useAuth } from '../providers/AuthProvider';
 import { useConnectivity } from '../providers/ConnectivityProvider';
 import { createThemedStyles } from '../theme';
 import { Card, Input, Text } from '../ui';
@@ -45,10 +47,37 @@ function resolveDefaultListVisibility(): ListVisibility {
   return resolveDefaultListVisibilityFromAuth();
 }
 
+function buildOptimisticRestaurantList(
+  user: { id?: string; name?: string } | null,
+  input: {
+    name: string;
+    description: string;
+    visibility: ListVisibility;
+  },
+): RestaurantListRecord {
+  const timestamp = new Date().toISOString();
+  const trimmedDescription = input.description.trim();
+
+  return {
+    id: `offline-list-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    name: input.name,
+    description: trimmedDescription || undefined,
+    visibility: input.visibility,
+    userId: user?.id ?? 'local-user',
+    ownerName: user?.name?.trim() || undefined,
+    isDefault: false,
+    restaurantCount: 0,
+    menuItemCount: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListScreenProps) {
   const styles = useStyles();
   const queryClient = useQueryClient();
   const writeFeature = useOfflineAwareFeatureWrite();
+  const { user } = useAuth();
   const { isOnline } = useConnectivity();
 
   const [name, setName] = useState('');
@@ -106,6 +135,15 @@ export function CreateRestaurantListScreen({ navigation }: CreateRestaurantListS
       });
 
       if (createResult.status === 'queued') {
+        upsertRestaurantListInCollectionCaches(
+          queryClient,
+          buildOptimisticRestaurantList(user, {
+            name: trimmedName,
+            description,
+            visibility,
+          }),
+          'my',
+        );
         await invalidateRestaurantListCollectionQueries(queryClient);
         trackObservabilityEvent('CREATE_RESTAURANT_LIST_SUBMIT_SUCCEEDED', {
           source: 'CreateRestaurantListScreen',
