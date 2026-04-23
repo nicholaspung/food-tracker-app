@@ -105,6 +105,9 @@ const useStyles = createThemedStyles((theme) => ({
   cardsListSeparator: {
     height: theme.spacing.sm,
   },
+  friendRow: {
+    paddingHorizontal: theme.spacing.md,
+  },
   cardDescription: {
     color: theme.colors.text.secondary,
   },
@@ -562,103 +565,109 @@ export function FriendsScreen({ navigation, route }: FriendsScreenProps) {
   }) => {
     if (friendsSubTab === 'friends') {
       return (
-        <FriendListItemCard
-          iconColor={theme.colors.text.info}
-          iconName="people-outline"
-          meta={`Friends since ${formatDate(friend.createdAt)}`}
-          name={friend.name}
-          tone="info"
-          rightContent={
-            <Pressable
-              accessibilityLabel={`Remove friend ${friend.name}`}
-              accessibilityRole="button"
-              disabled={isMutating}
-              onPress={() => {
-                setErrorMessage(null);
-                trackObservabilityEvent('FRIEND_REMOVE_TAPPED', {
-                  source: 'FriendsScreen',
-                });
-                setPendingRemoveFriend(friend);
-              }}
-              style={styles.iconAction}
-              testID={`friend-remove-button-${friend.id}`}
-            >
-              <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
-            </Pressable>
-          }
-        />
+        <View style={styles.friendRow}>
+          <FriendListItemCard
+            iconColor={theme.colors.text.info}
+            iconName="people-outline"
+            meta={`Friends since ${formatDate(friend.createdAt)}`}
+            name={friend.name}
+            tone="info"
+            rightContent={
+              <Pressable
+                accessibilityLabel={`Remove friend ${friend.name}`}
+                accessibilityRole="button"
+                disabled={isMutating}
+                onPress={() => {
+                  setErrorMessage(null);
+                  trackObservabilityEvent('FRIEND_REMOVE_TAPPED', {
+                    source: 'FriendsScreen',
+                  });
+                  setPendingRemoveFriend(friend);
+                }}
+                style={styles.iconAction}
+                testID={`friend-remove-button-${friend.id}`}
+              >
+                <Ionicons color={theme.colors.text.danger} name="trash-outline" size={18} />
+              </Pressable>
+            }
+          />
+        </View>
       );
     }
 
     if (friendsSubTab === 'requests') {
       return (
-        <FriendListItemCard
-          iconColor={theme.colors.text.warning}
-          iconName="person-add-outline"
-          meta={`Sent ${formatDate(friend.createdAt)}`}
-          name={friend.name}
-          tone="warning"
-          rightContent={
-            <View style={styles.requestActions}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={isMutating}
-                onPress={() => {
-                  void handleAccept(friend.id);
-                }}
-                style={[styles.actionPill, styles.actionPillSuccess]}
-              >
-                <Text
-                  style={[styles.actionPillLabel, styles.actionPillSuccessLabel]}
-                  variant="metaTightStrong"
+        <View style={styles.friendRow}>
+          <FriendListItemCard
+            iconColor={theme.colors.text.warning}
+            iconName="person-add-outline"
+            meta={`Sent ${formatDate(friend.createdAt)}`}
+            name={friend.name}
+            tone="warning"
+            rightContent={
+              <View style={styles.requestActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isMutating}
+                  onPress={() => {
+                    void handleAccept(friend.id);
+                  }}
+                  style={[styles.actionPill, styles.actionPillSuccess]}
                 >
-                  Accept
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={isMutating}
-                onPress={() => {
-                  void handleRemove(friend.id, 'friend.request.reject');
-                }}
-                style={[styles.actionPill, styles.actionPillDanger]}
-              >
-                <Text
-                  style={[styles.actionPillLabel, styles.actionPillDangerLabel]}
-                  variant="metaTightStrong"
+                  <Text
+                    style={[styles.actionPillLabel, styles.actionPillSuccessLabel]}
+                    variant="metaTightStrong"
+                  >
+                    Accept
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isMutating}
+                  onPress={() => {
+                    void handleRemove(friend.id, 'friend.request.reject');
+                  }}
+                  style={[styles.actionPill, styles.actionPillDanger]}
                 >
-                  Decline
-                </Text>
-              </Pressable>
-            </View>
-          }
-        />
+                  <Text
+                    style={[styles.actionPillLabel, styles.actionPillDangerLabel]}
+                    variant="metaTightStrong"
+                  >
+                    Decline
+                  </Text>
+                </Pressable>
+              </View>
+            }
+          />
+        </View>
       );
     }
 
     return (
-      <FriendListItemCard
-        iconColor={theme.colors.text.secondary}
-        iconName="time-outline"
-        meta={`Sent ${formatDate(friend.createdAt)}`}
-        name={friend.name}
-        tone="muted"
-        rightContent={
-          <View style={styles.sentActions}>
-            <StatusPill label="Pending" tone="warning" />
-            <Pressable
-              accessibilityRole="button"
-              disabled={isMutating}
-              onPress={() => {
-                void handleRemove(friend.id, 'friend.request.cancel');
-              }}
-              style={styles.textAction}
-            >
-              <Text style={styles.textActionMuted} variant="bodyBaseSemiBold">Cancel</Text>
-            </Pressable>
-          </View>
-        }
-      />
+      <View style={styles.friendRow}>
+        <FriendListItemCard
+          iconColor={theme.colors.text.secondary}
+          iconName="time-outline"
+          meta={`Sent ${formatDate(friend.createdAt)}`}
+          name={friend.name}
+          tone="muted"
+          rightContent={
+            <View style={styles.sentActions}>
+              <StatusPill label="Pending" tone="warning" />
+              <Pressable
+                accessibilityRole="button"
+                disabled={isMutating}
+                onPress={() => {
+                  void handleRemove(friend.id, 'friend.request.cancel');
+                }}
+                style={styles.textAction}
+              >
+                <Text style={styles.textActionMuted} variant="bodyBaseSemiBold">Cancel</Text>
+              </Pressable>
+            </View>
+          }
+        />
+      </View>
     );
   };
 
