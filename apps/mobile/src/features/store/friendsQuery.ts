@@ -479,10 +479,3 @@ export async function evictFriendshipDependentQueries(
   await Promise.all(cancelPromises);
   await Promise.all(resetPromises);
 }
-
-export async function invalidateFriendshipDependentQueries(
-  queryClient: QueryClient,
-  options: EvictFriendshipDependentQueriesOptions = {},
-): Promise<void> {
-  await evictFriendshipDependentQueries(queryClient, options);
-}

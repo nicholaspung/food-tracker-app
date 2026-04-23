@@ -1,5 +1,3 @@
 {
-  "issues": [
-    "export:apps/mobile/src/components/shared/OtaUpdateCard.tsx#OtaUpdateCard"
-  ]
+  "issues": []
 }
