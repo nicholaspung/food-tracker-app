@@ -54,10 +54,19 @@ export interface MutationSendResult {
   retryable: boolean;
   statusCode: number | null;
   errorMessage: string | null;
+  cancelled?: boolean;
+}
+
+export interface MutationTransportSendOptions {
+  signal?: AbortSignal;
 }
 
 export interface MutationTransport {
-  send(mutation: QueuedMutation): Promise<MutationSendResult>;
+  send(
+    mutation: QueuedMutation,
+    options?: MutationTransportSendOptions,
+  ): Promise<MutationSendResult>;
+  cancelPendingRequests?(): void;
 }
 
 export type ReplayTrigger = 'reconnect' | 'foreground' | 'manual' | 'enqueue';

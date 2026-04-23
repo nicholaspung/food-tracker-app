@@ -3,12 +3,18 @@ import { ClientResponseError } from 'pocketbase';
 import { replayFeatureOutboxMutation } from '../features/store/featureOutboxOperations';
 import { logger } from '../lib/logger';
 import { isConflictStatus, isRetryableStatus } from './retryPolicy';
-import type { MutationSendResult, MutationTransport, QueuedMutation } from './types';
+import type {
+  MutationSendResult,
+  MutationTransport,
+  MutationTransportSendOptions,
+  QueuedMutation,
+} from './types';
 
 const DEFAULT_ERROR_MESSAGE = 'Request failed.';
 const MAX_ERROR_MESSAGE_LENGTH = 180;
 
 interface CreateFetchMutationTransportOptions {
+  cancelPendingRequests?: () => void;
   fetchImplementation?: typeof fetch;
   getAuthToken?: () => string | null;
 }
@@ -17,8 +23,17 @@ export function createFetchMutationTransport(
   options: CreateFetchMutationTransportOptions = {},
 ): MutationTransport {
   return {
-    send: async (mutation: QueuedMutation): Promise<MutationSendResult> => {
+    cancelPendingRequests: options.cancelPendingRequests,
+    send: async (
+      mutation: QueuedMutation,
+      sendOptions?: MutationTransportSendOptions,
+    ): Promise<MutationSendResult> => {
       const fetchImplementation = options.fetchImplementation ?? globalThis.fetch;
+      const signal = sendOptions?.signal;
+
+      if (signal?.aborted) {
+        return createCancelledSendResult();
+      }
 
       if (!fetchImplementation) {
         return {
@@ -43,7 +58,7 @@ export function createFetchMutationTransport(
       }
 
       try {
-        const localResult = await trySendLocalFeatureMutation(mutation);
+        const localResult = await trySendLocalFeatureMutation(mutation, signal);
         if (localResult) {
           return localResult;
         }
@@ -52,6 +67,7 @@ export function createFetchMutationTransport(
           method: mutation.method,
           headers,
           body: mutation.body,
+          signal,
         });
 
         if (response.ok) {
@@ -82,6 +98,10 @@ export function createFetchMutationTransport(
           errorMessage: createErrorMessage(statusCode, responseText),
         };
       } catch (error) {
+        if (isAbortError(error) || signal?.aborted) {
+          return createCancelledSendResult();
+        }
+
         logger.warn('[OfflineSync] Request threw network error:', error);
         return {
           ok: false,
@@ -122,10 +142,15 @@ async function safeReadText(response: Response): Promise<string> {
 
 async function trySendLocalFeatureMutation(
   mutation: QueuedMutation,
+  signal?: AbortSignal,
 ): Promise<MutationSendResult | null> {
   const isLocalFeatureMutation = mutation.url.startsWith('local://feature/');
   if (!isLocalFeatureMutation) {
     return null;
+  }
+
+  if (signal?.aborted) {
+    return createCancelledSendResult();
   }
 
   try {
@@ -146,6 +171,10 @@ async function trySendLocalFeatureMutation(
       errorMessage: null,
     };
   } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      return createCancelledSendResult();
+    }
+
     if (error instanceof ClientResponseError) {
       const statusCode = Number.isFinite(error.status) && error.status > 0 ? error.status : null;
       return {
@@ -163,4 +192,26 @@ async function trySendLocalFeatureMutation(
       errorMessage: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
     };
   }
+}
+
+function createCancelledSendResult(): MutationSendResult {
+  return {
+    ok: false,
+    retryable: false,
+    statusCode: null,
+    errorMessage: null,
+    cancelled: true,
+  };
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof ClientResponseError) {
+    return error.isAbort;
+  }
+
+  if (error instanceof Error) {
+    return error.name === 'AbortError' || error.message === 'Aborted';
+  }
+
+  return false;
 }

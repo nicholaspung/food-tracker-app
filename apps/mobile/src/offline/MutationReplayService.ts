@@ -26,6 +26,7 @@ const DEFAULT_SNAPSHOT: SyncSnapshot = {
 export class MutationReplayService {
   private listeners = new Set<SyncListener>();
   private replayPromise: Promise<void> | null = null;
+  private activeReplayAbortController: AbortController | null = null;
   private snapshot: SyncSnapshot = DEFAULT_SNAPSHOT;
   private started = false;
 
@@ -103,6 +104,7 @@ export class MutationReplayService {
   }
 
   async clearAll(trigger: QueueClearTrigger): Promise<number> {
+    await this.cancelReplay();
     const clearedCount = await this.queueStore.clearAll();
     await this.refreshSnapshot();
     trackObservabilityEvent('SYNC_QUEUE_CLEARED', {
@@ -131,8 +133,10 @@ export class MutationReplayService {
   }
 
   private async runReplay(trigger: ReplayTrigger): Promise<void> {
+    const replayAbortController = new AbortController();
     let replayError: unknown = null;
 
+    this.activeReplayAbortController = replayAbortController;
     await this.refreshSnapshot({
       isSyncing: true,
       lastTrigger: trigger,
@@ -145,6 +149,10 @@ export class MutationReplayService {
 
     try {
       while (true) {
+        if (replayAbortController.signal.aborted) {
+          break;
+        }
+
         const readyMutations = await this.queueStore.getReadyMutations(this.now(), 1);
         const [nextMutation] = readyMutations;
 
@@ -160,7 +168,18 @@ export class MutationReplayService {
           lastTrigger: trigger,
         });
 
-        const sendResult = await this.transport.send(nextMutation);
+        if (replayAbortController.signal.aborted) {
+          break;
+        }
+
+        const sendResult = await this.transport.send(nextMutation, {
+          signal: replayAbortController.signal,
+        });
+
+        if (sendResult.cancelled) {
+          break;
+        }
+
         const resolvedAt = this.now();
 
         if (sendResult.ok) {
@@ -223,6 +242,10 @@ export class MutationReplayService {
       replayError = error;
       throw error;
     } finally {
+      if (this.activeReplayAbortController === replayAbortController) {
+        this.activeReplayAbortController = null;
+      }
+
       await this.refreshSnapshot({
         isSyncing: false,
         lastTrigger: trigger,
@@ -234,6 +257,22 @@ export class MutationReplayService {
         queueDepth: this.snapshot.queueDepth,
         trigger,
       });
+    }
+  }
+
+  private async cancelReplay(): Promise<void> {
+    const replayPromise = this.replayPromise;
+    const replayAbortController = this.activeReplayAbortController;
+
+    if (!replayPromise && !replayAbortController) {
+      return;
+    }
+
+    replayAbortController?.abort();
+    this.transport.cancelPendingRequests?.();
+
+    if (replayPromise) {
+      await replayPromise;
     }
   }
 

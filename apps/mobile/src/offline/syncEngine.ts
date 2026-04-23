@@ -5,6 +5,7 @@ import { createFetchMutationTransport } from './fetchMutationTransport';
 
 const queueStore = new SQLiteMutationQueueStore();
 const transport = createFetchMutationTransport({
+  cancelPendingRequests: () => pb.cancelAllRequests(),
   getAuthToken: () => pb.authStore.token || null,
 });
 

@@ -12,6 +12,22 @@ interface SharedQueueState {
   rows: Map<string, QueuedMutation>;
 }
 
+function createDeferredPromise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+}
+
 class InMemoryQueueStore implements MutationQueueStore {
   constructor(
     private readonly sharedState: SharedQueueState = { rows: new Map() },
@@ -163,7 +179,8 @@ class InMemoryQueueStore implements MutationQueueStore {
 
 function createTransport(results: MutationSendResult[]): MutationTransport {
   return {
-    send: jest.fn(async () => {
+    cancelPendingRequests: jest.fn(),
+    send: jest.fn(async (_mutation, _options) => {
       const [nextResult] = results.splice(0, 1);
       return (
         nextResult ?? {
@@ -371,6 +388,66 @@ describe('MutationReplayService', () => {
     expect(restartedService.getSnapshot().queueDepth).toBe(0);
   });
 
+  it('cancels an in-flight replay before clearing queued writes', async () => {
+    const store = new InMemoryQueueStore();
+    const sendStarted = createDeferredPromise<void>();
+    let sendSignal: AbortSignal | undefined;
+    const cancelPendingRequests = jest.fn();
+    const transport: MutationTransport = {
+      cancelPendingRequests,
+      send: jest.fn(async (_mutation, options) => {
+        sendSignal = options?.signal;
+        sendStarted.resolve();
+
+        return new Promise<MutationSendResult>((resolve) => {
+          if (options?.signal?.aborted) {
+            resolve({
+              ok: false,
+              retryable: false,
+              statusCode: null,
+              errorMessage: null,
+              cancelled: true,
+            });
+            return;
+          }
+
+          options?.signal?.addEventListener(
+            'abort',
+            () => {
+              resolve({
+                ok: false,
+                retryable: false,
+                statusCode: null,
+                errorMessage: null,
+                cancelled: true,
+              });
+            },
+            { once: true },
+          );
+        });
+      }),
+    };
+    const service = new MutationReplayService(store, transport, () => 9000);
+
+    await service.start();
+    await service.enqueue({
+      method: 'DELETE',
+      url: 'https://api.example.com/visits/2',
+    });
+
+    const replayPromise = service.replay('manual');
+    await sendStarted.promise;
+
+    const clearedCount = await service.clearAll('logout');
+    await replayPromise;
+
+    expect(clearedCount).toBe(1);
+    expect(sendSignal?.aborted).toBe(true);
+    expect(cancelPendingRequests).toHaveBeenCalledTimes(1);
+    expect(service.getSnapshot().isSyncing).toBe(false);
+    expect(service.getSnapshot().queueDepth).toBe(0);
+  });
+
   it('replays already-normalized food product local operations', async () => {
     const sharedState: SharedQueueState = {
       rows: new Map([
@@ -394,7 +471,7 @@ describe('MutationReplayService', () => {
     };
     const store = new InMemoryQueueStore(sharedState);
     const transport: MutationTransport = {
-      send: jest.fn(async (mutation) => {
+      send: jest.fn(async (mutation, _options) => {
         expect(mutation.url).toBe('local://feature/food-product.update');
         expect(mutation.headers['X-Mobile-Write-Operation']).toBe('food-product.update');
         expect(JSON.parse(mutation.body ?? '{}')).toEqual({

@@ -615,8 +615,8 @@ export function AuthProvider({ children, screenshotReviewBootstrap }: AuthProvid
 
   const signOut = useCallback(async () => {
     suppressNextAuthBoundaryResetRef.current = Boolean(actualUser?.id);
-    await resetAuthenticatedLocalState('logout');
     pb.authStore.clear();
+    await resetAuthenticatedLocalState('logout');
     setActualUser(null);
     setRolePreviewSettings(DEFAULT_ROLE_PREVIEW_SETTINGS);
     void clearPersistedRolePreviewSettings().catch((error) => {

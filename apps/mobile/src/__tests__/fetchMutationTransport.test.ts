@@ -66,4 +66,26 @@ describe('createFetchMutationTransport', () => {
     expect(result.statusCode).toBe(409);
     expect(result.errorMessage).toContain('Conflict');
   });
+
+  it('treats aborted sends as cancelled instead of retryable failures', async () => {
+    const abortError = new Error('Aborted');
+    abortError.name = 'AbortError';
+    const controller = new AbortController();
+    const fetchMock = jest.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBe(controller.signal);
+      throw abortError;
+    });
+
+    const transport = createFetchMutationTransport({
+      fetchImplementation: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await transport.send(createQueuedMutation(), {
+      signal: controller.signal,
+    });
+
+    expect(result.cancelled).toBe(true);
+    expect(result.retryable).toBe(false);
+    expect(result.statusCode).toBeNull();
+  });
 });

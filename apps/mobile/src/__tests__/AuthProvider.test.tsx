@@ -287,6 +287,9 @@ describe('AuthProvider', () => {
     expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
     expect(mockDiscardQueuedMutations).toHaveBeenCalledWith('logout');
     expect(mockClear).toHaveBeenCalledTimes(1);
+    expect(mockClear.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDiscardQueuedMutations.mock.invocationCallOrder[0],
+    );
     expect(renderer.root.findByType('AuthState').props.status).toBe('unauthenticated');
   });
 
